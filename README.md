@@ -6,10 +6,7 @@
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 ## Installation & Use
-### Configuration
-
-### Quick Start
-
+- [Getting Started](docs/sources/getting-started.md)
 
 ## Interoperability
 - Cisco IOS-XR
