@@ -1,0 +1,17 @@
+# Go
+*.exe
+*.exe~
+*.dll
+*.dylib
+*.out
+*.so
+
+# Python
+*.pyc
+*.pyo
+__pycache__/
+*.pyproj
+
+# Other
+.DS_Store
+*.swp
