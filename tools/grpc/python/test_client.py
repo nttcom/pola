@@ -9,10 +9,8 @@ import grpc
 import pprint
 import sys
 
-sys.path.append('../../../api')
-
-import grpc.python.pola_pb2 as pola_pb2
-import grpc.python.pola_pb2_grpc as pola_pb2_grpc
+import api.grpc.pola_pb2 as pola_pb2
+import api.grpc.pola_pb2_grpc as pola_pb2_grpc
 
 
 def main():
