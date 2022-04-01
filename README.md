@@ -1,8 +1,9 @@
 <p align="center">
-<img src="https://github.com/nttcom/pola/blob/main/docs/figures/pola.png" alt="Pola" width="25%">
+<img src="https://github.com/nttcom/pola/blob/main/docs/figures/pola.png" alt="Pola" width="20%">
 </p>
 
 # Pola PCE
+[![lint status](https://github.com/nttcom/pola/actions/workflows/ci.yaml/badge.svg)](https://github.com/nttcom/pola/actions)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 ## Installation & Use
