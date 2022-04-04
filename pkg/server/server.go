@@ -227,14 +227,16 @@ func (s *Server) receivePcep(sessionAddr net.IP, pcepSvr *pcep.Server) {
 			fmt.Printf("[PCEP] Received PCRpt\n")
 			pcepSvr.ReadPcrpt(pcepSession.tcpConn, messageLength, report)
 			if report.LspObject.PlspId == 0 && !report.LspObject.SFlag {
+				//sync 終了
 				fmt.Printf(" Finish PCRpt State Synchronization\n")
 				pcepSession.isSynced = true
 				fmt.Printf(" %#v\n", pcepSession)
 				fmt.Printf("Session info: %#v\n", s.pcepSessionList)
-			} else if !report.LspObject.SFlag {
-				// report.LspObject.SFlag == 0 かつ report.LspObject.PlspId != 0 の場合、
+			} else if !report.LspObject.SFlag && report.SrpObject.SrpId != 0 {
+				// report.LspObject.SFlag == 0 かつ report.LspObject.PlspId != 0 かつ report.SrpObject.SrpId == initiate SRP-ID の場合、
 				// PCUpd/PCinitiate に対する応答用 report になる
-				fmt.Printf(" Finish Transaction SRP ID: %v)\n", report.SrpObject.SrpId)
+				// ToDo: report.SrpObject.SrpId != 0 => report.SrpObject.SrpId == initiate SRP-ID に変更する
+				fmt.Printf(" Finish Transaction SRP ID: %v\n", report.SrpObject.SrpId)
 				// 複数の pcep message が含まれている時?
 				lspData := lsp{
 					sessionAddr: pcepSession.pcepSessionAddr,
@@ -242,8 +244,23 @@ func (s *Server) receivePcep(sessionAddr net.IP, pcepSvr *pcep.Server) {
 					name:        report.LspObject.Name,
 					pcrptObject: *report,
 				}
+
+				s.lspList = removeLsp(s.lspList, lspData)
 				s.lspList = append(s.lspList, lspData)
-			} // TODO: elseでsync処理を追加
+			} else if report.LspObject.SFlag {
+				fmt.Printf("  Synchronize LSP information for PLSP-ID: %v\n", report.LspObject.PlspId)
+				// 複数の pcep message が含まれている時?
+				lspData := lsp{
+					sessionAddr: pcepSession.pcepSessionAddr,
+					plspId:      report.LspObject.PlspId,
+					name:        report.LspObject.Name,
+					pcrptObject: *report,
+				}
+
+				s.lspList = removeLsp(s.lspList, lspData)
+				s.lspList = append(s.lspList, lspData)
+			}
+			// TODO: elseでsync処理を追加
 		case pcep.MT_ERROR:
 			fmt.Printf("[PCEP] Received PCErr\n")
 			// TODO: エラー内容の表示
@@ -288,6 +305,18 @@ func removeSession(sessionList []pcepSession, e pcepSession) []pcepSession {
 		if !v.pcepSessionAddr.Equal(e.pcepSessionAddr) {
 			result = append(result, v)
 		}
+	}
+	return result
+}
+
+func removeLsp(lspList []lsp, e lsp) []lsp {
+	// lspList から name, PLSP-ID, sessionAddr が一致するものを削除する
+	result := []lsp{}
+	for _, lsp := range lspList {
+		if lsp.name == e.name && lsp.plspId == e.plspId && lsp.sessionAddr.Equal(e.sessionAddr) {
+			continue
+		}
+		result = append(result, lsp)
 	}
 	return result
 }
