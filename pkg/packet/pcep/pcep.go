@@ -264,36 +264,36 @@ const (
 
 const TL_LENGTH = 4
 
-func unmarshalPcepTLVs(tlvs *[]Tlv, pcepTLVs []uint8) {
-	fmt.Printf("pcep TLVs byte: %#v\n", pcepTLVs)
-	tlvType := binary.BigEndian.Uint16(pcepTLVs[0:2])
-	tlvLength := uint16(math.Ceil(float64(binary.BigEndian.Uint16(pcepTLVs[2:4]))/4) * 4) // Include padding
-	fmt.Printf(" TLV length: %d\n", tlvLength)
-	tlv := &Tlv{
-		Type:   tlvType,
-		Length: tlvLength,
-		Value:  pcepTLVs[4 : 4+tlvLength],
-	}
-	*tlvs = append(*tlvs, *tlv)
-	switch tlvType {
-	case TLV_IPV4_LSP_IDENTIFIERS:
-		fmt.Printf(" Unmarshal TLV_IPV4_LSP_IDENTIFIERS (%v)\n", tlvType)
-	case TLV_STATEFUL_PCE_CAPABILITY:
-		fmt.Printf(" Unmarshal TLV_STATEFUL_PCE_CAPABILITY (%v)\n", tlvType)
-	case TLV_SYMBOLIC_PATH_NAME:
-		fmt.Printf(" Unmarshal TLV_SYMBOLIC_PATH_NAME (%v)\n", tlvType)
-	case TLV_SR_PCE_CAPABILITY:
-		fmt.Printf(" Unmarshal TLV_SR_PCE_CAPABILITY (%v)\n", tlvType)
-	case TLV_ASSOC_TYPE_LIST:
-		fmt.Printf(" Unmarshal TLV_ASSOC_TYPE_LIST (%v)\n", tlvType)
-	default:
-		fmt.Printf(" Unimplemented TLV: %v\n", tlvType)
-	}
+// func unmarshalPcepTLVs(tlvs *[]Tlv, pcepTLVs []uint8) {
+// 	fmt.Printf("pcep TLVs byte: %#v\n", pcepTLVs)
+// 	tlvType := binary.BigEndian.Uint16(pcepTLVs[0:2])
+// 	tlvLength := uint16(math.Ceil(float64(binary.BigEndian.Uint16(pcepTLVs[2:4]))/4) * 4) // Include padding
+// 	fmt.Printf(" TLV length: %d\n", tlvLength)
+// 	tlv := &Tlv{
+// 		Type:   tlvType,
+// 		Length: tlvLength,
+// 		Value:  pcepTLVs[4 : 4+tlvLength],
+// 	}
+// 	*tlvs = append(*tlvs, *tlv)
+// 	switch tlvType {
+// 	case TLV_IPV4_LSP_IDENTIFIERS:
+// 		fmt.Printf(" Unmarshal TLV_IPV4_LSP_IDENTIFIERS (%v)\n", tlvType)
+// 	case TLV_STATEFUL_PCE_CAPABILITY:
+// 		fmt.Printf(" Unmarshal TLV_STATEFUL_PCE_CAPABILITY (%v)\n", tlvType)
+// 	case TLV_SYMBOLIC_PATH_NAME:
+// 		fmt.Printf(" Unmarshal TLV_SYMBOLIC_PATH_NAME (%v)\n", tlvType)
+// 	case TLV_SR_PCE_CAPABILITY:
+// 		fmt.Printf(" Unmarshal TLV_SR_PCE_CAPABILITY (%v)\n", tlvType)
+// 	case TLV_ASSOC_TYPE_LIST:
+// 		fmt.Printf(" Unmarshal TLV_ASSOC_TYPE_LIST (%v)\n", tlvType)
+// 	default:
+// 		fmt.Printf(" Unimplemented TLV: %v\n", tlvType)
+// 	}
 
-	if len(pcepTLVs)-int(tlvLength+TL_LENGTH) >= 4 {
-		unmarshalPcepTLVs(tlvs, pcepTLVs[(tlvLength+TL_LENGTH):])
-	}
-}
+// 	if len(pcepTLVs)-int(tlvLength+TL_LENGTH) >= 4 {
+// 		unmarshalPcepTLVs(tlvs, pcepTLVs[(tlvLength+TL_LENGTH):])
+// 	}
+// }
 
 func (tlv *Tlv) Serialize() []uint8 {
 	bytePcepTLV := []uint8{}
@@ -846,36 +846,6 @@ func NewVendorInformationObject(vendor string, color uint32, preference uint32) 
 	return vendorInformationObject
 }
 
-///////////////////////////////////////////////////////////////////
-//////////////////////// PCUpd object //////////////////////////////
-
-// func (s *Server) SendPCUpd(conn net.Conn, path Path) {
-// 	byteObjects := NewPCUpdObjects(path)
-
-// 	messageLength := uint16(len(byteObjects) + COMMON_HEADER_LENGTH)
-// 	byteCommonHeader := NewCommonHeader(MT_UPDATE, messageLength)
-
-// 	pcupdMessage := append(byteCommonHeader, byteObjects...)
-
-// 	fmt.Printf("[PCEP] Send PCUpd\n")
-// 	_, err := conn.Write(pcupdMessage)
-// 	if err != nil {
-// 		fmt.Printf("pcupd error")
-// 		log.Fatal(nil)
-// 	}
-// }
-
-// func NewPCUpdObjects(path Path) []uint8 {
-// 	// TODO: 経路のパラメータによってはObjectの数変わる？要調査
-// 	byteSrpObject := NewSrpObject()
-// 	byteLspObject := EncapLspObject(path.LspObject)
-// 	byteEroObject := NewEroObject(path.SrEroSubobject)
-// 	byteLspaObject := EncapLspaObject(path.LspaObject)
-// 	byteMetricObject := EncapMetricObject(path.MetricObject)
-// 	byteObjects := appendByteSlices(byteSrpObject, byteLspObject, byteEroObject, byteLspaObject, byteMetricObject)
-// 	return (byteObjects)
-// }
-
 /*---------------- PCEP Message struct ----------------*/
 //////////////////////// PCRpt Message //////////////////////////////
 type PCRptMessage struct {
@@ -1024,6 +994,33 @@ func (o *PCInitiateMessage) Serialize() ([]uint8, error) {
 // 	byteSrpObject := NewSrpObject()
 // 	byteLspObject := EncapLspObject(path.LspObject)
 // 	byteEroObject := NewEroObject(path.SrEroSubobjects)
+// 	byteLspaObject := EncapLspaObject(path.LspaObject)
+// 	byteMetricObject := EncapMetricObject(path.MetricObject)
+// 	byteObjects := appendByteSlices(byteSrpObject, byteLspObject, byteEroObject, byteLspaObject, byteMetricObject)
+// 	return (byteObjects)
+// }
+
+// func (s *Server) SendPCUpd(conn net.Conn, path Path) {
+// 	byteObjects := NewPCUpdObjects(path)
+
+// 	messageLength := uint16(len(byteObjects) + COMMON_HEADER_LENGTH)
+// 	byteCommonHeader := NewCommonHeader(MT_UPDATE, messageLength)
+
+// 	pcupdMessage := append(byteCommonHeader, byteObjects...)
+
+// 	fmt.Printf("[PCEP] Send PCUpd\n")
+// 	_, err := conn.Write(pcupdMessage)
+// 	if err != nil {
+// 		fmt.Printf("pcupd error")
+// 		log.Fatal(nil)
+// 	}
+// }
+
+// func NewPCUpdObjects(path Path) []uint8 {
+// 	// TODO: 経路のパラメータによってはObjectの数変わる？要調査
+// 	byteSrpObject := NewSrpObject()
+// 	byteLspObject := EncapLspObject(path.LspObject)
+// 	byteEroObject := NewEroObject(path.SrEroSubobject)
 // 	byteLspaObject := EncapLspaObject(path.LspaObject)
 // 	byteMetricObject := EncapMetricObject(path.MetricObject)
 // 	byteObjects := appendByteSlices(byteSrpObject, byteLspObject, byteEroObject, byteLspaObject, byteMetricObject)
