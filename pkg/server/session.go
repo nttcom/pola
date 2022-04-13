@@ -55,7 +55,9 @@ func (s *Session) Established() {
 
 	close := make(chan bool)
 	go func() {
-		s.ReceivePcepMessage()
+		if err := s.ReceivePcepMessage(); err != nil {
+			fmt.Printf("Receive PCEP error\n")
+		}
 		close <- true
 	}()
 
@@ -226,7 +228,9 @@ func (s *Session) ReceivePcepMessage() error {
 			}
 			// ポインタ型かも
 			var pcrptMessage pcep.PCRptMessage
-			pcrptMessage.DecodeFromBytes(bytePcrptObject)
+			if err := pcrptMessage.DecodeFromBytes(bytePcrptObject); err != nil {
+				return err
+			}
 			if pcrptMessage.LspObject.PlspId == 0 && !pcrptMessage.LspObject.SFlag {
 				//sync 終了
 				fmt.Printf(" Finish PCRpt State Synchronization\n")

@@ -39,9 +39,20 @@ type Server struct {
 func NewPce() error {
 	s := &Server{}
 	// PCEP の Listen を開始する
-	go s.Listen()
+	go func() {
+		if err := s.Listen(); err != nil {
+			fmt.Printf("PCEP listen Error\n")
+		}
+
+	}()
 	// gRPC の Listen を開始する
-	go s.grpcListen()
+	go func() {
+		if err := s.grpcListen(); err != nil {
+			fmt.Printf("gRPC listen Error\n")
+		}
+
+	}()
+
 	// sessionList の表示
 	for {
 		s.printSessionList()
@@ -121,7 +132,9 @@ func (s *Server) CreateLsp(ctx context.Context, lspData *pb.LspData) (*pb.LspSta
 				}
 				labels = append(labels, pcepLabel)
 			}
-			pcepSession.SendPCInitiate(lspData.GetPolicyName(), labels, lspData.GetColor(), uint32(100), lspData.GetSrcAddr(), lspData.GetDstAddr())
+			if err := pcepSession.SendPCInitiate(lspData.GetPolicyName(), labels, lspData.GetColor(), uint32(100), lspData.GetSrcAddr(), lspData.GetDstAddr()); err != nil {
+				return &pb.LspStatus{IsSuccess: false}, err
+			}
 			return &pb.LspStatus{IsSuccess: true}, nil
 		}
 	}
