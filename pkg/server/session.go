@@ -55,7 +55,9 @@ func (s *Session) Established() {
 
 	close := make(chan bool)
 	go func() {
-		s.ReceivePcepMessage()
+		if err := s.ReceivePcepMessage(); err != nil {
+			fmt.Printf("Receive PCEP error\n")
+		}
 		close <- true
 	}()
 
@@ -102,10 +104,10 @@ func ReadOpen(conn net.Conn) error {
 
 	// CommonHeader Validation
 	if commonHeader.Version != 1 {
-		log.Panicf("PCEP version mismatch: %i", commonHeader.Version)
+		log.Panicf("PCEP version mismatch: %#v", commonHeader.Version)
 	}
 	if commonHeader.MessageType != pcep.MT_OPEN {
-		log.Panicf("Message Type is : %i, This peer has not been opened.", commonHeader.MessageType)
+		log.Panicf("Message Type is : %#v, This peer has not been opened.", commonHeader.MessageType)
 	}
 
 	fmt.Printf("[session] Receive Open\n")
@@ -122,11 +124,11 @@ func ReadOpen(conn net.Conn) error {
 	}
 	// first get が open object でない場合は破棄
 	if commonObjectHeader.ObjectClass != pcep.OC_OPEN {
-		log.Panicf("ObjectClass %i is not Open", commonObjectHeader.ObjectClass)
+		log.Panicf("ObjectClass %#v is not Open", commonObjectHeader.ObjectClass)
 	}
 
 	if commonObjectHeader.ObjectType != 1 {
-		log.Panicf("Unimplemented objectType: %i", commonObjectHeader.ObjectType)
+		log.Panicf("Unimplemented objectType: %#v", commonObjectHeader.ObjectType)
 	}
 
 	var openObject pcep.OpenObject
@@ -226,7 +228,9 @@ func (s *Session) ReceivePcepMessage() error {
 			}
 			// ポインタ型かも
 			var pcrptMessage pcep.PCRptMessage
-			pcrptMessage.DecodeFromBytes(bytePcrptObject)
+			if err := pcrptMessage.DecodeFromBytes(bytePcrptObject); err != nil {
+				return err
+			}
 			if pcrptMessage.LspObject.PlspId == 0 && !pcrptMessage.LspObject.SFlag {
 				//sync 終了
 				fmt.Printf(" Finish PCRpt State Synchronization\n")
