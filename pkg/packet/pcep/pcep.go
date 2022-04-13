@@ -12,16 +12,6 @@ import (
 	"math"
 )
 
-var srpID = 100000
-
-type Server struct {
-	logger log.Logger
-}
-
-func NewServer() *Server {
-	return &Server{}
-}
-
 func AppendByteSlices(byteSlices ...[]uint8) []uint8 {
 	joinedSliceLength := 0
 	for _, byteSlice := range byteSlices {
@@ -712,8 +702,6 @@ type SrEroSubobject struct { // RFC8664 4.3.1
 }
 
 func (o *SrEroSubobject) Serialize() ([]uint8, error) {
-	byteSrEroSubobject := []uint8{}
-
 	buf := make([]uint8, 4)
 	buf[0] = o.SubobjectType
 	if o.LFlag {
@@ -736,7 +724,7 @@ func (o *SrEroSubobject) Serialize() ([]uint8, error) {
 	byteSid := make([]uint8, 4)
 	binary.BigEndian.PutUint32(byteSid, o.Sid<<12)
 
-	byteSrEroSubobject = AppendByteSlices(buf, byteSid, o.Nai)
+	byteSrEroSubobject := AppendByteSlices(buf, byteSid, o.Nai)
 	return byteSrEroSubobject, nil
 }
 
@@ -780,8 +768,6 @@ type EndpointObject struct {
 	ObjectType uint8 // ipv4: 1, ipv6: 2
 	srcIPv4    []uint8
 	dstIPv4    []uint8
-	srcIPv6    []uint8
-	dstIPv6    []uint8
 }
 
 func (o EndpointObject) Serialize() ([]uint8, error) {
