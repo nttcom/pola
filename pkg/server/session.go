@@ -24,6 +24,7 @@ type Session struct {
 	tcpConn   net.Conn
 	isSynced  bool
 	srpIdHead uint32
+	lspChan   chan Lsp
 }
 
 func (s *Session) Close() {
@@ -31,11 +32,12 @@ func (s *Session) Close() {
 	s.tcpConn.Close()
 }
 
-func NewSession(sessionId uint8) *Session {
+func NewSession(sessionId uint8, lspChan chan Lsp) *Session {
 	s := &Session{
 		sessionId: sessionId,
 		isSynced:  false,
 		srpIdHead: uint32(1),
+		lspChan:   lspChan,
 	}
 
 	return s
@@ -194,7 +196,6 @@ func SendKeepAlive(conn net.Conn) error {
 }
 
 func (s *Session) ReceivePcepMessage() error {
-	// 経路計算の要求パケットがあったときにこの関数で返している
 	// latestSrpId := uint32(1) // 0x00000000 and 0xFFFFFFFF are reserved.
 	for {
 		// pcep common header を取得
@@ -207,26 +208,15 @@ func (s *Session) ReceivePcepMessage() error {
 			return err
 		}
 
-		// byteCommonObjectHeader := make([]uint8, pcep.COMMON_OBJECT_HEADER_LENGTH)
-		// if _, err := s.tcpConn.Read(byteCommonObjectHeader); err != nil {
-		// 	return err
-		// }
-		// var commonObjectHeader pcep.CommonObjectHeader
-		// if err := commonObjectHeader.DecodeFromBytes(byteCommonObjectHeader); err != nil {
-		// 	return err
-		// }
-
 		switch commonHeader.MessageType {
 		case pcep.MT_KEEPALIVE:
 			fmt.Printf("[PCEP] Received KeepAlive\n")
 		case pcep.MT_REPORT:
-			// PCrpt: PCCが持つlspの情報を送ってくる
 			fmt.Printf("[PCEP] Received PCRpt\n")
 			bytePcrptObject := make([]uint8, commonHeader.MessageLength-pcep.COMMON_HEADER_LENGTH)
 			if _, err := s.tcpConn.Read(bytePcrptObject); err != nil {
 				return err
 			}
-			// ポインタ型かも
 			var pcrptMessage pcep.PCRptMessage
 			if err := pcrptMessage.DecodeFromBytes(bytePcrptObject); err != nil {
 				return err
@@ -240,32 +230,11 @@ func (s *Session) ReceivePcepMessage() error {
 				// PCUpd/PCinitiate に対する応答用 pcrptObject になる
 				// TODO: pcrptObject.SrpObject.SrpId != 0 => pcrptObject.SrpObject.SrpId == initiate SRP-ID に変更する
 				fmt.Printf(" Finish Transaction SRP ID: %v\n", pcrptMessage.SrpObject.SrpId)
-				// 複数の pcep message が含まれている時?
-				// lspData := lsp{
-				// 	peerAddr:    s.peerAddr,
-				// 	plspId:      pcrptObject.LspObject.PlspId,
-				// 	name:        pcrptObject.LspObject.Name,
-				// 	pcrptObject: pcrptObject,
-				// }
-
-				// channel かなんかで server に送らないと
-				// s.lspList = removeLsp(s.lspList, lspData)
-				// s.lspList = append(s.lspList, lspData)
+				go RegisterLsp(s.lspChan, s.peerAddr, pcrptMessage)
 			} else if pcrptMessage.LspObject.SFlag {
-				// sync 中
 				fmt.Printf("  Synchronize LSP information for PLSP-ID: %v\n", pcrptMessage.LspObject.PlspId)
-				// 複数の pcep message が含まれている時?
-				// lspData := lsp{
-				// 	peerAddr:    s.peerAddr,
-				// 	plspId:      pcrptObject.LspObject.PlspId,
-				// 	name:        pcrptObject.LspObject.Name,
-				// 	pcrptObject: pcrptObject,
-				// }
-				// channel かなんかで server に送らないと
-				// s.lspList = removeLsp(s.lspList, lspData)
-				// s.lspList = append(s.lspList, lspData)
+				go RegisterLsp(s.lspChan, s.peerAddr, pcrptMessage)
 			}
-			// TODO: elseでsync処理を追加
 		case pcep.MT_ERROR:
 			fmt.Printf("[PCEP] Received PCErr\n")
 			// TODO: エラー内容の表示
@@ -298,4 +267,15 @@ func (s *Session) SendPCInitiate(policyName string, labels []pcep.Label, color u
 	}
 	s.srpIdHead += 1
 	return nil
+}
+
+func RegisterLsp(lspChan chan Lsp, peerAddr net.IP, pcrptMessage pcep.PCRptMessage) {
+	lspStruct := Lsp{
+		peerAddr:     peerAddr,
+		plspId:       pcrptMessage.LspObject.PlspId,
+		name:         pcrptMessage.LspObject.Name,
+		pcrptMessage: pcrptMessage,
+	}
+
+	lspChan <- lspStruct
 }
