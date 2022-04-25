@@ -19,10 +19,6 @@ import (
 	"github.com/nttcom/pola/pkg/packet/pcep"
 )
 
-// TODO: 引数やconfファイルで上書きできるようにする
-const PCEPORT = "4189"
-const PCEADDR = "10.100.0.252"
-
 type lsp struct {
 	peerAddr     net.IP // 後々 router ID, router name などに変更したい
 	plspId       uint32
@@ -36,11 +32,16 @@ type Server struct {
 	pb.UnimplementedPceServiceServer
 }
 
-func NewPce() error {
+type PceOptions struct {
+	PcepAddr string
+	PcepPort string
+}
+
+func NewPce(o *PceOptions) error {
 	s := &Server{}
 	// PCEP の Listen を開始する
 	go func() {
-		if err := s.Listen(); err != nil {
+		if err := s.Listen(o.PcepAddr, o.PcepPort); err != nil {
 			fmt.Printf("PCEP listen Error\n")
 		}
 
@@ -61,13 +62,12 @@ func NewPce() error {
 	}
 }
 
-func (s *Server) Listen() error {
+func (s *Server) Listen(address string, port string) error {
 	// PCEP の listen を行う
-	// PCEPPORT = "4189" 宛の SYN は全て accept
 	var listenInfo strings.Builder
-	listenInfo.WriteString(PCEADDR)
+	listenInfo.WriteString(address)
 	listenInfo.WriteString(":")
-	listenInfo.WriteString(PCEPORT)
+	listenInfo.WriteString(port)
 	fmt.Printf("[server] PCE Listen: %s\n", listenInfo.String())
 	listener, err := net.Listen("tcp", listenInfo.String())
 	if err != nil {
@@ -77,7 +77,6 @@ func (s *Server) Listen() error {
 	defer listener.Close()
 	sessionId := uint8(1)
 	for {
-		// PCEPPORT = "4189" へ SYN が来るたびに Accept
 		session := NewSession(sessionId)
 
 		fmt.Printf("%#v\n", s)
