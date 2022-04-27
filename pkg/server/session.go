@@ -244,8 +244,11 @@ func (s *Session) ReceivePcepMessage() error {
 		case pcep.MT_CLOSE:
 			fmt.Printf("[PCEP] Received Close\n")
 			// receive を中断する
-			err := fmt.Errorf("PCEP session Close")
-			return err
+			// error　処理ではない気がする
+			// err := fmt.Errorf("PCEP session Close")
+			// return err
+			return nil
+
 		default:
 			fmt.Printf("[PCEP] Received Unimplemented Message-Type: %v\n", commonHeader.MessageType)
 			// TODO: このパケットを記録して捨てる
@@ -272,10 +275,10 @@ func (s *Session) SendPCInitiate(policyName string, labels []pcep.Label, color u
 	return nil
 }
 
-func (s *Session) SendPCUpdate(policyName string, plspId uint32, labels []pcep.Label, color uint32, preference uint32, srcIPv4 []uint8, dstIPv4 []uint8) error {
+func (s *Session) SendPCUpdate(policyName string, plspId uint32, labels []pcep.Label) error {
 	// PLSP ID も入りそう
 	fmt.Printf(" *********************Start PCUpdate \n")
-	pcupdateMessage := pcep.NewPCUpdMessage(s.srpIdHead, policyName, plspId, labels, color, preference, srcIPv4, dstIPv4)
+	pcupdateMessage := pcep.NewPCUpdMessage(s.srpIdHead, policyName, plspId, labels)
 
 	bytePCUpdMessage, err := pcupdateMessage.Serialize()
 	if err != nil {
