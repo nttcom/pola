@@ -221,19 +221,22 @@ func (s *Session) ReceivePcepMessage() error {
 			if err := pcrptMessage.DecodeFromBytes(bytePcrptObject); err != nil {
 				return err
 			}
-			if pcrptMessage.LspObject.PlspId == 0 && !pcrptMessage.LspObject.SFlag {
-				//sync 終了
-				fmt.Printf(" Finish PCRpt State Synchronization\n")
-				s.isSynced = true
-			} else if !pcrptMessage.LspObject.SFlag && pcrptMessage.SrpObject.SrpId != 0 {
-				// pcrptObject.LspObject.SFlag == 0 かつ pcrptObject.LspObject.PlspId != 0 かつ pcrptObject.SrpObject.SrpId == initiate SRP-ID の場合、
-				// PCUpd/PCinitiate に対する応答用 pcrptObject になる
-				// TODO: pcrptObject.SrpObject.SrpId != 0 => pcrptObject.SrpObject.SrpId == initiate SRP-ID に変更する
-				fmt.Printf(" Finish Transaction SRP ID: %v\n", pcrptMessage.SrpObject.SrpId)
-				go RegisterLsp(s.lspChan, s.peerAddr, pcrptMessage)
-			} else if pcrptMessage.LspObject.SFlag {
+			if pcrptMessage.LspObject.SFlag {
+				// Sync 中処理
+				// LSP を登録する
 				fmt.Printf("  Synchronize LSP information for PLSP-ID: %v\n", pcrptMessage.LspObject.PlspId)
 				go RegisterLsp(s.lspChan, s.peerAddr, pcrptMessage)
+			} else if !pcrptMessage.LspObject.SFlag {
+				if pcrptMessage.LspObject.PlspId == 0 {
+					//sync 終了
+					fmt.Printf(" Finish PCRpt State Synchronization\n")
+					s.isSynced = true
+				} else if pcrptMessage.SrpObject.SrpId != 0 {
+					// PCInitiate / PCUpdate に対する応答
+					fmt.Printf(" Finish Transaction SRP ID: %v\n", pcrptMessage.SrpObject.SrpId)
+					go RegisterLsp(s.lspChan, s.peerAddr, pcrptMessage)
+				}
+				// TODO: Passive stateful PCE 用の PCUpdateを準備する必要あり
 			}
 		case pcep.MT_ERROR:
 			fmt.Printf("[PCEP] Received PCErr\n")
@@ -263,6 +266,26 @@ func (s *Session) SendPCInitiate(policyName string, labels []pcep.Label, color u
 	fmt.Printf("******************** [PCEP] Send Initiate\n")
 	if _, err := s.tcpConn.Write(bytePCInitiateMessage); err != nil {
 		fmt.Printf("[session] PCInitiate error\n")
+		return err
+	}
+	s.srpIdHead += 1
+	return nil
+}
+
+func (s *Session) SendPCUpdate(policyName string, plspId uint32, labels []pcep.Label, color uint32, preference uint32, srcIPv4 []uint8, dstIPv4 []uint8) error {
+	// PLSP ID も入りそう
+	fmt.Printf(" *********************Start PCUpdate \n")
+	pcupdateMessage := pcep.NewPCUpdMessage(s.srpIdHead, policyName, plspId, labels, color, preference, srcIPv4, dstIPv4)
+
+	bytePCUpdMessage, err := pcupdateMessage.Serialize()
+	if err != nil {
+		fmt.Printf("[session] PCUpdate Seliarize Error")
+		return err
+	}
+
+	fmt.Printf("******************** [PCEP] Send PCUpdate\n")
+	if _, err := s.tcpConn.Write(bytePCUpdMessage); err != nil {
+		fmt.Printf("[session] PCUpdate Send Error\n")
 		return err
 	}
 	s.srpIdHead += 1
