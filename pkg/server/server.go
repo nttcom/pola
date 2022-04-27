@@ -127,25 +127,26 @@ func (s *Server) grpcListen() error {
 func (s *Server) CreateLsp(ctx context.Context, lspData *pb.LspData) (*pb.LspStatus, error) {
 	fmt.Printf("[gRPC] Get request\n")
 	pcepPeerAddr := net.IP(lspData.GetPcepSessionAddr())
-	for _, pcepSession := range s.sessionList {
-		if pcepSession.peerAddr.Equal(pcepPeerAddr) {
-			fmt.Printf("%#v\n", pcepSession)
-			if !pcepSession.isSynced {
-				break
+	if pcepSession := s.getSession(pcepPeerAddr); pcepSession != nil {
+		labels := []pcep.Label{}
+		for _, receivedLsp := range lspData.GetLabels() {
+			pcepLabel := pcep.Label{
+				Sid:    receivedLsp.GetSid(),
+				LoAddr: receivedLsp.GetLoAddr(),
 			}
-			labels := []pcep.Label{}
-			for _, receivedLsp := range lspData.GetLabels() {
-				pcepLabel := pcep.Label{
-					Sid:    receivedLsp.GetSid(),
-					LoAddr: receivedLsp.GetLoAddr(),
-				}
-				labels = append(labels, pcepLabel)
+			labels = append(labels, pcepLabel)
+		}
+		if plspId := s.getPlspId(lspData); plspId != 0 {
+			fmt.Printf("plspId check : %d\n\n", plspId)
+			if err := pcepSession.SendPCUpdate(lspData.GetPolicyName(), plspId, labels, lspData.GetColor(), uint32(100), lspData.GetSrcAddr(), lspData.GetDstAddr()); err != nil {
+				return &pb.LspStatus{IsSuccess: false}, err
 			}
+		} else {
 			if err := pcepSession.SendPCInitiate(lspData.GetPolicyName(), labels, lspData.GetColor(), uint32(100), lspData.GetSrcAddr(), lspData.GetDstAddr()); err != nil {
 				return &pb.LspStatus{IsSuccess: false}, err
 			}
-			return &pb.LspStatus{IsSuccess: true}, nil
 		}
+		return &pb.LspStatus{IsSuccess: true}, nil
 	}
 	return &pb.LspStatus{IsSuccess: false}, nil
 }
@@ -183,6 +184,25 @@ func (s *Server) removeSession(sessionId uint8) {
 	}
 }
 
+func (s *Server) getPlspId(lspData *pb.LspData) uint32 {
+	for _, v := range s.lspList {
+		fmt.Printf("list name: %#v\n", []byte(v.name))
+		fmt.Printf("new name: %#v\n", []byte(lspData.GetPolicyName()))
+		fmt.Printf("list addr: %v\n", v.peerAddr)
+		fmt.Printf("new addr: %v\n\n", net.IP(lspData.GetPcepSessionAddr()))
+		fmt.Printf("first: %t\n", v.name == lspData.GetPolicyName())
+		fmt.Printf("second: %t\n\n", v.peerAddr.Equal(net.IP(lspData.GetPcepSessionAddr())))
+
+		if v.name == lspData.GetPolicyName() && v.peerAddr.Equal(net.IP(lspData.GetPcepSessionAddr())) {
+			fmt.Printf("[get!!!]PlspID: %d\n", v.plspId)
+			return v.plspId
+		}
+	}
+	// 存在しない場合は PCInitiate 用の PLSP-ID: 0 を返す
+	fmt.Printf("awefawefawefawe")
+	return 0
+}
+
 func (s *Server) removeLsp(e Lsp) {
 	// lspList から name, PLSP-ID, sessionAddr が一致するものを削除する
 	for i, v := range s.lspList {
@@ -192,4 +212,17 @@ func (s *Server) removeLsp(e Lsp) {
 			break
 		}
 	}
+}
+
+func (s *Server) getSession(peerAddr net.IP) *Session {
+	for _, pcepSession := range s.sessionList {
+		if pcepSession.peerAddr.Equal(peerAddr) {
+			fmt.Printf("%#v\n", pcepSession)
+			if !pcepSession.isSynced {
+				break
+			}
+			return pcepSession
+		}
+	}
+	return nil
 }

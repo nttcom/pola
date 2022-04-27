@@ -7,6 +7,7 @@ package pcep
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -264,36 +265,13 @@ const (
 
 const TL_LENGTH = 4
 
-// func unmarshalPcepTLVs(tlvs *[]Tlv, pcepTLVs []uint8) {
-// 	fmt.Printf("pcep TLVs byte: %#v\n", pcepTLVs)
-// 	tlvType := binary.BigEndian.Uint16(pcepTLVs[0:2])
-// 	tlvLength := uint16(math.Ceil(float64(binary.BigEndian.Uint16(pcepTLVs[2:4]))/4) * 4) // Include padding
-// 	fmt.Printf(" TLV length: %d\n", tlvLength)
-// 	tlv := &Tlv{
-// 		Type:   tlvType,
-// 		Length: tlvLength,
-// 		Value:  pcepTLVs[4 : 4+tlvLength],
-// 	}
-// 	*tlvs = append(*tlvs, *tlv)
-// 	switch tlvType {
-// 	case TLV_IPV4_LSP_IDENTIFIERS:
-// 		fmt.Printf(" Unmarshal TLV_IPV4_LSP_IDENTIFIERS (%v)\n", tlvType)
-// 	case TLV_STATEFUL_PCE_CAPABILITY:
-// 		fmt.Printf(" Unmarshal TLV_STATEFUL_PCE_CAPABILITY (%v)\n", tlvType)
-// 	case TLV_SYMBOLIC_PATH_NAME:
-// 		fmt.Printf(" Unmarshal TLV_SYMBOLIC_PATH_NAME (%v)\n", tlvType)
-// 	case TLV_SR_PCE_CAPABILITY:
-// 		fmt.Printf(" Unmarshal TLV_SR_PCE_CAPABILITY (%v)\n", tlvType)
-// 	case TLV_ASSOC_TYPE_LIST:
-// 		fmt.Printf(" Unmarshal TLV_ASSOC_TYPE_LIST (%v)\n", tlvType)
-// 	default:
-// 		fmt.Printf(" Unimplemented TLV: %v\n", tlvType)
-// 	}
+func (tlv *Tlv) DecodeFromBytes(data []uint8) error {
+	tlv.Type = binary.BigEndian.Uint16(data[0:2])
+	tlv.Length = binary.BigEndian.Uint16(data[2:4])
+	tlv.Value = data[4 : 4+tlv.Length]
 
-// 	if len(pcepTLVs)-int(tlvLength+TL_LENGTH) >= 4 {
-// 		unmarshalPcepTLVs(tlvs, pcepTLVs[(tlvLength+TL_LENGTH):])
-// 	}
-// }
+	return nil
+}
 
 func (tlv *Tlv) Serialize() []uint8 {
 	bytePcepTLV := []uint8{}
@@ -312,6 +290,23 @@ func (tlv *Tlv) Serialize() []uint8 {
 		bytePcepTLV = append(bytePcepTLV, bytePadding...)
 	}
 	return bytePcepTLV
+}
+
+func DecodeTLVsFromBytes(data []uint8) ([]Tlv, error) {
+	tlvs := []Tlv{}
+	for {
+		var tlv Tlv
+		tlv.DecodeFromBytes(data)
+		tlvs = append(tlvs, tlv)
+		if int(tlv.getByteLength()) < len(data) {
+			data = data[tlv.getByteLength():]
+		} else if int(tlv.getByteLength()) < len(data) {
+			break
+		} else {
+			return nil, errors.New("TLVs decode error.\n")
+		}
+	}
+	return tlvs, nil
 }
 
 type Path struct {
@@ -569,7 +564,23 @@ func (o *LspObject) DecodeFromBytes(data []uint8) error {
 	o.RFlag = (data[3] & 0x04) != 0
 	o.SFlag = (data[3] & 0x02) != 0
 	o.DFlag = (data[3] & 0x01) != 0
-	// lsp の decode をしたい
+	byteTlvs := data[4:]
+	for {
+		var tlv Tlv
+		tlv.DecodeFromBytes(byteTlvs)
+		if tlv.Type == uint16(TLV_SYMBOLIC_PATH_NAME) {
+			o.Name = string(tlv.Value)
+		}
+		o.Tlvs = append(o.Tlvs, tlv)
+
+		if int(tlv.getByteLength()) < len(byteTlvs) {
+			byteTlvs = byteTlvs[tlv.getByteLength():]
+		} else if int(tlv.getByteLength()) == len(byteTlvs) {
+			break
+		} else {
+			return errors.New("[pcep] Lsp TLV decode Error.\n")
+		}
+	}
 	return nil
 }
 
@@ -636,6 +647,23 @@ func NewLspObject(lspName string, plspId uint32) LspObject {
 	}
 
 	return lspObject
+}
+
+func DecodeLspTLVsFromBytes(data []uint8) ([]Tlv, error) {
+	tlvs := []Tlv{}
+	for {
+		var tlv Tlv
+		tlv.DecodeFromBytes(data)
+		tlvs = append(tlvs, tlv)
+		if int(tlv.getByteLength()) < len(data) {
+			data = data[tlv.getByteLength():]
+		} else if int(tlv.getByteLength()) < len(data) {
+			break
+		} else {
+			return nil, errors.New("TLVs decode error.\n")
+		}
+	}
+	return tlvs, nil
 }
 
 //////////////////////// ero object //////////////////////////////
@@ -870,7 +898,7 @@ func (o *PCRptMessage) DecodeFromBytes(bytePcrptObject []uint8) error {
 	case OC_BANDWIDTH:
 		fmt.Printf(" Decode OC_BANDWIDTH (%v)\n", commonObjectHeader.ObjectClass)
 		var bandwidthObject BandwidthObject
-		err = bandwidthObject.DecodeFromBytes(bytePcrptObject[COMMON_OBJECT_HEADER_LENGTH:])
+		err = bandwidthObject.DecodeFromBytes(bytePcrptObject[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength])
 		if err != nil {
 			return err
 		}
@@ -878,7 +906,7 @@ func (o *PCRptMessage) DecodeFromBytes(bytePcrptObject []uint8) error {
 	case OC_METRIC:
 		fmt.Printf(" Decode OC_METRIC (%v)\n", commonObjectHeader.ObjectClass)
 		var metricObject MetricObject
-		err = metricObject.DecodeFromBytes(bytePcrptObject[COMMON_OBJECT_HEADER_LENGTH:])
+		err = metricObject.DecodeFromBytes(bytePcrptObject[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength])
 		if err != nil {
 			fmt.Printf("parse error")
 			log.Fatal(nil)
@@ -889,36 +917,29 @@ func (o *PCRptMessage) DecodeFromBytes(bytePcrptObject []uint8) error {
 		// report.SrEroSubobject.DecodeFromBytes(buf[COMMON_OBJECT_HEADER_LENGTH:])
 	case OC_LSPA:
 		fmt.Printf(" Decode OC_LSPA (%v)\n", commonObjectHeader.ObjectClass)
-		err := o.LspaObject.DecodeFromBytes(bytePcrptObject[COMMON_OBJECT_HEADER_LENGTH:])
+		err := o.LspaObject.DecodeFromBytes(bytePcrptObject[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength])
 		if err != nil {
 			fmt.Printf("parse error")
 			log.Fatal(nil)
 		}
 	case OC_LSP:
 		fmt.Printf(" Decode OC_LSP (%v)\n", commonObjectHeader.ObjectClass)
-		tlvLength := commonObjectHeader.ObjectLength - COMMON_OBJECT_HEADER_LENGTH
-		err := o.LspObject.DecodeFromBytes(bytePcrptObject[COMMON_OBJECT_HEADER_LENGTH : tlvLength+COMMON_OBJECT_HEADER_LENGTH])
+		fmt.Printf("PCRpt.LSPbyte: %#v\n\n", bytePcrptObject)
+		err := o.LspObject.DecodeFromBytes(bytePcrptObject[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength])
 		if err != nil {
 			fmt.Printf("parse error")
 			log.Fatal(nil)
 		}
-		// decodefrombyte に変換
-		// unmarshalPcepTLVs(&report.LspObject.Tlvs, buf[8:tlvLength]) // common header: 4byte, [PLSP-ID, flag]: 4byte で 8byte 除いた
-		// for _, tlv := range report.LspObject.Tlvs {
-		// 	if tlv.Type == TLV_SYMBOLIC_PATH_NAME {
-		// 		report.LspObject.Name = string(tlv.Value)
-		// 	}
-		// }
 	case OC_SRP:
 		fmt.Printf(" Decode OC_SRP (%v)\n", commonObjectHeader.ObjectClass)
-		err := o.SrpObject.DecodeFromBytes(bytePcrptObject[COMMON_OBJECT_HEADER_LENGTH:])
+		err := o.SrpObject.DecodeFromBytes(bytePcrptObject[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength])
 		if err != nil {
 			fmt.Printf("parse error")
 			log.Fatal(nil)
 		}
 	case OC_VENDOR_INFORMATION:
 		fmt.Printf(" Decode OC_VENDOR_INFORMATION (%v)\n", commonObjectHeader.ObjectClass)
-		err := o.VendorInformationObject.DecodeFromBytes(bytePcrptObject[COMMON_OBJECT_HEADER_LENGTH:])
+		err := o.VendorInformationObject.DecodeFromBytes(bytePcrptObject[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength])
 		if err != nil {
 			fmt.Printf("parse error")
 			log.Fatal(nil)
@@ -988,44 +1009,56 @@ func (o *PCInitiateMessage) Serialize() ([]uint8, error) {
 }
 
 //////////////////////// PCUpdate Message //////////////////////////////
+type PCUpdMessage struct {
+	SrpObject               SrpObject
+	LspObject               LspObject
+	EndpointObject          EndpointObject
+	EroObject               EroObject
+	VendorInformationObject VendorInformationObject
+}
 
-// func NewPCUpdObjects(path Path) []uint8 {
-// 	// TODO: 経路のパラメータによってはObjectの数変わる？要調査
-// 	byteSrpObject := NewSrpObject()
-// 	byteLspObject := EncapLspObject(path.LspObject)
-// 	byteEroObject := NewEroObject(path.SrEroSubobjects)
-// 	byteLspaObject := EncapLspaObject(path.LspaObject)
-// 	byteMetricObject := EncapMetricObject(path.MetricObject)
-// 	byteObjects := appendByteSlices(byteSrpObject, byteLspObject, byteEroObject, byteLspaObject, byteMetricObject)
-// 	return (byteObjects)
-// }
+func NewPCUpdMessage(srpId uint32, lspName string, plspId uint32, labels []Label, color uint32, preference uint32, srcIPv4 []uint8, dstIPv4 []uint8) PCUpdMessage {
+	var pcUpdMessage PCUpdMessage
+	pcUpdMessage.SrpObject = NewSrpObject(srpId, false)
+	pcUpdMessage.LspObject = NewLspObject(lspName, plspId)               // PLSP-ID = 0
+	pcUpdMessage.EndpointObject = NewEndpointObject(1, dstIPv4, srcIPv4) // objectType = 1 (IPv4)
+	pcUpdMessage.EroObject = NewEroObject(labels)
+	pcUpdMessage.VendorInformationObject = NewVendorInformationObject("Cisco", color, preference)
+	return pcUpdMessage
+}
 
-// func (s *Server) SendPCUpd(conn net.Conn, path Path) {
-// 	byteObjects := NewPCUpdObjects(path)
+func (o *PCUpdMessage) Serialize() ([]uint8, error) {
+	byteSrpObject, err := o.SrpObject.Serialize()
+	if err != nil {
+		return nil, err
+	}
+	byteLspObject, err := o.LspObject.Serialize()
+	if err != nil {
+		return nil, err
+	}
+	byteEndpointObject, err := o.EndpointObject.Serialize()
+	if err != nil {
+		return nil, err
+	}
+	byteEroObject, err := o.EroObject.Serialize()
+	if err != nil {
+		return nil, err
+	}
+	byteVendorInformationObject, err := o.VendorInformationObject.Serialize()
+	if err != nil {
+		return nil, err
+	}
+	pcupdHeaderLength := COMMON_HEADER_LENGTH + o.SrpObject.getByteLength() + o.LspObject.getByteLength() + o.EndpointObject.getByteLength() + o.EroObject.getByteLength() + o.VendorInformationObject.getByteLength()
 
-// 	messageLength := uint16(len(byteObjects) + COMMON_HEADER_LENGTH)
-// 	byteCommonHeader := NewCommonHeader(MT_UPDATE, messageLength)
+	pcupdHeader := NewCommonHeader(MT_UPDATE, pcupdHeaderLength)
+	bytePCUpdHeader, err := pcupdHeader.Serialize()
+	if err != nil {
+		return nil, err
+	}
+	bytePCUpdMessage := AppendByteSlices(bytePCUpdHeader, byteSrpObject, byteLspObject, byteEndpointObject, byteEroObject, byteVendorInformationObject)
 
-// 	pcupdMessage := append(byteCommonHeader, byteObjects...)
-
-// 	fmt.Printf("[PCEP] Send PCUpd\n")
-// 	_, err := conn.Write(pcupdMessage)
-// 	if err != nil {
-// 		fmt.Printf("pcupd error")
-// 		log.Fatal(nil)
-// 	}
-// }
-
-// func NewPCUpdObjects(path Path) []uint8 {
-// 	// TODO: 経路のパラメータによってはObjectの数変わる？要調査
-// 	byteSrpObject := NewSrpObject()
-// 	byteLspObject := EncapLspObject(path.LspObject)
-// 	byteEroObject := NewEroObject(path.SrEroSubobject)
-// 	byteLspaObject := EncapLspaObject(path.LspaObject)
-// 	byteMetricObject := EncapMetricObject(path.MetricObject)
-// 	byteObjects := appendByteSlices(byteSrpObject, byteLspObject, byteEroObject, byteLspaObject, byteMetricObject)
-// 	return (byteObjects)
-// }
+	return bytePCUpdMessage, nil
+}
 
 /* utils */
 func i32tob(value uint32) []uint8 {
