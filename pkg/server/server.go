@@ -59,7 +59,6 @@ func NewPce(o *PceOptions) error {
 	// sessionList の表示
 	for {
 		select {
-
 		case lsp := <-lspChan:
 			// 更新用に旧 LSP 情報を削除する
 			s.removeLsp(lsp)
@@ -68,7 +67,6 @@ func NewPce(o *PceOptions) error {
 			s.printSessionList()
 			s.printLspList()
 		}
-
 	}
 }
 
@@ -101,7 +99,7 @@ func (s *Server) Listen(address string, port string, lspChan chan Lsp) error {
 		s.sessionList = append(s.sessionList, session)
 		go func() {
 			session.Established()
-			s.removeSession(session.sessionId)
+			s.removeSession(session)
 		}()
 		sessionId += 1
 	}
@@ -138,7 +136,7 @@ func (s *Server) CreateLsp(ctx context.Context, lspData *pb.LspData) (*pb.LspSta
 		}
 		if plspId := s.getPlspId(lspData); plspId != 0 {
 			fmt.Printf("plspId check : %d\n\n", plspId)
-			if err := pcepSession.SendPCUpdate(lspData.GetPolicyName(), plspId, labels, lspData.GetColor(), uint32(100), lspData.GetSrcAddr(), lspData.GetDstAddr()); err != nil {
+			if err := pcepSession.SendPCUpdate(lspData.GetPolicyName(), plspId, labels); err != nil {
 				return &pb.LspStatus{IsSuccess: false}, err
 			}
 		} else {
@@ -174,32 +172,32 @@ func (s *Server) printLspList() {
 	fmt.Printf("*************************\n")
 }
 
-func (s *Server) removeSession(sessionId uint8) {
+func (s *Server) removeSession(session *Session) {
+	// Session List の掃除
 	for i, v := range s.sessionList {
-		if v.sessionId == sessionId {
+		if v.sessionId == session.sessionId {
 			s.sessionList[i] = s.sessionList[len(s.sessionList)-1]
 			s.sessionList = s.sessionList[:len(s.sessionList)-1]
 			break
 		}
 	}
+	// Lsp List の掃除
+	newLspList := []Lsp{}
+	for _, v := range s.lspList {
+		if !v.peerAddr.Equal(session.peerAddr) {
+			newLspList = append(newLspList, v)
+		}
+	}
+	s.lspList = newLspList
 }
 
 func (s *Server) getPlspId(lspData *pb.LspData) uint32 {
 	for _, v := range s.lspList {
-		fmt.Printf("list name: %#v\n", []byte(v.name))
-		fmt.Printf("new name: %#v\n", []byte(lspData.GetPolicyName()))
-		fmt.Printf("list addr: %v\n", v.peerAddr)
-		fmt.Printf("new addr: %v\n\n", net.IP(lspData.GetPcepSessionAddr()))
-		fmt.Printf("first: %t\n", v.name == lspData.GetPolicyName())
-		fmt.Printf("second: %t\n\n", v.peerAddr.Equal(net.IP(lspData.GetPcepSessionAddr())))
-
 		if v.name == lspData.GetPolicyName() && v.peerAddr.Equal(net.IP(lspData.GetPcepSessionAddr())) {
-			fmt.Printf("[get!!!]PlspID: %d\n", v.plspId)
 			return v.plspId
 		}
 	}
 	// 存在しない場合は PCInitiate 用の PLSP-ID: 0 を返す
-	fmt.Printf("awefawefawefawe")
 	return 0
 }
 
