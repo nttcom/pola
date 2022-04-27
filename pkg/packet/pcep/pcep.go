@@ -564,21 +564,23 @@ func (o *LspObject) DecodeFromBytes(data []uint8) error {
 	o.RFlag = (data[3] & 0x04) != 0
 	o.SFlag = (data[3] & 0x02) != 0
 	o.DFlag = (data[3] & 0x01) != 0
-	byteTlvs := data[4:]
-	for {
-		var tlv Tlv
-		tlv.DecodeFromBytes(byteTlvs)
-		if tlv.Type == uint16(TLV_SYMBOLIC_PATH_NAME) {
-			o.Name = string(tlv.Value)
-		}
-		o.Tlvs = append(o.Tlvs, tlv)
+	if len(data) > 4 {
+		byteTlvs := data[4:]
+		for {
+			var tlv Tlv
+			tlv.DecodeFromBytes(byteTlvs)
+			if tlv.Type == uint16(TLV_SYMBOLIC_PATH_NAME) {
+				o.Name = string(removePadding(tlv.Value))
+			}
+			o.Tlvs = append(o.Tlvs, tlv)
 
-		if int(tlv.getByteLength()) < len(byteTlvs) {
-			byteTlvs = byteTlvs[tlv.getByteLength():]
-		} else if int(tlv.getByteLength()) == len(byteTlvs) {
-			break
-		} else {
-			return errors.New("[pcep] Lsp TLV decode Error.\n")
+			if int(tlv.getByteLength()) < len(byteTlvs) {
+				byteTlvs = byteTlvs[tlv.getByteLength():]
+			} else if int(tlv.getByteLength()) == len(byteTlvs) {
+				break
+			} else {
+				return errors.New("[pcep] Lsp TLV decode Error.\n")
+			}
 		}
 	}
 	return nil
@@ -632,11 +634,11 @@ func NewLspObject(lspName string, plspId uint32) LspObject {
 	lspObject := LspObject{
 		Name:   lspName,
 		PlspId: plspId,
-		OFlag:  uint8(0),
+		OFlag:  uint8(1),
 		AFlag:  true, // https://datatracker.ietf.org/doc/html/rfc8231#section-7.3
 		RFlag:  false,
 		SFlag:  false,
-		DFlag:  false,
+		DFlag:  true,
 		Tlvs: []Tlv{
 			{
 				Type:   TLV_SYMBOLIC_PATH_NAME,
@@ -647,23 +649,6 @@ func NewLspObject(lspName string, plspId uint32) LspObject {
 	}
 
 	return lspObject
-}
-
-func DecodeLspTLVsFromBytes(data []uint8) ([]Tlv, error) {
-	tlvs := []Tlv{}
-	for {
-		var tlv Tlv
-		tlv.DecodeFromBytes(data)
-		tlvs = append(tlvs, tlv)
-		if int(tlv.getByteLength()) < len(data) {
-			data = data[tlv.getByteLength():]
-		} else if int(tlv.getByteLength()) < len(data) {
-			break
-		} else {
-			return nil, errors.New("TLVs decode error.\n")
-		}
-	}
-	return tlvs, nil
 }
 
 //////////////////////// ero object //////////////////////////////
@@ -1010,20 +995,16 @@ func (o *PCInitiateMessage) Serialize() ([]uint8, error) {
 
 //////////////////////// PCUpdate Message //////////////////////////////
 type PCUpdMessage struct {
-	SrpObject               SrpObject
-	LspObject               LspObject
-	EndpointObject          EndpointObject
-	EroObject               EroObject
-	VendorInformationObject VendorInformationObject
+	SrpObject SrpObject
+	LspObject LspObject
+	EroObject EroObject
 }
 
-func NewPCUpdMessage(srpId uint32, lspName string, plspId uint32, labels []Label, color uint32, preference uint32, srcIPv4 []uint8, dstIPv4 []uint8) PCUpdMessage {
+func NewPCUpdMessage(srpId uint32, lspName string, plspId uint32, labels []Label) PCUpdMessage {
 	var pcUpdMessage PCUpdMessage
 	pcUpdMessage.SrpObject = NewSrpObject(srpId, false)
-	pcUpdMessage.LspObject = NewLspObject(lspName, plspId)               // PLSP-ID = 0
-	pcUpdMessage.EndpointObject = NewEndpointObject(1, dstIPv4, srcIPv4) // objectType = 1 (IPv4)
+	pcUpdMessage.LspObject = NewLspObject(lspName, plspId) // PLSP-ID = 0
 	pcUpdMessage.EroObject = NewEroObject(labels)
-	pcUpdMessage.VendorInformationObject = NewVendorInformationObject("Cisco", color, preference)
 	return pcUpdMessage
 }
 
@@ -1036,26 +1017,18 @@ func (o *PCUpdMessage) Serialize() ([]uint8, error) {
 	if err != nil {
 		return nil, err
 	}
-	byteEndpointObject, err := o.EndpointObject.Serialize()
-	if err != nil {
-		return nil, err
-	}
 	byteEroObject, err := o.EroObject.Serialize()
 	if err != nil {
 		return nil, err
 	}
-	byteVendorInformationObject, err := o.VendorInformationObject.Serialize()
-	if err != nil {
-		return nil, err
-	}
-	pcupdHeaderLength := COMMON_HEADER_LENGTH + o.SrpObject.getByteLength() + o.LspObject.getByteLength() + o.EndpointObject.getByteLength() + o.EroObject.getByteLength() + o.VendorInformationObject.getByteLength()
+	pcupdHeaderLength := COMMON_HEADER_LENGTH + o.SrpObject.getByteLength() + o.LspObject.getByteLength() + o.EroObject.getByteLength()
 
 	pcupdHeader := NewCommonHeader(MT_UPDATE, pcupdHeaderLength)
 	bytePCUpdHeader, err := pcupdHeader.Serialize()
 	if err != nil {
 		return nil, err
 	}
-	bytePCUpdMessage := AppendByteSlices(bytePCUpdHeader, byteSrpObject, byteLspObject, byteEndpointObject, byteEroObject, byteVendorInformationObject)
+	bytePCUpdMessage := AppendByteSlices(bytePCUpdHeader, byteSrpObject, byteLspObject, byteEroObject)
 
 	return bytePCUpdMessage, nil
 }
@@ -1068,4 +1041,14 @@ func i32tob(value uint32) []uint8 {
 		bytes[i] = uint8((value >> (24 - (8 * i))) & 0xff)
 	}
 	return bytes
+}
+
+func removePadding(data []uint8) []uint8 {
+	for {
+		if data[len(data)-1] == 0x00 {
+			data = data[:len(data)-1]
+		} else {
+			return data
+		}
+	}
 }
