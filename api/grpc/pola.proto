@@ -9,8 +9,15 @@ package pb;
 
 option go_package = "github.com/nttcom/pola/api/grpc";
 
+import "google/protobuf/empty.proto";
+
 service PceService {
-  rpc CreateLsp (LspData) returns (LspStatus) {}
+  rpc CreateLsp (LspData) returns (LspStatus) {};
+
+  rpc GetPeerAddrList (google.protobuf.Empty) returns (PeerAddrList) {};
+
+  rpc GetLspList (google.protobuf.Empty) returns (LspList) {};
+
 }
 
 message Label {
@@ -29,4 +36,12 @@ message LspData {
 
 message LspStatus {
     bool isSuccess = 1;
+}
+
+message PeerAddrList {
+    repeated bytes PeerAddrs = 1; 
+}
+
+message LspList {
+    repeated LspData Lsps = 1;
 }
