@@ -300,6 +300,7 @@ func RegisterLsp(lspChan chan Lsp, peerAddr net.IP, pcrptMessage pcep.PCRptMessa
 		peerAddr:     peerAddr,
 		plspId:       pcrptMessage.LspObject.PlspId,
 		name:         pcrptMessage.LspObject.Name,
+		path:         pcrptMessage.EroObject.GetSidList(),
 		pcrptMessage: pcrptMessage,
 	}
 

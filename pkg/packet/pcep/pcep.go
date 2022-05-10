@@ -309,15 +309,6 @@ func DecodeTLVsFromBytes(data []uint8) ([]Tlv, error) {
 	return tlvs, nil
 }
 
-type Path struct {
-	LspObject               LspObject
-	SrEroSubobjects         []SrEroSubobject
-	LspaObject              LspaObject
-	MetricObject            MetricObject
-	EndpointObject          EndpointObject
-	VendorInformationObject VendorInformationObject
-}
-
 ///////////////////////////////////////////////////////////////////
 
 type Label struct {
@@ -432,16 +423,6 @@ func (o *MetricObject) Serialize() ([]uint8, error) {
 	return buf, nil
 }
 
-// func EncapMetricObject(o MetricObject) []uint8 {
-// 	body, err := o.Serialize()
-// 	if err != nil {
-// 		fmt.Printf("metric error")
-// 		log.Fatal(nil)
-// 	}
-// 	buf := EncapCommonObjectHeader(body, OC_METRIC)
-// 	return buf
-// }
-
 //////////////////////// lspa object //////////////////////////////
 type LspaObject struct { // RFC5440 7.11
 	ExcludeAny      uint32
@@ -474,16 +455,6 @@ func (o *LspaObject) Serialize() ([]uint8, error) {
 	}
 	return buf, nil
 }
-
-// func EncapLspaObject(o LspaObject) []uint8 {
-// 	body, err := o.Serialize()
-// 	if err != nil {
-// 		fmt.Printf("lspa obj error")
-// 		log.Fatal(nil)
-// 	}
-// 	buf := EncapCommonObjectHeader(body, OC_LSPA)
-// 	return buf
-// }
 
 //////////////////////// srp object //////////////////////////////
 type SrpObject struct { // RFC8281 5.2
@@ -656,6 +627,26 @@ type EroObject struct {
 	SrEroSubobjects []SrEroSubobject
 }
 
+func (o *EroObject) DecodeFromBytes(data []uint8) error {
+	if len(data) == 0 {
+		return nil
+	}
+	for {
+		var srErosubObj SrEroSubobject
+		srErosubObj.DecodeFromBytes(data)
+		o.SrEroSubobjects = append(o.SrEroSubobjects, srErosubObj)
+
+		if int(srErosubObj.getByteLength()) < len(data) {
+			data = data[srErosubObj.getByteLength():]
+		} else if int(srErosubObj.getByteLength()) == len(data) {
+			break
+		} else {
+			return errors.New("[pcep] Lsp TLV decode Error.\n")
+		}
+	}
+	return nil
+}
+
 func (o EroObject) Serialize() ([]uint8, error) {
 	eroObjectHeader := NewCommonObjectHeader(OC_ERO, 1, o.getByteLength())
 	byteEroObjectHeader, err := eroObjectHeader.Serialize()
@@ -700,6 +691,14 @@ func (o *EroObject) AddSrEroSubobjects(labels []Label) {
 	}
 }
 
+func (o EroObject) GetSidList() []uint32 {
+	sidList := []uint32{}
+	for _, srEroSubobject := range o.SrEroSubobjects {
+		sidList = append(sidList, srEroSubobject.Sid)
+	}
+	return sidList
+}
+
 //////////////////////// srerosub object //////////////////////////////
 type SrEroSubobject struct { // RFC8664 4.3.1
 	LFlag         bool
@@ -712,6 +711,20 @@ type SrEroSubobject struct { // RFC8664 4.3.1
 	MFlag         bool
 	Sid           uint32
 	Nai           []uint8
+}
+
+func (o *SrEroSubobject) DecodeFromBytes(data []uint8) error {
+	o.LFlag = (data[0] & 0x80) != 0
+	o.SubobjectType = data[0] & 0x7f
+	o.Length = data[1]
+	o.NaiType = data[2] >> 4
+	o.FFlag = (data[3] & 0x08) != 0
+	o.SFlag = (data[3] & 0x04) != 0
+	o.CFlag = (data[3] & 0x02) != 0
+	o.MFlag = (data[3] & 0x01) != 0
+	o.Sid = binary.BigEndian.Uint32(data[4:8]) >> 12
+	o.Nai = data[8:12]
+	return nil
 }
 
 func (o *SrEroSubobject) Serialize() ([]uint8, error) {
@@ -864,7 +877,7 @@ func NewVendorInformationObject(vendor string, color uint32, preference uint32) 
 type PCRptMessage struct {
 	SrpObject               SrpObject
 	LspObject               LspObject
-	SrEroSubobject          SrEroSubobject
+	EroObject               EroObject
 	LspaObject              LspaObject
 	MetricObjects           []MetricObject
 	BandwidthObjects        []BandwidthObject
@@ -899,7 +912,11 @@ func (o *PCRptMessage) DecodeFromBytes(bytePcrptObject []uint8) error {
 		o.MetricObjects = append(o.MetricObjects, metricObject)
 	case OC_ERO:
 		fmt.Printf(" Decode OC_ERO (%v)\n", commonObjectHeader.ObjectClass)
-		// report.SrEroSubobject.DecodeFromBytes(buf[COMMON_OBJECT_HEADER_LENGTH:])
+		err := o.EroObject.DecodeFromBytes(bytePcrptObject[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength])
+		if err != nil {
+			fmt.Printf("parse error")
+			log.Fatal(nil)
+		}
 	case OC_LSPA:
 		fmt.Printf(" Decode OC_LSPA (%v)\n", commonObjectHeader.ObjectClass)
 		err := o.LspaObject.DecodeFromBytes(bytePcrptObject[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength])
