@@ -15,6 +15,7 @@ import (
 
 	grpc "google.golang.org/grpc"
 
+	"github.com/golang/protobuf/ptypes/empty"
 	pb "github.com/nttcom/pola/api/grpc"
 	"github.com/nttcom/pola/pkg/packet/pcep"
 )
@@ -23,6 +24,7 @@ type Lsp struct {
 	peerAddr     net.IP // 後々 router ID, router name などに変更したい
 	plspId       uint32
 	name         string
+	path         []uint32
 	pcrptMessage pcep.PCRptMessage
 }
 
@@ -121,7 +123,7 @@ func (s *Server) grpcListen() error {
 	return nil
 }
 
-// grpc関連 一旦置いとく
+// grpc関連
 func (s *Server) CreateLsp(ctx context.Context, lspData *pb.LspData) (*pb.LspStatus, error) {
 	fmt.Printf("[gRPC] Get request\n")
 	pcepPeerAddr := net.IP(lspData.GetPcepSessionAddr())
@@ -149,6 +151,35 @@ func (s *Server) CreateLsp(ctx context.Context, lspData *pb.LspData) (*pb.LspSta
 	return &pb.LspStatus{IsSuccess: false}, nil
 }
 
+func (s *Server) GetPeerAddrList(context.Context, *empty.Empty) (*pb.PeerAddrList, error) {
+	fmt.Printf("[gRPC] Get request\n")
+	var ret pb.PeerAddrList
+	for _, pcepSession := range s.sessionList {
+		ret.PeerAddrs = append(ret.PeerAddrs, []byte(pcepSession.peerAddr))
+	}
+	return &ret, nil
+}
+
+func (s *Server) GetLspList(context.Context, *empty.Empty) (*pb.LspList, error) {
+	fmt.Printf("[gRPC] Get request\n")
+	var ret pb.LspList
+	for _, lsp := range s.lspList {
+		lspData := &pb.LspData{
+			PcepSessionAddr: []byte(lsp.peerAddr),
+			Labels:          []*pb.Label{},
+			PolicyName:      lsp.name,
+		}
+		for _, sid := range lsp.path {
+			label := pb.Label{
+				Sid: sid,
+			}
+			lspData.Labels = append(lspData.Labels, &label)
+		}
+		ret.Lsps = append(ret.Lsps, lspData)
+	}
+	return &ret, nil
+}
+
 func (s *Server) printSessionList() {
 	fmt.Printf("pcepSessionList --------\n")
 	fmt.Printf("|\n")
@@ -163,10 +194,11 @@ func (s *Server) printLspList() {
 	fmt.Printf("printLspList ************\n")
 	fmt.Printf("*\n")
 	for _, lsp := range s.lspList {
-		fmt.Printf("*- LSP Owner address %s\n", lsp.peerAddr.String())
-		fmt.Printf("*  LSP Name %s\n", lsp.name)
-		fmt.Printf("*  PLSP-ID %d\n", lsp.plspId)
-		fmt.Printf("*  lspObject %#v\n", lsp.pcrptMessage)
+		fmt.Printf("*- LSP Owner address: %s\n", lsp.peerAddr.String())
+		fmt.Printf("*  LSP Name: %s\n", lsp.name)
+		fmt.Printf("*  PLSP-ID: %d\n", lsp.plspId)
+		fmt.Printf("*  Path: %#v\n", lsp.path)
+		fmt.Printf("*  lspObject: %#v\n", lsp.pcrptMessage)
 	}
 	fmt.Printf("*\n")
 	fmt.Printf("*************************\n")
