@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"net"
 )
 
 func AppendByteSlices(byteSlices ...[]uint8) []uint8 {
@@ -518,14 +519,16 @@ func NewSrpObject(srpId uint32, isRemove bool) SrpObject {
 
 //////////////////////// lsp object //////////////////////////////
 type LspObject struct { // RFC8281 5.3.1
-	Name   string
-	PlspId uint32
-	OFlag  uint8
-	AFlag  bool
-	RFlag  bool
-	SFlag  bool
-	DFlag  bool
-	Tlvs   []Tlv
+	Name    string
+	SrcAddr net.IP
+	DstAddr net.IP
+	PlspId  uint32
+	OFlag   uint8
+	AFlag   bool
+	RFlag   bool
+	SFlag   bool
+	DFlag   bool
+	Tlvs    []Tlv
 }
 
 func (o *LspObject) DecodeFromBytes(data []uint8) error {
@@ -542,6 +545,11 @@ func (o *LspObject) DecodeFromBytes(data []uint8) error {
 			tlv.DecodeFromBytes(byteTlvs)
 			if tlv.Type == uint16(TLV_SYMBOLIC_PATH_NAME) {
 				o.Name = string(removePadding(tlv.Value))
+			}
+			if tlv.Type == uint16(TLV_IPV4_LSP_IDENTIFIERS) {
+				// srcAddr をここから取得するのは正しくないかも(わからない)
+				o.SrcAddr = net.IP(tlv.Value[0:4])
+				o.DstAddr = net.IP(tlv.Value[12:16])
 			}
 			o.Tlvs = append(o.Tlvs, tlv)
 
@@ -633,15 +641,21 @@ func (o *EroObject) DecodeFromBytes(data []uint8) error {
 	}
 	for {
 		var srErosubObj SrEroSubobject
-		srErosubObj.DecodeFromBytes(data)
+		if err := srErosubObj.DecodeFromBytes(data); err != nil {
+			return errors.New("[pcep] SREROSubobject decode Error.\n")
+		}
 		o.SrEroSubobjects = append(o.SrEroSubobjects, srErosubObj)
-
-		if int(srErosubObj.getByteLength()) < len(data) {
-			data = data[srErosubObj.getByteLength():]
-		} else if int(srErosubObj.getByteLength()) == len(data) {
+		fmt.Printf("((%#v)) \n", srErosubObj)
+		a, _ := srErosubObj.getByteLength()
+		fmt.Printf("%d, %d \n", int(a), len(data))
+		if objByteLength, err := srErosubObj.getByteLength(); err != nil {
+			return err
+		} else if int(objByteLength) < len(data) {
+			data = data[objByteLength:]
+		} else if int(objByteLength) == len(data) {
 			break
 		} else {
-			return errors.New("[pcep] Lsp TLV decode Error.\n")
+			return errors.New("[pcep] SREROSubobject parse Error.\n")
 		}
 	}
 	return nil
@@ -670,7 +684,11 @@ func (o EroObject) Serialize() ([]uint8, error) {
 func (o EroObject) getByteLength() uint16 {
 	srEroSubobjByteLength := uint16(0)
 	for _, srEroSubObj := range o.SrEroSubobjects {
-		srEroSubobjByteLength += srEroSubObj.getByteLength()
+		objByteLength, err := srEroSubObj.getByteLength()
+		if err != nil {
+			log.Fatal(err)
+		}
+		srEroSubobjByteLength += objByteLength
 	}
 	// CommonObjectHeader(4byte) + eroObjectHeader(4byte)
 	return uint16(COMMON_OBJECT_HEADER_LENGTH) + srEroSubobjByteLength
@@ -754,11 +772,20 @@ func (o *SrEroSubobject) Serialize() ([]uint8, error) {
 	return byteSrEroSubobject, nil
 }
 
-func (o SrEroSubobject) getByteLength() uint16 {
-	// only used for NaiType == NT_IPV4_NODE
-	// TODO: Expansion for another NaiType
-	// Type, Length, Flags (4byte) + SID (4byte) + Nai (4byte)
-	return uint16(12)
+func (o SrEroSubobject) getByteLength() (uint16, error) {
+
+	if o.NaiType == NT_ABSENT {
+		// Type, Length, Flags (4byte) + SID (4byte)
+		return uint16(8), nil
+	} else if o.NaiType == NT_IPV4_NODE {
+		// Type, Length, Flags (4byte) + SID (4byte) + Nai (4byte)
+		return uint16(12), nil
+	} else if o.NaiType == NT_IPV6_NODE {
+		// Type, Length, Flags (4byte) + SID (4byte) + Nai (16byte)
+		return uint16(20), nil
+	} else {
+		return uint16(0), errors.New("Unsupported NaiType\n")
+	}
 }
 
 func NewSrEroSubObject(sid uint32, loAddr []uint8) SrEroSubobject {
@@ -885,6 +912,9 @@ type PCRptMessage struct {
 }
 
 func (o *PCRptMessage) DecodeFromBytes(bytePcrptObject []uint8) error {
+	// TODO: 複数の<state-report>が積まれた PCRpt Messageに対応させる
+	// https://datatracker.ietf.org/doc/html/rfc8231#section-6.1
+	// 現在は2個以上の<state-report>が来ると Message が2個以上の情報をまとめて持ってしまう
 	fmt.Printf(" Start Parse PCRpt\n")
 	var commonObjectHeader CommonObjectHeader
 	err := commonObjectHeader.DecodeFromBytes(bytePcrptObject)
@@ -915,7 +945,7 @@ func (o *PCRptMessage) DecodeFromBytes(bytePcrptObject []uint8) error {
 		err := o.EroObject.DecodeFromBytes(bytePcrptObject[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength])
 		if err != nil {
 			fmt.Printf("parse error")
-			log.Fatal(nil)
+			log.Fatal(err)
 		}
 	case OC_LSPA:
 		fmt.Printf(" Decode OC_LSPA (%v)\n", commonObjectHeader.ObjectClass)

@@ -297,10 +297,13 @@ func (s *Session) SendPCUpdate(policyName string, plspId uint32, labels []pcep.L
 
 func RegisterLsp(lspChan chan Lsp, peerAddr net.IP, pcrptMessage pcep.PCRptMessage) {
 	lspStruct := Lsp{
-		peerAddr:     peerAddr,
-		plspId:       pcrptMessage.LspObject.PlspId,
-		name:         pcrptMessage.LspObject.Name,
-		path:         pcrptMessage.EroObject.GetSidList(),
+		peerAddr: peerAddr,
+		plspId:   pcrptMessage.LspObject.PlspId,
+		name:     pcrptMessage.LspObject.Name,
+		path:     pcrptMessage.EroObject.GetSidList(),
+		srcAddr:  pcrptMessage.LspObject.SrcAddr,
+		dstAddr:  pcrptMessage.LspObject.DstAddr,
+		//後々これは消したい
 		pcrptMessage: pcrptMessage,
 	}
 
