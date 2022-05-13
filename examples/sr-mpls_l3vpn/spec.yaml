@@ -1,0 +1,301 @@
+preinit:
+  - cmds:
+    - cmd: modprobe mpls_router
+    - cmd: modprobe mpls_gso
+    - cmd: modprobe mpls_iptunnel
+
+nodes:
+  - name: pola
+    image: watal/pola:latest
+    interfaces:
+    - { name: net0, type: bridge, args: Switch }
+  - name: pe01
+    image: watal/frr:latest
+    interfaces:
+    - { name: net0, type: direct, args: p01#net0 }
+    - { name: net1, type: direct, args: p02#net0 }
+    - { name: net2, type: direct, args: host01#net0 }
+    - { name: net3, type: bridge, args: Switch }
+  - name: pe02
+    image: watal/frr:latest
+    interfaces:
+    - { name: net0, type: direct, args: p01#net1 }
+    - { name: net1, type: direct, args: p02#net1 }
+    - { name: net2, type: direct, args: host02#net0 }
+    - { name: net3, type: bridge, args: Switch }
+  - name: p01
+    image: watal/frr:latest
+    interfaces:
+    - { name: net0, type: direct, args: pe01#net0 }
+    - { name: net1, type: direct, args: pe02#net0 }
+    - { name: net2, type: direct, args: p02#net2 }
+  - name: p02
+    image: watal/frr:latest
+    interfaces:
+    - { name: net0, type: direct, args: pe01#net1 }
+    - { name: net1, type: direct, args: pe02#net1 }
+    - { name: net2, type: direct, args: p01#net2 }
+  - name: host01
+    image: watal/ubuntu:20.04
+    interfaces:
+    - { name: net0, type: direct, args: pe01#net2 }
+  - name: host02
+    image: watal/ubuntu:20.04
+    interfaces:
+    - { name: net0, type: direct, args: pe02#net2 }
+
+switches:
+  - name: Switch
+    interfaces:
+    - { name: net0, type: container, args: pola }
+    - { name: net3, type: container, args: pe01 }
+    - { name: net3, type: container, args: pe02 }
+
+node_configs:
+  - name: pola
+    cmds:
+      - cmd: ip a add 10.0.255.254/24 dev net0
+  - name: pe01
+    cmds:
+      - cmd: /usr/lib/frr/frr start
+      - cmd: sed -i -e 's/=no/=yes/g' /etc/frr/daemons
+      - cmd: /usr/lib/frr/frrinit.sh restart
+      - cmd: sysctl -w net.ipv4.ip_forward=1
+      - cmd: sysctl -w net.mpls.conf.lo.input=1
+      - cmd: sysctl -w net.mpls.conf.net0.input=1
+      - cmd: sysctl -w net.mpls.conf.net1.input=1
+      - cmd: sysctl -w net.mpls.platform_labels=1048575
+      - cmd: ip link add cust-a type vrf table 10
+      - cmd: ip link set cust-a up
+      - cmd: ip link set net2 master cust-a
+      - cmd: >-
+          vtysh -c 'conf t'
+          -c 'log file /var/log/frr/frr.log'
+          -c 'debug pathd pcep basic path message pceplib'
+          -c 'debug pathd mpls-te'
+          -c 'interface lo'
+          -c ' ip address 10.255.0.1/32'
+          -c ' ip ospf area 0.0.0.0'
+          -c 'exit'
+          -c 'interface net0'
+          -c ' ip address 10.0.0.1/30'
+          -c ' ip ospf area 0.0.0.0'
+          -c 'exit'
+          -c 'interface net1'
+          -c ' ip address 10.0.0.9/30'
+          -c ' ip ospf area 0.0.0.0'
+          -c 'exit'
+          -c 'interface net2'
+          -c ' ip address 192.168.0.1/24'
+          -c 'exit'
+          -c 'interface net3'
+          -c ' ip address 10.0.255.1/24'
+          -c 'exit'
+          -c 'router ospf'
+          -c ' ospf router-id 10.255.0.1'
+          -c ' router-info area 0.0.0.0'
+          -c ' passive-interface lo'
+          -c ' capability opaque'
+          -c ' mpls-te on'
+          -c ' mpls-te router-address 10.255.0.1'
+          -c ' segment-routing on'
+          -c ' segment-routing global-block 16000 19999'
+          -c ' segment-routing node-msd 8'
+          -c ' segment-routing prefix 10.255.0.1/32 index 1'
+          -c 'exit'
+          -c 'router bgp 65000'
+          -c ' neighbor 10.255.0.3 remote-as 65000'
+          -c ' neighbor 10.255.0.3 update-source 10.255.0.1'
+          -c ' address-family ipv4 vpn'
+          -c '  neighbor 10.255.0.3 activate'
+          -c ' exit-address-family'
+          -c 'exit'
+          -c 'router bgp 65000 vrf cust-a'
+          -c ' address-family ipv4 unicast'
+          -c '  redistribute connected'
+          -c '  label vpn export auto'
+          -c '  rd vpn export 65000:10'
+          -c '  rt vpn both 65000:10'
+          -c '  export vpn'
+          -c '  import vpn'
+          -c ' exit-address-family'
+          -c 'exit'
+          -c 'route-map color1 permit 1'
+          -c ' set sr-te color 1'
+          -c 'exit'
+          -c 'segment-routing'
+          -c ' traffic-eng'
+          -c '  pcep'
+          -c '   pce pola'
+          -c '    address ip 10.0.255.254'
+          -c '    source-address ip 10.0.255.1'
+          -c '    pce-initiated'
+          -c '    sr-draft07'
+          -c '   exit'
+          -c '   pcc'
+          -c '    peer pola'
+          -c '   exit'
+          -c '  exit'
+          -c ' exit'
+          -c 'exit'
+  - name: pe02
+    cmds:
+      - cmd: /usr/lib/frr/frr start
+      - cmd: sed -i -e 's/=no/=yes/g' /etc/frr/daemons
+      - cmd: /usr/lib/frr/frrinit.sh restart
+      - cmd: sysctl -w net.ipv4.ip_forward=1
+      - cmd: sysctl -w net.mpls.conf.lo.input=1
+      - cmd: sysctl -w net.mpls.conf.net0.input=1
+      - cmd: sysctl -w net.mpls.conf.net1.input=1
+      - cmd: sysctl -w net.mpls.platform_labels=1048575
+      - cmd: ip link add cust-a type vrf table 10
+      - cmd: ip link set cust-a up
+      - cmd: ip link set net2 master cust-a
+      - cmd: >-
+          vtysh -c 'conf t'
+          -c 'interface lo'
+          -c ' ip address 10.255.0.3/32'
+          -c ' ip ospf area 0.0.0.0'
+          -c 'exit'
+          -c 'interface net0'
+          -c ' ip address 10.0.0.6/30'
+          -c ' ip ospf area 0.0.0.0'
+          -c 'exit'
+          -c 'interface net1'
+          -c ' ip address 10.0.0.17/30'
+          -c ' ip ospf area 0.0.0.0'
+          -c 'exit'
+          -c 'interface net2'
+          -c ' ip address 192.168.1.1/24'
+          -c 'exit'
+          -c 'interface net3'
+          -c ' ip address 10.0.255.2/24'
+          -c 'exit'
+          -c 'router ospf'
+          -c ' ospf router-id 10.255.0.3'
+          -c ' router-info area 0.0.0.0'
+          -c ' passive-interface lo'
+          -c ' capability opaque'
+          -c ' mpls-te on'
+          -c ' mpls-te router-address 10.255.0.3'
+          -c ' segment-routing on'
+          -c ' segment-routing global-block 16000 19999'
+          -c ' segment-routing node-msd 8'
+          -c ' segment-routing prefix 10.255.0.3/32 index 3'
+          -c 'exit'
+          -c 'router bgp 65000'
+          -c ' neighbor 10.255.0.1 remote-as 65000'
+          -c ' neighbor 10.255.0.1 update-source 10.255.0.3'
+          -c ' address-family ipv4 vpn'
+          -c '  neighbor 10.255.0.1 activate'
+          -c ' exit-address-family'
+          -c 'exit'
+          -c 'router bgp 65000 vrf cust-a'
+          -c ' address-family ipv4 unicast'
+          -c '  redistribute connected'
+          -c '  label vpn export auto'
+          -c '  rd vpn export 65000:10'
+          -c '  rt vpn both 65000:10'
+          -c '  export vpn'
+          -c '  import vpn'
+          -c ' exit-address-family'
+          -c 'exit'
+  - name: p01
+    cmds:
+      - cmd: /usr/lib/frr/frr start
+      - cmd: sed -i -e 's/=no/=yes/g' /etc/frr/daemons
+      - cmd: /usr/lib/frr/frrinit.sh restart
+      - cmd: sysctl -w net.ipv4.ip_forward=1
+      - cmd: sysctl -w net.mpls.conf.lo.input=1
+      - cmd: sysctl -w net.mpls.conf.net0.input=1
+      - cmd: sysctl -w net.mpls.conf.net1.input=1
+      - cmd: sysctl -w net.mpls.conf.net2.input=1
+      - cmd: sysctl -w net.mpls.platform_labels=1048575
+      - cmd: >-
+          vtysh -c 'conf t'
+          -c 'interface lo'
+          -c ' ip address 10.255.0.2/32'
+          -c ' ip ospf area 0.0.0.0'
+          -c 'exit'
+          -c 'interface net0'
+          -c ' ip address 10.0.0.2/30'
+          -c ' ip ospf area 0.0.0.0'
+          -c 'exit'
+          -c 'interface net1'
+          -c ' ip address 10.0.0.5/30'
+          -c ' ip ospf area 0.0.0.0'
+          -c 'exit'
+          -c 'interface net2'
+          -c ' ip address 10.0.0.13/30'
+          -c ' ip ospf area 0.0.0.0'
+          -c 'exit'
+          -c 'router ospf'
+          -c ' ospf router-id 10.255.0.2'
+          -c ' router-info area 0.0.0.0'
+          -c ' passive-interface lo'
+          -c ' capability opaque'
+          -c ' mpls-te on'
+          -c ' mpls-te router-address 10.255.0.2'
+          -c ' segment-routing on'
+          -c ' segment-routing global-block 16000 19999'
+          -c ' segment-routing node-msd 8'
+          -c ' segment-routing prefix 10.255.0.2/32 index 2'
+          -c 'exit'
+  - name: p02
+    cmds:
+      - cmd: /usr/lib/frr/frr start
+      - cmd: sed -i -e 's/=no/=yes/g' /etc/frr/daemons
+      - cmd: /usr/lib/frr/frrinit.sh restart
+      - cmd: sysctl -w net.ipv4.ip_forward=1
+      - cmd: sysctl -w net.mpls.conf.lo.input=1
+      - cmd: sysctl -w net.mpls.conf.net0.input=1
+      - cmd: sysctl -w net.mpls.conf.net1.input=1
+      - cmd: sysctl -w net.mpls.conf.net2.input=1
+      - cmd: sysctl -w net.mpls.platform_labels=1048575
+      - cmd: >-
+          vtysh -c 'conf t'
+          -c 'interface lo'
+          -c ' ip address 10.255.0.4/32'
+          -c ' ip ospf area 0.0.0.0'
+          -c 'exit'
+          -c 'interface net0'
+          -c ' ip address 10.0.0.10/30'
+          -c ' ip ospf area 0.0.0.0'
+          -c 'exit'
+          -c 'interface net1'
+          -c ' ip address 10.0.0.18/30'
+          -c ' ip ospf area 0.0.0.0'
+          -c 'exit'
+          -c 'interface net2'
+          -c ' ip address 10.0.0.14/30'
+          -c ' ip ospf area 0.0.0.0'
+          -c 'exit'
+          -c 'router ospf'
+          -c ' ospf router-id 10.255.0.4'
+          -c ' router-info area 0.0.0.0'
+          -c ' passive-interface lo'
+          -c ' capability opaque'
+          -c ' mpls-te on'
+          -c ' mpls-te router-address 10.255.0.4'
+          -c ' segment-routing on'
+          -c ' segment-routing global-block 16000 19999'
+          -c ' segment-routing node-msd 8'
+          -c ' segment-routing prefix 10.255.0.4/32 index 4'
+          -c 'exit'
+  - name: host01
+    cmds:
+      - cmd: ip addr add 192.168.0.2/24 dev net0
+      - cmd: ip route add default via 192.168.0.1
+  - name: host02
+    cmds:
+      - cmd: ip addr add 192.168.1.2/24 dev net0
+      - cmd: ip route add default via 192.168.1.1
+
+test:
+  - cmds:
+    ## Show Status
+    - cmd: docker exec pe01 vtysh -c 'show sr-te policy'
+    - cmd: docker exec pe01 vtysh -c 'show ip route vrf cust-a 192.168.1.0/24'
+    - cmd: docker exec pe01 vtysh -c 'conf t' -c 'router bgp 65000' -c 'address-family ipv4 vpn' -c 'neighbor 10.255.0.3 route-map color1 in'
+    ## L3VPN Test
+    - cmd: docker exec host01 ping -c3 192.168.1.2
