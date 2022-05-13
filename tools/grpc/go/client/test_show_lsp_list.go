@@ -41,6 +41,8 @@ func main() {
 		sessionAddr := net.IP(lsp.GetPcepSessionAddr())
 		fmt.Printf("  sessionAddr: %s\n", sessionAddr.String())
 		fmt.Printf("  policyName: %s\n", lsp.GetPolicyName())
+		fmt.Printf("  SrcAddr: %s\n", net.IP(lsp.GetSrcAddr()))
+		fmt.Printf("  DstAddr: %s\n", net.IP(lsp.GetDstAddr()))
 		fmt.Printf("  path: ")
 
 		if len(lsp.GetLabels()) == 0 {

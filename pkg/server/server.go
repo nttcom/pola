@@ -21,10 +21,13 @@ import (
 )
 
 type Lsp struct {
-	peerAddr     net.IP // 後々 router ID, router name などに変更したい
-	plspId       uint32
-	name         string
-	path         []uint32
+	peerAddr net.IP // 後々 router ID, router name などに変更したい
+	plspId   uint32
+	name     string
+	path     []uint32
+	srcAddr  net.IP
+	dstAddr  net.IP
+	// 後々これは消したい
 	pcrptMessage pcep.PCRptMessage
 }
 
@@ -168,6 +171,8 @@ func (s *Server) GetLspList(context.Context, *empty.Empty) (*pb.LspList, error) 
 			PcepSessionAddr: []byte(lsp.peerAddr),
 			Labels:          []*pb.Label{},
 			PolicyName:      lsp.name,
+			SrcAddr:         []byte(lsp.srcAddr),
+			DstAddr:         []byte(lsp.dstAddr),
 		}
 		for _, sid := range lsp.path {
 			label := pb.Label{
@@ -198,6 +203,9 @@ func (s *Server) printLspList() {
 		fmt.Printf("*  LSP Name: %s\n", lsp.name)
 		fmt.Printf("*  PLSP-ID: %d\n", lsp.plspId)
 		fmt.Printf("*  Path: %#v\n", lsp.path)
+		fmt.Printf("*  SrcAddr: %s\n", lsp.srcAddr.String())
+		fmt.Printf("*  DstAddr: %s\n", lsp.dstAddr.String())
+		// 後々これは消したい
 		fmt.Printf("*  lspObject: %#v\n", lsp.pcrptMessage)
 	}
 	fmt.Printf("*\n")
