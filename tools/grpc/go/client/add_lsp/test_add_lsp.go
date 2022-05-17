@@ -19,10 +19,6 @@ import (
 	pb "github.com/nttcom/pola/api/grpc"
 )
 
-var (
-	addr = flag.String("addr", "localhost:50051", "the address to connect to")
-)
-
 func main() {
 	flag.Parse()
 	conn, err := grpc.Dial("localhost:50051", grpc.WithInsecure())
