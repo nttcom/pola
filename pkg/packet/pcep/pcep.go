@@ -14,22 +14,9 @@ import (
 	"net"
 )
 
-func AppendByteSlices(byteSlices ...[]uint8) []uint8 {
-	joinedSliceLength := 0
-	for _, byteSlice := range byteSlices {
-		joinedSliceLength += len(byteSlice)
-	}
-	joinedSlice := make([]uint8, 0, joinedSliceLength)
-	for _, byteSlice := range byteSlices {
-		joinedSlice = append(joinedSlice, byteSlice...)
-	}
-	return joinedSlice
-}
-
 const COMMON_HEADER_LENGTH uint16 = 4
 
-const (
-	// PCEP Message-Type (1byte)
+const ( // PCEP Message-Type (1byte)
 	MT_RESERVED     uint8 = 0x00 // RFC5440
 	MT_OPEN         uint8 = 0x01 // RFC5440
 	MT_KEEPALIVE    uint8 = 0x02 // RFC5440
@@ -84,8 +71,7 @@ func NewCommonHeader(messageType uint8, messageLength uint16) CommonHeader {
 
 const COMMON_OBJECT_HEADER_LENGTH = 4
 
-const (
-	// PCEP Object-Class (1 byte)
+const ( // PCEP Object-Class (1 byte)
 	OC_RESERVED       uint8 = 0x00 // RFC5440
 	OC_OPEN           uint8 = 0x01 // RFC5440
 	OC_RP             uint8 = 0x02 // RFC5440
@@ -169,7 +155,6 @@ func (h *CommonObjectHeader) Serialize() ([]uint8, error) {
 	return buf, nil
 }
 
-// ToDo: objecttype
 func NewCommonObjectHeader(objectClass uint8, objectType uint8, messageLength uint16) CommonObjectHeader {
 	commonObjectHeader := CommonObjectHeader{
 		ObjectClass:  objectClass,
@@ -197,9 +182,7 @@ func (tlv Tlv) getByteLength() uint16 {
 	return uint16(4) + uint16(math.Ceil(float64(len(tlv.Value))/4)*4) //Type(2byte) + Length(2byte) + Value(valiable) + padding(valiable)
 }
 
-const (
-	// PCEP TLV
-	// https://www.iana.org/assignments/pcep/pcep.xhtml#:~:text=XRO%20Flag%20Field-,Objective%20Function,-PCEP%20TLV%20Type
+const ( // PCEP TLV
 	TLV_RESERVED                     = 0x00 // RFC5440
 	TLV_NO_PATH_VECTOR               = 0x01 // RFC5440
 	TLV_OVERLOAD_DURATION            = 0x02 // RFC5440
@@ -261,7 +244,7 @@ const (
 	TLV_STATEFUL_PCE_CAPABILITY_LENGTH = 4
 	TLV_SR_PCE_CAPABILITY_LENGTH       = 4
 	TLV_PATH_SETUP_TYPE_LENGTH         = 4
-	TLV_ASSOC_TYPE_LIST_LENGTH         = 2 // ToDo: これはLIST長分にする
+	TLV_ASSOC_TYPE_LIST_LENGTH         = 2 // TODO: Calculate a LIST length
 )
 
 const TL_LENGTH = 4
@@ -310,16 +293,13 @@ func DecodeTLVsFromBytes(data []uint8) ([]Tlv, error) {
 	return tlvs, nil
 }
 
-///////////////////////////////////////////////////////////////////
-
 type Label struct {
 	Sid    uint32
 	LoAddr []uint8
 }
 
-/*----------------- objects ------------------*/
-//////////////////////// open object //////////////////////////////
-type OpenObject struct { // RFC5440 7.3
+// OPEN Object (RFC5440 7.3)
+type OpenObject struct {
 	Version   uint8
 	Flag      uint8
 	Keepalive uint8
@@ -329,6 +309,37 @@ type OpenObject struct { // RFC5440 7.3
 }
 
 const OPEN_OBJECT_LENGTH uint16 = 4
+
+func NewOpenObject(sessionID uint8, keepalive uint8) OpenObject {
+	openObject := OpenObject{
+		Version:   uint8(1),
+		Flag:      uint8(0),
+		Keepalive: keepalive,
+		Deadtime:  keepalive * 4,
+		Sid:       sessionID,
+		Tlvs:      []Tlv{},
+	}
+	openObjectTLVs := []Tlv{ // TODO: Functionalize
+		{
+			Type:   TLV_STATEFUL_PCE_CAPABILITY,
+			Length: TLV_STATEFUL_PCE_CAPABILITY_LENGTH,
+			Value:  []uint8{0x00, 0x00, 0x00, 0x05},
+		},
+		{
+			Type:   TLV_SR_PCE_CAPABILITY,
+			Length: TLV_SR_PCE_CAPABILITY_LENGTH,
+			Value:  []uint8{0x00, 0x00, 0x00, 0x0a},
+		},
+		{
+			Type:   TLV_ASSOC_TYPE_LIST,
+			Length: TLV_ASSOC_TYPE_LIST_LENGTH,
+			Value:  []uint8{0x00, 0x14},
+		},
+	}
+
+	openObject.Tlvs = append(openObject.Tlvs, openObjectTLVs...)
+	return openObject
+}
 
 func (o *OpenObject) DecodeFromBytes(data []uint8) error {
 	o.Version = uint8(data[0] >> 5)
@@ -340,53 +351,38 @@ func (o *OpenObject) DecodeFromBytes(data []uint8) error {
 }
 
 func (o *OpenObject) Serialize() ([]uint8, error) {
-	byteOpenObject := []uint8{}
-	openObjectHeader := NewCommonObjectHeader(OC_OPEN, 1, o.GetByteLength())
+	openObjectHeader := NewCommonObjectHeader(OC_OPEN, 1, o.getByteLength())
 	byteOpenObjectHeader, err := openObjectHeader.Serialize()
 	if err != nil {
 		return nil, err
 	}
-	byteOpenObject = append(byteOpenObject, byteOpenObjectHeader...)
-	verFlag := uint8(o.Version<<5 | o.Flag)
-	byteOpenObject = append(byteOpenObject, verFlag)
-	byteOpenObject = append(byteOpenObject, o.Keepalive)
-	byteOpenObject = append(byteOpenObject, o.Deadtime)
-	byteOpenObject = append(byteOpenObject, o.Sid)
+	buf := make([]uint8, 4)
+	buf[0] = o.Version << 5
+	buf[1] = o.Keepalive
+	buf[2] = o.Deadtime
+	buf[3] = o.Sid
 
 	byteTlvs := []uint8{}
 	for _, tlv := range o.Tlvs {
 		byteTlvs = append(byteTlvs, tlv.Serialize()...)
 	}
 
-	byteOpenObject = append(byteOpenObject, byteTlvs...)
-
+	byteOpenObject := AppendByteSlices(byteOpenObjectHeader, buf, byteTlvs)
 	return byteOpenObject, nil
 }
 
-func (o OpenObject) GetByteLength() uint16 {
+func (o OpenObject) getByteLength() uint16 {
 	tlvsByteLength := uint16(0)
 	for _, tlv := range o.Tlvs {
 		tlvsByteLength += tlv.getByteLength()
 	}
-	// 要修正 open_object_length に tlv の長さ入れたい
+	// TODO: Calculate TLV length and record in open_object_length
 	// CommonObjectHeader(4byte) + openObject(4byte) + tlvslength(valiable)
 	return uint16(COMMON_OBJECT_HEADER_LENGTH) + OPEN_OBJECT_LENGTH + tlvsByteLength
 }
 
-func NewOpenObject(sessionID uint8, keepalive uint8, Tlvs []Tlv) OpenObject {
-	openObject := OpenObject{
-		Version:   uint8(1),
-		Flag:      uint8(0),
-		Keepalive: keepalive,
-		Deadtime:  keepalive * 4,
-		Sid:       sessionID,
-		Tlvs:      Tlvs,
-	}
-	return openObject
-}
-
-//////////////////////// bandwidth object //////////////////////////////
-type BandwidthObject struct { // RFC5440 7.7
+// BANDWIDTH Object (RFC5440 7.7)
+type BandwidthObject struct {
 	Bandwidth uint32
 }
 
@@ -395,8 +391,8 @@ func (o *BandwidthObject) DecodeFromBytes(data []uint8) error {
 	return nil
 }
 
-//////////////////////// metric object //////////////////////////////
-type MetricObject struct { // RFC5440 7.8
+// METRIC Object (RFC5440 7.8)
+type MetricObject struct {
 	CFlag       bool
 	BFlag       bool
 	MetricType  uint8
@@ -424,8 +420,8 @@ func (o *MetricObject) Serialize() ([]uint8, error) {
 	return buf, nil
 }
 
-//////////////////////// lspa object //////////////////////////////
-type LspaObject struct { // RFC5440 7.11
+// LSPA Object (RFC5440 7.11)
+type LspaObject struct {
 	ExcludeAny      uint32
 	IncludeAny      uint32
 	IncludeAll      uint32
@@ -457,11 +453,12 @@ func (o *LspaObject) Serialize() ([]uint8, error) {
 	return buf, nil
 }
 
-//////////////////////// srp object //////////////////////////////
-type SrpObject struct { // RFC8281 5.2
+// SRP Object (RFC8231 7.2)
+type SrpObject struct {
 	RFlag bool
-	SrpId uint32
-	Tlvs  []Tlv
+	SrpId uint32 // 0x00000000 and 0xFFFFFFFF are reserved.
+
+	Tlvs []Tlv
 }
 
 func (o *SrpObject) DecodeFromBytes(data []uint8) error {
@@ -503,7 +500,7 @@ func (o SrpObject) getByteLength() uint16 {
 
 func NewSrpObject(srpId uint32, isRemove bool) SrpObject {
 	srpObject := SrpObject{
-		RFlag: isRemove, // https://datatracker.ietf.org/doc/html/rfc8231#section-7.2
+		RFlag: isRemove, // RFC8281 5.2
 		SrpId: srpId,
 		Tlvs: []Tlv{
 			{
@@ -517,8 +514,8 @@ func NewSrpObject(srpId uint32, isRemove bool) SrpObject {
 	return srpObject
 }
 
-//////////////////////// lsp object //////////////////////////////
-type LspObject struct { // RFC8281 5.3.1
+// LSP Object (RFC8281 5.3.1)
+type LspObject struct {
 	Name    string
 	SrcAddr net.IP
 	DstAddr net.IP
@@ -547,7 +544,7 @@ func (o *LspObject) DecodeFromBytes(data []uint8) error {
 				o.Name = string(removePadding(tlv.Value))
 			}
 			if tlv.Type == uint16(TLV_IPV4_LSP_IDENTIFIERS) {
-				// srcAddr をここから取得するのは正しくないかも(わからない)
+				// TODO: Obtain true srcAddr
 				o.SrcAddr = net.IP(tlv.Value[0:4])
 				o.DstAddr = net.IP(tlv.Value[12:16])
 			}
@@ -586,15 +583,12 @@ func (o *LspObject) Serialize() ([]uint8, error) {
 	if o.DFlag {
 		buf[3] = buf[3] | 0x01
 	}
-	symbolicPathNameTlv := Tlv{
-		Type:   TLV_SYMBOLIC_PATH_NAME,
-		Length: 0x0000,
-		Value:  []uint8(o.Name),
+	byteTlvs := []uint8{}
+	for _, tlv := range o.Tlvs {
+		byteTlvs = append(byteTlvs, tlv.Serialize()...)
 	}
-	symbolicPathNameTlv.SetLength()
-	byteTlv := symbolicPathNameTlv.Serialize()
 
-	byteLspObject := AppendByteSlices(byteLspObjectHeader, buf, byteTlv)
+	byteLspObject := AppendByteSlices(byteLspObjectHeader, buf, byteTlvs)
 	return byteLspObject, nil
 }
 
@@ -613,24 +607,25 @@ func NewLspObject(lspName string, plspId uint32) LspObject {
 	lspObject := LspObject{
 		Name:   lspName,
 		PlspId: plspId,
-		OFlag:  uint8(1),
-		AFlag:  true, // https://datatracker.ietf.org/doc/html/rfc8231#section-7.3
+		OFlag:  uint8(1), // UP (RFC8231 7.3)
+		AFlag:  true,     // desired operational state is active (RFC8231 7.3)
 		RFlag:  false,
 		SFlag:  false,
 		DFlag:  true,
-		Tlvs: []Tlv{
-			{
-				Type:   TLV_SYMBOLIC_PATH_NAME,
-				Length: 0x00, //可変
-				Value:  []uint8(lspName),
-			},
-		},
+		Tlvs:   []Tlv{},
 	}
+	symbolicPathNameTlv := Tlv{
+		Type:   TLV_SYMBOLIC_PATH_NAME,
+		Length: 0x0000, //valiable, set next line
+		Value:  []uint8(lspName),
+	}
+	symbolicPathNameTlv.SetLength()
+	lspObject.Tlvs = append(lspObject.Tlvs, symbolicPathNameTlv)
 
 	return lspObject
 }
 
-//////////////////////// ero object //////////////////////////////
+// ERO Object (RFC5440 7.9)
 type EroObject struct {
 	SrEroSubobjects []SrEroSubobject
 }
@@ -645,9 +640,6 @@ func (o *EroObject) DecodeFromBytes(data []uint8) error {
 			return errors.New("[pcep] SREROSubobject decode Error.\n")
 		}
 		o.SrEroSubobjects = append(o.SrEroSubobjects, srErosubObj)
-		fmt.Printf("((%#v)) \n", srErosubObj)
-		a, _ := srErosubObj.getByteLength()
-		fmt.Printf("%d, %d \n", int(a), len(data))
 		if objByteLength, err := srErosubObj.getByteLength(); err != nil {
 			return err
 		} else if int(objByteLength) < len(data) {
@@ -717,8 +709,8 @@ func (o EroObject) GetSidList() []uint32 {
 	return sidList
 }
 
-//////////////////////// srerosub object //////////////////////////////
-type SrEroSubobject struct { // RFC8664 4.3.1
+// SR-ERO Subobject (RFC8664 4.3.1)
+type SrEroSubobject struct {
 	LFlag         bool
 	SubobjectType uint8
 	Length        uint8
@@ -792,15 +784,21 @@ func NewSrEroSubObject(sid uint32, loAddr []uint8) SrEroSubobject {
 	srEroSubObject := SrEroSubobject{
 		LFlag:         false,
 		SubobjectType: ERO_SUBOBJECT_SR,
-		Length:        uint8(12),    // TODO: NT によって length は変わる
-		NaiType:       NT_IPV4_NODE, // SID: NodeSID NAI: ipv4 address
-		FFlag:         false,
-		SFlag:         false,
-		CFlag:         false,
-		MFlag:         true, // TODO: MPLS Label判定
-		Sid:           uint32(sid),
-		Nai:           loAddr,
+		// SID: NodeSID, NAI: IPv4 address  TODO: Support another Nai Type
+		NaiType: NT_IPV4_NODE,
+		FFlag:   false,
+		SFlag:   false,
+		CFlag:   false,
+		MFlag:   true, // TODO: Determine if MPLS
+		Sid:     uint32(sid),
+		Nai:     loAddr,
 	}
+	length, err := srEroSubObject.getByteLength()
+	if err != nil {
+		fmt.Printf("SR-ERO Subobject get length error")
+		log.Fatal(nil)
+	}
+	srEroSubObject.Length = uint8(length)
 	return srEroSubObject
 }
 
@@ -816,43 +814,43 @@ const (
 	NT_IPV6_ADJACENCY_LINKLOCAL uint8 = 0x06 // RFC 8664 4.3.1
 )
 
-//////////////////////// endpoint object //////////////////////////////
-type EndpointObject struct {
+// END-POINTS Object
+type EndpointsObject struct {
 	ObjectType uint8 // ipv4: 1, ipv6: 2
 	srcIPv4    []uint8
 	dstIPv4    []uint8
 }
 
-func (o EndpointObject) Serialize() ([]uint8, error) {
-	endpointObjectHeader := NewCommonObjectHeader(OC_END_POINTS, 1, o.getByteLength())
-	byteEroObjectHeader, err := endpointObjectHeader.Serialize()
+func (o EndpointsObject) Serialize() ([]uint8, error) {
+	EndpointsObjectHeader := NewCommonObjectHeader(OC_END_POINTS, 1, o.getByteLength())
+	byteEroObjectHeader, err := EndpointsObjectHeader.Serialize()
 	if err != nil {
 		return nil, err
 	}
-	byteEndpointObject := AppendByteSlices(byteEroObjectHeader, o.srcIPv4, o.dstIPv4)
+	byteEndpointsObject := AppendByteSlices(byteEroObjectHeader, o.srcIPv4, o.dstIPv4)
 
-	return byteEndpointObject, nil
+	return byteEndpointsObject, nil
 }
 
-func (o EndpointObject) getByteLength() uint16 {
+func (o EndpointsObject) getByteLength() uint16 {
 	// TODO: Expantion for IPv6 Endpoint
 	// CommonObjectHeader(4byte) + srcIPv4 (4byte) + dstIPv4 (4byte)
 	return uint16(COMMON_OBJECT_HEADER_LENGTH + 4 + 4)
 }
 
-func NewEndpointObject(objType uint8, dstIPv4 []uint8, srcIPv4 []uint8) EndpointObject {
+func NewEndpointsObject(objType uint8, dstIPv4 []uint8, srcIPv4 []uint8) EndpointsObject {
 	// TODO: Expantion for IPv6 Endpoint
-	EndpointObject := EndpointObject{
+	EndpointsObject := EndpointsObject{
 		ObjectType: objType,
 		dstIPv4:    dstIPv4,
 		srcIPv4:    srcIPv4,
 	}
 
-	return EndpointObject
+	return EndpointsObject
 }
 
-//////////////////////// vendorinfo object //////////////////////////////
-type VendorInformationObject struct { // RFC7470 4
+// VENDOR-INFORMATION Object (RFC7470 4)
+type VendorInformationObject struct {
 	ObjectType       uint8 // vendor specific constraints: 1
 	EnterpriseNumber uint32
 	Color            uint32
@@ -860,8 +858,8 @@ type VendorInformationObject struct { // RFC7470 4
 }
 
 func (o *VendorInformationObject) DecodeFromBytes(data []uint8) error {
+	// TODO: Supports decode Cisco specific TLV type
 	o.EnterpriseNumber = binary.BigEndian.Uint32(data[0:4])
-	// 雑実装のため要修正
 	o.Color = binary.BigEndian.Uint32(data[8:12])
 	o.Preference = binary.BigEndian.Uint32(data[16:20])
 	return nil
@@ -874,12 +872,17 @@ func (o *VendorInformationObject) Serialize() ([]uint8, error) {
 		return nil, err
 	}
 
-	buf := i32tob(o.EnterpriseNumber)
+	enterpriseNumber := make([]uint8, 4)
+	binary.BigEndian.PutUint32(enterpriseNumber, o.EnterpriseNumber)
 	tlvColor := []uint8{0x00, 0x01, 0x00, 0x04} // type: 1, length : 4
-	tlvColor = AppendByteSlices(tlvColor, i32tob(o.Color))
+	colorValue := make([]uint8, 4)
+	binary.BigEndian.PutUint32(colorValue, o.Color)
+	tlvColor = AppendByteSlices(tlvColor, colorValue)
 	tlvPreference := []uint8{0x00, 0x03, 0x00, 0x04} // type: 3, length: 4
-	tlvPreference = AppendByteSlices(tlvPreference, i32tob(o.Preference))
-	byteVendorInformationObject := AppendByteSlices(byteVendorInformationObjectHeader, buf, tlvColor, tlvPreference)
+	preferenceValue := make([]uint8, 4)
+	binary.BigEndian.PutUint32(preferenceValue, o.Preference)
+	tlvPreference = AppendByteSlices(tlvPreference, preferenceValue)
+	byteVendorInformationObject := AppendByteSlices(byteVendorInformationObjectHeader, enterpriseNumber, tlvColor, tlvPreference)
 	return byteVendorInformationObject, nil
 }
 
@@ -899,8 +902,58 @@ func NewVendorInformationObject(vendor string, color uint32, preference uint32) 
 	return vendorInformationObject
 }
 
-/*---------------- PCEP Message struct ----------------*/
-//////////////////////// PCRpt Message //////////////////////////////
+// Open Message
+type OpenMessage struct {
+	openObject OpenObject
+}
+
+func NewOpenMessage(sessionID uint8, keepalive uint8) OpenMessage {
+	var openMessage OpenMessage
+	openMessage.openObject = NewOpenObject(sessionID, keepalive)
+	return openMessage
+}
+
+func (o *OpenMessage) Serialize() ([]uint8, error) {
+	byteOpenObject, err := o.openObject.Serialize()
+	if err != nil {
+		return nil, err
+	}
+
+	openMessageLength := COMMON_HEADER_LENGTH + o.openObject.getByteLength()
+
+	openHeader := NewCommonHeader(MT_OPEN, openMessageLength)
+	byteOpenHeader, err := openHeader.Serialize()
+	if err != nil {
+		return nil, err
+	}
+	byteOpenMessage := AppendByteSlices(byteOpenHeader, byteOpenObject)
+
+	return byteOpenMessage, nil
+}
+
+// Keepalive Message
+type KeepaliveMessage struct {
+}
+
+func NewKeepaliveMessage() KeepaliveMessage {
+	var keepaliveMessage KeepaliveMessage
+	return keepaliveMessage
+}
+
+func (o *KeepaliveMessage) Serialize() ([]uint8, error) {
+	keepaliveMessageLength := COMMON_HEADER_LENGTH
+
+	keepaliveHeader := NewCommonHeader(MT_KEEPALIVE, keepaliveMessageLength)
+	byteKeepaliveHeader, err := keepaliveHeader.Serialize()
+	if err != nil {
+		return nil, err
+	}
+	byteKeepaliveMessage := byteKeepaliveHeader
+
+	return byteKeepaliveMessage, nil
+}
+
+// PCRpt Message
 type PCRptMessage struct {
 	SrpObject               SrpObject
 	LspObject               LspObject
@@ -912,10 +965,9 @@ type PCRptMessage struct {
 }
 
 func (o *PCRptMessage) DecodeFromBytes(bytePcrptObject []uint8) error {
-	// TODO: 複数の<state-report>が積まれた PCRpt Messageに対応させる
+	// TODO: Supports multiple <state-report>'s stacked PCRpt Message.
 	// https://datatracker.ietf.org/doc/html/rfc8231#section-6.1
-	// 現在は2個以上の<state-report>が来ると Message が2個以上の情報をまとめて持ってしまう
-	fmt.Printf(" Start Parse PCRpt\n")
+	// Currently, when more than 2 <state-report> come in, One object has multiple object information.
 	var commonObjectHeader CommonObjectHeader
 	err := commonObjectHeader.DecodeFromBytes(bytePcrptObject)
 	if err != nil {
@@ -956,7 +1008,6 @@ func (o *PCRptMessage) DecodeFromBytes(bytePcrptObject []uint8) error {
 		}
 	case OC_LSP:
 		fmt.Printf(" Decode OC_LSP (%v)\n", commonObjectHeader.ObjectClass)
-		fmt.Printf("PCRpt.LSPbyte: %#v\n\n", bytePcrptObject)
 		err := o.LspObject.DecodeFromBytes(bytePcrptObject[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength])
 		if err != nil {
 			fmt.Printf("parse error")
@@ -988,11 +1039,11 @@ func (o *PCRptMessage) DecodeFromBytes(bytePcrptObject []uint8) error {
 	return nil
 }
 
-//////////////////////// PCInitiate Message //////////////////////////////
+// PCInitiate Message
 type PCInitiateMessage struct {
 	SrpObject               SrpObject
 	LspObject               LspObject
-	EndpointObject          EndpointObject
+	EndpointsObject         EndpointsObject
 	EroObject               EroObject
 	VendorInformationObject VendorInformationObject
 }
@@ -1000,8 +1051,8 @@ type PCInitiateMessage struct {
 func NewPCInitiateMessage(srpId uint32, lspName string, labels []Label, color uint32, preference uint32, srcIPv4 []uint8, dstIPv4 []uint8) PCInitiateMessage {
 	var pcInitiateMessage PCInitiateMessage
 	pcInitiateMessage.SrpObject = NewSrpObject(srpId, false)
-	pcInitiateMessage.LspObject = NewLspObject(lspName, 0)                    // PLSP-ID = 0
-	pcInitiateMessage.EndpointObject = NewEndpointObject(1, dstIPv4, srcIPv4) // objectType = 1 (IPv4)
+	pcInitiateMessage.LspObject = NewLspObject(lspName, 0)                      // PLSP-ID = 0
+	pcInitiateMessage.EndpointsObject = NewEndpointsObject(1, dstIPv4, srcIPv4) // objectType = 1 (IPv4)
 	pcInitiateMessage.EroObject = NewEroObject(labels)
 	pcInitiateMessage.VendorInformationObject = NewVendorInformationObject("Cisco", color, preference)
 	return pcInitiateMessage
@@ -1016,7 +1067,7 @@ func (o *PCInitiateMessage) Serialize() ([]uint8, error) {
 	if err != nil {
 		return nil, err
 	}
-	byteEndpointObject, err := o.EndpointObject.Serialize()
+	byteEndpointsObject, err := o.EndpointsObject.Serialize()
 	if err != nil {
 		return nil, err
 	}
@@ -1028,19 +1079,19 @@ func (o *PCInitiateMessage) Serialize() ([]uint8, error) {
 	if err != nil {
 		return nil, err
 	}
-	pcinitiateHeaderLength := COMMON_HEADER_LENGTH + o.SrpObject.getByteLength() + o.LspObject.getByteLength() + o.EndpointObject.getByteLength() + o.EroObject.getByteLength() + o.VendorInformationObject.getByteLength()
+	pcinitiateMessageLength := COMMON_HEADER_LENGTH + o.SrpObject.getByteLength() + o.LspObject.getByteLength() + o.EndpointsObject.getByteLength() + o.EroObject.getByteLength() + o.VendorInformationObject.getByteLength()
 
-	pcinitiateHeader := NewCommonHeader(MT_LSPINITREQ, pcinitiateHeaderLength)
+	pcinitiateHeader := NewCommonHeader(MT_LSPINITREQ, pcinitiateMessageLength)
 	bytePCInitiateHeader, err := pcinitiateHeader.Serialize()
 	if err != nil {
 		return nil, err
 	}
-	bytePCInitiateMessage := AppendByteSlices(bytePCInitiateHeader, byteSrpObject, byteLspObject, byteEndpointObject, byteEroObject, byteVendorInformationObject)
+	bytePCInitiateMessage := AppendByteSlices(bytePCInitiateHeader, byteSrpObject, byteLspObject, byteEndpointsObject, byteEroObject, byteVendorInformationObject)
 
 	return bytePCInitiateMessage, nil
 }
 
-//////////////////////// PCUpdate Message //////////////////////////////
+// PCUpdate Message
 type PCUpdMessage struct {
 	SrpObject SrpObject
 	LspObject LspObject
@@ -1068,9 +1119,9 @@ func (o *PCUpdMessage) Serialize() ([]uint8, error) {
 	if err != nil {
 		return nil, err
 	}
-	pcupdHeaderLength := COMMON_HEADER_LENGTH + o.SrpObject.getByteLength() + o.LspObject.getByteLength() + o.EroObject.getByteLength()
+	pcupdMessageLength := COMMON_HEADER_LENGTH + o.SrpObject.getByteLength() + o.LspObject.getByteLength() + o.EroObject.getByteLength()
 
-	pcupdHeader := NewCommonHeader(MT_UPDATE, pcupdHeaderLength)
+	pcupdHeader := NewCommonHeader(MT_UPDATE, pcupdMessageLength)
 	bytePCUpdHeader, err := pcupdHeader.Serialize()
 	if err != nil {
 		return nil, err
@@ -1080,14 +1131,17 @@ func (o *PCUpdMessage) Serialize() ([]uint8, error) {
 	return bytePCUpdMessage, nil
 }
 
-/* utils */
-func i32tob(value uint32) []uint8 {
-	// uint32(0x1a2b3c4d) -> []byte{0x1a, 0x2b, 0x3c, 0x4d}
-	bytes := make([]uint8, 4)
-	for i := uint32(0); i < 4; i++ {
-		bytes[i] = uint8((value >> (24 - (8 * i))) & 0xff)
+// utils
+func AppendByteSlices(byteSlices ...[]uint8) []uint8 {
+	joinedSliceLength := 0
+	for _, byteSlice := range byteSlices {
+		joinedSliceLength += len(byteSlice)
 	}
-	return bytes
+	joinedSlice := make([]uint8, 0, joinedSliceLength)
+	for _, byteSlice := range byteSlices {
+		joinedSlice = append(joinedSlice, byteSlice...)
+	}
+	return joinedSlice
 }
 
 func removePadding(data []uint8) []uint8 {
