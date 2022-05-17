@@ -27,7 +27,7 @@ func main() {
 	flag.Parse()
 	conn, err := grpc.Dial("localhost:50051", grpc.WithInsecure())
 	if err != nil {
-		log.Fatalf("did not connect: %v", err)
+		log.Fatalf("Can't connect: %v", err)
 	}
 	defer conn.Close()
 	c := pb.NewPceServiceClient(conn)
@@ -77,7 +77,7 @@ func main() {
 		log.Fatalf("Invalid input\n")
 	}
 
-	// ラベルを入力していく
+	// Create Segment List
 	labels := []*pb.Label{}
 	fmt.Printf("Create Sid List\n")
 	for i := 0; i < numberOfLabels; i++ {
@@ -116,7 +116,7 @@ func main() {
 		PolicyName:      policyName,
 	})
 	if err != nil {
-		log.Fatalf("could not greet: %v", err)
+		log.Fatalf("CreateLsp error: %v", err)
 	}
 	log.Printf("Success: %#v", r)
 }

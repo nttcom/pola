@@ -1,3 +1,8 @@
+// Copyright (c) 2022 NTT Communications Corporation
+//
+// This software is released under the MIT License.
+// see https://github.com/nttcom/pola/blob/main/LICENSE
+
 package server
 
 import (
@@ -11,24 +16,16 @@ import (
 
 const KEEPALIVE uint8 = 30
 
-// type lsp struct {
-// 	peerAddr    net.IP // 後々 router ID, router name などに変更したい
-// 	plspId      uint32
-// 	name        string
-// 	pcrptObject pcep.PcrptObject
-// }
-
 type Session struct {
 	sessionId uint8
 	peerAddr  net.IP
 	tcpConn   net.Conn
 	isSynced  bool
-	srpIdHead uint32
+	srpIdHead uint32 // 0x00000000 and 0xFFFFFFFF are reserved.
 	lspChan   chan Lsp
 }
 
 func (s *Session) Close() {
-	// セッション情報の削除も入れたい
 	s.tcpConn.Close()
 }
 
@@ -46,11 +43,11 @@ func NewSession(sessionId uint8, lspChan chan Lsp) *Session {
 func (s *Session) Established() {
 	defer s.Close()
 
-	if err := Open(s.tcpConn, s.sessionId); err != nil {
+	if err := s.Open(); err != nil {
 		fmt.Printf("pcep open error")
 		log.Fatal(nil)
 	}
-	if err := SendKeepAlive(s.tcpConn); err != nil {
+	if err := s.SendKeepalive(); err != nil {
 		fmt.Printf("[session] Keepalive error\n")
 		log.Fatal(nil)
 	}
@@ -69,33 +66,30 @@ func (s *Session) Established() {
 		select {
 		case <-close:
 			return
-		case <-ticker.C: // KEEPALIVE time 経過した場合
-			if err := SendKeepAlive(s.tcpConn); err != nil {
+		case <-ticker.C: // pass KEEPALIVE seconds
+			if err := s.SendKeepalive(); err != nil {
 				fmt.Printf("[session] Keepalive error\n")
 				log.Fatal(nil)
 			}
-			fmt.Printf("[session] Show Session state\n")
-			fmt.Printf("[session] Session => %#v\n", s)
 		}
 	}
 }
 
-/* pcep の interactive な動作を行う関数定義 */
-func Open(conn net.Conn, sessionID uint8) error {
-	if err := ReadOpen(conn); err != nil {
+func (s *Session) Open() error {
+	if err := s.ReadOpen(); err != nil {
 		return err
 	}
-	if err := SendOpen(conn, sessionID); err != nil {
+	if err := s.SendOpen(); err != nil {
 		return err
 	}
 	return nil
 }
 
-func ReadOpen(conn net.Conn) error {
+func (s *Session) ReadOpen() error {
 	// Parse CommonHeader
 	headerBuf := make([]uint8, pcep.COMMON_HEADER_LENGTH)
 
-	if _, err := conn.Read(headerBuf); err != nil {
+	if _, err := s.tcpConn.Read(headerBuf); err != nil {
 		return err
 	}
 
@@ -117,14 +111,14 @@ func ReadOpen(conn net.Conn) error {
 	// Parse objectClass
 	objectClassBuf := make([]uint8, commonHeader.MessageLength-pcep.COMMON_HEADER_LENGTH)
 
-	if _, err := conn.Read(objectClassBuf); err != nil {
+	if _, err := s.tcpConn.Read(objectClassBuf); err != nil {
 		return err
 	}
 	var commonObjectHeader pcep.CommonObjectHeader
 	if err := commonObjectHeader.DecodeFromBytes(objectClassBuf); err != nil {
 		return err
 	}
-	// first get が open object でない場合は破棄
+
 	if commonObjectHeader.ObjectClass != pcep.OC_OPEN {
 		log.Panicf("ObjectClass %#v is not Open", commonObjectHeader.ObjectClass)
 	}
@@ -140,55 +134,35 @@ func ReadOpen(conn net.Conn) error {
 	return nil
 }
 
-func SendOpen(conn net.Conn, sessionID uint8) error {
-	// NewTLVsとかにしたい
-	pcepTLVs := []pcep.Tlv{
-		{
-			Type:   pcep.TLV_STATEFUL_PCE_CAPABILITY,
-			Length: pcep.TLV_STATEFUL_PCE_CAPABILITY_LENGTH,
-			Value:  []uint8{0x00, 0x00, 0x00, 0x05},
-		},
-		{
-			Type:   pcep.TLV_SR_PCE_CAPABILITY,
-			Length: pcep.TLV_SR_PCE_CAPABILITY_LENGTH,
-			Value:  []uint8{0x00, 0x00, 0x00, 0x0a},
-		},
-		{
-			Type:   pcep.TLV_ASSOC_TYPE_LIST,
-			Length: pcep.TLV_ASSOC_TYPE_LIST_LENGTH,
-			Value:  []uint8{0x00, 0x14},
-		},
-	}
-	/* open object の作成 */
-	openObject := pcep.NewOpenObject(sessionID, KEEPALIVE, pcepTLVs)
-	byteOpenObject, err := openObject.Serialize()
-	if err != nil {
-		return err
-	}
-	openHeaderLength := openObject.GetByteLength() + pcep.COMMON_HEADER_LENGTH
-	openHeader := pcep.NewCommonHeader(pcep.MT_OPEN, openHeaderLength)
-	byteOpenHeader, err := openHeader.Serialize()
-	if err != nil {
-		return err
-	}
-	byteOpenMessage := append(byteOpenHeader, byteOpenObject...)
+func (s *Session) SendOpen() error {
+	openMessage := pcep.NewOpenMessage(s.sessionId, KEEPALIVE)
 
-	fmt.Printf("[session] Send Open\n")
-	if _, err := conn.Write(byteOpenMessage); err != nil {
+	byteOpenMessage, err := openMessage.Serialize()
+	if err != nil {
+		fmt.Printf("Open Seliarize Error")
 		return err
 	}
 
+	fmt.Printf("Send Open\n")
+	if _, err := s.tcpConn.Write(byteOpenMessage); err != nil {
+		fmt.Printf("Open error\n")
+		return err
+	}
 	return nil
 }
 
-func SendKeepAlive(conn net.Conn) error {
-	keepAliveHeader := pcep.NewCommonHeader(pcep.MT_KEEPALIVE, pcep.COMMON_HEADER_LENGTH)
-	byteKeepAliveHeader, err := keepAliveHeader.Serialize()
+func (s *Session) SendKeepalive() error {
+	keepaliveMessage := pcep.NewKeepaliveMessage()
+
+	byteKeepaliveMessage, err := keepaliveMessage.Serialize()
 	if err != nil {
+		fmt.Printf("Keepalive Seliarize Error")
 		return err
 	}
-	fmt.Printf("[session] Send KeepAlive\n")
-	if _, err := conn.Write(byteKeepAliveHeader); err != nil {
+
+	fmt.Printf("Send Keepalive\n")
+	if _, err := s.tcpConn.Write(byteKeepaliveMessage); err != nil {
+		fmt.Printf("Keepalive error\n")
 		return err
 	}
 
@@ -196,9 +170,7 @@ func SendKeepAlive(conn net.Conn) error {
 }
 
 func (s *Session) ReceivePcepMessage() error {
-	// latestSrpId := uint32(1) // 0x00000000 and 0xFFFFFFFF are reserved.
 	for {
-		// pcep common header を取得
 		byteCommonHeader := make([]uint8, pcep.COMMON_HEADER_LENGTH)
 		if _, err := s.tcpConn.Read(byteCommonHeader); err != nil {
 			return err
@@ -210,65 +182,61 @@ func (s *Session) ReceivePcepMessage() error {
 
 		switch commonHeader.MessageType {
 		case pcep.MT_KEEPALIVE:
-			fmt.Printf("[PCEP] Received KeepAlive\n")
+			fmt.Printf("Received Keepalive\n")
 		case pcep.MT_REPORT:
-			fmt.Printf("[PCEP] Received PCRpt\n")
+			fmt.Printf("Received PCRpt\n")
 			bytePcrptObject := make([]uint8, commonHeader.MessageLength-pcep.COMMON_HEADER_LENGTH)
 			if _, err := s.tcpConn.Read(bytePcrptObject); err != nil {
 				return err
 			}
 			var pcrptMessage pcep.PCRptMessage
+			fmt.Printf(" Start Parse PCRpt\n")
 			if err := pcrptMessage.DecodeFromBytes(bytePcrptObject); err != nil {
 				return err
 			}
 			if pcrptMessage.LspObject.SFlag {
-				// Sync 中処理
-				// LSP を登録する
+				// During LSP state synchronization (RFC8231 5.6)
 				fmt.Printf("  Synchronize LSP information for PLSP-ID: %v\n", pcrptMessage.LspObject.PlspId)
 				go RegisterLsp(s.lspChan, s.peerAddr, pcrptMessage)
 			} else if !pcrptMessage.LspObject.SFlag {
 				if pcrptMessage.LspObject.PlspId == 0 {
-					//sync 終了
-					fmt.Printf(" Finish PCRpt State Synchronization\n")
+					// End of synchronization (RFC8231 5.6)
+					fmt.Printf("  Finish PCRpt State Synchronization\n")
 					s.isSynced = true
 				} else if pcrptMessage.SrpObject.SrpId != 0 {
-					// PCInitiate / PCUpdate に対する応答
-					fmt.Printf(" Finish Transaction SRP ID: %v\n", pcrptMessage.SrpObject.SrpId)
+					// Response to PCInitiate/PCUpdate (RFC8231 7.2)
+					fmt.Printf("  Finish Transaction SRP ID: %v\n", pcrptMessage.SrpObject.SrpId)
 					go RegisterLsp(s.lspChan, s.peerAddr, pcrptMessage)
 				}
-				// TODO: Passive stateful PCE 用の PCUpdateを準備する必要あり
+				// TODO: Need to implementation of PCUpdate for Passive stateful PCE
 			}
 		case pcep.MT_ERROR:
-			fmt.Printf("[PCEP] Received PCErr\n")
-			// TODO: エラー内容の表示
+			fmt.Printf("Received PCErr\n")
+			// TODO: Display error details
 		case pcep.MT_CLOSE:
-			fmt.Printf("[PCEP] Received Close\n")
-			// receive を中断する
-			// error　処理ではない気がする
-			// err := fmt.Errorf("PCEP session Close")
-			// return err
+			fmt.Printf("Received Close\n")
+			// Close session if get Close Message
 			return nil
 
 		default:
-			fmt.Printf("[PCEP] Received Unimplemented Message-Type: %v\n", commonHeader.MessageType)
-			// TODO: このパケットを記録して捨てる
+			fmt.Printf("Received Unimplemented Message-Type: %v\n", commonHeader.MessageType)
+			// TODO: Logging and discard this packet
 		}
 	}
 }
 
 func (s *Session) SendPCInitiate(policyName string, labels []pcep.Label, color uint32, preference uint32, srcIPv4 []uint8, dstIPv4 []uint8) error {
-	fmt.Printf(" *********************Start PCInitiate \n")
 	pcinitiateMessage := pcep.NewPCInitiateMessage(s.srpIdHead, policyName, labels, color, preference, srcIPv4, dstIPv4)
 
 	bytePCInitiateMessage, err := pcinitiateMessage.Serialize()
 	if err != nil {
-		fmt.Printf("initiate error")
+		fmt.Printf("PCInitiate Seliarize Error")
 		return err
 	}
 
-	fmt.Printf("******************** [PCEP] Send Initiate\n")
+	fmt.Printf("Send PCInitiate\n")
 	if _, err := s.tcpConn.Write(bytePCInitiateMessage); err != nil {
-		fmt.Printf("[session] PCInitiate error\n")
+		fmt.Printf("PCInitiate error\n")
 		return err
 	}
 	s.srpIdHead += 1
@@ -276,19 +244,17 @@ func (s *Session) SendPCInitiate(policyName string, labels []pcep.Label, color u
 }
 
 func (s *Session) SendPCUpdate(policyName string, plspId uint32, labels []pcep.Label) error {
-	// PLSP ID も入りそう
-	fmt.Printf(" *********************Start PCUpdate \n")
 	pcupdateMessage := pcep.NewPCUpdMessage(s.srpIdHead, policyName, plspId, labels)
 
 	bytePCUpdMessage, err := pcupdateMessage.Serialize()
 	if err != nil {
-		fmt.Printf("[session] PCUpdate Seliarize Error")
+		fmt.Printf("PCUpdate Seliarize Error")
 		return err
 	}
 
-	fmt.Printf("******************** [PCEP] Send PCUpdate\n")
+	fmt.Printf("Send PCUpdate\n")
 	if _, err := s.tcpConn.Write(bytePCUpdMessage); err != nil {
-		fmt.Printf("[session] PCUpdate Send Error\n")
+		fmt.Printf("PCUpdate Send Error\n")
 		return err
 	}
 	s.srpIdHead += 1
@@ -303,8 +269,6 @@ func RegisterLsp(lspChan chan Lsp, peerAddr net.IP, pcrptMessage pcep.PCRptMessa
 		path:     pcrptMessage.EroObject.GetSidList(),
 		srcAddr:  pcrptMessage.LspObject.SrcAddr,
 		dstAddr:  pcrptMessage.LspObject.DstAddr,
-		//後々これは消したい
-		pcrptMessage: pcrptMessage,
 	}
 
 	lspChan <- lspStruct
