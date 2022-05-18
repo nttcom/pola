@@ -15,13 +15,14 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	pb "github.com/nttcom/pola/api/grpc"
 )
 
 func main() {
 	flag.Parse()
-	conn, err := grpc.Dial("localhost:50051", grpc.WithInsecure())
+	conn, err := grpc.Dial("localhost:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Fatalf("Can't connect: %v", err)
 	}
@@ -95,7 +96,6 @@ func main() {
 			Sid:    uint32(sid),
 			LoAddr: []byte(localAddr.To4()),
 		}
-		fmt.Printf("%#v\n", label)
 
 		labels = append(labels, &label)
 	}

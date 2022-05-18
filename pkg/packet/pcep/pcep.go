@@ -280,10 +280,10 @@ func DecodeTLVsFromBytes(data []uint8) ([]Tlv, error) {
 	tlvs := []Tlv{}
 	for {
 		var tlv Tlv
-        err := tlv.DecodeFromBytes(data)
-	    if err != nil {
-            return nil, err
-	    }
+		err := tlv.DecodeFromBytes(data)
+		if err != nil {
+			return nil, err
+		}
 		tlvs = append(tlvs, tlv)
 		if int(tlv.getByteLength()) < len(data) {
 			data = data[tlv.getByteLength():]
@@ -542,10 +542,10 @@ func (o *LspObject) DecodeFromBytes(data []uint8) error {
 		byteTlvs := data[4:]
 		for {
 			var tlv Tlv
-            err := tlv.DecodeFromBytes(byteTlvs)
-	        if err != nil {
-                return err
-	        }
+			err := tlv.DecodeFromBytes(byteTlvs)
+			if err != nil {
+				return err
+			}
 
 			if tlv.Type == uint16(TLV_SYMBOLIC_PATH_NAME) {
 				o.Name = string(removePadding(tlv.Value))
