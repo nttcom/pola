@@ -1,7 +1,6 @@
 package config
 
 import (
-	"log"
 	"os"
 
 	"github.com/go-yaml/yaml"
@@ -21,7 +20,6 @@ func ReadConfigFile(configFile string) (Config, error) {
 
 	f, err := os.Open(configFile)
 	if err != nil {
-		log.Fatal(err)
 		return *c, err
 	}
 	defer f.Close()

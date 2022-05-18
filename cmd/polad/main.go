@@ -7,7 +7,8 @@ package main
 
 import (
 	"flag"
-	"log"
+
+    "go.uber.org/zap"
 
 	"github.com/nttcom/pola/internal/config"
 	"github.com/nttcom/pola/pkg/server"
@@ -18,19 +19,23 @@ type Flags struct {
 }
 
 func main() {
+    logger, _ := zap.NewProduction()
+    defer logger.Sync()
+    zap.ReplaceGlobals(logger)
+
 	f := new(Flags)
 	flag.StringVar(&f.ConfigFile, "f", "polad.yaml", "Specify a configuration file")
 	flag.Parse()
 
 	c, err := config.ReadConfigFile(f.ConfigFile)
 	if err != nil {
-		log.Fatal(err)
+        logger.Fatal("Failed to read config file", zap.Error(err))
 	}
 
 	o := new(server.PceOptions)
 	o.PcepAddr = c.Global.Address
 	o.PcepPort = c.Global.Port
 	if err := server.NewPce(o); err != nil {
-		log.Fatal(err)
+        logger.Fatal("Failed to create New Server", zap.Error(err))
 	}
 }
