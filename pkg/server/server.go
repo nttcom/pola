@@ -8,11 +8,11 @@ package server
 import (
 	"context"
 	"fmt"
-	"log"
 	"net"
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
 	grpc "google.golang.org/grpc"
 
 	"github.com/golang/protobuf/ptypes/empty"
@@ -49,6 +49,7 @@ type Server struct {
 	sessionList []*Session
 	lspList     []Lsp
 	pb.UnimplementedPceServiceServer
+	logger *zap.Logger
 }
 
 type PceOptions struct {
@@ -56,20 +57,21 @@ type PceOptions struct {
 	PcepPort string
 }
 
-func NewPce(o *PceOptions) error {
+func NewPce(o *PceOptions, logger *zap.Logger) error {
 	s := &Server{}
+	s.logger = logger
 	lspChan := make(chan Lsp)
 	// Start PCEP listen
 	go func() {
 		if err := s.Listen(o.PcepAddr, o.PcepPort, lspChan); err != nil {
-			fmt.Printf("PCEP listen Error\n")
+            s.logger.Error("PCEP Listen Error", zap.Error(err))
 		}
 
 	}()
 	// Start gRPC listen
 	go func() {
 		if err := s.grpcListen(); err != nil {
-			fmt.Printf("gRPC listen Error\n")
+            s.logger.Error("gRPC Listen Error", zap.Error(err))
 		}
 
 	}()
@@ -95,7 +97,7 @@ func (s *Server) Listen(address string, port string, lspChan chan Lsp) error {
 	listenInfo.WriteString(address)
 	listenInfo.WriteString(":")
 	listenInfo.WriteString(port)
-	fmt.Printf("[server] PCE Listen: %s\n", listenInfo.String())
+    s.logger.Info("[server] PCE Listen", zap.String("listeninfo", listenInfo.String()))
 	listener, err := net.Listen("tcp", listenInfo.String())
 	if err != nil {
 		return err
@@ -109,7 +111,7 @@ func (s *Server) Listen(address string, port string, lspChan chan Lsp) error {
 		if err != nil {
 			return err
 		}
-		fmt.Printf("[server] PCEP Session Accept\n")
+        s.logger.Info("[server] PCEP Session Accept")
 		strPeerAddr := session.tcpConn.RemoteAddr().String()
 		sessionAddr := net.ParseIP(strings.Split(strPeerAddr, ":")[0])
 		session.peerAddr = sessionAddr
@@ -126,14 +128,14 @@ func (s *Server) grpcListen() error {
 	port := 50051
 	grpcListener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
-		log.Fatalf("[gRPC] failed to listen: %v", err)
+        s.logger.Error("[gRPC] Failed to listen", zap.Error(err))
 	}
 	grpcServer := grpc.NewServer()
 
 	pb.RegisterPceServiceServer(grpcServer, s)
-	fmt.Printf("[gRPC] Listen start\n")
+    s.logger.Info("[gRPC] Listen start")
 	if err := grpcServer.Serve(grpcListener); err != nil {
-		log.Fatalf("[gRPC] Failed to serve: %v", err)
+        s.logger.Error("[gRPC] Failed to serve", zap.Error(err))
 	}
 	return nil
 }
