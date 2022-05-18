@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	empty "github.com/golang/protobuf/ptypes/empty"
 	pb "github.com/nttcom/pola/api/grpc"
@@ -21,7 +22,7 @@ import (
 
 func main() {
 	flag.Parse()
-	conn, err := grpc.Dial("localhost:50051", grpc.WithInsecure())
+	conn, err := grpc.Dial("localhost:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Fatalf("did not connect: %v", err)
 	}
