@@ -55,6 +55,8 @@ type Server struct {
 type PceOptions struct {
 	PcepAddr string
 	PcepPort string
+	GrpcAddr string
+	GrpcPort string
 }
 
 func NewPce(o *PceOptions, logger *zap.Logger) error {
@@ -64,16 +66,14 @@ func NewPce(o *PceOptions, logger *zap.Logger) error {
 	// Start PCEP listen
 	go func() {
 		if err := s.Listen(o.PcepAddr, o.PcepPort, lspChan); err != nil {
-            s.logger.Error("PCEP Listen Error", zap.Error(err))
+			s.logger.Panic("PCEP Listen Error", zap.Error(err))
 		}
-
 	}()
 	// Start gRPC listen
 	go func() {
-		if err := s.grpcListen(); err != nil {
-            s.logger.Error("gRPC Listen Error", zap.Error(err))
+		if err := s.grpcListen(o.GrpcAddr, o.GrpcPort); err != nil {
+			s.logger.Panic("gRPC Listen Error", zap.Error(err), zap.String("server", "grpc"))
 		}
-
 	}()
 	ticker := time.NewTicker(time.Duration(10) * time.Second)
 	defer ticker.Stop()
@@ -92,12 +92,11 @@ func NewPce(o *PceOptions, logger *zap.Logger) error {
 }
 
 func (s *Server) Listen(address string, port string, lspChan chan Lsp) error {
-	// listen PCEP
 	var listenInfo strings.Builder
 	listenInfo.WriteString(address)
 	listenInfo.WriteString(":")
 	listenInfo.WriteString(port)
-    s.logger.Info("[server] PCE Listen", zap.String("listeninfo", listenInfo.String()))
+	s.logger.Info("PCE Listen", zap.String("listenInfo", listenInfo.String()))
 	listener, err := net.Listen("tcp", listenInfo.String())
 	if err != nil {
 		return err
@@ -106,12 +105,12 @@ func (s *Server) Listen(address string, port string, lspChan chan Lsp) error {
 	defer listener.Close()
 	sessionId := uint8(1)
 	for {
-		session := NewSession(sessionId, lspChan)
+		session := NewSession(sessionId, lspChan, s.logger)
 		session.tcpConn, err = listener.Accept()
 		if err != nil {
 			return err
 		}
-        s.logger.Info("[server] PCEP Session Accept")
+		s.logger.Info("PCEP Session Accept")
 		strPeerAddr := session.tcpConn.RemoteAddr().String()
 		sessionAddr := net.ParseIP(strings.Split(strPeerAddr, ":")[0])
 		session.peerAddr = sessionAddr
@@ -124,18 +123,21 @@ func (s *Server) Listen(address string, port string, lspChan chan Lsp) error {
 	}
 }
 
-func (s *Server) grpcListen() error {
-	port := 50051
-	grpcListener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+func (s *Server) grpcListen(address string, port string) error {
+	var listenInfo strings.Builder
+	listenInfo.WriteString(address)
+	listenInfo.WriteString(":")
+	listenInfo.WriteString(port)
+	s.logger.Info("gRPC Listen", zap.String("listenInfo", listenInfo.String()), zap.String("server", "grpc"))
+	grpcListener, err := net.Listen("tcp", listenInfo.String())
 	if err != nil {
-        s.logger.Error("[gRPC] Failed to listen", zap.Error(err))
+		return err
 	}
 	grpcServer := grpc.NewServer()
 
 	pb.RegisterPceServiceServer(grpcServer, s)
-    s.logger.Info("[gRPC] Listen start")
 	if err := grpcServer.Serve(grpcListener); err != nil {
-        s.logger.Error("[gRPC] Failed to serve", zap.Error(err))
+		return err
 	}
 	return nil
 }

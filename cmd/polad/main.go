@@ -22,7 +22,7 @@ func main() {
 	logger, _ := zap.NewProduction()
 	defer func() {
 		err := logger.Sync()
-		logger.Fatal("Failed to logger Sync", zap.Error(err))
+		logger.Panic("Failed to logger Sync", zap.Error(err))
 	}()
 	zap.ReplaceGlobals(logger)
 
@@ -32,13 +32,15 @@ func main() {
 
 	c, err := config.ReadConfigFile(f.ConfigFile)
 	if err != nil {
-		logger.Fatal("Failed to read config file", zap.Error(err))
+		logger.Panic("Failed to read config file", zap.Error(err))
 	}
 
 	o := new(server.PceOptions)
-	o.PcepAddr = c.Global.Address
-	o.PcepPort = c.Global.Port
+	o.PcepAddr = c.Global.Pcep.Address
+	o.PcepPort = c.Global.Pcep.Port
+	o.GrpcAddr = c.Global.Grpc.Address
+	o.GrpcPort = c.Global.Grpc.Port
 	if err := server.NewPce(o, logger); err != nil {
-		logger.Fatal("Failed to create New Server", zap.Error(err))
+		logger.Panic("Failed to create New Server", zap.Error(err))
 	}
 }

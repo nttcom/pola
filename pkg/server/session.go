@@ -6,12 +6,12 @@
 package server
 
 import (
-	"fmt"
-	"log"
 	"net"
 	"time"
 
 	"github.com/nttcom/pola/pkg/packet/pcep"
+
+	"go.uber.org/zap"
 )
 
 const KEEPALIVE uint8 = 30
@@ -23,39 +23,37 @@ type Session struct {
 	isSynced  bool
 	srpIdHead uint32 // 0x00000000 and 0xFFFFFFFF are reserved.
 	lspChan   chan Lsp
+	logger    *zap.Logger
 }
 
 func (s *Session) Close() {
 	s.tcpConn.Close()
 }
 
-func NewSession(sessionId uint8, lspChan chan Lsp) *Session {
+func NewSession(sessionId uint8, lspChan chan Lsp, logger *zap.Logger) *Session {
 	s := &Session{
 		sessionId: sessionId,
 		isSynced:  false,
 		srpIdHead: uint32(1),
 		lspChan:   lspChan,
+		logger:    logger,
 	}
-
 	return s
 }
 
 func (s *Session) Established() {
 	defer s.Close()
-
 	if err := s.Open(); err != nil {
-		fmt.Printf("pcep open error")
-		log.Fatal(nil)
+		s.logger.Panic("PCEP OPEN error", zap.Error(err))
 	}
 	if err := s.SendKeepalive(); err != nil {
-		fmt.Printf("[session] Keepalive error\n")
-		log.Fatal(nil)
+		s.logger.Panic("Keepalive error", zap.Error(err))
 	}
 
 	close := make(chan bool)
 	go func() {
 		if err := s.ReceivePcepMessage(); err != nil {
-			fmt.Printf("Receive PCEP error\n")
+			s.logger.Info("Receive PCEP error", zap.String("session", s.peerAddr.String()))
 		}
 		close <- true
 	}()
@@ -68,8 +66,7 @@ func (s *Session) Established() {
 			return
 		case <-ticker.C: // pass KEEPALIVE seconds
 			if err := s.SendKeepalive(); err != nil {
-				fmt.Printf("[session] Keepalive error\n")
-				log.Fatal(nil)
+				s.logger.Panic("Keepalive error", zap.Error(err))
 			}
 		}
 	}
@@ -88,64 +85,47 @@ func (s *Session) Open() error {
 func (s *Session) ReadOpen() error {
 	// Parse CommonHeader
 	headerBuf := make([]uint8, pcep.COMMON_HEADER_LENGTH)
-
 	if _, err := s.tcpConn.Read(headerBuf); err != nil {
 		return err
 	}
 
 	var commonHeader pcep.CommonHeader
-	if err := commonHeader.DecodeFromBytes(headerBuf); err != nil {
-		return err
-	}
-
+	commonHeader.DecodeFromBytes(headerBuf)
 	// CommonHeader Validation
 	if commonHeader.Version != 1 {
-		log.Panicf("PCEP version mismatch: %#v", commonHeader.Version)
+		s.logger.Panic("PCEP version mismatch", zap.Uint8("version", commonHeader.Version))
 	}
 	if commonHeader.MessageType != pcep.MT_OPEN {
-		log.Panicf("Message Type is : %#v, This peer has not been opened.", commonHeader.MessageType)
+		s.logger.Panic("This peer has not been opened.", zap.Uint8("commonObjectHeader.MessageType", commonHeader.MessageType), zap.String("session", s.peerAddr.String()))
 	}
-
-	fmt.Printf("[session] Receive Open\n")
 
 	// Parse objectClass
 	objectClassBuf := make([]uint8, commonHeader.MessageLength-pcep.COMMON_HEADER_LENGTH)
-
 	if _, err := s.tcpConn.Read(objectClassBuf); err != nil {
 		return err
 	}
+
 	var commonObjectHeader pcep.CommonObjectHeader
-	if err := commonObjectHeader.DecodeFromBytes(objectClassBuf); err != nil {
-		return err
-	}
-
+	commonObjectHeader.DecodeFromBytes(objectClassBuf)
 	if commonObjectHeader.ObjectClass != pcep.OC_OPEN {
-		log.Panicf("ObjectClass %#v is not Open", commonObjectHeader.ObjectClass)
+		s.logger.Panic("Unsupported ObjectClass", zap.Uint8("commonObjectHeader.ObjectClass", commonObjectHeader.ObjectClass), zap.String("session", s.peerAddr.String()))
 	}
-
 	if commonObjectHeader.ObjectType != 1 {
-		log.Panicf("Unimplemented objectType: %#v", commonObjectHeader.ObjectType)
+		s.logger.Panic("Unsupported ObjectType", zap.Uint8("commonObjectHeader.ObjectType", commonObjectHeader.ObjectType), zap.String("session", s.peerAddr.String()))
 	}
 
 	var openObject pcep.OpenObject
-	if err := openObject.DecodeFromBytes(objectClassBuf); err != nil {
-		return err
-	}
+	openObject.DecodeFromBytes(objectClassBuf)
 	return nil
 }
 
 func (s *Session) SendOpen() error {
 	openMessage := pcep.NewOpenMessage(s.sessionId, KEEPALIVE)
+	byteOpenMessage := openMessage.Serialize()
 
-	byteOpenMessage, err := openMessage.Serialize()
-	if err != nil {
-		fmt.Printf("Open Seliarize Error")
-		return err
-	}
-
-	fmt.Printf("Send Open\n")
+	s.logger.Info("Send Open", zap.String("session", s.peerAddr.String()))
 	if _, err := s.tcpConn.Write(byteOpenMessage); err != nil {
-		fmt.Printf("Open error\n")
+		s.logger.Info("Open send error", zap.String("session", s.peerAddr.String()))
 		return err
 	}
 	return nil
@@ -153,19 +133,13 @@ func (s *Session) SendOpen() error {
 
 func (s *Session) SendKeepalive() error {
 	keepaliveMessage := pcep.NewKeepaliveMessage()
+	byteKeepaliveMessage := keepaliveMessage.Serialize()
 
-	byteKeepaliveMessage, err := keepaliveMessage.Serialize()
-	if err != nil {
-		fmt.Printf("Keepalive Seliarize Error")
-		return err
-	}
-
-	fmt.Printf("Send Keepalive\n")
+	s.logger.Info("Send Keepalive", zap.String("session", s.peerAddr.String()))
 	if _, err := s.tcpConn.Write(byteKeepaliveMessage); err != nil {
-		fmt.Printf("Keepalive error\n")
+		s.logger.Info("Keepalive send error", zap.String("session", s.peerAddr.String()))
 		return err
 	}
-
 	return nil
 }
 
@@ -176,67 +150,62 @@ func (s *Session) ReceivePcepMessage() error {
 			return err
 		}
 		var commonHeader pcep.CommonHeader
-		if err := commonHeader.DecodeFromBytes(byteCommonHeader); err != nil {
-			return err
-		}
+		commonHeader.DecodeFromBytes(byteCommonHeader)
 
 		switch commonHeader.MessageType {
 		case pcep.MT_KEEPALIVE:
-			fmt.Printf("Received Keepalive\n")
+			s.logger.Info("Received Keepalive", zap.String("session", s.peerAddr.String()))
 		case pcep.MT_REPORT:
-			fmt.Printf("Received PCRpt\n")
+			s.logger.Info("Received PCRpt", zap.String("session", s.peerAddr.String()))
 			bytePcrptObject := make([]uint8, commonHeader.MessageLength-pcep.COMMON_HEADER_LENGTH)
 			if _, err := s.tcpConn.Read(bytePcrptObject); err != nil {
 				return err
 			}
 			var pcrptMessage pcep.PCRptMessage
-			fmt.Printf(" Start Parse PCRpt\n")
 			if err := pcrptMessage.DecodeFromBytes(bytePcrptObject); err != nil {
 				return err
 			}
 			if pcrptMessage.LspObject.SFlag {
 				// During LSP state synchronization (RFC8231 5.6)
-				fmt.Printf("  Synchronize LSP information for PLSP-ID: %v\n", pcrptMessage.LspObject.PlspId)
+				s.logger.Info("Synchronize LSP information", zap.String("session", s.peerAddr.String()), zap.Uint32("PLSP-ID", pcrptMessage.LspObject.PlspId))
 				go RegisterLsp(s.lspChan, s.peerAddr, pcrptMessage)
 			} else if !pcrptMessage.LspObject.SFlag {
 				if pcrptMessage.LspObject.PlspId == 0 {
 					// End of synchronization (RFC8231 5.6)
-					fmt.Printf("  Finish PCRpt State Synchronization\n")
+					s.logger.Info("Finish PCRpt State Synchronization", zap.String("session", s.peerAddr.String()))
 					s.isSynced = true
 				} else if pcrptMessage.SrpObject.SrpId != 0 {
 					// Response to PCInitiate/PCUpdate (RFC8231 7.2)
-					fmt.Printf("  Finish Transaction SRP ID: %v\n", pcrptMessage.SrpObject.SrpId)
+					s.logger.Info("Finish Transaction", zap.String("session", s.peerAddr.String()), zap.Uint32("SRP-ID", pcrptMessage.SrpObject.SrpId))
 					go RegisterLsp(s.lspChan, s.peerAddr, pcrptMessage)
 				}
 				// TODO: Need to implementation of PCUpdate for Passive stateful PCE
 			}
 		case pcep.MT_ERROR:
-			fmt.Printf("Received PCErr\n")
+			s.logger.Info("Received PCErr", zap.String("session", s.peerAddr.String()))
 			// TODO: Display error details
 		case pcep.MT_CLOSE:
-			fmt.Printf("Received Close\n")
+			s.logger.Info("Received Close", zap.String("session", s.peerAddr.String()))
 			// Close session if get Close Message
 			return nil
 
 		default:
-			fmt.Printf("Received Unimplemented Message-Type: %v\n", commonHeader.MessageType)
-			// TODO: Logging and discard this packet
+			s.logger.Info("Received Unsupported MessageType", zap.String("session", s.peerAddr.String()), zap.Uint8("MessageType", commonHeader.MessageType))
 		}
 	}
 }
 
 func (s *Session) SendPCInitiate(policyName string, labels []pcep.Label, color uint32, preference uint32, srcIPv4 []uint8, dstIPv4 []uint8) error {
-	pcinitiateMessage := pcep.NewPCInitiateMessage(s.srpIdHead, policyName, labels, color, preference, srcIPv4, dstIPv4)
-
-	bytePCInitiateMessage, err := pcinitiateMessage.Serialize()
+	pcinitiateMessage, err := pcep.NewPCInitiateMessage(s.srpIdHead, policyName, labels, color, preference, srcIPv4, dstIPv4)
 	if err != nil {
-		fmt.Printf("PCInitiate Seliarize Error")
 		return err
 	}
-
-	fmt.Printf("Send PCInitiate\n")
+	bytePCInitiateMessage, err := pcinitiateMessage.Serialize()
+	if err != nil {
+		return err
+	}
+	s.logger.Info("Send PCInitiate", zap.String("session", s.peerAddr.String()), zap.Uint32("srpId", s.srpIdHead), zap.String("policyName", policyName), zap.Any("labels", labels), zap.Uint32("color", color), zap.Uint32("preference", preference), zap.Any("srcIPv4", srcIPv4), zap.Any("dstIPv4", dstIPv4))
 	if _, err := s.tcpConn.Write(bytePCInitiateMessage); err != nil {
-		fmt.Printf("PCInitiate error\n")
 		return err
 	}
 	s.srpIdHead += 1
@@ -244,17 +213,18 @@ func (s *Session) SendPCInitiate(policyName string, labels []pcep.Label, color u
 }
 
 func (s *Session) SendPCUpdate(policyName string, plspId uint32, labels []pcep.Label) error {
-	pcupdateMessage := pcep.NewPCUpdMessage(s.srpIdHead, policyName, plspId, labels)
-
+	pcupdateMessage, err := pcep.NewPCUpdMessage(s.srpIdHead, policyName, plspId, labels)
+	if err != nil {
+		return err
+	}
 	bytePCUpdMessage, err := pcupdateMessage.Serialize()
 	if err != nil {
-		fmt.Printf("PCUpdate Seliarize Error")
 		return err
 	}
 
-	fmt.Printf("Send PCUpdate\n")
+	s.logger.Info("Send PCUpdate", zap.String("session", s.peerAddr.String()))
 	if _, err := s.tcpConn.Write(bytePCUpdMessage); err != nil {
-		fmt.Printf("PCUpdate Send Error\n")
+		s.logger.Info("PCUpdate send error", zap.String("session", s.peerAddr.String()))
 		return err
 	}
 	s.srpIdHead += 1
@@ -270,6 +240,5 @@ func RegisterLsp(lspChan chan Lsp, peerAddr net.IP, pcrptMessage pcep.PCRptMessa
 		srcAddr:  pcrptMessage.LspObject.SrcAddr,
 		dstAddr:  pcrptMessage.LspObject.DstAddr,
 	}
-
 	lspChan <- lspStruct
 }
