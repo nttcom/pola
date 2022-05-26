@@ -1,3 +1,7 @@
 global:
-  address: "127.0.0.1"
-  port: 4189
+  pcep:
+    address: "127.0.0.1"
+    port: 4189
+  grpc:
+    address: "127.0.0.1"
+    port: 50051

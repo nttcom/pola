@@ -6,9 +6,19 @@ import (
 	"github.com/go-yaml/yaml"
 )
 
-type Global struct {
+type Pcep struct {
 	Address string `yaml:"address"`
 	Port    string `yaml:"port"`
+}
+
+type Grpc struct {
+	Address string `yaml:"address"`
+	Port    string `yaml:"port"`
+}
+
+type Global struct {
+	Pcep Pcep `yaml:"pcep"`
+	Grpc Grpc `yaml:"grpc"`
 }
 
 type Config struct {
