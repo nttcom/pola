@@ -273,10 +273,7 @@ func DecodeTLVsFromBytes(data []uint8) ([]Tlv, error) {
 	tlvs := []Tlv{}
 	for {
 		var tlv Tlv
-		err := tlv.DecodeFromBytes(data)
-		if err != nil {
-			return nil, err
-		}
+		tlv.DecodeFromBytes(data)
 		tlvs = append(tlvs, tlv)
 		if int(tlv.getByteLength()) < len(data) {
 			data = data[tlv.getByteLength():]
