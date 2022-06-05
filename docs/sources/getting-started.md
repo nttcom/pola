@@ -20,6 +20,9 @@ global:
   grpc:
     address: "192.0.2.1"
     port: 50051
+  log:
+    path: "/var/log/pola/"
+    name: "polad.log"
 ```
 
 ## Run Pola PCE using polad
@@ -27,7 +30,7 @@ global:
 Start polad. Specify the created configuration file with the -f option.
 
 ```bash
-$ polad -f polad.conf
-{"level":"info","ts":1653563205.5598016,"caller":"server/server.go:131","msg":"gRPC Listen","listenInfo":"192.0.2.1:50051","server":"grpc"}
-{"level":"info","ts":1653563205.560059,"caller":"server/server.go:99","msg":"PCE Listen","listenInfo":"192.0.2.1:4189"}
+$ sudo polad -f polad.yaml
+2022-06-05T22:57:59.823Z        info    gRPC Listen     {"listenInfo": "127.0.0.1:50051", "server": "grpc"}
+2022-06-05T22:57:59.823Z        info    PCEP Listen     {"listenInfo": "10.100.0.252:4189"}
 ```
