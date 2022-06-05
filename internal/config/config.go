@@ -1,15 +1,30 @@
 package config
 
 import (
-	"log"
 	"os"
 
 	"github.com/go-yaml/yaml"
 )
 
-type Global struct {
+type Pcep struct {
 	Address string `yaml:"address"`
 	Port    string `yaml:"port"`
+}
+
+type Grpc struct {
+	Address string `yaml:"address"`
+	Port    string `yaml:"port"`
+}
+
+type Log struct {
+	Path string `yaml:"path"`
+	Name string `yaml:"name"`
+}
+
+type Global struct {
+	Pcep Pcep `yaml:"pcep"`
+	Grpc Grpc `yaml:"grpc"`
+	Log  Log  `yaml:"log"`
 }
 
 type Config struct {
@@ -21,7 +36,6 @@ func ReadConfigFile(configFile string) (Config, error) {
 
 	f, err := os.Open(configFile)
 	if err != nil {
-		log.Fatal(err)
 		return *c, err
 	}
 	defer f.Close()
