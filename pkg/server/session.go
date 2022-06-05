@@ -167,7 +167,7 @@ func (s *Session) ReceivePcepMessage() error {
 			}
 			if pcrptMessage.LspObject.SFlag {
 				// During LSP state synchronization (RFC8231 5.6)
-				s.logger.Info("Synchronize LSP information", zap.String("session", s.peerAddr.String()), zap.Uint32("PLSP-ID", pcrptMessage.LspObject.PlspId))
+				s.logger.Info("Synchronize LSP information", zap.String("session", s.peerAddr.String()), zap.Uint32("plspId", pcrptMessage.LspObject.PlspId), zap.Any("Message", pcrptMessage))
 				go RegisterLsp(s.lspChan, s.peerAddr, pcrptMessage)
 			} else if !pcrptMessage.LspObject.SFlag {
 				if pcrptMessage.LspObject.PlspId == 0 {
@@ -176,7 +176,7 @@ func (s *Session) ReceivePcepMessage() error {
 					s.isSynced = true
 				} else if pcrptMessage.SrpObject.SrpId != 0 {
 					// Response to PCInitiate/PCUpdate (RFC8231 7.2)
-					s.logger.Info("Finish Transaction", zap.String("session", s.peerAddr.String()), zap.Uint32("SRP-ID", pcrptMessage.SrpObject.SrpId))
+					s.logger.Info("Finish Transaction", zap.String("session", s.peerAddr.String()), zap.Uint32("srpId", pcrptMessage.SrpObject.SrpId))
 					go RegisterLsp(s.lspChan, s.peerAddr, pcrptMessage)
 				}
 				// TODO: Need to implementation of PCUpdate for Passive stateful PCE

@@ -7,10 +7,13 @@ package main
 
 import (
 	"flag"
+	"log"
+	"os"
 
 	"go.uber.org/zap"
 
 	"github.com/nttcom/pola/internal/config"
+	"github.com/nttcom/pola/pkg/logger"
 	"github.com/nttcom/pola/pkg/server"
 )
 
@@ -19,21 +22,29 @@ type Flags struct {
 }
 
 func main() {
-	logger, _ := zap.NewProduction()
-	defer func() {
-		err := logger.Sync()
-		logger.Panic("Failed to logger Sync", zap.Error(err))
-	}()
-	zap.ReplaceGlobals(logger)
-
 	f := new(Flags)
 	flag.StringVar(&f.ConfigFile, "f", "polad.yaml", "Specify a configuration file")
 	flag.Parse()
 
 	c, err := config.ReadConfigFile(f.ConfigFile)
 	if err != nil {
-		logger.Panic("Failed to read config file", zap.Error(err))
+		log.Panic(err)
 	}
+	if err := os.MkdirAll(c.Global.Log.Path, 0755); err != nil {
+		log.Panic(err)
+	}
+	fp, err := os.OpenFile(c.Global.Log.Path+c.Global.Log.Name, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		log.Panic(err)
+	}
+	defer fp.Close()
+
+	logger := logger.LogInit(fp)
+	defer func() {
+		err := logger.Sync()
+		logger.Panic("Failed to logger Sync", zap.Error(err))
+	}()
+	zap.ReplaceGlobals(logger)
 
 	o := new(server.PceOptions)
 	o.PcepAddr = c.Global.Pcep.Address

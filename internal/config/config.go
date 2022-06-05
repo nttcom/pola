@@ -16,9 +16,15 @@ type Grpc struct {
 	Port    string `yaml:"port"`
 }
 
+type Log struct {
+	Path string `yaml:"path"`
+	Name string `yaml:"name"`
+}
+
 type Global struct {
 	Pcep Pcep `yaml:"pcep"`
 	Grpc Grpc `yaml:"grpc"`
+	Log  Log  `yaml:"log"`
 }
 
 type Config struct {

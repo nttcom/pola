@@ -7,10 +7,8 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"strings"
-	"time"
 
 	"go.uber.org/zap"
 	grpc "google.golang.org/grpc"
@@ -27,22 +25,6 @@ type Lsp struct {
 	path     []uint32
 	srcAddr  net.IP
 	dstAddr  net.IP
-}
-
-func (lsp Lsp) PrintPath() {
-	fmt.Printf("Path: ")
-
-	if len(lsp.path) == 0 {
-		fmt.Printf("None \n")
-	}
-	for i, label := range lsp.path {
-		fmt.Printf("%d ", label)
-		if i == len(lsp.path)-1 {
-			fmt.Printf("\n")
-		} else {
-			fmt.Printf("-> ")
-		}
-	}
 }
 
 type Server struct {
@@ -75,19 +57,12 @@ func NewPce(o *PceOptions, logger *zap.Logger) error {
 			s.logger.Panic("gRPC Listen Error", zap.Error(err), zap.String("server", "grpc"))
 		}
 	}()
-	ticker := time.NewTicker(time.Duration(10) * time.Second)
-	defer ticker.Stop()
 	// Display sessionList
 	for {
-		select {
-		case lsp := <-lspChan:
-			// Overwrite LSP
-			s.removeLsp(lsp)
-			s.lspList = append(s.lspList, lsp)
-		case <-ticker.C:
-			s.printSessionList()
-			s.printLspList()
-		}
+		lsp := <-lspChan
+		// Overwrite LSP
+		s.removeLsp(lsp)
+		s.lspList = append(s.lspList, lsp)
 	}
 }
 
@@ -96,7 +71,7 @@ func (s *Server) Listen(address string, port string, lspChan chan Lsp) error {
 	listenInfo.WriteString(address)
 	listenInfo.WriteString(":")
 	listenInfo.WriteString(port)
-	s.logger.Info("PCE Listen", zap.String("listenInfo", listenInfo.String()))
+	s.logger.Info("PCEP Listen", zap.String("listenInfo", listenInfo.String()))
 	listener, err := net.Listen("tcp", listenInfo.String())
 	if err != nil {
 		return err
@@ -143,7 +118,7 @@ func (s *Server) grpcListen(address string, port string) error {
 }
 
 func (s *Server) CreateLsp(ctx context.Context, lspData *pb.LspData) (*pb.LspStatus, error) {
-	fmt.Printf("[gRPC] Get request\n")
+	s.logger.Info("Get request CreateSrPolicy API", zap.Any("SR Policy", lspData), zap.String("server", "grpc"))
 	pcepPeerAddr := net.IP(lspData.GetPcepSessionAddr())
 	if pcepSession := s.getSession(pcepPeerAddr); pcepSession != nil {
 		labels := []pcep.Label{}
@@ -155,7 +130,7 @@ func (s *Server) CreateLsp(ctx context.Context, lspData *pb.LspData) (*pb.LspSta
 			labels = append(labels, pcepLabel)
 		}
 		if plspId := s.getPlspId(lspData); plspId != 0 {
-			fmt.Printf("plspId check : %d\n\n", plspId)
+			s.logger.Info("plspId check", zap.Uint32("plspId", plspId), zap.String("server", "grpc"))
 			if err := pcepSession.SendPCUpdate(lspData.GetPolicyName(), plspId, labels); err != nil {
 				return &pb.LspStatus{IsSuccess: false}, err
 			}
@@ -170,7 +145,7 @@ func (s *Server) CreateLsp(ctx context.Context, lspData *pb.LspData) (*pb.LspSta
 }
 
 func (s *Server) GetPeerAddrList(context.Context, *empty.Empty) (*pb.PeerAddrList, error) {
-	fmt.Printf("[gRPC] Get request\n")
+	s.logger.Info("Get request GetPeerAddrList API", zap.String("server", "grpc"))
 	var ret pb.PeerAddrList
 	for _, pcepSession := range s.sessionList {
 		ret.PeerAddrs = append(ret.PeerAddrs, []byte(pcepSession.peerAddr))
@@ -179,7 +154,7 @@ func (s *Server) GetPeerAddrList(context.Context, *empty.Empty) (*pb.PeerAddrLis
 }
 
 func (s *Server) GetLspList(context.Context, *empty.Empty) (*pb.LspList, error) {
-	fmt.Printf("[gRPC] Get request\n")
+	s.logger.Info("Get request GetSrPolicyList API", zap.String("server", "grpc"))
 	var ret pb.LspList
 	for _, lsp := range s.lspList {
 		lspData := &pb.LspData{
@@ -198,32 +173,6 @@ func (s *Server) GetLspList(context.Context, *empty.Empty) (*pb.LspList, error) 
 		ret.Lsps = append(ret.Lsps, lspData)
 	}
 	return &ret, nil
-}
-
-func (s *Server) printSessionList() {
-	fmt.Printf("pcepSessionList --------\n")
-	fmt.Printf("|\n")
-	for _, pcepSession := range s.sessionList {
-		fmt.Printf("|  sessionAddr: %s\n", pcepSession.peerAddr.String())
-	}
-	fmt.Printf("|\n")
-	fmt.Printf("------------------------\n")
-}
-
-func (s *Server) printLspList() {
-	fmt.Printf("printLspList ************\n")
-	fmt.Printf("*\n")
-	for _, lsp := range s.lspList {
-		fmt.Printf("*- LSP Owner address: %s\n", lsp.peerAddr.String())
-		fmt.Printf("*  LSP Name: %s\n", lsp.name)
-		fmt.Printf("*  PLSP-ID: %d\n", lsp.plspId)
-		fmt.Printf("*  ")
-		lsp.PrintPath()
-		fmt.Printf("*  SrcAddr: %s\n", lsp.srcAddr.String())
-		fmt.Printf("*  DstAddr: %s\n", lsp.dstAddr.String())
-		fmt.Printf("*\n")
-	}
-	fmt.Printf("*************************\n")
 }
 
 func (s *Server) removeSession(session *Session) {

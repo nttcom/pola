@@ -5,3 +5,6 @@ global:
   grpc:
     address: "127.0.0.1"
     port: 50051
+  log:
+    path: "/var/log/pola/"
+    name: "polad.log"
