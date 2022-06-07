@@ -8,6 +8,7 @@
 
 ## Installation & Use
 - [Getting Started](docs/sources/getting-started.md)
+- [Tinet Example](examples/sr-mpls_l3vpn)
 
 ## Interoperability
 - Cisco IOS-XR
