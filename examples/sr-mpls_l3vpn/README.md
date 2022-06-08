@@ -6,6 +6,12 @@ Example topology with ![Tinet](https://github.com/tinynetwork/tinet)
 
 ## Usage
 
+Install Open vSwitch
+```
+$ sudo apt update
+$ sudo apt install openvswitch-switch openvswitch-common
+```
+
 Install Tinet
 ```
 $ curl -Lo /usr/bin/tinet https://github.com/tinynetwork/tinet/releases/download/v0.0.2/tinet
@@ -74,9 +80,6 @@ root@pe01:/# vtysh
 Hello, this is FRRouting (version 8.2.2).
 Copyright 1996-2005 Kunihiro Ishiguro, et al.
 
-pe01# show sr-te   
-  pcep    PCEP info
-  policy  SR-TE Policy
 pe01# show sr-te pcep session 
 
 PCE pola
@@ -97,7 +100,7 @@ Endpoint: 10.255.0.3  Color: 1  Name: name  BSID: -  Status: Active
 Add Color setting
 ```
 $ docker exec -it pe01 /bin/bash
-$ vtysh -c conf t -c router bgp 65000 -c address-family ipv4 vpn -c neighbor 10.255.0.3 route-map color1 in
+$ vtysh -c 'conf t' -c 'router bgp 65000' -c 'address-family ipv4 vpn' -c 'neighbor 10.255.0.3 route-map color1 in'
 ```
 
 Check SR header with tcpdump
