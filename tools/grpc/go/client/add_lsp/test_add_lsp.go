@@ -62,7 +62,7 @@ func main() {
 
 	fmt.Printf("Color: ")
 	fmt.Scan(&colorStr)
-	color, err := strconv.Atoi(colorStr)
+	color, err := strconv.ParseInt(colorStr, 10, 32)
 	if err != nil {
 		log.Fatalf("Invalid color\n")
 	}
@@ -84,7 +84,7 @@ func main() {
 		fmt.Printf("LocalAddr: ")
 		fmt.Scan(&localAddrStr)
 
-		sid, err := strconv.Atoi(sidStr)
+		sid, err := strconv.ParseInt(sidStr, 10, 32)
 		if err != nil {
 			log.Fatalf("Invalid Sid\n")
 		}
