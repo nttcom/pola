@@ -45,7 +45,7 @@ func newLspAddCmd() *cobra.Command {
 	}
 
 	lspAddCmd.Flags().BoolP("json", "j", false, "output json format")
-	lspAddCmd.Flags().StringP("file", "f", "", "[mandatory] path to yaml formatted LSP infomation file")
+	lspAddCmd.Flags().StringP("file", "f", "", "[mandatory] path to yaml formatted LSP information file")
 	return lspAddCmd
 
 }
