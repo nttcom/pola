@@ -7,7 +7,8 @@
 """Client and server classes corresponding to protobuf-defined services."""
 import grpc
 
-import pola_pb2 as pola__pb2
+from google.protobuf import empty_pb2 as google_dot_protobuf_dot_empty__pb2
+import api.grpc.pola_pb2 as pola__pb2
 
 
 class PceServiceStub(object):
@@ -24,12 +25,34 @@ class PceServiceStub(object):
                 request_serializer=pola__pb2.LspData.SerializeToString,
                 response_deserializer=pola__pb2.LspStatus.FromString,
                 )
+        self.GetPeerAddrList = channel.unary_unary(
+                '/pb.PceService/GetPeerAddrList',
+                request_serializer=google_dot_protobuf_dot_empty__pb2.Empty.SerializeToString,
+                response_deserializer=pola__pb2.PeerAddrList.FromString,
+                )
+        self.GetLspList = channel.unary_unary(
+                '/pb.PceService/GetLspList',
+                request_serializer=google_dot_protobuf_dot_empty__pb2.Empty.SerializeToString,
+                response_deserializer=pola__pb2.LspList.FromString,
+                )
 
 
 class PceServiceServicer(object):
     """Missing associated documentation comment in .proto file."""
 
     def CreateLsp(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetPeerAddrList(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetLspList(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -42,6 +65,16 @@ def add_PceServiceServicer_to_server(servicer, server):
                     servicer.CreateLsp,
                     request_deserializer=pola__pb2.LspData.FromString,
                     response_serializer=pola__pb2.LspStatus.SerializeToString,
+            ),
+            'GetPeerAddrList': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetPeerAddrList,
+                    request_deserializer=google_dot_protobuf_dot_empty__pb2.Empty.FromString,
+                    response_serializer=pola__pb2.PeerAddrList.SerializeToString,
+            ),
+            'GetLspList': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetLspList,
+                    request_deserializer=google_dot_protobuf_dot_empty__pb2.Empty.FromString,
+                    response_serializer=pola__pb2.LspList.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -67,5 +100,39 @@ class PceService(object):
         return grpc.experimental.unary_unary(request, target, '/pb.PceService/CreateLsp',
             pola__pb2.LspData.SerializeToString,
             pola__pb2.LspStatus.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def GetPeerAddrList(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/pb.PceService/GetPeerAddrList',
+            google_dot_protobuf_dot_empty__pb2.Empty.SerializeToString,
+            pola__pb2.PeerAddrList.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def GetLspList(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/pb.PceService/GetLspList',
+            google_dot_protobuf_dot_empty__pb2.Empty.SerializeToString,
+            pola__pb2.LspList.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
