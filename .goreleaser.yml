@@ -1,0 +1,32 @@
+before:
+  hooks:
+    - go mod tidy
+builds:
+  - id: pola
+    main: ./cmd/pola/
+    binary: pola
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - 386
+      - arm
+      - arm64
+
+  - id: gobgpd
+    main: ./cmd/polad/
+    binary: polad
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - 386
+      - arm
+      - arm64
+
+archives:
+  - id: archive
+    files:
+      - LICENSE
+      - CREDITS
+      - README.md

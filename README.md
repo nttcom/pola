@@ -3,7 +3,7 @@
 </p>
 
 # Pola PCE
-[![lint status](https://github.com/nttcom/pola/actions/workflows/ci.yaml/badge.svg)](https://github.com/nttcom/pola/actions)
+[![lint status](https://github.com/nttcom/pola/actions/workflows/ci.yml/badge.svg)](https://github.com/nttcom/pola/actions)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/nttcom/pola)](https://goreportcard.com/report/github.com/nttcom/pola) 
 [![Go Reference](https://pkg.go.dev/badge/github.com/nttcom/pola.svg)](https://pkg.go.dev/github.com/nttcom/pola)
