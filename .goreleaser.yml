@@ -5,6 +5,8 @@ builds:
   - id: pola
     main: ./cmd/pola/
     binary: pola
+    ldflags:
+      - -s -w -X main.build={{.Version}}
     goos:
       - linux
     goarch:
@@ -16,6 +18,8 @@ builds:
   - id: gobgpd
     main: ./cmd/polad/
     binary: polad
+    ldflags:
+      - -s -w -X main.build={{.Version}}
     goos:
       - linux
     goarch:
