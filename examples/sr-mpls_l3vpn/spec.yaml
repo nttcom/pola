@@ -4,6 +4,10 @@ preinit:
     - cmd: modprobe mpls_gso
     - cmd: modprobe mpls_iptunnel
 
+postinit:
+  - cmds:
+    - cmd: docker cp polad/polad.yaml pola:/config.yaml
+
 nodes:
   - name: pola
     image: watal/pola:latest
@@ -54,7 +58,8 @@ switches:
 node_configs:
   - name: pola
     cmds:
-      - cmd: ip a add 10.0.255.254/24 dev net0
+      - cmd: 'ip a add 10.0.255.254/24 dev net0'
+      - cmd: '/root/go/bin/polad -f config.yaml > /dev/null 2>&1 &'
   - name: pe01
     cmds:
       - cmd: /usr/lib/frr/frr start
