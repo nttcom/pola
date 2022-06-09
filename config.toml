@@ -1,7 +1,8 @@
-baseURL = "https://nttcom.nttcom.github.io/pola/"
+baseURL = "https://nttcom.github.io/pola/"
 languageCode = "en-us"
 title = "Pola PCE"
 theme = "PaperMod"
+publishDir = "docs"
 
 enableRobotsTXT = true
 buildDrafts = false
