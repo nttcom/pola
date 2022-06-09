@@ -3,10 +3,13 @@
 </p>
 
 # Pola PCE
-[![lint status](https://github.com/nttcom/pola/actions/workflows/ci.yml/badge.svg)](https://github.com/nttcom/pola/actions)
-[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![Linter](https://github.com/nttcom/pola/actions/workflows/ci.yml/badge.svg)](https://github.com/nttcom/pola/actions)
+[![Releaser](https://github.com/nttcom/pola/actions/workflows/release.yml/badge.svg)](https://github.com/nttcom/pola/actions)
 [![Go Report Card](https://goreportcard.com/badge/nttcom/pola)](https://goreportcard.com/report/github.com/nttcom/pola) 
 [![Go Reference](https://pkg.go.dev/badge/github.com/nttcom/pola.svg)](https://pkg.go.dev/github.com/nttcom/pola)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
+PCEP Library and Stateful PCE Implementation with Go 
 
 ## Installation & Use
 - [Getting Started](docs/sources/getting-started.md)
