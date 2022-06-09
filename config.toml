@@ -1,0 +1,32 @@
+baseURL = "https://nttcom.nttcom.github.io/pola/"
+languageCode = "en-us"
+title = "Pola PCE"
+theme = "PaperMod"
+
+enableRobotsTXT = true
+buildDrafts = false
+buildFuture = false
+buildExpired = false
+
+[minify]
+disableXML = true
+minifyOutput = true
+
+[params]
+[params.profileMode]
+enabled = true
+title = "Pola PCE"
+subtitle = "PCEP Library and Stateful PCE Implementation with Go"
+description = "PCEP Library and Stateful PCE Implementation with Go"
+keywords = ["PCE", "PCEP", "Segment Routing", "SR-MPLS", "SRv6"]
+author = "watal"
+defaultTheme = "auto"
+disableThemeToggle = false
+imageUrl = "https://raw.githubusercontent.com/nttcom/pola/main/docs/figures/pola.png"
+imageTitle = "Pola"
+imageWidth = 200
+imageHeight = 200
+
+[params.socialIcons.github]
+name = "github"
+url = "https://github.com/nttcom/pola"
