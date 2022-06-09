@@ -59,7 +59,7 @@ node_configs:
   - name: pola
     cmds:
       - cmd: 'ip a add 10.0.255.254/24 dev net0'
-      - cmd: '/root/go/bin/polad -f config.yaml > /dev/null 2>&1 &'
+      - cmd: '/usr/local/go/bin/polad -f config.yaml > /dev/null 2>&1 &'
   - name: pe01
     cmds:
       - cmd: /usr/lib/frr/frr start
@@ -298,9 +298,10 @@ node_configs:
 
 test:
   - cmds:
+    ## Add SR-TE Color
+    - cmd: docker exec pe01 vtysh -c 'conf t' -c 'router bgp 65000' -c 'address-family ipv4 vpn' -c 'neighbor 10.255.0.3 route-map color1 in'
     ## Show Status
     - cmd: docker exec pe01 vtysh -c 'show sr-te policy'
     - cmd: docker exec pe01 vtysh -c 'show ip route vrf cust-a 192.168.1.0/24'
-    - cmd: docker exec pe01 vtysh -c 'conf t' -c 'router bgp 65000' -c 'address-family ipv4 vpn' -c 'neighbor 10.255.0.3 route-map color1 in'
     ## L3VPN Test
     - cmd: docker exec host01 ping -c3 192.168.1.2

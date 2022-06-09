@@ -32,9 +32,9 @@ Connect to PCEP container, check PCEP session and SR policy
 ```
 $ docker exec -it pola /bin/bash
 
-# /root/go/bin/pola session
+# pola session
 peerAddr(0): 10.0.255.1
-# /root/go/bin/pola lsp list
+# pola lsp list
 ```
 
 Create policy1.yaml (Apply Segment List 16002/16004/16003 to pe01)
@@ -59,9 +59,9 @@ srPolicy:
 
 Apply and check SR Policy
 ```
-# /root/go/bin/pola lsp add -f policy1.yaml
+# pola lsp add -f policy1.yaml
 success!
-# /root/go/bin/pola lsp list
+# pola lsp list
 lsp(0): 
   peerAddr: 10.0.255.1
   policyName: name
@@ -71,7 +71,7 @@ lsp(0):
 
 ```
 
-Move to container pe01 and check SR Policy
+Enter container pe01 and check SR Policy
 ```
 # exit
 $ docker exec -it pe01 /bin/bash
