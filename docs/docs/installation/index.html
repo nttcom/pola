@@ -1,0 +1,370 @@
+<!doctype html>
+<html itemscope itemtype="http://schema.org/WebPage" lang="en" class="no-js">
+  <head>
+    <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+<meta name="generator" content="Hugo 0.100.2" />
+<link rel="alternate" type="text/html" href="https://nttcom.github.io/pola/docs/installation/_print/">
+<meta name="robots" content="index, follow">
+
+
+<link rel="shortcut icon" href="/pola/favicons/favicon.ico" >
+<link rel="apple-touch-icon" href="/pola/favicons/apple-touch-icon-180x180.png" sizes="180x180">
+<link rel="icon" type="image/png" href="/pola/favicons/favicon-16x16.png" sizes="16x16">
+<link rel="icon" type="image/png" href="/pola/favicons/favicon-32x32.png" sizes="32x32">
+<link rel="icon" type="image/png" href="/pola/favicons/android-36x36.png" sizes="36x36">
+<link rel="icon" type="image/png" href="/pola/favicons/android-48x48.png" sizes="48x48">
+<link rel="icon" type="image/png" href="/pola/favicons/android-72x72.png" sizes="72x72">
+<link rel="icon" type="image/png" href="/pola/favicons/android-96x96.png" sizes="96x96">
+<link rel="icon" type="image/png" href="/pola/favicons/android-144x144.png" sizes="144x144">
+<link rel="icon" type="image/png" href="/pola/favicons/android-192x192.png" sizes="192x192">
+
+<title>Installation &amp; Use | Pola PCE</title>
+<meta name="description" content="How to install, initialize, and start the Pola PCE daemon.
+">
+<meta property="og:title" content="Installation &amp; Use" />
+<meta property="og:description" content="How to install, initialize, and start the Pola PCE daemon.
+" />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://nttcom.github.io/pola/docs/installation/" /><meta property="og:site_name" content="Pola PCE" />
+
+<meta itemprop="name" content="Installation &amp; Use">
+<meta itemprop="description" content="How to install, initialize, and start the Pola PCE daemon.
+"><meta name="twitter:card" content="summary"/>
+<meta name="twitter:title" content="Installation &amp; Use"/>
+<meta name="twitter:description" content="How to install, initialize, and start the Pola PCE daemon.
+"/>
+
+
+
+
+<link rel="preload" href="/pola/scss/main.min.a584564c1879c87b8252fd68c097fb24ae53e8317927b08d7a6b585ba25746ea.css" as="style">
+<link href="/pola/scss/main.min.a584564c1879c87b8252fd68c097fb24ae53e8317927b08d7a6b585ba25746ea.css" rel="stylesheet" integrity="">
+
+<script
+  src="https://code.jquery.com/jquery-3.6.0.min.js"
+  integrity="sha384-vtXRMe3mGCbOeY7l30aIg8H9p3GdeSe4IFlP6G8JMa7o7lXvnz3GFKzPxzJdPfGK"
+  crossorigin="anonymous"></script>
+<script
+  src="https://unpkg.com/lunr@2.3.9/lunr.min.js"
+  integrity="sha384-203J0SNzyqHby3iU6hzvzltrWi/M41wOP5Gu+BiJMz5nwKykbkUx8Kp7iti0Lpli"
+  crossorigin="anonymous"></script>
+<link rel="stylesheet" href="/pola/css/prism.css"/>
+
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	window.ga=window.ga||function(){(ga.q=ga.q||[]).push(arguments)};ga.l=+new Date;
+	ga('create', 'UA-00000000-0', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+<script async src='https://www.google-analytics.com/analytics.js'></script>
+
+  </head>
+  <body class="td-section">
+    <header>
+      
+<nav class="js-navbar-scroll navbar navbar-expand navbar-light flex-column flex-md-row td-navbar">
+  <a class="navbar-brand" href="/pola/">
+    <span>
+      <img src="https://raw.githubusercontent.com/nttcom/pola/main/docs/figures/pola.png" alt="Pola PCE logo" width="32px">
+    </span>
+    <span class="font-weight-bold" style="color: #4a5568">
+      Pola PCE
+    </span>
+	</a>
+  <div class="td-navbar-nav-scroll ml-md-auto" id="main_navbar">
+    <ul class="navbar-nav mt-2 mt-lg-0">
+      
+      
+      <li class="nav-item mr-4 mb-2 mb-lg-0">
+        
+        
+        
+        
+        
+        
+        
+        
+        <a class="nav-link active" href="/pola/docs/"><span class="active">Documentation</span></a>
+      </li>
+			<li class="nav-item mr-4 mb-2 mb-lg-0">
+				<a class="nav-link" href="https://github.com/nttcom/pola">GitHub</a>
+			</li>
+
+      
+      
+      
+    </ul>
+  </div>
+	<div class="navbar-nav d-none d-lg-block"><input
+  type="search"
+  class="form-control td-search-input"
+  placeholder="&#xf002; Search this site…"
+  style = {::placeholder {
+  color: blue;}}
+  aria-label="Search this site…"
+  autocomplete="off"
+  
+  data-offline-search-index-json-src="/pola/offline-search-index.1a129f2411473c6200802e44cfe9a139.json"
+  data-offline-search-base-href="/"
+  data-offline-search-max-results="50"
+>
+</div>
+</nav>
+
+    </header>
+    <div class="container-fluid td-outer">
+      <div class="td-main">
+        <div class="row flex-xl-nowrap">
+          <aside class="col-12 col-md-3 col-xl-2 td-sidebar d-print-none">
+            
+<div id="td-sidebar-menu" class="td-sidebar__inner">
+  <form class="td-sidebar__search d-flex align-items-center">
+    <input
+  type="search"
+  class="form-control td-search-input"
+  placeholder="&#xf002; Search this site…"
+  style = {::placeholder {
+  color: blue;}}
+  aria-label="Search this site…"
+  autocomplete="off"
+  
+  data-offline-search-index-json-src="/pola/offline-search-index.1a129f2411473c6200802e44cfe9a139.json"
+  data-offline-search-base-href="/"
+  data-offline-search-max-results="50"
+>
+
+    <button class="btn btn-link td-sidebar__toggle d-md-none p-0 ml-3 fas fa-bars" type="button" data-toggle="collapse" data-target="#td-section-nav" aria-controls="td-section-nav" aria-expanded="false" aria-label="Toggle section navigation">
+    </button>
+  </form>
+  <nav class="collapse td-sidebar-nav" id="td-section-nav">
+    <ul class="td-sidebar-nav__section pr-md-3 ul-0">
+      <li class="td-sidebar-nav__section-title td-sidebar-nav__section with-child active-path" id="m-poladocs-li">
+  <a href="/pola/docs/" title="Pola PCE" class="align-left pl-0 td-sidebar-link td-sidebar-link__section tree-root" id="m-poladocs"><span class="">Documentation</span></a>
+  <ul class="ul-1">
+    <li class="td-sidebar-nav__section-title td-sidebar-nav__section without-child" id="m-poladocsinstallation-li">
+  <a href="/pola/docs/installation/" class="align-left pl-0 active td-sidebar-link td-sidebar-link__section" id="m-poladocsinstallation"><span class="td-sidebar-nav-active-item">Installation &amp; Use</span></a>
+</li><li class="td-sidebar-nav__section-title td-sidebar-nav__section with-child" id="m-poladocspce-li">
+  <a href="/pola/docs/pce/" class="align-left pl-0 td-sidebar-link td-sidebar-link__section" id="m-poladocspce"><span class="">PCE Library</span></a>
+  <ul class="ul-2 foldable">
+    <li class="td-sidebar-nav__section-title td-sidebar-nav__section without-child" id="m-poladocspcepcep-li">
+  <a href="/pola/docs/pce/pcep/" class="align-left pl-0 td-sidebar-link td-sidebar-link__section" id="m-poladocspcepcep"><span class="">PCEP Package</span></a>
+</li>
+  </ul>
+</li><li class="td-sidebar-nav__section-title td-sidebar-nav__section with-child" id="m-poladocscommands-li">
+  <a href="/pola/docs/commands/" class="align-left pl-0 td-sidebar-link td-sidebar-link__section" id="m-poladocscommands"><span class="">Commands</span></a>
+  <ul class="ul-2 foldable">
+    <li class="td-sidebar-nav__section-title td-sidebar-nav__section without-child" id="m-poladocscommandspolad-li">
+  <a href="/pola/docs/commands/polad/" class="align-left pl-0 td-sidebar-link td-sidebar-link__section" id="m-poladocscommandspolad"><span class="">polad</span></a>
+</li><li class="td-sidebar-nav__section-title td-sidebar-nav__section without-child" id="m-poladocscommandspola-li">
+  <a href="/pola/docs/commands/pola/" class="align-left pl-0 td-sidebar-link td-sidebar-link__section" id="m-poladocscommandspola"><span class="">pola</span></a>
+</li>
+  </ul>
+</li><li class="td-sidebar-nav__section-title td-sidebar-nav__section without-child" id="m-poladocsapi-li">
+  <a href="/pola/docs/api/" class="align-left pl-0 td-sidebar-link td-sidebar-link__section" id="m-poladocsapi"><span class="">API Specification</span></a>
+</li><li class="td-sidebar-nav__section-title td-sidebar-nav__section without-child" id="m-poladocspresentations-li">
+  <a href="/pola/docs/presentations/" class="align-left pl-0 td-sidebar-link td-sidebar-link__section" id="m-poladocspresentations"><span class="">Presentations</span></a>
+</li><li class="td-sidebar-nav__section-title td-sidebar-nav__section without-child" id="m-poladocsreference-li">
+  <a href="/pola/docs/reference/" class="align-left pl-0 td-sidebar-link td-sidebar-link__section" id="m-poladocsreference"><span class="">Reference List</span></a>
+</li><li class="td-sidebar-nav__section-title td-sidebar-nav__section without-child" id="m-poladocscontributers-li">
+  <a href="/pola/docs/contributers/" class="align-left pl-0 td-sidebar-link td-sidebar-link__section" id="m-poladocscontributers"><span class="">Contributors</span></a>
+</li><li class="td-sidebar-nav__section-title td-sidebar-nav__section without-child" id="m-poladocslisence-li">
+  <a href="/pola/docs/lisence/" class="align-left pl-0 td-sidebar-link td-sidebar-link__section" id="m-poladocslisence"><span class="">Lisence &amp; Credits</span></a>
+</li>
+  </ul>
+</li>
+    </ul>
+  </nav>
+</div>
+
+          </aside>
+          <aside class="d-none d-xl-block col-xl-2 td-sidebar-toc d-print-none">
+            
+<div class="td-page-meta ml-2 pb-1 pt-2 mb-0">
+<a href="https://github.com/nttcom/pola/tree/main/content/en/docs/Installation/_index.md" class="td-page-meta--view" target="_blank" rel="noopener"><i class="fa fa-file-alt fa-fw"></i> View page source</a>
+  <a href="https://github.com/nttcom/pola/edit/main/content/en/docs/Installation/_index.md" class="td-page-meta--edit" target="_blank" rel="noopener"><i class="fa fa-edit fa-fw"></i> Edit this page</a>
+  <a href="https://github.com/nttcom/pola/new/main/content/en/docs/Installation/_index.md?filename=change-me.md&amp;value=---%0Atitle%3A&#43;%22Long&#43;Page&#43;Title%22%0AlinkTitle%3A&#43;%22Short&#43;Nav&#43;Title%22%0Aweight%3A&#43;100%0Adescription%3A&#43;%3E-%0A&#43;&#43;&#43;&#43;&#43;Page&#43;description&#43;for&#43;heading&#43;and&#43;indexes.%0A---%0A%0A%23%23&#43;Heading%0A%0AEdit&#43;this&#43;template&#43;to&#43;create&#43;your&#43;new&#43;page.%0A%0A%2A&#43;Give&#43;it&#43;a&#43;good&#43;name%2C&#43;ending&#43;in&#43;%60.md%60&#43;-&#43;e.g.&#43;%60getting-started.md%60%0A%2A&#43;Edit&#43;the&#43;%22front&#43;matter%22&#43;section&#43;at&#43;the&#43;top&#43;of&#43;the&#43;page&#43;%28weight&#43;controls&#43;how&#43;its&#43;ordered&#43;amongst&#43;other&#43;pages&#43;in&#43;the&#43;same&#43;directory%3B&#43;lowest&#43;number&#43;first%29.%0A%2A&#43;Add&#43;a&#43;good&#43;commit&#43;message&#43;at&#43;the&#43;bottom&#43;of&#43;the&#43;page&#43;%28%3C80&#43;characters%3B&#43;use&#43;the&#43;extended&#43;description&#43;field&#43;for&#43;more&#43;detail%29.%0A%2A&#43;Create&#43;a&#43;new&#43;branch&#43;so&#43;you&#43;can&#43;preview&#43;your&#43;new&#43;file&#43;and&#43;request&#43;a&#43;review&#43;via&#43;Pull&#43;Request.%0A" class="td-page-meta--child" target="_blank" rel="noopener"><i class="fa fa-edit fa-fw"></i> Create child page</a>
+  <a href="https://github.com/nttcom/pola/issues/new?title=Installation%20&amp;%20Use" class="td-page-meta--issue" target="_blank" rel="noopener"><i class="fas fa-tasks fa-fw"></i> Create documentation issue</a>
+  <a href="https://github.com/nttcom/pola/issues/new" class="td-page-meta--project-issue" target="_blank" rel="noopener"><i class="fas fa-tasks fa-fw"></i> Create project issue</a>
+  <a id="print" href="https://nttcom.github.io/pola/docs/installation/_print/"><i class="fa fa-print fa-fw"></i> Print entire section</a>
+
+</div>
+
+            
+
+
+
+
+            
+
+	
+		
+			
+				
+			
+			
+
+
+
+  
+  
+
+		
+			
+				
+			
+			
+
+
+
+  
+  
+
+		
+	
+
+          </aside>
+          <main class="col-12 col-md-9 col-xl-8 pl-md-5" role="main">
+            
+  
+
+            <nav aria-label="breadcrumb" class="td-breadcrumbs">
+  <ol class="breadcrumb">
+  <li class="breadcrumb-item"><a href="https://nttcom.github.io/pola/docs/">Documentation</a>
+    </li>
+  <li class="breadcrumb-item active">
+      <span>Installation &amp; Use</span>
+    </li>
+  </ol>
+</nav>
+            
+<div class="td-content">
+	<h1>Installation &amp; Use</h1>
+  <div class="lead">How to install, initialize, and start the Pola PCE daemon.</div>
+	<header class="article-meta">
+		
+
+  
+    
+      
+
+
+    
+      
+
+
+    
+  
+
+		
+	</header>
+	<h2 id="getting-started">Getting Started</h2>
+<p>The <a href="https://github.com/nttcom/pola/blob/main/docs/sources/getting-started.md">Getting Started</a> page explains how to install the Pola PCE daemon and start the Stateful PCE service.</p>
+<h2 id="tinet-example">Tinet Example</h2>
+<p>The <a href="https://github.com/nttcom/pola/tree/main/examples/sr-mpls_l3vpn">Tinet Example</a> page, a Pola PCE example network can be created with <a href="https://github.com/tinynetwork/tinet">Tinet</a>, a docker-based network simulator.</p>
+
+        <div class="section-index">
+    
+    
+    
+    
+    
+    
+    
+    
+    
+</div>
+
+	
+	
+	<div class="text-muted mt-5 pt-3 border-top">
+  Last modified June 20, 2022: <a href="https://github.com/nttcom/pola/commit/b99e344dc27bc2f983f03e96480a03abe97bfd37">Create New Style Page (b99e344)</a>
+</div>
+
+</div>
+
+          </main>
+        </div>
+      </div>
+      
+<footer class="bg-dark py-5 row d-print-none">
+  <div class="container-fluid mx-sm-5">
+    <div class="row">
+      <div class="col-6 col-sm-4 text-xs-center order-sm-2">
+        
+        
+        
+      </div>
+      <div class="col-6 col-sm-4 text-right text-xs-center order-sm-3">
+        
+        
+        
+<ul class="list-inline mb-0">
+  
+  <li class="list-inline-item mx-2 h3" data-toggle="tooltip" data-placement="top" title="GitHub" aria-label="GitHub">
+    <a class="text-white" target="_blank" rel="noopener" href="https://github.com/nttcom/pola" aria-label="GitHub">
+      <i class="fab fa-github"></i>
+    </a>
+  </li>
+  
+</ul>
+
+        
+        
+      </div>
+      <div class="col-12 col-sm-4 text-center py-2 order-sm-2">
+        <small class="text-white">&copy; 2022 NTT Communications Corporation All Rights Reserved</small>
+        
+	
+      </div>
+    </div>
+  </div>
+</footer>
+
+
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"
+    integrity="sha384-9/reFTGAW83EW2RDu2S0VKaIzap3H66lZH81PoYlFhbGU+6BZp6G7niu735Sk7lN"
+    crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.1/dist/js/bootstrap.min.js"
+    integrity="sha512-UR25UO94eTnCVwjbXozyeVd6ZqpaAE9naiEUBK/A+QDbfSTQFhPGj5lOR6d8tsgbBk84Ggb5A3EkjsOgPRPcKA=="
+    crossorigin="anonymous"></script>
+
+
+
+
+
+<script src='/pola/js/tabpane-persist.js'></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<script src="/pola/js/main.min.63f7ccf0f6f052be82a52cc628622eadcdaa7d38aa242c60a3cad13badb12dd9.js" integrity="sha256-Y/fM8PbwUr6CpSzGKGIurc2qfTiqJCxgo8rRO62xLdk=" crossorigin="anonymous"></script>
+
+
+
+<script src='/pola/js/prism.js'></script>
+
+
+
+  </body>
+</html>

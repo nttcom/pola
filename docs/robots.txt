@@ -1,3 +1,1 @@
 User-agent: *
-Disallow:
-Sitemap: https://nttcom.github.io/pola/sitemap.xml

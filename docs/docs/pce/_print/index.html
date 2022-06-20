@@ -1,0 +1,893 @@
+<!doctype html>
+<html itemscope itemtype="http://schema.org/WebPage" lang="en" class="no-js">
+  <head>
+    <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+<meta name="generator" content="Hugo 0.100.2" />
+<link rel="canonical" type="text/html" href="https://nttcom.github.io/pola/docs/pce/">
+<meta name="robots" content="noindex, nofollow">
+
+
+<link rel="shortcut icon" href="/pola/favicons/favicon.ico" >
+<link rel="apple-touch-icon" href="/pola/favicons/apple-touch-icon-180x180.png" sizes="180x180">
+<link rel="icon" type="image/png" href="/pola/favicons/favicon-16x16.png" sizes="16x16">
+<link rel="icon" type="image/png" href="/pola/favicons/favicon-32x32.png" sizes="32x32">
+<link rel="icon" type="image/png" href="/pola/favicons/android-36x36.png" sizes="36x36">
+<link rel="icon" type="image/png" href="/pola/favicons/android-48x48.png" sizes="48x48">
+<link rel="icon" type="image/png" href="/pola/favicons/android-72x72.png" sizes="72x72">
+<link rel="icon" type="image/png" href="/pola/favicons/android-96x96.png" sizes="96x96">
+<link rel="icon" type="image/png" href="/pola/favicons/android-144x144.png" sizes="144x144">
+<link rel="icon" type="image/png" href="/pola/favicons/android-192x192.png" sizes="192x192">
+
+<title>PCE Library | Pola PCE</title>
+<meta name="description" content="PCEP and Active Statefule PCE library.
+">
+<meta property="og:title" content="PCE Library" />
+<meta property="og:description" content="PCEP and Active Statefule PCE library.
+" />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://nttcom.github.io/pola/docs/pce/" /><meta property="og:site_name" content="Pola PCE" />
+
+<meta itemprop="name" content="PCE Library">
+<meta itemprop="description" content="PCEP and Active Statefule PCE library.
+"><meta name="twitter:card" content="summary"/>
+<meta name="twitter:title" content="PCE Library"/>
+<meta name="twitter:description" content="PCEP and Active Statefule PCE library.
+"/>
+
+
+
+
+<link rel="preload" href="/pola/scss/main.min.a584564c1879c87b8252fd68c097fb24ae53e8317927b08d7a6b585ba25746ea.css" as="style">
+<link href="/pola/scss/main.min.a584564c1879c87b8252fd68c097fb24ae53e8317927b08d7a6b585ba25746ea.css" rel="stylesheet" integrity="">
+
+<script
+  src="https://code.jquery.com/jquery-3.6.0.min.js"
+  integrity="sha384-vtXRMe3mGCbOeY7l30aIg8H9p3GdeSe4IFlP6G8JMa7o7lXvnz3GFKzPxzJdPfGK"
+  crossorigin="anonymous"></script>
+<script
+  src="https://unpkg.com/lunr@2.3.9/lunr.min.js"
+  integrity="sha384-203J0SNzyqHby3iU6hzvzltrWi/M41wOP5Gu+BiJMz5nwKykbkUx8Kp7iti0Lpli"
+  crossorigin="anonymous"></script>
+<link rel="stylesheet" href="/pola/css/prism.css"/>
+
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	window.ga=window.ga||function(){(ga.q=ga.q||[]).push(arguments)};ga.l=+new Date;
+	ga('create', 'UA-00000000-0', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+<script async src='https://www.google-analytics.com/analytics.js'></script>
+
+  </head>
+  <body class="td-section">
+    <header>
+      
+<nav class="js-navbar-scroll navbar navbar-expand navbar-light flex-column flex-md-row td-navbar">
+  <a class="navbar-brand" href="/pola/">
+    <span>
+      <img src="https://raw.githubusercontent.com/nttcom/pola/main/docs/figures/pola.png" alt="Pola PCE logo" width="32px">
+    </span>
+    <span class="font-weight-bold" style="color: #4a5568">
+      Pola PCE
+    </span>
+	</a>
+  <div class="td-navbar-nav-scroll ml-md-auto" id="main_navbar">
+    <ul class="navbar-nav mt-2 mt-lg-0">
+      
+      
+      <li class="nav-item mr-4 mb-2 mb-lg-0">
+        
+        
+        
+        
+        
+        
+        
+        
+        <a class="nav-link active" href="/pola/docs/"><span class="active">Documentation</span></a>
+      </li>
+			<li class="nav-item mr-4 mb-2 mb-lg-0">
+				<a class="nav-link" href="https://github.com/nttcom/pola">GitHub</a>
+			</li>
+
+      
+      
+      
+    </ul>
+  </div>
+	<div class="navbar-nav d-none d-lg-block"><input
+  type="search"
+  class="form-control td-search-input"
+  placeholder="&#xf002; Search this site…"
+  style = {::placeholder {
+  color: blue;}}
+  aria-label="Search this site…"
+  autocomplete="off"
+  
+  data-offline-search-index-json-src="/pola/offline-search-index.1a129f2411473c6200802e44cfe9a139.json"
+  data-offline-search-base-href="/"
+  data-offline-search-max-results="50"
+>
+</div>
+</nav>
+
+    </header>
+    <div class="container-fluid td-outer">
+      <div class="td-main">
+        <div class="row flex-xl-nowrap">
+          <main class="col-12 col-md-9 col-xl-8 pl-md-5" role="main">
+            
+
+
+
+
+<div class="td-content">
+<div class="pageinfo pageinfo-primary d-print-none">
+<p>
+This is the multi-page printable view of this section.
+<a href="#" onclick="print();return false;">Click here to print</a>.
+</p><p>
+<a href="/pola/docs/pce/">Return to the regular view of this page</a>.
+</p>
+</div>
+
+
+
+<h1 class="title">PCE Library</h1>
+<div class="lead">PCEP and Active Statefule PCE library.</div>
+
+
+
+
+    <ul>
+    
+  
+  
+  
+  
+
+  
+    
+    
+	
+<li>1: <a href="#pg-1bfb7215dff82cccdef33111b877ff5b">PCEP Package</a></li>
+
+
+    
+    <ul>
+        
+  
+  
+  
+  
+
+  
+
+    </ul>
+    
+  
+
+    </ul>
+
+
+<div class="content">
+      
+</div>
+</div>
+
+
+  
+  
+  
+  
+
+  
+  
+
+  
+    
+    
+	
+    
+
+<div class="td-content" style="">
+    
+	<h1 id="pg-1bfb7215dff82cccdef33111b877ff5b">1 - PCEP Package</h1>
+    <div class="lead">PCEP package (pkg/packet/pcep/pcep.go).</div>
+	<h2 id="common-header">Common Header</h2>
+<h3 id="header-format">Header Format</h3>
+<p>Format (<a href="https://datatracker.ietf.org/doc/html/rfc5440#section-6.1">RFC5440 Figure 7: PCEP Message Common Header</a>)</p>
+<pre tabindex="0"><code> 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| Ver |  Flags  |  Message-Type |       Message-Length          |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</code></pre><p>Type</p>
+<div class="highlight"><pre tabindex="0" style="background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-go" data-lang="go"><span style="display:flex;"><span><span style="color:#000;font-weight:bold">type</span> CommonHeader <span style="color:#000;font-weight:bold">struct</span> { <span style="color:#998;font-style:italic">// RFC5440 6.1
+</span></span></span><span style="display:flex;"><span><span style="color:#998;font-style:italic"></span>	Version       <span style="color:#458;font-weight:bold">uint8</span>
+</span></span><span style="display:flex;"><span>	Flag          <span style="color:#458;font-weight:bold">uint8</span>
+</span></span><span style="display:flex;"><span>	MessageType   <span style="color:#458;font-weight:bold">uint8</span>
+</span></span><span style="display:flex;"><span>	MessageLength <span style="color:#458;font-weight:bold">uint16</span>
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><h3 id="fields">Fields</h3>
+<p>Version: 1</p>
+<p>Flags: No flags are currently defined.</p>
+<p>Message Types: The following message types are currently defined:</p>
+<pre tabindex="0"><code>const ( // PCEP Message-Type (1byte)
+	MT_RESERVED     uint8 = 0x00 // RFC5440
+	MT_OPEN         uint8 = 0x01 // RFC5440
+	MT_KEEPALIVE    uint8 = 0x02 // RFC5440
+	MT_PCREQ        uint8 = 0x03 // RFC5440
+	MT_PCREP        uint8 = 0x04 // RFC5440
+	MT_NOTIFICATION uint8 = 0x05 // RFC5440
+	MT_ERROR        uint8 = 0x06 // RFC5440
+	MT_CLOSE        uint8 = 0x07 // RFC5440
+	MT_PCMONREQ     uint8 = 0x08 // RFC5886
+	MT_PCMONREP     uint8 = 0x09 // RFC5886
+	MT_REPORT       uint8 = 0x0a // RFC8231
+	MT_UPDATE       uint8 = 0x0b // RFC8281
+	MT_LSPINITREQ   uint8 = 0x0c // RFC8281
+	MT_STARTTLS     uint8 = 0x0d // RFC8253
+)
+</code></pre><p>Message-Length: total length of the PCEP message including the common header, expressed in bytes.</p>
+<h2 id="pcep-messages">PCEP Messages</h2>
+<h3 id="open-message">Open Message</h3>
+<h4 id="message-format">Message Format</h4>
+<p>format (<a href="https://datatracker.ietf.org/doc/html/rfc5440#section-6.2">RFC5440 6.2</a>)</p>
+<pre tabindex="0"><code>&lt;Open Message&gt;::= &lt;Common Header&gt;
+                  &lt;OPEN&gt;
+</code></pre><p>Message Type: 0x01</p>
+<h3 id="keepalive-message">Keepalive Message</h3>
+<h4 id="message-format-1">Message Format</h4>
+<p>format (<a href="https://datatracker.ietf.org/doc/html/rfc5440#section-6.3">RFC5440 6.3</a>)</p>
+<pre tabindex="0"><code>&lt;Keepalive Message&gt;::= &lt;Common Header&gt;
+</code></pre><p>Message Type: 0x02</p>
+<h3 id="error-pcerr-message">Error (PCErr) Message</h3>
+<h4 id="message-format-2">Message Format</h4>
+<p>format (<a href="https://datatracker.ietf.org/doc/html/rfc5440#section-6.3">RFC5440 6.3</a>)</p>
+<pre tabindex="0"><code>&lt;PCErr Message&gt; ::= &lt;Common Header&gt;
+                  ( &lt;error-obj-list&gt; [&lt;Open&gt;] ) | &lt;error&gt;
+                  [&lt;error-list&gt;]
+
+&lt;error-obj-list&gt;::=&lt;PCEP-ERROR&gt;[&lt;error-obj-list&gt;]
+
+&lt;error&gt;::=[&lt;request-id-list&gt; | &lt;stateful-request-id-list&gt;]
+           &lt;error-obj-list&gt;
+
+&lt;request-id-list&gt;::=&lt;RP&gt;[&lt;request-id-list&gt;]
+
+&lt;stateful-request-id-list&gt;::=&lt;SRP&gt;[&lt;stateful-request-id-list&gt;]
+
+&lt;error-list&gt;::=&lt;error&gt;[&lt;error-list&gt;]
+</code></pre><p>Message Type: 0x06</p>
+<h3 id="close-message">Close Message</h3>
+<h4 id="message-format-3">Message Format</h4>
+<p>format (<a href="https://datatracker.ietf.org/doc/html/rfc5440#section-6.8">RFC5440 6.8</a>)</p>
+<pre tabindex="0"><code>&lt;Close Message&gt;::= &lt;Common Header&gt;
+                   &lt;CLOSE&gt;
+</code></pre><p>Message Type: 0x07</p>
+<h3 id="pcrpt-message">PCRpt Message</h3>
+<h4 id="message-format-4">Message Format</h4>
+<p>format (<a href="https://datatracker.ietf.org/doc/html/rfc8231#section-6.1">RFC8231 6.1</a>)</p>
+<pre tabindex="0"><code>The format of the PCRpt message is as follows:
+
+   &lt;PCRpt Message&gt; ::= &lt;Common Header&gt;
+                       &lt;state-report-list&gt;
+Where:
+
+   &lt;state-report-list&gt; ::= &lt;state-report&gt;[&lt;state-report-list&gt;]
+
+   &lt;state-report&gt; ::= [&lt;SRP&gt;]
+                      &lt;LSP&gt;
+                      &lt;path&gt;
+Where:
+   &lt;path&gt;::= &lt;intended-path&gt;
+             [&lt;actual-attribute-list&gt;&lt;actual-path&gt;]
+             &lt;intended-attribute-list&gt;
+
+   &lt;actual-attribute-list&gt;::=[&lt;BANDWIDTH&gt;]
+                             [&lt;metric-list&gt;]
+
+Where:
+   &lt;intended-path&gt; is represented by the ERO object defined in
+   Section 7.9 of [RFC5440].
+
+   &lt;actual-attribute-list&gt; consists of the actual computed and
+   signaled values of the &lt;BANDWIDTH&gt; and &lt;metric-lists&gt; objects
+   defined in [RFC5440].
+
+   &lt;actual-path&gt; is represented by the RRO object defined in
+   Section 7.10 of [RFC5440].
+
+  &lt;intended-attribute-list&gt; is the attribute-list defined in
+  Section 6.5 of [RFC5440] and extended by PCEP extensions.
+</code></pre><p>Message Type: 0x0a</p>
+<h3 id="pcupdate-message">PCUpdate Message</h3>
+<h4 id="message-format-5">Message Format</h4>
+<p>format (<a href="https://datatracker.ietf.org/doc/html/rfc8231#section-6.2">RFC8231 6.2</a>)</p>
+<pre tabindex="0"><code>The format of a PCUpd message is as follows:
+
+   &lt;PCUpd Message&gt; ::= &lt;Common Header&gt;
+                       &lt;update-request-list&gt;
+Where:
+
+   &lt;update-request-list&gt; ::= &lt;update-request&gt;[&lt;update-request-list&gt;]
+
+   &lt;update-request&gt; ::= &lt;SRP&gt;
+                        &lt;LSP&gt;
+                        &lt;path&gt;
+Where:
+   &lt;path&gt;::= &lt;intended-path&gt;&lt;intended-attribute-list&gt;
+
+Where:
+   &lt;intended-path&gt; is represented by the ERO object defined in
+   Section 7.9 of [RFC5440].
+
+   &lt;intended-attribute-list&gt; is the attribute-list defined in
+   [RFC5440] and extended by PCEP extensions.
+</code></pre><p>Message Type: 0x0a</p>
+<h2 id="common-object-header">Common Object Header</h2>
+<h3 id="header-format-1">Header Format</h3>
+<p>Format (<a href="https://datatracker.ietf.org/doc/html/rfc5440#section-6.1">RFC5440 Figure 8: PCEP Common Object Header</a>)</p>
+<pre tabindex="0"><code> 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| Object-Class  |   OT  |Res|P|I|   Object Length (bytes)       |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                                                               |
+//                        (Object body)                        //
+|                                                               |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</code></pre><p>Type</p>
+<div class="highlight"><pre tabindex="0" style="background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-go" data-lang="go"><span style="display:flex;"><span><span style="color:#000;font-weight:bold">type</span> CommonObjectHeader <span style="color:#000;font-weight:bold">struct</span> { <span style="color:#998;font-style:italic">// RFC5440 7.2
+</span></span></span><span style="display:flex;"><span><span style="color:#998;font-style:italic"></span>	ObjectClass  <span style="color:#458;font-weight:bold">uint8</span>
+</span></span><span style="display:flex;"><span>	ObjectType   <span style="color:#458;font-weight:bold">uint8</span>
+</span></span><span style="display:flex;"><span>	ResFlags     <span style="color:#458;font-weight:bold">uint8</span> <span style="color:#998;font-style:italic">// MUST be set to zero
+</span></span></span><span style="display:flex;"><span><span style="color:#998;font-style:italic"></span>	PFlag        <span style="color:#458;font-weight:bold">bool</span>  <span style="color:#998;font-style:italic">// 0: optional, 1: MUST
+</span></span></span><span style="display:flex;"><span><span style="color:#998;font-style:italic"></span>	IFlag        <span style="color:#458;font-weight:bold">bool</span>  <span style="color:#998;font-style:italic">// 0: processed, 1: ignored
+</span></span></span><span style="display:flex;"><span><span style="color:#998;font-style:italic"></span>	ObjectLength <span style="color:#458;font-weight:bold">uint16</span>
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><h3 id="fields-1">Fields</h3>
+<p>Object-Class:  identifies the PCEP object class.</p>
+<pre tabindex="0"><code>const ( // PCEP Object-Class (1 byte)
+	OC_RESERVED       uint8 = 0x00 // RFC5440
+	OC_OPEN           uint8 = 0x01 // RFC5440
+	OC_RP             uint8 = 0x02 // RFC5440
+	OC_NO_PATH        uint8 = 0x03 // RFC5440
+	OC_END_POINTS     uint8 = 0x04 // RFC5440
+	OC_BANDWIDTH      uint8 = 0x05 // RFC5440
+	OC_METRIC         uint8 = 0x06 // RFC5440
+	OC_ERO            uint8 = 0x07 // RFC5440
+	OC_RRO            uint8 = 0x08 // RFC5440
+	OC_LSPA           uint8 = 0x09 // RFC5440
+	OC_IRO            uint8 = 0x0a // RFC5440
+	OC_SVRC           uint8 = 0x0b // RFC5440
+	OC_NOTIFICATION   uint8 = 0x0c // RFC5440
+	OC_PCEP_ERROR     uint8 = 0x0d // RFC5440
+	OC_LOAD_BALANCING uint8 = 0x0e // RFC5440
+	OC_CLOSE          uint8 = 0x0f // RFC5440
+	OC_PATH_KEY       uint8 = 0x10 // RFC5520
+	OC_XRO            uint8 = 0x11 // RFC5521
+	// 0x12 is Unassigned
+	OC_MONITORING uint8 = 0x13 // RFC5886
+	OC_PCC_REQ_ID uint8 = 0x14 // RFC5886
+	OC_OF         uint8 = 0x15 // RFC5541
+	OC_CLASSTYPE  uint8 = 0x16 // RFC5455
+	// 0x17 is Unassigned
+	OC_GLOBAL_CONSTRAINTS  uint8 = 0x18 // RFC5557
+	OC_PCE_ID              uint8 = 0x19 // RFC5886
+	OC_PROC_TIME           uint8 = 0x1a // RFC5886
+	OC_OVERLOAD            uint8 = 0x1b // RFC5886
+	OC_UNREACH_DESTINATION uint8 = 0x1c // RFC8306
+	OC_SERO                uint8 = 0x1d // RFC8306
+	OC_SRRO                uint8 = 0x1e // RFC8306
+	OC_BNC                 uint8 = 0x1f // RFC8306
+	OC_LSP                 uint8 = 0x20 // RFC8231
+	OC_SRP                 uint8 = 0x21 // RFC8231
+	OC_VENDOR_INFORMATION  uint8 = 0x22 // RFC7470
+	OC_BU                  uint8 = 0x23 // RFC8233
+	OC_INTER_LAYER         uint8 = 0x24 // RFC8282
+	OC_SWITCH_LAYER        uint8 = 0x25 // RFC8282
+	OC_REQ_ADAP_CAP        uint8 = 0x26 // RFC8282
+	OC_SERVER_INDICATION   uint8 = 0x27 // RFC8282
+	OC_ASSOCIATION         uint8 = 0x28 // RFC8697
+	OC_S2LS                uint8 = 0x29 // RFC8623
+	OC_WA                  uint8 = 0x2a // RFC8780
+	OC_FLOWSPEC            uint8 = 0x2b // draft-ietf-pce-pcep-flowspec-12
+	OC_CCI_OBJECT_TYPE     uint8 = 0x2c // RFC9050
+)
+</code></pre><p>OT:  identifies the PCEP object type.</p>
+<p>Res flags: Reserved field.  This field MUST be set to zero.</p>
+<p>P flag (Processing-Rule)</p>
+<p>I flag (Ignore)</p>
+<p>Object Length: Specifies the total object length including the header, in bytes. The Object Length field MUST always be a multiple of 4, and at least 4. The maximum object content length is 65528 bytes.</p>
+<h2 id="objects">Objects</h2>
+<h3 id="open-object">OPEN Object</h3>
+<h4 id="common-object-header-1">Common Object Header</h4>
+<ul>
+<li>OPEN Object-Class: 0x01</li>
+<li>OPEN Object-Type: 0x01</li>
+</ul>
+<h4 id="object-body-format">Object Body Format</h4>
+<p>Format (<a href="https://datatracker.ietf.org/doc/html/rfc5440#section-7.3">RFC5440 Figure 9: OPEN Object Format</a>)</p>
+<pre tabindex="0"><code> 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| Ver |   Flags |   Keepalive   |  DeadTimer    |      SID      |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                                                               |
+//                       Optional TLVs                         //
+|                                                               |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</code></pre><p>Type</p>
+<div class="highlight"><pre tabindex="0" style="background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-go" data-lang="go"><span style="display:flex;"><span><span style="color:#000;font-weight:bold">type</span> OpenObject <span style="color:#000;font-weight:bold">struct</span> {
+</span></span><span style="display:flex;"><span>	Version   <span style="color:#458;font-weight:bold">uint8</span>
+</span></span><span style="display:flex;"><span>	Flag      <span style="color:#458;font-weight:bold">uint8</span>
+</span></span><span style="display:flex;"><span>	Keepalive <span style="color:#458;font-weight:bold">uint8</span>
+</span></span><span style="display:flex;"><span>	Deadtime  <span style="color:#458;font-weight:bold">uint8</span>
+</span></span><span style="display:flex;"><span>	Sid       <span style="color:#458;font-weight:bold">uint8</span>
+</span></span><span style="display:flex;"><span>	Tlvs      []Tlv
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>Ver: 1</p>
+<p>Flags: No flags are currently defined. (RFC5440)</p>
+<p>Keepalive: Argument of NewOpenObject(sessionID uint8, keepalive uint8)</p>
+<p>DeadTimer: keepalive * 4</p>
+<p>SID (PCEP Session ID): Argument of NewOpenObject(sessionID uint8, keepalive uint8)</p>
+<h3 id="endpoint-object">ENDPOINT Object</h3>
+<h4 id="common-object-header-2">Common Object Header</h4>
+<ul>
+<li>ENDPOINT Object-Class: 0x04</li>
+<li>ENDPOINT Object-Type:
+<ul>
+<li>0x01: IPv4</li>
+<li>0x02: IPv6</li>
+</ul>
+</li>
+</ul>
+<h4 id="object-body-format-1">Object Body Format</h4>
+<p>Format IPv4 Endpoint (<a href="https://datatracker.ietf.org/doc/html/rfc5440#section-7.6">RFC5440 Figure 12: END-POINTS Object Body Format for IPv4</a>)</p>
+<pre tabindex="0"><code> 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                     Source IPv4 address                       |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                  Destination IPv4 address                     |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</code></pre><p>Type</p>
+<div class="highlight"><pre tabindex="0" style="background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-go" data-lang="go"><span style="display:flex;"><span><span style="color:#000;font-weight:bold">type</span> EndpointsObject <span style="color:#000;font-weight:bold">struct</span> {
+</span></span><span style="display:flex;"><span>	ObjectType <span style="color:#458;font-weight:bold">uint8</span> <span style="color:#998;font-style:italic">// IPv4: 1, IPv6: 2
+</span></span></span><span style="display:flex;"><span><span style="color:#998;font-style:italic"></span>	srcIPv4    []<span style="color:#458;font-weight:bold">uint8</span>
+</span></span><span style="display:flex;"><span>	dstIPv4    []<span style="color:#458;font-weight:bold">uint8</span>
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>Source IPv4 address</p>
+<p>Destination IPv4 address</p>
+
+
+<div class="alert alert-info" role="alert">
+<h4 class="alert-heading">Note</h4>
+
+    <p>IPv6 is not implimented</p>
+<p>Format IPv6 Endpoint (<a href="https://datatracker.ietf.org/doc/html/rfc5440#section-7.6">RFC5440 Figure 13: END-POINTS Object Body Format for IPv6</a>)</p>
+<pre tabindex="0"><code> 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                                                               |
+|                Source IPv6 address (16 bytes)                 |
+|                                                               |
+|                                                               |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                                                               |
+|              Destination IPv6 address (16 bytes)              |
+|                                                               |
+|                                                               |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</code></pre><p>Source IPv6 address</p>
+<p>Destination IPv6 address</p>
+
+
+</div>
+
+<h3 id="bandwidth-object">BANDWIDTH Object</h3>
+<h4 id="common-object-header-3">Common Object Header</h4>
+<ul>
+<li>BANDWIDTH Object-Class: 0x05</li>
+<li>BANDWIDTH Object-Type:
+<ul>
+<li>0x01: Requested bandwidth</li>
+<li>0x02: Bandwidth of an existing TE LSP for which a reoptimization is requested.</li>
+</ul>
+</li>
+</ul>
+<h4 id="object-body-format-2">Object Body Format</h4>
+<p>Format (<a href="https://datatracker.ietf.org/doc/html/rfc5440#section-7.7">RFC5440 Figure 14: BANDWIDTH Object Body Format</a>)</p>
+<pre tabindex="0"><code> 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                        Bandwidth                              |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</code></pre><p>Type</p>
+<div class="highlight"><pre tabindex="0" style="background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-go" data-lang="go"><span style="display:flex;"><span><span style="color:#000;font-weight:bold">type</span> BandwidthObject <span style="color:#000;font-weight:bold">struct</span> {
+</span></span><span style="display:flex;"><span>	Bandwidth <span style="color:#458;font-weight:bold">uint32</span>
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>Bandwidth:  The requested bandwidth is encoded in 32 bits in IEEE floating point format (see <a href="https://ieeexplore.ieee.org/document/30711">IEEE.754.1985</a>),</p>
+<h3 id="metric-object">METRIC Object</h3>
+<h4 id="common-object-header-4">Common Object Header</h4>
+<ul>
+<li>METRIC Object-Class: 0x06</li>
+<li>METRIC Object-Type: 0x01</li>
+</ul>
+<h4 id="object-body-format-3">Object Body Format</h4>
+<p>Format (<a href="https://datatracker.ietf.org/doc/html/rfc5440#section-7.8">RFC5440 Figure 15: METRIC Object Body Format</a>)</p>
+<pre tabindex="0"><code> 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|          Reserved             |    Flags  |C|B|       T       |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                          metric-value                         |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</code></pre><p>Type</p>
+<div class="highlight"><pre tabindex="0" style="background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-go" data-lang="go"><span style="display:flex;"><span><span style="color:#000;font-weight:bold">type</span> MetricObject <span style="color:#000;font-weight:bold">struct</span> {
+</span></span><span style="display:flex;"><span>	CFlag       <span style="color:#458;font-weight:bold">bool</span>
+</span></span><span style="display:flex;"><span>	BFlag       <span style="color:#458;font-weight:bold">bool</span>
+</span></span><span style="display:flex;"><span>	MetricType  <span style="color:#458;font-weight:bold">uint8</span>
+</span></span><span style="display:flex;"><span>	MetricValue <span style="color:#458;font-weight:bold">uint32</span>
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>Reserved: This field MUST be set to zero on transmission and MUST be ignored on receipt.</p>
+<p>Flags: Two flags are currently defined:</p>
+<ul>
+<li>C (Computed Metric): Unimplimented</li>
+<li>B (Bound): Unimplimented</li>
+</ul>
+<h3 id="ero-explicit-route-object">ERO (Explicit Route) Object</h3>
+<h4 id="common-object-header-5">Common Object Header</h4>
+<ul>
+<li>ERO Object-Class: 0x07</li>
+<li>ERO Object-Type: 0x01</li>
+</ul>
+<p>This object is constructed from a series of sub-objects.</p>
+<h3 id="sr-ero-subobject">SR-ERO Subobject</h3>
+<h4 id="object-body-format-4">Object Body Format</h4>
+<p>Format (<a href="https://datatracker.ietf.org/doc/html/rfc8664#section-4.3.1">RFC8664 Figure 2: SR-ERO Subobject Format</a>)</p>
+<pre tabindex="0"><code> 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|L|   Type=36   |     Length    |  NT   |     Flags     |F|S|C|M|
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                         SID (optional)                        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//                   NAI (variable, optional)                  //
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</code></pre><p>Type</p>
+<div class="highlight"><pre tabindex="0" style="background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-go" data-lang="go"><span style="display:flex;"><span><span style="color:#000;font-weight:bold">type</span> SrEroSubobject <span style="color:#000;font-weight:bold">struct</span> {
+</span></span><span style="display:flex;"><span>	LFlag         <span style="color:#458;font-weight:bold">bool</span>
+</span></span><span style="display:flex;"><span>	SubobjectType <span style="color:#458;font-weight:bold">uint8</span>
+</span></span><span style="display:flex;"><span>	Length        <span style="color:#458;font-weight:bold">uint8</span>
+</span></span><span style="display:flex;"><span>	NaiType       <span style="color:#458;font-weight:bold">uint8</span>
+</span></span><span style="display:flex;"><span>	FFlag         <span style="color:#458;font-weight:bold">bool</span>
+</span></span><span style="display:flex;"><span>	SFlag         <span style="color:#458;font-weight:bold">bool</span>
+</span></span><span style="display:flex;"><span>	CFlag         <span style="color:#458;font-weight:bold">bool</span>
+</span></span><span style="display:flex;"><span>	MFlag         <span style="color:#458;font-weight:bold">bool</span>
+</span></span><span style="display:flex;"><span>	Sid           <span style="color:#458;font-weight:bold">uint32</span>
+</span></span><span style="display:flex;"><span>	Nai           []<span style="color:#458;font-weight:bold">uint8</span>
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>The L-Flag: Indicates whether the subobject represents a loose hop in the LSP.</p>
+<p>Type: Set to 36</p>
+<p>NAI Type (NT):  Indicates the type and format of the NAI contained in the object body, if any is present.</p>
+<ul>
+<li>NT=0: The NAI is absent.</li>
+<li>NT=1: The NAI is an IPv4 node ID.</li>
+<li>NT=2: The NAI is an IPv6 node ID.</li>
+<li>NT=3: The NAI is an IPv4 adjacency.</li>
+<li>NT=4: The NAI is an IPv6 adjacency with global IPv6 addresses.</li>
+<li>NT=5: The NAI is an unnumbered adjacency with IPv4 node IDs.</li>
+<li>NT=6: The NAI is an IPv6 adjacency with link-local IPv6 addresses.</li>
+</ul>
+<p>Flags:</p>
+<ul>
+<li>F: false</li>
+<li>S: false</li>
+<li>C: false</li>
+<li>M: true (MPLS)</li>
+</ul>
+<p>SID: The Segment Identifier, A 4-octet index defining the offset into an MPLS label spaceper [RFC8402]</p>
+<p>NAI: The NAI associated with the SID.</p>
+<h3 id="lspa-object">LSPA Object</h3>
+<h4 id="common-object-header-6">Common Object Header</h4>
+<ul>
+<li>LSPA Object-Class: 0x09</li>
+<li>LSPA Object-Type: 0x01</li>
+</ul>
+<h4 id="object-body-format-5">Object Body Format</h4>
+<p>Format (<a href="https://datatracker.ietf.org/doc/html/rfc5440#section-7.11">RFC5440 Figure 16: LSPA Object Body Format</a>)</p>
+<pre tabindex="0"><code> 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                       Exclude-any                             |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                       Include-any                             |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                       Include-all                             |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|  Setup Prio   |  Holding Prio |     Flags   |L|   Reserved    |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                                                               |
+//                     Optional TLVs                           //
+|                                                               |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</code></pre><p>Type</p>
+<div class="highlight"><pre tabindex="0" style="background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-go" data-lang="go"><span style="display:flex;"><span><span style="color:#000;font-weight:bold">type</span> LspaObject <span style="color:#000;font-weight:bold">struct</span> {
+</span></span><span style="display:flex;"><span>	ExcludeAny      <span style="color:#458;font-weight:bold">uint32</span>
+</span></span><span style="display:flex;"><span>	IncludeAny      <span style="color:#458;font-weight:bold">uint32</span>
+</span></span><span style="display:flex;"><span>	IncludeAll      <span style="color:#458;font-weight:bold">uint32</span>
+</span></span><span style="display:flex;"><span>	SetupPriority   <span style="color:#458;font-weight:bold">uint8</span>
+</span></span><span style="display:flex;"><span>	HoldingPriority <span style="color:#458;font-weight:bold">uint8</span>
+</span></span><span style="display:flex;"><span>	LFlag           <span style="color:#458;font-weight:bold">bool</span>
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><h3 id="pcep-error-object">PCEP-ERROR Object</h3>
+<h4 id="common-object-header-7">Common Object Header</h4>
+<ul>
+<li>PCEP-ERROR Object-Class: 0x0d</li>
+<li>PCEP-ERROR Object-Type: 0x01</li>
+</ul>
+<h4 id="object-body-format-6">Object Body Format</h4>
+<p>Format (<a href="https://datatracker.ietf.org/doc/html/rfc5440#section-7.15">RFC5440 Figure 20: PCEP-ERROR Object Body Format</a>)</p>
+<pre tabindex="0"><code> 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|   Reserved    |      Flags    |   Error-Type  |  Error-value  |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                                                               |
+//                     Optional TLVs                           //
+|                                                               |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</code></pre>
+
+<div class="alert alert-info" role="alert">
+<h4 class="alert-heading">Note</h4>
+
+    PCEP-ERROR object body is not implimented
+
+</div>
+
+<h3 id="close-objcet">CLOSE Objcet</h3>
+<h4 id="common-object-header-8">Common Object Header</h4>
+<ul>
+<li>CLOSE Object-Class: 0x0f</li>
+<li>CLOSE Object-Type: 0x01</li>
+</ul>
+<h4 id="object-body-format-7">Object Body Format</h4>
+<p>Format (<a href="https://datatracker.ietf.org/doc/html/rfc5440#section-7.17">RFC5440 Figure 22: CLOSE Object Format</a>)</p>
+<pre tabindex="0"><code> 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|          Reserved             |      Flags    |    Reason     |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                                                               |
+//                         Optional TLVs                       //
+|                                                               |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</code></pre>
+
+<div class="alert alert-info" role="alert">
+<h4 class="alert-heading">Note</h4>
+
+    CLOSE object body is not implimented
+
+</div>
+
+<h3 id="lsp-object">LSP Object</h3>
+<h4 id="common-object-header-9">Common Object Header</h4>
+<ul>
+<li>LSP Object-Class: 0x20</li>
+<li>LSP Object-Type: 0x01</li>
+</ul>
+<h4 id="object-body-format-8">Object Body Format</h4>
+<p>Format (<a href="https://datatracker.ietf.org/doc/html/rfc5440#section-7.3">RFC8664 Figure 11: The LSP Object Format</a>)</p>
+<pre tabindex="0"><code> 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                PLSP-ID                |    Flag |  O  |A|R|S|D|
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//                        TLVs                                 //
+|                                                               |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</code></pre><p>Type</p>
+<div class="highlight"><pre tabindex="0" style="background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-go" data-lang="go"><span style="display:flex;"><span><span style="color:#000;font-weight:bold">type</span> LspObject <span style="color:#000;font-weight:bold">struct</span> {
+</span></span><span style="display:flex;"><span>	Name    <span style="color:#458;font-weight:bold">string</span>
+</span></span><span style="display:flex;"><span>	SrcAddr net.IP
+</span></span><span style="display:flex;"><span>	DstAddr net.IP
+</span></span><span style="display:flex;"><span>	PlspId  <span style="color:#458;font-weight:bold">uint32</span>
+</span></span><span style="display:flex;"><span>	OFlag   <span style="color:#458;font-weight:bold">uint8</span>
+</span></span><span style="display:flex;"><span>	AFlag   <span style="color:#458;font-weight:bold">bool</span>
+</span></span><span style="display:flex;"><span>	RFlag   <span style="color:#458;font-weight:bold">bool</span>
+</span></span><span style="display:flex;"><span>	SFlag   <span style="color:#458;font-weight:bold">bool</span>
+</span></span><span style="display:flex;"><span>	DFlag   <span style="color:#458;font-weight:bold">bool</span>
+</span></span><span style="display:flex;"><span>	Tlvs    []Tlv
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>PLSP-ID:</p>
+<p>Flags:</p>
+<ul>
+<li>O (Operational)
+<ul>
+<li>0   - DOWN:       not active.</li>
+<li>1   - UP:         signaled.</li>
+<li>2   - ACTIVE:     up and carrying traffic.</li>
+<li>3   - GOING-DOWN: LSP is being torn down, and resources are being</li>
+<li>4   - GOING-UP:   LSP is being signaled.</li>
+<li>5-7 - Reserved:   these values are reserved for future use.</li>
+</ul>
+</li>
+<li>A (Administrative)</li>
+<li>R (Remove)</li>
+<li>S (SYNC)</li>
+<li>D (Deligate)</li>
+</ul>
+<h3 id="srp-object">SRP Object</h3>
+<h4 id="common-object-header-10">Common Object Header</h4>
+<ul>
+<li>SRP Object-Class: 0x21</li>
+<li>SRP Object-Type: 0x01</li>
+</ul>
+<h4 id="object-body-format-9">Object Body Format</h4>
+<p>Format (<a href="https://datatracker.ietf.org/doc/html/rfc8231#section-7.2">RFC8231 Figure 10: The SRP Object Format </a>)</p>
+<pre tabindex="0"><code> 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                          Flags                                |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                        SRP-ID-number                          |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                                                               |
+//                      Optional TLVs                          //
+|                                                               |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</code></pre><p>Type</p>
+<div class="highlight"><pre tabindex="0" style="background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-go" data-lang="go"><span style="display:flex;"><span><span style="color:#000;font-weight:bold">type</span> SrpObject <span style="color:#000;font-weight:bold">struct</span> {
+</span></span><span style="display:flex;"><span>	RFlag <span style="color:#458;font-weight:bold">bool</span>
+</span></span><span style="display:flex;"><span>	SrpId <span style="color:#458;font-weight:bold">uint32</span> <span style="color:#998;font-style:italic">// 0x00000000 and 0xFFFFFFFF are reserved.
+</span></span></span><span style="display:flex;"><span><span style="color:#998;font-style:italic"></span>	Tlvs  []Tlv
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>Flags: None defined yet.</p>
+<p>SRP-ID-number: The values 0x00000000 and 0xFFFFFFFF are reserved.</p>
+<h3 id="vendor-information-object">VENDOR-INFORMATION Object</h3>
+<h4 id="common-object-header-11">Common Object Header</h4>
+<ul>
+<li>VENDOR_INFORMATION Object-Class: 0x22</li>
+<li>VENDOR_INFORMATION Object-Type: 0x01</li>
+<li>VENDOR-INFORMATION-TLV Type 7</li>
+</ul>
+<h4 id="object-body-format-10">Object Body Format</h4>
+<p>Format (<a href="https://datatracker.ietf.org/doc/html/rfc7470#section-4">RFC7470 Figure 1: Format of the Vendor Information Object and TLV</a>)</p>
+<pre tabindex="0"><code> 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                       Enterprise Number                       |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+~                 Enterprise-Specific Information               ~
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</code></pre><p>Type</p>
+<div class="highlight"><pre tabindex="0" style="background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-go" data-lang="go"><span style="display:flex;"><span><span style="color:#000;font-weight:bold">type</span> VendorInformationObject <span style="color:#000;font-weight:bold">struct</span> {
+</span></span><span style="display:flex;"><span>	ObjectType       <span style="color:#458;font-weight:bold">uint8</span> <span style="color:#998;font-style:italic">// vendor specific constraints: 1
+</span></span></span><span style="display:flex;"><span><span style="color:#998;font-style:italic"></span>	EnterpriseNumber <span style="color:#458;font-weight:bold">uint32</span>
+</span></span><span style="display:flex;"><span>	Color            <span style="color:#458;font-weight:bold">uint32</span>
+</span></span><span style="display:flex;"><span>	Preference       <span style="color:#458;font-weight:bold">uint32</span>
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>To specify Color for IOS XR and FRRouting, the Pola PCE uses Cisco VENDOR-INFORMATION Object (Enterprise Number: 9).</p>
+<div class="highlight"><pre tabindex="0" style="background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-go" data-lang="go"><span style="display:flex;"><span><span style="color:#000;font-weight:bold">func</span> <span style="color:#900;font-weight:bold">NewVendorInformationObject</span>(vendor <span style="color:#458;font-weight:bold">string</span>, color <span style="color:#458;font-weight:bold">uint32</span>, preference <span style="color:#458;font-weight:bold">uint32</span>) VendorInformationObject {
+</span></span><span style="display:flex;"><span>	vendorInformationObject <span style="color:#000;font-weight:bold">:=</span> VendorInformationObject{ <span style="color:#998;font-style:italic">// for Cisco PCC
+</span></span></span><span style="display:flex;"><span><span style="color:#998;font-style:italic"></span>		ObjectType:       <span style="color:#0086b3">uint8</span>(<span style="color:#099">1</span>),
+</span></span><span style="display:flex;"><span>		EnterpriseNumber: <span style="color:#0086b3">uint32</span>(<span style="color:#099">9</span>),
+</span></span><span style="display:flex;"><span>		Color:            color,
+</span></span><span style="display:flex;"><span>		Preference:       preference,
+</span></span><span style="display:flex;"><span>	}
+</span></span><span style="display:flex;"><span>	<span style="color:#000;font-weight:bold">return</span> vendorInformationObject
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div>
+</div>
+
+
+
+    
+      
+  
+  
+  
+  
+
+  
+  
+
+  
+
+    
+	
+  
+
+
+
+          </main>
+        </div>
+      </div>
+      
+<footer class="bg-dark py-5 row d-print-none">
+  <div class="container-fluid mx-sm-5">
+    <div class="row">
+      <div class="col-6 col-sm-4 text-xs-center order-sm-2">
+        
+        
+        
+      </div>
+      <div class="col-6 col-sm-4 text-right text-xs-center order-sm-3">
+        
+        
+        
+<ul class="list-inline mb-0">
+  
+  <li class="list-inline-item mx-2 h3" data-toggle="tooltip" data-placement="top" title="GitHub" aria-label="GitHub">
+    <a class="text-white" target="_blank" rel="noopener" href="https://github.com/nttcom/pola" aria-label="GitHub">
+      <i class="fab fa-github"></i>
+    </a>
+  </li>
+  
+</ul>
+
+        
+        
+      </div>
+      <div class="col-12 col-sm-4 text-center py-2 order-sm-2">
+        <small class="text-white">&copy; 2022 NTT Communications Corporation All Rights Reserved</small>
+        
+	
+      </div>
+    </div>
+  </div>
+</footer>
+
+
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"
+    integrity="sha384-9/reFTGAW83EW2RDu2S0VKaIzap3H66lZH81PoYlFhbGU+6BZp6G7niu735Sk7lN"
+    crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.1/dist/js/bootstrap.min.js"
+    integrity="sha512-UR25UO94eTnCVwjbXozyeVd6ZqpaAE9naiEUBK/A+QDbfSTQFhPGj5lOR6d8tsgbBk84Ggb5A3EkjsOgPRPcKA=="
+    crossorigin="anonymous"></script>
+
+
+
+
+
+<script src='/pola/js/tabpane-persist.js'></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<script src="/pola/js/main.min.63f7ccf0f6f052be82a52cc628622eadcdaa7d38aa242c60a3cad13badb12dd9.js" integrity="sha256-Y/fM8PbwUr6CpSzGKGIurc2qfTiqJCxgo8rRO62xLdk=" crossorigin="anonymous"></script>
+
+
+
+<script src='/pola/js/prism.js'></script>
+
+
+
+  </body>
+</html>

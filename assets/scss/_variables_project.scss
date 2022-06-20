@@ -1,0 +1,43 @@
+$pola-indigo: #03498D;
+$pola-indigo-light: lighten(#03498D, 5%);
+$pola-sky: #81C0FC;
+$background: #f9f9f9;
+$primary: $background;
+$secondary: $pola-indigo-light;
+$oc-gray-6: #868e96;
+$oc-gray-7: #495057;
+$dark: $oc-gray-7;
+
+$google_font_name: "Roboto Slab";
+
+.section-title {
+  color: $oc-gray-7;
+  font-size: 72px;
+  font-weight: bold;
+  margin-top: -12px;
+}
+.section-text {
+  color: $oc-gray-6;
+  margin-top: 8px;
+  margin-bottom: 32px;
+}
+.col {
+  color: $oc-gray-7
+}
+.td-search-input {
+  border: none !important;
+  background-color: #eeeeee !important
+}
+
+.form-control::placeholder { 
+  color: $oc-gray-6 !important;
+}
+
+
+.nav-link.active {
+  color: $oc-gray-7 !important;
+}
+
+.nav-link {
+  color: $oc-gray-6 !important;
+}

@@ -1,0 +1,44 @@
+{{ $cover := and (.HasShortcode "blocks/cover") (not .Site.Params.ui.navbar_translucent_over_cover_disable) }}
+<nav class="js-navbar-scroll navbar navbar-expand navbar-light {{ if $cover}} td-navbar-cover {{ end }}flex-column flex-md-row td-navbar">
+  <a class="navbar-brand" href="{{ .Site.Home.RelPermalink }}">
+    <span>
+      <img src="https://raw.githubusercontent.com/nttcom/pola/main/docs/figures/pola.png" alt="Pola PCE logo" width="32px">
+    </span>
+    <span class="font-weight-bold" style="color: #4a5568">
+      {{ .Site.Title }}
+    </span>
+	</a>
+  <div class="td-navbar-nav-scroll ml-md-auto" id="main_navbar">
+    <ul class="navbar-nav mt-2 mt-lg-0">
+      {{ $p := . }}
+      {{ range .Site.Menus.main }}
+      <li class="nav-item mr-4 mb-2 mb-lg-0">
+        {{ $active := or ($p.IsMenuCurrent "main" .) ($p.HasMenuCurrent "main" .) }}
+        {{ with .Page }}
+        {{ $active = or $active ( $.IsDescendant .)  }}
+        {{ end }}
+        {{ $pre := .Pre }}
+        {{ $post := .Post }}
+        {{ $url := urls.Parse .URL }}
+        {{ $baseurl := urls.Parse $.Site.Params.Baseurl }}
+        <a class="nav-link{{if $active }} active{{end}}" href="{{ with .Page }}{{ .RelPermalink }}{{ else }}{{ .URL | relLangURL }}{{ end }}"><span{{if $active }} class="active"{{end}}>{{ .Name }}</span></a>
+      </li>
+			<li class="nav-item mr-4 mb-2 mb-lg-0">
+				<a class="nav-link" href="https://github.com/nttcom/pola">GitHub</a>
+			</li>
+
+      {{ end }}
+      {{ if  .Site.Params.versions }}
+      <li class="nav-item dropdown mr-4 d-none d-lg-block">
+        {{ partial "navbar-version-selector.html" . }}
+      </li>
+      {{ end }}
+      {{ if  (gt (len .Site.Home.Translations) 0) }}
+      <li class="nav-item dropdown mr-4 d-none d-lg-block">
+        {{ partial "navbar-lang-selector.html" . }}
+      </li>
+      {{ end }}
+    </ul>
+  </div>
+	<div class="navbar-nav d-none d-lg-block">{{ partial "search-input.html" . }}</div>
+</nav>

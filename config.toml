@@ -1,33 +1,103 @@
 baseURL = "https://nttcom.github.io/pola/"
-languageCode = "en-us"
 title = "Pola PCE"
-theme = "PaperMod"
-publishDir = "docs"
+
+contentDir = "content/en"
+defaultContentLanguage = "en"
+defaultContentLanguageInSubdir = false
+enableMissingTranslationPlaceholders = true
 
 enableRobotsTXT = true
-buildDrafts = false
-buildFuture = false
-buildExpired = false
+enableGitInfo = true
 
-[minify]
-disableXML = true
-minifyOutput = true
+theme = ["docsy.git"]
+themeDir = "themes"
+publishDIr = "docs"
+
+[taxonomies]
+tag = "tags"
+category = "categories"
+
+[params.taxonomy]
+taxonomyCloud = ["tags", "categories"]
+taxonomyCloudTitle = ["Tag Cloud", "Categories"]
+taxonomyPageHeader = ["tags", "categories"]
+
+pygmentsCodeFences = false
+pygmentsUseClasses = false
+pygmentsUseClassic = false
+pygmentsStyle = "github"
+
+[permalinks]
+blog = "/:section/:year/:month/:day/:slug/"
+
+[blackfriday]
+plainIDAnchors = true
+hrefTargetBlank = true
+angledQuotes = false
+latexDashes = true
+
+[imaging]
+resampleFilter = "CatmullRom"
+quality = 75
+anchor = "smart"
+
+[services]
+[services.googleAnalytics]
+id = "UA-00000000-0"
+
+[languages]
+[languages.en]
+title = "Pola PCE"
+description = "PCEP Library and Stateful PCE Implementation with Go "
+languageName ="English"
+weight = 1
+
+[markup]
+[markup.goldmark]
+[markup.goldmark.renderer]
+unsafe = true
+[markup.highlight]
+style = "github"
+
+[outputs]
+section = ["HTML", "print"]
 
 [params]
-[params.profileMode]
-enabled = true
-title = "Pola PCE"
-subtitle = "PCEP Library and Stateful PCE Implementation with Go"
-description = "PCEP Library and Stateful PCE Implementation with Go"
-keywords = ["PCE", "PCEP", "Segment Routing", "SR-MPLS", "SRv6"]
-author = "watal"
-defaultTheme = "auto"
-disableThemeToggle = false
-imageUrl = "https://raw.githubusercontent.com/nttcom/pola/main/docs/figures/pola.png"
-imageTitle = "Pola"
-imageWidth = 200
-imageHeight = 200
+copyright = "NTT Communications Corporation"
+version_menu = "Releases"
+archived_version = false
+version = "v1.0.0"
+url_latest_version = "https://github.com/nttcom/pola/releases/tag/v1.0.0"
+github_repo = "https://github.com/nttcom/pola"
+github_project_repo = "https://github.com/nttcom/pola"
 
-[params.socialIcons.github]
-name = "github"
+algolia_docsearch = false
+offlineSearch = true
+offlineSearchMaxResults = 50
+prism_syntax_highlighting = true
+
+[params.ui]
+breadcrumb_disable = false
+footer_about_disable = true
+navbar_logo = true
+navbar_translucent_over_cover_disable = false
+sidebar_menu_compact = false
+sidebar_search_disable = false
+[params.ui.feedback]
+enable = false
+[params.ui.readingtime]
+enable = false
+[params.links]
+[[params.links.developer]]
+name = "GitHub"
 url = "https://github.com/nttcom/pola"
+icon = "fab fa-github"
+desc = "Pola on Github"
+
+[module]
+[module.hugoVersion]
+extended = true
+min = "0.75.0"
+[[module.imports]]
+path = "docsy.git"
+disable = false
