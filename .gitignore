@@ -12,6 +12,10 @@
 __pycache__/
 *.pyproj
 
+# Hugo
+.hugo_build.lock
+themes/
+
 # Other
 .DS_Store
 *.swp
