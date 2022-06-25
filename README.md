@@ -23,3 +23,7 @@ You can check the preview website by visit [http://localhost:1313/pola/](http://
 
 ## Contributing
 Please fork the repository and create a pull-request. We welcome and appreciate your contribution.
+
+## Licensing
+Pola PCE is under [MIT license](https://en.wikipedia.org/wiki/MIT_License). 
+See [LICENSE](https://github.com/nttcom/pola/blob/gh-pages/LICENSE) for the full license text.
