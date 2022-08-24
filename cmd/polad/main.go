@@ -9,13 +9,19 @@ import (
 	"flag"
 	"log"
 	"os"
+	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/nttcom/pola/internal/config"
+	"github.com/nttcom/pola/internal/pkg/gobgp"
 	"github.com/nttcom/pola/internal/pkg/table"
 	"github.com/nttcom/pola/pkg/logger"
 	"github.com/nttcom/pola/pkg/server"
+)
+
+const (
+	TED_UPDATE_INTERVAL = 10 // (min)
 )
 
 type Flags struct {
@@ -48,6 +54,21 @@ func main() {
 	zap.ReplaceGlobals(logger)
 
 	tedElemsChan := make(chan []table.TedElem)
+
+	// Get BGP-LS NLRI from GoBGP
+	if c.Global.Gobgp.Port != "" {
+		go func() {
+			for {
+				tedElems, err := gobgp.GetBgplsNlris(c.Global.Gobgp.Address, c.Global.Gobgp.Port)
+				if err != nil {
+					logger.Panic("Failed session with GoBGP", zap.Error(err))
+				}
+				tedElemsChan <- tedElems
+				time.Sleep(TED_UPDATE_INTERVAL * time.Minute)
+			}
+
+		}()
+	}
 
 	o := new(server.PceOptions)
 	o.PcepAddr = c.Global.Pcep.Address
