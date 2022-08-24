@@ -10,8 +10,16 @@ type LsTed struct {
 	Nodes map[uint32]map[string]*LsNode // { ASN1: {"NodeID1": node1, "NodeID2": node2}, ASN2: {"NodeID3": node3, "NodeID4": node4}}
 }
 
-func NewLsTed() {
-
+func (ted *LsTed) Update(tedElems []TedElem) {
+	fmt.Printf("%#v\n\n", tedElems)
+	ted = &LsTed{
+		Id:    ted.Id,
+		Nodes: map[uint32]map[string]*LsNode{},
+	}
+	for _, tedElem := range tedElems {
+		tedElem.UpdateTed(ted)
+	}
+	ted.ShowTed()
 }
 
 func (ted LsTed) ShowTed() {

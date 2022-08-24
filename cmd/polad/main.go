@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/nttcom/pola/internal/config"
+	"github.com/nttcom/pola/internal/pkg/table"
 	"github.com/nttcom/pola/pkg/logger"
 	"github.com/nttcom/pola/pkg/server"
 )
@@ -46,12 +47,14 @@ func main() {
 	}()
 	zap.ReplaceGlobals(logger)
 
+	tedElemsChan := make(chan []table.TedElem)
+
 	o := new(server.PceOptions)
 	o.PcepAddr = c.Global.Pcep.Address
 	o.PcepPort = c.Global.Pcep.Port
 	o.GrpcAddr = c.Global.Grpc.Address
 	o.GrpcPort = c.Global.Grpc.Port
-	if err := server.NewPce(o, logger); err != nil {
+	if err := server.NewPce(o, logger, tedElemsChan); err != nil {
 		logger.Panic("Failed to create New Server", zap.Error(err))
 	}
 }

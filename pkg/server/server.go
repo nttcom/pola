@@ -15,6 +15,8 @@ import (
 
 	"github.com/golang/protobuf/ptypes/empty"
 	pb "github.com/nttcom/pola/api/grpc"
+
+	"github.com/nttcom/pola/internal/pkg/table"
 	"github.com/nttcom/pola/pkg/packet/pcep"
 )
 
@@ -30,6 +32,7 @@ type Lsp struct {
 type Server struct {
 	sessionList []*Session
 	lspList     []Lsp
+	ted         *table.LsTed
 	pb.UnimplementedPceServiceServer
 	logger *zap.Logger
 }
@@ -41,8 +44,13 @@ type PceOptions struct {
 	GrpcPort string
 }
 
-func NewPce(o *PceOptions, logger *zap.Logger) error {
-	s := &Server{}
+func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem) error {
+	s := &Server{
+		ted: &table.LsTed{
+			Id:    1,
+			Nodes: map[uint32]map[string]*table.LsNode{},
+		},
+	}
 	s.logger = logger
 	lspChan := make(chan Lsp)
 	// Start PCEP listen
@@ -57,7 +65,21 @@ func NewPce(o *PceOptions, logger *zap.Logger) error {
 			s.logger.Panic("gRPC Listen Error", zap.Error(err), zap.String("server", "grpc"))
 		}
 	}()
-	// Display sessionList
+
+	// Update Ted
+	go func() {
+		for {
+			tedElems := <-tedElemsChan
+			s.ted = &table.LsTed{
+				Id:    s.ted.Id,
+				Nodes: map[uint32]map[string]*table.LsNode{},
+			}
+
+			for _, tedElem := range tedElems {
+				tedElem.UpdateTed(s.ted)
+			}
+		}
+	}()
 	for {
 		lsp := <-lspChan
 		// Overwrite LSP
@@ -171,6 +193,54 @@ func (s *Server) GetLspList(context.Context, *empty.Empty) (*pb.LspList, error) 
 			lspData.Labels = append(lspData.Labels, &label)
 		}
 		ret.Lsps = append(ret.Lsps, lspData)
+	}
+	return &ret, nil
+}
+
+func (s *Server) GetTed(context.Context, *empty.Empty) (*pb.Ted, error) {
+	s.logger.Info("Get request GetTed API", zap.String("server", "grpc"))
+	var ret pb.Ted
+	for _, lsNodes := range s.ted.Nodes {
+		for _, lsNode := range lsNodes {
+			node := &pb.LsNode{
+				Asn:        lsNode.Asn,
+				RouterId:   lsNode.RouterId,
+				IsisAreaId: lsNode.IsisAreaId,
+				Hostname:   lsNode.Hostname,
+				SrgbBegin:  lsNode.SrgbBegin,
+				SrgbEnd:    lsNode.SrgbEnd,
+				LsLinks:    []*pb.LsLink{},
+				LsPrefixes: []*pb.LsPrefix{},
+			}
+			for _, lsLink := range lsNode.Links {
+				link := &pb.LsLink{
+					LocalRouterId:  lsLink.LocalNode.RouterId,
+					LocalAsn:       lsLink.LocalNode.Asn,
+					LocalIp:        lsLink.LocalIP.String(),
+					RemoteRouterId: lsLink.RemoteNode.RouterId,
+					RemoteAsn:      lsLink.RemoteNode.Asn,
+					RemoteIp:       lsLink.RemoteIP.String(),
+					Metrics:        []*pb.Metric{},
+					AdjSid:         lsLink.AdjSid,
+				}
+				for _, metric := range lsLink.Metrics {
+					metric := &pb.Metric{
+						Type:  pb.MetricType(pb.MetricType_value[metric.Type.String()]),
+						Value: metric.Value,
+					}
+					link.Metrics = append(link.Metrics, metric)
+				}
+				node.LsLinks = append(node.LsLinks, link)
+			}
+			for _, lsPrefix := range lsNode.Prefixes {
+				prefix := &pb.LsPrefix{
+					Prefix:   lsPrefix.Prefix.String(),
+					SidIndex: lsPrefix.SidIndex,
+				}
+				node.LsPrefixes = append(node.LsPrefixes, prefix)
+			}
+			ret.LsNodes = append(ret.LsNodes, node)
+		}
 	}
 	return &ret, nil
 }
