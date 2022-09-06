@@ -14,6 +14,7 @@ import (
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "--version" {
 		fmt.Printf("alpha release.\n")
+		return
 	}
 
 	if err := newRootCmd().Execute(); err != nil {

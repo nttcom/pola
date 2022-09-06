@@ -18,7 +18,7 @@ func newRootCmd() *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use: "pola",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			conn, err := grpc.Dial("localhost:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
+			conn, err := grpc.Dial("localhost:50052", grpc.WithTransportCredentials(insecure.NewCredentials()))
 			if err != nil {
 				conn.Close()
 				return err
@@ -31,6 +31,6 @@ func newRootCmd() *cobra.Command {
 			cmd.HelpFunc()(cmd, args)
 		},
 	}
-	rootCmd.AddCommand(newSessionCmd(), newLspCmd())
+	rootCmd.AddCommand(newSessionCmd(), newLspCmd(), newTedCmd())
 	return rootCmd
 }
