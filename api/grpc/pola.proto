@@ -88,5 +88,6 @@ message LsNode {
 
 
 message Ted {
-    repeated  LsNode ls_nodes = 1;
+    bool enable = 1;
+    repeated  LsNode ls_nodes = 2;
 }

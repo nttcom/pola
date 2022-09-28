@@ -11,7 +11,7 @@ type Pcep struct {
 	Port    string `yaml:"port"`
 }
 
-type Grpc struct {
+type GrpcServer struct {
 	Address string `yaml:"address"`
 	Port    string `yaml:"port"`
 }
@@ -21,16 +21,26 @@ type Log struct {
 	Name string `yaml:"name"`
 }
 
-type Gobgp struct {
+type GrpcClient struct {
 	Address string `yaml:"address"`
 	Port    string `yaml:"port"`
 }
 
+type Gobgp struct {
+	GrpcClient GrpcClient `yaml:"grpc-client"`
+}
+
+type Ted struct {
+	Enable bool   `yaml:"enable"`
+	Source string `yaml:"source"`
+}
+
 type Global struct {
-	Pcep  Pcep  `yaml:"pcep"`
-	Grpc  Grpc  `yaml:"grpc"`
-	Log   Log   `yaml:"log"`
-	Gobgp Gobgp `yaml:"gobgp"`
+	Pcep       Pcep       `yaml:"pcep"`
+	GrpcServer GrpcServer `yaml:"grpc-server"`
+	Log        Log        `yaml:"log"`
+	Ted        Ted        `yaml:"ted"`
+	Gobgp      Gobgp      `yaml:"gobgp"`
 }
 
 type Config struct {

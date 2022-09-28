@@ -55,26 +55,33 @@ func main() {
 
 	tedElemsChan := make(chan []table.TedElem)
 
-	// Get BGP-LS NLRI from GoBGP
-	if c.Global.Gobgp.Port != "" {
-		go func() {
-			for {
-				tedElems, err := gobgp.GetBgplsNlris(c.Global.Gobgp.Address, c.Global.Gobgp.Port)
-				if err != nil {
-					logger.Panic("Failed session with GoBGP", zap.Error(err))
-				}
-				tedElemsChan <- tedElems
-				time.Sleep(TED_UPDATE_INTERVAL * time.Minute)
-			}
+	// Prepare ted update tools
+	if c.Global.Ted.Enable {
+		if c.Global.Ted.Source == "gobgp" {
+			go func() {
+				for {
+					tedElems, err := gobgp.GetBgplsNlris(c.Global.Gobgp.GrpcClient.Address, c.Global.Gobgp.GrpcClient.Port)
 
-		}()
+					if err != nil {
+						logger.Panic("Failed session with GoBGP", zap.Error(err))
+					}
+					tedElemsChan <- tedElems
+					time.Sleep(TED_UPDATE_INTERVAL * time.Minute)
+				}
+
+			}()
+		} else {
+			// TODO: Prepare other TED update methods
+			logger.Panic("Specified tool is not defined", zap.Error(err))
+		}
 	}
 
 	o := new(server.PceOptions)
 	o.PcepAddr = c.Global.Pcep.Address
 	o.PcepPort = c.Global.Pcep.Port
-	o.GrpcAddr = c.Global.Grpc.Address
-	o.GrpcPort = c.Global.Grpc.Port
+	o.GrpcAddr = c.Global.GrpcServer.Address
+	o.GrpcPort = c.Global.GrpcServer.Port
+	o.TedEnable = c.Global.Ted.Enable
 	if err := server.NewPce(o, logger, tedElemsChan); err != nil {
 		logger.Panic("Failed to create New Server", zap.Error(err))
 	}
