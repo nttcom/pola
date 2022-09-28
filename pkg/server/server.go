@@ -38,19 +38,43 @@ type Server struct {
 }
 
 type PceOptions struct {
-	PcepAddr string
-	PcepPort string
-	GrpcAddr string
-	GrpcPort string
+	PcepAddr  string
+	PcepPort  string
+	GrpcAddr  string
+	GrpcPort  string
+	TedEnable bool
 }
 
 func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem) error {
-	s := &Server{
-		ted: &table.LsTed{
-			Id:    1,
-			Nodes: map[uint32]map[string]*table.LsNode{},
-		},
+	var s *Server
+	if o.TedEnable {
+		s = &Server{
+			ted: &table.LsTed{
+				Id:    1,
+				Nodes: map[uint32]map[string]*table.LsNode{},
+			},
+		}
+
+		// Update Ted
+		go func() {
+			for {
+				tedElems := <-tedElemsChan
+				s.ted = &table.LsTed{
+					Id:    s.ted.Id,
+					Nodes: map[uint32]map[string]*table.LsNode{},
+				}
+
+				for _, tedElem := range tedElems {
+					tedElem.UpdateTed(s.ted)
+				}
+			}
+		}()
+	} else {
+		s = &Server{
+			ted: nil,
+		}
 	}
+
 	s.logger = logger
 	lspChan := make(chan Lsp)
 	// Start PCEP listen
@@ -66,20 +90,6 @@ func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem
 		}
 	}()
 
-	// Update Ted
-	go func() {
-		for {
-			tedElems := <-tedElemsChan
-			s.ted = &table.LsTed{
-				Id:    s.ted.Id,
-				Nodes: map[uint32]map[string]*table.LsNode{},
-			}
-
-			for _, tedElem := range tedElems {
-				tedElem.UpdateTed(s.ted)
-			}
-		}
-	}()
 	for {
 		lsp := <-lspChan
 		// Overwrite LSP
@@ -199,7 +209,14 @@ func (s *Server) GetLspList(context.Context, *empty.Empty) (*pb.LspList, error) 
 
 func (s *Server) GetTed(context.Context, *empty.Empty) (*pb.Ted, error) {
 	s.logger.Info("Get request GetTed API", zap.String("server", "grpc"))
-	var ret pb.Ted
+	ret := &pb.Ted{
+		Enable: true,
+	}
+	if s.ted == nil {
+		ret.Enable = false
+		return ret, nil
+	}
+
 	for _, lsNodes := range s.ted.Nodes {
 		for _, lsNode := range lsNodes {
 			node := &pb.LsNode{
@@ -242,7 +259,7 @@ func (s *Server) GetTed(context.Context, *empty.Empty) (*pb.Ted, error) {
 			ret.LsNodes = append(ret.LsNodes, node)
 		}
 	}
-	return &ret, nil
+	return ret, nil
 }
 
 func (s *Server) removeSession(session *Session) {

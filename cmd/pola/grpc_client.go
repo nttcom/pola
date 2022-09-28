@@ -83,6 +83,10 @@ func getTed(client pb.PceServiceClient) (*table.LsTed, error) {
 	if err != nil {
 		return nil, errors.New("could not get Peer Address")
 	}
+
+	if !ret.GetEnable() {
+		return nil, nil
+	}
 	ted := &table.LsTed{
 		Id:    1,
 		Nodes: map[uint32]map[string]*table.LsNode{},

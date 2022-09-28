@@ -12,18 +12,53 @@ $ go install github.com/nttcom/pola/cmd/polad@latest
 
 Specify the IP address and port number for each PCEP and gRPC.
 
+**case: TED disable**
+
+To manage SR Policy without using TED.
+
 ```yaml
 global:
   pcep:
-    address: "192.0.2.1"
+    address: **
     port: 4189
-  grpc:
-    address: "192.0.2.1"
-    port: 50051
+  grpc-server:
+    address: "127.0.0.1"
+    port: 50052
   log:
     path: "/var/log/pola/"
     name: "polad.log"
+  ted:
+    enable: false
 ```
+
+**case: TED enable**
+
+To manage SR Policy using TED.
+Enabling TED allows dynamic path calculation.
+
+A specific tool for updating TED is required to use this feature.
+Currently, only GoBGP is supported.
+
+```
+global:
+  pcep:
+    address: **
+    port: 4189
+  grpc-server:
+    address: "127.0.0.1"
+    port: 50052
+  log:
+    path: "/var/log/pola/"
+    name: "polad.log"
+  ted:
+    enable: true
+    source: "gobgp"
+  gobgp:
+    grpc-client:
+      address: "127.0.0.1"
+      port: 50051
+```
+
 
 ## Run Pola PCE using polad
 

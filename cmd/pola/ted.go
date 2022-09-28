@@ -37,6 +37,11 @@ func showTed(jsonFlag bool) error {
 	if err != nil {
 		return err
 	}
+
+	if ted == nil {
+		fmt.Printf("TED is disabled by polad\n")
+		return nil
+	}
 	if jsonFlag {
 		// output json format
 		nodes := []map[string]interface{}{}
