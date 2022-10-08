@@ -141,6 +141,11 @@ func ConvertToTedElem(dst *api.Destination) ([]table.TedElem, error) {
 					igpMetric := table.NewMetric(table.MetricType(table.IGP_METRIC), bgplsAttr.GetLink().GetIgpMetric())
 					lsLink.Metrics = append(lsLink.Metrics, igpMetric)
 
+					if bgplsAttr.GetLink().GetDefaultTeMetric() != 0 {
+						teMetric := table.NewMetric(table.MetricType(table.TE_METRIC), bgplsAttr.GetLink().GetDefaultTeMetric())
+						lsLink.Metrics = append(lsLink.Metrics, teMetric)
+					}
+
 					lsLink.AdjSid = bgplsAttr.GetLink().GetSrAdjacencySid()
 				}
 			}
