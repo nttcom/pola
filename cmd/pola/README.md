@@ -8,7 +8,7 @@ Displays the peer addresses of the active session.
 json formatted response
 ```
 {
-    "peers": [
+    "sessions": [
         {
             "address": "192.0.2.1",
             "status": "active",
@@ -21,7 +21,7 @@ json formatted response
 }
 ```
 
-### pola lsp list \[-j\]
+### pola sr-policy list \[-j\]
 Displays the lsp list managed by polad.
 
 json formatted response
@@ -114,16 +114,68 @@ json formatted response
 ]
 ```
 
-### pola lsp add -f _filepath_
-Create a new SR-Policy
+### pola sr-policy add -f _filepath_
+
+Create a new SR Policy using TED 
+
+#### Case: Dynamic Path calculate
+
+yaml input format
+```
+asn: 65000
+srPolicy:
+    pcepSessionAddr: 192.0.2.1
+    name: policy-name    
+    srcRouterId: 0000.0aff.0001
+    dstRouterId: 0000.0aff.0004
+    color: 100
+    type: dynamic 
+    metric: igp / te / delay
+```
+
+json formatted response
+```
+{
+    "status": "success"
+}
+```
+
+#### Case: Explicit Path
+
+yaml input format
+```
+asn: 65000
+srPolicy:
+    pcepSessionAddr: 192.0.2.1
+    name: policy-name    
+    srcRouterId: 0000.0aff.0001
+    dstRouterId: 0000.0aff.0004
+    color: 100
+    type: explicit
+	segmentlist:
+        - sid: 16003
+        - sid: 16002
+		- sid: 16004
+```
+
+json formatted response
+```
+{
+    "status": "success"
+}
+```
+
+### pola sr-policy add -f _filepath_ --no-link-state
+
+Create a new SR Policy without using TED
 
 yaml input format
 ```
 srPolicy:
-    name: name
-    peerAddr: 192.0.2.1
+    pcepSessionAddr: 192.0.2.1
     srcAddr: 192.0.2.1
     dstAddr: 192.0.2.2
+    name: name
     color: 100
     segmentlist:
         - sid: 16003

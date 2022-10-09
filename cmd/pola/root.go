@@ -13,12 +13,26 @@ import (
 )
 
 var client pb.PceServiceClient
+var jsonFmt bool
 
 func newRootCmd() *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use: "pola",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			conn, err := grpc.Dial("localhost:50052", grpc.WithTransportCredentials(insecure.NewCredentials()))
+			jFlag, err := cmd.Flags().GetBool("json")
+			if err != nil {
+				return err
+			}
+			jsonFmt = jFlag
+			host, err := cmd.Flags().GetString("host")
+			if err != nil {
+				return err
+			}
+			port, err := cmd.Flags().GetString("port")
+			if err != nil {
+				return err
+			}
+			conn, err := grpc.Dial(host+":"+port, grpc.WithTransportCredentials(insecure.NewCredentials()))
 			if err != nil {
 				conn.Close()
 				return err
@@ -31,6 +45,11 @@ func newRootCmd() *cobra.Command {
 			cmd.HelpFunc()(cmd, args)
 		},
 	}
-	rootCmd.AddCommand(newSessionCmd(), newLspCmd(), newTedCmd())
+
+	rootCmd.PersistentFlags().BoolP("json", "j", false, "output json format")
+	rootCmd.PersistentFlags().String("host", "127.0.0.1", "polad connection address")
+	rootCmd.PersistentFlags().StringP("port", "p", "50051", "polad connection port")
+
+	rootCmd.AddCommand(newSessionCmd(), newSrPolicyCmd(), newTedCmd())
 	return rootCmd
 }

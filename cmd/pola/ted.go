@@ -17,10 +17,6 @@ func newTedCmd() *cobra.Command {
 	tedCmd := &cobra.Command{
 		Use: "ted",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			jsonFmt, err := cmd.Flags().GetBool("json")
-			if err != nil {
-				return err
-			}
 			if err := showTed(jsonFmt); err != nil {
 				return err
 			}
@@ -28,7 +24,6 @@ func newTedCmd() *cobra.Command {
 		},
 	}
 
-	tedCmd.Flags().BoolP("json", "j", false, "output json format")
 	return tedCmd
 }
 
