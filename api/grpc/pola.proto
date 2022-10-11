@@ -12,30 +12,46 @@ option go_package = "github.com/nttcom/pola/api/grpc";
 import "google/protobuf/empty.proto";
 
 service PceService {
-  rpc CreateLsp (LspData) returns (LspStatus) {};
+  rpc CreateSrPolicy (CreateSrPolicyInput) returns (SrPolicyStatus) {};
+
+  rpc CreateSrPolicyWithoutLinkState (CreateSrPolicyInput) returns (SrPolicyStatus) {};
 
   rpc GetPeerAddrList (google.protobuf.Empty) returns (PeerAddrList) {};
 
-  rpc GetLspList (google.protobuf.Empty) returns (LspList) {};
+  rpc GetSrPolicyList (google.protobuf.Empty) returns (SrPolicyList) {};
 
   rpc GetTed (google.protobuf.Empty) returns (Ted) {};
 }
 
-message Label {
+message Segment {
     uint32 sid = 1;
     bytes loAddr = 2;
 }
 
-message LspData {
+enum SrPolicyType {
+    EXPLICIT = 0;
+    DYNAMIC = 1;
+}
+
+message SrPolicy {
     bytes pcepSessionAddr = 1;
     bytes srcAddr = 2;
     bytes dstAddr = 3;
-    repeated Label labels = 4;
-    uint32 color = 5;
-    string policyName = 6;
+    string srcRouterId = 4;
+    string dstRouterId = 5;
+    uint32 color = 6;
+    string policyName = 7;
+    SrPolicyType type = 8;
+    repeated Segment segmentList = 9;
+    MetricType metric = 10;
 }
 
-message LspStatus {
+message CreateSrPolicyInput {
+    SrPolicy srPolicy = 1;
+    uint32 asn = 2;
+} 
+
+message SrPolicyStatus {
     bool isSuccess = 1;
 }
 
@@ -43,8 +59,8 @@ message PeerAddrList {
     repeated bytes PeerAddrs = 1; 
 }
 
-message LspList {
-    repeated LspData Lsps = 1;
+message SrPolicyList {
+    repeated SrPolicy SrPolicies = 1;
 }
 
 message LsPrefix {
