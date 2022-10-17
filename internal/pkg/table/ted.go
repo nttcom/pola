@@ -1,6 +1,7 @@
 package table
 
 import (
+	"errors"
 	"fmt"
 	"net"
 )
@@ -43,8 +44,9 @@ func (ted LsTed) ShowTed() {
 			for _, link := range node.Links {
 				fmt.Printf("    Local: %s Remote: %s\n", link.LocalIP.String(), link.RemoteIP.String())
 				fmt.Printf("      RemoteNode: %s\n", link.RemoteNode.RouterId)
+				fmt.Printf("      Metrics:\n")
 				for _, metric := range link.Metrics {
-					fmt.Printf("      Metrics: %s %d\n", metric.Type.String(), metric.Value)
+					fmt.Printf("        %s: %d\n", metric.Type.String(), metric.Value)
 				}
 				fmt.Printf("      Adj-SID: %d\n", link.AdjSid)
 			}
@@ -53,6 +55,20 @@ func (ted LsTed) ShowTed() {
 		}
 
 	}
+}
+
+func (ted LsTed) GetRouterIdFromSid(as uint32, Sid uint32) (string, error) {
+	nodes := ted.Nodes[as]
+	for routerId, node := range nodes {
+		nodeSid, err := node.NodeSid()
+		if err != nil {
+			return "", err
+		}
+		if nodeSid == Sid {
+			return routerId, nil
+		}
+	}
+	return "", errors.New("specified node could not be found")
 }
 
 type TedElem interface {
@@ -77,6 +93,26 @@ func NewLsNode(asn uint32, nodeId string) *LsNode {
 	}
 
 	return lsnode
+}
+
+func (node LsNode) NodeSid() (uint32, error) {
+	for _, prefix := range node.Prefixes {
+		// If it's a loopback prefix, it should be non-zero.
+		if prefix.SidIndex != 0 {
+			return node.SrgbBegin + prefix.SidIndex, nil
+		}
+	}
+	return 0, errors.New("node doesn't have node-sid")
+}
+
+func (node LsNode) LoopbackAddr() (net.IP, error) {
+	for _, prefix := range node.Prefixes {
+		// If it's a loopback prefix, it should be non-zero.
+		if prefix.SidIndex != 0 {
+			return prefix.Prefix.IP, nil
+		}
+	}
+	return nil, errors.New("node doesn't have loopback addr")
 }
 
 func (lsNode *LsNode) UpdateTed(ted *LsTed) {
@@ -109,6 +145,15 @@ func NewLsLink(localNode *LsNode, remoteNode *LsNode) *LsLink {
 		RemoteNode: remoteNode,
 	}
 	return lsLink
+}
+
+func (link LsLink) Metric(metricType MetricType) (uint32, error) {
+	for _, metric := range link.Metrics {
+		if metric.Type == metricType {
+			return metric.Value, nil
+		}
+	}
+	return 0, errors.New("don't define metric")
 }
 
 func (lsLink *LsLink) UpdateTed(ted *LsTed) {

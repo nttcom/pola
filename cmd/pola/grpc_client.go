@@ -16,7 +16,7 @@ import (
 	"github.com/nttcom/pola/internal/pkg/table"
 )
 
-type lspInfo struct {
+type srPolicyInfo struct {
 	peerAddr net.IP //TODO: Change to ("loopback addr" or "router name")
 	name     string
 	path     []uint32
@@ -24,13 +24,13 @@ type lspInfo struct {
 	dstAddr  net.IP
 }
 
-func getPeerAddrList(client pb.PceServiceClient) ([]net.IP, error) {
+func getSessionAddrList(client pb.PceServiceClient) ([]net.IP, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	var empty empty.Empty
 	ret, err := client.GetPeerAddrList(ctx, &empty)
 	if err != nil {
-		return nil, errors.New("could not get Peer Address")
+		return nil, err
 	}
 	var peerAddrList []net.IP
 	for _, peerAddr := range ret.GetPeerAddrs() {
@@ -39,36 +39,46 @@ func getPeerAddrList(client pb.PceServiceClient) ([]net.IP, error) {
 	return peerAddrList, nil
 }
 
-func getlspList(client pb.PceServiceClient) ([]lspInfo, error) {
+func getSrPolicyList(client pb.PceServiceClient) ([]srPolicyInfo, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	var empty empty.Empty
-	ret, err := client.GetLspList(ctx, &empty)
+	ret, err := client.GetSrPolicyList(ctx, &empty)
 	if err != nil {
-		return nil, errors.New("could not get Lsp List")
+		return nil, err
 	}
-	lspList := []lspInfo{}
-	for _, lsp := range ret.GetLsps() {
-		tmp := lspInfo{
+	srPolicyList := []srPolicyInfo{}
+	for _, lsp := range ret.GetSrPolicies() {
+		tmp := srPolicyInfo{
 			name:     lsp.PolicyName,
 			peerAddr: net.IP(lsp.GetPcepSessionAddr()),
 			srcAddr:  net.IP(lsp.GetSrcAddr()),
 			dstAddr:  net.IP(lsp.GetDstAddr()),
 		}
-		if len(lsp.GetLabels()) != 0 {
-			for _, label := range lsp.GetLabels() {
+		if len(lsp.GetSegmentList()) != 0 {
+			for _, label := range lsp.GetSegmentList() {
 				tmp.path = append(tmp.path, label.GetSid())
 			}
 		}
-		lspList = append(lspList, tmp)
+		srPolicyList = append(srPolicyList, tmp)
 	}
-	return lspList, nil
+	return srPolicyList, nil
 }
 
-func createLsp(client pb.PceServiceClient, lspData *pb.LspData) error {
+func createSrPolicy(client pb.PceServiceClient, createSrPolicyInput *pb.CreateSrPolicyInput) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	_, err := client.CreateLsp(ctx, lspData)
+	_, err := client.CreateSrPolicy(ctx, createSrPolicyInput)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func createSrPolicyWithoutLinkState(client pb.PceServiceClient, createSrPolicyInput *pb.CreateSrPolicyInput) error {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	_, err := client.CreateSrPolicyWithoutLinkState(ctx, createSrPolicyInput)
 	if err != nil {
 		return err
 	}
@@ -81,11 +91,11 @@ func getTed(client pb.PceServiceClient) (*table.LsTed, error) {
 	var empty empty.Empty
 	ret, err := client.GetTed(ctx, &empty)
 	if err != nil {
-		return nil, errors.New("could not get Peer Address")
+		return nil, err
 	}
 
 	if !ret.GetEnable() {
-		return nil, nil
+		return nil, errors.New("ted is disable")
 	}
 	ted := &table.LsTed{
 		Id:    1,
@@ -117,11 +127,11 @@ func getTed(client pb.PceServiceClient) (*table.LsTed, error) {
 				case "IGP":
 					metric = table.NewMetric(table.IGP_METRIC, metricInfo.GetValue())
 				case "TE":
-					metric = table.NewMetric(table.IGP_METRIC, metricInfo.GetValue())
+					metric = table.NewMetric(table.TE_METRIC, metricInfo.GetValue())
 				case "DELAY":
-					metric = table.NewMetric(table.IGP_METRIC, metricInfo.GetValue())
+					metric = table.NewMetric(table.DELAY_METRIC, metricInfo.GetValue())
 				case "HOPCOUNT":
-					metric = table.NewMetric(table.IGP_METRIC, metricInfo.GetValue())
+					metric = table.NewMetric(table.HOPCOUNT_METRIC, metricInfo.GetValue())
 				default:
 					return nil, errors.New("unknown metric type")
 				}

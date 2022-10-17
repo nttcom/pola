@@ -9,15 +9,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newLspCmd() *cobra.Command {
+func newSrPolicyCmd() *cobra.Command {
 
-	lspCmd := &cobra.Command{
-		Use: "lsp",
+	srPolicyCmd := &cobra.Command{
+		Use: "sr-policy",
 		Run: func(cmd *cobra.Command, args []string) {
 			cmd.HelpFunc()(cmd, args)
 		},
 	}
 
-	lspCmd.AddCommand(newLspListCmd(), newLspAddCmd())
-	return lspCmd
+	srPolicyCmd.AddCommand(newSrPolicyListCmd(), newSrPolicyAddCmd())
+	return srPolicyCmd
 }

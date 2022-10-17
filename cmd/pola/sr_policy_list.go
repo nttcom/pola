@@ -13,29 +13,24 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newLspListCmd() *cobra.Command {
+func newSrPolicyListCmd() *cobra.Command {
 
-	lspListCmd := &cobra.Command{
+	srPolicyListCmd := &cobra.Command{
 		Use: "list",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			jsonFmt, err := cmd.Flags().GetBool("json")
-			if err != nil {
-				return err
-			}
-			if err := showLspList(jsonFmt); err != nil {
+			if err := showSrPolicyList(jsonFmt); err != nil {
 				return err
 			}
 			return nil
 		},
 	}
 
-	lspListCmd.Flags().BoolP("json", "j", false, "output json format")
-	return lspListCmd
+	return srPolicyListCmd
 }
 
-func showLspList(jsonFlag bool) error {
+func showSrPolicyList(jsonFlag bool) error {
 
-	lspList, err := getlspList(client)
+	lspList, err := getSrPolicyList(client)
 	if err != nil {
 		return err
 	}
@@ -62,6 +57,10 @@ func showLspList(jsonFlag bool) error {
 		fmt.Printf("%+v\n", string(output_json))
 	} else {
 		//output user-friendly format
+		if len(lspList) == 0 {
+			fmt.Printf("no SR Policies\n")
+			return nil
+		}
 		for i, lsp := range lspList {
 			fmt.Printf("lsp(%d): \n", i)
 			fmt.Printf("  peerAddr: %s\n", lsp.peerAddr)

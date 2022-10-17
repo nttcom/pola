@@ -61,7 +61,7 @@ func main() {
 			go func() {
 				for {
 					tedElems, err := gobgp.GetBgplsNlris(c.Global.Gobgp.GrpcClient.Address, c.Global.Gobgp.GrpcClient.Port)
-
+					logger.Info("Request TED Update", zap.String("source", "GoBGP"), zap.String("session", c.Global.Gobgp.GrpcClient.Address+":"+c.Global.Gobgp.GrpcClient.Port))
 					if err != nil {
 						logger.Panic("Failed session with GoBGP", zap.Error(err))
 					}

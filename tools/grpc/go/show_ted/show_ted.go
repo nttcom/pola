@@ -10,7 +10,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"net"
 	"time"
 
 	"google.golang.org/grpc"
@@ -32,31 +31,23 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	var empty empty.Empty
-	ret, err := c.GetLspList(ctx, &empty)
+
+	ret, err := c.GetTed(ctx, &empty)
 	if err != nil {
-		log.Fatalf("could not greet: %v", err)
+		log.Fatalf("did not get TED info: %v", err)
 	}
 
-	for i, lsp := range ret.GetLsps() {
-		fmt.Printf("lsp(%d): \n", i)
-		sessionAddr := net.IP(lsp.GetPcepSessionAddr())
-		fmt.Printf("  sessionAddr: %s\n", sessionAddr.String())
-		fmt.Printf("  policyName: %s\n", lsp.GetPolicyName())
-		fmt.Printf("  SrcAddr: %s\n", net.IP(lsp.GetSrcAddr()))
-		fmt.Printf("  DstAddr: %s\n", net.IP(lsp.GetDstAddr()))
-		fmt.Printf("  path: ")
-
-		if len(lsp.GetLabels()) == 0 {
-			fmt.Printf("None \n")
-			continue
+	for _, node := range ret.GetLsNodes() {
+		fmt.Printf("node info:\n")
+		fmt.Printf("%#v\n", node)
+		for _, prefix := range node.GetLsPrefixes() {
+			fmt.Printf("prefix info:\n")
+			fmt.Printf("%#v\n", prefix)
 		}
-		for j, label := range lsp.GetLabels() {
-			fmt.Printf("%d ", label.GetSid())
-			if j == len(lsp.GetLabels())-1 {
-				fmt.Printf("\n")
-			} else {
-				fmt.Printf("-> ")
-			}
+		for _, link := range node.GetLsLinks() {
+			fmt.Printf("link info:\n")
+			fmt.Printf("%#v\n", link)
 		}
+		fmt.Printf("\n\n")
 	}
 }

@@ -204,7 +204,15 @@ func (s *Session) SendPCInitiate(policyName string, labels []pcep.Label, color u
 	if err != nil {
 		return err
 	}
-	s.logger.Info("Send PCInitiate", zap.String("session", s.peerAddr.String()), zap.Uint32("srpId", s.srpIdHead), zap.String("policyName", policyName), zap.Any("labels", labels), zap.Uint32("color", color), zap.Uint32("preference", preference), zap.Any("srcIPv4", srcIPv4), zap.Any("dstIPv4", dstIPv4))
+	labelsJson := []map[string]interface{}{}
+	for _, l := range labels {
+		labelJson := map[string]interface{}{
+			"Sid":    l.Sid,
+			"LoAddr": net.IP(l.LoAddr).String(),
+		}
+		labelsJson = append(labelsJson, labelJson)
+	}
+	s.logger.Info("Send PCInitiate", zap.String("session", s.peerAddr.String()), zap.Uint32("srpId", s.srpIdHead), zap.String("policyName", policyName), zap.Any("labels", labelsJson), zap.Uint32("color", color), zap.Uint32("preference", preference), zap.String("srcIPv4", net.IP(srcIPv4).String()), zap.Any("dstIPv4", net.IP(dstIPv4).String()))
 	if _, err := s.tcpConn.Write(bytePCInitiateMessage); err != nil {
 		return err
 	}
