@@ -64,7 +64,20 @@ func (s *APIServer) CreateSrPolicy(ctx context.Context, input *pb.CreateSrPolicy
 		return &pb.SrPolicyStatus{IsSuccess: false}, errors.New("input is invalid")
 	}
 
-	s.pce.logger.Info("Get request CreateSrPolicy API", zap.Any("SR Policy", input.GetSrPolicy()), zap.String("server", "grpc"))
+	inputJson := map[string]interface{}{
+		"asn": fmt.Sprint(input.GetAsn()),
+		"srPolicy": map[string]interface{}{
+			"pcepSessionAddr": net.IP(input.GetSrPolicy().GetPcepSessionAddr()).String(),
+			"color":           input.GetSrPolicy().GetColor(),
+			"dstRouterId":     input.GetSrPolicy().GetDstRouterId(),
+			"srcRouterId":     input.GetSrPolicy().GetSrcRouterId(),
+			"type":            input.GetSrPolicy().GetType().String(),
+			"segmentList":     input.GetSrPolicy().GetSegmentList(),
+			"metric":          input.GetSrPolicy().GetMetric().String(),
+		},
+	}
+
+	s.pce.logger.Info("Get request CreateSrPolicy API", zap.Any("input", inputJson), zap.String("server", "grpc"))
 	pcepSessionAddr := net.IP(input.GetSrPolicy().GetPcepSessionAddr())
 	pcepSession := s.pce.getSession(pcepSessionAddr)
 	if pcepSession == nil {
