@@ -63,7 +63,8 @@ func main() {
 					tedElems, err := gobgp.GetBgplsNlris(c.Global.Gobgp.GrpcClient.Address, c.Global.Gobgp.GrpcClient.Port)
 					logger.Info("Request TED Update", zap.String("source", "GoBGP"), zap.String("session", c.Global.Gobgp.GrpcClient.Address+":"+c.Global.Gobgp.GrpcClient.Port))
 					if err != nil {
-						logger.Panic("Failed session with GoBGP", zap.Error(err))
+						logger.Info("Failed session with GoBGP", zap.Error(err))
+						continue
 					}
 					tedElemsChan <- tedElems
 					time.Sleep(TED_UPDATE_INTERVAL * time.Minute)

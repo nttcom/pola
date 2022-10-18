@@ -73,10 +73,11 @@ func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem
 
 	s.logger = logger
 	lspChan := make(chan Lsp)
+	errChan := make(chan error)
 	// Start PCEP listen
 	go func() {
 		if err := s.Listen(o.PcepAddr, o.PcepPort, lspChan); err != nil {
-			s.logger.Panic("PCEP Listen Error", zap.Error(err))
+			errChan <- err
 		}
 	}()
 	// Start gRPC listen
@@ -84,15 +85,19 @@ func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem
 		grpcServer := grpc.NewServer()
 		apiServer := NewAPIServer(s, grpcServer)
 		if err := apiServer.Serve(o.GrpcAddr, o.GrpcPort); err != nil {
-			s.logger.Panic("gRPC Listen Error", zap.Error(err), zap.String("server", "grpc"))
+			errChan <- err
 		}
 	}()
 
 	for {
-		lsp := <-lspChan
-		// Overwrite LSP
-		s.removeLsp(lsp)
-		s.lspList = append(s.lspList, lsp)
+		select {
+		case lsp := <-lspChan:
+			// Overwrite LSP
+			s.removeLsp(lsp)
+			s.lspList = append(s.lspList, lsp)
+		case err := <-errChan:
+			return err
+		}
 	}
 }
 
@@ -122,6 +127,7 @@ func (s *Server) Listen(address string, port string, lspChan chan Lsp) error {
 		s.sessionList = append(s.sessionList, session)
 		go func() {
 			session.Established()
+			s.logger.Info("Remove PCEP session", zap.String("session", session.peerAddr.String()))
 			s.removeSession(session)
 		}()
 		sessionId += 1

@@ -6,6 +6,7 @@
 package server
 
 import (
+	"fmt"
 	"net"
 	"time"
 
@@ -44,10 +45,12 @@ func NewSession(sessionId uint8, lspChan chan Lsp, logger *zap.Logger) *Session 
 func (s *Session) Established() {
 	defer s.Close()
 	if err := s.Open(); err != nil {
-		s.logger.Panic("PCEP OPEN error", zap.Error(err))
+		s.logger.Info("PCEP OPEN error", zap.String("session", s.peerAddr.String()), zap.Error(err))
+		return
 	}
 	if err := s.SendKeepalive(); err != nil {
-		s.logger.Panic("Keepalive error", zap.Error(err))
+		s.logger.Info("Keepalive send error", zap.String("session", s.peerAddr.String()), zap.Error(err))
+		return
 	}
 
 	close := make(chan bool)
@@ -66,7 +69,7 @@ func (s *Session) Established() {
 			return
 		case <-ticker.C: // pass KEEPALIVE seconds
 			if err := s.SendKeepalive(); err != nil {
-				s.logger.Panic("Keepalive error", zap.Error(err))
+				s.logger.Info("Keepalive send error", zap.String("session", s.peerAddr.String()), zap.Error(err))
 			}
 		}
 	}
@@ -93,10 +96,10 @@ func (s *Session) ReadOpen() error {
 	commonHeader.DecodeFromBytes(headerBuf)
 	// CommonHeader Validation
 	if commonHeader.Version != 1 {
-		s.logger.Panic("PCEP version mismatch", zap.Uint8("version", commonHeader.Version))
+		return fmt.Errorf("PCEP version mismatch (receive version: %d)", commonHeader.Version)
 	}
 	if commonHeader.MessageType != pcep.MT_OPEN {
-		s.logger.Panic("This peer has not been opened.", zap.Uint8("commonObjectHeader.MessageType", commonHeader.MessageType), zap.String("session", s.peerAddr.String()))
+		return fmt.Errorf("This peer has not been opened (messageType: %d)", commonHeader.MessageType)
 	}
 
 	// Parse objectClass
@@ -108,10 +111,10 @@ func (s *Session) ReadOpen() error {
 	var commonObjectHeader pcep.CommonObjectHeader
 	commonObjectHeader.DecodeFromBytes(objectClassBuf)
 	if commonObjectHeader.ObjectClass != pcep.OC_OPEN {
-		s.logger.Panic("Unsupported ObjectClass", zap.Uint8("commonObjectHeader.ObjectClass", commonObjectHeader.ObjectClass), zap.String("session", s.peerAddr.String()))
+		return fmt.Errorf("Unsupported ObjectClass: %d", commonObjectHeader.ObjectClass)
 	}
 	if commonObjectHeader.ObjectType != 1 {
-		s.logger.Panic("Unsupported ObjectType", zap.Uint8("commonObjectHeader.ObjectType", commonObjectHeader.ObjectType), zap.String("session", s.peerAddr.String()))
+		return fmt.Errorf("Unsupported ObjectType: %d", commonObjectHeader.ObjectType)
 	}
 
 	var openObject pcep.OpenObject
@@ -137,7 +140,6 @@ func (s *Session) SendKeepalive() error {
 
 	s.logger.Info("Send Keepalive", zap.String("session", s.peerAddr.String()))
 	if _, err := s.tcpConn.Write(byteKeepaliveMessage); err != nil {
-		s.logger.Info("Keepalive send error", zap.String("session", s.peerAddr.String()))
 		return err
 	}
 	return nil
