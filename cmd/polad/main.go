@@ -7,6 +7,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/nttcom/pola/internal/config"
 	"github.com/nttcom/pola/internal/pkg/gobgp"
 	"github.com/nttcom/pola/internal/pkg/table"
+	"github.com/nttcom/pola/internal/pkg/version"
 	"github.com/nttcom/pola/pkg/logger"
 	"github.com/nttcom/pola/pkg/server"
 )
@@ -29,6 +31,12 @@ type Flags struct {
 }
 
 func main() {
+
+	if len(os.Args) > 1 && os.Args[1] == "--version" {
+		fmt.Println("polad " + version.Version())
+		return
+	}
+
 	f := new(Flags)
 	flag.StringVar(&f.ConfigFile, "f", "polad.yaml", "Specify a configuration file")
 	flag.Parse()

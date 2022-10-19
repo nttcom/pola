@@ -9,11 +9,13 @@ import (
 	"fmt"
 	"log"
 	"os"
+
+	"github.com/nttcom/pola/internal/pkg/version"
 )
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "--version" {
-		fmt.Printf("alpha release.\n")
+		fmt.Println("pola " + version.Version())
 		return
 	}
 
