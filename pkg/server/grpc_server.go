@@ -77,7 +77,7 @@ func (s *APIServer) CreateSrPolicy(ctx context.Context, input *pb.CreateSrPolicy
 		},
 	}
 
-	s.pce.logger.Info("Get request CreateSrPolicy API", zap.Any("input", inputJson), zap.String("server", "grpc"))
+	s.pce.logger.Info("Receive CreateSrPolicy API request", zap.Any("input", inputJson), zap.String("server", "grpc"))
 	pcepSessionAddr := net.IP(input.GetSrPolicy().GetPcepSessionAddr())
 	pcepSession := s.pce.getSession(pcepSessionAddr)
 	if pcepSession == nil {
@@ -158,7 +158,7 @@ func (s *APIServer) CreateSrPolicyWithoutLinkState(ctx context.Context, input *p
 		return &pb.SrPolicyStatus{IsSuccess: false}, errors.New("input is invalid")
 	}
 
-	s.pce.logger.Info("Get request CreateSrPolicyWithoutLinkState API", zap.Any("SR Policy", input.GetSrPolicy()), zap.String("server", "grpc"))
+	s.pce.logger.Info("Receive CreateSrPolicyWithoutLinkState API request", zap.Any("SR Policy", input.GetSrPolicy()), zap.String("server", "grpc"))
 	pcepSessionAddr := net.IP(input.GetSrPolicy().GetPcepSessionAddr())
 	pcepSession := s.pce.getSession(pcepSessionAddr)
 	if pcepSession == nil {
@@ -187,7 +187,7 @@ func (s *APIServer) CreateSrPolicyWithoutLinkState(ctx context.Context, input *p
 }
 
 func (s *APIServer) GetPeerAddrList(context.Context, *empty.Empty) (*pb.PeerAddrList, error) {
-	s.pce.logger.Info("Get request GetPeerAddrList API", zap.String("server", "grpc"))
+	s.pce.logger.Info("Receive GetPeerAddrList API request", zap.String("server", "grpc"))
 	var ret pb.PeerAddrList
 	for _, pcepSession := range s.pce.sessionList {
 		ret.PeerAddrs = append(ret.PeerAddrs, []byte(pcepSession.peerAddr))
@@ -196,7 +196,7 @@ func (s *APIServer) GetPeerAddrList(context.Context, *empty.Empty) (*pb.PeerAddr
 }
 
 func (s *APIServer) GetSrPolicyList(context.Context, *empty.Empty) (*pb.SrPolicyList, error) {
-	s.pce.logger.Info("Get request GetSrPolicyList API", zap.String("server", "grpc"))
+	s.pce.logger.Info("Receive GetSrPolicyList API request", zap.String("server", "grpc"))
 	var ret pb.SrPolicyList
 	for _, lsp := range s.pce.lspList {
 		srPolicyData := &pb.SrPolicy{
@@ -218,7 +218,7 @@ func (s *APIServer) GetSrPolicyList(context.Context, *empty.Empty) (*pb.SrPolicy
 }
 
 func (s *APIServer) GetTed(context.Context, *empty.Empty) (*pb.Ted, error) {
-	s.pce.logger.Info("Get request GetTed API", zap.String("server", "grpc"))
+	s.pce.logger.Info("Receive GetTed API request", zap.String("server", "grpc"))
 	ret := &pb.Ted{
 		Enable: true,
 	}
@@ -226,7 +226,7 @@ func (s *APIServer) GetTed(context.Context, *empty.Empty) (*pb.Ted, error) {
 		ret.Enable = false
 		return ret, nil
 	}
-	s.pce.ted.ShowTed()
+
 	for _, lsNodes := range s.pce.ted.Nodes {
 		for _, lsNode := range lsNodes {
 			node := &pb.LsNode{
@@ -269,5 +269,6 @@ func (s *APIServer) GetTed(context.Context, *empty.Empty) (*pb.Ted, error) {
 			ret.LsNodes = append(ret.LsNodes, node)
 		}
 	}
+	s.pce.logger.Info("Send GetTed API reply", zap.String("server", "grpc"))
 	return ret, nil
 }
