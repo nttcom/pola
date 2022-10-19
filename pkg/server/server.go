@@ -134,13 +134,15 @@ func (s *Server) Listen(address string, port string, lspChan chan Lsp) error {
 		go func() {
 			session.Established()
 			s.logger.Info("Remove PCEP session", zap.String("session", session.peerAddr.String()))
-			s.removeSession(session)
+			s.closeSession(session)
 		}()
 		sessionId += 1
 	}
 }
 
-func (s *Server) removeSession(session *Session) {
+func (s *Server) closeSession(session *Session) {
+	session.tcpConn.Close()
+
 	// Remove Session List
 	for i, v := range s.sessionList {
 		if v.sessionId == session.sessionId {
