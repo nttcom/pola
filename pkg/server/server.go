@@ -63,6 +63,7 @@ func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem
 				for _, tedElem := range tedElems {
 					tedElem.UpdateTed(s.ted)
 				}
+				logger.Info("Update TED")
 			}
 		}()
 	} else {
@@ -112,7 +113,7 @@ func (s *Server) Listen(address string, port string, lspChan chan Lsp) error {
 	listenInfo.WriteString(address)
 	listenInfo.WriteString(":")
 	listenInfo.WriteString(port)
-	s.logger.Info("PCEP Listen", zap.String("listenInfo", listenInfo.String()))
+	s.logger.Info("PCEP listen", zap.String("listenInfo", listenInfo.String()))
 	listener, err := net.Listen("tcp", listenInfo.String())
 	if err != nil {
 		return err
@@ -126,15 +127,14 @@ func (s *Server) Listen(address string, port string, lspChan chan Lsp) error {
 		if err != nil {
 			return err
 		}
-		s.logger.Info("PCEP Session Accept")
 		strPeerAddr := session.tcpConn.RemoteAddr().String()
 		sessionAddr := net.ParseIP(strings.Split(strPeerAddr, ":")[0])
 		session.peerAddr = sessionAddr
 		s.sessionList = append(s.sessionList, session)
 		go func() {
 			session.Established()
-			s.logger.Info("Remove PCEP session", zap.String("session", session.peerAddr.String()))
 			s.closeSession(session)
+			s.logger.Info("Close PCEP session", zap.String("session", session.peerAddr.String()))
 		}()
 		sessionId += 1
 	}

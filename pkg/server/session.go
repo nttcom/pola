@@ -43,24 +43,27 @@ func (s *Session) Established() {
 		s.logger.Info("PCEP OPEN error", zap.String("session", s.peerAddr.String()), zap.Error(err))
 		return
 	}
+	s.logger.Info("PCEP session established")
+
 	if err := s.SendKeepalive(); err != nil {
 		s.logger.Info("Keepalive send error", zap.String("session", s.peerAddr.String()), zap.Error(err))
 		return
 	}
 
-	close := make(chan bool)
+	closeChan := make(chan bool)
+	defer close(closeChan)
 	go func() {
 		if err := s.ReceivePcepMessage(); err != nil {
 			s.logger.Info("Receive PCEP error", zap.String("session", s.peerAddr.String()))
 		}
-		close <- true
+		closeChan <- true
 	}()
 
 	ticker := time.NewTicker(time.Duration(KEEPALIVE) * time.Second)
 	defer ticker.Stop()
 	for {
 		select {
-		case <-close:
+		case <-closeChan:
 			return
 		case <-ticker.C: // pass KEEPALIVE seconds
 			if err := s.SendKeepalive(); err != nil {
@@ -71,21 +74,23 @@ func (s *Session) Established() {
 }
 
 func (s *Session) Open() error {
-	if err := s.ReadOpen(); err != nil {
+	if err := s.ReceiveOpen(); err != nil {
 		return err
 	}
+
 	if err := s.SendOpen(); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (s *Session) ReadOpen() error {
+func (s *Session) ReceiveOpen() error {
 	// Parse CommonHeader
 	headerBuf := make([]uint8, pcep.COMMON_HEADER_LENGTH)
 	if _, err := s.tcpConn.Read(headerBuf); err != nil {
 		return err
 	}
+	s.logger.Info("Receive Open", zap.String("session", s.peerAddr.String()))
 
 	var commonHeader pcep.CommonHeader
 	commonHeader.DecodeFromBytes(headerBuf)
@@ -114,6 +119,7 @@ func (s *Session) ReadOpen() error {
 
 	var openObject pcep.OpenObject
 	openObject.DecodeFromBytes(objectClassBuf)
+	// TODO: Parse OPEN Object
 	return nil
 }
 
@@ -169,11 +175,11 @@ func (s *Session) ReceivePcepMessage() error {
 			} else if !pcrptMessage.LspObject.SFlag {
 				if pcrptMessage.LspObject.PlspId == 0 {
 					// End of synchronization (RFC8231 5.6)
-					s.logger.Info("Finish PCRpt State Synchronization", zap.String("session", s.peerAddr.String()))
+					s.logger.Info("Finish PCRpt state synchronization", zap.String("session", s.peerAddr.String()))
 					s.isSynced = true
 				} else if pcrptMessage.SrpObject.SrpId != 0 {
 					// Response to PCInitiate/PCUpdate (RFC8231 7.2)
-					s.logger.Info("Finish Transaction", zap.String("session", s.peerAddr.String()), zap.Uint32("srpId", pcrptMessage.SrpObject.SrpId))
+					s.logger.Info("Finish Stateful PCE request", zap.String("session", s.peerAddr.String()), zap.Uint32("srpId", pcrptMessage.SrpObject.SrpId))
 					go RegisterLsp(s.lspChan, s.peerAddr, pcrptMessage)
 				}
 				// TODO: Need to implementation of PCUpdate for Passive stateful PCE
@@ -187,7 +193,7 @@ func (s *Session) ReceivePcepMessage() error {
 			return nil
 
 		default:
-			s.logger.Info("Received Unsupported MessageType", zap.String("session", s.peerAddr.String()), zap.Uint8("MessageType", commonHeader.MessageType))
+			s.logger.Info("Received unsupported MessageType", zap.String("session", s.peerAddr.String()), zap.Uint8("MessageType", commonHeader.MessageType))
 		}
 	}
 }
@@ -227,7 +233,7 @@ func (s *Session) SendPCUpdate(policyName string, plspId uint32, labels []pcep.L
 		return err
 	}
 
-	s.logger.Info("Send PCUpdate", zap.String("session", s.peerAddr.String()))
+	s.logger.Info("Send PCUpdate", zap.String("session", s.peerAddr.String()), zap.Uint32("srpId", pcupdateMessage.SrpObject.SrpId))
 	if _, err := s.tcpConn.Write(bytePCUpdMessage); err != nil {
 		s.logger.Info("PCUpdate send error", zap.String("session", s.peerAddr.String()))
 		return err
