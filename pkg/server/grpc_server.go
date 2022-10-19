@@ -42,7 +42,7 @@ func (s *APIServer) Serve(address string, port string) error {
 	listenInfo.WriteString(address)
 	listenInfo.WriteString(":")
 	listenInfo.WriteString(port)
-	s.pce.logger.Info("gRPC Listen", zap.String("listenInfo", listenInfo.String()), zap.String("server", "grpc"))
+	s.pce.logger.Info("gRPC listen", zap.String("listenInfo", listenInfo.String()), zap.String("server", "grpc"))
 	grpcListener, err := net.Listen("tcp", listenInfo.String())
 	if err != nil {
 		return err
@@ -192,6 +192,7 @@ func (s *APIServer) GetPeerAddrList(context.Context, *empty.Empty) (*pb.PeerAddr
 	for _, pcepSession := range s.pce.sessionList {
 		ret.PeerAddrs = append(ret.PeerAddrs, []byte(pcepSession.peerAddr))
 	}
+	s.pce.logger.Info("Send GetPeerAddrList API reply", zap.String("server", "grpc"))
 	return &ret, nil
 }
 
@@ -214,6 +215,7 @@ func (s *APIServer) GetSrPolicyList(context.Context, *empty.Empty) (*pb.SrPolicy
 		}
 		ret.SrPolicies = append(ret.SrPolicies, srPolicyData)
 	}
+	s.pce.logger.Info("Send SrPolicyList API reply", zap.String("server", "grpc"))
 	return &ret, nil
 }
 
