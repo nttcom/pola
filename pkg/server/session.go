@@ -27,10 +27,6 @@ type Session struct {
 	logger    *zap.Logger
 }
 
-func (s *Session) Close() {
-	s.tcpConn.Close()
-}
-
 func NewSession(sessionId uint8, lspChan chan Lsp, logger *zap.Logger) *Session {
 	s := &Session{
 		sessionId: sessionId,
@@ -43,7 +39,6 @@ func NewSession(sessionId uint8, lspChan chan Lsp, logger *zap.Logger) *Session 
 }
 
 func (s *Session) Established() {
-	defer s.Close()
 	if err := s.Open(); err != nil {
 		s.logger.Info("PCEP OPEN error", zap.String("session", s.peerAddr.String()), zap.Error(err))
 		return
