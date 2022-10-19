@@ -41,7 +41,7 @@ type PceOptions struct {
 	TedEnable bool
 }
 
-func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem) error {
+func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem) ServerError {
 	var s *Server
 	if o.TedEnable {
 		s = &Server{
@@ -73,11 +73,14 @@ func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem
 
 	s.logger = logger
 	lspChan := make(chan Lsp)
-	errChan := make(chan error)
+	errChan := make(chan ServerError)
 	// Start PCEP listen
 	go func() {
 		if err := s.Listen(o.PcepAddr, o.PcepPort, lspChan); err != nil {
-			errChan <- err
+			errChan <- ServerError{
+				Server: "pcep",
+				Error:  err,
+			}
 		}
 	}()
 	// Start gRPC listen
@@ -85,7 +88,10 @@ func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem
 		grpcServer := grpc.NewServer()
 		apiServer := NewAPIServer(s, grpcServer)
 		if err := apiServer.Serve(o.GrpcAddr, o.GrpcPort); err != nil {
-			errChan <- err
+			errChan <- ServerError{
+				Server: "grpc",
+				Error:  err,
+			}
 		}
 	}()
 
@@ -95,8 +101,8 @@ func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem
 			// Overwrite LSP
 			s.removeLsp(lsp)
 			s.lspList = append(s.lspList, lsp)
-		case err := <-errChan:
-			return err
+		case serverError := <-errChan:
+			return serverError
 		}
 	}
 }

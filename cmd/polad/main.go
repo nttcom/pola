@@ -83,7 +83,7 @@ func main() {
 	o.GrpcAddr = c.Global.GrpcServer.Address
 	o.GrpcPort = c.Global.GrpcServer.Port
 	o.TedEnable = c.Global.Ted.Enable
-	if err := server.NewPce(o, logger, tedElemsChan); err != nil {
-		logger.Panic("Failed to create New Server", zap.Error(err))
+	if serverErr := server.NewPce(o, logger, tedElemsChan); serverErr.Error != nil {
+		logger.Panic("Failed to create New Server", zap.String("server", serverErr.Server), zap.Error(serverErr.Error))
 	}
 }
