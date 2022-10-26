@@ -6,6 +6,7 @@
 package server
 
 import (
+	"encoding/binary"
 	"fmt"
 	"net"
 	"time"
@@ -25,6 +26,7 @@ type Session struct {
 	srpIdHead uint32 // 0x00000000 and 0xFFFFFFFF are reserved.
 	lspChan   chan Lsp
 	logger    *zap.Logger
+	pccType   pcep.PccType
 }
 
 func NewSession(sessionId uint8, lspChan chan Lsp, logger *zap.Logger) *Session {
@@ -34,6 +36,7 @@ func NewSession(sessionId uint8, lspChan chan Lsp, logger *zap.Logger) *Session 
 		srpIdHead: uint32(1),
 		lspChan:   lspChan,
 		logger:    logger,
+		pccType:   pcep.RFC_COMPLIANT,
 	}
 	return s
 }
@@ -86,40 +89,53 @@ func (s *Session) Open() error {
 
 func (s *Session) ReceiveOpen() error {
 	// Parse CommonHeader
-	headerBuf := make([]uint8, pcep.COMMON_HEADER_LENGTH)
-	if _, err := s.tcpConn.Read(headerBuf); err != nil {
+	byteOpenHeader := make([]uint8, pcep.COMMON_HEADER_LENGTH)
+	if _, err := s.tcpConn.Read(byteOpenHeader); err != nil {
 		return err
 	}
+
+	var openHeader pcep.CommonHeader
+	openHeader.DecodeFromBytes(byteOpenHeader)
+	// CommonHeader Validation
+	if openHeader.Version != 1 {
+		return fmt.Errorf("PCEP version mismatch (receive version: %d)", openHeader.Version)
+	}
+	if openHeader.MessageType != pcep.MT_OPEN {
+		return fmt.Errorf("This peer has not been opened (messageType: %d)", openHeader.MessageType)
+	}
+
 	s.logger.Info("Receive Open", zap.String("session", s.peerAddr.String()))
 
-	var commonHeader pcep.CommonHeader
-	commonHeader.DecodeFromBytes(headerBuf)
-	// CommonHeader Validation
-	if commonHeader.Version != 1 {
-		return fmt.Errorf("PCEP version mismatch (receive version: %d)", commonHeader.Version)
-	}
-	if commonHeader.MessageType != pcep.MT_OPEN {
-		return fmt.Errorf("This peer has not been opened (messageType: %d)", commonHeader.MessageType)
-	}
-
 	// Parse objectClass
-	objectClassBuf := make([]uint8, commonHeader.MessageLength-pcep.COMMON_HEADER_LENGTH)
-	if _, err := s.tcpConn.Read(objectClassBuf); err != nil {
+	byteOpenObject := make([]uint8, openHeader.MessageLength-pcep.COMMON_HEADER_LENGTH)
+	if _, err := s.tcpConn.Read(byteOpenObject); err != nil {
 		return err
 	}
 
-	var commonObjectHeader pcep.CommonObjectHeader
-	commonObjectHeader.DecodeFromBytes(objectClassBuf)
-	if commonObjectHeader.ObjectClass != pcep.OC_OPEN {
-		return fmt.Errorf("Unsupported ObjectClass: %d", commonObjectHeader.ObjectClass)
-	}
-	if commonObjectHeader.ObjectType != 1 {
-		return fmt.Errorf("Unsupported ObjectType: %d", commonObjectHeader.ObjectType)
+	var openMessage pcep.OpenMessage
+	if err := openMessage.DecodeFromBytes(byteOpenObject); err != nil {
+		return err
 	}
 
-	var openObject pcep.OpenObject
-	openObject.DecodeFromBytes(objectClassBuf)
 	// TODO: Parse OPEN Object
+
+	// pccType detection
+	// * FRRouting cannot be detected from the open message, so it is treated as an RFC compliant
+	for _, openObjTlv := range openMessage.OpenObject.Tlvs {
+		if openObjTlv.Type != pcep.TLV_ASSOC_TYPE_LIST {
+			continue
+		}
+		for i, v := 0, openObjTlv.Value; i < int(openObjTlv.Length)/2; i++ { //
+			if binary.BigEndian.Uint16(v) == uint16(20) { // Cisco specific Assoc-Type
+				s.pccType = pcep.CISCO_LEGACY
+				break
+			} else if binary.BigEndian.Uint16(v) == uint16(65505) { // Juniper specific Assoc-Type
+				s.pccType = pcep.JUNIPER_LEGACY
+				break
+			}
+			v = v[2:]
+		}
+	}
 	return nil
 }
 
@@ -199,7 +215,7 @@ func (s *Session) ReceivePcepMessage() error {
 }
 
 func (s *Session) SendPCInitiate(policyName string, labels []pcep.Label, color uint32, preference uint32, srcIPv4 []uint8, dstIPv4 []uint8) error {
-	pcinitiateMessage, err := pcep.NewPCInitiateMessage(s.srpIdHead, policyName, labels, color, preference, srcIPv4, dstIPv4)
+	pcinitiateMessage, err := pcep.NewPCInitiateMessage(s.srpIdHead, policyName, labels, color, preference, srcIPv4, dstIPv4, pcep.VendorSpecific(s.pccType))
 	if err != nil {
 		return err
 	}

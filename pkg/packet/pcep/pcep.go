@@ -8,8 +8,17 @@ package pcep
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"math"
 	"net"
+)
+
+type PccType int
+
+const (
+	CISCO_LEGACY PccType = iota
+	JUNIPER_LEGACY
+	RFC_COMPLIANT
 )
 
 const COMMON_HEADER_LENGTH uint16 = 4
@@ -206,40 +215,46 @@ const ( // PCEP TLV
 	// 0x19 is Unassigned
 	TLV_SR_PCE_CAPABILITY = 0x1a // RFC8664, Deprecated
 	// 0x1b is Unassigned
-	TLV_PATH_SETUP_TYPE                       = 0x1c // RFC8408
-	TLV_OPERATOR_CONFIGURED_ASSOCIATION_RANGE = 0x1d // RFC8697
-	TLV_GLOBAL_ASSOCIATION_SOURCE             = 0x1e // RFC8697
-	TLV_EXTENDED_ASSOCIATION_ID               = 0x1f // RFC8697
-	TLV_P2MP_IPV4_LSP_IDENTIFIERS             = 0x20 // RFC8623
-	TLV_P2MP_IPV6_LSP_IDENTIFIERS             = 0x21 // RFC8623
-	TLV_PATH_SETUP_TYPE_CAPABILITY            = 0x22 // RFC8409
-	TLV_ASSOC_TYPE_LIST                       = 0x23 // RFC8697
-	TLV_AUTO_BANDWIDTH_CAPABILITY             = 0x24 // RFC8733
-	TLV_AUTO_BANDWIDTH_ATTRIBUTES             = 0x25 // RFC8733
-	TLV_PATH_PROTECTION_ASSOCIATION_GROUP_TLV = 0x26 // RFC8745
-	TLV_IPV4_ADDRESS                          = 0x27 // RFC8779
-	TLV_IPV6_ADDRESS                          = 0x28 // RFC8779
-	TLV_UNNUMBERED_ENDPOINT                   = 0x29 // RFC8779
-	TLV_LABEL_REQUEST                         = 0x2a // RFC8779
-	TLV_LABEL_SET                             = 0x2b // RFC8779
-	TLV_PROTECTION_ATTRIBUTE                  = 0x2c // RFC8779
-	TLV_GMPLS_CAPABILITY                      = 0x2d // RFC8779
-	TLV_DISJOINTNESS_CONFIGURATION            = 0x2e // RFC8800
-	TLV_DISJOINTNESS_STATUS                   = 0x2f // RFC8800
-	TLV_POLICY_PARAMETERSjTLV                 = 0x30 // RFC9005
-	TLV_SCHED_LSP_ATTRIBUTE                   = 0x31 // RFC8934
-	TLV_SCHED_PD_LSP_ATTRIBUTE                = 0x32 // RFC8934
-	TLV_PCE_FLOWSPEC_CAPABILITY               = 0x33 // ietf-pce-pcep-flowspec-12
-	TLV_FLOW_FILTER                           = 0x34 // ietf-pce-pcep-flowspec-12
-	TLV_L2_FLOW_FILTER                        = 0x35 // ietf-pce-pcep-flowspec-12
-	TLV_BIDIRECTIONAL_LSP_ASSOCIATION_GROUP   = 0x36 // RFC9059
+	TLV_PATH_SETUP_TYPE                              = 0x1c // RFC8408
+	TLV_OPERATOR_CONFIGURED_ASSOCIATION_RANGE        = 0x1d // RFC8697
+	TLV_GLOBAL_ASSOCIATION_SOURCE                    = 0x1e // RFC8697
+	TLV_EXTENDED_ASSOCIATION_ID                      = 0x1f // RFC8697
+	TLV_P2MP_IPV4_LSP_IDENTIFIERS                    = 0x20 // RFC8623
+	TLV_P2MP_IPV6_LSP_IDENTIFIERS                    = 0x21 // RFC8623
+	TLV_PATH_SETUP_TYPE_CAPABILITY                   = 0x22 // RFC8409
+	TLV_ASSOC_TYPE_LIST                              = 0x23 // RFC8697
+	TLV_AUTO_BANDWIDTH_CAPABILITY                    = 0x24 // RFC8733
+	TLV_AUTO_BANDWIDTH_ATTRIBUTES                    = 0x25 // RFC8733
+	TLV_PATH_PROTECTION_ASSOCIATION_GROUP_TLV        = 0x26 // RFC8745
+	TLV_IPV4_ADDRESS                                 = 0x27 // RFC8779
+	TLV_IPV6_ADDRESS                                 = 0x28 // RFC8779
+	TLV_UNNUMBERED_ENDPOINT                          = 0x29 // RFC8779
+	TLV_LABEL_REQUEST                                = 0x2a // RFC8779
+	TLV_LABEL_SET                                    = 0x2b // RFC8779
+	TLV_PROTECTION_ATTRIBUTE                         = 0x2c // RFC8779
+	TLV_GMPLS_CAPABILITY                             = 0x2d // RFC8779
+	TLV_DISJOINTNESS_CONFIGURATION                   = 0x2e // RFC8800
+	TLV_DISJOINTNESS_STATUS                          = 0x2f // RFC8800
+	TLV_POLICY_PARAMETERSjTLV                        = 0x30 // RFC9005
+	TLV_SCHED_LSP_ATTRIBUTE                          = 0x31 // RFC8934
+	TLV_SCHED_PD_LSP_ATTRIBUTE                       = 0x32 // RFC8934
+	TLV_PCE_FLOWSPEC_CAPABILITY                      = 0x33 // ietf-pce-pcep-flowspec-12
+	TLV_FLOW_FILTER                                  = 0x34 // ietf-pce-pcep-flowspec-12
+	TLV_L2_FLOW_FILTER                               = 0x35 // ietf-pce-pcep-flowspec-12
+	TLV_BIDIRECTIONAL_LSP_ASSOCIATION_GROUP          = 0x36 // RFC9059
+	TLV_SRPOLICY_POL_NAME                     uint16 = 0x38 // ietf-pce-segment-routing-policy-cp-07
+	TLV_SRPOLICY_CPATH_ID                     uint16 = 0x39 // ietf-pce-segment-routing-policy-cp-07
+	TLV_SRPOLICY_CPATH_NAME                   uint16 = 0x3a // ietf-pce-segment-routing-policy-cp-07
+	TLV_SRPOLICY_CPATH_PREFERENCE             uint16 = 0x3b // ietf-pce-segment-routing-policy-cp-07
 )
 
 const (
-	TLV_STATEFUL_PCE_CAPABILITY_LENGTH = 4
-	TLV_SR_PCE_CAPABILITY_LENGTH       = 4
-	TLV_PATH_SETUP_TYPE_LENGTH         = 4
-	TLV_ASSOC_TYPE_LIST_LENGTH         = 2 // TODO: Calculate a LIST length
+	TLV_STATEFUL_PCE_CAPABILITY_LENGTH   uint16 = 4
+	TLV_SR_PCE_CAPABILITY_LENGTH         uint16 = 4
+	TLV_PATH_SETUP_TYPE_LENGTH           uint16 = 4
+	TLV_EXTENDED_ASSOCIATION_ID_LENGTH   uint16 = 8
+	TLV_SRPOLICY_CPATH_ID_LENGTH         uint16 = 28
+	TLV_SRPOLICY_CPATH_PREFERENCE_LENGTH uint16 = 4
 )
 
 const TL_LENGTH = 4
@@ -291,6 +306,18 @@ type Label struct {
 	LoAddr []uint8
 }
 
+type optParams struct {
+	pccType PccType
+}
+
+type Opt func(*optParams)
+
+func VendorSpecific(pt PccType) Opt {
+	return func(op *optParams) {
+		op.pccType = pt
+	}
+}
+
 // OPEN Object (RFC5440 7.3)
 type OpenObject struct {
 	Version   uint8
@@ -323,22 +350,23 @@ func NewOpenObject(sessionID uint8, keepalive uint8) OpenObject {
 			Length: TLV_SR_PCE_CAPABILITY_LENGTH,
 			Value:  []uint8{0x00, 0x00, 0x00, 0x0a},
 		},
-		{
-			Type:   TLV_ASSOC_TYPE_LIST,
-			Length: TLV_ASSOC_TYPE_LIST_LENGTH,
-			Value:  []uint8{0x00, 0x14},
-		},
 	}
 	openObject.Tlvs = append(openObject.Tlvs, openObjectTLVs...)
 	return openObject
 }
 
-func (o *OpenObject) DecodeFromBytes(data []uint8) {
-	o.Version = uint8(data[0] >> 5)
-	o.Flag = uint8(data[0] & 0x1f)
-	o.Keepalive = uint8(data[1])
-	o.Deadtime = uint8(data[2])
-	o.Sid = uint8(data[3])
+func (o *OpenObject) DecodeFromBytes(objBody []uint8) error {
+	o.Version = uint8(objBody[0] >> 5)
+	o.Flag = uint8(objBody[0] & 0x1f)
+	o.Keepalive = uint8(objBody[1])
+	o.Deadtime = uint8(objBody[2])
+	o.Sid = uint8(objBody[3])
+	tlvs, err := DecodeTLVsFromBytes(objBody[4:])
+	if err != nil {
+		return err
+	}
+	o.Tlvs = append(o.Tlvs, tlvs...)
+	return nil
 }
 
 func (o *OpenObject) Serialize() []uint8 {
@@ -478,8 +506,8 @@ func (o SrpObject) getByteLength() uint16 {
 	return uint16(COMMON_OBJECT_HEADER_LENGTH+8) + tlvsByteLength
 }
 
-func NewSrpObject(srpId uint32, isRemove bool) SrpObject {
-	srpObject := SrpObject{
+func NewSrpObject(srpId uint32, isRemove bool) *SrpObject {
+	srpObject := &SrpObject{
 		RFlag: isRemove, // RFC8281 5.2
 		SrpId: srpId,
 		Tlvs: []Tlv{
@@ -581,8 +609,8 @@ func (o LspObject) getByteLength() uint16 {
 	return uint16(COMMON_OBJECT_HEADER_LENGTH) + lspObjectBodyLength
 }
 
-func NewLspObject(lspName string, plspId uint32) LspObject {
-	lspObject := LspObject{
+func NewLspObject(lspName string, plspId uint32) *LspObject {
+	lspObject := &LspObject{
 		Name:   lspName,
 		PlspId: plspId,
 		OFlag:  uint8(1), // UP (RFC8231 7.3)
@@ -657,8 +685,8 @@ func (o EroObject) getByteLength() (uint16, error) {
 	return uint16(COMMON_OBJECT_HEADER_LENGTH) + srEroSubobjByteLength, nil
 }
 
-func NewEroObject(labels []Label) (EroObject, error) {
-	eroObject := EroObject{
+func NewEroObject(labels []Label) (*EroObject, error) {
+	eroObject := &EroObject{
 		SrEroSubobjects: []SrEroSubobject{},
 	}
 	err := eroObject.AddSrEroSubobjects(labels)
@@ -809,14 +837,155 @@ func (o EndpointsObject) getByteLength() uint16 {
 	return uint16(COMMON_OBJECT_HEADER_LENGTH + 4 + 4)
 }
 
-func NewEndpointsObject(objType uint8, dstIPv4 []uint8, srcIPv4 []uint8) EndpointsObject {
+func NewEndpointsObject(objType uint8, dstIPv4 []uint8, srcIPv4 []uint8) *EndpointsObject {
 	// TODO: Expantion for IPv6 Endpoint
-	EndpointsObject := EndpointsObject{
+	EndpointsObject := &EndpointsObject{
 		ObjectType: objType,
 		dstIPv4:    dstIPv4,
 		srcIPv4:    srcIPv4,
 	}
 	return EndpointsObject
+}
+
+// ASSOCIATION Object (RFC8697 6.)
+type AssociationObject struct {
+	rFlag        bool
+	assocType    uint16
+	assocId      uint16
+	tlvs         []Tlv
+	ipv4AssocSrc []uint8
+	color        uint32
+	preference   uint32
+}
+
+const (
+	OT_IPV4 uint8 = 1
+	OT_IPV6 uint8 = 2
+)
+
+const (
+	ASSOC_TYPE_SR_POLICY_ASSOCIATION uint16 = 0x06
+)
+
+// Juniper specific TLV (deprecated)
+const (
+	JUNIPER_SPEC_TLV_EXTENDED_ASSOCIATION_ID   uint16 = 65507
+	JUNIPER_SPEC_TLV_SRPOLICY_CPATH_ID         uint16 = 65508
+	JUNIPER_SPEC_TLV_SRPOLICY_CPATH_PREFERENCE uint16 = 65509
+
+	JUNIPER_SPEC_ASSOC_TYPE_SR_POLICY_ASSOCIATION uint16 = 65505
+)
+
+func (o AssociationObject) Serialize() []uint8 {
+	associationObjectHeader := NewCommonObjectHeader(OC_ASSOCIATION, OT_IPV4, o.getByteLength())
+	byteAssociationObjectHeader := associationObjectHeader.Serialize()
+
+	buf := make([]uint8, 4)
+
+	if o.rFlag {
+		buf[4] = buf[4] | 0x01
+	}
+
+	assocType := uint16ToListUint8(o.assocType)
+	assocId := uint16ToListUint8(o.assocId)
+
+	byteTlvs := []uint8{}
+	for _, tlv := range o.tlvs {
+		byteTlvs = append(byteTlvs, tlv.Serialize()...)
+	}
+
+	byteAssociationObject := AppendByteSlices(
+		byteAssociationObjectHeader, buf, assocType, assocId, o.ipv4AssocSrc, byteTlvs,
+	)
+	return byteAssociationObject
+}
+
+func (o AssociationObject) getByteLength() uint16 {
+	tlvsByteLength := uint16(0)
+	for _, tlv := range o.tlvs {
+		tlvsByteLength += tlv.getByteLength()
+	}
+	// Reserved(2byte) + Flags(2byte) + Assoc Type(2byte) + Assoc ID(2byte) + IPv4 Assoc Src(4byte)
+	associationObjectBodyLength := uint16(12) + tlvsByteLength
+	return COMMON_OBJECT_HEADER_LENGTH + associationObjectBodyLength
+}
+
+func NewAssociationObject(srcIPv4 []uint8, dstIPv4 []uint8, color uint32, preference uint32, opt ...Opt) *AssociationObject {
+	opts := optParams{
+		pccType: RFC_COMPLIANT,
+	}
+
+	for _, o := range opt {
+		o(&opts)
+	}
+
+	// TODO: Expantion for IPv6 Endpoint
+	associationObject := &AssociationObject{
+		rFlag:        false,
+		tlvs:         []Tlv{},
+		ipv4AssocSrc: srcIPv4,
+	}
+	if opts.pccType == JUNIPER_LEGACY {
+		associationObject.assocId = 0
+		associationObject.assocType = JUNIPER_SPEC_ASSOC_TYPE_SR_POLICY_ASSOCIATION
+		associationObjectTLVs := []Tlv{
+			{
+				Type:   JUNIPER_SPEC_TLV_EXTENDED_ASSOCIATION_ID,
+				Length: TLV_EXTENDED_ASSOCIATION_ID_LENGTH, // TODO: 20 if ipv6 endpoint
+				Value: AppendByteSlices(
+					uint32ToListUint8(color), dstIPv4,
+				),
+			},
+			{
+				Type:   JUNIPER_SPEC_TLV_SRPOLICY_CPATH_ID,
+				Length: TLV_SRPOLICY_CPATH_ID_LENGTH,
+				Value: []uint8{
+					0x00,             // protocol origin
+					0x00, 0x00, 0x00, // mbz
+					0x00, 0x00, 0x00, 0x00, // Originator ASN
+					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Originator Address
+					0x00, 0x00, 0x00, 0x00, //discriminator
+				},
+			},
+			{
+				Type:   JUNIPER_SPEC_TLV_SRPOLICY_CPATH_PREFERENCE,
+				Length: TLV_SRPOLICY_CPATH_PREFERENCE_LENGTH,
+				Value:  uint32ToListUint8(preference),
+			},
+		}
+		associationObject.tlvs = append(associationObject.tlvs, associationObjectTLVs...)
+	} else {
+		associationObject.assocId = 1                                  // (I.D. pce-segment-routing-policy-cp-07 5.1)
+		associationObject.assocType = ASSOC_TYPE_SR_POLICY_ASSOCIATION // (I.D. pce-segment-routing-policy-cp-07 5.1)
+		associationObjectTLVs := []Tlv{
+			{
+				Type:   TLV_EXTENDED_ASSOCIATION_ID,
+				Length: TLV_EXTENDED_ASSOCIATION_ID_LENGTH, // TODO: 20 if ipv6 endpoint
+				Value: AppendByteSlices(
+					uint32ToListUint8(color), dstIPv4,
+				),
+			},
+			{
+				Type:   TLV_SRPOLICY_CPATH_ID,
+				Length: TLV_SRPOLICY_CPATH_ID_LENGTH,
+				Value: []uint8{
+					0x00,             // protocol origin
+					0x00, 0x00, 0x00, // mbz
+					0x00, 0x00, 0x00, 0x00, // Originator ASN
+					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Originator Address
+					0x00, 0x00, 0x00, 0x00, //discriminator
+				},
+			},
+			{
+				Type:   TLV_SRPOLICY_CPATH_PREFERENCE,
+				Length: TLV_SRPOLICY_CPATH_PREFERENCE_LENGTH,
+				Value:  uint32ToListUint8(preference),
+			},
+		}
+		associationObject.tlvs = append(associationObject.tlvs, associationObjectTLVs...)
+	}
+
+	return associationObject
 }
 
 // VENDOR-INFORMATION Object (RFC7470 4)
@@ -858,30 +1027,51 @@ func (o VendorInformationObject) getByteLength() uint16 {
 	return uint16(COMMON_OBJECT_HEADER_LENGTH + 4 + 8 + 8)
 }
 
-func NewVendorInformationObject(vendor string, color uint32, preference uint32) VendorInformationObject {
-	vendorInformationObject := VendorInformationObject{ // for Cisco PCC
+func NewVendorInformationObject(vendor PccType, color uint32, preference uint32) *VendorInformationObject {
+	var vendorInformationObject *VendorInformationObject
+	if vendor == CISCO_LEGACY {
+		vendorInformationObject = &VendorInformationObject{ // for Cisco PCC
 		ObjectType:       uint8(1),
 		EnterpriseNumber: uint32(9),
 		Color:            color,
 		Preference:       preference,
+		}
 	}
 	return vendorInformationObject
 }
 
 // Open Message
 type OpenMessage struct {
-	openObject OpenObject
+	OpenObject OpenObject
 }
 
 func NewOpenMessage(sessionID uint8, keepalive uint8) OpenMessage {
 	var openMessage OpenMessage
-	openMessage.openObject = NewOpenObject(sessionID, keepalive)
+	openMessage.OpenObject = NewOpenObject(sessionID, keepalive)
 	return openMessage
 }
 
-func (o *OpenMessage) Serialize() []uint8 {
-	byteOpenObject := o.openObject.Serialize()
-	openMessageLength := COMMON_HEADER_LENGTH + o.openObject.getByteLength()
+func (m *OpenMessage) DecodeFromBytes(byteOpenObj []uint8) error {
+	var commonObjectHeader CommonObjectHeader
+	commonObjectHeader.DecodeFromBytes(byteOpenObj)
+
+	if commonObjectHeader.ObjectClass != OC_OPEN {
+		return fmt.Errorf("Unsupported ObjectClass: %d", commonObjectHeader.ObjectClass)
+	}
+	if commonObjectHeader.ObjectType != 1 {
+		return fmt.Errorf("Unsupported ObjectType: %d", commonObjectHeader.ObjectType)
+	}
+
+	var openObject OpenObject
+	openObject.DecodeFromBytes(byteOpenObj[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength])
+	m.OpenObject = openObject
+
+	return nil
+}
+
+func (m *OpenMessage) Serialize() []uint8 {
+	byteOpenObject := m.OpenObject.Serialize()
+	openMessageLength := COMMON_HEADER_LENGTH + m.OpenObject.getByteLength()
 	openHeader := NewCommonHeader(MT_OPEN, openMessageLength)
 	byteOpenHeader := openHeader.Serialize()
 	byteOpenMessage := AppendByteSlices(byteOpenHeader, byteOpenObject)
@@ -962,14 +1152,23 @@ func (o *PCRptMessage) DecodeFromBytes(bytePcrptObject []uint8) error {
 
 // PCInitiate Message
 type PCInitiateMessage struct {
-	SrpObject               SrpObject
-	LspObject               LspObject
-	EndpointsObject         EndpointsObject
-	EroObject               EroObject
-	VendorInformationObject VendorInformationObject
+	SrpObject               *SrpObject
+	LspObject               *LspObject
+	EndpointsObject         *EndpointsObject
+	EroObject               *EroObject
+	AssociationObject       *AssociationObject
+	VendorInformationObject *VendorInformationObject
 }
 
-func NewPCInitiateMessage(srpId uint32, lspName string, labels []Label, color uint32, preference uint32, srcIPv4 []uint8, dstIPv4 []uint8) (PCInitiateMessage, error) {
+func NewPCInitiateMessage(srpId uint32, lspName string, labels []Label, color uint32, preference uint32, srcIPv4 []uint8, dstIPv4 []uint8, opt ...Opt) (PCInitiateMessage, error) {
+	opts := optParams{
+		pccType: RFC_COMPLIANT,
+	}
+
+	for _, o := range opt {
+		o(&opts)
+	}
+
 	var pcInitiateMessage PCInitiateMessage
 	pcInitiateMessage.SrpObject = NewSrpObject(srpId, false)
 	pcInitiateMessage.LspObject = NewLspObject(lspName, 0)                      // PLSP-ID = 0
@@ -979,36 +1178,63 @@ func NewPCInitiateMessage(srpId uint32, lspName string, labels []Label, color ui
 	if err != nil {
 		return pcInitiateMessage, err
 	}
-	pcInitiateMessage.VendorInformationObject = NewVendorInformationObject("Cisco", color, preference)
+	if opts.pccType == JUNIPER_LEGACY {
+		pcInitiateMessage.AssociationObject = NewAssociationObject(srcIPv4, dstIPv4, color, preference, VendorSpecific(opts.pccType))
+	} else if opts.pccType == CISCO_LEGACY {
+		pcInitiateMessage.VendorInformationObject = NewVendorInformationObject(CISCO_LEGACY, color, preference)
+	} else if opts.pccType == RFC_COMPLIANT {
+		pcInitiateMessage.AssociationObject = NewAssociationObject(srcIPv4, dstIPv4, color, preference)
+		// FRRouting is treated as an RFC compliant
+		pcInitiateMessage.VendorInformationObject = NewVendorInformationObject(CISCO_LEGACY, color, preference)
+	}
+
 	return pcInitiateMessage, nil
 }
 
-func (o *PCInitiateMessage) Serialize() ([]uint8, error) {
-	byteSrpObject := o.SrpObject.Serialize()
-	byteLspObject := o.LspObject.Serialize()
-	byteEndpointsObject := o.EndpointsObject.Serialize()
-	byteEroObject, err := o.EroObject.Serialize()
+func (m *PCInitiateMessage) Serialize() ([]uint8, error) {
+	eroObjectLength, err := m.EroObject.getByteLength()
 	if err != nil {
 		return nil, err
 	}
-	byteVendorInformationObject := o.VendorInformationObject.Serialize()
+	pcinitiateMessageLength := COMMON_HEADER_LENGTH +
+		m.SrpObject.getByteLength() +
+		m.LspObject.getByteLength() +
+		m.EndpointsObject.getByteLength() +
+		eroObjectLength
 
-	eroObjectLength, err := o.EroObject.getByteLength()
+	byteSrpObject := m.SrpObject.Serialize()
+	byteLspObject := m.LspObject.Serialize()
+	byteEndpointsObject := m.EndpointsObject.Serialize()
+	byteEroObject, err := m.EroObject.Serialize()
 	if err != nil {
 		return nil, err
 	}
-	pcinitiateMessageLength := COMMON_HEADER_LENGTH + o.SrpObject.getByteLength() + o.LspObject.getByteLength() + o.EndpointsObject.getByteLength() + eroObjectLength + o.VendorInformationObject.getByteLength()
+
+	byteVendorInformationObject := []uint8{}
+	byteAssociationObject := []uint8{}
+
+	if m.AssociationObject != nil {
+		byteAssociationObject = append(byteAssociationObject, m.AssociationObject.Serialize()...)
+		pcinitiateMessageLength += m.AssociationObject.getByteLength()
+	}
+	if m.VendorInformationObject != nil {
+		byteVendorInformationObject = append(byteVendorInformationObject, m.VendorInformationObject.Serialize()...)
+		pcinitiateMessageLength += m.VendorInformationObject.getByteLength()
+	}
+
 	pcinitiateHeader := NewCommonHeader(MT_LSPINITREQ, pcinitiateMessageLength)
 	bytePCInitiateHeader := pcinitiateHeader.Serialize()
-	bytePCInitiateMessage := AppendByteSlices(bytePCInitiateHeader, byteSrpObject, byteLspObject, byteEndpointsObject, byteEroObject, byteVendorInformationObject)
+	bytePCInitiateMessage := AppendByteSlices(
+		bytePCInitiateHeader, byteSrpObject, byteLspObject, byteEndpointsObject, byteEroObject, byteAssociationObject, byteVendorInformationObject,
+	)
 	return bytePCInitiateMessage, nil
 }
 
 // PCUpdate Message
 type PCUpdMessage struct {
-	SrpObject SrpObject
-	LspObject LspObject
-	EroObject EroObject
+	SrpObject *SrpObject
+	LspObject *LspObject
+	EroObject *EroObject
 }
 
 func NewPCUpdMessage(srpId uint32, lspName string, plspId uint32, labels []Label) (PCUpdMessage, error) {
@@ -1063,4 +1289,16 @@ func removePadding(data []uint8) []uint8 {
 			return data
 		}
 	}
+}
+
+func uint16ToListUint8(input uint16) []uint8 {
+	uint8Fmt := make([]uint8, 2)
+	binary.BigEndian.PutUint16(uint8Fmt, input)
+	return uint8Fmt
+}
+
+func uint32ToListUint8(input uint32) []uint8 {
+	uint8Fmt := make([]uint8, 4)
+	binary.BigEndian.PutUint32(uint8Fmt, input)
+	return uint8Fmt
 }
