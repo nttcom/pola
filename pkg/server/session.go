@@ -180,7 +180,7 @@ func (s *Session) ReceivePcepMessage() error {
 			if _, err := s.tcpConn.Read(bytePcrptObject); err != nil {
 				return err
 			}
-			var pcrptMessage pcep.PCRptMessage
+			pcrptMessage := pcep.NewPCRptMessage()
 			if err := pcrptMessage.DecodeFromBytes(bytePcrptObject); err != nil {
 				return err
 			}
@@ -258,7 +258,7 @@ func (s *Session) SendPCUpdate(policyName string, plspId uint32, labels []pcep.L
 	return nil
 }
 
-func RegisterLsp(lspChan chan Lsp, peerAddr net.IP, pcrptMessage pcep.PCRptMessage) {
+func RegisterLsp(lspChan chan Lsp, peerAddr net.IP, pcrptMessage *pcep.PCRptMessage) {
 	lspStruct := Lsp{
 		peerAddr: peerAddr,
 		plspId:   pcrptMessage.LspObject.PlspId,

@@ -8,7 +8,6 @@ package pcep
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"math"
 	"net"
 )
@@ -47,11 +46,11 @@ type CommonHeader struct { // RFC5440 6.1
 	MessageLength uint16
 }
 
-func (h *CommonHeader) DecodeFromBytes(data []uint8) {
-	h.Version = uint8(data[0] >> 5)
-	h.Flag = uint8(data[0] & 0x1f)
-	h.MessageType = uint8(data[1])
-	h.MessageLength = binary.BigEndian.Uint16(data[2:4])
+func (h *CommonHeader) DecodeFromBytes(header []uint8) {
+	h.Version = uint8(header[0] >> 5)
+	h.Flag = uint8(header[0] & 0x1f)
+	h.MessageType = uint8(header[1])
+	h.MessageLength = binary.BigEndian.Uint16(header[2:4])
 }
 
 func (h *CommonHeader) Serialize() []uint8 {
@@ -75,7 +74,7 @@ func NewCommonHeader(messageType uint8, messageLength uint16) CommonHeader {
 	return commonHeader
 }
 
-const COMMON_OBJECT_HEADER_LENGTH = 4
+const COMMON_OBJECT_HEADER_LENGTH uint16 = 4
 
 const ( // PCEP Object-Class (1 byte)
 	OC_RESERVED       uint8 = 0x00 // RFC5440
@@ -134,13 +133,13 @@ type CommonObjectHeader struct { // RFC5440 7.2
 	ObjectLength uint16
 }
 
-func (h *CommonObjectHeader) DecodeFromBytes(data []uint8) {
-	h.ObjectClass = uint8(data[0])
-	h.ObjectType = uint8(data[1] & 0xf0 >> 4)
-	h.ResFlags = uint8(data[1] & 0x0c >> 2)
-	h.PFlag = (data[1] & 0x02) != 0
-	h.IFlag = (data[1] & 0x01) != 0
-	h.ObjectLength = binary.BigEndian.Uint16(data[2:4])
+func (h *CommonObjectHeader) DecodeFromBytes(objectHeader []uint8) {
+	h.ObjectClass = uint8(objectHeader[0])
+	h.ObjectType = uint8(objectHeader[1] & 0xf0 >> 4)
+	h.ResFlags = uint8(objectHeader[1] & 0x0c >> 2)
+	h.PFlag = (objectHeader[1] & 0x02) != 0
+	h.IFlag = (objectHeader[1] & 0x01) != 0
+	h.ObjectLength = binary.BigEndian.Uint16(objectHeader[2:4])
 }
 
 func (h *CommonObjectHeader) Serialize() []uint8 {
@@ -183,7 +182,8 @@ func (tlv *Tlv) SetLength() {
 }
 
 func (tlv Tlv) getByteLength() uint16 {
-	return uint16(4) + uint16(math.Ceil(float64(len(tlv.Value))/4)*4) // Type(2byte) + Length(2byte) + Value(valiable) + padding(valiable)
+	// Type(2byte) + Length(2byte) + Value(valiable) + padding(valiable)
+	return uint16(4) + uint16(math.Ceil(float64(len(tlv.Value))/4)*4)
 }
 
 const ( // PCEP TLV
@@ -355,13 +355,13 @@ func NewOpenObject(sessionID uint8, keepalive uint8) OpenObject {
 	return openObject
 }
 
-func (o *OpenObject) DecodeFromBytes(objBody []uint8) error {
-	o.Version = uint8(objBody[0] >> 5)
-	o.Flag = uint8(objBody[0] & 0x1f)
-	o.Keepalive = uint8(objBody[1])
-	o.Deadtime = uint8(objBody[2])
-	o.Sid = uint8(objBody[3])
-	tlvs, err := DecodeTLVsFromBytes(objBody[4:])
+func (o *OpenObject) DecodeFromBytes(objectBody []uint8) error {
+	o.Version = uint8(objectBody[0] >> 5)
+	o.Flag = uint8(objectBody[0] & 0x1f)
+	o.Keepalive = uint8(objectBody[1])
+	o.Deadtime = uint8(objectBody[2])
+	o.Sid = uint8(objectBody[3])
+	tlvs, err := DecodeTLVsFromBytes(objectBody[4:])
 	if err != nil {
 		return err
 	}
@@ -402,8 +402,8 @@ type BandwidthObject struct {
 	Bandwidth uint32
 }
 
-func (o *BandwidthObject) DecodeFromBytes(data []uint8) {
-	o.Bandwidth = binary.BigEndian.Uint32(data[:])
+func (o *BandwidthObject) DecodeFromBytes(objectBody []uint8) {
+	o.Bandwidth = binary.BigEndian.Uint32(objectBody[:])
 }
 
 // METRIC Object (RFC5440 7.8)
@@ -414,11 +414,11 @@ type MetricObject struct {
 	MetricValue uint32
 }
 
-func (o *MetricObject) DecodeFromBytes(data []uint8) {
-	o.CFlag = (data[2] & 0x02) != 0
-	o.BFlag = (data[2] & 0x01) != 0
-	o.MetricType = data[3]
-	o.MetricValue = binary.BigEndian.Uint32(data[4:8])
+func (o *MetricObject) DecodeFromBytes(objectBody []uint8) {
+	o.CFlag = (objectBody[2] & 0x02) != 0
+	o.BFlag = (objectBody[2] & 0x01) != 0
+	o.MetricType = objectBody[3]
+	o.MetricValue = binary.BigEndian.Uint32(objectBody[4:8])
 }
 
 func (o *MetricObject) Serialize() []uint8 {
@@ -444,13 +444,13 @@ type LspaObject struct {
 	LFlag           bool
 }
 
-func (o *LspaObject) DecodeFromBytes(data []uint8) {
-	o.ExcludeAny = binary.BigEndian.Uint32(data[0:4])
-	o.IncludeAny = binary.BigEndian.Uint32(data[4:8])
-	o.IncludeAll = binary.BigEndian.Uint32(data[8:12])
-	o.SetupPriority = data[12]
-	o.HoldingPriority = data[13]
-	o.LFlag = (data[14] & 0x01) != 0
+func (o *LspaObject) DecodeFromBytes(objectBody []uint8) {
+	o.ExcludeAny = binary.BigEndian.Uint32(objectBody[0:4])
+	o.IncludeAny = binary.BigEndian.Uint32(objectBody[4:8])
+	o.IncludeAll = binary.BigEndian.Uint32(objectBody[8:12])
+	o.SetupPriority = objectBody[12]
+	o.HoldingPriority = objectBody[13]
+	o.LFlag = (objectBody[14] & 0x01) != 0
 }
 
 func (o *LspaObject) Serialize() []uint8 {
@@ -473,9 +473,9 @@ type SrpObject struct {
 	Tlvs  []Tlv
 }
 
-func (o *SrpObject) DecodeFromBytes(data []uint8) {
-	o.RFlag = (data[3] & 0x01) != 0
-	o.SrpId = binary.BigEndian.Uint32(data[4:8])
+func (o *SrpObject) DecodeFromBytes(objectBody []uint8) {
+	o.RFlag = (objectBody[3] & 0x01) != 0
+	o.SrpId = binary.BigEndian.Uint32(objectBody[4:8])
 }
 
 func (o *SrpObject) Serialize() []uint8 {
@@ -536,15 +536,15 @@ type LspObject struct {
 	Tlvs    []Tlv
 }
 
-func (o *LspObject) DecodeFromBytes(data []uint8) error {
-	o.PlspId = uint32(binary.BigEndian.Uint32(data[0:4]) >> 12) // 20 bits from top
-	o.OFlag = uint8(data[3] & 0x0070 >> 4)
-	o.AFlag = (data[3] & 0x08) != 0
-	o.RFlag = (data[3] & 0x04) != 0
-	o.SFlag = (data[3] & 0x02) != 0
-	o.DFlag = (data[3] & 0x01) != 0
-	if len(data) > 4 {
-		byteTlvs := data[4:]
+func (o *LspObject) DecodeFromBytes(objectBody []uint8) error {
+	o.PlspId = uint32(binary.BigEndian.Uint32(objectBody[0:4]) >> 12) // 20 bits from top
+	o.OFlag = uint8(objectBody[3] & 0x0070 >> 4)
+	o.AFlag = (objectBody[3] & 0x08) != 0
+	o.RFlag = (objectBody[3] & 0x04) != 0
+	o.SFlag = (objectBody[3] & 0x02) != 0
+	o.DFlag = (objectBody[3] & 0x01) != 0
+	if len(objectBody) > 4 {
+		byteTlvs := objectBody[4:]
 		for {
 			var tlv Tlv
 			tlv.DecodeFromBytes(byteTlvs)
@@ -615,7 +615,7 @@ func NewLspObject(lspName string, plspId uint32) *LspObject {
 		PlspId: plspId,
 		OFlag:  uint8(1), // UP (RFC8231 7.3)
 		AFlag:  true,     // desired operational state is active (RFC8231 7.3)
-		RFlag:  false,
+		RFlag:  false,    // TODO: Allow setting from function arguments
 		SFlag:  false,
 		DFlag:  true,
 		Tlvs:   []Tlv{},
@@ -635,19 +635,19 @@ type EroObject struct {
 	SrEroSubobjects []SrEroSubobject
 }
 
-func (o *EroObject) DecodeFromBytes(data []uint8) error {
-	if len(data) == 0 {
+func (o *EroObject) DecodeFromBytes(objectBody []uint8) error {
+	if len(objectBody) == 0 {
 		return nil
 	}
 	for {
 		var srErosubObj SrEroSubobject
-		srErosubObj.DecodeFromBytes(data)
+		srErosubObj.DecodeFromBytes(objectBody)
 		o.SrEroSubobjects = append(o.SrEroSubobjects, srErosubObj)
 		if objByteLength, err := srErosubObj.getByteLength(); err != nil {
 			return err
-		} else if int(objByteLength) < len(data) {
-			data = data[objByteLength:]
-		} else if int(objByteLength) == len(data) {
+		} else if int(objByteLength) < len(objectBody) {
+			objectBody = objectBody[objByteLength:]
+		} else if int(objByteLength) == len(objectBody) {
 			break
 		} else {
 			return errors.New("srerosubobject parse error")
@@ -729,17 +729,17 @@ type SrEroSubobject struct {
 	Nai           []uint8
 }
 
-func (o *SrEroSubobject) DecodeFromBytes(data []uint8) {
-	o.LFlag = (data[0] & 0x80) != 0
-	o.SubobjectType = data[0] & 0x7f
-	o.Length = data[1]
-	o.NaiType = data[2] >> 4
-	o.FFlag = (data[3] & 0x08) != 0
-	o.SFlag = (data[3] & 0x04) != 0
-	o.CFlag = (data[3] & 0x02) != 0
-	o.MFlag = (data[3] & 0x01) != 0
-	o.Sid = binary.BigEndian.Uint32(data[4:8]) >> 12
-	o.Nai = data[8:12]
+func (o *SrEroSubobject) DecodeFromBytes(subObj []uint8) {
+	o.LFlag = (subObj[0] & 0x80) != 0
+	o.SubobjectType = subObj[0] & 0x7f
+	o.Length = subObj[1]
+	o.NaiType = subObj[2] >> 4
+	o.FFlag = (subObj[3] & 0x08) != 0
+	o.SFlag = (subObj[3] & 0x04) != 0
+	o.CFlag = (subObj[3] & 0x02) != 0
+	o.MFlag = (subObj[3] & 0x01) != 0
+	o.Sid = binary.BigEndian.Uint32(subObj[4:8]) >> 12
+	o.Nai = subObj[8:12]
 }
 
 func (o *SrEroSubobject) Serialize() []uint8 {
@@ -924,6 +924,8 @@ func NewAssociationObject(srcIPv4 []uint8, dstIPv4 []uint8, color uint32, prefer
 		rFlag:        false,
 		tlvs:         []Tlv{},
 		ipv4AssocSrc: srcIPv4,
+		color:        color,
+		preference:   preference,
 	}
 	if opts.pccType == JUNIPER_LEGACY {
 		associationObject.assocId = 0
@@ -996,11 +998,11 @@ type VendorInformationObject struct {
 	Preference       uint32
 }
 
-func (o *VendorInformationObject) DecodeFromBytes(data []uint8) {
+func (o *VendorInformationObject) DecodeFromBytes(objectBody []uint8) {
 	// TODO: Supports decode Cisco specific TLV type
-	o.EnterpriseNumber = binary.BigEndian.Uint32(data[0:4])
-	o.Color = binary.BigEndian.Uint32(data[8:12])
-	o.Preference = binary.BigEndian.Uint32(data[16:20])
+	o.EnterpriseNumber = binary.BigEndian.Uint32(objectBody[0:4])
+	o.Color = binary.BigEndian.Uint32(objectBody[8:12])
+	o.Preference = binary.BigEndian.Uint32(objectBody[16:20])
 }
 
 func (o *VendorInformationObject) Serialize() []uint8 {
@@ -1017,7 +1019,9 @@ func (o *VendorInformationObject) Serialize() []uint8 {
 	preferenceValue := make([]uint8, 4)
 	binary.BigEndian.PutUint32(preferenceValue, o.Preference)
 	tlvPreference = AppendByteSlices(tlvPreference, preferenceValue)
-	byteVendorInformationObject := AppendByteSlices(byteVendorInformationObjectHeader, enterpriseNumber, tlvColor, tlvPreference)
+	byteVendorInformationObject := AppendByteSlices(
+		byteVendorInformationObjectHeader, enterpriseNumber, tlvColor, tlvPreference,
+	)
 	return byteVendorInformationObject
 }
 
@@ -1031,274 +1035,11 @@ func NewVendorInformationObject(vendor PccType, color uint32, preference uint32)
 	var vendorInformationObject *VendorInformationObject
 	if vendor == CISCO_LEGACY {
 		vendorInformationObject = &VendorInformationObject{ // for Cisco PCC
-		ObjectType:       uint8(1),
-		EnterpriseNumber: uint32(9),
-		Color:            color,
-		Preference:       preference,
+			ObjectType:       uint8(1),
+			EnterpriseNumber: uint32(9),
+			Color:            color,
+			Preference:       preference,
 		}
 	}
 	return vendorInformationObject
-}
-
-// Open Message
-type OpenMessage struct {
-	OpenObject OpenObject
-}
-
-func NewOpenMessage(sessionID uint8, keepalive uint8) OpenMessage {
-	var openMessage OpenMessage
-	openMessage.OpenObject = NewOpenObject(sessionID, keepalive)
-	return openMessage
-}
-
-func (m *OpenMessage) DecodeFromBytes(byteOpenObj []uint8) error {
-	var commonObjectHeader CommonObjectHeader
-	commonObjectHeader.DecodeFromBytes(byteOpenObj)
-
-	if commonObjectHeader.ObjectClass != OC_OPEN {
-		return fmt.Errorf("Unsupported ObjectClass: %d", commonObjectHeader.ObjectClass)
-	}
-	if commonObjectHeader.ObjectType != 1 {
-		return fmt.Errorf("Unsupported ObjectType: %d", commonObjectHeader.ObjectType)
-	}
-
-	var openObject OpenObject
-	openObject.DecodeFromBytes(byteOpenObj[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength])
-	m.OpenObject = openObject
-
-	return nil
-}
-
-func (m *OpenMessage) Serialize() []uint8 {
-	byteOpenObject := m.OpenObject.Serialize()
-	openMessageLength := COMMON_HEADER_LENGTH + m.OpenObject.getByteLength()
-	openHeader := NewCommonHeader(MT_OPEN, openMessageLength)
-	byteOpenHeader := openHeader.Serialize()
-	byteOpenMessage := AppendByteSlices(byteOpenHeader, byteOpenObject)
-	return byteOpenMessage
-}
-
-// Keepalive Message
-type KeepaliveMessage struct {
-}
-
-func NewKeepaliveMessage() KeepaliveMessage {
-	var keepaliveMessage KeepaliveMessage
-	return keepaliveMessage
-}
-
-func (o *KeepaliveMessage) Serialize() []uint8 {
-	keepaliveMessageLength := COMMON_HEADER_LENGTH
-	keepaliveHeader := NewCommonHeader(MT_KEEPALIVE, keepaliveMessageLength)
-	byteKeepaliveHeader := keepaliveHeader.Serialize()
-	byteKeepaliveMessage := byteKeepaliveHeader
-	return byteKeepaliveMessage
-}
-
-// PCRpt Message
-type PCRptMessage struct {
-	SrpObject               SrpObject
-	LspObject               LspObject
-	EroObject               EroObject
-	LspaObject              LspaObject
-	MetricObjects           []MetricObject
-	BandwidthObjects        []BandwidthObject
-	VendorInformationObject VendorInformationObject
-}
-
-func (o *PCRptMessage) DecodeFromBytes(bytePcrptObject []uint8) error {
-	// TODO: Supports multiple <state-report>'s stacked PCRpt Message.
-	// https://datatracker.ietf.org/doc/html/rfc8231#section-6.1
-	// Currently, when more than 2 <state-report> come in, One object has multiple object information.
-	var commonObjectHeader CommonObjectHeader
-	commonObjectHeader.DecodeFromBytes(bytePcrptObject)
-
-	switch commonObjectHeader.ObjectClass {
-	case OC_BANDWIDTH:
-		var bandwidthObject BandwidthObject
-		bandwidthObject.DecodeFromBytes(bytePcrptObject[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength])
-		o.BandwidthObjects = append(o.BandwidthObjects, bandwidthObject)
-	case OC_METRIC:
-		var metricObject MetricObject
-		metricObject.DecodeFromBytes(bytePcrptObject[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength])
-		o.MetricObjects = append(o.MetricObjects, metricObject)
-	case OC_ERO:
-		err := o.EroObject.DecodeFromBytes(bytePcrptObject[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength])
-		if err != nil {
-			return err
-		}
-	case OC_LSPA:
-		o.LspaObject.DecodeFromBytes(bytePcrptObject[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength])
-	case OC_LSP:
-		err := o.LspObject.DecodeFromBytes(bytePcrptObject[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength])
-		if err != nil {
-			return err
-		}
-	case OC_SRP:
-		o.SrpObject.DecodeFromBytes(bytePcrptObject[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength])
-	case OC_VENDOR_INFORMATION:
-		o.VendorInformationObject.DecodeFromBytes(bytePcrptObject[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength])
-	default:
-	}
-
-	if int(commonObjectHeader.ObjectLength) < len(bytePcrptObject) {
-		err := o.DecodeFromBytes(bytePcrptObject[commonObjectHeader.ObjectLength:])
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// PCInitiate Message
-type PCInitiateMessage struct {
-	SrpObject               *SrpObject
-	LspObject               *LspObject
-	EndpointsObject         *EndpointsObject
-	EroObject               *EroObject
-	AssociationObject       *AssociationObject
-	VendorInformationObject *VendorInformationObject
-}
-
-func NewPCInitiateMessage(srpId uint32, lspName string, labels []Label, color uint32, preference uint32, srcIPv4 []uint8, dstIPv4 []uint8, opt ...Opt) (PCInitiateMessage, error) {
-	opts := optParams{
-		pccType: RFC_COMPLIANT,
-	}
-
-	for _, o := range opt {
-		o(&opts)
-	}
-
-	var pcInitiateMessage PCInitiateMessage
-	pcInitiateMessage.SrpObject = NewSrpObject(srpId, false)
-	pcInitiateMessage.LspObject = NewLspObject(lspName, 0)                      // PLSP-ID = 0
-	pcInitiateMessage.EndpointsObject = NewEndpointsObject(1, dstIPv4, srcIPv4) // objectType = 1 (IPv4)
-	var err error
-	pcInitiateMessage.EroObject, err = NewEroObject(labels)
-	if err != nil {
-		return pcInitiateMessage, err
-	}
-	if opts.pccType == JUNIPER_LEGACY {
-		pcInitiateMessage.AssociationObject = NewAssociationObject(srcIPv4, dstIPv4, color, preference, VendorSpecific(opts.pccType))
-	} else if opts.pccType == CISCO_LEGACY {
-		pcInitiateMessage.VendorInformationObject = NewVendorInformationObject(CISCO_LEGACY, color, preference)
-	} else if opts.pccType == RFC_COMPLIANT {
-		pcInitiateMessage.AssociationObject = NewAssociationObject(srcIPv4, dstIPv4, color, preference)
-		// FRRouting is treated as an RFC compliant
-		pcInitiateMessage.VendorInformationObject = NewVendorInformationObject(CISCO_LEGACY, color, preference)
-	}
-
-	return pcInitiateMessage, nil
-}
-
-func (m *PCInitiateMessage) Serialize() ([]uint8, error) {
-	eroObjectLength, err := m.EroObject.getByteLength()
-	if err != nil {
-		return nil, err
-	}
-	pcinitiateMessageLength := COMMON_HEADER_LENGTH +
-		m.SrpObject.getByteLength() +
-		m.LspObject.getByteLength() +
-		m.EndpointsObject.getByteLength() +
-		eroObjectLength
-
-	byteSrpObject := m.SrpObject.Serialize()
-	byteLspObject := m.LspObject.Serialize()
-	byteEndpointsObject := m.EndpointsObject.Serialize()
-	byteEroObject, err := m.EroObject.Serialize()
-	if err != nil {
-		return nil, err
-	}
-
-	byteVendorInformationObject := []uint8{}
-	byteAssociationObject := []uint8{}
-
-	if m.AssociationObject != nil {
-		byteAssociationObject = append(byteAssociationObject, m.AssociationObject.Serialize()...)
-		pcinitiateMessageLength += m.AssociationObject.getByteLength()
-	}
-	if m.VendorInformationObject != nil {
-		byteVendorInformationObject = append(byteVendorInformationObject, m.VendorInformationObject.Serialize()...)
-		pcinitiateMessageLength += m.VendorInformationObject.getByteLength()
-	}
-
-	pcinitiateHeader := NewCommonHeader(MT_LSPINITREQ, pcinitiateMessageLength)
-	bytePCInitiateHeader := pcinitiateHeader.Serialize()
-	bytePCInitiateMessage := AppendByteSlices(
-		bytePCInitiateHeader, byteSrpObject, byteLspObject, byteEndpointsObject, byteEroObject, byteAssociationObject, byteVendorInformationObject,
-	)
-	return bytePCInitiateMessage, nil
-}
-
-// PCUpdate Message
-type PCUpdMessage struct {
-	SrpObject *SrpObject
-	LspObject *LspObject
-	EroObject *EroObject
-}
-
-func NewPCUpdMessage(srpId uint32, lspName string, plspId uint32, labels []Label) (PCUpdMessage, error) {
-	var pcUpdMessage PCUpdMessage
-	pcUpdMessage.SrpObject = NewSrpObject(srpId, false)
-	pcUpdMessage.LspObject = NewLspObject(lspName, plspId) // PLSP-ID = 0
-	var err error
-	pcUpdMessage.EroObject, err = NewEroObject(labels)
-	if err != nil {
-		return pcUpdMessage, err
-	}
-	return pcUpdMessage, nil
-}
-
-func (o *PCUpdMessage) Serialize() ([]uint8, error) {
-	byteSrpObject := o.SrpObject.Serialize()
-	byteLspObject := o.LspObject.Serialize()
-	byteEroObject, err := o.EroObject.Serialize()
-	if err != nil {
-		return nil, err
-	}
-
-	eroObjectLength, err := o.EroObject.getByteLength()
-	if err != nil {
-		return nil, err
-	}
-	pcupdMessageLength := COMMON_HEADER_LENGTH + o.SrpObject.getByteLength() + o.LspObject.getByteLength() + eroObjectLength
-	pcupdHeader := NewCommonHeader(MT_UPDATE, pcupdMessageLength)
-	bytePCUpdHeader := pcupdHeader.Serialize()
-	bytePCUpdMessage := AppendByteSlices(bytePCUpdHeader, byteSrpObject, byteLspObject, byteEroObject)
-	return bytePCUpdMessage, err
-}
-
-// utils
-func AppendByteSlices(byteSlices ...[]uint8) []uint8 {
-	joinedSliceLength := 0
-	for _, byteSlice := range byteSlices {
-		joinedSliceLength += len(byteSlice)
-	}
-	joinedSlice := make([]uint8, 0, joinedSliceLength)
-	for _, byteSlice := range byteSlices {
-		joinedSlice = append(joinedSlice, byteSlice...)
-	}
-	return joinedSlice
-}
-
-func removePadding(data []uint8) []uint8 {
-	for {
-		if data[len(data)-1] == 0x00 {
-			data = data[:len(data)-1]
-		} else {
-			return data
-		}
-	}
-}
-
-func uint16ToListUint8(input uint16) []uint8 {
-	uint8Fmt := make([]uint8, 2)
-	binary.BigEndian.PutUint16(uint8Fmt, input)
-	return uint8Fmt
-}
-
-func uint32ToListUint8(input uint32) []uint8 {
-	uint8Fmt := make([]uint8, 4)
-	binary.BigEndian.PutUint32(uint8Fmt, input)
-	return uint8Fmt
 }
