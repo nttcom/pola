@@ -40,10 +40,11 @@ message SrPolicy {
     string srcRouterId = 4;
     string dstRouterId = 5;
     uint32 color = 6;
-    string policyName = 7;
-    SrPolicyType type = 8;
-    repeated Segment segmentList = 9;
-    MetricType metric = 10;
+    uint32 preference = 7;
+    string policyName = 8;
+    SrPolicyType type = 9;
+    repeated Segment segmentList = 10;
+    MetricType metric = 11;
 }
 
 message CreateSrPolicyInput {
