@@ -39,11 +39,13 @@ func showSrPolicyList(jsonFlag bool) error {
 		lsps := []map[string]interface{}{}
 		for _, lsp := range lspList {
 			tmp := map[string]interface{}{ // TODO: Fix format according to readme
-				"peerAddr":   lsp.peerAddr.String(),
-				"policyName": lsp.name,
-				"srcAddr":    net.IP(lsp.srcAddr).String(),
-				"dstAddr":    net.IP(lsp.dstAddr).String(),
-				"path":       lsp.path,
+				"peerAddr":    lsp.peerAddr.String(),
+				"policyName":  lsp.name,
+				"srcAddr":     net.IP(lsp.srcAddr).String(),
+				"dstAddr":     net.IP(lsp.dstAddr).String(),
+				"color":       lsp.color,
+				"preference":  lsp.preference,
+				"segmentList": lsp.path,
 			}
 			lsps = append(lsps, tmp)
 		}
@@ -62,12 +64,15 @@ func showSrPolicyList(jsonFlag bool) error {
 			return nil
 		}
 		for i, lsp := range lspList {
-			fmt.Printf("lsp(%d): \n", i)
-			fmt.Printf("  peerAddr: %s\n", lsp.peerAddr)
-			fmt.Printf("  policyName: %s\n", lsp.name)
+			fmt.Printf("LSP(%d): \n", i)
+			fmt.Printf("  PcepSessionAddr: %s\n", lsp.peerAddr)
+			fmt.Printf("  PolicyName: %s\n", lsp.name)
 			fmt.Printf("  SrcAddr: %s\n", net.IP(lsp.srcAddr))
 			fmt.Printf("  DstAddr: %s\n", net.IP(lsp.dstAddr))
-			fmt.Printf("  path: ")
+			fmt.Printf("  Color: %d\n", lsp.color)
+			fmt.Printf("  Preference: %d\n", lsp.preference)
+			fmt.Printf("  DstAddr: %s\n", net.IP(lsp.dstAddr))
+			fmt.Printf("  SegmentList: ")
 
 			if len(lsp.path) == 0 {
 				fmt.Printf("None \n")

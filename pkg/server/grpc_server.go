@@ -203,6 +203,8 @@ func (s *APIServer) GetSrPolicyList(context.Context, *empty.Empty) (*pb.SrPolicy
 		srPolicyData := &pb.SrPolicy{
 			PcepSessionAddr: []byte(lsp.peerAddr),
 			SegmentList:     []*pb.Segment{},
+			Color:           lsp.color,
+			Preference:      lsp.preference,
 			PolicyName:      lsp.name,
 			SrcAddr:         []byte(lsp.srcAddr),
 			DstAddr:         []byte(lsp.dstAddr),
