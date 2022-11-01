@@ -849,13 +849,35 @@ func NewEndpointsObject(objType uint8, dstIPv4 []uint8, srcIPv4 []uint8) *Endpoi
 
 // ASSOCIATION Object (RFC8697 6.)
 type AssociationObject struct {
-	rFlag        bool
-	assocType    uint16
-	assocId      uint16
-	tlvs         []Tlv
-	ipv4AssocSrc []uint8
-	color        uint32
-	preference   uint32
+	RFlag        bool
+	AssocType    uint16
+	AssocId      uint16
+	Ipv4AssocSrc []uint8
+	Tlvs         []Tlv
+}
+
+// (I.D. pce-segment-routing-policy-cp-08 5.1)
+func (o *AssociationObject) Color() uint32 {
+	for _, tlv := range o.Tlvs {
+		if tlv.Type == TLV_EXTENDED_ASSOCIATION_ID {
+			return uint32(binary.BigEndian.Uint32(tlv.Value[:4]))
+		} else if tlv.Type == JUNIPER_SPEC_TLV_EXTENDED_ASSOCIATION_ID {
+			return uint32(binary.BigEndian.Uint32(tlv.Value[:4]))
+		}
+	}
+	return 0
+}
+
+// (I.D. pce-segment-routing-policy-cp-08 5.1)
+func (o *AssociationObject) Preference() uint32 {
+	for _, tlv := range o.Tlvs {
+		if tlv.Type == TLV_SRPOLICY_CPATH_PREFERENCE {
+			return uint32(binary.BigEndian.Uint32(tlv.Value))
+		} else if tlv.Type == JUNIPER_SPEC_TLV_SRPOLICY_CPATH_PREFERENCE {
+			return uint32(binary.BigEndian.Uint32(tlv.Value))
+		}
+	}
+	return 0
 }
 
 const (
@@ -876,33 +898,58 @@ const (
 	JUNIPER_SPEC_ASSOC_TYPE_SR_POLICY_ASSOCIATION uint16 = 65505
 )
 
+func (o *AssociationObject) DecodeFromBytes(objectBody []uint8) error {
+	o.RFlag = (objectBody[3] & 0x01) != 0
+	o.AssocType = uint16(binary.BigEndian.Uint16(objectBody[4:6]))
+	o.AssocId = uint16(binary.BigEndian.Uint16(objectBody[6:8]))
+	o.Ipv4AssocSrc = objectBody[8:12]
+	if len(objectBody) > 12 {
+		byteTlvs := objectBody[12:]
+		for {
+			var tlv Tlv
+			tlv.DecodeFromBytes(byteTlvs)
+
+			o.Tlvs = append(o.Tlvs, tlv)
+
+			if int(tlv.getByteLength()) < len(byteTlvs) {
+				byteTlvs = byteTlvs[tlv.getByteLength():]
+			} else if int(tlv.getByteLength()) == len(byteTlvs) {
+				break
+			} else {
+				return errors.New("lsp tlv decode error")
+			}
+		}
+	}
+	return nil
+}
+
 func (o AssociationObject) Serialize() []uint8 {
 	associationObjectHeader := NewCommonObjectHeader(OC_ASSOCIATION, OT_IPV4, o.getByteLength())
 	byteAssociationObjectHeader := associationObjectHeader.Serialize()
 
 	buf := make([]uint8, 4)
 
-	if o.rFlag {
+	if o.RFlag {
 		buf[4] = buf[4] | 0x01
 	}
 
-	assocType := uint16ToListUint8(o.assocType)
-	assocId := uint16ToListUint8(o.assocId)
+	assocType := uint16ToListUint8(o.AssocType)
+	assocId := uint16ToListUint8(o.AssocId)
 
 	byteTlvs := []uint8{}
-	for _, tlv := range o.tlvs {
+	for _, tlv := range o.Tlvs {
 		byteTlvs = append(byteTlvs, tlv.Serialize()...)
 	}
 
 	byteAssociationObject := AppendByteSlices(
-		byteAssociationObjectHeader, buf, assocType, assocId, o.ipv4AssocSrc, byteTlvs,
+		byteAssociationObjectHeader, buf, assocType, assocId, o.Ipv4AssocSrc, byteTlvs,
 	)
 	return byteAssociationObject
 }
 
 func (o AssociationObject) getByteLength() uint16 {
 	tlvsByteLength := uint16(0)
-	for _, tlv := range o.tlvs {
+	for _, tlv := range o.Tlvs {
 		tlvsByteLength += tlv.getByteLength()
 	}
 	// Reserved(2byte) + Flags(2byte) + Assoc Type(2byte) + Assoc ID(2byte) + IPv4 Assoc Src(4byte)
@@ -921,15 +968,13 @@ func NewAssociationObject(srcIPv4 []uint8, dstIPv4 []uint8, color uint32, prefer
 
 	// TODO: Expantion for IPv6 Endpoint
 	associationObject := &AssociationObject{
-		rFlag:        false,
-		tlvs:         []Tlv{},
-		ipv4AssocSrc: srcIPv4,
-		color:        color,
-		preference:   preference,
+		RFlag:        false,
+		Tlvs:         []Tlv{},
+		Ipv4AssocSrc: srcIPv4,
 	}
 	if opts.pccType == JUNIPER_LEGACY {
-		associationObject.assocId = 0
-		associationObject.assocType = JUNIPER_SPEC_ASSOC_TYPE_SR_POLICY_ASSOCIATION
+		associationObject.AssocId = 0
+		associationObject.AssocType = JUNIPER_SPEC_ASSOC_TYPE_SR_POLICY_ASSOCIATION
 		associationObjectTLVs := []Tlv{
 			{
 				Type:   JUNIPER_SPEC_TLV_EXTENDED_ASSOCIATION_ID,
@@ -955,10 +1000,10 @@ func NewAssociationObject(srcIPv4 []uint8, dstIPv4 []uint8, color uint32, prefer
 				Value:  uint32ToListUint8(preference),
 			},
 		}
-		associationObject.tlvs = append(associationObject.tlvs, associationObjectTLVs...)
+		associationObject.Tlvs = append(associationObject.Tlvs, associationObjectTLVs...)
 	} else {
-		associationObject.assocId = 1                                  // (I.D. pce-segment-routing-policy-cp-07 5.1)
-		associationObject.assocType = ASSOC_TYPE_SR_POLICY_ASSOCIATION // (I.D. pce-segment-routing-policy-cp-07 5.1)
+		associationObject.AssocId = 1                                  // (I.D. pce-segment-routing-policy-cp-07 5.1)
+		associationObject.AssocType = ASSOC_TYPE_SR_POLICY_ASSOCIATION // (I.D. pce-segment-routing-policy-cp-07 5.1)
 		associationObjectTLVs := []Tlv{
 			{
 				Type:   TLV_EXTENDED_ASSOCIATION_ID,
@@ -984,7 +1029,7 @@ func NewAssociationObject(srcIPv4 []uint8, dstIPv4 []uint8, color uint32, prefer
 				Value:  uint32ToListUint8(preference),
 			},
 		}
-		associationObject.tlvs = append(associationObject.tlvs, associationObjectTLVs...)
+		associationObject.Tlvs = append(associationObject.Tlvs, associationObjectTLVs...)
 	}
 
 	return associationObject
@@ -994,33 +1039,72 @@ func NewAssociationObject(srcIPv4 []uint8, dstIPv4 []uint8, color uint32, prefer
 type VendorInformationObject struct {
 	ObjectType       uint8 // vendor specific constraints: 1
 	EnterpriseNumber uint32
-	Color            uint32
-	Preference       uint32
+	Tlvs             []Tlv
 }
 
-func (o *VendorInformationObject) DecodeFromBytes(objectBody []uint8) {
-	// TODO: Supports decode Cisco specific TLV type
+func (o *VendorInformationObject) Color() uint32 {
+	for _, tlv := range o.Tlvs {
+		if tlv.Type == CISCO_SPEC_TLV_COLOR {
+			return uint32(binary.BigEndian.Uint32(tlv.Value))
+		}
+	}
+	return 0
+}
+
+func (o *VendorInformationObject) Preference() uint32 {
+	for _, tlv := range o.Tlvs {
+		if tlv.Type == CISCO_SPEC_TLV_PREFERENCE {
+			return uint32(binary.BigEndian.Uint32(tlv.Value))
+		}
+	}
+	return 0
+}
+
+const (
+	EN_CISCO uint32 = 9
+
+	CISCO_SPEC_TLV_COLOR      uint16 = 1
+	CISCO_SPEC_TLV_PREFERENCE uint16 = 3
+
+	CISCO_SPEC_TLV_COLOR_LENGTH      uint16 = 4
+	CISCO_SPEC_TLV_PREFERENCE_LENGTH uint16 = 4
+)
+
+func (o *VendorInformationObject) DecodeFromBytes(objectBody []uint8) error {
 	o.EnterpriseNumber = binary.BigEndian.Uint32(objectBody[0:4])
-	o.Color = binary.BigEndian.Uint32(objectBody[8:12])
-	o.Preference = binary.BigEndian.Uint32(objectBody[16:20])
+	if len(objectBody) > 4 {
+		byteTlvs := objectBody[4:]
+		for {
+			var tlv Tlv
+			tlv.DecodeFromBytes(byteTlvs)
+
+			o.Tlvs = append(o.Tlvs, tlv)
+
+			if int(tlv.getByteLength()) < len(byteTlvs) {
+				byteTlvs = byteTlvs[tlv.getByteLength():]
+			} else if int(tlv.getByteLength()) == len(byteTlvs) {
+				break
+			} else {
+				return errors.New("lsp tlv decode error")
+			}
+		}
+	}
+	return nil
 }
 
 func (o *VendorInformationObject) Serialize() []uint8 {
 	vendorInformationObjectHeader := NewCommonObjectHeader(OC_VENDOR_INFORMATION, 1, o.getByteLength())
 	byteVendorInformationObjectHeader := vendorInformationObjectHeader.Serialize()
 
-	enterpriseNumber := make([]uint8, 4)
-	binary.BigEndian.PutUint32(enterpriseNumber, o.EnterpriseNumber)
-	tlvColor := []uint8{0x00, 0x01, 0x00, 0x04} // type: 1, length : 4
-	colorValue := make([]uint8, 4)
-	binary.BigEndian.PutUint32(colorValue, o.Color)
-	tlvColor = AppendByteSlices(tlvColor, colorValue)
-	tlvPreference := []uint8{0x00, 0x03, 0x00, 0x04} // type: 3, length: 4
-	preferenceValue := make([]uint8, 4)
-	binary.BigEndian.PutUint32(preferenceValue, o.Preference)
-	tlvPreference = AppendByteSlices(tlvPreference, preferenceValue)
+	enterpriseNumber := uint32ToListUint8(o.EnterpriseNumber)
+
+	byteTlvs := []uint8{}
+	for _, tlv := range o.Tlvs {
+		byteTlvs = append(byteTlvs, tlv.Serialize()...)
+	}
+
 	byteVendorInformationObject := AppendByteSlices(
-		byteVendorInformationObjectHeader, enterpriseNumber, tlvColor, tlvPreference,
+		byteVendorInformationObjectHeader, enterpriseNumber, byteTlvs,
 	)
 	return byteVendorInformationObject
 }
@@ -1035,11 +1119,25 @@ func NewVendorInformationObject(vendor PccType, color uint32, preference uint32)
 	var vendorInformationObject *VendorInformationObject
 	if vendor == CISCO_LEGACY {
 		vendorInformationObject = &VendorInformationObject{ // for Cisco PCC
-			ObjectType:       uint8(1),
-			EnterpriseNumber: uint32(9),
-			Color:            color,
-			Preference:       preference,
+			ObjectType:       uint8(1), // (RFC7470 4)
+			EnterpriseNumber: EN_CISCO,
+			Tlvs:             []Tlv{},
 		}
+		vendorInformationObjectTLVs := []Tlv{
+			{
+				Type:   CISCO_SPEC_TLV_COLOR,
+				Length: CISCO_SPEC_TLV_COLOR_LENGTH, // TODO: 20 if ipv6 endpoint
+				Value: AppendByteSlices(
+					uint32ToListUint8(color),
+				),
+			},
+			{
+				Type:   CISCO_SPEC_TLV_PREFERENCE,
+				Length: CISCO_SPEC_TLV_PREFERENCE_LENGTH,
+				Value:  uint32ToListUint8(preference),
+			},
+		}
+		vendorInformationObject.Tlvs = append(vendorInformationObject.Tlvs, vendorInformationObjectTLVs...)
 	}
 	return vendorInformationObject
 }
