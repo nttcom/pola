@@ -23,10 +23,10 @@ func (m *OpenMessage) DecodeFromBytes(byteOpenObj []uint8) error {
 	commonObjectHeader.DecodeFromBytes(byteOpenObj)
 
 	if commonObjectHeader.ObjectClass != OC_OPEN {
-		return fmt.Errorf("Unsupported ObjectClass: %d", commonObjectHeader.ObjectClass)
+		return fmt.Errorf("unsupported ObjectClass: %d", commonObjectHeader.ObjectClass)
 	}
 	if commonObjectHeader.ObjectType != 1 {
-		return fmt.Errorf("Unsupported ObjectType: %d", commonObjectHeader.ObjectType)
+		return fmt.Errorf("unsupported ObjectType: %d", commonObjectHeader.ObjectType)
 	}
 
 	var openObject OpenObject

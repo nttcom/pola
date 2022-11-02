@@ -24,7 +24,7 @@ func newSrPolicyAddCmd() *cobra.Command {
 
 			noLinkStateFlag, err := cmd.Flags().GetBool("no-link-state")
 			if err != nil {
-				return fmt.Errorf("flag error\n")
+				return fmt.Errorf("flag error")
 
 			}
 
@@ -33,17 +33,17 @@ func newSrPolicyAddCmd() *cobra.Command {
 				return err
 			}
 			if filepath == "" {
-				return fmt.Errorf("File path option \"-f filepath\" is mandatory\n")
+				return fmt.Errorf("file path option \"-f filepath\" is mandatory")
 
 			}
 			f, openErr := os.Open(filepath)
 			if openErr != nil {
-				return fmt.Errorf("File \"%s\" can't open\n", filepath)
+				return fmt.Errorf("file \"%s\" can't open", filepath)
 			}
 			defer f.Close()
 			InputData := InputFormat{}
 			if err := yaml.NewDecoder(f).Decode(&InputData); err != nil {
-				return fmt.Errorf("File \"%s\" can't open\n", filepath)
+				return fmt.Errorf("file \"%s\" can't open", filepath)
 
 			}
 			if err := addSrPolicy(InputData, jsonFmt, noLinkStateFlag); err != nil {
@@ -192,11 +192,11 @@ func addSrPolicy(input InputFormat, jsonFlag bool, noLinkStateFlag bool) error {
 			case "te":
 				metric = pb.MetricType_TE
 			default:
-				return fmt.Errorf("invalid input `metric`\n")
+				return fmt.Errorf("invalid input `metric`")
 			}
 
 		default:
-			return fmt.Errorf("invalid input `type`\n")
+			return fmt.Errorf("invalid input `type`")
 		}
 
 		srPolicy := &pb.SrPolicy{
@@ -214,7 +214,7 @@ func addSrPolicy(input InputFormat, jsonFlag bool, noLinkStateFlag bool) error {
 			Asn:      input.Asn,
 		}
 		if err := createSrPolicy(client, inputData); err != nil {
-			return fmt.Errorf("gRPC Server Error: %s\n", err.Error())
+			return fmt.Errorf("gRPC Server Error: %s", err.Error())
 
 		}
 	}
