@@ -29,30 +29,27 @@ json formatted response
 {
 	"lsps": [
 		{
+			"color": 999,
 			"dstAddr": "192.0.2.1",
-			"path": [
+			"segmentList": [
 				16003,
 				16001
 			],
-			"peerAddr": "192.0.2.1",
-			"policyName": "sample_policy1",
-			"srcAddr": "192.0.2.2"
-		},
-		{
-			"dstAddr": "192.0.2.1",
-			"path": null,
 			"peerAddr": "192.0.2.2",
-			"policyName": "sample_policy2",
+			"policyName": "sample_policy1",
+			"preference": 100,
 			"srcAddr": "192.0.2.2"
 		},
 		{
+			"color": 888
 			"dstAddr": "192.0.2.2",
-			"path": [
+			"segmentList": [
 				16003,
 				16002
 			],
 			"peerAddr": "192.0.2.1",
-			"policyName": "sample_policy3",
+			"policyName": "sample_policy2",
+			"preference": 100,
 			"srcAddr": "192.0.2.1"
 		}
 	]
@@ -70,7 +67,7 @@ json formatted response
                     "policyName": "sample_policy1",
                     "srcAddr": "192.0.2.1",
                     "dstAddr": "192.0.2.2",
-                    "segmentlist": [
+                    "segmentList": [
                         16003,
                         16002
                     ]
@@ -79,7 +76,7 @@ json formatted response
                     "policyName": "sample_policy2",
                     "srcAddr": "192.0.2.1",
                     "dstAddr": "192.0.2.2",
-                    "segmentlist": [
+                    "segmentList": [
                         16003,
                         16001,
                         16002
@@ -94,7 +91,7 @@ json formatted response
                     "policyName": "sample_policy3",
                     "srcAddr": "192.0.2.2",
                     "dstAddr": "192.0.2.1",
-                    "segmentlist": [
+                    "segmentList": [
                         16003,
                         16001
                     ]
@@ -103,7 +100,7 @@ json formatted response
                     "policyName": "sample_policy4",
                     "srcAddr": "192.0.2.2",
                     "dstAddr": "192.0.2.1",
-                    "segmentlist": [
+                    "segmentList": [
                         16003,
                         16002,
                         16001
@@ -152,7 +149,7 @@ srPolicy:
     dstRouterId: 0000.0aff.0004
     color: 100
     type: explicit
-	segmentlist:
+	segmentList:
         - sid: 16003
         - sid: 16002
 		- sid: 16004
@@ -177,7 +174,7 @@ srPolicy:
     dstAddr: 192.0.2.2
     name: name
     color: 100
-    segmentlist:
+    segmentList:
         - sid: 16003
           nai: 192.0.2.3
         - sid: 16002

@@ -18,12 +18,14 @@ import (
 )
 
 type Lsp struct {
-	peerAddr net.IP //TODO: Change to ("loopback addr" or "router name")
-	plspId   uint32
-	name     string
-	path     []uint32
-	srcAddr  net.IP
-	dstAddr  net.IP
+	peerAddr   net.IP //TODO: Change to ("loopback addr" or "router name")
+	plspId     uint32
+	name       string
+	path       []uint32
+	srcAddr    net.IP
+	dstAddr    net.IP
+	color      uint32
+	preference uint32
 }
 
 type Server struct {

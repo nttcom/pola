@@ -176,18 +176,18 @@ func (s *Session) ReceivePcepMessage() error {
 			s.logger.Info("Received Keepalive", zap.String("session", s.peerAddr.String()))
 		case pcep.MT_REPORT:
 			s.logger.Info("Received PCRpt", zap.String("session", s.peerAddr.String()))
-			bytePcrptObject := make([]uint8, commonHeader.MessageLength-pcep.COMMON_HEADER_LENGTH)
-			if _, err := s.tcpConn.Read(bytePcrptObject); err != nil {
+			bytePcrptMessageBody := make([]uint8, commonHeader.MessageLength-pcep.COMMON_HEADER_LENGTH)
+			if _, err := s.tcpConn.Read(bytePcrptMessageBody); err != nil {
 				return err
 			}
 			pcrptMessage := pcep.NewPCRptMessage()
-			if err := pcrptMessage.DecodeFromBytes(bytePcrptObject); err != nil {
+			if err := pcrptMessage.DecodeFromBytes(bytePcrptMessageBody); err != nil {
 				return err
 			}
 			if pcrptMessage.LspObject.SFlag {
 				// During LSP state synchronization (RFC8231 5.6)
 				s.logger.Info("Synchronize LSP information", zap.String("session", s.peerAddr.String()), zap.Uint32("plspId", pcrptMessage.LspObject.PlspId), zap.Any("Message", pcrptMessage))
-				go RegisterLsp(s.lspChan, s.peerAddr, pcrptMessage)
+				go s.RegisterLsp(pcrptMessage)
 			} else if !pcrptMessage.LspObject.SFlag {
 				if pcrptMessage.LspObject.PlspId == 0 {
 					// End of synchronization (RFC8231 5.6)
@@ -196,7 +196,7 @@ func (s *Session) ReceivePcepMessage() error {
 				} else if pcrptMessage.SrpObject.SrpId != 0 {
 					// Response to PCInitiate/PCUpdate (RFC8231 7.2)
 					s.logger.Info("Finish Stateful PCE request", zap.String("session", s.peerAddr.String()), zap.Uint32("srpId", pcrptMessage.SrpObject.SrpId))
-					go RegisterLsp(s.lspChan, s.peerAddr, pcrptMessage)
+					go s.RegisterLsp(pcrptMessage)
 				}
 				// TODO: Need to implementation of PCUpdate for Passive stateful PCE
 			}
@@ -258,14 +258,21 @@ func (s *Session) SendPCUpdate(policyName string, plspId uint32, labels []pcep.L
 	return nil
 }
 
-func RegisterLsp(lspChan chan Lsp, peerAddr net.IP, pcrptMessage *pcep.PCRptMessage) {
+func (s *Session) RegisterLsp(pcrptMessage *pcep.PCRptMessage) {
 	lspStruct := Lsp{
-		peerAddr: peerAddr,
+		peerAddr: s.peerAddr,
 		plspId:   pcrptMessage.LspObject.PlspId,
 		name:     pcrptMessage.LspObject.Name,
 		path:     pcrptMessage.EroObject.GetSidList(),
 		srcAddr:  pcrptMessage.LspObject.SrcAddr,
 		dstAddr:  pcrptMessage.LspObject.DstAddr,
 	}
-	lspChan <- lspStruct
+	if s.pccType == pcep.CISCO_LEGACY {
+		lspStruct.color = pcrptMessage.VendorInformationObject.Color()
+		lspStruct.preference = pcrptMessage.VendorInformationObject.Preference()
+	} else {
+		lspStruct.color = pcrptMessage.AssociationObject.Color()
+		lspStruct.preference = pcrptMessage.AssociationObject.Preference()
+	}
+	s.lspChan <- lspStruct
 }

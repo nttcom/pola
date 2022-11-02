@@ -17,11 +17,13 @@ import (
 )
 
 type srPolicyInfo struct {
-	peerAddr net.IP //TODO: Change to ("loopback addr" or "router name")
-	name     string
-	path     []uint32
-	srcAddr  net.IP
-	dstAddr  net.IP
+	peerAddr   net.IP //TODO: Change to ("loopback addr" or "router name")
+	name       string
+	path       []uint32
+	srcAddr    net.IP
+	dstAddr    net.IP
+	color      uint32
+	preference uint32
 }
 
 func getSessionAddrList(client pb.PceServiceClient) ([]net.IP, error) {
@@ -50,10 +52,12 @@ func getSrPolicyList(client pb.PceServiceClient) ([]srPolicyInfo, error) {
 	srPolicyList := []srPolicyInfo{}
 	for _, lsp := range ret.GetSrPolicies() {
 		tmp := srPolicyInfo{
-			name:     lsp.PolicyName,
-			peerAddr: net.IP(lsp.GetPcepSessionAddr()),
-			srcAddr:  net.IP(lsp.GetSrcAddr()),
-			dstAddr:  net.IP(lsp.GetDstAddr()),
+			name:       lsp.PolicyName,
+			peerAddr:   net.IP(lsp.GetPcepSessionAddr()),
+			srcAddr:    net.IP(lsp.GetSrcAddr()),
+			dstAddr:    net.IP(lsp.GetDstAddr()),
+			color:      lsp.Color,
+			preference: lsp.Preference,
 		}
 		if len(lsp.GetSegmentList()) != 0 {
 			for _, label := range lsp.GetSegmentList() {

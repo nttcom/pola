@@ -73,6 +73,7 @@ type PCRptMessage struct {
 	LspaObject              *LspaObject
 	MetricObjects           []*MetricObject
 	BandwidthObjects        []*BandwidthObject
+	AssociationObject       *AssociationObject
 	VendorInformationObject *VendorInformationObject
 }
 
@@ -84,48 +85,57 @@ func NewPCRptMessage() *PCRptMessage {
 		LspaObject:              &LspaObject{},
 		MetricObjects:           []*MetricObject{},
 		BandwidthObjects:        []*BandwidthObject{},
+		AssociationObject:       &AssociationObject{},
 		VendorInformationObject: &VendorInformationObject{},
 	}
 	return pcrptMessage
 }
 
-func (m *PCRptMessage) DecodeFromBytes(bytePcrptObject []uint8) error {
+func (m *PCRptMessage) DecodeFromBytes(messageBody []uint8) error {
 	// TODO: Supports multiple <state-report>'s stacked PCRpt Message.
 	// https://datatracker.ietf.org/doc/html/rfc8231#section-6.1
 	// Currently, when more than 2 <state-report> come in, One object has multiple object information.
 	var commonObjectHeader CommonObjectHeader
-	commonObjectHeader.DecodeFromBytes(bytePcrptObject)
+	commonObjectHeader.DecodeFromBytes(messageBody)
 
 	switch commonObjectHeader.ObjectClass {
 	case OC_BANDWIDTH:
 		bandwidthObject := &BandwidthObject{}
-		bandwidthObject.DecodeFromBytes(bytePcrptObject[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength])
+		bandwidthObject.DecodeFromBytes(messageBody[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength])
 		m.BandwidthObjects = append(m.BandwidthObjects, bandwidthObject)
 	case OC_METRIC:
 		metricObject := &MetricObject{}
-		metricObject.DecodeFromBytes(bytePcrptObject[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength])
+		metricObject.DecodeFromBytes(messageBody[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength])
 		m.MetricObjects = append(m.MetricObjects, metricObject)
 	case OC_ERO:
-		err := m.EroObject.DecodeFromBytes(bytePcrptObject[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength])
+		err := m.EroObject.DecodeFromBytes(messageBody[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength])
 		if err != nil {
 			return err
 		}
 	case OC_LSPA:
-		m.LspaObject.DecodeFromBytes(bytePcrptObject[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength])
+		m.LspaObject.DecodeFromBytes(messageBody[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength])
 	case OC_LSP:
-		err := m.LspObject.DecodeFromBytes(bytePcrptObject[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength])
+		err := m.LspObject.DecodeFromBytes(messageBody[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength])
 		if err != nil {
 			return err
 		}
 	case OC_SRP:
-		m.SrpObject.DecodeFromBytes(bytePcrptObject[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength])
+		m.SrpObject.DecodeFromBytes(messageBody[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength])
+	case OC_ASSOCIATION:
+		err := m.AssociationObject.DecodeFromBytes(messageBody[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength])
+		if err != nil {
+			return err
+		}
 	case OC_VENDOR_INFORMATION:
-		m.VendorInformationObject.DecodeFromBytes(bytePcrptObject[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength])
+		err := m.VendorInformationObject.DecodeFromBytes(messageBody[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength])
+		if err != nil {
+			return err
+		}
 	default:
 	}
 
-	if int(commonObjectHeader.ObjectLength) < len(bytePcrptObject) {
-		err := m.DecodeFromBytes(bytePcrptObject[commonObjectHeader.ObjectLength:])
+	if int(commonObjectHeader.ObjectLength) < len(messageBody) {
+		err := m.DecodeFromBytes(messageBody[commonObjectHeader.ObjectLength:])
 		if err != nil {
 			return err
 		}
