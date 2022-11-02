@@ -101,7 +101,7 @@ func (s *Session) ReceiveOpen() error {
 		return fmt.Errorf("PCEP version mismatch (receive version: %d)", openHeader.Version)
 	}
 	if openHeader.MessageType != pcep.MT_OPEN {
-		return fmt.Errorf("This peer has not been opened (messageType: %d)", openHeader.MessageType)
+		return fmt.Errorf("this peer has not been opened (messageType: %d)", openHeader.MessageType)
 	}
 
 	s.logger.Info("Receive Open", zap.String("session", s.peerAddr.String()))
