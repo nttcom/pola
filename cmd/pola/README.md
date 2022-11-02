@@ -1,11 +1,11 @@
-# pola cli tool
+# Pola CLI Tool
 
-## command reference
+## Command Reference
 
 ### pola session \[-j\]
 Displays the peer addresses of the active session.
 
-json formatted response
+JSON formatted response
 ```
 {
     "sessions": [
@@ -24,7 +24,7 @@ json formatted response
 ### pola sr-policy list \[-j\]
 Displays the lsp list managed by polad.
 
-json formatted response
+JSON formatted response
 ```
 {
 	"lsps": [
@@ -117,7 +117,7 @@ Create a new SR Policy using TED
 
 #### Case: Dynamic Path calculate
 
-yaml input format
+YAML input format
 ```
 asn: 65000
 srPolicy:
@@ -130,7 +130,7 @@ srPolicy:
     metric: igp / te / delay
 ```
 
-json formatted response
+JSON formatted response
 ```
 {
     "status": "success"
@@ -139,7 +139,7 @@ json formatted response
 
 #### Case: Explicit Path
 
-yaml input format
+YAML input format
 ```
 asn: 65000
 srPolicy:
@@ -155,7 +155,7 @@ srPolicy:
 		- sid: 16004
 ```
 
-json formatted response
+JSON formatted response
 ```
 {
     "status": "success"
@@ -166,7 +166,7 @@ json formatted response
 
 Create a new SR Policy without using TED
 
-yaml input format
+YAML input format
 ```
 srPolicy:
     pcepSessionAddr: 192.0.2.1
@@ -191,7 +191,7 @@ json formatted response
 ### pola ted \[-j\]
 Displays the ted managed by polad.
 
-json formatted response
+JSON formatted response
 ```
 {
 	"ted": [
@@ -335,4 +335,24 @@ json formatted response
 		}
 	]
 }
+```
+
+## Completion
+
+## Bash
+```
+pola completion bash | sudo tee -a /usr/share/bash-completion/completions/pola >/dev/null
+source /usr/share/bash-completion/completions/pola
+```
+
+## Zsh
+```
+pola completion zsh > /usr/local/share/zsh/site-functions/_pola
+compinit
+```
+
+## Fish
+```
+pola completion fish > ~/.config/fish/completions/pola.fish
+fish_update_completions
 ```
