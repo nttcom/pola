@@ -67,7 +67,7 @@ func (ted LsTed) GetRouterIdFromSid(as uint32, Sid uint32) (string, error) {
 	for routerId, node := range nodes {
 		nodeSid, err := node.NodeSid()
 		if err != nil {
-			return "", err
+			continue
 		}
 		if nodeSid == Sid {
 			return routerId, nil
