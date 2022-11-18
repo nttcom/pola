@@ -7,7 +7,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
 
 	"github.com/nttcom/pola/internal/pkg/version"
@@ -20,6 +19,6 @@ func main() {
 	}
 
 	if err := newRootCmd().Execute(); err != nil {
-		log.Fatal(err)
+		os.Exit(1)
 	}
 }
