@@ -3,6 +3,16 @@ preinit:
     - cmd: modprobe mpls_router
     - cmd: modprobe mpls_gso
     - cmd: modprobe mpls_iptunnel
+    # Install Pola Docker Images
+    - cmd: NAME_IMAGE=pola:latest
+    - cmd: if [ "$(docker image ls -q $NAME_IMAGE)" = "" ]; then docker build -t $NAME_IMAGE -f ../package/pola.Dockerfile ../package;fi
+    # Install FRR Docker Images
+    - cmd: NAME_IMAGE=frr:latest
+    - cmd: if [ "$(docker image ls -q $NAME_IMAGE)" = "" ]; then docker build -t $NAME_IMAGE -f ../package/frr.Dockerfile ../package;fi
+    # Install host_ubuntu Docker Images
+    - cmd: NAME_IMAGE=host_ubuntu:latest
+    - cmd: if [ "$(docker image ls -q $NAME_IMAGE)" = "" ]; then docker build -t $NAME_IMAGE -f ../package/host_ubuntu.Dockerfile ../package;fi
+
 
 postinit:
   - cmds:
@@ -10,41 +20,41 @@ postinit:
 
 nodes:
   - name: pola
-    image: watal/pola:latest
+    image: pola:latest
     interfaces:
     - { name: net0, type: bridge, args: Switch }
   - name: pe01
-    image: watal/frr:latest
+    image: frr:latest
     interfaces:
     - { name: net0, type: direct, args: p01#net0 }
     - { name: net1, type: direct, args: p02#net0 }
     - { name: net2, type: direct, args: host01#net0 }
     - { name: net3, type: bridge, args: Switch }
   - name: pe02
-    image: watal/frr:latest
+    image: frr:latest
     interfaces:
     - { name: net0, type: direct, args: p01#net1 }
     - { name: net1, type: direct, args: p02#net1 }
     - { name: net2, type: direct, args: host02#net0 }
     - { name: net3, type: bridge, args: Switch }
   - name: p01
-    image: watal/frr:latest
+    image: frr:latest
     interfaces:
     - { name: net0, type: direct, args: pe01#net0 }
     - { name: net1, type: direct, args: pe02#net0 }
     - { name: net2, type: direct, args: p02#net2 }
   - name: p02
-    image: watal/frr:latest
+    image: frr:latest
     interfaces:
     - { name: net0, type: direct, args: pe01#net1 }
     - { name: net1, type: direct, args: pe02#net1 }
     - { name: net2, type: direct, args: p01#net2 }
   - name: host01
-    image: watal/ubuntu:20.04
+    image: host_ubuntu:latest
     interfaces:
     - { name: net0, type: direct, args: pe01#net2 }
   - name: host02
-    image: watal/ubuntu:20.04
+    image: host_ubuntu:latest
     interfaces:
     - { name: net0, type: direct, args: pe02#net2 }
 
@@ -62,9 +72,6 @@ node_configs:
       - cmd: '/usr/local/go/bin/polad -f config.yaml > /dev/null 2>&1 &'
   - name: pe01
     cmds:
-      - cmd: /usr/lib/frr/frr start
-      - cmd: sed -i -e 's/=no/=yes/g' /etc/frr/daemons
-      - cmd: /usr/lib/frr/frrinit.sh restart
       - cmd: sysctl -w net.ipv4.ip_forward=1
       - cmd: sysctl -w net.mpls.conf.lo.input=1
       - cmd: sysctl -w net.mpls.conf.net0.input=1
@@ -145,9 +152,6 @@ node_configs:
           -c 'exit'
   - name: pe02
     cmds:
-      - cmd: /usr/lib/frr/frr start
-      - cmd: sed -i -e 's/=no/=yes/g' /etc/frr/daemons
-      - cmd: /usr/lib/frr/frrinit.sh restart
       - cmd: sysctl -w net.ipv4.ip_forward=1
       - cmd: sysctl -w net.mpls.conf.lo.input=1
       - cmd: sysctl -w net.mpls.conf.net0.input=1
@@ -207,9 +211,6 @@ node_configs:
           -c 'exit'
   - name: p01
     cmds:
-      - cmd: /usr/lib/frr/frr start
-      - cmd: sed -i -e 's/=no/=yes/g' /etc/frr/daemons
-      - cmd: /usr/lib/frr/frrinit.sh restart
       - cmd: sysctl -w net.ipv4.ip_forward=1
       - cmd: sysctl -w net.mpls.conf.lo.input=1
       - cmd: sysctl -w net.mpls.conf.net0.input=1
@@ -248,9 +249,6 @@ node_configs:
           -c 'exit'
   - name: p02
     cmds:
-      - cmd: /usr/lib/frr/frr start
-      - cmd: sed -i -e 's/=no/=yes/g' /etc/frr/daemons
-      - cmd: /usr/lib/frr/frrinit.sh restart
       - cmd: sysctl -w net.ipv4.ip_forward=1
       - cmd: sysctl -w net.mpls.conf.lo.input=1
       - cmd: sysctl -w net.mpls.conf.net0.input=1

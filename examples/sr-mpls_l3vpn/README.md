@@ -43,31 +43,35 @@ Create policy1.yaml (Apply Segment List 16002/16004/16003 to pe01)
 ```
 ```
 srPolicy:
-    name: name
-    peerAddr: 10.0.255.1
+    name: policy1
+    pcepSessionAddr: 10.0.255.1
     srcAddr: 10.255.0.1
     dstAddr: 10.255.0.3
     color: 1
-    segmentlist:
+    segmentList:
         - sid: 16002
           nai: 10.255.0.2
         - sid: 16004
-          nai: 10.255.0.4 
+          nai: 10.255.0.4
         - sid: 16003
           nai: 10.255.0.3
 ```
 
 Apply and check SR Policy
 ```
-# pola lsp add -f policy1.yaml
+# pola sr-policy add -f policy1.yaml --no-link-state
 success!
-# pola lsp list
-lsp(0): 
-  peerAddr: 10.0.255.1
-  policyName: name
+
+# pola sr-policy list
+LSP(0):
+  PcepSessionAddr: 10.0.255.1
+  PolicyName: policy1
   SrcAddr: 10.0.255.1
   DstAddr: 10.255.0.3
-  path: 16002 -> 16004 -> 16003 
+  Color: 0
+  Preference: 0
+  DstAddr: 10.255.0.3
+  SegmentList: 16002 -> 16004 -> 16003
 
 ```
 
