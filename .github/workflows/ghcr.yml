@@ -1,3 +1,5 @@
+name: Push Docker image
+
 on:
   push:
     branches-ignore:
