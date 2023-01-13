@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"strings"
 
 	"github.com/golang/protobuf/ptypes/empty"
@@ -64,10 +65,11 @@ func (s *APIServer) CreateSrPolicy(ctx context.Context, input *pb.CreateSrPolicy
 		return &pb.SrPolicyStatus{IsSuccess: false}, errors.New("input is invalid")
 	}
 
+	pcepSessionAddr, _ := netip.AddrFromSlice(input.GetSrPolicy().GetPcepSessionAddr())
 	inputJson := map[string]interface{}{
 		"asn": fmt.Sprint(input.GetAsn()),
 		"srPolicy": map[string]interface{}{
-			"pcepSessionAddr": net.IP(input.GetSrPolicy().GetPcepSessionAddr()).String(),
+			"pcepSessionAddr": pcepSessionAddr.String(),
 			"color":           input.GetSrPolicy().GetColor(),
 			"dstRouterId":     input.GetSrPolicy().GetDstRouterId(),
 			"srcRouterId":     input.GetSrPolicy().GetSrcRouterId(),
@@ -78,18 +80,17 @@ func (s *APIServer) CreateSrPolicy(ctx context.Context, input *pb.CreateSrPolicy
 	}
 
 	s.pce.logger.Info("Receive CreateSrPolicy API request", zap.Any("input", inputJson), zap.String("server", "grpc"))
-	pcepSessionAddr := net.IP(input.GetSrPolicy().GetPcepSessionAddr())
 	pcepSession := s.pce.getSession(pcepSessionAddr)
 	if pcepSession == nil {
 		return &pb.SrPolicyStatus{IsSuccess: false}, fmt.Errorf("no session with %s", pcepSessionAddr)
 	}
 
 	segmentList := []pcep.Label{}
-	srcIPAddr, err := s.pce.ted.Nodes[input.GetAsn()][input.GetSrPolicy().SrcRouterId].LoopbackAddr()
+	srcAddr, err := s.pce.ted.Nodes[input.GetAsn()][input.GetSrPolicy().SrcRouterId].LoopbackAddr()
 	if err != nil {
 		return &pb.SrPolicyStatus{IsSuccess: false}, err
 	}
-	dstIPAddr, err := s.pce.ted.Nodes[input.GetAsn()][input.GetSrPolicy().DstRouterId].LoopbackAddr()
+	dstAddr, err := s.pce.ted.Nodes[input.GetAsn()][input.GetSrPolicy().DstRouterId].LoopbackAddr()
 	if err != nil {
 		return &pb.SrPolicyStatus{IsSuccess: false}, err
 	}
@@ -108,9 +109,10 @@ func (s *APIServer) CreateSrPolicy(ctx context.Context, input *pb.CreateSrPolicy
 			if err != nil {
 				return &pb.SrPolicyStatus{IsSuccess: false}, err
 			}
+
 			pcepSegment := pcep.Label{
 				Sid:    segment.GetSid(),
-				LoAddr: loAddr.To4(),
+				LoAddr: loAddr,
 			}
 			segmentList = append(segmentList, pcepSegment)
 		}
@@ -144,7 +146,7 @@ func (s *APIServer) CreateSrPolicy(ctx context.Context, input *pb.CreateSrPolicy
 			return &pb.SrPolicyStatus{IsSuccess: false}, err
 		}
 	} else {
-		if err := pcepSession.SendPCInitiate(input.GetSrPolicy().GetPolicyName(), segmentList, input.GetSrPolicy().GetColor(), uint32(100), srcIPAddr.To4(), dstIPAddr.To4()); err != nil {
+		if err := pcepSession.SendPCInitiate(input.GetSrPolicy().GetPolicyName(), segmentList, input.GetSrPolicy().GetColor(), uint32(100), srcAddr, dstAddr); err != nil {
 			return &pb.SrPolicyStatus{IsSuccess: false}, err
 		}
 	}
@@ -159,16 +161,17 @@ func (s *APIServer) CreateSrPolicyWithoutLinkState(ctx context.Context, input *p
 	}
 
 	s.pce.logger.Info("Receive CreateSrPolicyWithoutLinkState API request", zap.Any("SR Policy", input.GetSrPolicy()), zap.String("server", "grpc"))
-	pcepSessionAddr := net.IP(input.GetSrPolicy().GetPcepSessionAddr())
+	pcepSessionAddr, _ := netip.AddrFromSlice(input.GetSrPolicy().GetPcepSessionAddr())
 	pcepSession := s.pce.getSession(pcepSessionAddr)
 	if pcepSession == nil {
 		return &pb.SrPolicyStatus{IsSuccess: false}, fmt.Errorf("no session with %s", pcepSessionAddr)
 	}
 	segmentList := []pcep.Label{}
 	for _, receivedLsp := range input.GetSrPolicy().GetSegmentList() {
+		loAddr, _ := netip.AddrFromSlice(receivedLsp.GetLoAddr())
 		pcepSegment := pcep.Label{
 			Sid:    receivedLsp.GetSid(),
-			LoAddr: receivedLsp.GetLoAddr(),
+			LoAddr: loAddr,
 		}
 		segmentList = append(segmentList, pcepSegment)
 	}
@@ -179,7 +182,9 @@ func (s *APIServer) CreateSrPolicyWithoutLinkState(ctx context.Context, input *p
 			return &pb.SrPolicyStatus{IsSuccess: false}, err
 		}
 	} else {
-		if err := pcepSession.SendPCInitiate(input.GetSrPolicy().GetPolicyName(), segmentList, input.GetSrPolicy().GetColor(), uint32(100), input.GetSrPolicy().GetSrcAddr(), input.GetSrPolicy().GetDstAddr()); err != nil {
+		srcAddr, _ := netip.AddrFromSlice(input.GetSrPolicy().GetSrcAddr())
+		dstAddr, _ := netip.AddrFromSlice(input.GetSrPolicy().GetDstAddr())
+		if err := pcepSession.SendPCInitiate(input.GetSrPolicy().GetPolicyName(), segmentList, input.GetSrPolicy().GetColor(), uint32(100), srcAddr, dstAddr); err != nil {
 			return &pb.SrPolicyStatus{IsSuccess: false}, err
 		}
 	}
@@ -190,7 +195,7 @@ func (s *APIServer) GetPeerAddrList(context.Context, *empty.Empty) (*pb.PeerAddr
 	s.pce.logger.Info("Receive GetPeerAddrList API request", zap.String("server", "grpc"))
 	var ret pb.PeerAddrList
 	for _, pcepSession := range s.pce.sessionList {
-		ret.PeerAddrs = append(ret.PeerAddrs, []byte(pcepSession.peerAddr))
+		ret.PeerAddrs = append(ret.PeerAddrs, pcepSession.peerAddr.AsSlice())
 	}
 	s.pce.logger.Info("Send GetPeerAddrList API reply", zap.String("server", "grpc"))
 	return &ret, nil
@@ -201,13 +206,13 @@ func (s *APIServer) GetSrPolicyList(context.Context, *empty.Empty) (*pb.SrPolicy
 	var ret pb.SrPolicyList
 	for _, lsp := range s.pce.lspList {
 		srPolicyData := &pb.SrPolicy{
-			PcepSessionAddr: []byte(lsp.peerAddr),
+			PcepSessionAddr: lsp.peerAddr.AsSlice(),
 			SegmentList:     []*pb.Segment{},
 			Color:           lsp.color,
 			Preference:      lsp.preference,
 			PolicyName:      lsp.name,
-			SrcAddr:         []byte(lsp.srcAddr),
-			DstAddr:         []byte(lsp.dstAddr),
+			SrcAddr:         lsp.srcAddr.AsSlice(),
+			DstAddr:         lsp.dstAddr.AsSlice(),
 		}
 		for _, sid := range lsp.path {
 			segment := pb.Segment{

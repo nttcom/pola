@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
+	"net/netip"
 	"time"
 
 	"github.com/nttcom/pola/pkg/packet/pcep"
@@ -20,8 +21,8 @@ const KEEPALIVE uint8 = 30
 
 type Session struct {
 	sessionId uint8
-	peerAddr  net.IP
-	tcpConn   net.Conn
+	peerAddr  netip.Addr
+	tcpConn   *net.TCPConn
 	isSynced  bool
 	srpIdHead uint32 // 0x00000000 and 0xFFFFFFFF are reserved.
 	lspChan   chan Lsp
@@ -214,8 +215,8 @@ func (s *Session) ReceivePcepMessage() error {
 	}
 }
 
-func (s *Session) SendPCInitiate(policyName string, labels []pcep.Label, color uint32, preference uint32, srcIPv4 []uint8, dstIPv4 []uint8) error {
-	pcinitiateMessage, err := pcep.NewPCInitiateMessage(s.srpIdHead, policyName, labels, color, preference, srcIPv4, dstIPv4, pcep.VendorSpecific(s.pccType))
+func (s *Session) SendPCInitiate(policyName string, labels []pcep.Label, color uint32, preference uint32, srcAddr netip.Addr, dstAddr netip.Addr) error {
+	pcinitiateMessage, err := pcep.NewPCInitiateMessage(s.srpIdHead, policyName, labels, color, preference, srcAddr, dstAddr, pcep.VendorSpecific(s.pccType))
 	if err != nil {
 		return err
 	}
@@ -223,15 +224,8 @@ func (s *Session) SendPCInitiate(policyName string, labels []pcep.Label, color u
 	if err != nil {
 		return err
 	}
-	labelsJson := []map[string]interface{}{}
-	for _, l := range labels {
-		labelJson := map[string]interface{}{
-			"Sid":    l.Sid,
-			"LoAddr": net.IP(l.LoAddr).String(),
-		}
-		labelsJson = append(labelsJson, labelJson)
-	}
-	s.logger.Info("Send PCInitiate", zap.String("session", s.peerAddr.String()), zap.Uint32("srpId", s.srpIdHead), zap.String("policyName", policyName), zap.Any("labels", labelsJson), zap.Uint32("color", color), zap.Uint32("preference", preference), zap.String("srcIPv4", net.IP(srcIPv4).String()), zap.Any("dstIPv4", net.IP(dstIPv4).String()))
+
+	s.logger.Info("Send PCInitiate", zap.String("session", s.peerAddr.String()), zap.Uint32("srpId", s.srpIdHead), zap.String("policyName", policyName), zap.Any("labels", labels), zap.Uint32("color", color), zap.Uint32("preference", preference), zap.String("srcIPv4", srcAddr.String()), zap.Any("dstIPv4", dstAddr.String()))
 	if _, err := s.tcpConn.Write(bytePCInitiateMessage); err != nil {
 		return err
 	}

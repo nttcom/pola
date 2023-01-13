@@ -7,7 +7,7 @@ package server
 
 import (
 	"net"
-	"strings"
+	"net/netip"
 
 	"go.uber.org/zap"
 	grpc "google.golang.org/grpc"
@@ -18,12 +18,12 @@ import (
 )
 
 type Lsp struct {
-	peerAddr   net.IP //TODO: Change to ("loopback addr" or "router name")
+	peerAddr   netip.Addr //TODO: Change to ("loopback addr" or "router name")
 	plspId     uint32
 	name       string
 	path       []uint32
-	srcAddr    net.IP
-	dstAddr    net.IP
+	srcAddr    netip.Addr
+	dstAddr    netip.Addr
 	color      uint32
 	preference uint32
 }
@@ -79,7 +79,7 @@ func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem
 	errChan := make(chan ServerError)
 	// Start PCEP listen
 	go func() {
-		if err := s.Listen(o.PcepAddr, o.PcepPort, lspChan); err != nil {
+		if err := s.Serve(o.PcepAddr, o.PcepPort, lspChan); err != nil {
 			errChan <- ServerError{
 				Server: "pcep",
 				Error:  err,
@@ -110,33 +110,35 @@ func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem
 	}
 }
 
-func (s *Server) Listen(address string, port string, lspChan chan Lsp) error {
-	var listenInfo strings.Builder
-	listenInfo.WriteString(address)
-	listenInfo.WriteString(":")
-	listenInfo.WriteString(port)
-	s.logger.Info("PCEP listen", zap.String("listenInfo", listenInfo.String()))
-	listener, err := net.Listen("tcp", listenInfo.String())
+func (s *Server) Serve(address string, port string, lspChan chan Lsp) error {
+	localAddr, err := netip.ParseAddrPort(address + ":" + port)
+	if err != nil {
+		return err
+	}
+	s.logger.Info("PCEP listen", zap.String("listenInfo", localAddr.String()))
+	l, err := net.ListenTCP("tcp", net.TCPAddrFromAddrPort(localAddr))
 	if err != nil {
 		return err
 	}
 
-	defer listener.Close()
+	defer l.Close()
 	sessionId := uint8(1)
 	for {
-		session := NewSession(sessionId, lspChan, s.logger)
-		session.tcpConn, err = listener.Accept()
+		ss := NewSession(sessionId, lspChan, s.logger)
+		ss.tcpConn, err = l.AcceptTCP()
 		if err != nil {
 			return err
 		}
-		strPeerAddr := session.tcpConn.RemoteAddr().String()
-		sessionAddr := net.ParseIP(strings.Split(strPeerAddr, ":")[0])
-		session.peerAddr = sessionAddr
-		s.sessionList = append(s.sessionList, session)
+		peerAddrPort, err := netip.ParseAddrPort(ss.tcpConn.RemoteAddr().String())
+		if err != nil {
+			return err
+		}
+		ss.peerAddr = peerAddrPort.Addr()
+		s.sessionList = append(s.sessionList, ss)
 		go func() {
-			session.Established()
-			s.closeSession(session)
-			s.logger.Info("Close PCEP session", zap.String("session", session.peerAddr.String()))
+			ss.Established()
+			s.closeSession(ss)
+			s.logger.Info("Close PCEP session", zap.String("session", ss.peerAddr.String()))
 		}()
 		sessionId += 1
 	}
@@ -156,7 +158,7 @@ func (s *Server) closeSession(session *Session) {
 	// Remove Lsp List
 	newLspList := []Lsp{}
 	for _, v := range s.lspList {
-		if !v.peerAddr.Equal(session.peerAddr) {
+		if v.peerAddr != session.peerAddr {
 			newLspList = append(newLspList, v)
 		}
 	}
@@ -165,7 +167,8 @@ func (s *Server) closeSession(session *Session) {
 
 func (s *Server) getPlspId(lspData *pb.SrPolicy) uint32 {
 	for _, v := range s.lspList {
-		if v.name == lspData.GetPolicyName() && v.peerAddr.Equal(net.IP(lspData.GetPcepSessionAddr())) {
+		pcepSessionAddr, _ := netip.AddrFromSlice(lspData.GetPcepSessionAddr())
+		if v.name == lspData.GetPolicyName() && v.peerAddr == pcepSessionAddr {
 			return v.plspId
 		}
 	}
@@ -176,7 +179,7 @@ func (s *Server) getPlspId(lspData *pb.SrPolicy) uint32 {
 func (s *Server) removeLsp(e Lsp) {
 	// Deletes a LSP with name, PLSP-ID, and sessionAddr matching from lspList
 	for i, v := range s.lspList {
-		if v.name == e.name && v.plspId == e.plspId && v.peerAddr.Equal(e.peerAddr) {
+		if v.name == e.name && v.plspId == e.plspId && v.peerAddr == e.peerAddr {
 			s.lspList[i] = s.lspList[len(s.lspList)-1]
 			s.lspList = s.lspList[:len(s.lspList)-1]
 			break
@@ -184,9 +187,9 @@ func (s *Server) removeLsp(e Lsp) {
 	}
 }
 
-func (s *Server) getSession(peerAddr net.IP) *Session {
+func (s *Server) getSession(peerAddr netip.Addr) *Session {
 	for _, pcepSession := range s.sessionList {
-		if pcepSession.peerAddr.Equal(peerAddr) {
+		if pcepSession.peerAddr == peerAddr {
 			if !pcepSession.isSynced {
 				break
 			}

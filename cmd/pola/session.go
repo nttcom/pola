@@ -8,7 +8,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"net"
 
 	"github.com/spf13/cobra"
 )
@@ -37,7 +36,7 @@ func showSession(jsonFlag bool) error {
 		peerAddrs := []map[string]string{}
 		for _, peerAddr := range sessionAddrList {
 			peerAddrInfo := map[string]string{
-				"address": net.IP(peerAddr).String(),
+				"address": peerAddr.String(),
 				"status":  "active",
 			}
 			peerAddrs = append(peerAddrs, peerAddrInfo)
@@ -53,7 +52,7 @@ func showSession(jsonFlag bool) error {
 	} else {
 		//output user-friendly format
 		for i, peerAddr := range sessionAddrList {
-			fmt.Printf("sessionAddr(%d): %v\n", i, net.IP(peerAddr))
+			fmt.Printf("sessionAddr(%d): %s\n", i, peerAddr.String())
 		}
 	}
 	return nil

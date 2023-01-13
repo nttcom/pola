@@ -10,7 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
-	"net"
+	"net/netip"
 	"strings"
 
 	"github.com/nttcom/pola/internal/pkg/table"
@@ -127,9 +127,14 @@ func ConvertToTedElem(dst *api.Destination) ([]table.TedElem, error) {
 			localNodeAsn := typedLinkStateNlri.GetLocalNode().GetAsn()
 			remoteNodeId := typedLinkStateNlri.GetRemoteNode().GetIgpRouterId()
 			remoteNodeAsn := typedLinkStateNlri.GetRemoteNode().GetAsn()
-			localIP := net.ParseIP(typedLinkStateNlri.GetLinkDescriptor().GetInterfaceAddrIpv4())
-			remoteIP := net.ParseIP(typedLinkStateNlri.GetLinkDescriptor().GetNeighborAddrIpv4())
-
+			localIP, err := netip.ParseAddr(typedLinkStateNlri.GetLinkDescriptor().GetInterfaceAddrIpv4())
+			if err != nil {
+				return nil, err
+			}
+			remoteIP, err := netip.ParseAddr(typedLinkStateNlri.GetLinkDescriptor().GetNeighborAddrIpv4())
+			if err != nil {
+				return nil, err
+			}
 			localNode := table.NewLsNode(localNodeAsn, localNodeId)
 			remoteNode := table.NewLsNode(remoteNodeAsn, remoteNodeId)
 			lsLink := table.NewLsLink(localNode, remoteNode)
@@ -191,7 +196,7 @@ func ConvertToTedElem(dst *api.Destination) ([]table.TedElem, error) {
 							if len(prefixV4) != 1 {
 								return nil, errors.New("invalid prefix length")
 							}
-							_, lsPrefixV4.Prefix, _ = net.ParseCIDR(prefixV4[0])
+							lsPrefixV4.Prefix, _ = netip.ParsePrefix(prefixV4[0])
 							tedElems = append(tedElems, lsPrefixV4)
 						}
 					}

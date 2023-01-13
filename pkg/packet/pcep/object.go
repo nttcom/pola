@@ -9,7 +9,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"math"
-	"net"
+	"net/netip"
 )
 
 type PccType int
@@ -303,7 +303,7 @@ func DecodeTLVsFromBytes(data []uint8) ([]Tlv, error) {
 
 type Label struct {
 	Sid    uint32
-	LoAddr []uint8
+	LoAddr netip.Addr
 }
 
 type optParams struct {
@@ -525,8 +525,8 @@ func NewSrpObject(srpId uint32, isRemove bool) *SrpObject {
 // LSP Object (RFC8281 5.3.1)
 type LspObject struct {
 	Name    string
-	SrcAddr net.IP
-	DstAddr net.IP
+	SrcAddr netip.Addr
+	DstAddr netip.Addr
 	PlspId  uint32
 	OFlag   uint8
 	AFlag   bool
@@ -554,8 +554,13 @@ func (o *LspObject) DecodeFromBytes(objectBody []uint8) error {
 			}
 			if tlv.Type == uint16(TLV_IPV4_LSP_IDENTIFIERS) {
 				// TODO: Obtain true srcAddr
-				o.SrcAddr = net.IP(tlv.Value[0:4])
-				o.DstAddr = net.IP(tlv.Value[12:16])
+				var ok bool
+				if o.SrcAddr, ok = netip.AddrFromSlice(tlv.Value[0:4]); !ok {
+					return errors.New("lsp tlv decode error")
+				}
+				if o.DstAddr, ok = netip.AddrFromSlice(tlv.Value[12:16]); !ok {
+					return errors.New("lsp tlv decode error")
+				}
 			}
 			o.Tlvs = append(o.Tlvs, tlv)
 
@@ -726,7 +731,7 @@ type SrEroSubobject struct {
 	CFlag         bool
 	MFlag         bool
 	Sid           uint32
-	Nai           []uint8
+	Nai           netip.Addr
 }
 
 func (o *SrEroSubobject) DecodeFromBytes(subObj []uint8) {
@@ -739,7 +744,9 @@ func (o *SrEroSubobject) DecodeFromBytes(subObj []uint8) {
 	o.CFlag = (subObj[3] & 0x02) != 0
 	o.MFlag = (subObj[3] & 0x01) != 0
 	o.Sid = binary.BigEndian.Uint32(subObj[4:8]) >> 12
-	o.Nai = subObj[8:12]
+	if o.NaiType == 1 {
+		o.Nai, _ = netip.AddrFromSlice(subObj[8:12])
+	}
 }
 
 func (o *SrEroSubobject) Serialize() []uint8 {
@@ -765,7 +772,7 @@ func (o *SrEroSubobject) Serialize() []uint8 {
 	byteSid := make([]uint8, 4)
 	binary.BigEndian.PutUint32(byteSid, o.Sid<<12)
 
-	byteSrEroSubobject := AppendByteSlices(buf, byteSid, o.Nai)
+	byteSrEroSubobject := AppendByteSlices(buf, byteSid, o.Nai.AsSlice())
 	return byteSrEroSubobject
 }
 
@@ -784,7 +791,7 @@ func (o SrEroSubobject) getByteLength() (uint16, error) {
 	}
 }
 
-func NewSrEroSubObject(sid uint32, loAddr []uint8) (SrEroSubobject, error) {
+func NewSrEroSubObject(sid uint32, loAddr netip.Addr) (SrEroSubobject, error) {
 	srEroSubObject := SrEroSubobject{
 		LFlag:         false,
 		SubobjectType: ERO_SUBOBJECT_SR,
@@ -820,14 +827,14 @@ const (
 // END-POINTS Object (RFC5440 7.6)
 type EndpointsObject struct {
 	ObjectType uint8 // IPv4: 1, IPv6: 2
-	srcIPv4    []uint8
-	dstIPv4    []uint8
+	SrcAddr    netip.Addr
+	DstAddr    netip.Addr
 }
 
 func (o EndpointsObject) Serialize() []uint8 {
 	EndpointsObjectHeader := NewCommonObjectHeader(OC_END_POINTS, 1, o.getByteLength())
 	byteEroObjectHeader := EndpointsObjectHeader.Serialize()
-	byteEndpointsObject := AppendByteSlices(byteEroObjectHeader, o.srcIPv4, o.dstIPv4)
+	byteEndpointsObject := AppendByteSlices(byteEroObjectHeader, o.SrcAddr.AsSlice(), o.DstAddr.AsSlice())
 	return byteEndpointsObject
 }
 
@@ -837,23 +844,23 @@ func (o EndpointsObject) getByteLength() uint16 {
 	return uint16(COMMON_OBJECT_HEADER_LENGTH + 4 + 4)
 }
 
-func NewEndpointsObject(objType uint8, dstIPv4 []uint8, srcIPv4 []uint8) *EndpointsObject {
+func NewEndpointsObject(objType uint8, dstAddr netip.Addr, srcAddr netip.Addr) *EndpointsObject {
 	// TODO: Expantion for IPv6 Endpoint
 	EndpointsObject := &EndpointsObject{
 		ObjectType: objType,
-		dstIPv4:    dstIPv4,
-		srcIPv4:    srcIPv4,
+		DstAddr:    dstAddr,
+		SrcAddr:    srcAddr,
 	}
 	return EndpointsObject
 }
 
 // ASSOCIATION Object (RFC8697 6.)
 type AssociationObject struct {
-	RFlag        bool
-	AssocType    uint16
-	AssocId      uint16
-	Ipv4AssocSrc []uint8
-	Tlvs         []Tlv
+	RFlag     bool
+	AssocType uint16
+	AssocId   uint16
+	AssocSrc  netip.Addr
+	Tlvs      []Tlv
 }
 
 // (I.D. pce-segment-routing-policy-cp-08 5.1)
@@ -902,7 +909,7 @@ func (o *AssociationObject) DecodeFromBytes(objectBody []uint8) error {
 	o.RFlag = (objectBody[3] & 0x01) != 0
 	o.AssocType = uint16(binary.BigEndian.Uint16(objectBody[4:6]))
 	o.AssocId = uint16(binary.BigEndian.Uint16(objectBody[6:8]))
-	o.Ipv4AssocSrc = objectBody[8:12]
+	o.AssocSrc, _ = netip.AddrFromSlice(objectBody[8:12])
 	if len(objectBody) > 12 {
 		byteTlvs := objectBody[12:]
 		for {
@@ -942,7 +949,7 @@ func (o AssociationObject) Serialize() []uint8 {
 	}
 
 	byteAssociationObject := AppendByteSlices(
-		byteAssociationObjectHeader, buf, assocType, assocId, o.Ipv4AssocSrc, byteTlvs,
+		byteAssociationObjectHeader, buf, assocType, assocId, o.AssocSrc.AsSlice(), byteTlvs,
 	)
 	return byteAssociationObject
 }
@@ -957,7 +964,7 @@ func (o AssociationObject) getByteLength() uint16 {
 	return COMMON_OBJECT_HEADER_LENGTH + associationObjectBodyLength
 }
 
-func NewAssociationObject(srcIPv4 []uint8, dstIPv4 []uint8, color uint32, preference uint32, opt ...Opt) *AssociationObject {
+func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, preference uint32, opt ...Opt) *AssociationObject {
 	opts := optParams{
 		pccType: RFC_COMPLIANT,
 	}
@@ -968,9 +975,9 @@ func NewAssociationObject(srcIPv4 []uint8, dstIPv4 []uint8, color uint32, prefer
 
 	// TODO: Expantion for IPv6 Endpoint
 	associationObject := &AssociationObject{
-		RFlag:        false,
-		Tlvs:         []Tlv{},
-		Ipv4AssocSrc: srcIPv4,
+		RFlag:    false,
+		Tlvs:     []Tlv{},
+		AssocSrc: srcAddr,
 	}
 	if opts.pccType == JUNIPER_LEGACY {
 		associationObject.AssocId = 0
@@ -980,7 +987,7 @@ func NewAssociationObject(srcIPv4 []uint8, dstIPv4 []uint8, color uint32, prefer
 				Type:   JUNIPER_SPEC_TLV_EXTENDED_ASSOCIATION_ID,
 				Length: TLV_EXTENDED_ASSOCIATION_ID_LENGTH, // TODO: 20 if ipv6 endpoint
 				Value: AppendByteSlices(
-					uint32ToListUint8(color), dstIPv4,
+					uint32ToListUint8(color), dstAddr.AsSlice(),
 				),
 			},
 			{
@@ -1009,7 +1016,7 @@ func NewAssociationObject(srcIPv4 []uint8, dstIPv4 []uint8, color uint32, prefer
 				Type:   TLV_EXTENDED_ASSOCIATION_ID,
 				Length: TLV_EXTENDED_ASSOCIATION_ID_LENGTH, // TODO: 20 if ipv6 endpoint
 				Value: AppendByteSlices(
-					uint32ToListUint8(color), dstIPv4,
+					uint32ToListUint8(color), dstAddr.AsSlice(),
 				),
 			},
 			{

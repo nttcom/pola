@@ -8,7 +8,7 @@ package main
 import (
 	"context"
 	"errors"
-	"net"
+	"net/netip"
 	"time"
 
 	"github.com/golang/protobuf/ptypes/empty"
@@ -17,16 +17,16 @@ import (
 )
 
 type srPolicyInfo struct {
-	peerAddr   net.IP //TODO: Change to ("loopback addr" or "router name")
+	peerAddr   netip.Addr //TODO: Change to ("loopback addr" or "router name")
 	name       string
 	path       []uint32
-	srcAddr    net.IP
-	dstAddr    net.IP
+	srcAddr    netip.Addr
+	dstAddr    netip.Addr
 	color      uint32
 	preference uint32
 }
 
-func getSessionAddrList(client pb.PceServiceClient) ([]net.IP, error) {
+func getSessionAddrList(client pb.PceServiceClient) ([]netip.Addr, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	var empty empty.Empty
@@ -34,9 +34,10 @@ func getSessionAddrList(client pb.PceServiceClient) ([]net.IP, error) {
 	if err != nil {
 		return nil, err
 	}
-	var peerAddrList []net.IP
+	var peerAddrList []netip.Addr
 	for _, peerAddr := range ret.GetPeerAddrs() {
-		peerAddrList = append(peerAddrList, net.IP(peerAddr))
+		peer, _ := netip.AddrFromSlice(peerAddr)
+		peerAddrList = append(peerAddrList, peer)
 	}
 	return peerAddrList, nil
 }
@@ -51,11 +52,14 @@ func getSrPolicyList(client pb.PceServiceClient) ([]srPolicyInfo, error) {
 	}
 	srPolicyList := []srPolicyInfo{}
 	for _, lsp := range ret.GetSrPolicies() {
+		peerAddr, _ := netip.AddrFromSlice(lsp.GetPcepSessionAddr())
+		srcAddr, _ := netip.AddrFromSlice(lsp.GetSrcAddr())
+		dstAddr, _ := netip.AddrFromSlice(lsp.GetDstAddr())
 		tmp := srPolicyInfo{
 			name:       lsp.PolicyName,
-			peerAddr:   net.IP(lsp.GetPcepSessionAddr()),
-			srcAddr:    net.IP(lsp.GetSrcAddr()),
-			dstAddr:    net.IP(lsp.GetDstAddr()),
+			peerAddr:   peerAddr,
+			srcAddr:    srcAddr,
+			dstAddr:    dstAddr,
 			color:      lsp.Color,
 			preference: lsp.Preference,
 		}
@@ -123,8 +127,14 @@ func getTed(client pb.PceServiceClient) (*table.LsTed, error) {
 		for _, link := range node.LsLinks {
 			lsLink := table.NewLsLink(ted.Nodes[link.LocalAsn][link.LocalRouterId], ted.Nodes[link.RemoteAsn][link.RemoteRouterId])
 			lsLink.AdjSid = link.GetAdjSid()
-			lsLink.LocalIP = net.ParseIP(link.GetLocalIp())
-			lsLink.RemoteIP = net.ParseIP(link.GetRemoteIp())
+			lsLink.LocalIP, err = netip.ParseAddr(link.GetLocalIp())
+			if err != nil {
+				return nil, err
+			}
+			lsLink.RemoteIP, err = netip.ParseAddr(link.GetRemoteIp())
+			if err != nil {
+				return nil, err
+			}
 			for _, metricInfo := range link.GetMetrics() {
 				var metric *table.Metric
 				switch metricInfo.GetType().String() {
@@ -146,7 +156,10 @@ func getTed(client pb.PceServiceClient) (*table.LsTed, error) {
 
 		for _, prefix := range node.LsPrefixes {
 			lsPrefix := table.NewLsPrefixV4(ted.Nodes[node.GetAsn()][node.GetRouterId()])
-			_, lsPrefix.Prefix, _ = net.ParseCIDR(prefix.GetPrefix())
+			lsPrefix.Prefix, err = netip.ParsePrefix(prefix.GetPrefix())
+			if err != nil {
+				return nil, err
+			}
 			lsPrefix.SidIndex = prefix.GetSidIndex()
 			ted.Nodes[node.GetAsn()][node.GetRouterId()].Prefixes = append(ted.Nodes[node.GetAsn()][node.GetRouterId()].Prefixes, lsPrefix)
 		}

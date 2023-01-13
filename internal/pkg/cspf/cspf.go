@@ -7,7 +7,7 @@ package cspf
 
 import (
 	"errors"
-	"net"
+	"net/netip"
 
 	"github.com/nttcom/pola/internal/pkg/table"
 	"github.com/nttcom/pola/pkg/packet/pcep"
@@ -19,10 +19,10 @@ type node struct {
 	cost       uint32
 	prevNode   string
 	nodeSid    uint32
-	LoAddr     net.IP
+	LoAddr     netip.Addr
 }
 
-func newNode(id string, cost uint32, nodeSid uint32, loAddr net.IP) *node {
+func newNode(id string, cost uint32, nodeSid uint32, loAddr netip.Addr) *node {
 	node := &node{
 		id:      id,
 		cost:    cost,
@@ -105,7 +105,7 @@ func spf(srcRouterId string, dstRouterId string, metric table.MetricType, networ
 	for pathNode := calculatingNodes[dstRouterId]; pathNode.id != srcRouterId; pathNode = calculatingNodes[pathNode.prevNode] {
 		segment := pcep.Label{
 			Sid:    pathNode.nodeSid,
-			LoAddr: pathNode.LoAddr.To4(),
+			LoAddr: pathNode.LoAddr,
 		}
 		if len(segmentList) == 0 {
 			segmentList = append(segmentList, segment)

@@ -8,7 +8,7 @@ package table
 import (
 	"errors"
 	"fmt"
-	"net"
+	"net/netip"
 )
 
 type LsTed struct {
@@ -110,14 +110,14 @@ func (node LsNode) NodeSid() (uint32, error) {
 	return 0, errors.New("node doesn't have node-sid")
 }
 
-func (node LsNode) LoopbackAddr() (net.IP, error) {
+func (node LsNode) LoopbackAddr() (netip.Addr, error) {
 	for _, prefix := range node.Prefixes {
 		// If it's a loopback prefix, it should be non-zero.
 		if prefix.SidIndex != 0 {
-			return prefix.Prefix.IP, nil
+			return prefix.Prefix.Addr(), nil
 		}
 	}
-	return nil, errors.New("node doesn't have loopback addr")
+	return netip.Addr{}, errors.New("node doesn't have loopback addr")
 }
 
 func (lsNode *LsNode) UpdateTed(ted *LsTed) {
@@ -136,12 +136,12 @@ func (lsNode *LsNode) UpdateTed(ted *LsTed) {
 }
 
 type LsLink struct {
-	LocalNode  *LsNode   // primary key, in MP_REACH_NLRI Attr
-	RemoteNode *LsNode   // primary key, in MP_REACH_NLRI Attr
-	LocalIP    net.IP    // in MP_REACH_NLRI Attr
-	RemoteIP   net.IP    // in MP_REACH_NLRI Attr
-	Metrics    []*Metric // in BGP-LS Attr
-	AdjSid     uint32    // in BGP-LS Attr
+	LocalNode  *LsNode    // primary key, in MP_REACH_NLRI Attr
+	RemoteNode *LsNode    // primary key, in MP_REACH_NLRI Attr
+	LocalIP    netip.Addr // in MP_REACH_NLRI Attr
+	RemoteIP   netip.Addr // in MP_REACH_NLRI Attr
+	Metrics    []*Metric  // in BGP-LS Attr
+	AdjSid     uint32     // in BGP-LS Attr
 }
 
 func NewLsLink(localNode *LsNode, remoteNode *LsNode) *LsLink {
@@ -178,9 +178,9 @@ func (lsLink *LsLink) UpdateTed(ted *LsTed) {
 }
 
 type LsPrefixV4 struct {
-	LocalNode *LsNode    // primary key, in MP_REACH_NLRI Attr
-	Prefix    *net.IPNet // in MP_REACH_NLRI Attr
-	SidIndex  uint32     // in BGP-LS Attr (only for Lo Address Prefix)
+	LocalNode *LsNode      // primary key, in MP_REACH_NLRI Attr
+	Prefix    netip.Prefix // in MP_REACH_NLRI Attr
+	SidIndex  uint32       // in BGP-LS Attr (only for Lo Address Prefix)
 }
 
 func NewLsPrefixV4(localNode *LsNode) *LsPrefixV4 {

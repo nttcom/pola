@@ -8,7 +8,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"net"
 
 	"github.com/spf13/cobra"
 )
@@ -41,8 +40,8 @@ func showSrPolicyList(jsonFlag bool) error {
 			tmp := map[string]interface{}{ // TODO: Fix format according to readme
 				"peerAddr":    lsp.peerAddr.String(),
 				"policyName":  lsp.name,
-				"srcAddr":     net.IP(lsp.srcAddr).String(),
-				"dstAddr":     net.IP(lsp.dstAddr).String(),
+				"srcAddr":     lsp.srcAddr.String(),
+				"dstAddr":     lsp.dstAddr.String(),
 				"color":       lsp.color,
 				"preference":  lsp.preference,
 				"segmentList": lsp.path,
@@ -67,11 +66,11 @@ func showSrPolicyList(jsonFlag bool) error {
 			fmt.Printf("LSP(%d): \n", i)
 			fmt.Printf("  PcepSessionAddr: %s\n", lsp.peerAddr)
 			fmt.Printf("  PolicyName: %s\n", lsp.name)
-			fmt.Printf("  SrcAddr: %s\n", net.IP(lsp.srcAddr))
-			fmt.Printf("  DstAddr: %s\n", net.IP(lsp.dstAddr))
+			fmt.Printf("  SrcAddr: %s\n", lsp.srcAddr.String())
+			fmt.Printf("  DstAddr: %s\n", lsp.dstAddr.String())
 			fmt.Printf("  Color: %d\n", lsp.color)
 			fmt.Printf("  Preference: %d\n", lsp.preference)
-			fmt.Printf("  DstAddr: %s\n", net.IP(lsp.dstAddr))
+			fmt.Printf("  DstAddr: %s\n", lsp.dstAddr.String())
 			fmt.Printf("  SegmentList: ")
 
 			if len(lsp.path) == 0 {

@@ -5,7 +5,10 @@
 
 package pcep
 
-import "fmt"
+import (
+	"fmt"
+	"net/netip"
+)
 
 // Open Message
 type OpenMessage struct {
@@ -153,7 +156,7 @@ type PCInitiateMessage struct {
 	VendorInformationObject *VendorInformationObject
 }
 
-func NewPCInitiateMessage(srpId uint32, lspName string, labels []Label, color uint32, preference uint32, srcIPv4 []uint8, dstIPv4 []uint8, opt ...Opt) (PCInitiateMessage, error) {
+func NewPCInitiateMessage(srpId uint32, lspName string, labels []Label, color uint32, preference uint32, srcAddr netip.Addr, dstAddr netip.Addr, opt ...Opt) (PCInitiateMessage, error) {
 	opts := optParams{
 		pccType: RFC_COMPLIANT,
 	}
@@ -165,18 +168,18 @@ func NewPCInitiateMessage(srpId uint32, lspName string, labels []Label, color ui
 	var pcInitiateMessage PCInitiateMessage
 	pcInitiateMessage.SrpObject = NewSrpObject(srpId, false)
 	pcInitiateMessage.LspObject = NewLspObject(lspName, 0)                      // PLSP-ID = 0
-	pcInitiateMessage.EndpointsObject = NewEndpointsObject(1, dstIPv4, srcIPv4) // objectType = 1 (IPv4)
+	pcInitiateMessage.EndpointsObject = NewEndpointsObject(1, dstAddr, srcAddr) // objectType = 1 (IPv4)
 	var err error
 	pcInitiateMessage.EroObject, err = NewEroObject(labels)
 	if err != nil {
 		return pcInitiateMessage, err
 	}
 	if opts.pccType == JUNIPER_LEGACY {
-		pcInitiateMessage.AssociationObject = NewAssociationObject(srcIPv4, dstIPv4, color, preference, VendorSpecific(opts.pccType))
+		pcInitiateMessage.AssociationObject = NewAssociationObject(srcAddr, dstAddr, color, preference, VendorSpecific(opts.pccType))
 	} else if opts.pccType == CISCO_LEGACY {
 		pcInitiateMessage.VendorInformationObject = NewVendorInformationObject(CISCO_LEGACY, color, preference)
 	} else if opts.pccType == RFC_COMPLIANT {
-		pcInitiateMessage.AssociationObject = NewAssociationObject(srcIPv4, dstIPv4, color, preference)
+		pcInitiateMessage.AssociationObject = NewAssociationObject(srcAddr, dstAddr, color, preference)
 		// FRRouting is treated as an RFC compliant
 		pcInitiateMessage.VendorInformationObject = NewVendorInformationObject(CISCO_LEGACY, color, preference)
 	}
