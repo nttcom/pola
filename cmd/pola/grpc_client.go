@@ -16,16 +16,6 @@ import (
 	"github.com/nttcom/pola/internal/pkg/table"
 )
 
-type srPolicyInfo struct {
-	peerAddr   netip.Addr //TODO: Change to ("loopback addr" or "router name")
-	name       string
-	path       []uint32
-	srcAddr    netip.Addr
-	dstAddr    netip.Addr
-	color      uint32
-	preference uint32
-}
-
 func getSessionAddrList(client pb.PceServiceClient) ([]netip.Addr, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -42,51 +32,55 @@ func getSessionAddrList(client pb.PceServiceClient) ([]netip.Addr, error) {
 	return peerAddrList, nil
 }
 
-func getSrPolicyList(client pb.PceServiceClient) ([]srPolicyInfo, error) {
+func getSRPolicyList(client pb.PceServiceClient) (map[netip.Addr][]table.SRPolicy, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	var empty empty.Empty
-	ret, err := client.GetSrPolicyList(ctx, &empty)
+	ret, err := client.GetSRPolicyList(ctx, &empty)
 	if err != nil {
 		return nil, err
 	}
-	srPolicyList := []srPolicyInfo{}
-	for _, lsp := range ret.GetSrPolicies() {
-		peerAddr, _ := netip.AddrFromSlice(lsp.GetPcepSessionAddr())
-		srcAddr, _ := netip.AddrFromSlice(lsp.GetSrcAddr())
-		dstAddr, _ := netip.AddrFromSlice(lsp.GetDstAddr())
-		tmp := srPolicyInfo{
-			name:       lsp.PolicyName,
-			peerAddr:   peerAddr,
-			srcAddr:    srcAddr,
-			dstAddr:    dstAddr,
-			color:      lsp.Color,
-			preference: lsp.Preference,
+	srPolicies := map[netip.Addr][]table.SRPolicy{}
+	for _, pbPol := range ret.GetSRPolicies() {
+		peerAddr, _ := netip.AddrFromSlice(pbPol.GetPcepSessionAddr())
+		srcAddr, _ := netip.AddrFromSlice(pbPol.GetSrcAddr())
+		dstAddr, _ := netip.AddrFromSlice(pbPol.GetDstAddr())
+		pol := table.SRPolicy{
+			Name:        pbPol.PolicyName,
+			SegmentList: []table.Segment{},
+			SrcAddr:     srcAddr,
+			DstAddr:     dstAddr,
+			Color:       pbPol.Color,
+			Preference:  pbPol.Preference,
 		}
-		if len(lsp.GetSegmentList()) != 0 {
-			for _, label := range lsp.GetSegmentList() {
-				tmp.path = append(tmp.path, label.GetSid())
+		if len(pbPol.GetSegmentList()) != 0 {
+			for _, pbSeg := range pbPol.GetSegmentList() {
+				seg, err := table.NewSegment(pbSeg.GetSid())
+				if err != nil {
+					return nil, err
+				}
+				pol.SegmentList = append(pol.SegmentList, seg)
 			}
 		}
-		srPolicyList = append(srPolicyList, tmp)
+		srPolicies[peerAddr] = append(srPolicies[peerAddr], pol)
 	}
-	return srPolicyList, nil
+	return srPolicies, nil
 }
 
-func createSrPolicy(client pb.PceServiceClient, createSrPolicyInput *pb.CreateSrPolicyInput) error {
+func createSRPolicy(client pb.PceServiceClient, createSrPolicyInput *pb.CreateSRPolicyInput) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	_, err := client.CreateSrPolicy(ctx, createSrPolicyInput)
+	_, err := client.CreateSRPolicy(ctx, createSrPolicyInput)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func createSrPolicyWithoutLinkState(client pb.PceServiceClient, createSrPolicyInput *pb.CreateSrPolicyInput) error {
+func createSrPolicyWithoutLinkState(client pb.PceServiceClient, createSrPolicyInput *pb.CreateSRPolicyInput) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	_, err := client.CreateSrPolicyWithoutLinkState(ctx, createSrPolicyInput)
+	_, err := client.CreateSRPolicyWithoutLinkState(ctx, createSrPolicyInput)
 	if err != nil {
 		return err
 	}

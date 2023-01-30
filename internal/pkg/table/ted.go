@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"strconv"
 )
 
 type LsTed struct {
@@ -62,20 +63,6 @@ func (ted LsTed) ShowTed() {
 	}
 }
 
-func (ted LsTed) GetRouterIdFromSid(as uint32, Sid uint32) (string, error) {
-	nodes := ted.Nodes[as]
-	for routerId, node := range nodes {
-		nodeSid, err := node.NodeSid()
-		if err != nil {
-			continue
-		}
-		if nodeSid == Sid {
-			return routerId, nil
-		}
-	}
-	return "", errors.New("specified node could not be found")
-}
-
 type TedElem interface {
 	UpdateTed(*LsTed)
 }
@@ -100,14 +87,22 @@ func NewLsNode(asn uint32, nodeId string) *LsNode {
 	return lsnode
 }
 
-func (node LsNode) NodeSid() (uint32, error) {
+func (node LsNode) NodeSegment() (Segment, error) {
+	// for SR-MPLS Segment
 	for _, prefix := range node.Prefixes {
 		// If it's a loopback prefix, it should be non-zero.
 		if prefix.SidIndex != 0 {
-			return node.SrgbBegin + prefix.SidIndex, nil
+			sid := strconv.Itoa(int(node.SrgbBegin + prefix.SidIndex))
+			seg, err := NewSegment(sid)
+			if err != nil {
+				return nil, err
+			}
+			return seg, nil
 		}
 	}
-	return 0, errors.New("node doesn't have node-sid")
+	// TODO: for SRv6 Segment
+
+	return nil, errors.New("node doesn't have node-sid")
 }
 
 func (node LsNode) LoopbackAddr() (netip.Addr, error) {

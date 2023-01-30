@@ -12,6 +12,7 @@ import (
 	"net/netip"
 	"time"
 
+	"github.com/nttcom/pola/internal/pkg/table"
 	"github.com/nttcom/pola/pkg/packet/pcep"
 
 	"go.uber.org/zap"
@@ -20,22 +21,21 @@ import (
 const KEEPALIVE uint8 = 30
 
 type Session struct {
-	sessionId uint8
-	peerAddr  netip.Addr
-	tcpConn   *net.TCPConn
-	isSynced  bool
-	srpIdHead uint32 // 0x00000000 and 0xFFFFFFFF are reserved.
-	lspChan   chan Lsp
-	logger    *zap.Logger
-	pccType   pcep.PccType
+	sessionId  uint8
+	peerAddr   netip.Addr
+	tcpConn    *net.TCPConn
+	isSynced   bool
+	srpIdHead  uint32 // 0x00000000 and 0xFFFFFFFF are reserved.
+	srPolicies []table.SRPolicy
+	logger     *zap.Logger
+	pccType    pcep.PccType
 }
 
-func NewSession(sessionId uint8, lspChan chan Lsp, logger *zap.Logger) *Session {
+func NewSession(sessionId uint8, logger *zap.Logger) *Session {
 	s := &Session{
 		sessionId: sessionId,
 		isSynced:  false,
 		srpIdHead: uint32(1),
-		lspChan:   lspChan,
 		logger:    logger,
 		pccType:   pcep.RFC_COMPLIANT,
 	}
@@ -187,8 +187,9 @@ func (s *Session) ReceivePcepMessage() error {
 			}
 			if pcrptMessage.LspObject.SFlag {
 				// During LSP state synchronization (RFC8231 5.6)
-				s.logger.Info("Synchronize LSP information", zap.String("session", s.peerAddr.String()), zap.Uint32("plspId", pcrptMessage.LspObject.PlspId), zap.Any("Message", pcrptMessage))
-				go s.RegisterLsp(pcrptMessage)
+				srPolicy := pcrptMessage.ToSRPolicy(s.pccType)
+				s.logger.Info("Synchronize SR Policy information", zap.String("session", s.peerAddr.String()), zap.Any("SRPolicy", srPolicy), zap.Any("Message", pcrptMessage))
+				go s.RegisterSRPolicy(srPolicy)
 			} else if !pcrptMessage.LspObject.SFlag {
 				if pcrptMessage.LspObject.PlspId == 0 {
 					// End of synchronization (RFC8231 5.6)
@@ -196,8 +197,9 @@ func (s *Session) ReceivePcepMessage() error {
 					s.isSynced = true
 				} else if pcrptMessage.SrpObject.SrpId != 0 {
 					// Response to PCInitiate/PCUpdate (RFC8231 7.2)
+					srPolicy := pcrptMessage.ToSRPolicy(s.pccType)
 					s.logger.Info("Finish Stateful PCE request", zap.String("session", s.peerAddr.String()), zap.Uint32("srpId", pcrptMessage.SrpObject.SrpId))
-					go s.RegisterLsp(pcrptMessage)
+					go s.RegisterSRPolicy(srPolicy)
 				}
 				// TODO: Need to implementation of PCUpdate for Passive stateful PCE
 			}
@@ -215,8 +217,9 @@ func (s *Session) ReceivePcepMessage() error {
 	}
 }
 
-func (s *Session) SendPCInitiate(policyName string, labels []pcep.Label, color uint32, preference uint32, srcAddr netip.Addr, dstAddr netip.Addr) error {
-	pcinitiateMessage, err := pcep.NewPCInitiateMessage(s.srpIdHead, policyName, labels, color, preference, srcAddr, dstAddr, pcep.VendorSpecific(s.pccType))
+func (s *Session) SendPCInitiate(srPolicy table.SRPolicy) error {
+
+	pcinitiateMessage, err := pcep.NewPCInitiateMessage(s.srpIdHead, srPolicy.Name, srPolicy.SegmentList, srPolicy.Color, srPolicy.Preference, srPolicy.SrcAddr, srPolicy.DstAddr, pcep.VendorSpecific(s.pccType))
 	if err != nil {
 		return err
 	}
@@ -225,7 +228,7 @@ func (s *Session) SendPCInitiate(policyName string, labels []pcep.Label, color u
 		return err
 	}
 
-	s.logger.Info("Send PCInitiate", zap.String("session", s.peerAddr.String()), zap.Uint32("srpId", s.srpIdHead), zap.String("policyName", policyName), zap.Any("labels", labels), zap.Uint32("color", color), zap.Uint32("preference", preference), zap.String("srcIPv4", srcAddr.String()), zap.Any("dstIPv4", dstAddr.String()))
+	s.logger.Info("Send PCInitiate", zap.String("session", s.peerAddr.String()), zap.Uint32("srpId", s.srpIdHead), zap.Any("srPolicy", srPolicy))
 	if _, err := s.tcpConn.Write(bytePCInitiateMessage); err != nil {
 		return err
 	}
@@ -233,8 +236,8 @@ func (s *Session) SendPCInitiate(policyName string, labels []pcep.Label, color u
 	return nil
 }
 
-func (s *Session) SendPCUpdate(policyName string, plspId uint32, labels []pcep.Label) error {
-	pcupdateMessage, err := pcep.NewPCUpdMessage(s.srpIdHead, policyName, plspId, labels)
+func (s *Session) SendPCUpdate(srPolicy table.SRPolicy) error {
+	pcupdateMessage, err := pcep.NewPCUpdMessage(s.srpIdHead, srPolicy.Name, srPolicy.PlspId, srPolicy.SegmentList)
 	if err != nil {
 		return err
 	}
@@ -243,7 +246,7 @@ func (s *Session) SendPCUpdate(policyName string, plspId uint32, labels []pcep.L
 		return err
 	}
 
-	s.logger.Info("Send PCUpdate", zap.String("session", s.peerAddr.String()), zap.Uint32("srpId", pcupdateMessage.SrpObject.SrpId))
+	s.logger.Info("Send PCUpdate", zap.String("session", s.peerAddr.String()), zap.Uint32("srpId", pcupdateMessage.SrpObject.SrpId), zap.Any("srPolicy", srPolicy))
 	if _, err := s.tcpConn.Write(bytePCUpdMessage); err != nil {
 		s.logger.Info("PCUpdate send error", zap.String("session", s.peerAddr.String()))
 		return err
@@ -252,21 +255,27 @@ func (s *Session) SendPCUpdate(policyName string, plspId uint32, labels []pcep.L
 	return nil
 }
 
-func (s *Session) RegisterLsp(pcrptMessage *pcep.PCRptMessage) {
-	lspStruct := Lsp{
-		peerAddr: s.peerAddr,
-		plspId:   pcrptMessage.LspObject.PlspId,
-		name:     pcrptMessage.LspObject.Name,
-		path:     pcrptMessage.EroObject.GetSidList(),
-		srcAddr:  pcrptMessage.LspObject.SrcAddr,
-		dstAddr:  pcrptMessage.LspObject.DstAddr,
+func (s *Session) RegisterSRPolicy(srPolicy table.SRPolicy) {
+	s.DeleteSRPolicy(srPolicy.PlspId)
+	s.srPolicies = append(s.srPolicies, srPolicy)
+}
+
+func (s *Session) DeleteSRPolicy(plspId uint32) {
+	for i, v := range s.srPolicies {
+		if plspId == v.PlspId {
+			s.srPolicies[i] = s.srPolicies[len(s.srPolicies)-1]
+			s.srPolicies = s.srPolicies[:len(s.srPolicies)-1]
+			break
+		}
 	}
-	if s.pccType == pcep.CISCO_LEGACY {
-		lspStruct.color = pcrptMessage.VendorInformationObject.Color()
-		lspStruct.preference = pcrptMessage.VendorInformationObject.Preference()
-	} else {
-		lspStruct.color = pcrptMessage.AssociationObject.Color()
-		lspStruct.preference = pcrptMessage.AssociationObject.Preference()
+}
+
+// return (PLSP-ID, true) if SR Policy is registerd, otherwise return (0, false)
+func (s *Session) SearchSRPolicyPlspId(color uint32, endpoint netip.Addr) (uint32, bool) {
+	for _, v := range s.srPolicies {
+		if color == v.Color && endpoint == v.DstAddr {
+			return v.PlspId, true
+		}
 	}
-	s.lspChan <- lspStruct
+	return 0, false
 }

@@ -12,25 +12,11 @@ import (
 	"go.uber.org/zap"
 	grpc "google.golang.org/grpc"
 
-	pb "github.com/nttcom/pola/api/grpc"
-
 	"github.com/nttcom/pola/internal/pkg/table"
 )
 
-type Lsp struct {
-	peerAddr   netip.Addr //TODO: Change to ("loopback addr" or "router name")
-	plspId     uint32
-	name       string
-	path       []uint32
-	srcAddr    netip.Addr
-	dstAddr    netip.Addr
-	color      uint32
-	preference uint32
-}
-
 type Server struct {
 	sessionList []*Session
-	lspList     []Lsp
 	ted         *table.LsTed
 	logger      *zap.Logger
 }
@@ -75,11 +61,10 @@ func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem
 	}
 
 	s.logger = logger
-	lspChan := make(chan Lsp)
 	errChan := make(chan ServerError)
 	// Start PCEP listen
 	go func() {
-		if err := s.Serve(o.PcepAddr, o.PcepPort, lspChan); err != nil {
+		if err := s.Serve(o.PcepAddr, o.PcepPort); err != nil {
 			errChan <- ServerError{
 				Server: "pcep",
 				Error:  err,
@@ -98,19 +83,11 @@ func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem
 		}
 	}()
 
-	for {
-		select {
-		case lsp := <-lspChan:
-			// Overwrite LSP
-			s.removeLsp(lsp)
-			s.lspList = append(s.lspList, lsp)
-		case serverError := <-errChan:
-			return serverError
-		}
-	}
+	serverError := <-errChan
+	return serverError
 }
 
-func (s *Server) Serve(address string, port string, lspChan chan Lsp) error {
+func (s *Server) Serve(address string, port string) error {
 	localAddr, err := netip.ParseAddrPort(address + ":" + port)
 	if err != nil {
 		return err
@@ -124,7 +101,7 @@ func (s *Server) Serve(address string, port string, lspChan chan Lsp) error {
 	defer l.Close()
 	sessionId := uint8(1)
 	for {
-		ss := NewSession(sessionId, lspChan, s.logger)
+		ss := NewSession(sessionId, s.logger)
 		ss.tcpConn, err = l.AcceptTCP()
 		if err != nil {
 			return err
@@ -155,39 +132,9 @@ func (s *Server) closeSession(session *Session) {
 			break
 		}
 	}
-	// Remove Lsp List
-	newLspList := []Lsp{}
-	for _, v := range s.lspList {
-		if v.peerAddr != session.peerAddr {
-			newLspList = append(newLspList, v)
-		}
-	}
-	s.lspList = newLspList
 }
 
-func (s *Server) getPlspId(lspData *pb.SrPolicy) uint32 {
-	for _, v := range s.lspList {
-		pcepSessionAddr, _ := netip.AddrFromSlice(lspData.GetPcepSessionAddr())
-		if v.name == lspData.GetPolicyName() && v.peerAddr == pcepSessionAddr {
-			return v.plspId
-		}
-	}
-	// If LSP name is not in the lapList, returns PLSP-ID: 0
-	return 0
-}
-
-func (s *Server) removeLsp(e Lsp) {
-	// Deletes a LSP with name, PLSP-ID, and sessionAddr matching from lspList
-	for i, v := range s.lspList {
-		if v.name == e.name && v.plspId == e.plspId && v.peerAddr == e.peerAddr {
-			s.lspList[i] = s.lspList[len(s.lspList)-1]
-			s.lspList = s.lspList[:len(s.lspList)-1]
-			break
-		}
-	}
-}
-
-func (s *Server) getSession(peerAddr netip.Addr) *Session {
+func (s *Server) SearchSession(peerAddr netip.Addr) *Session {
 	for _, pcepSession := range s.sessionList {
 		if pcepSession.peerAddr == peerAddr {
 			if !pcepSession.isSynced {
@@ -197,4 +144,13 @@ func (s *Server) getSession(peerAddr netip.Addr) *Session {
 		}
 	}
 	return nil
+}
+
+// return registered SR Policy map with key sessionAddr
+func (s *Server) SRPolicies() map[netip.Addr][]table.SRPolicy {
+	srPolicies := map[netip.Addr][]table.SRPolicy{}
+	for _, ss := range s.sessionList {
+		srPolicies[ss.peerAddr] = ss.srPolicies
+	}
+	return srPolicies
 }

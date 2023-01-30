@@ -9,7 +9,7 @@ import (
 	"context"
 	"flag"
 	"log"
-	"net"
+	"net/netip"
 	"time"
 
 	"google.golang.org/grpc"
@@ -30,16 +30,19 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	r, err := c.CreateSrPolicyWithoutLinkState(ctx, &pb.CreateSrPolicyInput{
-		SrPolicy: &pb.SrPolicy{
-			PcepSessionAddr: []byte(net.ParseIP("192.0.2.1").To4()),
-			SrcAddr:         []byte(net.ParseIP("192.0.2.1").To4()),
-			DstAddr:         []byte(net.ParseIP("192.0.2.2").To4()),
+	ssAddr, _ := netip.ParseAddr("192.0.2.1")
+	srcAddr, _ := netip.ParseAddr("192.0.2.1")
+	dstAddr, _ := netip.ParseAddr("192.0.2.2")
+	r, err := c.CreateSRPolicyWithoutLinkState(ctx, &pb.CreateSRPolicyInput{
+		SRPolicy: &pb.SRPolicy{
+			PcepSessionAddr: ssAddr.AsSlice(),
+			SrcAddr:         srcAddr.AsSlice(),
+			DstAddr:         dstAddr.AsSlice(),
 			Color:           uint32(100),
 			PolicyName:      "sample-name",
-			SegmentList: []*pb.Segment{{Sid: 16002, LoAddr: []byte(net.ParseIP("10.255.0.2").To4())},
-				{Sid: 16003, LoAddr: []byte(net.ParseIP("10.255.0.3").To4())},
-				{Sid: 16004, LoAddr: []byte(net.ParseIP("10.255.0.4").To4())},
+			SegmentList: []*pb.Segment{{Sid: "16002"},
+				{Sid: "16003"},
+				{Sid: "16004"},
 			},
 		},
 	})

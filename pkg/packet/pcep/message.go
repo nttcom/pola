@@ -8,6 +8,8 @@ package pcep
 import (
 	"fmt"
 	"net/netip"
+
+	"github.com/nttcom/pola/internal/pkg/table"
 )
 
 // Open Message
@@ -146,6 +148,27 @@ func (m *PCRptMessage) DecodeFromBytes(messageBody []uint8) error {
 	return nil
 }
 
+func (m PCRptMessage) ToSRPolicy(pcc PccType) table.SRPolicy {
+	srPolicy := table.SRPolicy{
+		PlspId:      m.LspObject.PlspId,
+		Name:        m.LspObject.Name,
+		SegmentList: []table.Segment{},
+		SrcAddr:     m.LspObject.SrcAddr,
+		DstAddr:     m.LspObject.DstAddr,
+	}
+	if pcc == CISCO_LEGACY {
+		srPolicy.Color = m.VendorInformationObject.Color()
+		srPolicy.Preference = m.VendorInformationObject.Preference()
+	} else {
+		srPolicy.Color = m.AssociationObject.Color()
+		srPolicy.Preference = m.AssociationObject.Preference()
+	}
+
+	srPolicy.SegmentList = m.EroObject.ToSegmentList()
+
+	return srPolicy
+}
+
 // PCInitiate Message
 type PCInitiateMessage struct {
 	SrpObject               *SrpObject
@@ -156,7 +179,7 @@ type PCInitiateMessage struct {
 	VendorInformationObject *VendorInformationObject
 }
 
-func NewPCInitiateMessage(srpId uint32, lspName string, labels []Label, color uint32, preference uint32, srcAddr netip.Addr, dstAddr netip.Addr, opt ...Opt) (PCInitiateMessage, error) {
+func NewPCInitiateMessage(srpId uint32, lspName string, segmentList []table.Segment, color uint32, preference uint32, srcAddr netip.Addr, dstAddr netip.Addr, opt ...Opt) (PCInitiateMessage, error) {
 	opts := optParams{
 		pccType: RFC_COMPLIANT,
 	}
@@ -170,7 +193,7 @@ func NewPCInitiateMessage(srpId uint32, lspName string, labels []Label, color ui
 	pcInitiateMessage.LspObject = NewLspObject(lspName, 0)                      // PLSP-ID = 0
 	pcInitiateMessage.EndpointsObject = NewEndpointsObject(1, dstAddr, srcAddr) // objectType = 1 (IPv4)
 	var err error
-	pcInitiateMessage.EroObject, err = NewEroObject(labels)
+	pcInitiateMessage.EroObject, err = NewEroObject(segmentList)
 	if err != nil {
 		return pcInitiateMessage, err
 	}
@@ -233,12 +256,12 @@ type PCUpdMessage struct {
 	EroObject *EroObject
 }
 
-func NewPCUpdMessage(srpId uint32, lspName string, plspId uint32, labels []Label) (PCUpdMessage, error) {
+func NewPCUpdMessage(srpId uint32, lspName string, plspId uint32, segmentList []table.Segment) (PCUpdMessage, error) {
 	var pcUpdMessage PCUpdMessage
 	pcUpdMessage.SrpObject = NewSrpObject(srpId, false)
-	pcUpdMessage.LspObject = NewLspObject(lspName, plspId) // PLSP-ID = 0
+	pcUpdMessage.LspObject = NewLspObject(lspName, plspId)
 	var err error
-	pcUpdMessage.EroObject, err = NewEroObject(labels)
+	pcUpdMessage.EroObject, err = NewEroObject(segmentList)
 	if err != nil {
 		return pcUpdMessage, err
 	}

@@ -10,6 +10,8 @@ import (
 	"errors"
 	"math"
 	"net/netip"
+
+	"github.com/nttcom/pola/internal/pkg/table"
 )
 
 type PccType int
@@ -299,11 +301,6 @@ func DecodeTLVsFromBytes(data []uint8) ([]Tlv, error) {
 		}
 	}
 	return tlvs, nil
-}
-
-type Label struct {
-	Sid    uint32
-	LoAddr netip.Addr
 }
 
 type optParams struct {
@@ -637,7 +634,7 @@ func NewLspObject(lspName string, plspId uint32) *LspObject {
 
 // ERO Object (RFC5440 7.9)
 type EroObject struct {
-	SrEroSubobjects []SrEroSubobject
+	EroSubobjects []EroSubobject
 }
 
 func (o *EroObject) DecodeFromBytes(objectBody []uint8) error {
@@ -645,10 +642,15 @@ func (o *EroObject) DecodeFromBytes(objectBody []uint8) error {
 		return nil
 	}
 	for {
-		var srErosubObj SrEroSubobject
-		srErosubObj.DecodeFromBytes(objectBody)
-		o.SrEroSubobjects = append(o.SrEroSubobjects, srErosubObj)
-		if objByteLength, err := srErosubObj.getByteLength(); err != nil {
+		var eroSubobj EroSubobject
+		if (objectBody[0] & 0x7f) == 36 {
+			eroSubobj = &SrEroSubobject{}
+		} else {
+			return errors.New("invalid Subobject type")
+		}
+		eroSubobj.DecodeFromBytes(objectBody)
+		o.EroSubobjects = append(o.EroSubobjects, eroSubobj)
+		if objByteLength, err := eroSubobj.getByteLength(); err != nil {
 			return err
 		} else if int(objByteLength) < len(objectBody) {
 			objectBody = objectBody[objByteLength:]
@@ -670,54 +672,76 @@ func (o EroObject) Serialize() ([]uint8, error) {
 	byteEroObjectHeader := eroObjectHeader.Serialize()
 
 	byteEroObject := byteEroObjectHeader
-	for _, srEroSubobject := range o.SrEroSubobjects {
-		buf := srEroSubobject.Serialize()
+	for _, eroSubobject := range o.EroSubobjects {
+		buf := eroSubobject.Serialize()
 		byteEroObject = append(byteEroObject, buf...)
 	}
 	return byteEroObject, nil
 }
 
 func (o EroObject) getByteLength() (uint16, error) {
-	srEroSubobjByteLength := uint16(0)
-	for _, srEroSubObj := range o.SrEroSubobjects {
-		objByteLength, err := srEroSubObj.getByteLength()
+	eroSubobjByteLength := uint16(0)
+	for _, eroSubObj := range o.EroSubobjects {
+		objByteLength, err := eroSubObj.getByteLength()
 		if err != nil {
 			return 0, err
 		}
-		srEroSubobjByteLength += objByteLength
+		eroSubobjByteLength += objByteLength
 	}
-	// CommonObjectHeader(4byte) + eroObjectHeader(4byte)
-	return uint16(COMMON_OBJECT_HEADER_LENGTH) + srEroSubobjByteLength, nil
+	// CommonObjectHeader(4byte) + eroSubobjects(valiable)
+	return uint16(COMMON_OBJECT_HEADER_LENGTH) + eroSubobjByteLength, nil
 }
 
-func NewEroObject(labels []Label) (*EroObject, error) {
+func NewEroObject(segmentList []table.Segment) (*EroObject, error) {
 	eroObject := &EroObject{
-		SrEroSubobjects: []SrEroSubobject{},
+		EroSubobjects: []EroSubobject{},
 	}
-	err := eroObject.AddSrEroSubobjects(labels)
+	err := eroObject.AddEroSubobjects(segmentList)
+
 	if err != nil {
 		return eroObject, err
 	}
 	return eroObject, nil
 }
 
-func (o *EroObject) AddSrEroSubobjects(labels []Label) error {
-	for _, label := range labels {
-		srEroSubobject, err := NewSrEroSubObject(label.Sid, label.LoAddr)
+func (o *EroObject) AddEroSubobjects(SegmentList []table.Segment) error {
+	for _, seg := range SegmentList {
+		eroSubobject, err := NewEroSubobject(seg)
 		if err != nil {
 			return err
 		}
-		o.SrEroSubobjects = append(o.SrEroSubobjects, srEroSubobject)
+
+		o.EroSubobjects = append(o.EroSubobjects, eroSubobject)
 	}
+
 	return nil
 }
 
-func (o EroObject) GetSidList() []uint32 {
-	sidList := []uint32{}
-	for _, srEroSubobject := range o.SrEroSubobjects {
-		sidList = append(sidList, srEroSubobject.Sid)
+func (o *EroObject) ToSegmentList() []table.Segment {
+	sl := []table.Segment{}
+	for _, so := range o.EroSubobjects {
+		sl = append(sl, so.ToSegment())
 	}
-	return sidList
+	return sl
+}
+
+type EroSubobject interface {
+	DecodeFromBytes([]uint8)
+	getByteLength() (uint16, error)
+	Serialize() []uint8
+	ToSegment() table.Segment
+}
+
+func NewEroSubobject(seg table.Segment) (EroSubobject, error) {
+	if v, ok := seg.(table.SegmentSRMPLS); ok {
+		subobj, err := NewSrEroSubObject(v)
+		if err != nil {
+			return nil, err
+		}
+		return subobj, nil
+	} else {
+		return nil, errors.New("invalid Segment type")
+	}
 }
 
 // SR-ERO Subobject (RFC8664 4.3.1)
@@ -730,7 +754,7 @@ type SrEroSubobject struct {
 	SFlag         bool
 	CFlag         bool
 	MFlag         bool
-	Sid           uint32
+	Segment       table.SegmentSRMPLS
 	Nai           netip.Addr
 }
 
@@ -743,7 +767,9 @@ func (o *SrEroSubobject) DecodeFromBytes(subObj []uint8) {
 	o.SFlag = (subObj[3] & 0x04) != 0
 	o.CFlag = (subObj[3] & 0x02) != 0
 	o.MFlag = (subObj[3] & 0x01) != 0
-	o.Sid = binary.BigEndian.Uint32(subObj[4:8]) >> 12
+
+	sid := binary.BigEndian.Uint32(subObj[4:8]) >> 12
+	o.Segment = table.NewSegmentSRMPLS(sid)
 	if o.NaiType == 1 {
 		o.Nai, _ = netip.AddrFromSlice(subObj[8:12])
 	}
@@ -770,9 +796,9 @@ func (o *SrEroSubobject) Serialize() []uint8 {
 		buf[3] = buf[3] | 0x01
 	}
 	byteSid := make([]uint8, 4)
-	binary.BigEndian.PutUint32(byteSid, o.Sid<<12)
+	binary.BigEndian.PutUint32(byteSid, o.Segment.Sid<<12)
 
-	byteSrEroSubobject := AppendByteSlices(buf, byteSid, o.Nai.AsSlice())
+	byteSrEroSubobject := AppendByteSlices(buf, byteSid)
 	return byteSrEroSubobject
 }
 
@@ -791,18 +817,21 @@ func (o SrEroSubobject) getByteLength() (uint16, error) {
 	}
 }
 
-func NewSrEroSubObject(sid uint32, loAddr netip.Addr) (SrEroSubobject, error) {
-	srEroSubObject := SrEroSubobject{
+func (o *SrEroSubobject) ToSegment() table.Segment {
+	return o.Segment
+}
+
+func NewSrEroSubObject(seg table.SegmentSRMPLS) (*SrEroSubobject, error) {
+	srEroSubObject := &SrEroSubobject{
 		LFlag:         false,
 		SubobjectType: ERO_SUBOBJECT_SR,
 		// SID: NodeSID, NAI: IPv4 address  TODO: Support another Nai Type
-		NaiType: NT_IPV4_NODE,
-		FFlag:   false,
+		NaiType: NT_ABSENT,
+		FFlag:   true, // Nai is absent
 		SFlag:   false,
 		CFlag:   false,
 		MFlag:   true, // TODO: Determine if MPLS
-		Sid:     uint32(sid),
-		Nai:     loAddr,
+		Segment: seg,
 	}
 	length, err := srEroSubObject.getByteLength()
 	if err != nil {

@@ -32,12 +32,12 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	var empty empty.Empty
-	ret, err := c.GetSrPolicyList(ctx, &empty)
+	ret, err := c.GetSRPolicyList(ctx, &empty)
 	if err != nil {
 		log.Fatalf("could not greet: %v", err)
 	}
 
-	for i, srPolicy := range ret.GetSrPolicies() {
+	for i, srPolicy := range ret.GetSRPolicies() {
 		fmt.Printf("srPolicy(%d): \n", i)
 		sessionAddr := net.IP(srPolicy.GetPcepSessionAddr())
 		fmt.Printf("  sessionAddr: %s\n", sessionAddr.String())
@@ -51,11 +51,11 @@ func main() {
 			continue
 		}
 		for j, segment := range srPolicy.GetSegmentList() {
-			fmt.Printf("%d ", segment.GetSid())
+			fmt.Printf("%s", segment.GetSid())
 			if j == len(srPolicy.GetSegmentList())-1 {
 				fmt.Printf("\n")
 			} else {
-				fmt.Printf("-> ")
+				fmt.Printf(" -> ")
 			}
 		}
 	}
