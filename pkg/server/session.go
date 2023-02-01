@@ -96,7 +96,9 @@ func (ss *Session) ReceiveOpen() error {
 	}
 
 	var openHeader pcep.CommonHeader
-	openHeader.DecodeFromBytes(byteOpenHeader)
+	if err := openHeader.DecodeFromBytes(byteOpenHeader); err != nil {
+		return err
+	}
 	// CommonHeader Validation
 	if openHeader.Version != 1 {
 		return fmt.Errorf("PCEP version mismatch (receive version: %d)", openHeader.Version)
@@ -141,7 +143,10 @@ func (ss *Session) ReceiveOpen() error {
 }
 
 func (ss *Session) SendOpen() error {
-	openMessage := pcep.NewOpenMessage(ss.sessionId, KEEPALIVE)
+	openMessage, err := pcep.NewOpenMessage(ss.sessionId, KEEPALIVE)
+	if err != nil {
+		return err
+	}
 	byteOpenMessage := openMessage.Serialize()
 
 	ss.logger.Info("Send Open", zap.String("session", ss.peerAddr.String()))
@@ -153,7 +158,10 @@ func (ss *Session) SendOpen() error {
 }
 
 func (ss *Session) SendKeepalive() error {
-	keepaliveMessage := pcep.NewKeepaliveMessage()
+	keepaliveMessage, err := pcep.NewKeepaliveMessage()
+	if err != nil {
+		return err
+	}
 	byteKeepaliveMessage := keepaliveMessage.Serialize()
 
 	ss.logger.Info("Send Keepalive", zap.String("session", ss.peerAddr.String()))
@@ -170,7 +178,9 @@ func (ss *Session) ReceivePcepMessage() error {
 			return err
 		}
 		var commonHeader pcep.CommonHeader
-		commonHeader.DecodeFromBytes(byteCommonHeader)
+		if err := commonHeader.DecodeFromBytes(byteCommonHeader); err != nil {
+			return err
+		}
 
 		switch commonHeader.MessageType {
 		case pcep.MT_KEEPALIVE:
