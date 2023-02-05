@@ -12,28 +12,27 @@ option go_package = "github.com/nttcom/pola/api/grpc";
 import "google/protobuf/empty.proto";
 
 service PceService {
-  rpc CreateSrPolicy (CreateSrPolicyInput) returns (SrPolicyStatus) {};
+  rpc CreateSRPolicy (CreateSRPolicyInput) returns (SRPolicyStatus) {};
 
-  rpc CreateSrPolicyWithoutLinkState (CreateSrPolicyInput) returns (SrPolicyStatus) {};
+  rpc CreateSRPolicyWithoutLinkState (CreateSRPolicyInput) returns (SRPolicyStatus) {};
 
   rpc GetPeerAddrList (google.protobuf.Empty) returns (PeerAddrList) {};
 
-  rpc GetSrPolicyList (google.protobuf.Empty) returns (SrPolicyList) {};
+  rpc GetSRPolicyList (google.protobuf.Empty) returns (SRPolicyList) {};
 
   rpc GetTed (google.protobuf.Empty) returns (Ted) {};
 }
 
 message Segment {
-    uint32 sid = 1;
-    bytes loAddr = 2;
+    string sid = 1;
 }
 
-enum SrPolicyType {
+enum SRPolicyType {
     EXPLICIT = 0;
     DYNAMIC = 1;
 }
 
-message SrPolicy {
+message SRPolicy {
     bytes pcepSessionAddr = 1;
     bytes srcAddr = 2;
     bytes dstAddr = 3;
@@ -42,17 +41,17 @@ message SrPolicy {
     uint32 color = 6;
     uint32 preference = 7;
     string policyName = 8;
-    SrPolicyType type = 9;
+    SRPolicyType type = 9;
     repeated Segment segmentList = 10;
     MetricType metric = 11;
 }
 
-message CreateSrPolicyInput {
-    SrPolicy srPolicy = 1;
+message CreateSRPolicyInput {
+    SRPolicy SRPolicy = 1;
     uint32 asn = 2;
 } 
 
-message SrPolicyStatus {
+message SRPolicyStatus {
     bool isSuccess = 1;
 }
 
@@ -60,13 +59,13 @@ message PeerAddrList {
     repeated bytes PeerAddrs = 1; 
 }
 
-message SrPolicyList {
-    repeated SrPolicy SrPolicies = 1;
+message SRPolicyList {
+    repeated SRPolicy SRPolicies = 1;
 }
 
 message LsPrefix {
     string prefix = 1;
-    uint32 sid_index = 2;
+    uint32 sidIndex = 2;
 }
 
 enum MetricType {
@@ -82,29 +81,29 @@ message Metric {
 }
 
 message LsLink {
-    string local_router_id = 1;
-    uint32 local_asn = 2;
-    string local_ip = 3;
-    string remote_router_id = 4;
-    uint32 remote_asn = 5;
-    string remote_ip = 6;
+    string localRouterId = 1;
+    uint32 localAsn = 2;
+    string localIp = 3;
+    string remoteRouterId = 4;
+    uint32 remoteAsn = 5;
+    string remoteIp = 6;
     repeated Metric metrics = 7;
-    uint32 adj_sid = 8;
+    uint32 adjSid = 8;
 } 
 
 message LsNode {
     uint32 asn = 1;
-    string router_id = 2;
-    string isis_area_id = 3;
+    string routerId = 2;
+    string isisAreaId = 3;
     string hostname = 4;
-    uint32 srgb_begin = 5;
-    uint32 srgb_end = 6;
-    repeated LsLink ls_links = 7;
-    repeated LsPrefix ls_prefixes = 8;
+    uint32 srgbBegin = 5;
+    uint32 srgbEnd = 6;
+    repeated LsLink lsLinks = 7;
+    repeated LsPrefix lsPrefixes = 8;
 }
 
 
 message Ted {
     bool enable = 1;
-    repeated  LsNode ls_nodes = 2;
+    repeated  LsNode lsNodes = 2;
 }

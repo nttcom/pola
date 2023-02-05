@@ -8,7 +8,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"net"
 
 	"github.com/spf13/cobra"
 )
@@ -30,59 +29,42 @@ func newSrPolicyListCmd() *cobra.Command {
 
 func showSrPolicyList(jsonFlag bool) error {
 
-	lspList, err := getSrPolicyList(client)
+	srPolicies, err := getSRPolicyList(client)
 	if err != nil {
 		return err
 	}
 	if jsonFlag {
-		// output json format
-		lsps := []map[string]interface{}{}
-		for _, lsp := range lspList {
-			tmp := map[string]interface{}{ // TODO: Fix format according to readme
-				"peerAddr":    lsp.peerAddr.String(),
-				"policyName":  lsp.name,
-				"srcAddr":     net.IP(lsp.srcAddr).String(),
-				"dstAddr":     net.IP(lsp.dstAddr).String(),
-				"color":       lsp.color,
-				"preference":  lsp.preference,
-				"segmentList": lsp.path,
-			}
-			lsps = append(lsps, tmp)
-		}
-		output_map := map[string]interface{}{
-			"lsps": lsps,
-		}
-		output_json, err := json.Marshal(output_map)
+		output_json, err := json.Marshal(srPolicies)
 		if err != nil {
 			return err
 		}
 		fmt.Printf("%+v\n", string(output_json))
 	} else {
 		//output user-friendly format
-		if len(lspList) == 0 {
+		if len(srPolicies) == 0 {
 			fmt.Printf("no SR Policies\n")
 			return nil
 		}
-		for i, lsp := range lspList {
-			fmt.Printf("LSP(%d): \n", i)
-			fmt.Printf("  PcepSessionAddr: %s\n", lsp.peerAddr)
-			fmt.Printf("  PolicyName: %s\n", lsp.name)
-			fmt.Printf("  SrcAddr: %s\n", net.IP(lsp.srcAddr))
-			fmt.Printf("  DstAddr: %s\n", net.IP(lsp.dstAddr))
-			fmt.Printf("  Color: %d\n", lsp.color)
-			fmt.Printf("  Preference: %d\n", lsp.preference)
-			fmt.Printf("  DstAddr: %s\n", net.IP(lsp.dstAddr))
-			fmt.Printf("  SegmentList: ")
+		for ssId, pols := range srPolicies {
+			fmt.Printf("Session: %s\n", ssId)
+			for _, pol := range pols {
+				fmt.Printf("  PolicyName: %s\n", pol.Name)
+				fmt.Printf("    SrcAddr: %s\n", pol.SrcAddr)
+				fmt.Printf("    DstAddr: %s\n", pol.DstAddr)
+				fmt.Printf("    Color: %d\n", pol.Color)
+				fmt.Printf("    Preference: %d\n", pol.Preference)
+				fmt.Printf("    SegmentList: ")
 
-			if len(lsp.path) == 0 {
-				fmt.Printf("None \n")
-			} else {
-				for j, sid := range lsp.path {
-					fmt.Printf("%d ", sid)
-					if j == len(lsp.path)-1 {
-						fmt.Printf("\n")
-					} else {
-						fmt.Printf("-> ")
+				if len(pol.SegmentList) == 0 {
+					fmt.Printf("None \n")
+				} else {
+					for j, seg := range pol.SegmentList {
+						fmt.Printf("%s", seg.SidString())
+						if j == len(pol.SegmentList)-1 {
+							fmt.Printf("\n")
+						} else {
+							fmt.Printf(" -> ")
+						}
 					}
 				}
 			}

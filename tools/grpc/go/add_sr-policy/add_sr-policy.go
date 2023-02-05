@@ -9,7 +9,7 @@ import (
 	"context"
 	"flag"
 	"log"
-	"net"
+	"net/netip"
 	"time"
 
 	"google.golang.org/grpc"
@@ -29,16 +29,16 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-
-	r, err := c.CreateSrPolicy(ctx, &pb.CreateSrPolicyInput{
+	ssAddr, _ := netip.ParseAddr("192.0.2.1")
+	r, err := c.CreateSRPolicy(ctx, &pb.CreateSRPolicyInput{
 		Asn: 65000,
-		SrPolicy: &pb.SrPolicy{
-			PcepSessionAddr: []byte(net.ParseIP("192.0.2.1").To4()),
+		SRPolicy: &pb.SRPolicy{
+			PcepSessionAddr: ssAddr.AsSlice(),
 			SrcRouterId:     "0000.0aff.0001",
 			DstRouterId:     "0000.0aff.0004",
 			Color:           uint32(100),
 			PolicyName:      "sample-name",
-			Type:            pb.SrPolicyType_DYNAMIC,
+			Type:            pb.SRPolicyType_DYNAMIC,
 			Metric:          pb.MetricType_TE,
 		},
 	})

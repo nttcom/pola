@@ -7,32 +7,28 @@ package cspf
 
 import (
 	"errors"
-	"net"
 
 	"github.com/nttcom/pola/internal/pkg/table"
-	"github.com/nttcom/pola/pkg/packet/pcep"
 )
 
 type node struct {
-	id         string
-	calculated bool
-	cost       uint32
-	prevNode   string
-	nodeSid    uint32
-	LoAddr     net.IP
+	id          string
+	calculated  bool
+	cost        uint32
+	prevNode    string
+	nodeSegment table.Segment
 }
 
-func newNode(id string, cost uint32, nodeSid uint32, loAddr net.IP) *node {
+func newNode(id string, cost uint32, nodeSeg table.Segment) *node {
 	node := &node{
-		id:      id,
-		cost:    cost,
-		nodeSid: nodeSid,
-		LoAddr:  loAddr,
+		id:          id,
+		cost:        cost,
+		nodeSegment: nodeSeg,
 	}
 	return node
 }
 
-func Cspf(srcRouterId string, dstRouterId string, as uint32, metric table.MetricType, ted *table.LsTed) ([]pcep.Label, error) {
+func Cspf(srcRouterId string, dstRouterId string, as uint32, metric table.MetricType, ted *table.LsTed) ([]table.Segment, error) {
 	network := ted.Nodes[as]
 	// TODO: update network information according to constraints
 	segmentList, err := spf(srcRouterId, dstRouterId, metric, network)
@@ -42,20 +38,15 @@ func Cspf(srcRouterId string, dstRouterId string, as uint32, metric table.Metric
 	return segmentList, nil
 }
 
-func spf(srcRouterId string, dstRouterId string, metric table.MetricType, network map[string]*table.LsNode) ([]pcep.Label, error) {
-	segmentList := []pcep.Label{}
+func spf(srcRouterId string, dstRouterId string, metric table.MetricType, network map[string]*table.LsNode) ([]table.Segment, error) {
+	segmentList := []table.Segment{}
 
-	startNodeSid, err := network[srcRouterId].NodeSid()
+	startNodeSeg, err := network[srcRouterId].NodeSegment()
 	if err != nil {
 		return nil, err
 	}
 
-	startNodeLoAddr, err := network[srcRouterId].LoopbackAddr()
-	if err != nil {
-		return nil, err
-	}
-
-	startNode := newNode(srcRouterId, 0, startNodeSid, startNodeLoAddr)
+	startNode := newNode(srcRouterId, 0, startNodeSeg)
 	startNode.calculated = false
 
 	calculatingNodes := map[string]*node{}
@@ -85,17 +76,12 @@ func spf(srcRouterId string, dstRouterId string, metric table.MetricType, networ
 					calculatingNodes[link.RemoteNode.RouterId].prevNode = calcNodeId
 				}
 			} else {
-				remoteNodeSid, err := link.RemoteNode.NodeSid()
+				remoteNodeSeg, err := link.RemoteNode.NodeSegment()
 				if err != nil {
 					return nil, err
 				}
 
-				remoteNodeLoAddr, err := link.RemoteNode.LoopbackAddr()
-				if err != nil {
-					return nil, err
-				}
-
-				calculatingNodes[link.RemoteNode.RouterId] = newNode(link.RemoteNode.RouterId, calculatingNodes[calcNodeId].cost+metric, remoteNodeSid, remoteNodeLoAddr)
+				calculatingNodes[link.RemoteNode.RouterId] = newNode(link.RemoteNode.RouterId, calculatingNodes[calcNodeId].cost+metric, remoteNodeSeg)
 				calculatingNodes[link.RemoteNode.RouterId].prevNode = calcNodeId
 			}
 		}
@@ -103,15 +89,11 @@ func spf(srcRouterId string, dstRouterId string, metric table.MetricType, networ
 
 	// Generate SegmentList from calculation results
 	for pathNode := calculatingNodes[dstRouterId]; pathNode.id != srcRouterId; pathNode = calculatingNodes[pathNode.prevNode] {
-		segment := pcep.Label{
-			Sid:    pathNode.nodeSid,
-			LoAddr: pathNode.LoAddr.To4(),
-		}
 		if len(segmentList) == 0 {
-			segmentList = append(segmentList, segment)
+			segmentList = append(segmentList, pathNode.nodeSegment)
 		} else {
 			segmentList = append(segmentList[:1], segmentList[0:]...)
-			segmentList[0] = segment
+			segmentList[0] = pathNode.nodeSegment
 		}
 	}
 	return segmentList, nil
