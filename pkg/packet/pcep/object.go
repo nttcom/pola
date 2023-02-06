@@ -828,11 +828,11 @@ func (o *SrEroSubobject) ToSegment() table.Segment {
 // END-POINTS Object (RFC5440 7.6)
 const (
 	OT_EP_IPV4 uint8 = 1
-	OT_EP_IPV6 uint8 = 1
+	OT_EP_IPV6 uint8 = 2
 )
 
 type EndpointsObject struct {
-	ObjectType uint8 // IPv4: 1, IPv6: 2
+	ObjectType uint8
 	SrcAddr    netip.Addr
 	DstAddr    netip.Addr
 }
