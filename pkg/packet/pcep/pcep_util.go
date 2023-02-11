@@ -20,16 +20,6 @@ func AppendByteSlices(byteSlices ...[]uint8) []uint8 {
 	return joinedSlice
 }
 
-func removePadding(data []uint8) []uint8 {
-	for {
-		if data[len(data)-1] == 0x00 {
-			data = data[:len(data)-1]
-		} else {
-			return data
-		}
-	}
-}
-
 func uint16ToListUint8(input uint16) []uint8 {
 	uint8Fmt := make([]uint8, 2)
 	binary.BigEndian.PutUint16(uint8Fmt, input)

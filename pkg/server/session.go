@@ -6,7 +6,6 @@
 package server
 
 import (
-	"encoding/binary"
 	"fmt"
 	"net"
 	"net/netip"
@@ -18,17 +17,17 @@ import (
 	"go.uber.org/zap"
 )
 
-const KEEPALIVE uint8 = 30
-
 type Session struct {
-	sessionId  uint8
-	peerAddr   netip.Addr
-	tcpConn    *net.TCPConn
-	isSynced   bool
-	srpIdHead  uint32 // 0x00000000 and 0xFFFFFFFF are reserved.
-	srPolicies []table.SRPolicy
-	logger     *zap.Logger
-	pccType    pcep.PccType
+	sessionId       uint8
+	peerAddr        netip.Addr
+	tcpConn         *net.TCPConn
+	isSynced        bool
+	srpIdHead       uint32 // 0x00000000 and 0xFFFFFFFF are reserved.
+	srPolicies      []table.SRPolicy
+	logger          *zap.Logger
+	keepAlive       uint8
+	pccType         pcep.PccType
+	pccCapabilities []pcep.CapabilityInterface
 }
 
 func NewSession(sessionId uint8, logger *zap.Logger) *Session {
@@ -58,12 +57,12 @@ func (ss *Session) Established() {
 	defer close(closeChan)
 	go func() {
 		if err := ss.ReceivePcepMessage(); err != nil {
-			ss.logger.Info("Receive PCEP error", zap.String("session", ss.peerAddr.String()))
+			ss.logger.Info("Receive PCEP Message error", zap.String("session", ss.peerAddr.String()), zap.Error(err))
 		}
 		closeChan <- true
 	}()
 
-	ticker := time.NewTicker(time.Duration(KEEPALIVE) * time.Second)
+	ticker := time.NewTicker(time.Duration(ss.keepAlive) * time.Second)
 	defer ticker.Stop()
 	for {
 		select {
@@ -114,36 +113,21 @@ func (ss *Session) ReceiveOpen() error {
 	if _, err := ss.tcpConn.Read(byteOpenObject); err != nil {
 		return err
 	}
-
 	var openMessage pcep.OpenMessage
 	if err := openMessage.DecodeFromBytes(byteOpenObject); err != nil {
 		return err
 	}
-
-	// TODO: Parse OPEN Object
+	ss.pccCapabilities = append(ss.pccCapabilities, openMessage.OpenObject.Caps...)
 
 	// pccType detection
 	// * FRRouting cannot be detected from the open message, so it is treated as an RFC compliant
-	for _, openObjTlv := range openMessage.OpenObject.Tlvs {
-		if openObjTlv.Type != pcep.TLV_ASSOC_TYPE_LIST {
-			continue
-		}
-		for i, v := 0, openObjTlv.Value; i < int(openObjTlv.Length)/2; i++ { //
-			if binary.BigEndian.Uint16(v) == uint16(20) { // Cisco specific Assoc-Type
-				ss.pccType = pcep.CISCO_LEGACY
-				break
-			} else if binary.BigEndian.Uint16(v) == uint16(65505) { // Juniper specific Assoc-Type
-				ss.pccType = pcep.JUNIPER_LEGACY
-				break
-			}
-			v = v[2:]
-		}
-	}
+	ss.pccType = pcep.DeterminePccType(ss.pccCapabilities)
+	ss.keepAlive = openMessage.OpenObject.Keepalive
 	return nil
 }
 
 func (ss *Session) SendOpen() error {
-	openMessage, err := pcep.NewOpenMessage(ss.sessionId, KEEPALIVE)
+	openMessage, err := pcep.NewOpenMessage(ss.sessionId, ss.keepAlive, ss.pccCapabilities)
 	if err != nil {
 		return err
 	}

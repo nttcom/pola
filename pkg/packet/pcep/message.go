@@ -107,8 +107,8 @@ func (m *OpenMessage) Serialize() []uint8 {
 	return byteOpenMessage
 }
 
-func NewOpenMessage(sessionID uint8, keepalive uint8) (*OpenMessage, error) {
-	oo, err := NewOpenObject(sessionID, keepalive)
+func NewOpenMessage(sessionID uint8, keepalive uint8, capabilities []CapabilityInterface) (*OpenMessage, error) {
+	oo, err := NewOpenObject(sessionID, keepalive, capabilities)
 	if err != nil {
 		return nil, err
 	}
