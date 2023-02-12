@@ -8,7 +8,6 @@ package pcep
 import (
 	"encoding/binary"
 	"errors"
-	"math"
 	"net/netip"
 
 	"github.com/nttcom/pola/internal/pkg/table"
@@ -21,6 +20,24 @@ const (
 	JUNIPER_LEGACY
 	RFC_COMPLIANT
 )
+
+// Determine PCC type from capability
+func DeterminePccType(caps []CapabilityInterface) (pccType PccType) {
+	pccType = RFC_COMPLIANT
+	for _, cap := range caps {
+		if t, ok := cap.(*AssocTypeList); ok {
+			for _, v := range t.AssocTypes {
+				if v == AssocType(20) { // Cisco specific Assoc-Type
+					pccType = CISCO_LEGACY
+				} else if v == AssocType(65505) { // Juniper specific Assoc-Type
+					pccType = JUNIPER_LEGACY
+					break
+				}
+			}
+		}
+	}
+	return
+}
 
 const COMMON_OBJECT_HEADER_LENGTH uint16 = 4
 
@@ -120,139 +137,6 @@ func NewCommonObjectHeader(objectClass uint8, objectType uint8, messageLength ui
 	return oh
 }
 
-type Tlv struct {
-	Type   uint16
-	Length uint16
-	Value  []uint8
-}
-
-func (tlv *Tlv) SetLength() {
-	tlv.Length = uint16(len(tlv.Value))
-}
-
-func (tlv Tlv) getByteLength() uint16 {
-	// Type(2byte) + Length(2byte) + Value(valiable) + padding(valiable)
-	return uint16(4) + uint16(math.Ceil(float64(len(tlv.Value))/4)*4)
-}
-
-const ( // PCEP TLV
-	TLV_RESERVED                     = 0x00 // RFC5440
-	TLV_NO_PATH_VECTOR               = 0x01 // RFC5440
-	TLV_OVERLOAD_DURATION            = 0x02 // RFC5440
-	TLV_REQ_MISSING                  = 0x03 // RFC5440
-	TLV_OF_LIST                      = 0x04 // RFC5541
-	TLV_ORDER                        = 0x05 // RFC5557
-	TLV_P2MP_CAPABLE                 = 0x06 // RFC8306
-	TLV_VENDOR_INFORMATION           = 0x07 // RFC7470
-	TLV_WAVELENGTH_SELECTION         = 0x08 // RFC8780
-	TLV_WAVELENGTH_RESTRICTION       = 0x09 // RFC8780
-	TLV_WAVELENGTH_ALLOCATION        = 0x0a // RFC8780
-	TLV_OPTICAL_INTERFACE_CLASS_LIST = 0x0b // RFC8780
-	TLV_CLIENT_SIGNAL_INFORMATION    = 0x0c // RFC8780
-	TLV_H_PCE_CAPABILITY             = 0x0d // RFC8685
-	TLV_DOMAIN_ID                    = 0x0e // RFC8685
-	TLV_H_PCE_FLAG                   = 0x0f // RFC8685
-	TLV_STATEFUL_PCE_CAPABILITY      = 0x10 // RFC8231
-	TLV_SYMBOLIC_PATH_NAME           = 0x11 // RFC8231
-	TLV_IPV4_LSP_IDENTIFIERS         = 0x12 // RFC8231
-	TLV_IPV6_LSP_IDENTIFIERS         = 0x13 // RFC8231
-	TLV_LSP_ERROR_CODE               = 0x14 // RFC8231
-	TLV_RSVP_ERROR_SPEC              = 0x15 // RFC8231
-	// 0x16 is Unassigned
-	TLV_LSP_DB_VERSION    = 0x17 // RFC8232
-	TLV_SPEAKER_ENTITY_ID = 0x18 // RFC8232
-	// 0x19 is Unassigned
-	TLV_SR_PCE_CAPABILITY = 0x1a // RFC8664, Deprecated
-	// 0x1b is Unassigned
-	TLV_PATH_SETUP_TYPE                              = 0x1c // RFC8408
-	TLV_OPERATOR_CONFIGURED_ASSOCIATION_RANGE        = 0x1d // RFC8697
-	TLV_GLOBAL_ASSOCIATION_SOURCE                    = 0x1e // RFC8697
-	TLV_EXTENDED_ASSOCIATION_ID                      = 0x1f // RFC8697
-	TLV_P2MP_IPV4_LSP_IDENTIFIERS                    = 0x20 // RFC8623
-	TLV_P2MP_IPV6_LSP_IDENTIFIERS                    = 0x21 // RFC8623
-	TLV_PATH_SETUP_TYPE_CAPABILITY                   = 0x22 // RFC8409
-	TLV_ASSOC_TYPE_LIST                              = 0x23 // RFC8697
-	TLV_AUTO_BANDWIDTH_CAPABILITY                    = 0x24 // RFC8733
-	TLV_AUTO_BANDWIDTH_ATTRIBUTES                    = 0x25 // RFC8733
-	TLV_PATH_PROTECTION_ASSOCIATION_GROUP_TLV        = 0x26 // RFC8745
-	TLV_IPV4_ADDRESS                                 = 0x27 // RFC8779
-	TLV_IPV6_ADDRESS                                 = 0x28 // RFC8779
-	TLV_UNNUMBERED_ENDPOINT                          = 0x29 // RFC8779
-	TLV_LABEL_REQUEST                                = 0x2a // RFC8779
-	TLV_LABEL_SET                                    = 0x2b // RFC8779
-	TLV_PROTECTION_ATTRIBUTE                         = 0x2c // RFC8779
-	TLV_GMPLS_CAPABILITY                             = 0x2d // RFC8779
-	TLV_DISJOINTNESS_CONFIGURATION                   = 0x2e // RFC8800
-	TLV_DISJOINTNESS_STATUS                          = 0x2f // RFC8800
-	TLV_POLICY_PARAMETERSjTLV                        = 0x30 // RFC9005
-	TLV_SCHED_LSP_ATTRIBUTE                          = 0x31 // RFC8934
-	TLV_SCHED_PD_LSP_ATTRIBUTE                       = 0x32 // RFC8934
-	TLV_PCE_FLOWSPEC_CAPABILITY                      = 0x33 // ietf-pce-pcep-flowspec-12
-	TLV_FLOW_FILTER                                  = 0x34 // ietf-pce-pcep-flowspec-12
-	TLV_L2_FLOW_FILTER                               = 0x35 // ietf-pce-pcep-flowspec-12
-	TLV_BIDIRECTIONAL_LSP_ASSOCIATION_GROUP          = 0x36 // RFC9059
-	TLV_SRPOLICY_POL_NAME                     uint16 = 0x38 // ietf-pce-segment-routing-policy-cp-07
-	TLV_SRPOLICY_CPATH_ID                     uint16 = 0x39 // ietf-pce-segment-routing-policy-cp-07
-	TLV_SRPOLICY_CPATH_NAME                   uint16 = 0x3a // ietf-pce-segment-routing-policy-cp-07
-	TLV_SRPOLICY_CPATH_PREFERENCE             uint16 = 0x3b // ietf-pce-segment-routing-policy-cp-07
-)
-
-const (
-	TLV_STATEFUL_PCE_CAPABILITY_LENGTH   uint16 = 4
-	TLV_SR_PCE_CAPABILITY_LENGTH         uint16 = 4
-	TLV_PATH_SETUP_TYPE_LENGTH           uint16 = 4
-	TLV_EXTENDED_ASSOCIATION_ID_LENGTH   uint16 = 8
-	TLV_SRPOLICY_CPATH_ID_LENGTH         uint16 = 28
-	TLV_SRPOLICY_CPATH_PREFERENCE_LENGTH uint16 = 4
-)
-
-const TL_LENGTH = 4
-
-func (tlv *Tlv) DecodeFromBytes(data []uint8) error {
-	tlv.Type = binary.BigEndian.Uint16(data[0:2])
-	tlv.Length = binary.BigEndian.Uint16(data[2:4])
-	tlv.Value = data[4 : 4+tlv.Length]
-	return nil
-}
-
-func (tlv *Tlv) Serialize() []uint8 {
-	bytePcepTLV := []uint8{}
-
-	byteTlvType := make([]uint8, 2)
-	binary.BigEndian.PutUint16(byteTlvType, tlv.Type)
-	bytePcepTLV = append(bytePcepTLV, byteTlvType...) // Type (2byte)
-
-	byteTlvLength := make([]uint8, 2)
-	binary.BigEndian.PutUint16(byteTlvLength, tlv.Length)
-	bytePcepTLV = append(bytePcepTLV, byteTlvLength...) // Length (2byte)
-
-	bytePcepTLV = append(bytePcepTLV, tlv.Value...) // Value (Length byte)
-	if padding := tlv.Length % 4; padding != 0 {
-		bytePadding := make([]uint8, 4-padding)
-		bytePcepTLV = append(bytePcepTLV, bytePadding...)
-	}
-	return bytePcepTLV
-}
-
-func DecodeTLVsFromBytes(data []uint8) ([]Tlv, error) {
-	tlvs := []Tlv{}
-	for {
-		var tlv Tlv
-		if err := tlv.DecodeFromBytes(data); err != nil {
-			return nil, err
-		}
-		tlvs = append(tlvs, tlv)
-		if int(tlv.getByteLength()) < len(data) {
-			data = data[tlv.getByteLength():]
-		} else if int(tlv.getByteLength()) == len(data) {
-			break
-		} else {
-			return nil, errors.New("tlvs decode error")
-		}
-	}
-	return tlvs, nil
-}
-
 type optParams struct {
 	pccType PccType
 }
@@ -276,7 +160,7 @@ type OpenObject struct {
 	Keepalive uint8
 	Deadtime  uint8
 	Sid       uint8
-	Tlvs      []Tlv
+	Caps      []CapabilityInterface
 }
 
 func (o *OpenObject) DecodeFromBytes(objectBody []uint8) error {
@@ -285,11 +169,16 @@ func (o *OpenObject) DecodeFromBytes(objectBody []uint8) error {
 	o.Keepalive = uint8(objectBody[1])
 	o.Deadtime = uint8(objectBody[2])
 	o.Sid = uint8(objectBody[3])
-	tlvs, err := DecodeTLVsFromBytes(objectBody[4:])
+
+	tlvs, err := DecodeTLVs(objectBody[4:])
 	if err != nil {
 		return err
 	}
-	o.Tlvs = append(o.Tlvs, tlvs...)
+	for _, t := range tlvs {
+		if c, ok := t.(CapabilityInterface); ok {
+			o.Caps = append(o.Caps, c)
+		}
+	}
 	return nil
 }
 
@@ -303,8 +192,8 @@ func (o *OpenObject) Serialize() []uint8 {
 	buf[3] = o.Sid
 
 	byteTlvs := []uint8{}
-	for _, tlv := range o.Tlvs {
-		byteTlvs = append(byteTlvs, tlv.Serialize()...)
+	for _, cap := range o.Caps {
+		byteTlvs = append(byteTlvs, cap.Serialize()...)
 	}
 
 	byteOpenObject := AppendByteSlices(byteOpenObjectHeader, buf, byteTlvs)
@@ -313,36 +202,23 @@ func (o *OpenObject) Serialize() []uint8 {
 
 func (o *OpenObject) getByteLength() uint16 {
 	tlvsByteLength := uint16(0)
-	for _, tlv := range o.Tlvs {
-		tlvsByteLength += tlv.getByteLength()
+	for _, cap := range o.Caps {
+		tlvsByteLength += cap.GetByteLength()
 	}
 	// TODO: Calculate TLV length and record in open_object_length
 	// CommonObjectHeader(4byte) + openObject(4byte) + tlvslength(valiable)
 	return COMMON_OBJECT_HEADER_LENGTH + 4 + tlvsByteLength
 }
 
-func NewOpenObject(sessionID uint8, keepalive uint8) (*OpenObject, error) {
+func NewOpenObject(sessionID uint8, keepalive uint8, capabilities []CapabilityInterface) (*OpenObject, error) {
 	o := &OpenObject{
 		Version:   uint8(1), // PCEP version. Current version is 1
 		Flag:      uint8(0),
 		Keepalive: keepalive,
 		Deadtime:  keepalive * 4,
 		Sid:       sessionID,
-		Tlvs:      []Tlv{},
+		Caps:      capabilities,
 	}
-	openObjectTLVs := []Tlv{ // TODO: Functionalize
-		{
-			Type:   TLV_STATEFUL_PCE_CAPABILITY,
-			Length: TLV_STATEFUL_PCE_CAPABILITY_LENGTH,
-			Value:  []uint8{0x00, 0x00, 0x00, 0x05},
-		},
-		{
-			Type:   TLV_SR_PCE_CAPABILITY,
-			Length: TLV_SR_PCE_CAPABILITY_LENGTH,
-			Value:  []uint8{0x00, 0x00, 0x00, 0x0a},
-		},
-	}
-	o.Tlvs = append(o.Tlvs, openObjectTLVs...)
 	return o, nil
 }
 
@@ -426,7 +302,7 @@ const (
 type SrpObject struct {
 	RFlag bool
 	SrpId uint32 // 0x00000000 and 0xFFFFFFFF are reserved.
-	Tlvs  []Tlv
+	Tlvs  []TlvInterface
 }
 
 func (o *SrpObject) DecodeFromBytes(objectBody []uint8) error {
@@ -457,7 +333,7 @@ func (o *SrpObject) Serialize() []uint8 {
 func (o *SrpObject) getByteLength() uint16 {
 	tlvsByteLength := uint16(0)
 	for _, tlv := range o.Tlvs {
-		tlvsByteLength += tlv.getByteLength()
+		tlvsByteLength += tlv.GetByteLength()
 	}
 	// CommonObjectHeader(4byte) + Flags, SRP-ID(8byte)
 	return COMMON_OBJECT_HEADER_LENGTH + 8 + tlvsByteLength
@@ -467,11 +343,9 @@ func NewSrpObject(srpId uint32, isRemove bool) (*SrpObject, error) {
 	o := &SrpObject{
 		RFlag: isRemove, // RFC8281 5.2
 		SrpId: srpId,
-		Tlvs: []Tlv{
-			{
-				Type:   TLV_PATH_SETUP_TYPE,
-				Length: TLV_PATH_SETUP_TYPE_LENGTH,
-				Value:  []uint8{0x00, 0x00, 0x00, 0x01},
+		Tlvs: []TlvInterface{
+			&PathSetupType{
+				PathSetupType: PST_SR_TE, // SR-MPLS TE
 			},
 		},
 	}
@@ -494,7 +368,7 @@ type LspObject struct {
 	RFlag   bool
 	SFlag   bool
 	DFlag   bool
-	Tlvs    []Tlv
+	Tlvs    []TlvInterface
 }
 
 func (o *LspObject) DecodeFromBytes(objectBody []uint8) error {
@@ -506,33 +380,20 @@ func (o *LspObject) DecodeFromBytes(objectBody []uint8) error {
 	o.DFlag = (objectBody[3] & 0x01) != 0
 	if len(objectBody) > 4 {
 		byteTlvs := objectBody[4:]
-		for {
-			var tlv Tlv
-			if err := tlv.DecodeFromBytes(byteTlvs); err != nil {
-				return err
-			}
 
-			if tlv.Type == uint16(TLV_SYMBOLIC_PATH_NAME) {
-				o.Name = string(removePadding(tlv.Value))
+		var err error
+		if o.Tlvs, err = DecodeTLVs(byteTlvs); err != nil {
+			return err
+		}
+		for _, tlv := range o.Tlvs {
+
+			if t, ok := tlv.(*SymbolicPathName); ok {
+				o.Name = t.Name
 			}
-			if tlv.Type == uint16(TLV_IPV4_LSP_IDENTIFIERS) {
+			if t, ok := tlv.(*IPv4LspIdentifiers); ok {
 				// TODO: Obtain true srcAddr
-				var ok bool
-				if o.SrcAddr, ok = netip.AddrFromSlice(tlv.Value[0:4]); !ok {
-					return errors.New("lsp tlv decode error")
-				}
-				if o.DstAddr, ok = netip.AddrFromSlice(tlv.Value[12:16]); !ok {
-					return errors.New("lsp tlv decode error")
-				}
-			}
-			o.Tlvs = append(o.Tlvs, tlv)
-
-			if int(tlv.getByteLength()) < len(byteTlvs) {
-				byteTlvs = byteTlvs[tlv.getByteLength():]
-			} else if int(tlv.getByteLength()) == len(byteTlvs) {
-				break
-			} else {
-				return errors.New("lsp tlv decode error")
+				o.SrcAddr = t.IPv4TunnelSenderAddress
+				o.DstAddr = t.IPv4TunnelEndpointAddress
 			}
 		}
 	}
@@ -559,17 +420,17 @@ func (o *LspObject) Serialize() []uint8 {
 	}
 	byteTlvs := []uint8{}
 	for _, tlv := range o.Tlvs {
-		byteTlvs = append(byteTlvs, tlv.Serialize()...)
+		byteTlvs = tlv.Serialize()
 	}
 
 	byteLspObject := AppendByteSlices(byteLspObjectHeader, buf, byteTlvs)
 	return byteLspObject
 }
 
-func (o LspObject) getByteLength() uint16 {
+func (o *LspObject) getByteLength() uint16 {
 	tlvsByteLength := uint16(0)
 	for _, tlv := range o.Tlvs {
-		tlvsByteLength += tlv.getByteLength()
+		tlvsByteLength += tlv.GetByteLength()
 	}
 	// Flags, SRP-ID (4byte)
 	lspObjectBodyLength := uint16(4) + tlvsByteLength
@@ -586,15 +447,12 @@ func NewLspObject(lspName string, plspId uint32) (*LspObject, error) {
 		RFlag:  false,    // TODO: Allow setting from function arguments
 		SFlag:  false,
 		DFlag:  true,
-		Tlvs:   []Tlv{},
+		Tlvs:   []TlvInterface{},
 	}
-	symbolicPathNameTlv := Tlv{
-		Type:   TLV_SYMBOLIC_PATH_NAME,
-		Length: 0x0000, //valiable, set next line
-		Value:  []uint8(lspName),
+	symbolicPathNameTlv := &SymbolicPathName{
+		Name: lspName,
 	}
-	symbolicPathNameTlv.SetLength()
-	o.Tlvs = append(o.Tlvs, symbolicPathNameTlv)
+	o.Tlvs = append(o.Tlvs, TlvInterface(symbolicPathNameTlv))
 	return o, nil
 }
 
@@ -883,7 +741,7 @@ type AssociationObject struct {
 	AssocType uint16
 	AssocId   uint16
 	AssocSrc  netip.Addr
-	Tlvs      []Tlv
+	Tlvs      []TlvInterface
 }
 
 func (o *AssociationObject) DecodeFromBytes(objectBody []uint8) error {
@@ -893,21 +751,9 @@ func (o *AssociationObject) DecodeFromBytes(objectBody []uint8) error {
 	o.AssocSrc, _ = netip.AddrFromSlice(objectBody[8:12])
 	if len(objectBody) > 12 {
 		byteTlvs := objectBody[12:]
-		for {
-			var tlv Tlv
-			if err := tlv.DecodeFromBytes(byteTlvs); err != nil {
-				return err
-			}
-
-			o.Tlvs = append(o.Tlvs, tlv)
-
-			if int(tlv.getByteLength()) < len(byteTlvs) {
-				byteTlvs = byteTlvs[tlv.getByteLength():]
-			} else if int(tlv.getByteLength()) == len(byteTlvs) {
-				break
-			} else {
-				return errors.New("lsp tlv decode error")
-			}
+		var err error
+		if o.Tlvs, err = DecodeTLVs(byteTlvs); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -940,7 +786,7 @@ func (o AssociationObject) Serialize() []uint8 {
 func (o AssociationObject) getByteLength() uint16 {
 	tlvsByteLength := uint16(0)
 	for _, tlv := range o.Tlvs {
-		tlvsByteLength += tlv.getByteLength()
+		tlvsByteLength += tlv.GetByteLength()
 	}
 	// Reserved(2byte) + Flags(2byte) + Assoc Type(2byte) + Assoc ID(2byte) + IPv4 Assoc Src(4byte)
 	associationObjectBodyLength := uint16(12) + tlvsByteLength
@@ -959,22 +805,22 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 	// TODO: Expantion for IPv6 Endpoint
 	o := &AssociationObject{
 		RFlag:    false,
-		Tlvs:     []Tlv{},
+		Tlvs:     []TlvInterface{},
 		AssocSrc: srcAddr,
 	}
 	if opts.pccType == JUNIPER_LEGACY {
 		o.AssocId = 0
 		o.AssocType = JUNIPER_SPEC_ASSOC_TYPE_SR_POLICY_ASSOCIATION
-		associationObjectTLVs := []Tlv{
-			{
-				Type:   JUNIPER_SPEC_TLV_EXTENDED_ASSOCIATION_ID,
+		associationObjectTLVs := []TlvInterface{
+			&UndefinedTlv{
+				Typ:    JUNIPER_SPEC_TLV_EXTENDED_ASSOCIATION_ID,
 				Length: TLV_EXTENDED_ASSOCIATION_ID_LENGTH, // TODO: 20 if ipv6 endpoint
 				Value: AppendByteSlices(
 					uint32ToListUint8(color), dstAddr.AsSlice(),
 				),
 			},
-			{
-				Type:   JUNIPER_SPEC_TLV_SRPOLICY_CPATH_ID,
+			&UndefinedTlv{
+				Typ:    JUNIPER_SPEC_TLV_SRPOLICY_CPATH_ID,
 				Length: TLV_SRPOLICY_CPATH_ID_LENGTH,
 				Value: []uint8{
 					0x00,             // protocol origin
@@ -984,8 +830,8 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 					0x00, 0x00, 0x00, 0x00, //discriminator
 				},
 			},
-			{
-				Type:   JUNIPER_SPEC_TLV_SRPOLICY_CPATH_PREFERENCE,
+			&UndefinedTlv{
+				Typ:    JUNIPER_SPEC_TLV_SRPOLICY_CPATH_PREFERENCE,
 				Length: TLV_SRPOLICY_CPATH_PREFERENCE_LENGTH,
 				Value:  uint32ToListUint8(preference),
 			},
@@ -994,16 +840,16 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 	} else {
 		o.AssocId = 1                                  // (I.D. pce-segment-routing-policy-cp-07 5.1)
 		o.AssocType = ASSOC_TYPE_SR_POLICY_ASSOCIATION // (I.D. pce-segment-routing-policy-cp-07 5.1)
-		associationObjectTLVs := []Tlv{
-			{
-				Type:   TLV_EXTENDED_ASSOCIATION_ID,
+		associationObjectTLVs := []TlvInterface{
+			&UndefinedTlv{
+				Typ:    TLV_EXTENDED_ASSOCIATION_ID,
 				Length: TLV_EXTENDED_ASSOCIATION_ID_LENGTH, // TODO: 20 if ipv6 endpoint
 				Value: AppendByteSlices(
 					uint32ToListUint8(color), dstAddr.AsSlice(),
 				),
 			},
-			{
-				Type:   TLV_SRPOLICY_CPATH_ID,
+			&UndefinedTlv{
+				Typ:    TLV_SRPOLICY_CPATH_ID,
 				Length: TLV_SRPOLICY_CPATH_ID_LENGTH,
 				Value: []uint8{
 					0x00,             // protocol origin
@@ -1013,8 +859,8 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 					0x00, 0x00, 0x00, 0x00, //discriminator
 				},
 			},
-			{
-				Type:   TLV_SRPOLICY_CPATH_PREFERENCE,
+			&UndefinedTlv{
+				Typ:    TLV_SRPOLICY_CPATH_PREFERENCE,
 				Length: TLV_SRPOLICY_CPATH_PREFERENCE_LENGTH,
 				Value:  uint32ToListUint8(preference),
 			},
@@ -1028,10 +874,12 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 // (I.D. pce-segment-routing-policy-cp-08 5.1)
 func (o *AssociationObject) Color() uint32 {
 	for _, tlv := range o.Tlvs {
-		if tlv.Type == TLV_EXTENDED_ASSOCIATION_ID {
-			return uint32(binary.BigEndian.Uint32(tlv.Value[:4]))
-		} else if tlv.Type == JUNIPER_SPEC_TLV_EXTENDED_ASSOCIATION_ID {
-			return uint32(binary.BigEndian.Uint32(tlv.Value[:4]))
+		if t, ok := tlv.(*UndefinedTlv); ok {
+			if t.Type() == TLV_EXTENDED_ASSOCIATION_ID {
+				return uint32(binary.BigEndian.Uint32(t.Value[:4]))
+			} else if t.Type() == JUNIPER_SPEC_TLV_EXTENDED_ASSOCIATION_ID {
+				return uint32(binary.BigEndian.Uint32(t.Value[:4]))
+			}
 		}
 	}
 	return 0
@@ -1040,10 +888,12 @@ func (o *AssociationObject) Color() uint32 {
 // (I.D. pce-segment-routing-policy-cp-08 5.1)
 func (o *AssociationObject) Preference() uint32 {
 	for _, tlv := range o.Tlvs {
-		if tlv.Type == TLV_SRPOLICY_CPATH_PREFERENCE {
-			return uint32(binary.BigEndian.Uint32(tlv.Value))
-		} else if tlv.Type == JUNIPER_SPEC_TLV_SRPOLICY_CPATH_PREFERENCE {
-			return uint32(binary.BigEndian.Uint32(tlv.Value))
+		if t, ok := tlv.(*UndefinedTlv); ok {
+			if t.Type() == TLV_SRPOLICY_CPATH_PREFERENCE {
+				return uint32(binary.BigEndian.Uint32(t.Value))
+			} else if t.Type() == JUNIPER_SPEC_TLV_SRPOLICY_CPATH_PREFERENCE {
+				return uint32(binary.BigEndian.Uint32(t.Value))
+			}
 		}
 	}
 	return 0
@@ -1063,29 +913,18 @@ const (
 type VendorInformationObject struct {
 	ObjectType       uint8 // vendor specific constraints: 1
 	EnterpriseNumber uint32
-	Tlvs             []Tlv
+	Tlvs             []TlvInterface
 }
 
 func (o *VendorInformationObject) DecodeFromBytes(objectBody []uint8) error {
 	o.EnterpriseNumber = binary.BigEndian.Uint32(objectBody[0:4])
 	if len(objectBody) > 4 {
 		byteTlvs := objectBody[4:]
-		for {
-			var tlv Tlv
-			if err := tlv.DecodeFromBytes(byteTlvs); err != nil {
-				return err
-			}
-
-			o.Tlvs = append(o.Tlvs, tlv)
-
-			if int(tlv.getByteLength()) < len(byteTlvs) {
-				byteTlvs = byteTlvs[tlv.getByteLength():]
-			} else if int(tlv.getByteLength()) == len(byteTlvs) {
-				break
-			} else {
-				return errors.New("lsp tlv decode error")
-			}
+		var err error
+		if o.Tlvs, err = DecodeTLVs(byteTlvs); err != nil {
+			return err
 		}
+
 	}
 	return nil
 }
@@ -1119,18 +958,18 @@ func NewVendorInformationObject(vendor PccType, color uint32, preference uint32)
 		o = &VendorInformationObject{ // for Cisco PCC
 			ObjectType:       uint8(1), // (RFC7470 4)
 			EnterpriseNumber: EN_CISCO,
-			Tlvs:             []Tlv{},
+			Tlvs:             []TlvInterface{},
 		}
-		vendorInformationObjectTLVs := []Tlv{
-			{
-				Type:   CISCO_SPEC_TLV_COLOR,
+		vendorInformationObjectTLVs := []TlvInterface{
+			&UndefinedTlv{
+				Typ:    CISCO_SPEC_TLV_COLOR,
 				Length: CISCO_SPEC_TLV_COLOR_LENGTH, // TODO: 20 if ipv6 endpoint
 				Value: AppendByteSlices(
 					uint32ToListUint8(color),
 				),
 			},
-			{
-				Type:   CISCO_SPEC_TLV_PREFERENCE,
+			&UndefinedTlv{
+				Typ:    CISCO_SPEC_TLV_PREFERENCE,
 				Length: CISCO_SPEC_TLV_PREFERENCE_LENGTH,
 				Value:  uint32ToListUint8(preference),
 			},
@@ -1144,17 +983,21 @@ func NewVendorInformationObject(vendor PccType, color uint32, preference uint32)
 
 func (o *VendorInformationObject) Color() uint32 {
 	for _, tlv := range o.Tlvs {
-		if tlv.Type == CISCO_SPEC_TLV_COLOR {
-			return uint32(binary.BigEndian.Uint32(tlv.Value))
+		if t, ok := tlv.(*UndefinedTlv); ok {
+			if t.Type() == CISCO_SPEC_TLV_COLOR {
+				return uint32(binary.BigEndian.Uint32(t.Value))
+			}
 		}
-		}
-	return 0
 	}
+	return 0
+}
 
 func (o *VendorInformationObject) Preference() uint32 {
 	for _, tlv := range o.Tlvs {
-		if tlv.Type == CISCO_SPEC_TLV_PREFERENCE {
-			return uint32(binary.BigEndian.Uint32(tlv.Value))
+		if t, ok := tlv.(*UndefinedTlv); ok {
+			if t.Type() == CISCO_SPEC_TLV_PREFERENCE {
+				return uint32(binary.BigEndian.Uint32(t.Value))
+			}
 		}
 	}
 	return 0
