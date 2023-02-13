@@ -1,4 +1,4 @@
-FROM ubuntu:22.04
+FROM ubuntu:23.04
 LABEL maintainer "Motoki TAKENAKA <m.takenaka@ntt.com>"
 
 # Install packages
