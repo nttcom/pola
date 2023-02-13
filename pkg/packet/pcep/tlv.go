@@ -460,9 +460,7 @@ type AssocTypeList struct {
 
 func (tlv *AssocTypeList) DecodeFromBytes(data []uint8) error {
 	AssocTypeNum := binary.BigEndian.Uint16(data[2:4]) / 2
-	fmt.Printf("ASOC NUM: %d\n", AssocTypeNum)
 	for i := 0; i < int(AssocTypeNum); i++ {
-		fmt.Printf("aaa\n")
 		at := binary.BigEndian.Uint16(data[4+2*i : 6+2*i])
 		tlv.AssocTypes = append(tlv.AssocTypes, AssocType(at))
 	}
@@ -485,10 +483,7 @@ func (tlv *AssocTypeList) Serialize() []uint8 {
 		binary.BigEndian.PutUint16(binAt, uint16(at))
 		buf = append(buf, binAt...)
 	}
-	fmt.Printf("len: %d\n", tlv.Len())
 	if tlv.Len()%4 != 0 {
-
-		fmt.Printf("len: %d\n", tlv.Len()%4)
 		pad := make([]uint8, 4-(tlv.Len()%4))
 		buf = append(buf, pad...)
 	}
