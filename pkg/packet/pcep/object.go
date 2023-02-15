@@ -85,8 +85,9 @@ const ( // PCEP Object-Class (1 byte)
 	OC_ASSOCIATION         uint8 = 0x28 // RFC8697
 	OC_S2LS                uint8 = 0x29 // RFC8623
 	OC_WA                  uint8 = 0x2a // RFC8780
-	OC_FLOWSPEC            uint8 = 0x2b // draft-ietf-pce-pcep-flowspec-12
+	OC_FLOWSPEC            uint8 = 0x2b // RFC9168
 	OC_CCI_OBJECT_TYPE     uint8 = 0x2c // RFC9050
+	OC_PATH_ATTRIB         uint8 = 0x2d // draft-ietf-pce-multipath-07
 )
 
 type CommonObjectHeader struct { // RFC5440 7.2
@@ -478,6 +479,8 @@ func (o *EroObject) DecodeFromBytes(objectBody []uint8) error {
 		var eroSubobj EroSubobject
 		if (objectBody[0] & 0x7f) == 36 {
 			eroSubobj = &SrEroSubobject{}
+		} else if (objectBody[0] & 0x7f) == 40 {
+			eroSubobj = &Srv6EroSubobject{}
 		} else {
 			return errors.New("invalid Subobject type")
 		}
@@ -574,6 +577,12 @@ func NewEroSubobject(seg table.Segment) (EroSubobject, error) {
 			return nil, err
 		}
 		return subo, nil
+	} else if v, ok := seg.(table.SegmentSRv6); ok {
+		subo, err := NewSrv6EroSubObject(v)
+		if err != nil {
+			return nil, err
+		}
+		return subo, nil
 	} else {
 		return nil, errors.New("invalid Segment type")
 	}
@@ -658,7 +667,7 @@ func (o *SrEroSubobject) getByteLength() (uint16, error) {
 		return uint16(12), nil
 	} else if o.NaiType == NT_IPV6_NODE {
 		// Type, Length, Flags (4byte) + SID (4byte) + Nai (16byte)
-		return uint16(20), nil
+		return uint16(24), nil
 	} else {
 		return uint16(0), errors.New("unsupported naitype")
 	}
@@ -685,6 +694,117 @@ func NewSrEroSubObject(seg table.SegmentSRMPLS) (*SrEroSubobject, error) {
 }
 
 func (o *SrEroSubobject) ToSegment() table.Segment {
+	return o.Segment
+}
+
+// SRv6-ERO Subobject (draft-ietf-pce-segment-routing-ipv6 4.3.1)
+const ERO_SUBOBJECT_SRV6 uint8 = 0x28
+const (
+	NT_MUST_NOT_BE_INCLUDED     uint8 = 0x00 // draft-ietf-pce-segment-routing-ipv6 4.3.1
+	NT_SRV6_NODE                uint8 = 0x02 // draft-ietf-pce-segment-routing-ipv6 4.3.1
+	NT_SRV6_ADJACENCY_GLOBAL    uint8 = 0x04 // draft-ietf-pce-segment-routing-ipv6 4.3.1
+	NT_SRV6_ADJACENCY_LINKLOCAL uint8 = 0x06 // draft-ietf-pce-segment-routing-ipv6 4.3.1
+)
+
+type Srv6EroSubobject struct {
+	LFlag         bool
+	SubobjectType uint8
+	Length        uint8
+	NaiType       uint8
+	VFlag         bool
+	TFlag         bool
+	FFlag         bool
+	SFlag         bool
+	Behavior      uint16
+	Segment       table.SegmentSRv6
+	Nai           netip.Addr
+}
+
+func (o *Srv6EroSubobject) DecodeFromBytes(subObj []uint8) error {
+	o.LFlag = (subObj[0] & 0x80) != 0
+	o.SubobjectType = subObj[0] & 0x7f
+	o.Length = subObj[1]
+	o.NaiType = subObj[2] >> 4
+	o.VFlag = (subObj[3] & 0x08) != 0
+	o.TFlag = (subObj[3] & 0x04) != 0
+	o.FFlag = (subObj[3] & 0x02) != 0
+	o.SFlag = (subObj[3] & 0x01) != 0
+	o.Behavior = binary.BigEndian.Uint16(subObj[6:8])
+
+	sid, _ := netip.AddrFromSlice(subObj[8:24])
+	o.Segment = table.NewSegmentSRv6(sid)
+	// TODO: Support another Nai Type(4, 6)
+	if o.NaiType == 2 {
+		o.Nai, _ = netip.AddrFromSlice(subObj[24:40])
+	}
+	return nil
+}
+
+func (o *Srv6EroSubobject) Serialize() []uint8 {
+	buf := make([]uint8, 8)
+	buf[0] = o.SubobjectType
+	if o.LFlag {
+		buf[0] = buf[0] | 0x80
+	}
+	buf[1] = o.Length
+	buf[2] = o.NaiType * 16
+	if o.VFlag {
+		buf[3] = buf[3] | 0x08
+	}
+	if o.TFlag {
+		buf[3] = buf[3] | 0x04
+	}
+	if o.FFlag {
+		buf[3] = buf[3] | 0x02
+	}
+	if o.SFlag {
+		buf[3] = buf[3] | 0x01
+	}
+	reserved := make([]uint8, 2)
+	behavior := make([]uint8, 2)
+	binary.BigEndian.PutUint16(behavior, o.Behavior)
+	byteSid := o.Segment.Sid.AsSlice()
+	byteSrv6EroSubobject := AppendByteSlices(buf, reserved, behavior, byteSid)
+	return byteSrv6EroSubobject
+}
+
+func (o *Srv6EroSubobject) getByteLength() (uint16, error) {
+	// The Length MUST be at least 24, and MUST be a multiple of 4.
+	// An SRv6-ERO subobject MUST contain at least one of a SRv6-SID or an NAI.
+	// TODO: Support another Nai Type(4, 6)
+	if o.NaiType == NT_MUST_NOT_BE_INCLUDED {
+		// Type, Length, Flags (4byte) + Reserved(2byte) + Behavior(2byte) + SID (16byte)
+		return uint16(24), nil
+	} else if o.NaiType == NT_IPV6_NODE {
+		// Type, Length, Flags (4byte) + Reserved(2byte) + Behavior(2byte) + SID (16byte) + Nai (16byte)
+		return uint16(40), nil
+	} else {
+		return uint16(0), errors.New("unsupported naitype")
+	}
+}
+
+func NewSrv6EroSubObject(seg table.SegmentSRv6) (*Srv6EroSubobject, error) {
+	subo := &Srv6EroSubobject{
+		LFlag:         false,
+		SubobjectType: ERO_SUBOBJECT_SRV6,
+		// SID: NodeSID, NAI: IPv6 address  TODO: Support another Nai Type
+		NaiType:  NT_MUST_NOT_BE_INCLUDED,
+		VFlag:    false,
+		TFlag:    false,
+		FFlag:    true,
+		SFlag:    true,
+		Behavior: uint16(1),
+		Segment:  seg,
+	}
+	length, err := subo.getByteLength()
+	if err != nil {
+		return subo, err
+	}
+	subo.Length = uint8(length)
+	return subo, nil
+}
+
+func (o *Srv6EroSubobject) ToSegment() table.Segment {
 	return o.Segment
 }
 
