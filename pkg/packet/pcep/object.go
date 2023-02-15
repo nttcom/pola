@@ -395,6 +395,11 @@ func (o *LspObject) DecodeFromBytes(objectBody []uint8) error {
 				o.SrcAddr = t.IPv4TunnelSenderAddress
 				o.DstAddr = t.IPv4TunnelEndpointAddress
 			}
+			if t, ok := tlv.(*IPv6LspIdentifiers); ok {
+				// TODO: Obtain true srcAddr
+				o.SrcAddr = t.IPv6TunnelSenderAddress
+				o.DstAddr = t.IPv6TunnelEndpointAddress
+			}
 		}
 	}
 	return nil
@@ -748,9 +753,16 @@ func (o *AssociationObject) DecodeFromBytes(objectBody []uint8) error {
 	o.RFlag = (objectBody[3] & 0x01) != 0
 	o.AssocType = uint16(binary.BigEndian.Uint16(objectBody[4:6]))
 	o.AssocId = uint16(binary.BigEndian.Uint16(objectBody[6:8]))
-	o.AssocSrc, _ = netip.AddrFromSlice(objectBody[8:12])
-	if len(objectBody) > 12 {
-		byteTlvs := objectBody[12:]
+	assocSrcBytes, _ := netip.AddrFromSlice(objectBody[8:12])
+	if assocSrcBytes.Is4() && assocSrcBytes.IsValid() {
+		o.AssocSrc = assocSrcBytes
+	} else if assocSrcBytes.Is6() && assocSrcBytes.IsValid() {
+		o.AssocSrc, _ = netip.AddrFromSlice(objectBody[8:24])
+	} else {
+		return errors.New("invalid association source address")
+	}
+	if len(objectBody) > 24 {
+		byteTlvs := objectBody[24:]
 		var err error
 		if o.Tlvs, err = DecodeTLVs(byteTlvs); err != nil {
 			return err
