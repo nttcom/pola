@@ -8,7 +8,7 @@ package config
 import (
 	"os"
 
-	"github.com/go-yaml/yaml"
+	"gopkg.in/yaml.v3"
 )
 
 type Pcep struct {

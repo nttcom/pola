@@ -3,7 +3,6 @@ module github.com/nttcom/pola
 go 1.19
 
 require (
-	github.com/go-yaml/yaml v2.1.0+incompatible
 	github.com/golang/protobuf v1.5.2
 	github.com/osrg/gobgp/v3 v3.11.0
 	github.com/spf13/cobra v1.6.1
@@ -11,6 +10,7 @@ require (
 	google.golang.org/grpc v1.53.0
 	google.golang.org/protobuf v1.28.1
 	gopkg.in/yaml.v2 v2.4.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
