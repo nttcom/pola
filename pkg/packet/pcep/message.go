@@ -299,13 +299,13 @@ func NewPCInitiateMessage(srpId uint32, lspName string, segmentList []table.Segm
 
 	m := &PCInitiateMessage{}
 	var err error
-	if m.SrpObject, err = NewSrpObject(srpId, false); err != nil {
+	if m.SrpObject, err = NewSrpObject(segmentList, srpId, false); err != nil {
 		return nil, err
 	}
 	if m.LspObject, err = NewLspObject(lspName, 0); err != nil { // PLSP-ID = 0
 		return nil, err
 	}
-	if m.EndpointsObject, err = NewEndpointsObject(OT_EP_IPV4, dstAddr, srcAddr); err != nil {
+	if m.EndpointsObject, err = NewEndpointsObject(dstAddr, srcAddr); err != nil {
 		return nil, err
 	}
 	if m.EroObject, err = NewEroObject(segmentList); err != nil {
@@ -365,7 +365,7 @@ func NewPCUpdMessage(srpId uint32, lspName string, plspId uint32, segmentList []
 	m := &PCUpdMessage{}
 	var err error
 
-	if m.SrpObject, err = NewSrpObject(srpId, false); err != nil {
+	if m.SrpObject, err = NewSrpObject(segmentList, srpId, false); err != nil {
 		return nil, err
 	}
 	if m.LspObject, err = NewLspObject(lspName, plspId); err != nil {

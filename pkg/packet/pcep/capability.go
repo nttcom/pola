@@ -21,7 +21,7 @@ func PolaCapability() []CapabilityInterface {
 		},
 		&PathSetupTypeCapability{
 			Length:         uint16(10),
-			PathSetupTypes: Psts{PST_RSVP_TE, PST_SR_TE},
+			PathSetupTypes: Psts{PST_RSVP_TE, PST_SR_TE, PST_SRV6_TE},
 			SubTlvs: []TlvInterface{
 				&SrPceCapability{
 					UnlimitedMSD:    false,

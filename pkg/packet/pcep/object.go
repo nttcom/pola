@@ -340,17 +340,31 @@ func (o *SrpObject) getByteLength() uint16 {
 	return COMMON_OBJECT_HEADER_LENGTH + 8 + tlvsByteLength
 }
 
-func NewSrpObject(srpId uint32, isRemove bool) (*SrpObject, error) {
-	o := &SrpObject{
-		RFlag: isRemove, // RFC8281 5.2
-		SrpId: srpId,
-		Tlvs: []TlvInterface{
-			&PathSetupType{
-				PathSetupType: PST_SR_TE, // SR-MPLS TE
+func NewSrpObject(segs []table.Segment, srpId uint32, isRemove bool) (*SrpObject, error) {
+	var o *SrpObject
+	if _, ok := segs[0].(table.SegmentSRMPLS); ok {
+		o = &SrpObject{
+			RFlag: isRemove, // RFC8281 5.2
+			SrpId: srpId,
+			Tlvs: []TlvInterface{
+				&PathSetupType{
+					PathSetupType: PST_SR_TE, // SR-MPLS TE
+				},
 			},
-		},
+		}
+	} else if _, ok := segs[0].(table.SegmentSRv6); ok {
+		o = &SrpObject{
+			RFlag: isRemove, // RFC8281 5.2
+			SrpId: srpId,
+			Tlvs: []TlvInterface{
+				&PathSetupType{
+					PathSetupType: PST_SRV6_TE, // SRv6
+				},
+			},
+		}
+	} else {
+		return nil, errors.New("invalid Segment type")
 	}
-
 	return o, nil
 }
 
@@ -392,12 +406,10 @@ func (o *LspObject) DecodeFromBytes(objectBody []uint8) error {
 				o.Name = t.Name
 			}
 			if t, ok := tlv.(*IPv4LspIdentifiers); ok {
-				// TODO: Obtain true srcAddr
 				o.SrcAddr = t.IPv4TunnelSenderAddress
 				o.DstAddr = t.IPv4TunnelEndpointAddress
 			}
 			if t, ok := tlv.(*IPv6LspIdentifiers); ok {
-				// TODO: Obtain true srcAddr
 				o.SrcAddr = t.IPv6TunnelSenderAddress
 				o.DstAddr = t.IPv6TunnelEndpointAddress
 			}
@@ -677,13 +689,12 @@ func NewSrEroSubObject(seg table.SegmentSRMPLS) (*SrEroSubobject, error) {
 	subo := &SrEroSubobject{
 		LFlag:         false,
 		SubobjectType: ERO_SUBOBJECT_SR,
-		// SID: NodeSID, NAI: IPv4 address  TODO: Support another Nai Type
-		NaiType: NT_ABSENT,
-		FFlag:   true, // Nai is absent
-		SFlag:   false,
-		CFlag:   false,
-		MFlag:   true, // TODO: Determine if MPLS
-		Segment: seg,
+		NaiType:       NT_ABSENT,
+		FFlag:         true, // Nai is absent
+		SFlag:         false,
+		CFlag:         false,
+		MFlag:         true, // TODO: Determine if MPLS
+		Segment:       seg,
 	}
 	length, err := subo.getByteLength()
 	if err != nil {
@@ -733,7 +744,6 @@ func (o *Srv6EroSubobject) DecodeFromBytes(subObj []uint8) error {
 
 	sid, _ := netip.AddrFromSlice(subObj[8:24])
 	o.Segment = table.NewSegmentSRv6(sid)
-	// TODO: Support another Nai Type(4, 6)
 	if o.NaiType == 2 {
 		o.Nai, _ = netip.AddrFromSlice(subObj[24:40])
 	}
@@ -741,7 +751,7 @@ func (o *Srv6EroSubobject) DecodeFromBytes(subObj []uint8) error {
 }
 
 func (o *Srv6EroSubobject) Serialize() []uint8 {
-	buf := make([]uint8, 8)
+	buf := make([]uint8, 4)
 	buf[0] = o.SubobjectType
 	if o.LFlag {
 		buf[0] = buf[0] | 0x80
@@ -771,7 +781,6 @@ func (o *Srv6EroSubobject) Serialize() []uint8 {
 func (o *Srv6EroSubobject) getByteLength() (uint16, error) {
 	// The Length MUST be at least 24, and MUST be a multiple of 4.
 	// An SRv6-ERO subobject MUST contain at least one of a SRv6-SID or an NAI.
-	// TODO: Support another Nai Type(4, 6)
 	if o.NaiType == NT_MUST_NOT_BE_INCLUDED {
 		// Type, Length, Flags (4byte) + Reserved(2byte) + Behavior(2byte) + SID (16byte)
 		return uint16(24), nil
@@ -787,14 +796,13 @@ func NewSrv6EroSubObject(seg table.SegmentSRv6) (*Srv6EroSubobject, error) {
 	subo := &Srv6EroSubobject{
 		LFlag:         false,
 		SubobjectType: ERO_SUBOBJECT_SRV6,
-		// SID: NodeSID, NAI: IPv6 address  TODO: Support another Nai Type
-		NaiType:  NT_MUST_NOT_BE_INCLUDED,
-		VFlag:    false,
-		TFlag:    false,
-		FFlag:    true,
-		SFlag:    true,
-		Behavior: uint16(1),
-		Segment:  seg,
+		NaiType:       NT_MUST_NOT_BE_INCLUDED,
+		VFlag:         false,
+		TFlag:         false,
+		FFlag:         true,
+		SFlag:         false,
+		Behavior:      uint16(1),
+		Segment:       seg,
 	}
 	length, err := subo.getByteLength()
 	if err != nil {
@@ -821,19 +829,37 @@ type EndpointsObject struct {
 }
 
 func (o EndpointsObject) Serialize() []uint8 {
-	EndpointsObjectHeader := NewCommonObjectHeader(OC_END_POINTS, OT_EP_IPV4, o.getByteLength())
-	byteEroObjectHeader := EndpointsObjectHeader.Serialize()
+	var endpointsObjectHeader *CommonObjectHeader
+	if o.SrcAddr.Is4() && o.DstAddr.Is4() {
+		endpointsObjectHeader = NewCommonObjectHeader(OC_END_POINTS, OT_EP_IPV4, o.getByteLength())
+	} else if o.SrcAddr.Is6() && o.DstAddr.Is6() {
+		endpointsObjectHeader = NewCommonObjectHeader(OC_END_POINTS, OT_EP_IPV6, o.getByteLength())
+	}
+	byteEroObjectHeader := endpointsObjectHeader.Serialize()
 	byteEndpointsObject := AppendByteSlices(byteEroObjectHeader, o.SrcAddr.AsSlice(), o.DstAddr.AsSlice())
 	return byteEndpointsObject
 }
 
 func (o EndpointsObject) getByteLength() uint16 {
-	// TODO: Expantion for IPv6 Endpoint
-	// CommonObjectHeader(4byte) + srcIPv4 (4byte) + dstIPv4 (4byte)
-	return uint16(COMMON_OBJECT_HEADER_LENGTH + 4 + 4)
+	var length uint16
+	if o.SrcAddr.Is4() && o.DstAddr.Is4() {
+		// CommonObjectHeader(4byte) + srcIPv4 (4byte) + dstIPv4 (4byte)
+		length = COMMON_OBJECT_HEADER_LENGTH + 4 + 4
+	} else if o.SrcAddr.Is6() && o.DstAddr.Is6() {
+		// CommonObjectHeader(4byte) + srcIPv4 (16byte) + dstIPv4 (16byte)
+		length = COMMON_OBJECT_HEADER_LENGTH + 16 + 16
+	}
+	return length
 }
-func NewEndpointsObject(objType uint8, dstAddr netip.Addr, srcAddr netip.Addr) (*EndpointsObject, error) {
-	// TODO: Expantion for IPv6 Endpoint
+
+func NewEndpointsObject(dstAddr netip.Addr, srcAddr netip.Addr) (*EndpointsObject, error) {
+	var objType uint8
+	if dstAddr.Is4() && srcAddr.Is4() {
+		objType = OT_EP_IPV4
+	} else if dstAddr.Is6() && srcAddr.Is6() {
+		objType = OT_EP_IPV6
+	}
+
 	o := &EndpointsObject{
 		ObjectType: objType,
 		DstAddr:    dstAddr,
@@ -892,7 +918,13 @@ func (o *AssociationObject) DecodeFromBytes(objectBody []uint8) error {
 }
 
 func (o AssociationObject) Serialize() []uint8 {
-	associationObjectHeader := NewCommonObjectHeader(OC_ASSOCIATION, OT_ASSOC_IPV4, o.getByteLength())
+	var associationObjectHeader *CommonObjectHeader
+	if o.AssocSrc.Is4() {
+		associationObjectHeader = NewCommonObjectHeader(OC_ASSOCIATION, OT_ASSOC_IPV4, o.getByteLength())
+	} else if o.AssocSrc.Is6() {
+		associationObjectHeader = NewCommonObjectHeader(OC_ASSOCIATION, OT_ASSOC_IPV6, o.getByteLength())
+	}
+
 	byteAssociationObjectHeader := associationObjectHeader.Serialize()
 
 	buf := make([]uint8, 4)
@@ -920,8 +952,14 @@ func (o AssociationObject) getByteLength() uint16 {
 	for _, tlv := range o.Tlvs {
 		tlvsByteLength += tlv.GetByteLength()
 	}
-	// Reserved(2byte) + Flags(2byte) + Assoc Type(2byte) + Assoc ID(2byte) + IPv4 Assoc Src(4byte)
-	associationObjectBodyLength := uint16(12) + tlvsByteLength
+	var associationObjectBodyLength uint16
+	if o.AssocSrc.Is4() {
+		// Reserved(2byte) + Flags(2byte) + Assoc Type(2byte) + Assoc ID(2byte) + IPv4 Assoc Src(4byte)
+		associationObjectBodyLength = uint16(12) + tlvsByteLength
+	} else if o.AssocSrc.Is6() {
+		// Reserved(2byte) + Flags(2byte) + Assoc Type(2byte) + Assoc ID(2byte) + IPv6 Assoc Src(16byte)
+		associationObjectBodyLength = uint16(24) + tlvsByteLength
+	}
 	return COMMON_OBJECT_HEADER_LENGTH + associationObjectBodyLength
 }
 
@@ -946,7 +984,7 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 		associationObjectTLVs := []TlvInterface{
 			&UndefinedTlv{
 				Typ:    JUNIPER_SPEC_TLV_EXTENDED_ASSOCIATION_ID,
-				Length: TLV_EXTENDED_ASSOCIATION_ID_LENGTH, // TODO: 20 if ipv6 endpoint
+				Length: TLV_EXTENDED_ASSOCIATION_ID_IPV4_LENGTH, // TODO: 20 if ipv6 endpoint
 				Value: AppendByteSlices(
 					uint32ToListUint8(color), dstAddr.AsSlice(),
 				),
@@ -972,30 +1010,59 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 	} else {
 		o.AssocId = 1                                  // (I.D. pce-segment-routing-policy-cp-07 5.1)
 		o.AssocType = ASSOC_TYPE_SR_POLICY_ASSOCIATION // (I.D. pce-segment-routing-policy-cp-07 5.1)
-		associationObjectTLVs := []TlvInterface{
-			&UndefinedTlv{
-				Typ:    TLV_EXTENDED_ASSOCIATION_ID,
-				Length: TLV_EXTENDED_ASSOCIATION_ID_LENGTH, // TODO: 20 if ipv6 endpoint
-				Value: AppendByteSlices(
-					uint32ToListUint8(color), dstAddr.AsSlice(),
-				),
-			},
-			&UndefinedTlv{
-				Typ:    TLV_SRPOLICY_CPATH_ID,
-				Length: TLV_SRPOLICY_CPATH_ID_LENGTH,
-				Value: []uint8{
-					0x00,             // protocol origin
-					0x00, 0x00, 0x00, // mbz
-					0x00, 0x00, 0x00, 0x00, // Originator ASN
-					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Originator Address
-					0x00, 0x00, 0x00, 0x00, //discriminator
+		var associationObjectTLVs []TlvInterface
+		if srcAddr.Is4() {
+			associationObjectTLVs = []TlvInterface{
+				&UndefinedTlv{
+					Typ:    TLV_EXTENDED_ASSOCIATION_ID,
+					Length: TLV_EXTENDED_ASSOCIATION_ID_IPV4_LENGTH,
+					Value: AppendByteSlices(
+						uint32ToListUint8(color), dstAddr.AsSlice(),
+					),
 				},
-			},
-			&UndefinedTlv{
-				Typ:    TLV_SRPOLICY_CPATH_PREFERENCE,
-				Length: TLV_SRPOLICY_CPATH_PREFERENCE_LENGTH,
-				Value:  uint32ToListUint8(preference),
-			},
+				&UndefinedTlv{
+					Typ:    TLV_SRPOLICY_CPATH_ID,
+					Length: TLV_SRPOLICY_CPATH_ID_LENGTH,
+					Value: []uint8{
+						0x00,             // protocol origin
+						0x00, 0x00, 0x00, // mbz
+						0x00, 0x00, 0x00, 0x00, // Originator ASN
+						0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Originator Address
+						0x00, 0x00, 0x00, 0x00, //discriminator
+					},
+				},
+				&UndefinedTlv{
+					Typ:    TLV_SRPOLICY_CPATH_PREFERENCE,
+					Length: TLV_SRPOLICY_CPATH_PREFERENCE_LENGTH,
+					Value:  uint32ToListUint8(preference),
+				},
+			}
+		} else if srcAddr.Is6() {
+			associationObjectTLVs = []TlvInterface{
+				&UndefinedTlv{
+					Typ:    TLV_EXTENDED_ASSOCIATION_ID,
+					Length: TLV_EXTENDED_ASSOCIATION_ID_IPV6_LENGTH,
+					Value: AppendByteSlices(
+						uint32ToListUint8(color), dstAddr.AsSlice(),
+					),
+				},
+				&UndefinedTlv{
+					Typ:    TLV_SRPOLICY_CPATH_ID,
+					Length: TLV_SRPOLICY_CPATH_ID_LENGTH,
+					Value: []uint8{
+						0x00,             // protocol origin
+						0x00, 0x00, 0x00, // mbz
+						0x00, 0x00, 0x00, 0x00, // Originator ASN
+						0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Originator Address
+						0x00, 0x00, 0x00, 0x00, //discriminator
+					},
+				},
+				&UndefinedTlv{
+					Typ:    TLV_SRPOLICY_CPATH_PREFERENCE,
+					Length: TLV_SRPOLICY_CPATH_PREFERENCE_LENGTH,
+					Value:  uint32ToListUint8(preference),
+				},
+			}
 		}
 		o.Tlvs = append(o.Tlvs, associationObjectTLVs...)
 	}
