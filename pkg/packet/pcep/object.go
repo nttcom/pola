@@ -348,7 +348,7 @@ func NewSrpObject(segs []table.Segment, srpId uint32, isRemove bool) (*SrpObject
 			SrpId: srpId,
 			Tlvs: []TlvInterface{
 				&PathSetupType{
-					PathSetupType: PST_SR_TE, // SR-MPLS TE
+					PathSetupType: PST_SR_TE,
 				},
 			},
 		}
@@ -358,7 +358,7 @@ func NewSrpObject(segs []table.Segment, srpId uint32, isRemove bool) (*SrpObject
 			SrpId: srpId,
 			Tlvs: []TlvInterface{
 				&PathSetupType{
-					PathSetupType: PST_SRV6_TE, // SRv6
+					PathSetupType: PST_SRV6_TE,
 				},
 			},
 		}
@@ -693,7 +693,7 @@ func NewSrEroSubObject(seg table.SegmentSRMPLS) (*SrEroSubobject, error) {
 		FFlag:         true, // Nai is absent
 		SFlag:         false,
 		CFlag:         false,
-		MFlag:         true, // TODO: Determine if MPLS
+		MFlag:         true, // TODO: Determine either MPLS label or index
 		Segment:       seg,
 	}
 	length, err := subo.getByteLength()
@@ -828,19 +828,25 @@ type EndpointsObject struct {
 	DstAddr    netip.Addr
 }
 
-func (o EndpointsObject) Serialize() []uint8 {
+func (o EndpointsObject) Serialize() ([]uint8, error) {
 	var endpointsObjectHeader *CommonObjectHeader
+	endpointsObjectLength, err := o.getByteLength()
+	if err != nil {
+		return nil, err
+	}
 	if o.SrcAddr.Is4() && o.DstAddr.Is4() {
-		endpointsObjectHeader = NewCommonObjectHeader(OC_END_POINTS, OT_EP_IPV4, o.getByteLength())
+		endpointsObjectHeader = NewCommonObjectHeader(OC_END_POINTS, OT_EP_IPV4, endpointsObjectLength)
 	} else if o.SrcAddr.Is6() && o.DstAddr.Is6() {
-		endpointsObjectHeader = NewCommonObjectHeader(OC_END_POINTS, OT_EP_IPV6, o.getByteLength())
+		endpointsObjectHeader = NewCommonObjectHeader(OC_END_POINTS, OT_EP_IPV6, endpointsObjectLength)
+	} else {
+		return nil, errors.New("invalid endpoints address")
 	}
 	byteEroObjectHeader := endpointsObjectHeader.Serialize()
 	byteEndpointsObject := AppendByteSlices(byteEroObjectHeader, o.SrcAddr.AsSlice(), o.DstAddr.AsSlice())
-	return byteEndpointsObject
+	return byteEndpointsObject, nil
 }
 
-func (o EndpointsObject) getByteLength() uint16 {
+func (o EndpointsObject) getByteLength() (uint16, error) {
 	var length uint16
 	if o.SrcAddr.Is4() && o.DstAddr.Is4() {
 		// CommonObjectHeader(4byte) + srcIPv4 (4byte) + dstIPv4 (4byte)
@@ -848,8 +854,10 @@ func (o EndpointsObject) getByteLength() uint16 {
 	} else if o.SrcAddr.Is6() && o.DstAddr.Is6() {
 		// CommonObjectHeader(4byte) + srcIPv4 (16byte) + dstIPv4 (16byte)
 		length = COMMON_OBJECT_HEADER_LENGTH + 16 + 16
+	} else {
+		return uint16(0), errors.New("invalid endpoints address")
 	}
-	return length
+	return length, nil
 }
 
 func NewEndpointsObject(dstAddr netip.Addr, srcAddr netip.Addr) (*EndpointsObject, error) {
@@ -858,6 +866,8 @@ func NewEndpointsObject(dstAddr netip.Addr, srcAddr netip.Addr) (*EndpointsObjec
 		objType = OT_EP_IPV4
 	} else if dstAddr.Is6() && srcAddr.Is6() {
 		objType = OT_EP_IPV6
+	} else {
+		return nil, errors.New("invalid endpoints address")
 	}
 
 	o := &EndpointsObject{
@@ -917,12 +927,18 @@ func (o *AssociationObject) DecodeFromBytes(objectBody []uint8) error {
 	return nil
 }
 
-func (o AssociationObject) Serialize() []uint8 {
+func (o AssociationObject) Serialize() ([]uint8, error) {
 	var associationObjectHeader *CommonObjectHeader
+	associationObjectLength, err := o.getByteLength()
+	if err != nil {
+		return nil, err
+	}
 	if o.AssocSrc.Is4() {
-		associationObjectHeader = NewCommonObjectHeader(OC_ASSOCIATION, OT_ASSOC_IPV4, o.getByteLength())
+		associationObjectHeader = NewCommonObjectHeader(OC_ASSOCIATION, OT_ASSOC_IPV4, associationObjectLength)
 	} else if o.AssocSrc.Is6() {
-		associationObjectHeader = NewCommonObjectHeader(OC_ASSOCIATION, OT_ASSOC_IPV6, o.getByteLength())
+		associationObjectHeader = NewCommonObjectHeader(OC_ASSOCIATION, OT_ASSOC_IPV6, associationObjectLength)
+	} else {
+		return nil, errors.New("invalid association source address")
 	}
 
 	byteAssociationObjectHeader := associationObjectHeader.Serialize()
@@ -944,10 +960,10 @@ func (o AssociationObject) Serialize() []uint8 {
 	byteAssociationObject := AppendByteSlices(
 		byteAssociationObjectHeader, buf, assocType, assocId, o.AssocSrc.AsSlice(), byteTlvs,
 	)
-	return byteAssociationObject
+	return byteAssociationObject, nil
 }
 
-func (o AssociationObject) getByteLength() uint16 {
+func (o AssociationObject) getByteLength() (uint16, error) {
 	tlvsByteLength := uint16(0)
 	for _, tlv := range o.Tlvs {
 		tlvsByteLength += tlv.GetByteLength()
@@ -959,8 +975,10 @@ func (o AssociationObject) getByteLength() uint16 {
 	} else if o.AssocSrc.Is6() {
 		// Reserved(2byte) + Flags(2byte) + Assoc Type(2byte) + Assoc ID(2byte) + IPv6 Assoc Src(16byte)
 		associationObjectBodyLength = uint16(24) + tlvsByteLength
+	} else {
+		return uint16(0), errors.New("invalid association source address")
 	}
-	return COMMON_OBJECT_HEADER_LENGTH + associationObjectBodyLength
+	return (COMMON_OBJECT_HEADER_LENGTH + associationObjectBodyLength), nil
 }
 
 func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, preference uint32, opt ...Opt) (*AssociationObject, error) {
@@ -972,7 +990,6 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 		o(&opts)
 	}
 
-	// TODO: Expantion for IPv6 Endpoint
 	o := &AssociationObject{
 		RFlag:    false,
 		Tlvs:     []TlvInterface{},
@@ -984,7 +1001,7 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 		associationObjectTLVs := []TlvInterface{
 			&UndefinedTlv{
 				Typ:    JUNIPER_SPEC_TLV_EXTENDED_ASSOCIATION_ID,
-				Length: TLV_EXTENDED_ASSOCIATION_ID_IPV4_LENGTH, // TODO: 20 if ipv6 endpoint
+				Length: TLV_EXTENDED_ASSOCIATION_ID_IPV4_LENGTH, // JUNIPER_LEGACY has only IPv4 implementation
 				Value: AppendByteSlices(
 					uint32ToListUint8(color), dstAddr.AsSlice(),
 				),
