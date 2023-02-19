@@ -13,7 +13,7 @@ PCEP Library and Stateful PCE Implementation with Go
 
 ## Installation & Use
 - [Getting Started](docs/sources/getting-started.md)
-- [Tinet Example](examples/sr-mpls_l3vpn)
+- [Tinet Example](examples/tinet/sr-mpls_te_l3vpn)
 
 ## Interoperability
 - Cisco IOS-XR
