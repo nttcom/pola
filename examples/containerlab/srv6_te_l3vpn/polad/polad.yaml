@@ -1,0 +1,12 @@
+global:
+  pcep:
+    address: "[fd00::ffff]"
+    port: 4189
+  grpc-server:
+    address: "127.0.0.1"
+    port: 50051
+  log:
+    path: "/var/log/pola/"
+    name: "polad.log"
+  ted:
+    enable: false

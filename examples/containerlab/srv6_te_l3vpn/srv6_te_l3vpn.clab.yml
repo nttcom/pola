@@ -1,0 +1,62 @@
+name: srv6_te_l3vpn
+
+topology:
+  kinds:
+    vr-vmx:
+      image: vrnetlab/vr-vmx:22.4R1.10
+
+  nodes:
+    pola-pce:
+      kind: linux
+      image: ghcr.io/nttcom/pola:latest
+      binds:
+        - polad/polad.yaml:/polad.yaml
+        - sr-policies/pe01-policy1.yaml:/pe01-policy1.yaml
+        - sr-policies/pe02-policy1.yaml:/pe02-policy1.yaml
+      exec:
+        - ip -6 addr add fd00::ffff/64 dev eth1
+    pe01:
+      kind: vr-vmx
+      startup-config: startup-configs/pe01.cfg
+    pe02:
+      kind: vr-vmx
+      startup-config: startup-configs/pe02.cfg
+    p01:
+      kind: vr-vmx
+      startup-config: startup-configs/p01.cfg
+    p02:
+      kind: vr-vmx
+      startup-config: startup-configs/p02.cfg
+    host01:
+      kind: linux
+      image: wbitt/network-multitool:latest
+      exec:
+        - ip -4 addr add 192.168.1.1/24 dev eth1
+        - ip -4 route add 192.168.2.0/24 via 192.168.1.254
+        - ip -6 addr add fd00:a1::1/64 dev eth1
+        - ip -6 route add fd00:a2::/64 via fd00:a1::ffff
+    host02:
+      kind: linux
+      image: wbitt/network-multitool:latest
+      exec:
+        - ip -4 addr add 192.168.2.1/24 dev eth1
+        - ip -4 route add 192.168.1.0/24 via 192.168.2.254
+        - ip -6 addr add fd00:a2::1/64 dev eth1
+        - ip -6 route add fd00:a1::/64 via fd00:a2::ffff
+    switch:
+      kind: bridge
+
+  links:
+    # SRv6 domain
+    - endpoints: ["pe01:eth1", "p01:eth1"]
+    - endpoints: ["pe01:eth2", "p02:eth1"]
+    - endpoints: ["pe02:eth1", "p01:eth2"]
+    - endpoints: ["pe02:eth2", "p02:eth2"]
+    - endpoints: ["p01:eth3", "p02:eth3"]
+    # cust-A hosts
+    - endpoints: ["pe01:eth3", "host01:eth1"]
+    - endpoints: ["pe02:eth3", "host02:eth1"]
+    # Switch
+    - endpoints: ["pola-pce:eth1", "switch:eth1"]
+    - endpoints: ["pe01:eth4", "switch:eth2"]
+    - endpoints: ["pe02:eth4", "switch:eth3"]

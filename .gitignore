@@ -19,5 +19,3 @@ themes/
 # Other
 .DS_Store
 *.swp
-polad.yaml
-!examples/sr-mpls_l3vpn/polad/polad.yaml

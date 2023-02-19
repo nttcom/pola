@@ -1,0 +1,11 @@
+srPolicy:
+  pcepSessionAddr: "fd00::1"
+  srcAddr: "fd00:ffff::1"
+  dstAddr: "fd00:ffff:2:0:1::"
+  name: pe01-policy1
+  color: 1
+  segmentList:
+    - sid: "fd00:ffff:3:0:1::"
+      nai: "fd00:ffff::3"
+    - sid: "fd00:ffff:4:0:1::"
+      nai: "fd00:ffff::4"
