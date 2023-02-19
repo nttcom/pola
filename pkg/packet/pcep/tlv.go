@@ -75,13 +75,15 @@ const ( // PCEP TLV
 )
 
 const (
-	TLV_STATEFUL_PCE_CAPABILITY_LENGTH   uint16 = 4
-	TLV_SR_PCE_CAPABILITY_LENGTH         uint16 = 4
-	TLV_PATH_SETUP_TYPE_LENGTH           uint16 = 4
-	TLV_EXTENDED_ASSOCIATION_ID_LENGTH   uint16 = 8
-	TLV_IPV4_LSP_IDENTIFIERS_LENGTH      uint16 = 16
-	TLV_SRPOLICY_CPATH_ID_LENGTH         uint16 = 28
-	TLV_SRPOLICY_CPATH_PREFERENCE_LENGTH uint16 = 4
+	TLV_STATEFUL_PCE_CAPABILITY_LENGTH      uint16 = 4
+	TLV_SR_PCE_CAPABILITY_LENGTH            uint16 = 4
+	TLV_PATH_SETUP_TYPE_LENGTH              uint16 = 4
+	TLV_EXTENDED_ASSOCIATION_ID_IPV4_LENGTH uint16 = 8
+	TLV_EXTENDED_ASSOCIATION_ID_IPV6_LENGTH uint16 = 20
+	TLV_IPV4_LSP_IDENTIFIERS_LENGTH         uint16 = 16
+	TLV_IPV6_LSP_IDENTIFIERS_LENGTH         uint16 = 52
+	TLV_SRPOLICY_CPATH_ID_LENGTH            uint16 = 28
+	TLV_SRPOLICY_CPATH_PREFERENCE_LENGTH    uint16 = 4
 )
 
 const TL_LENGTH = 4
@@ -248,6 +250,37 @@ func (tlv *IPv4LspIdentifiers) Len() uint16 {
 
 func (tlv *IPv4LspIdentifiers) GetByteLength() uint16 {
 	return TL_LENGTH + TLV_IPV4_LSP_IDENTIFIERS_LENGTH
+}
+
+type IPv6LspIdentifiers struct {
+	IPv6TunnelSenderAddress   netip.Addr
+	IPv6TunnelEndpointAddress netip.Addr
+}
+
+func (tlv *IPv6LspIdentifiers) DecodeFromBytes(data []uint8) error {
+	tlv.IPv6TunnelSenderAddress, _ = netip.AddrFromSlice(data[4:20])
+	tlv.IPv6TunnelEndpointAddress, _ = netip.AddrFromSlice(data[40:56])
+	return nil
+}
+
+func (tlv *IPv6LspIdentifiers) Serialize() []uint8 {
+	return nil
+}
+
+func (tlv *IPv6LspIdentifiers) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	return nil
+}
+
+func (tlv *IPv6LspIdentifiers) Type() uint16 {
+	return TLV_IPV6_LSP_IDENTIFIERS
+}
+
+func (tlv *IPv6LspIdentifiers) Len() uint16 {
+	return TLV_IPV6_LSP_IDENTIFIERS_LENGTH
+}
+
+func (tlv *IPv6LspIdentifiers) GetByteLength() uint16 {
+	return TL_LENGTH + TLV_IPV6_LSP_IDENTIFIERS_LENGTH
 }
 
 type SrPceCapability struct {
@@ -578,8 +611,12 @@ func DecodeTLV(data []uint8) (TlvInterface, error) {
 	case TLV_IPV4_LSP_IDENTIFIERS:
 		tlv = &IPv4LspIdentifiers{}
 
+	case TLV_IPV6_LSP_IDENTIFIERS:
+		tlv = &IPv6LspIdentifiers{}
+
 	case TLV_SR_PCE_CAPABILITY:
 		tlv = &SrPceCapability{}
+
 	case TLV_PATH_SETUP_TYPE:
 		tlv = &PathSetupType{}
 

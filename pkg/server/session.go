@@ -179,24 +179,27 @@ func (ss *Session) ReceivePcepMessage() error {
 			if err := pcrptMessage.DecodeFromBytes(bytePcrptMessageBody); err != nil {
 				return err
 			}
-			if pcrptMessage.LspObject.SFlag {
-				// During LSP state synchronization (RFC8231 5.6)
-				srPolicy := pcrptMessage.ToSRPolicy(ss.pccType)
-				ss.logger.Info("Synchronize SR Policy information", zap.String("session", ss.peerAddr.String()), zap.Any("SRPolicy", srPolicy), zap.Any("Message", pcrptMessage))
-				go ss.RegisterSRPolicy(srPolicy)
-			} else if !pcrptMessage.LspObject.SFlag {
-				if pcrptMessage.LspObject.PlspId == 0 {
-					// End of synchronization (RFC8231 5.6)
-					ss.logger.Info("Finish PCRpt state synchronization", zap.String("session", ss.peerAddr.String()))
-					ss.isSynced = true
-				} else if pcrptMessage.SrpObject.SrpId != 0 {
-					// Response to PCInitiate/PCUpdate (RFC8231 7.2)
-					srPolicy := pcrptMessage.ToSRPolicy(ss.pccType)
-					ss.logger.Info("Finish Stateful PCE request", zap.String("session", ss.peerAddr.String()), zap.Uint32("srpId", pcrptMessage.SrpObject.SrpId))
+			for _, sr := range pcrptMessage.StateReports {
+				if sr.LspObject.SFlag {
+					// During LSP state synchronization (RFC8231 5.6)
+					srPolicy := sr.ToSRPolicy(ss.pccType)
+					ss.logger.Info("Synchronize SR Policy information", zap.String("session", ss.peerAddr.String()), zap.Any("SRPolicy", srPolicy), zap.Any("Message", pcrptMessage))
 					go ss.RegisterSRPolicy(srPolicy)
+				} else if !sr.LspObject.SFlag {
+					if sr.LspObject.PlspId == 0 {
+						// End of synchronization (RFC8231 5.6)
+						ss.logger.Info("Finish PCRpt state synchronization", zap.String("session", ss.peerAddr.String()))
+						ss.isSynced = true
+					} else if sr.SrpObject.SrpId != 0 {
+						// Response to PCInitiate/PCUpdate (RFC8231 7.2)
+						srPolicy := sr.ToSRPolicy(ss.pccType)
+						ss.logger.Info("Finish Stateful PCE request", zap.String("session", ss.peerAddr.String()), zap.Uint32("srpId", sr.SrpObject.SrpId))
+						go ss.RegisterSRPolicy(srPolicy)
+					}
+					// TODO: Need to implementation of PCUpdate for Passive stateful PCE
 				}
-				// TODO: Need to implementation of PCUpdate for Passive stateful PCE
 			}
+
 		case pcep.MT_ERROR:
 			ss.logger.Info("Received PCErr", zap.String("session", ss.peerAddr.String()))
 			// TODO: Display error details
