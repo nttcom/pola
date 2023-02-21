@@ -23,14 +23,14 @@ func PolaCapability() []CapabilityInterface {
 			Length:         uint16(10),
 			PathSetupTypes: Psts{PST_RSVP_TE, PST_SR_TE, PST_SRV6_TE},
 			SubTlvs: []TlvInterface{
-				&SrPceCapability{
+				&SRPceCapability{
 					UnlimitedMSD:    false,
 					SupportNAI:      false,
 					MaximumSidDepth: uint8(16),
 				},
 			},
 		},
-		&SrPceCapability{
+		&SRPceCapability{
 			UnlimitedMSD:    false,
 			SupportNAI:      false,
 			MaximumSidDepth: uint8(16),

@@ -16,7 +16,7 @@ import (
 	yaml "gopkg.in/yaml.v2"
 )
 
-func newSrPolicyAddCmd() *cobra.Command {
+func newSRPolicyAddCmd() *cobra.Command {
 
 	srPolicyAddCmd := &cobra.Command{
 		Use: "add",
@@ -119,7 +119,7 @@ func addSRPolicy(input InputFormat, jsonFlag bool, noLinkStateFlag bool) error {
 		inputData := &pb.CreateSRPolicyInput{
 			SRPolicy: srPolicy,
 		}
-		if err := createSrPolicyWithoutLinkState(client, inputData); err != nil {
+		if err := createSRPolicyWithoutLinkState(client, inputData); err != nil {
 			return err
 		}
 	} else {
@@ -170,7 +170,6 @@ func addSRPolicy(input InputFormat, jsonFlag bool, noLinkStateFlag bool) error {
 			for _, seg := range input.SRPolicy.SegmentList {
 				segmentList = append(segmentList, &pb.Segment{Sid: seg.Sid})
 			}
-
 		case "dynamic":
 			if input.SRPolicy.Metric == "" {
 				errMsg := "invalid input\n" +

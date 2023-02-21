@@ -6,7 +6,7 @@
 Displays the peer addresses of the active session.
 
 JSON formatted response
-```
+```json
 {
     "sessions": [
         {
@@ -25,7 +25,7 @@ JSON formatted response
 Displays the lsp list managed by polad.
 
 JSON formatted response
-```
+```json
 {
 	"lsps": [
 		{
@@ -57,7 +57,7 @@ JSON formatted response
 ```
 
 ※ want to change to this format later.
-```
+```json
 {
     "peers": [
         {
@@ -118,20 +118,20 @@ Create a new SR Policy using TED
 #### Case: Dynamic Path calculate
 
 YAML input format
-```
+```yaml
 asn: 65000
 srPolicy:
-    pcepSessionAddr: 192.0.2.1
-    name: policy-name    
-    srcRouterId: 0000.0aff.0001
-    dstRouterId: 0000.0aff.0004
-    color: 100
-    type: dynamic 
-    metric: igp / te / delay
+  pcepSessionAddr: 192.0.2.1
+  name: policy-name    
+  srcRouterId: 0000.0aff.0001
+  dstRouterId: 0000.0aff.0004
+  color: 100
+  type: dynamic 
+  metric: igp / te / delay
 ```
 
 JSON formatted response
-```
+```json
 {
     "status": "success"
 }
@@ -140,23 +140,23 @@ JSON formatted response
 #### Case: Explicit Path
 
 YAML input format
-```
+```yaml
 asn: 65000
 srPolicy:
-    pcepSessionAddr: 192.0.2.1
-    name: policy-name    
-    srcRouterId: 0000.0aff.0001
-    dstRouterId: 0000.0aff.0004
-    color: 100
-    type: explicit
-	segmentList:
-        - sid: 16003
-        - sid: 16002
-		- sid: 16004
+  pcepSessionAddr: 192.0.2.1
+  name: policy-name    
+  srcRouterId: 0000.0aff.0001
+  dstRouterId: 0000.0aff.0004
+  color: 100
+  type: explicit
+  segmentList:
+    - sid: 16003
+    - sid: 16002
+    - sid: 16004
 ```
 
 JSON formatted response
-```
+```json
 {
     "status": "success"
 }
@@ -167,22 +167,22 @@ JSON formatted response
 Create a new SR Policy without using TED
 
 YAML input format
-```
+```yaml
 srPolicy:
-    pcepSessionAddr: 192.0.2.1
-    srcAddr: 192.0.2.1
-    dstAddr: 192.0.2.2
-    name: name
-    color: 100
-    segmentList:
-        - sid: 16003
-          nai: 192.0.2.3
-        - sid: 16002
-          nai: 192.0.2.2
+  pcepSessionAddr: 192.0.2.1
+  srcAddr: 192.0.2.1
+  dstAddr: 192.0.2.2
+  name: name
+  color: 100
+  segmentList:
+    - sid: 16003
+      nai: 192.0.2.3
+    - sid: 16002
+      nai: 192.0.2.2
 ```
 
 json formatted response
-```
+```json
 {
     "status": "success"
 }
@@ -192,7 +192,7 @@ json formatted response
 Displays the ted managed by polad.
 
 JSON formatted response
-```
+```json
 {
 	"ted": [
 		{
@@ -340,19 +340,19 @@ JSON formatted response
 ## Completion
 
 ## Bash
-```
+```bash
 pola completion bash | sudo tee -a /usr/share/bash-completion/completions/pola >/dev/null
 source /usr/share/bash-completion/completions/pola
 ```
 
 ## Zsh
-```
+```sh
 pola completion zsh > /usr/local/share/zsh/site-functions/_pola
 compinit
 ```
 
 ## Fish
-```
+```sh
 pola completion fish > ~/.config/fish/completions/pola.fish
 fish_update_completions
 ```

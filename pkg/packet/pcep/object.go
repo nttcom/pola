@@ -490,9 +490,9 @@ func (o *EroObject) DecodeFromBytes(objectBody []uint8) error {
 	for {
 		var eroSubobj EroSubobject
 		if (objectBody[0] & 0x7f) == 36 {
-			eroSubobj = &SrEroSubobject{}
+			eroSubobj = &SREroSubobject{}
 		} else if (objectBody[0] & 0x7f) == 40 {
-			eroSubobj = &Srv6EroSubobject{}
+			eroSubobj = &SRv6EroSubobject{}
 		} else {
 			return errors.New("invalid Subobject type")
 		}
@@ -584,13 +584,13 @@ type EroSubobject interface {
 
 func NewEroSubobject(seg table.Segment) (EroSubobject, error) {
 	if v, ok := seg.(table.SegmentSRMPLS); ok {
-		subo, err := NewSrEroSubObject(v)
+		subo, err := NewSREroSubObject(v)
 		if err != nil {
 			return nil, err
 		}
 		return subo, nil
 	} else if v, ok := seg.(table.SegmentSRv6); ok {
-		subo, err := NewSrv6EroSubObject(v)
+		subo, err := NewSRv6EroSubObject(v)
 		if err != nil {
 			return nil, err
 		}
@@ -612,7 +612,7 @@ const (
 	NT_IPV6_ADJACENCY_LINKLOCAL uint8 = 0x06 // RFC 8664 4.3.1
 )
 
-type SrEroSubobject struct {
+type SREroSubobject struct {
 	LFlag         bool
 	SubobjectType uint8
 	Length        uint8
@@ -625,7 +625,7 @@ type SrEroSubobject struct {
 	Nai           netip.Addr
 }
 
-func (o *SrEroSubobject) DecodeFromBytes(subObj []uint8) error {
+func (o *SREroSubobject) DecodeFromBytes(subObj []uint8) error {
 	o.LFlag = (subObj[0] & 0x80) != 0
 	o.SubobjectType = subObj[0] & 0x7f
 	o.Length = subObj[1]
@@ -643,7 +643,7 @@ func (o *SrEroSubobject) DecodeFromBytes(subObj []uint8) error {
 	return nil
 }
 
-func (o *SrEroSubobject) Serialize() []uint8 {
+func (o *SREroSubobject) Serialize() []uint8 {
 	buf := make([]uint8, 4)
 	buf[0] = o.SubobjectType
 	if o.LFlag {
@@ -666,11 +666,11 @@ func (o *SrEroSubobject) Serialize() []uint8 {
 	byteSid := make([]uint8, 4)
 	binary.BigEndian.PutUint32(byteSid, o.Segment.Sid<<12)
 
-	byteSrEroSubobject := AppendByteSlices(buf, byteSid)
-	return byteSrEroSubobject
+	byteSREroSubobject := AppendByteSlices(buf, byteSid)
+	return byteSREroSubobject
 }
 
-func (o *SrEroSubobject) getByteLength() (uint16, error) {
+func (o *SREroSubobject) getByteLength() (uint16, error) {
 	if o.NaiType == NT_ABSENT {
 		// Type, Length, Flags (4byte) + SID (4byte)
 		return uint16(8), nil
@@ -685,8 +685,8 @@ func (o *SrEroSubobject) getByteLength() (uint16, error) {
 	}
 }
 
-func NewSrEroSubObject(seg table.SegmentSRMPLS) (*SrEroSubobject, error) {
-	subo := &SrEroSubobject{
+func NewSREroSubObject(seg table.SegmentSRMPLS) (*SREroSubobject, error) {
+	subo := &SREroSubobject{
 		LFlag:         false,
 		SubobjectType: ERO_SUBOBJECT_SR,
 		NaiType:       NT_ABSENT,
@@ -704,7 +704,7 @@ func NewSrEroSubObject(seg table.SegmentSRMPLS) (*SrEroSubobject, error) {
 	return subo, nil
 }
 
-func (o *SrEroSubobject) ToSegment() table.Segment {
+func (o *SREroSubobject) ToSegment() table.Segment {
 	return o.Segment
 }
 
@@ -717,7 +717,7 @@ const (
 	NT_SRV6_ADJACENCY_LINKLOCAL uint8 = 0x06 // draft-ietf-pce-segment-routing-ipv6 4.3.1
 )
 
-type Srv6EroSubobject struct {
+type SRv6EroSubobject struct {
 	LFlag         bool
 	SubobjectType uint8
 	Length        uint8
@@ -731,7 +731,7 @@ type Srv6EroSubobject struct {
 	Nai           netip.Addr
 }
 
-func (o *Srv6EroSubobject) DecodeFromBytes(subObj []uint8) error {
+func (o *SRv6EroSubobject) DecodeFromBytes(subObj []uint8) error {
 	o.LFlag = (subObj[0] & 0x80) != 0
 	o.SubobjectType = subObj[0] & 0x7f
 	o.Length = subObj[1]
@@ -750,7 +750,7 @@ func (o *Srv6EroSubobject) DecodeFromBytes(subObj []uint8) error {
 	return nil
 }
 
-func (o *Srv6EroSubobject) Serialize() []uint8 {
+func (o *SRv6EroSubobject) Serialize() []uint8 {
 	buf := make([]uint8, 4)
 	buf[0] = o.SubobjectType
 	if o.LFlag {
@@ -774,11 +774,11 @@ func (o *Srv6EroSubobject) Serialize() []uint8 {
 	behavior := make([]uint8, 2)
 	binary.BigEndian.PutUint16(behavior, o.Behavior)
 	byteSid := o.Segment.Sid.AsSlice()
-	byteSrv6EroSubobject := AppendByteSlices(buf, reserved, behavior, byteSid)
-	return byteSrv6EroSubobject
+	byteSRv6EroSubobject := AppendByteSlices(buf, reserved, behavior, byteSid)
+	return byteSRv6EroSubobject
 }
 
-func (o *Srv6EroSubobject) getByteLength() (uint16, error) {
+func (o *SRv6EroSubobject) getByteLength() (uint16, error) {
 	// The Length MUST be at least 24, and MUST be a multiple of 4.
 	// An SRv6-ERO subobject MUST contain at least one of a SRv6-SID or an NAI.
 	if o.NaiType == NT_MUST_NOT_BE_INCLUDED {
@@ -792,8 +792,8 @@ func (o *Srv6EroSubobject) getByteLength() (uint16, error) {
 	}
 }
 
-func NewSrv6EroSubObject(seg table.SegmentSRv6) (*Srv6EroSubobject, error) {
-	subo := &Srv6EroSubobject{
+func NewSRv6EroSubObject(seg table.SegmentSRv6) (*SRv6EroSubobject, error) {
+	subo := &SRv6EroSubobject{
 		LFlag:         false,
 		SubobjectType: ERO_SUBOBJECT_SRV6,
 		NaiType:       NT_MUST_NOT_BE_INCLUDED,
@@ -812,7 +812,7 @@ func NewSrv6EroSubObject(seg table.SegmentSRv6) (*Srv6EroSubobject, error) {
 	return subo, nil
 }
 
-func (o *Srv6EroSubobject) ToSegment() table.Segment {
+func (o *SRv6EroSubobject) ToSegment() table.Segment {
 	return o.Segment
 }
 

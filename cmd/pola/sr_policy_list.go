@@ -12,12 +12,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newSrPolicyListCmd() *cobra.Command {
+func newSRPolicyListCmd() *cobra.Command {
 
 	srPolicyListCmd := &cobra.Command{
 		Use: "list",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := showSrPolicyList(jsonFmt); err != nil {
+			if err := showSRPolicyList(jsonFmt); err != nil {
 				return err
 			}
 			return nil
@@ -27,7 +27,7 @@ func newSrPolicyListCmd() *cobra.Command {
 	return srPolicyListCmd
 }
 
-func showSrPolicyList(jsonFlag bool) error {
+func showSRPolicyList(jsonFlag bool) error {
 
 	srPolicies, err := getSRPolicyList(client)
 	if err != nil {
