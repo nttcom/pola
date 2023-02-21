@@ -88,16 +88,14 @@ func addSRPolicy(input InputFormat, jsonFlag bool, noLinkStateFlag bool) error {
 	if noLinkStateFlag {
 		if !input.SRPolicy.PcepSessionAddr.IsValid() || input.SRPolicy.Color == 0 || !input.SRPolicy.SrcAddr.IsValid() || !input.SRPolicy.DstAddr.IsValid() || len(input.SRPolicy.SegmentList) == 0 {
 			sampleInput := "srPolicy:\n" +
-				"    pcepSessionAddr: 192.0.2.1\n" +
-				"    srcAddr: 192.0.2.1\n" +
-				"    dstAddr: 192.0.2.2\n" +
-				"    name: name\n" +
-				"    color: 100\n" +
-				"    segmentList:\n" +
-				"        - sid: 16003\n" +
-				"          nai: 192.0.2.3\n" +
-				"        - sid: 16002\n" +
-				"          nai: 192.0.2.2\n\n"
+				"  pcepSessionAddr: 192.0.2.1\n" +
+				"  srcAddr: 192.0.2.1\n" +
+				"  dstAddr: 192.0.2.2\n" +
+				"  name: name\n" +
+				"  color: 100\n" +
+				"  segmentList:\n" +
+				"    - sid: 16003\n" +
+				"    - sid: 16002\n\n"
 
 			errMsg := "invalid input\n" +
 				"input examplse is below\n\n" +
@@ -128,25 +126,25 @@ func addSRPolicy(input InputFormat, jsonFlag bool, noLinkStateFlag bool) error {
 		sampleInputDynamic := "#case: dynamic path\n" +
 			"asn: 65000\n" +
 			"srPolicy:\n" +
-			"    pcepSessionAddr: 192.0.2.1\n" +
-			"    srcRouterId: 0000.0aff.0001\n" +
-			"    dstRouterId: 0000.0aff.0004\n" +
-			"    name: name\n" +
-			"    color: 100\n" +
-			"    type: dynamic\n" +
-			"    metric: igp / te / delay\n"
+			"  pcepSessionAddr: 192.0.2.1\n" +
+			"  srcRouterId: 0000.0aff.0001\n" +
+			"  dstRouterId: 0000.0aff.0004\n" +
+			"  name: name\n" +
+			"  color: 100\n" +
+			"  type: dynamic\n" +
+			"  metric: igp / te / delay\n"
 		sampleInputExplicit := "#case: explicit path\n" +
 			"asn: 65000\n" +
 			"srPolicy:\n" +
-			"    pcepSessionAddr: 192.0.2.1\n" +
-			"    srcRouterId: 0000.0aff.0001\n" +
-			"    dstRouterId: 0000.0aff.0002\n" +
-			"    name: name\n" +
-			"    color: 100\n" +
-			"    type: explicit\n" +
-			"    segmentList:\n" +
-			"        - sid: 16003\n" +
-			"        - sid: 16002\n"
+			"  pcepSessionAddr: 192.0.2.1\n" +
+			"  srcRouterId: 0000.0aff.0001\n" +
+			"  dstRouterId: 0000.0aff.0002\n" +
+			"  name: name\n" +
+			"  color: 100\n" +
+			"  type: explicit\n" +
+			"  segmentList:\n" +
+			"    - sid: 16003\n" +
+			"    - sid: 16002\n"
 		if input.Asn == 0 || !input.SRPolicy.PcepSessionAddr.IsValid() || input.SRPolicy.Color == 0 || input.SRPolicy.SrcRouterId == "" || input.SRPolicy.DstRouterId == "" {
 			errMsg := "invalid input\n" +
 				"input example is below\n\n" +
