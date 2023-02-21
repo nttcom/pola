@@ -415,7 +415,6 @@ func (m *PCUpdMessage) Serialize() ([]uint8, error) {
 }
 
 func NewPCUpdMessage(srpId uint32, lspName string, plspId uint32, segmentList []table.Segment) (*PCUpdMessage, error) {
-
 	m := &PCUpdMessage{}
 	var err error
 

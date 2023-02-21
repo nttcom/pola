@@ -120,7 +120,6 @@ func ConvertToTedElem(dst *api.Destination) ([]table.TedElem, error) {
 				}
 			}
 			tedElems = append(tedElems, lsNode)
-
 		case *api.LsLinkNLRI:
 			// Get information from MP-REACH-NLRI Attr
 			localNodeId := typedLinkStateNlri.GetLocalNode().GetIgpRouterId()

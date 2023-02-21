@@ -199,7 +199,6 @@ func (ss *Session) ReceivePcepMessage() error {
 					// TODO: Need to implementation of PCUpdate for Passive stateful PCE
 				}
 			}
-
 		case pcep.MT_ERROR:
 			ss.logger.Info("Received PCErr", zap.String("session", ss.peerAddr.String()))
 			// TODO: Display error details
@@ -207,7 +206,6 @@ func (ss *Session) ReceivePcepMessage() error {
 			ss.logger.Info("Received Close", zap.String("session", ss.peerAddr.String()))
 			// Close session if get Close Message
 			return nil
-
 		default:
 			ss.logger.Info("Received unsupported MessageType", zap.String("session", ss.peerAddr.String()), zap.Uint8("MessageType", commonHeader.MessageType))
 		}

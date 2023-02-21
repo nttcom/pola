@@ -604,28 +604,20 @@ func DecodeTLV(data []uint8) (TlvInterface, error) {
 	switch binary.BigEndian.Uint16(data[0:2]) {
 	case TLV_STATEFUL_PCE_CAPABILITY:
 		tlv = &StatefulPceCapability{}
-
 	case TLV_SYMBOLIC_PATH_NAME:
 		tlv = &SymbolicPathName{}
-
 	case TLV_IPV4_LSP_IDENTIFIERS:
 		tlv = &IPv4LspIdentifiers{}
-
 	case TLV_IPV6_LSP_IDENTIFIERS:
 		tlv = &IPv6LspIdentifiers{}
-
 	case TLV_SR_PCE_CAPABILITY:
 		tlv = &SRPceCapability{}
-
 	case TLV_PATH_SETUP_TYPE:
 		tlv = &PathSetupType{}
-
 	case TLV_PATH_SETUP_TYPE_CAPABILITY:
 		tlv = &PathSetupTypeCapability{}
-
 	case TLV_ASSOC_TYPE_LIST:
 		tlv = &AssocTypeList{}
-
 	default:
 		tlv = &UndefinedTlv{}
 	}

@@ -170,7 +170,6 @@ func addSRPolicy(input InputFormat, jsonFlag bool, noLinkStateFlag bool) error {
 			for _, seg := range input.SRPolicy.SegmentList {
 				segmentList = append(segmentList, &pb.Segment{Sid: seg.Sid})
 			}
-
 		case "dynamic":
 			if input.SRPolicy.Metric == "" {
 				errMsg := "invalid input\n" +
