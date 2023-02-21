@@ -50,6 +50,6 @@ func newRootCmd() *cobra.Command {
 	rootCmd.PersistentFlags().String("host", "127.0.0.1", "polad connection address")
 	rootCmd.PersistentFlags().StringP("port", "p", "50051", "polad connection port")
 
-	rootCmd.AddCommand(newSessionCmd(), newSrPolicyCmd(), newTedCmd())
+	rootCmd.AddCommand(newSessionCmd(), newSRPolicyCmd(), newTedCmd())
 	return rootCmd
 }

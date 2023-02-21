@@ -283,20 +283,20 @@ func (tlv *IPv6LspIdentifiers) GetByteLength() uint16 {
 	return TL_LENGTH + TLV_IPV6_LSP_IDENTIFIERS_LENGTH
 }
 
-type SrPceCapability struct {
+type SRPceCapability struct {
 	UnlimitedMSD    bool
 	SupportNAI      bool
 	MaximumSidDepth uint8
 }
 
-func (tlv *SrPceCapability) DecodeFromBytes(data []uint8) error {
+func (tlv *SRPceCapability) DecodeFromBytes(data []uint8) error {
 	tlv.UnlimitedMSD = (data[6] & 0x01) != 0
 	tlv.SupportNAI = (data[6] & 0x02) != 0
 	tlv.MaximumSidDepth = data[7]
 	return nil
 }
 
-func (tlv *SrPceCapability) Serialize() []uint8 {
+func (tlv *SRPceCapability) Serialize() []uint8 {
 	buf := []uint8{}
 
 	typ := make([]uint8, 2)
@@ -320,19 +320,19 @@ func (tlv *SrPceCapability) Serialize() []uint8 {
 	return buf
 }
 
-func (tlv *SrPceCapability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+func (tlv *SRPceCapability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	return nil
 }
 
-func (tlv *SrPceCapability) Type() uint16 {
+func (tlv *SRPceCapability) Type() uint16 {
 	return TLV_SR_PCE_CAPABILITY
 }
 
-func (tlv *SrPceCapability) Len() uint16 {
+func (tlv *SRPceCapability) Len() uint16 {
 	return TLV_SR_PCE_CAPABILITY_LENGTH
 }
 
-func (tlv *SrPceCapability) GetByteLength() uint16 {
+func (tlv *SRPceCapability) GetByteLength() uint16 {
 	return TL_LENGTH + TLV_SR_PCE_CAPABILITY_LENGTH
 }
 
@@ -615,7 +615,7 @@ func DecodeTLV(data []uint8) (TlvInterface, error) {
 		tlv = &IPv6LspIdentifiers{}
 
 	case TLV_SR_PCE_CAPABILITY:
-		tlv = &SrPceCapability{}
+		tlv = &SRPceCapability{}
 
 	case TLV_PATH_SETUP_TYPE:
 		tlv = &PathSetupType{}

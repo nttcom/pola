@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newSrPolicyCmd() *cobra.Command {
+func newSRPolicyCmd() *cobra.Command {
 
 	srPolicyCmd := &cobra.Command{
 		Use: "sr-policy",
@@ -18,6 +18,6 @@ func newSrPolicyCmd() *cobra.Command {
 		},
 	}
 
-	srPolicyCmd.AddCommand(newSrPolicyListCmd(), newSrPolicyAddCmd())
+	srPolicyCmd.AddCommand(newSRPolicyListCmd(), newSRPolicyAddCmd())
 	return srPolicyCmd
 }

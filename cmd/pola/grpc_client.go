@@ -67,20 +67,20 @@ func getSRPolicyList(client pb.PceServiceClient) (map[netip.Addr][]table.SRPolic
 	return srPolicies, nil
 }
 
-func createSRPolicy(client pb.PceServiceClient, createSrPolicyInput *pb.CreateSRPolicyInput) error {
+func createSRPolicy(client pb.PceServiceClient, createSRPolicyInput *pb.CreateSRPolicyInput) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	_, err := client.CreateSRPolicy(ctx, createSrPolicyInput)
+	_, err := client.CreateSRPolicy(ctx, createSRPolicyInput)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func createSrPolicyWithoutLinkState(client pb.PceServiceClient, createSrPolicyInput *pb.CreateSRPolicyInput) error {
+func createSRPolicyWithoutLinkState(client pb.PceServiceClient, createSRPolicyInput *pb.CreateSRPolicyInput) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	_, err := client.CreateSRPolicyWithoutLinkState(ctx, createSrPolicyInput)
+	_, err := client.CreateSRPolicyWithoutLinkState(ctx, createSRPolicyInput)
 	if err != nil {
 		return err
 	}
