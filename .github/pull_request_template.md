@@ -14,5 +14,4 @@
 ## How is This Tested?
 * examples/containerlab/srv6_te_l3vpn/README.md
 
-
 ## Other Information
