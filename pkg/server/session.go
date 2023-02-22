@@ -265,7 +265,7 @@ func (ss *Session) DeleteSRPolicy(plspId uint32) {
 	}
 }
 
-// return (PLSP-ID, true) if SR Policy is registerd, otherwise return (0, false)
+// return (PLSP-ID, true) if SR Policy is registered, otherwise return (0, false)
 func (ss *Session) SearchSRPolicyPlspId(color uint32, endpoint netip.Addr) (uint32, bool) {
 	for _, v := range ss.srPolicies {
 		if color == v.Color && endpoint == v.DstAddr {
