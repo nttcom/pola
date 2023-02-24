@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
-	"strings"
 
 	"github.com/golang/protobuf/ptypes/empty"
 	pb "github.com/nttcom/pola/api/grpc"
@@ -34,25 +33,17 @@ func NewAPIServer(pce *Server, grpcServer *grpc.Server) *APIServer {
 		grpcServer: grpcServer,
 	}
 	pb.RegisterPceServiceServer(grpcServer, s)
-
 	return s
 }
 
 func (s *APIServer) Serve(address string, port string) error {
-	var listenInfo strings.Builder
-	listenInfo.WriteString(address)
-	listenInfo.WriteString(":")
-	listenInfo.WriteString(port)
-	s.pce.logger.Info("gRPC listen", zap.String("listenInfo", listenInfo.String()), zap.String("server", "grpc"))
-	grpcListener, err := net.Listen("tcp", listenInfo.String())
+	listenInfo := net.JoinHostPort(address, port)
+	s.pce.logger.Info("gRPC listen", zap.String("listenInfo", listenInfo), zap.String("server", "grpc"))
+	grpcListener, err := net.Listen("tcp", listenInfo)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to listen: %w", err)
 	}
-
-	if err := s.grpcServer.Serve(grpcListener); err != nil {
-		return err
-	}
-	return nil
+	return s.grpcServer.Serve(grpcListener)
 }
 
 func (s *APIServer) CreateSRPolicy(ctx context.Context, input *pb.CreateSRPolicyInput) (*pb.SRPolicyStatus, error) {

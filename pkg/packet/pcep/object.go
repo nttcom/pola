@@ -99,35 +99,35 @@ type CommonObjectHeader struct { // RFC5440 7.2
 	ObjectLength uint16
 }
 
-func (oh *CommonObjectHeader) DecodeFromBytes(objectHeader []uint8) error {
-	oh.ObjectClass = uint8(objectHeader[0])
-	oh.ObjectType = uint8(objectHeader[1] & 0xf0 >> 4)
-	oh.ResFlags = uint8(objectHeader[1] & 0x0c >> 2)
-	oh.PFlag = (objectHeader[1] & 0x02) != 0
-	oh.IFlag = (objectHeader[1] & 0x01) != 0
-	oh.ObjectLength = binary.BigEndian.Uint16(objectHeader[2:4])
+func (h *CommonObjectHeader) DecodeFromBytes(objectHeader []uint8) error {
+	h.ObjectClass = uint8(objectHeader[0])
+	h.ObjectType = uint8(objectHeader[1] & 0xf0 >> 4)
+	h.ResFlags = uint8(objectHeader[1] & 0x0c >> 2)
+	h.PFlag = (objectHeader[1] & 0x02) != 0
+	h.IFlag = (objectHeader[1] & 0x01) != 0
+	h.ObjectLength = binary.BigEndian.Uint16(objectHeader[2:4])
 	return nil
 }
 
-func (oh *CommonObjectHeader) Serialize() []uint8 {
+func (h *CommonObjectHeader) Serialize() []uint8 {
 	buf := make([]uint8, 0, 4)
-	buf = append(buf, oh.ObjectClass)
-	otFlags := uint8(oh.ObjectType<<4 | oh.ResFlags<<2)
-	if oh.PFlag {
+	buf = append(buf, h.ObjectClass)
+	otFlags := uint8(h.ObjectType<<4 | h.ResFlags<<2)
+	if h.PFlag {
 		otFlags = otFlags | 0x02
 	}
-	if oh.IFlag {
+	if h.IFlag {
 		otFlags = otFlags | 0x01
 	}
 	buf = append(buf, otFlags)
 	objectLength := make([]uint8, 2)
-	binary.BigEndian.PutUint16(objectLength, oh.ObjectLength)
+	binary.BigEndian.PutUint16(objectLength, h.ObjectLength)
 	buf = append(buf, objectLength...)
 	return buf
 }
 
 func NewCommonObjectHeader(objectClass uint8, objectType uint8, messageLength uint16) *CommonObjectHeader {
-	oh := &CommonObjectHeader{
+	h := &CommonObjectHeader{
 		ObjectClass:  objectClass,
 		ObjectType:   objectType,
 		ResFlags:     uint8(0), // MUST be set to zero
@@ -135,7 +135,7 @@ func NewCommonObjectHeader(objectClass uint8, objectType uint8, messageLength ui
 		IFlag:        false,    // 0: processed, 1: ignored
 		ObjectLength: messageLength,
 	}
-	return oh
+	return h
 }
 
 type optParams struct {
@@ -949,8 +949,8 @@ func (o AssociationObject) Serialize() ([]uint8, error) {
 		buf[4] = buf[4] | 0x01
 	}
 
-	assocType := uint16ToListUint8(o.AssocType)
-	assocId := uint16ToListUint8(o.AssocId)
+	assocType := Uint16ToByteSlice(o.AssocType)
+	assocId := Uint16ToByteSlice(o.AssocId)
 
 	byteTlvs := []uint8{}
 	for _, tlv := range o.Tlvs {
@@ -1003,7 +1003,7 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 				Typ:    JUNIPER_SPEC_TLV_EXTENDED_ASSOCIATION_ID,
 				Length: TLV_EXTENDED_ASSOCIATION_ID_IPV4_LENGTH, // JUNIPER_LEGACY has only IPv4 implementation
 				Value: AppendByteSlices(
-					uint32ToListUint8(color), dstAddr.AsSlice(),
+					Uint32ToByteSlice(color), dstAddr.AsSlice(),
 				),
 			},
 			&UndefinedTlv{
@@ -1020,7 +1020,7 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 			&UndefinedTlv{
 				Typ:    JUNIPER_SPEC_TLV_SRPOLICY_CPATH_PREFERENCE,
 				Length: TLV_SRPOLICY_CPATH_PREFERENCE_LENGTH,
-				Value:  uint32ToListUint8(preference),
+				Value:  Uint32ToByteSlice(preference),
 			},
 		}
 		o.Tlvs = append(o.Tlvs, associationObjectTLVs...)
@@ -1034,7 +1034,7 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 					Typ:    TLV_EXTENDED_ASSOCIATION_ID,
 					Length: TLV_EXTENDED_ASSOCIATION_ID_IPV4_LENGTH,
 					Value: AppendByteSlices(
-						uint32ToListUint8(color), dstAddr.AsSlice(),
+						Uint32ToByteSlice(color), dstAddr.AsSlice(),
 					),
 				},
 				&UndefinedTlv{
@@ -1051,7 +1051,7 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 				&UndefinedTlv{
 					Typ:    TLV_SRPOLICY_CPATH_PREFERENCE,
 					Length: TLV_SRPOLICY_CPATH_PREFERENCE_LENGTH,
-					Value:  uint32ToListUint8(preference),
+					Value:  Uint32ToByteSlice(preference),
 				},
 			}
 		} else if srcAddr.Is6() {
@@ -1060,7 +1060,7 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 					Typ:    TLV_EXTENDED_ASSOCIATION_ID,
 					Length: TLV_EXTENDED_ASSOCIATION_ID_IPV6_LENGTH,
 					Value: AppendByteSlices(
-						uint32ToListUint8(color), dstAddr.AsSlice(),
+						Uint32ToByteSlice(color), dstAddr.AsSlice(),
 					),
 				},
 				&UndefinedTlv{
@@ -1077,7 +1077,7 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 				&UndefinedTlv{
 					Typ:    TLV_SRPOLICY_CPATH_PREFERENCE,
 					Length: TLV_SRPOLICY_CPATH_PREFERENCE_LENGTH,
-					Value:  uint32ToListUint8(preference),
+					Value:  Uint32ToByteSlice(preference),
 				},
 			}
 		}
@@ -1149,7 +1149,7 @@ func (o *VendorInformationObject) Serialize() []uint8 {
 	vendorInformationObjectHeader := NewCommonObjectHeader(OC_VENDOR_INFORMATION, 1, o.getByteLength())
 	byteVendorInformationObjectHeader := vendorInformationObjectHeader.Serialize()
 
-	enterpriseNumber := uint32ToListUint8(o.EnterpriseNumber)
+	enterpriseNumber := Uint32ToByteSlice(o.EnterpriseNumber)
 
 	byteTlvs := []uint8{}
 	for _, tlv := range o.Tlvs {
@@ -1181,13 +1181,13 @@ func NewVendorInformationObject(vendor PccType, color uint32, preference uint32)
 				Typ:    CISCO_SPEC_TLV_COLOR,
 				Length: CISCO_SPEC_TLV_COLOR_LENGTH, // TODO: 20 if ipv6 endpoint
 				Value: AppendByteSlices(
-					uint32ToListUint8(color),
+					Uint32ToByteSlice(color),
 				),
 			},
 			&UndefinedTlv{
 				Typ:    CISCO_SPEC_TLV_PREFERENCE,
 				Length: CISCO_SPEC_TLV_PREFERENCE_LENGTH,
-				Value:  uint32ToListUint8(preference),
+				Value:  Uint32ToByteSlice(preference),
 			},
 		}
 		o.Tlvs = append(o.Tlvs, vendorInformationObjectTLVs...)

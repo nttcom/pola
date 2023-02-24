@@ -38,7 +38,7 @@ func GetBgplsNlris(serverAddr string, serverPort string) ([]table.TedElem, error
 	client := api.NewGobgpApiClient(cc)
 	ctx := context.Background()
 
-	stream, err := client.ListPath(ctx, &api.ListPathRequest{
+	req := &api.ListPathRequest{
 		TableType: api.TableType_GLOBAL,
 		Family: &api.Family{
 			Afi:  api.Family_AFI_LS,
@@ -46,23 +46,27 @@ func GetBgplsNlris(serverAddr string, serverPort string) ([]table.TedElem, error
 		},
 		Name:     "",
 		SortType: api.ListPathRequest_PREFIX,
-	})
+	}
+	stream, err := client.ListPath(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
-	tedElems := make([]table.TedElem, 0)
+	var tedElems []table.TedElem
 	for {
 		r, err := stream.Recv()
-		if err == io.EOF {
-			break
-		} else if err != nil {
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
 			return nil, err
 		}
+
 		convertedElems, err := ConvertToTedElem(r.Destination)
 		if err != nil {
 			return nil, err
 		}
+
 		tedElems = append(tedElems, convertedElems...)
 	}
 	return tedElems, nil

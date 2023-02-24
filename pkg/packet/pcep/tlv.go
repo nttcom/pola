@@ -575,7 +575,7 @@ func (tlv *UndefinedTlv) Serialize() []uint8 {
 	return bytePcepTLV
 }
 
-func (c *UndefinedTlv) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+func (tlv *UndefinedTlv) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	return nil
 }
 

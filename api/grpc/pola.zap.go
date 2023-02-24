@@ -1,3 +1,8 @@
+// Copyright (c) 2022 NTT Communications Corporation
+//
+// This software is released under the MIT License.
+// see https://github.com/nttcom/pola/blob/main/LICENSE
+
 package grpc
 
 import (
@@ -6,36 +11,38 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-// for zapcore.ObjectMarshaler
-func (s *SRPolicy) MarshalLogObject(enc zapcore.ObjectEncoder) error {
-	ssAddr, _ := netip.AddrFromSlice(s.GetPcepSessionAddr())
+// Implements zapcore.ObjectMarshaler interface for SRPolicy
+func (x *SRPolicy) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	// Convert IP address slices to netip.Addr
+	ssAddr, _ := netip.AddrFromSlice(x.GetPcepSessionAddr())
 	enc.AddString("PcepSessionAddr", ssAddr.String())
-	srcAddr, _ := netip.AddrFromSlice(s.GetSrcAddr())
+	srcAddr, _ := netip.AddrFromSlice(x.GetSrcAddr())
 	enc.AddString("SrcAddr", srcAddr.String())
-	dstAddr, _ := netip.AddrFromSlice(s.GetDstAddr())
+	dstAddr, _ := netip.AddrFromSlice(x.GetDstAddr())
 	enc.AddString("DstAddr", dstAddr.String())
-	if srcRouterId := s.GetSrcRouterId(); srcRouterId != "" {
+	if srcRouterId := x.GetSrcRouterId(); srcRouterId != "" {
 		enc.AddString("SrcRouterId", srcRouterId)
 	}
-	if dstRouterId := s.DstRouterId; dstRouterId != "" {
+	if dstRouterId := x.DstRouterId; dstRouterId != "" {
 		enc.AddString("DstRouterId", dstRouterId)
 	}
-	enc.AddUint32("Color", s.GetColor())
-	enc.AddUint32("Preference", s.GetPreference())
-	enc.AddString("PolicyName", s.GetPolicyName())
-	enc.AddString("Type", s.GetType().String())
+	enc.AddUint32("Color", x.GetColor())
+	enc.AddUint32("Preference", x.GetPreference())
+	enc.AddString("PolicyName", x.GetPolicyName())
+	enc.AddString("Type", x.GetType().String())
 
-	if srPolicyType := s.GetType().String(); srPolicyType == "EXPLICIT" {
-		if err := enc.AddReflected("SegmentList", s.GetSegmentList()); err != nil {
+	if x.GetType() == SRPolicyType_EXPLICIT {
+		if err := enc.AddReflected("SegmentList", x.GetSegmentList()); err != nil {
 			return err
 		}
-	} else if srPolicyType == "DYNAMIC" {
-		enc.AddString("Metric", s.Metric.String())
+	} else if x.GetType() == SRPolicyType_DYNAMIC {
+		enc.AddString("Metric", x.Metric.String())
 	}
 	return nil
 }
 
-func (s *Segment) MarshalLogObject(enc zapcore.ObjectEncoder) error {
-	enc.AddString("Sid", s.GetSid())
+// Implements zapcore.ObjectMarshaler interface for Segment
+func (x *Segment) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	enc.AddString("Sid", x.GetSid())
 	return nil
 }

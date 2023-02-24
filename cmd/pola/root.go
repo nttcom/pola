@@ -6,50 +6,45 @@
 package main
 
 import (
+	"fmt"
+	"net"
+
 	pb "github.com/nttcom/pola/api/grpc"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-var client pb.PceServiceClient
-var jsonFmt bool
+var (
+	client  pb.PceServiceClient
+	jsonFmt bool
+)
 
 func newRootCmd() *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use: "pola",
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			jFlag, err := cmd.Flags().GetBool("json")
-			if err != nil {
-				return err
-			}
-			jsonFmt = jFlag
-			host, err := cmd.Flags().GetString("host")
-			if err != nil {
-				return err
-			}
-			port, err := cmd.Flags().GetString("port")
-			if err != nil {
-				return err
-			}
-			conn, err := grpc.Dial(host+":"+port, grpc.WithTransportCredentials(insecure.NewCredentials()))
-			if err != nil {
-				conn.Close()
-				return err
-			}
-
-			client = pb.NewPceServiceClient(conn)
-			return nil
-		},
-		Run: func(cmd *cobra.Command, args []string) {
-			cmd.HelpFunc()(cmd, args)
-		},
 	}
-
-	rootCmd.PersistentFlags().BoolP("json", "j", false, "output json format")
+	rootCmd.PersistentFlags().BoolVarP(&jsonFmt, "json", "j", false, "output json format")
 	rootCmd.PersistentFlags().String("host", "127.0.0.1", "polad connection address")
 	rootCmd.PersistentFlags().StringP("port", "p", "50051", "polad connection port")
 
 	rootCmd.AddCommand(newSessionCmd(), newSRPolicyCmd(), newTedCmd())
+	rootCmd.PersistentPreRunE = persistentPreRunE
+	rootCmd.Run = runRootCmd
+
 	return rootCmd
+}
+
+func persistentPreRunE(cmd *cobra.Command, args []string) error {
+	conn, err := grpc.Dial(net.JoinHostPort(cmd.Flag("host").Value.String(), cmd.Flag("port").Value.String()), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return fmt.Errorf("failed to dial polad connection: %v", err)
+	}
+
+	client = pb.NewPceServiceClient(conn)
+	return nil
+}
+
+func runRootCmd(cmd *cobra.Command, args []string) {
+	cmd.HelpFunc()(cmd, args)
 }

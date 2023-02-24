@@ -21,14 +21,14 @@ type GrpcServer struct {
 	Port    string `yaml:"port"`
 }
 
-type Log struct {
-	Path string `yaml:"path"`
-	Name string `yaml:"name"`
-}
-
 type GrpcClient struct {
 	Address string `yaml:"address"`
 	Port    string `yaml:"port"`
+}
+
+type Log struct {
+	Path string `yaml:"path"`
+	Name string `yaml:"name"`
 }
 
 type Gobgp struct {
@@ -53,7 +53,7 @@ type Config struct {
 }
 
 func ReadConfigFile(configFile string) (Config, error) {
-	c := new(Config)
+	c := &Config{}
 
 	f, err := os.Open(configFile)
 	if err != nil {
@@ -61,6 +61,8 @@ func ReadConfigFile(configFile string) (Config, error) {
 	}
 	defer f.Close()
 
-	err = yaml.NewDecoder(f).Decode(&c)
-	return *c, err
+	if err := yaml.NewDecoder(f).Decode(c); err != nil {
+		return *c, err
+	}
+	return *c, nil
 }

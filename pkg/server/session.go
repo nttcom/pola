@@ -31,14 +31,13 @@ type Session struct {
 }
 
 func NewSession(sessionId uint8, logger *zap.Logger) *Session {
-	ss := &Session{
+	return &Session{
 		sessionId: sessionId,
 		isSynced:  false,
 		srpIdHead: uint32(1),
 		logger:    logger,
 		pccType:   pcep.RFC_COMPLIANT,
 	}
-	return ss
 }
 
 func (ss *Session) Established() {
@@ -227,7 +226,7 @@ func (ss *Session) SendPCInitiate(srPolicy table.SRPolicy) error {
 	if _, err := ss.tcpConn.Write(bytePCInitiateMessage); err != nil {
 		return err
 	}
-	ss.srpIdHead += 1
+	ss.srpIdHead++
 	return nil
 }
 
@@ -246,7 +245,7 @@ func (ss *Session) SendPCUpdate(srPolicy table.SRPolicy) error {
 		ss.logger.Info("PCUpdate send error", zap.String("session", ss.peerAddr.String()))
 		return err
 	}
-	ss.srpIdHead += 1
+	ss.srpIdHead++
 	return nil
 }
 
