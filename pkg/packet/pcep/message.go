@@ -160,23 +160,70 @@ func NewStateReport() (*StateReport, error) {
 	return sr, nil
 }
 
-func (sr *StateReport) ToSRPolicy(pcc PccType) table.SRPolicy {
+func (r *StateReport) decodeBandwidthObject(messageBody []uint8) error {
+	bandwidthObject := &BandwidthObject{}
+	if err := bandwidthObject.DecodeFromBytes(messageBody); err != nil {
+		return err
+	}
+	r.BandwidthObjects = append(r.BandwidthObjects, bandwidthObject)
+	return nil
+}
+
+func (r *StateReport) decodeMetricObject(messageBody []uint8) error {
+	metricObject := &MetricObject{}
+	if err := metricObject.DecodeFromBytes(messageBody); err != nil {
+		return err
+	}
+	r.MetricObjects = append(r.MetricObjects, metricObject)
+	return nil
+}
+
+func (r *StateReport) decodeEroObject(messageBody []uint8) error {
+	return r.EroObject.DecodeFromBytes(messageBody)
+}
+
+func (r *StateReport) decodeLspaObject(messageBody []uint8) error {
+	return r.LspaObject.DecodeFromBytes(messageBody)
+}
+
+func (r *StateReport) decodeLspObject(messageBody []uint8) error {
+	return r.LspObject.DecodeFromBytes(messageBody)
+}
+
+func (r *StateReport) decodeSrpObject(messageBody []uint8) error {
+	srpObject := &SrpObject{}
+	if err := srpObject.DecodeFromBytes(messageBody); err != nil {
+		return err
+	}
+	r.SrpObject = srpObject
+	return nil
+}
+
+func (r *StateReport) decodeAssociationObject(messageBody []uint8) error {
+	return r.AssociationObject.DecodeFromBytes(messageBody)
+}
+
+func (r *StateReport) decodeVendorInformationObject(messageBody []uint8) error {
+	return r.VendorInformationObject.DecodeFromBytes(messageBody)
+}
+
+func (r *StateReport) ToSRPolicy(pcc PccType) table.SRPolicy {
 	srPolicy := table.SRPolicy{
-		PlspId:      sr.LspObject.PlspId,
-		Name:        sr.LspObject.Name,
+		PlspId:      r.LspObject.PlspId,
+		Name:        r.LspObject.Name,
 		SegmentList: []table.Segment{},
-		SrcAddr:     sr.LspObject.SrcAddr,
-		DstAddr:     sr.LspObject.DstAddr,
+		SrcAddr:     r.LspObject.SrcAddr,
+		DstAddr:     r.LspObject.DstAddr,
 	}
 	if pcc == CISCO_LEGACY {
-		srPolicy.Color = sr.VendorInformationObject.Color()
-		srPolicy.Preference = sr.VendorInformationObject.Preference()
+		srPolicy.Color = r.VendorInformationObject.Color()
+		srPolicy.Preference = r.VendorInformationObject.Preference()
 	} else {
-		srPolicy.Color = sr.AssociationObject.Color()
-		srPolicy.Preference = sr.AssociationObject.Preference()
+		srPolicy.Color = r.AssociationObject.Color()
+		srPolicy.Preference = r.AssociationObject.Preference()
 	}
 
-	srPolicy.SegmentList = sr.EroObject.ToSegmentList()
+	srPolicy.SegmentList = r.EroObject.ToSegmentList()
 
 	return srPolicy
 }
@@ -186,58 +233,32 @@ type PCRptMessage struct {
 	StateReports []*StateReport
 }
 
+var decodeFuncs = map[uint8]func(*StateReport, []byte) error{
+	OC_BANDWIDTH:          (*StateReport).decodeBandwidthObject,
+	OC_METRIC:             (*StateReport).decodeMetricObject,
+	OC_ERO:                (*StateReport).decodeEroObject,
+	OC_LSPA:               (*StateReport).decodeLspaObject,
+	OC_LSP:                (*StateReport).decodeLspObject,
+	OC_SRP:                (*StateReport).decodeSrpObject,
+	OC_ASSOCIATION:        (*StateReport).decodeAssociationObject,
+	OC_VENDOR_INFORMATION: (*StateReport).decodeVendorInformationObject,
+}
+
 func (m *PCRptMessage) DecodeFromBytes(messageBody []uint8) error {
-	// To determine the delimitation of StateReports from the order of object classes
+	// previousOC: To determine the delimitation of StateReports from the order of object classes
 	var previousOC uint8
 	var sr *StateReport
-	for len(messageBody) != 0 {
+	for len(messageBody) > 0 {
 		var commonObjectHeader CommonObjectHeader
 		if err := commonObjectHeader.DecodeFromBytes(messageBody); err != nil {
 			return err
 		}
-		switch commonObjectHeader.ObjectClass {
-		case OC_BANDWIDTH:
-			previousOC = OC_BANDWIDTH
-			bandwidthObject := &BandwidthObject{}
-			if err := bandwidthObject.DecodeFromBytes(messageBody[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength]); err != nil {
-				return err
-			}
-			sr.BandwidthObjects = append(sr.BandwidthObjects, bandwidthObject)
-		case OC_METRIC:
-			previousOC = OC_METRIC
-			metricObject := &MetricObject{}
-			if err := metricObject.DecodeFromBytes(messageBody[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength]); err != nil {
-				return err
-			}
-			sr.MetricObjects = append(sr.MetricObjects, metricObject)
-		case OC_ERO:
-			previousOC = OC_METRIC
-			if err := sr.EroObject.DecodeFromBytes(messageBody[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength]); err != nil {
-				return err
-			}
-		case OC_LSPA:
-			previousOC = OC_LSPA
-			if err := sr.LspaObject.DecodeFromBytes(messageBody[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength]); err != nil {
-				return err
-			}
-		case OC_LSP:
-			if previousOC != OC_SRP {
-				// If sr is not zero value, this StateReport is already updated.
-				var err error
-				if sr != nil {
-					m.StateReports = append(m.StateReports, sr)
-				}
-				sr, err = NewStateReport()
-				if err != nil {
-					return err
-				}
-			}
-
-			previousOC = OC_LSP
-			if err := sr.LspObject.DecodeFromBytes(messageBody[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength]); err != nil {
-				return err
-			}
-		case OC_SRP:
+		decodeFunc, ok := decodeFuncs[commonObjectHeader.ObjectClass]
+		if !ok {
+			messageBody = messageBody[commonObjectHeader.ObjectLength:]
+			continue
+		}
+		if (previousOC != OC_SRP && commonObjectHeader.ObjectClass == OC_LSP) || commonObjectHeader.ObjectClass == OC_SRP {
 			// If sr is not zero value, this StateReport is already updated.
 			var err error
 			if sr != nil {
@@ -247,23 +268,11 @@ func (m *PCRptMessage) DecodeFromBytes(messageBody []uint8) error {
 			if err != nil {
 				return err
 			}
-
-			previousOC = OC_SRP
-			if err = sr.SrpObject.DecodeFromBytes(messageBody[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength]); err != nil {
-				return err
-			}
-		case OC_ASSOCIATION:
-			previousOC = OC_ASSOCIATION
-			if err := sr.AssociationObject.DecodeFromBytes(messageBody[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength]); err != nil {
-				return err
-			}
-		case OC_VENDOR_INFORMATION:
-			previousOC = OC_VENDOR_INFORMATION
-			if err := sr.VendorInformationObject.DecodeFromBytes(messageBody[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength]); err != nil {
-				return err
-			}
-		default:
 		}
+		if err := decodeFunc(sr, messageBody[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength]); err != nil {
+			return err
+		}
+		previousOC = commonObjectHeader.ObjectClass
 		messageBody = messageBody[commonObjectHeader.ObjectLength:]
 	}
 	if sr != nil {
@@ -273,10 +282,9 @@ func (m *PCRptMessage) DecodeFromBytes(messageBody []uint8) error {
 }
 
 func NewPCRptMessage() *PCRptMessage {
-	m := &PCRptMessage{
+	return &PCRptMessage{
 		StateReports: []*StateReport{},
 	}
-	return m
 }
 
 // PCInitiate Message

@@ -86,136 +86,152 @@ type InputFormat struct {
 
 func addSRPolicy(input InputFormat, jsonFlag bool, noLinkStateFlag bool) error {
 	if noLinkStateFlag {
-		if !input.SRPolicy.PcepSessionAddr.IsValid() || input.SRPolicy.Color == 0 || !input.SRPolicy.SrcAddr.IsValid() || !input.SRPolicy.DstAddr.IsValid() || len(input.SRPolicy.SegmentList) == 0 {
-			sampleInput := "srPolicy:\n" +
-				"  pcepSessionAddr: 192.0.2.1\n" +
-				"  srcAddr: 192.0.2.1\n" +
-				"  dstAddr: 192.0.2.2\n" +
-				"  name: name\n" +
-				"  color: 100\n" +
-				"  segmentList:\n" +
-				"    - sid: 16003\n" +
-				"    - sid: 16002\n\n"
-
-			errMsg := "invalid input\n" +
-				"input examplse is below\n\n" +
-				sampleInput
-			return errors.New(errMsg)
-		}
-
-		segmentList := []*pb.Segment{}
-		for _, seg := range input.SRPolicy.SegmentList {
-			segmentList = append(segmentList, &pb.Segment{Sid: seg.Sid})
-		}
-		srPolicy := &pb.SRPolicy{
-			PcepSessionAddr: input.SRPolicy.PcepSessionAddr.AsSlice(),
-			SrcAddr:         input.SRPolicy.SrcAddr.AsSlice(),
-			DstAddr:         input.SRPolicy.DstAddr.AsSlice(),
-			SegmentList:     segmentList,
-			Color:           input.SRPolicy.Color,
-			PolicyName:      input.SRPolicy.Name,
-		}
-
-		inputData := &pb.CreateSRPolicyInput{
-			SRPolicy: srPolicy,
-		}
-		if err := createSRPolicyWithoutLinkState(client, inputData); err != nil {
+		if err := addSRPolicyNoLinkState(input); err != nil {
 			return err
 		}
 	} else {
-		sampleInputDynamic := "#case: dynamic path\n" +
-			"asn: 65000\n" +
-			"srPolicy:\n" +
-			"  pcepSessionAddr: 192.0.2.1\n" +
-			"  srcRouterId: 0000.0aff.0001\n" +
-			"  dstRouterId: 0000.0aff.0004\n" +
-			"  name: name\n" +
-			"  color: 100\n" +
-			"  type: dynamic\n" +
-			"  metric: igp / te / delay\n"
-		sampleInputExplicit := "#case: explicit path\n" +
-			"asn: 65000\n" +
-			"srPolicy:\n" +
-			"  pcepSessionAddr: 192.0.2.1\n" +
-			"  srcRouterId: 0000.0aff.0001\n" +
-			"  dstRouterId: 0000.0aff.0002\n" +
-			"  name: name\n" +
-			"  color: 100\n" +
-			"  type: explicit\n" +
-			"  segmentList:\n" +
-			"    - sid: 16003\n" +
-			"    - sid: 16002\n"
-		if input.Asn == 0 || !input.SRPolicy.PcepSessionAddr.IsValid() || input.SRPolicy.Color == 0 || input.SRPolicy.SrcRouterId == "" || input.SRPolicy.DstRouterId == "" {
-			errMsg := "invalid input\n" +
-				"input example is below\n\n" +
-				sampleInputDynamic +
-				sampleInputExplicit +
-				"or, if create SR Policy without TED, then use `--no-link-state` flag\n"
-
-			return errors.New(errMsg)
-		}
-		var srPolicyType pb.SRPolicyType
-		var metric pb.MetricType
-		var segmentList []*pb.Segment
-		switch input.SRPolicy.Type {
-		case "explicit":
-			if len(input.SRPolicy.SegmentList) == 0 {
-				errMsg := "invalid input\n" +
-					"input example is below\n\n" +
-					sampleInputExplicit
-
-				return errors.New(errMsg)
-			}
-			srPolicyType = pb.SRPolicyType_EXPLICIT
-			for _, seg := range input.SRPolicy.SegmentList {
-				segmentList = append(segmentList, &pb.Segment{Sid: seg.Sid})
-			}
-		case "dynamic":
-			if input.SRPolicy.Metric == "" {
-				errMsg := "invalid input\n" +
-					"input example is below\n\n" +
-					sampleInputDynamic
-				return errors.New(errMsg)
-			}
-			srPolicyType = pb.SRPolicyType_DYNAMIC
-			switch input.SRPolicy.Metric {
-			case "igp":
-				metric = pb.MetricType_IGP
-			case "delay":
-				metric = pb.MetricType_DELAY
-			case "te":
-				metric = pb.MetricType_TE
-			default:
-				return fmt.Errorf("invalid input `metric`")
-			}
-
-		default:
-			return fmt.Errorf("invalid input `type`")
-		}
-
-		srPolicy := &pb.SRPolicy{
-			PcepSessionAddr: input.SRPolicy.PcepSessionAddr.AsSlice(),
-			SrcRouterId:     input.SRPolicy.SrcRouterId,
-			DstRouterId:     input.SRPolicy.DstRouterId,
-			Color:           input.SRPolicy.Color,
-			PolicyName:      input.SRPolicy.Name,
-			Type:            srPolicyType,
-			SegmentList:     segmentList,
-			Metric:          metric,
-		}
-		inputData := &pb.CreateSRPolicyInput{
-			SRPolicy: srPolicy,
-			Asn:      input.Asn,
-		}
-		if err := createSRPolicy(client, inputData); err != nil {
-			return fmt.Errorf("gRPC Server Error: %s", err.Error())
-
+		if err := addSRPolicyLinkState(input); err != nil {
+			return err
 		}
 	}
 	if jsonFlag {
 		fmt.Printf("{\"status\": \"success\"}\n")
 	} else {
 		fmt.Printf("success!\n")
+	}
+
+	return nil
+}
+
+func addSRPolicyNoLinkState(input InputFormat) error {
+	if !input.SRPolicy.PcepSessionAddr.IsValid() || input.SRPolicy.Color == 0 || !input.SRPolicy.SrcAddr.IsValid() || !input.SRPolicy.DstAddr.IsValid() || len(input.SRPolicy.SegmentList) == 0 {
+		sampleInput := "srPolicy:\n" +
+			"  pcepSessionAddr: 192.0.2.1\n" +
+			"  srcAddr: 192.0.2.1\n" +
+			"  dstAddr: 192.0.2.2\n" +
+			"  name: name\n" +
+			"  color: 100\n" +
+			"  segmentList:\n" +
+			"    - sid: 16003\n" +
+			"    - sid: 16002\n\n"
+
+		errMsg := "invalid input\n" +
+			"input examplse is below\n\n" +
+			sampleInput
+		return errors.New(errMsg)
+	}
+
+	segmentList := []*pb.Segment{}
+	for _, seg := range input.SRPolicy.SegmentList {
+		segmentList = append(segmentList, &pb.Segment{Sid: seg.Sid})
+	}
+	srPolicy := &pb.SRPolicy{
+		PcepSessionAddr: input.SRPolicy.PcepSessionAddr.AsSlice(),
+		SrcAddr:         input.SRPolicy.SrcAddr.AsSlice(),
+		DstAddr:         input.SRPolicy.DstAddr.AsSlice(),
+		SegmentList:     segmentList,
+		Color:           input.SRPolicy.Color,
+		PolicyName:      input.SRPolicy.Name,
+	}
+
+	inputData := &pb.CreateSRPolicyInput{
+		SRPolicy: srPolicy,
+	}
+	if err := createSRPolicyWithoutLinkState(client, inputData); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func addSRPolicyLinkState(input InputFormat) error {
+	sampleInputDynamic := "#case: dynamic path\n" +
+		"asn: 65000\n" +
+		"srPolicy:\n" +
+		"  pcepSessionAddr: 192.0.2.1\n" +
+		"  srcRouterId: 0000.0aff.0001\n" +
+		"  dstRouterId: 0000.0aff.0004\n" +
+		"  name: name\n" +
+		"  color: 100\n" +
+		"  type: dynamic\n" +
+		"  metric: igp / te / delay\n"
+	sampleInputExplicit := "#case: explicit path\n" +
+		"asn: 65000\n" +
+		"srPolicy:\n" +
+		"  pcepSessionAddr: 192.0.2.1\n" +
+		"  srcRouterId: 0000.0aff.0001\n" +
+		"  dstRouterId: 0000.0aff.0002\n" +
+		"  name: name\n" +
+		"  color: 100\n" +
+		"  type: explicit\n" +
+		"  segmentList:\n" +
+		"    - sid: 16003\n" +
+		"    - sid: 16002\n"
+	if input.Asn == 0 || !input.SRPolicy.PcepSessionAddr.IsValid() || input.SRPolicy.Color == 0 || input.SRPolicy.SrcRouterId == "" || input.SRPolicy.DstRouterId == "" {
+		errMsg := "invalid input\n" +
+			"input example is below\n\n" +
+			sampleInputDynamic +
+			sampleInputExplicit +
+			"or, if create SR Policy without TED, then use `--no-link-state` flag\n"
+
+		return errors.New(errMsg)
+	}
+	var srPolicyType pb.SRPolicyType
+	var metric pb.MetricType
+	var segmentList []*pb.Segment
+	switch input.SRPolicy.Type {
+	case "explicit":
+		if len(input.SRPolicy.SegmentList) == 0 {
+			errMsg := "invalid input\n" +
+				"input example is below\n\n" +
+				sampleInputExplicit
+
+			return errors.New(errMsg)
+		}
+		srPolicyType = pb.SRPolicyType_EXPLICIT
+		for _, seg := range input.SRPolicy.SegmentList {
+			segmentList = append(segmentList, &pb.Segment{Sid: seg.Sid})
+		}
+	case "dynamic":
+		if input.SRPolicy.Metric == "" {
+			errMsg := "invalid input\n" +
+				"input example is below\n\n" +
+				sampleInputDynamic
+			return errors.New(errMsg)
+		}
+		srPolicyType = pb.SRPolicyType_DYNAMIC
+		switch input.SRPolicy.Metric {
+		case "igp":
+			metric = pb.MetricType_IGP
+		case "delay":
+			metric = pb.MetricType_DELAY
+		case "te":
+			metric = pb.MetricType_TE
+		default:
+			return fmt.Errorf("invalid input `metric`")
+		}
+
+	default:
+		return fmt.Errorf("invalid input `type`")
+	}
+
+	srPolicy := &pb.SRPolicy{
+		PcepSessionAddr: input.SRPolicy.PcepSessionAddr.AsSlice(),
+		SrcRouterId:     input.SRPolicy.SrcRouterId,
+		DstRouterId:     input.SRPolicy.DstRouterId,
+		Color:           input.SRPolicy.Color,
+		PolicyName:      input.SRPolicy.Name,
+		Type:            srPolicyType,
+		SegmentList:     segmentList,
+		Metric:          metric,
+	}
+	inputData := &pb.CreateSRPolicyInput{
+		SRPolicy: srPolicy,
+		Asn:      input.Asn,
+	}
+	if err := createSRPolicy(client, inputData); err != nil {
+		return fmt.Errorf("gRPC Server Error: %s", err.Error())
+
 	}
 
 	return nil

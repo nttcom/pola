@@ -13,10 +13,12 @@ import (
 	"net/netip"
 	"strings"
 
+	"github.com/golang/protobuf/ptypes/any"
 	"github.com/nttcom/pola/internal/pkg/table"
 	api "github.com/osrg/gobgp/v3/api"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/types/known/anypb"
 )
 
 type GobgpOptions struct {
@@ -73,142 +75,190 @@ func GetBgplsNlris(serverAddr string, serverPort string) ([]table.TedElem, error
 }
 
 func ConvertToTedElem(dst *api.Destination) ([]table.TedElem, error) {
-	tedElems := []table.TedElem{}
 	if len(dst.GetPaths()) != 1 {
-		return nil, errors.New("invalid pathes length")
+		return nil, errors.New("invalid path length")
 	}
-	nlri, err := dst.GetPaths()[0].GetNlri().UnmarshalNew()
+
+	path := dst.GetPaths()[0]
+	nlri, err := path.GetNlri().UnmarshalNew()
 	if err != nil {
 		return nil, err
 	}
 
-	switch typedNlri := nlri.(type) {
+	switch nlri := nlri.(type) {
 	case *api.LsAddrPrefix:
-		linkStateNlri, err := typedNlri.GetNlri().UnmarshalNew()
-		pathAttrs := dst.GetPaths()[0].GetPattrs()
+		linkStateNlri, err := nlri.GetNlri().UnmarshalNew()
 		if err != nil {
 			return nil, err
 		}
-		switch typedLinkStateNlri := linkStateNlri.(type) {
+
+		switch linkStateNlri := linkStateNlri.(type) {
 		case *api.LsNodeNLRI:
-			// Get information from MP-REACH-NLRI Attr
-			asn := typedLinkStateNlri.GetLocalNode().GetAsn()
-			routerId := typedLinkStateNlri.GetLocalNode().GetIgpRouterId()
-
-			lsNode := table.NewLsNode(asn, routerId)
-
-			// Get information from BGP-LS Attr
-			for _, pathAttr := range pathAttrs {
-				typedPathAttr, err := pathAttr.UnmarshalNew()
-				if err != nil {
-					return nil, err
-				}
-				if bgplsAttr, ok := typedPathAttr.(*api.LsAttribute); ok {
-					isisArea := bgplsAttr.GetNode().GetIsisArea()
-					tmpIsisArea := hex.EncodeToString(isisArea)
-					strIsisArea := ""
-					for i, s := range strings.Split(tmpIsisArea, "") {
-						if (len(tmpIsisArea)-i)%4 == 0 {
-							strIsisArea += "."
-						}
-						strIsisArea += s
-					}
-					lsNode.IsisAreaId = strIsisArea
-					lsNode.Hostname = bgplsAttr.GetNode().GetName()
-					srCapabilities := bgplsAttr.GetNode().GetSrCapabilities().GetRanges()
-					if len(srCapabilities) != 1 {
-						return nil, errors.New("invalid SR Capability TLV")
-					}
-					lsNode.SrgbBegin = srCapabilities[0].GetBegin()
-					lsNode.SrgbEnd = srCapabilities[0].GetEnd()
-				}
+			lsNode, err := getLsNodeNLRI(linkStateNlri, path.GetPattrs())
+			if err != nil {
+				return nil, err
 			}
-			tedElems = append(tedElems, lsNode)
+			return []table.TedElem{lsNode}, nil
 		case *api.LsLinkNLRI:
-			// Get information from MP-REACH-NLRI Attr
-			localNodeId := typedLinkStateNlri.GetLocalNode().GetIgpRouterId()
-			localNodeAsn := typedLinkStateNlri.GetLocalNode().GetAsn()
-			remoteNodeId := typedLinkStateNlri.GetRemoteNode().GetIgpRouterId()
-			remoteNodeAsn := typedLinkStateNlri.GetRemoteNode().GetAsn()
-			localIP, err := netip.ParseAddr(typedLinkStateNlri.GetLinkDescriptor().GetInterfaceAddrIpv4())
+			lsLink, err := getLsLinkNLRI(linkStateNlri, path.GetPattrs())
 			if err != nil {
 				return nil, err
 			}
-			remoteIP, err := netip.ParseAddr(typedLinkStateNlri.GetLinkDescriptor().GetNeighborAddrIpv4())
-			if err != nil {
-				return nil, err
-			}
-			localNode := table.NewLsNode(localNodeAsn, localNodeId)
-			remoteNode := table.NewLsNode(remoteNodeAsn, remoteNodeId)
-			lsLink := table.NewLsLink(localNode, remoteNode)
-			lsLink.LocalIP = localIP
-			lsLink.RemoteIP = remoteIP
-
-			// Get information from BGP-LS Attr
-			for _, pathAttr := range pathAttrs {
-				typedPathAttr, err := pathAttr.UnmarshalNew()
-				if err != nil {
-					return nil, err
-				}
-				if bgplsAttr, ok := typedPathAttr.(*api.LsAttribute); ok {
-					igpMetric := table.NewMetric(table.MetricType(table.IGP_METRIC), bgplsAttr.GetLink().GetIgpMetric())
-					lsLink.Metrics = append(lsLink.Metrics, igpMetric)
-
-					if bgplsAttr.GetLink().GetDefaultTeMetric() != 0 {
-						teMetric := table.NewMetric(table.MetricType(table.TE_METRIC), bgplsAttr.GetLink().GetDefaultTeMetric())
-						lsLink.Metrics = append(lsLink.Metrics, teMetric)
-					}
-
-					lsLink.AdjSid = bgplsAttr.GetLink().GetSrAdjacencySid()
-				}
-			}
-			tedElems = append(tedElems, lsLink)
+			return []table.TedElem{lsLink}, nil
 		case *api.LsPrefixV4NLRI:
-			// Get information from MP-REACH-NLRI Attr
-			var sidIndex uint32
-			for _, pathAttr := range pathAttrs {
-				typedPathAttr, err := pathAttr.UnmarshalNew()
+			lsPrefixV4List, err := getLsPrefixV4List(linkStateNlri, path.GetPattrs())
+			if err != nil {
+				return nil, err
+			}
+			return lsPrefixV4List, nil
+		default:
+			return nil, errors.New("invalid linkStateNlri type")
+		}
+	default:
+		return nil, errors.New("invalid nlri type")
+	}
+}
+
+func getLsNodeNLRI(typedLinkStateNlri *api.LsNodeNLRI, pathAttrs []*anypb.Any) (*table.LsNode, error) {
+	asn := typedLinkStateNlri.GetLocalNode().GetAsn()
+	routerId := typedLinkStateNlri.GetLocalNode().GetIgpRouterId()
+
+	lsNode := table.NewLsNode(asn, routerId)
+
+	for _, pathAttr := range pathAttrs {
+		typedPathAttr, err := pathAttr.UnmarshalNew()
+		if err != nil {
+			return nil, err
+		}
+
+		bgplsAttr, ok := typedPathAttr.(*api.LsAttribute)
+		if !ok {
+			continue
+		}
+
+		isisArea := bgplsAttr.GetNode().GetIsisArea()
+		tmpIsisArea := hex.EncodeToString(isisArea)
+		strIsisArea := ""
+		for i, s := range strings.Split(tmpIsisArea, "") {
+			if (len(tmpIsisArea)-i)%4 == 0 {
+				strIsisArea += "."
+			}
+			strIsisArea += s
+		}
+		lsNode.IsisAreaId = strIsisArea
+		lsNode.Hostname = bgplsAttr.GetNode().GetName()
+
+		srCapabilities := bgplsAttr.GetNode().GetSrCapabilities().GetRanges()
+		if len(srCapabilities) != 1 {
+			return nil, errors.New("invalid SR Capability TLV")
+		}
+		lsNode.SrgbBegin = srCapabilities[0].GetBegin()
+		lsNode.SrgbEnd = srCapabilities[0].GetEnd()
+	}
+
+	return lsNode, nil
+}
+
+func getLsLinkNLRI(typedLinkStateNlri *api.LsLinkNLRI, pathAttrs []*anypb.Any) (*table.LsLink, error) {
+	localNode := table.NewLsNode(typedLinkStateNlri.GetLocalNode().GetAsn(), typedLinkStateNlri.GetLocalNode().GetIgpRouterId())
+	remoteNode := table.NewLsNode(typedLinkStateNlri.GetRemoteNode().GetAsn(), typedLinkStateNlri.GetRemoteNode().GetIgpRouterId())
+
+	localIP, err := netip.ParseAddr(typedLinkStateNlri.GetLinkDescriptor().GetInterfaceAddrIpv4())
+	if err != nil {
+		return nil, err
+	}
+
+	remoteIP, err := netip.ParseAddr(typedLinkStateNlri.GetLinkDescriptor().GetNeighborAddrIpv4())
+	if err != nil {
+		return nil, err
+	}
+
+	lsLink := table.NewLsLink(localNode, remoteNode)
+	lsLink.LocalIP = localIP
+	lsLink.RemoteIP = remoteIP
+
+	for _, pathAttr := range pathAttrs {
+		typedPathAttr, err := pathAttr.UnmarshalNew()
+		if err != nil {
+			return nil, err
+		}
+
+		bgplsAttr, ok := typedPathAttr.(*api.LsAttribute)
+		if !ok {
+			continue
+		}
+
+		lsLink.Metrics = append(lsLink.Metrics, table.NewMetric(table.MetricType(table.IGP_METRIC), bgplsAttr.GetLink().GetIgpMetric()))
+
+		teMetric := bgplsAttr.GetLink().GetDefaultTeMetric()
+		if teMetric != 0 {
+			lsLink.Metrics = append(lsLink.Metrics, table.NewMetric(table.MetricType(table.TE_METRIC), teMetric))
+		}
+
+		lsLink.AdjSid = bgplsAttr.GetLink().GetSrAdjacencySid()
+	}
+
+	return lsLink, nil
+}
+
+func getLsPrefixV4List(lsPrefixV4Nlri *api.LsPrefixV4NLRI, pathAttrs []*any.Any) ([]table.TedElem, error) {
+	var lsPrefixV4List []table.TedElem
+	var sidIndex uint32
+
+	for _, pathAttr := range pathAttrs {
+		typedPathAttr, err := pathAttr.UnmarshalNew()
+		if err != nil {
+			return nil, err
+		}
+
+		switch typedPathAttr := typedPathAttr.(type) {
+		case *api.LsAttribute:
+			sidIndex = typedPathAttr.GetPrefix().GetSrPrefixSid()
+
+		case *api.MpReachNLRIAttribute:
+			for _, nlri := range typedPathAttr.GetNlris() {
+				typedNlri, err := nlri.UnmarshalNew()
 				if err != nil {
 					return nil, err
 				}
-				// Get information from BGP-LS Attr
-				if bgplsAttr, ok := typedPathAttr.(*api.LsAttribute); ok {
-					// if sidIndex != 0 then Loopback interface Address Prefix
-					sidIndex = bgplsAttr.GetPrefix().GetSrPrefixSid()
-				}
-				if mpReachNlriAttr, ok := typedPathAttr.(*api.MpReachNLRIAttribute); ok {
-					for _, nlri := range mpReachNlriAttr.GetNlris() {
-						typedNlri, err := nlri.UnmarshalNew()
-						if err != nil {
-							return nil, err
-						}
-						if lsNlri, ok := typedNlri.(*api.LsAddrPrefix); ok {
 
-							prefNlri, err := lsNlri.GetNlri().UnmarshalNew()
-							if err != nil {
-								return nil, err
-							}
-							prefv4Nlri := prefNlri.(*api.LsPrefixV4NLRI)
-							localNodeId := prefv4Nlri.GetLocalNode().GetIgpRouterId()
-							localNodeAsn := prefv4Nlri.GetLocalNode().GetAsn()
-							prefixV4 := prefv4Nlri.GetPrefixDescriptor().GetIpReachability()
-
-							localNode := table.NewLsNode(localNodeAsn, localNodeId)
-							lsPrefixV4 := table.NewLsPrefixV4(localNode)
-							lsPrefixV4.SidIndex = sidIndex
-							if len(prefixV4) != 1 {
-								return nil, errors.New("invalid prefix length")
-							}
-							lsPrefixV4.Prefix, _ = netip.ParsePrefix(prefixV4[0])
-							tedElems = append(tedElems, lsPrefixV4)
-						}
+				if lsNlri, ok := typedNlri.(*api.LsAddrPrefix); ok {
+					lsPrefixV4, err := getLsPrefixV4(lsNlri, sidIndex)
+					if err != nil {
+						return nil, err
 					}
+					lsPrefixV4List = append(lsPrefixV4List, lsPrefixV4)
 				}
 			}
 		}
-	default:
-		return nil, errors.New("invalid Nlri Type")
 	}
 
-	return tedElems, nil
+	return lsPrefixV4List, nil
+}
+
+func getLsPrefixV4(lsNlri *api.LsAddrPrefix, sidIndex uint32) (*table.LsPrefixV4, error) {
+	prefNlri, err := lsNlri.GetNlri().UnmarshalNew()
+	if err != nil {
+		return nil, err
+	}
+	prefv4Nlri, ok := prefNlri.(*api.LsPrefixV4NLRI)
+	if !ok {
+		return nil, errors.New("invalid LS prefix v4 NLRI type")
+	}
+	localNodeId := prefv4Nlri.GetLocalNode().GetIgpRouterId()
+	localNodeAsn := prefv4Nlri.GetLocalNode().GetAsn()
+	prefixV4 := prefv4Nlri.GetPrefixDescriptor().GetIpReachability()
+
+	localNode := table.NewLsNode(localNodeAsn, localNodeId)
+	lsPrefixV4 := table.NewLsPrefixV4(localNode)
+	lsPrefixV4.SidIndex = sidIndex
+	if len(prefixV4) != 1 {
+		return nil, errors.New("invalid prefix length")
+	}
+	lsPrefixV4.Prefix, err = netip.ParsePrefix(prefixV4[0])
+	if err != nil {
+		return nil, err
+	}
+
+	return lsPrefixV4, nil
 }
