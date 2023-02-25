@@ -20,12 +20,11 @@ type node struct {
 }
 
 func newNode(id string, cost uint32, nodeSeg table.Segment) *node {
-	node := &node{
+	return &node{
 		id:          id,
 		cost:        cost,
 		nodeSegment: nodeSeg,
 	}
-	return node
 }
 
 func Cspf(srcRouterId string, dstRouterId string, as uint32, metric table.MetricType, ted *table.LsTed) ([]table.Segment, error) {
@@ -35,86 +34,87 @@ func Cspf(srcRouterId string, dstRouterId string, as uint32, metric table.Metric
 	if err != nil {
 		return nil, err
 	}
+
 	return segmentList, nil
 }
 
-func spf(srcRouterId string, dstRouterId string, metric table.MetricType, network map[string]*table.LsNode) ([]table.Segment, error) {
-	segmentList := []table.Segment{}
-
+func spf(srcRouterId string, dstRouterId string, metricType table.MetricType, network map[string]*table.LsNode) ([]table.Segment, error) {
+	// Create a new starting node with cost 0 and add it to the calculating nodes
 	startNodeSeg, err := network[srcRouterId].NodeSegment()
 	if err != nil {
 		return nil, err
 	}
-
 	startNode := newNode(srcRouterId, 0, startNodeSeg)
 	startNode.calculated = false
+	calculatingNodes := map[string]*node{srcRouterId: startNode}
 
-	calculatingNodes := map[string]*node{}
-	calculatingNodes[srcRouterId] = startNode
-
+	// Keep calculating the shortest path until the destination node is reached
 	for {
-		// Selection of nodes for calculation
+		// Select the next node to calculate
 		calcNodeId, err := nextNode(calculatingNodes)
 		if err != nil {
 			return nil, err
 		}
-
 		if calcNodeId == dstRouterId {
-			// End of calculation of shortest path
 			break
 		}
 
+		// Calculate the cost of each link from the selected node
 		for _, link := range network[calcNodeId].Links {
-			metric, err := link.Metric(metric)
+			metric, err := link.Metric(metricType)
 			if err != nil {
 				return nil, err
 			}
 
-			if _, exist := calculatingNodes[link.RemoteNode.RouterId]; exist {
-				if calculatingNodes[calcNodeId].cost+metric < calculatingNodes[link.RemoteNode.RouterId].cost {
-					calculatingNodes[link.RemoteNode.RouterId].cost = calculatingNodes[calcNodeId].cost + metric
-					calculatingNodes[link.RemoteNode.RouterId].prevNode = calcNodeId
+			// If the remote node is already being calculated, update its cost if necessary
+			if remoteNode, exists := calculatingNodes[link.RemoteNode.RouterId]; exists {
+				if calculatingNodes[calcNodeId].cost+metric < remoteNode.cost {
+					remoteNode.cost = calculatingNodes[calcNodeId].cost + metric
+					remoteNode.prevNode = calcNodeId
 				}
 			} else {
+				// If the remote node has not been calculated yet, create a new node for it and add it to the calculating nodes
 				remoteNodeSeg, err := link.RemoteNode.NodeSegment()
 				if err != nil {
 					return nil, err
 				}
-
-				calculatingNodes[link.RemoteNode.RouterId] = newNode(link.RemoteNode.RouterId, calculatingNodes[calcNodeId].cost+metric, remoteNodeSeg)
-				calculatingNodes[link.RemoteNode.RouterId].prevNode = calcNodeId
+				remoteNode := newNode(link.RemoteNode.RouterId, calculatingNodes[calcNodeId].cost+metric, remoteNodeSeg)
+				remoteNode.prevNode = calcNodeId
+				calculatingNodes[link.RemoteNode.RouterId] = remoteNode
 			}
 		}
+
+		// Mark the selected node as calculated
+		calculatingNodes[calcNodeId].calculated = true
 	}
 
-	// Generate SegmentList from calculation results
+	// Generate the segment list from the shortest path calculation results
+	segmentList := []table.Segment{}
 	for pathNode := calculatingNodes[dstRouterId]; pathNode.id != srcRouterId; pathNode = calculatingNodes[pathNode.prevNode] {
-		if len(segmentList) == 0 {
-			segmentList = append(segmentList, pathNode.nodeSegment)
-		} else {
-			segmentList = append(segmentList[:1], segmentList[0:]...)
-			segmentList[0] = pathNode.nodeSegment
-		}
+		segmentList = append(segmentList, pathNode.nodeSegment)
 	}
+
+	// Reverse the order of the segment list
+	for i, j := 0, len(segmentList)-1; i < j; i, j = i+1, j-1 {
+		segmentList[i], segmentList[j] = segmentList[j], segmentList[i]
+	}
+
 	return segmentList, nil
 }
 
-func nextNode(calculatingNodes map[string]*node) (nextNodeId string, err error) {
+// nextNode returns the Id of the next node to calculate.
+func nextNode(calculatingNodes map[string]*node) (string, error) {
+	nextNodeId := ""
 	for nodeId, node := range calculatingNodes {
 		if node.calculated {
 			continue
 		}
-		if nextNodeId == "" {
-			nextNodeId = nodeId
-		}
-		if calculatingNodes[nextNodeId].cost > node.cost {
+		if nextNodeId == "" || calculatingNodes[nextNodeId].cost > node.cost {
 			nextNodeId = nodeId
 		}
 	}
 	if nextNodeId == "" {
-		return nextNodeId, errors.New("next node not found")
+		return "", errors.New("next node not found")
 	}
-	// Set the node with the smallest arrival cost as calculated
-	calculatingNodes[nextNodeId].calculated = true
-	return
+	return nextNodeId, nil
 }
