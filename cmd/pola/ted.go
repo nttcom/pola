@@ -13,8 +13,7 @@ import (
 )
 
 func newTedCmd() *cobra.Command {
-
-	tedCmd := &cobra.Command{
+	return &cobra.Command{
 		Use: "ted",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := showTed(jsonFmt); err != nil {
@@ -23,8 +22,6 @@ func newTedCmd() *cobra.Command {
 			return nil
 		},
 	}
-
-	return tedCmd
 }
 
 func showTed(jsonFlag bool) error {
@@ -34,11 +31,12 @@ func showTed(jsonFlag bool) error {
 	}
 
 	if ted == nil {
-		fmt.Printf("TED is disabled by polad\n")
+		fmt.Println("TED is disabled by polad")
 		return nil
 	}
+
 	if jsonFlag {
-		// output json format
+		// Output JSON format
 		nodes := []map[string]interface{}{}
 		for _, as := range ted.Nodes {
 			for _, node := range as {
@@ -52,15 +50,9 @@ func showTed(jsonFlag bool) error {
 					"prefixes":   []map[string]interface{}{},
 					"links":      []map[string]interface{}{},
 				}
+
 				links := []map[string]interface{}{}
 				for _, link := range node.Links {
-					tmpLink := map[string]interface{}{
-						"localIP":    link.LocalIP.String(),
-						"remoteIP":   link.RemoteIP.String(),
-						"remoteNode": link.RemoteNode.RouterId,
-						"metrics":    []map[string]interface{}{},
-						"adjSid":     link.AdjSid,
-					}
 					metrics := []map[string]interface{}{}
 					for _, metric := range link.Metrics {
 						tmpMetric := map[string]interface{}{
@@ -69,10 +61,18 @@ func showTed(jsonFlag bool) error {
 						}
 						metrics = append(metrics, tmpMetric)
 					}
-					tmpLink["metrics"] = metrics
+
+					tmpLink := map[string]interface{}{
+						"localIP":    link.LocalIP.String(),
+						"remoteIP":   link.RemoteIP.String(),
+						"remoteNode": link.RemoteNode.RouterId,
+						"metrics":    metrics,
+						"adjSid":     link.AdjSid,
+					}
 					links = append(links, tmpLink)
 				}
 				tmpNode["links"] = links
+
 				prefixes := []map[string]interface{}{}
 				for _, prefix := range node.Prefixes {
 					tmpPrefix := map[string]interface{}{
@@ -84,22 +84,25 @@ func showTed(jsonFlag bool) error {
 					prefixes = append(prefixes, tmpPrefix)
 				}
 				tmpNode["prefixes"] = prefixes
-				nodes = append(nodes, tmpNode)
 
+				nodes = append(nodes, tmpNode)
 			}
 		}
-		output_map := map[string]interface{}{
+
+		outputMap := map[string]interface{}{
 			"ted": nodes,
 		}
-		output_json, err := json.Marshal(output_map)
+
+		outputJSON, err := json.Marshal(outputMap)
 		if err != nil {
 			return err
 		}
-		fmt.Printf("%+v\n", string(output_json))
+		fmt.Println(string(outputJSON))
 
 	} else {
-		//output user-friendly format
+		// Output user-friendly format
 		ted.ShowTed()
 	}
+
 	return nil
 }

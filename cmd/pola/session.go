@@ -13,8 +13,7 @@ import (
 )
 
 func newSessionCmd() *cobra.Command {
-
-	sessionCmd := &cobra.Command{
+	return &cobra.Command{
 		Use: "session",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := showSession(jsonFmt); err != nil {
@@ -23,7 +22,6 @@ func newSessionCmd() *cobra.Command {
 			return nil
 		},
 	}
-	return sessionCmd
 }
 
 func showSession(jsonFlag bool) error {
@@ -31,26 +29,26 @@ func showSession(jsonFlag bool) error {
 	if err != nil {
 		return err
 	}
+
 	if jsonFlag {
-		// output json format
-		peerAddrs := []map[string]string{}
+		// Output JSON format
+		peerAddrs := make([]map[string]string, 0, len(sessionAddrList))
 		for _, peerAddr := range sessionAddrList {
-			peerAddrInfo := map[string]string{
+			peerAddrs = append(peerAddrs, map[string]string{
 				"address": peerAddr.String(),
 				"status":  "active",
-			}
-			peerAddrs = append(peerAddrs, peerAddrInfo)
+			})
 		}
-		output_map := map[string]interface{}{
+		outputMap := map[string]interface{}{
 			"sessions": peerAddrs,
 		}
-		output_json, err := json.Marshal(output_map)
+		outputJSON, err := json.Marshal(outputMap)
 		if err != nil {
 			return err
 		}
-		fmt.Printf("%+v\n", string(output_json))
+		fmt.Println(string(outputJSON))
 	} else {
-		//output user-friendly format
+		// Output user-friendly format
 		for i, peerAddr := range sessionAddrList {
 			fmt.Printf("sessionAddr(%d): %s\n", i, peerAddr.String())
 		}

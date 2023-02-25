@@ -22,76 +22,91 @@ import (
 	"github.com/nttcom/pola/pkg/server"
 )
 
-const (
-	TED_UPDATE_INTERVAL = 10 // (min)
-)
+const TED_UPDATE_INTERVAL = 10 // (min)
 
-type Flags struct {
-	ConfigFile string
+type flags struct {
+	configFile string
 }
 
 func main() {
-
+	// Check if --version flag was passed
 	if len(os.Args) > 1 && os.Args[1] == "--version" {
 		fmt.Println("polad " + version.Version())
 		return
 	}
 
-	f := new(Flags)
-	flag.StringVar(&f.ConfigFile, "f", "polad.yaml", "Specify a configuration file")
+	// Parse flags
+	f := &flags{}
+	flag.StringVar(&f.configFile, "f", "polad.yaml", "Specify a configuration file")
 	flag.Parse()
 
-	c, err := config.ReadConfigFile(f.ConfigFile)
+	// Read configuration file
+	c, err := config.ReadConfigFile(f.configFile)
 	if err != nil {
 		log.Panic(err)
 	}
+
+	// Create log directory if it does not exist
 	if err := os.MkdirAll(c.Global.Log.Path, 0755); err != nil {
 		log.Panic(err)
 	}
+
+	// Open log file
 	fp, err := os.OpenFile(c.Global.Log.Path+c.Global.Log.Name, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		log.Panic(err)
 	}
 	defer fp.Close()
 
+	// Initialize logger
 	logger := logger.LogInit(fp)
 	defer func() {
 		err := logger.Sync()
-		logger.Panic("Failed to logger Sync", zap.Error(err))
+		if err != nil {
+			logger.Panic("Failed to logger Sync", zap.Error(err))
+		}
 	}()
 	zap.ReplaceGlobals(logger)
 
-	tedElemsChan := make(chan []table.TedElem)
-
-	// Prepare ted update tools
+	// Prepare TED update tools
+	var tedElemsChan chan []table.TedElem
 	if c.Global.Ted.Enable {
-		if c.Global.Ted.Source == "gobgp" {
-			go func() {
-				for {
-					tedElems, err := gobgp.GetBgplsNlris(c.Global.Gobgp.GrpcClient.Address, c.Global.Gobgp.GrpcClient.Port)
-					logger.Info("Request TED update", zap.String("source", "GoBGP"), zap.String("session", c.Global.Gobgp.GrpcClient.Address+":"+c.Global.Gobgp.GrpcClient.Port))
-					if err != nil {
-						logger.Info("Failed session with GoBGP", zap.Error(err))
-					} else {
-						tedElemsChan <- tedElems
-					}
-					time.Sleep(TED_UPDATE_INTERVAL * time.Minute)
-				}
-
-			}()
-		} else {
-			// TODO: Prepare other TED update methods
-			logger.Panic("Specified tool is not defined", zap.Error(err))
+		switch c.Global.Ted.Source {
+		case "gobgp":
+			tedElemsChan = startGobgpUpdate(&c, logger)
+		default:
+			logger.Panic("Specified TED source is not defined")
 		}
 	}
 
-	o := new(server.PceOptions)
-	o.PcepAddr = c.Global.Pcep.Address
-	o.PcepPort = c.Global.Pcep.Port
-	o.GrpcAddr = c.Global.GrpcServer.Address
-	o.GrpcPort = c.Global.GrpcServer.Port
-	o.TedEnable = c.Global.Ted.Enable
-	if serverErr := server.NewPce(o, logger, tedElemsChan); serverErr.Error != nil {
-		logger.Panic("Failed to create New Server", zap.String("server", serverErr.Server), zap.Error(serverErr.Error))
+	// Start PCE server
+	o := &server.PceOptions{
+		PcepAddr:  c.Global.Pcep.Address,
+		PcepPort:  c.Global.Pcep.Port,
+		GrpcAddr:  c.Global.GrpcServer.Address,
+		GrpcPort:  c.Global.GrpcServer.Port,
+		TedEnable: c.Global.Ted.Enable,
 	}
+	if serverErr := server.NewPce(o, logger, tedElemsChan); serverErr.Error != nil {
+		logger.Panic("Failed to start new server", zap.String("server", serverErr.Server), zap.Error(serverErr.Error))
+	}
+}
+
+func startGobgpUpdate(c *config.Config, logger *zap.Logger) chan []table.TedElem {
+	tedElemsChan := make(chan []table.TedElem)
+
+	go func() {
+		for {
+			tedElems, err := gobgp.GetBgplsNlris(c.Global.Gobgp.GrpcClient.Address, c.Global.Gobgp.GrpcClient.Port)
+			logger.Info("Request TED update", zap.String("source", "GoBGP"), zap.String("session", c.Global.Gobgp.GrpcClient.Address+":"+c.Global.Gobgp.GrpcClient.Port))
+			if err != nil {
+				logger.Info("Failed session with GoBGP", zap.Error(err))
+			} else {
+				tedElemsChan <- tedElems
+			}
+			time.Sleep(TED_UPDATE_INTERVAL * time.Minute)
+		}
+	}()
+
+	return tedElemsChan
 }

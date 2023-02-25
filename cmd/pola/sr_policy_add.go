@@ -17,7 +17,6 @@ import (
 )
 
 func newSRPolicyAddCmd() *cobra.Command {
-
 	srPolicyAddCmd := &cobra.Command{
 		Use: "add",
 		RunE: func(cmd *cobra.Command, args []string) error {
