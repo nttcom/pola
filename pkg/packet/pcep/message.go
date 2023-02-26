@@ -70,6 +70,10 @@ func NewCommonHeader(messageType uint8, messageLength uint16) *CommonHeader {
 	return h
 }
 
+type Message interface {
+	Serialize() ([]uint8, error)
+}
+
 // Open Message
 type OpenMessage struct {
 	OpenObject *OpenObject
@@ -98,13 +102,13 @@ func (m *OpenMessage) DecodeFromBytes(messageBody []uint8) error {
 	return nil
 }
 
-func (m *OpenMessage) Serialize() []uint8 {
+func (m *OpenMessage) Serialize() ([]uint8, error) {
 	byteOpenObject := m.OpenObject.Serialize()
 	openMessageLength := COMMON_HEADER_LENGTH + m.OpenObject.getByteLength()
 	openHeader := NewCommonHeader(MT_OPEN, openMessageLength)
 	byteOpenHeader := openHeader.Serialize()
 	byteOpenMessage := AppendByteSlices(byteOpenHeader, byteOpenObject)
-	return byteOpenMessage
+	return byteOpenMessage, nil
 }
 
 func NewOpenMessage(sessionID uint8, keepalive uint8, capabilities []CapabilityInterface) (*OpenMessage, error) {
@@ -122,12 +126,12 @@ func NewOpenMessage(sessionID uint8, keepalive uint8, capabilities []CapabilityI
 type KeepaliveMessage struct {
 }
 
-func (m *KeepaliveMessage) Serialize() []uint8 {
+func (m *KeepaliveMessage) Serialize() ([]uint8, error) {
 	keepaliveMessageLength := COMMON_HEADER_LENGTH
 	keepaliveHeader := NewCommonHeader(MT_KEEPALIVE, keepaliveMessageLength)
 	byteKeepaliveHeader := keepaliveHeader.Serialize()
 	byteKeepaliveMessage := byteKeepaliveHeader
-	return byteKeepaliveMessage
+	return byteKeepaliveMessage, nil
 }
 
 func NewKeepaliveMessage() (*KeepaliveMessage, error) {
@@ -233,7 +237,7 @@ type PCRptMessage struct {
 	StateReports []*StateReport
 }
 
-var decodeFuncs = map[uint8]func(*StateReport, []byte) error{
+var decodeFuncs = map[uint8]func(*StateReport, []uint8) error{
 	OC_BANDWIDTH:          (*StateReport).decodeBandwidthObject,
 	OC_METRIC:             (*StateReport).decodeMetricObject,
 	OC_ERO:                (*StateReport).decodeEroObject,
