@@ -45,9 +45,7 @@ func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem
 					Id:    s.ted.Id,
 					Nodes: map[uint32]map[string]*table.LsNode{},
 				}
-				for _, tedElem := range tedElems {
-					tedElem.UpdateTed(ted)
-				}
+				ted.Update(tedElems)
 				s.ted = ted
 				logger.Info("Update TED")
 			}
