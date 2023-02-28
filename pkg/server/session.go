@@ -195,8 +195,20 @@ func (ss *Session) ReceivePcepMessage() error {
 				return err
 			}
 		case pcep.MT_ERROR:
-			ss.logger.Info("Received PCErr", zap.String("session", ss.peerAddr.String()))
-			// TODO: Display error details
+			bytePCErrMessageBody := make([]uint8, commonHeader.MessageLength-pcep.COMMON_HEADER_LENGTH)
+			if _, err := ss.tcpConn.Read(bytePCErrMessageBody); err != nil {
+				return err
+			}
+			pcerrMessage := &pcep.PCErrMessage{}
+			if err := pcerrMessage.DecodeFromBytes(bytePCErrMessageBody); err != nil {
+				return err
+			}
+
+			ss.logger.Info("Received PCErr",
+				zap.String("session", ss.peerAddr.String()),
+				zap.Uint8("error-Type", pcerrMessage.PcepErrorObject.ErrorType),
+				zap.Uint8("error-value", pcerrMessage.PcepErrorObject.ErrorValue),
+				zap.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#pcep-error-object"))
 		case pcep.MT_CLOSE:
 			byteCloseMessageBody := make([]uint8, commonHeader.MessageLength-pcep.COMMON_HEADER_LENGTH)
 			if _, err := ss.tcpConn.Read(byteCloseMessageBody); err != nil {
