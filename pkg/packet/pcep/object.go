@@ -295,6 +295,49 @@ func (o *LspaObject) Serialize() []uint8 {
 	return buf
 }
 
+// Close Object (RFC5440 7.17)
+const (
+	OT_CLOSE_CLOSE uint8 = 0x01
+)
+
+const (
+	R_NO_EXPLANATION_PROVIDED               uint8 = 0x01
+	R_DEADTIMER_EXPIRED                     uint8 = 0x02
+	R_RECEPTION_OF_A_MALFORMED_PCEP_MESSAGE uint8 = 0x03
+)
+
+type CloseObject struct {
+	Reason uint8
+}
+
+func (o *CloseObject) DecodeFromBytes(objectBody []uint8) error {
+	o.Reason = objectBody[3]
+	return nil
+}
+
+func (o *CloseObject) Serialize() []uint8 {
+	closeObjectHeader := NewCommonObjectHeader(OC_CLOSE, OT_CLOSE_CLOSE, o.getByteLength())
+	byteCloseObjectHeader := closeObjectHeader.Serialize()
+
+	buf := make([]uint8, 4)
+
+	buf[3] = o.Reason
+	byteCloseObject := AppendByteSlices(byteCloseObjectHeader, buf)
+	return byteCloseObject
+}
+
+func (o *CloseObject) getByteLength() uint16 {
+	// CommonObjectHeader(4byte) + CloseObjectBody(4byte)
+	return COMMON_OBJECT_HEADER_LENGTH + 4
+}
+
+func NewCloseObject(reason uint8) (*CloseObject, error) {
+	o := &CloseObject{
+		Reason: reason,
+	}
+	return o, nil
+}
+
 // SRP Object (RFC8231 7.2)
 const (
 	OT_SRP_SRP uint8 = 0x01

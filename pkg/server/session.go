@@ -165,6 +165,20 @@ func (ss *Session) SendKeepalive() error {
 	return ss.sendPcepMessage(keepaliveMessage, "Send Keepalive")
 }
 
+func (ss *Session) SendClose() error {
+	closeMessage, err := pcep.NewCloseMessage(pcep.R_NO_EXPLANATION_PROVIDED)
+	if err != nil {
+		return err
+	}
+	byteCloseMessage := closeMessage.Serialize()
+
+	ss.logger.Info("Send Close", zap.String("session", ss.peerAddr.String()))
+	if _, err := ss.tcpConn.Write(byteCloseMessage); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (ss *Session) ReceivePcepMessage() error {
 	for {
 		commonHeader, err := ss.readCommonHeader()
@@ -184,11 +198,24 @@ func (ss *Session) ReceivePcepMessage() error {
 			ss.logger.Info("Received PCErr", zap.String("session", ss.peerAddr.String()))
 			// TODO: Display error details
 		case pcep.MT_CLOSE:
-			ss.logger.Info("Received Close", zap.String("session", ss.peerAddr.String()))
+			byteCloseMessageBody := make([]uint8, commonHeader.MessageLength-pcep.COMMON_HEADER_LENGTH)
+			if _, err := ss.tcpConn.Read(byteCloseMessageBody); err != nil {
+				return err
+			}
+			closeMessage := &pcep.CloseMessage{}
+			if err := closeMessage.DecodeFromBytes(byteCloseMessageBody); err != nil {
+				return err
+			}
+			ss.logger.Info("Received Close",
+				zap.String("session", ss.peerAddr.String()),
+				zap.Uint8("reason", closeMessage.CloseObject.Reason),
+				zap.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#close-object-reason-field"))
 			// Close session if get Close Message
 			return nil
 		default:
-			ss.logger.Info("Received unsupported MessageType", zap.String("session", ss.peerAddr.String()), zap.Uint8("MessageType", commonHeader.MessageType))
+			ss.logger.Info("Received unsupported MessageType",
+				zap.String("session", ss.peerAddr.String()),
+				zap.Uint8("MessageType", commonHeader.MessageType))
 		}
 	}
 }
