@@ -912,17 +912,24 @@ func (o *AssociationObject) DecodeFromBytes(objectBody []uint8) error {
 	assocSrcBytes, _ := netip.AddrFromSlice(objectBody[8:12])
 	if assocSrcBytes.Is4() && assocSrcBytes.IsValid() {
 		o.AssocSrc = assocSrcBytes
+		if len(objectBody) > 12 {
+                        byteTlvs := objectBody[12:]
+                        var err error
+                        if o.Tlvs, err = DecodeTLVs(byteTlvs); err != nil {
+                                return err
+                        }
+                }
 	} else if assocSrcBytes.Is6() && assocSrcBytes.IsValid() {
 		o.AssocSrc, _ = netip.AddrFromSlice(objectBody[8:24])
+	        if len(objectBody) > 24 {
+                        byteTlvs := objectBody[24:]
+                        var err error
+                        if o.Tlvs, err = DecodeTLVs(byteTlvs); err != nil {
+                                return err
+                        }
+                }
 	} else {
 		return errors.New("invalid association source address")
-	}
-	if len(objectBody) > 24 {
-		byteTlvs := objectBody[24:]
-		var err error
-		if o.Tlvs, err = DecodeTLVs(byteTlvs); err != nil {
-			return err
-		}
 	}
 	return nil
 }
