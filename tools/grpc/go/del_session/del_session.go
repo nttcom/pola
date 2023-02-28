@@ -8,7 +8,6 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"log"
 	"net/netip"
 	"time"
@@ -16,7 +15,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	empty "github.com/golang/protobuf/ptypes/empty"
 	pb "github.com/nttcom/pola/api/grpc"
 )
 
@@ -31,14 +29,12 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	var empty empty.Empty
-	ret, err := c.GetSessionList(ctx, &empty)
+	ss := &pb.Session{
+		Addr: netip.MustParseAddr("192.0.2.1").AsSlice(),
+	}
+	ret, err := c.DeleteSession(ctx, ss)
 	if err != nil {
-		log.Fatalf("could not greet: %v", err)
+		log.Fatalf("CreateLsp error: %v", err)
 	}
-
-	for i, ss := range ret.GetSessions() {
-		addr, _ := netip.AddrFromSlice(ss.Addr)
-		fmt.Printf("peerAddr(%d): %v\n", i, addr)
-	}
+	log.Printf("Success: %#v", ret)
 }

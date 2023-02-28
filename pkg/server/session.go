@@ -165,14 +165,17 @@ func (ss *Session) SendKeepalive() error {
 	return ss.sendPcepMessage(keepaliveMessage, "Send Keepalive")
 }
 
-func (ss *Session) SendClose() error {
-	closeMessage, err := pcep.NewCloseMessage(pcep.R_NO_EXPLANATION_PROVIDED)
+func (ss *Session) SendClose(reason uint8) error {
+	closeMessage, err := pcep.NewCloseMessage(reason)
 	if err != nil {
 		return err
 	}
 	byteCloseMessage := closeMessage.Serialize()
 
-	ss.logger.Info("Send Close", zap.String("session", ss.peerAddr.String()))
+	ss.logger.Info("Send Close",
+		zap.String("session", ss.peerAddr.String()),
+		zap.Uint8("reason", closeMessage.CloseObject.Reason),
+		zap.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#close-object-reason-field"))
 	if _, err := ss.tcpConn.Write(byteCloseMessage); err != nil {
 		return err
 	}

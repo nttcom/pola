@@ -24,18 +24,28 @@ func getSessionAddrList(client pb.PceServiceClient) ([]netip.Addr, error) {
 	ctx, cancel := withTimeout()
 	defer cancel()
 
-	ret, err := client.GetPeerAddrList(ctx, &empty.Empty{})
+	ret, err := client.GetSessionList(ctx, &empty.Empty{})
 	if err != nil {
 		return nil, err
 	}
 
 	var addrs []netip.Addr
-	for _, addr := range ret.GetPeerAddrs() {
-		a, _ := netip.AddrFromSlice(addr)
-		addrs = append(addrs, a)
+	for _, ss := range ret.GetSessions() {
+		addr, _ := netip.AddrFromSlice(ss.GetAddr())
+		addrs = append(addrs, addr)
 	}
 
 	return addrs, nil
+}
+
+func deleteSession(client pb.PceServiceClient, session *pb.Session) error {
+	ctx, cancel := withTimeout()
+	defer cancel()
+	_, err := client.DeleteSession(ctx, session)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func getSRPolicyList(client pb.PceServiceClient) (map[netip.Addr][]table.SRPolicy, error) {

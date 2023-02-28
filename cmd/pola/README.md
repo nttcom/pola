@@ -21,6 +21,16 @@ JSON formatted response
 }
 ```
 
+### pola session del *Address* \[-j\]
+Deletes the specified session.
+
+JSON formatted response
+```json
+{
+    "status": "success"
+}
+```
+
 ### pola sr-policy list \[-j\]
 Displays the lsp list managed by polad.
 
