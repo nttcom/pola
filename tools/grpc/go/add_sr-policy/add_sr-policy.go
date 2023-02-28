@@ -34,8 +34,8 @@ func main() {
 		Asn: 65000,
 		SRPolicy: &pb.SRPolicy{
 			PcepSessionAddr: ssAddr.AsSlice(),
-			SrcRouterId:     "0000.0aff.0001",
-			DstRouterId:     "0000.0aff.0004",
+			SrcRouterID:     "0000.0aff.0001",
+			DstRouterID:     "0000.0aff.0004",
 			Color:           uint32(100),
 			PolicyName:      "sample-name",
 			Type:            pb.SRPolicyType_DYNAMIC,

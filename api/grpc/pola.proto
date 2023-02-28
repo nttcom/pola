@@ -36,8 +36,8 @@ message SRPolicy {
     bytes pcepSessionAddr = 1;
     bytes srcAddr = 2;
     bytes dstAddr = 3;
-    string srcRouterId = 4;
-    string dstRouterId = 5;
+    string srcRouterID = 4;
+    string dstRouterID = 5;
     uint32 color = 6;
     uint32 preference = 7;
     string policyName = 8;
@@ -81,20 +81,20 @@ message Metric {
 }
 
 message LsLink {
-    string localRouterId = 1;
+    string localRouterID = 1;
     uint32 localAsn = 2;
-    string localIp = 3;
-    string remoteRouterId = 4;
+    string localIP = 3;
+    string remoteRouterID = 4;
     uint32 remoteAsn = 5;
-    string remoteIp = 6;
+    string remoteIP = 6;
     repeated Metric metrics = 7;
     uint32 adjSid = 8;
 } 
 
 message LsNode {
     uint32 asn = 1;
-    string routerId = 2;
-    string isisAreaId = 3;
+    string routerID = 2;
+    string isisAreaID = 3;
     string hostname = 4;
     uint32 srgbBegin = 5;
     uint32 srgbEnd = 6;

@@ -105,7 +105,7 @@ func getTed(client pb.PceServiceClient) (*table.LsTed, error) {
 	}
 
 	ted := &table.LsTed{
-		Id:    1,
+		ID:    1,
 		Nodes: make(map[uint32]map[string]*table.LsNode),
 	}
 
@@ -123,36 +123,36 @@ func getTed(client pb.PceServiceClient) (*table.LsTed, error) {
 // initializeLsNodes initializes LsNodes in the LsTed table using the given array of nodes
 func initializeLsNodes(ted *table.LsTed, nodes []*pb.LsNode) {
 	for _, node := range nodes {
-		lsNode := table.NewLsNode(node.GetAsn(), node.GetRouterId())
+		lsNode := table.NewLsNode(node.GetAsn(), node.GetRouterID())
 		lsNode.Hostname = node.GetHostname()
-		lsNode.IsisAreaId = node.GetIsisAreaId()
+		lsNode.IsisAreaID = node.GetIsisAreaID()
 		lsNode.SrgbBegin = node.GetSrgbBegin()
 		lsNode.SrgbEnd = node.GetSrgbEnd()
 
 		if _, ok := ted.Nodes[lsNode.Asn]; !ok {
 			ted.Nodes[lsNode.Asn] = map[string]*table.LsNode{}
 		}
-		ted.Nodes[lsNode.Asn][lsNode.RouterId] = lsNode
+		ted.Nodes[lsNode.Asn][lsNode.RouterID] = lsNode
 	}
 }
 
 func addLsNode(ted *table.LsTed, node *pb.LsNode) error {
 	for _, link := range node.GetLsLinks() {
-		localNode := ted.Nodes[link.LocalAsn][link.LocalRouterId]
-		remoteNode := ted.Nodes[link.RemoteAsn][link.RemoteRouterId]
+		localNode := ted.Nodes[link.LocalAsn][link.LocalRouterID]
+		remoteNode := ted.Nodes[link.RemoteAsn][link.RemoteRouterID]
 		lsLink, err := createLsLink(localNode, remoteNode, link)
 		if err != nil {
 			return err
 		}
-		ted.Nodes[node.GetAsn()][node.GetRouterId()].Links = append(ted.Nodes[node.GetAsn()][node.GetRouterId()].Links, lsLink)
+		ted.Nodes[node.GetAsn()][node.GetRouterID()].Links = append(ted.Nodes[node.GetAsn()][node.GetRouterID()].Links, lsLink)
 	}
 
 	for _, prefix := range node.LsPrefixes {
-		lsPrefix, err := createLsPrefix(ted.Nodes[node.GetAsn()][node.GetRouterId()], prefix)
+		lsPrefix, err := createLsPrefix(ted.Nodes[node.GetAsn()][node.GetRouterID()], prefix)
 		if err != nil {
 			return err
 		}
-		ted.Nodes[node.GetAsn()][node.GetRouterId()].Prefixes = append(ted.Nodes[node.GetAsn()][node.GetRouterId()].Prefixes, lsPrefix)
+		ted.Nodes[node.GetAsn()][node.GetRouterID()].Prefixes = append(ted.Nodes[node.GetAsn()][node.GetRouterID()].Prefixes, lsPrefix)
 	}
 
 	return nil
@@ -177,11 +177,11 @@ func createLsLink(localNode, remoteNode *table.LsNode, link *pb.LsLink) (*table.
 		AdjSid:     link.GetAdjSid(),
 	}
 	var err error
-	lsLink.LocalIP, err = netip.ParseAddr(link.GetLocalIp())
+	lsLink.LocalIP, err = netip.ParseAddr(link.GetLocalIP())
 	if err != nil {
 		return nil, err
 	}
-	lsLink.RemoteIP, err = netip.ParseAddr(link.GetRemoteIp())
+	lsLink.RemoteIP, err = netip.ParseAddr(link.GetRemoteIP())
 	if err != nil {
 		return nil, err
 	}

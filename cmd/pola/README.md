@@ -123,8 +123,8 @@ asn: 65000
 srPolicy:
   pcepSessionAddr: 192.0.2.1
   name: policy-name    
-  srcRouterId: 0000.0aff.0001
-  dstRouterId: 0000.0aff.0004
+  srcRouterID: 0000.0aff.0001
+  dstRouterID: 0000.0aff.0004
   color: 100
   type: dynamic 
   metric: igp / te / delay
@@ -145,8 +145,8 @@ asn: 65000
 srPolicy:
   pcepSessionAddr: 192.0.2.1
   name: policy-name    
-  srcRouterId: 0000.0aff.0001
-  dstRouterId: 0000.0aff.0004
+  srcRouterID: 0000.0aff.0001
+  dstRouterID: 0000.0aff.0004
   color: 100
   type: explicit
   segmentList:
@@ -198,7 +198,7 @@ JSON formatted response
 		{
 			"asn": 65000,
 			"hostname": "host1",
-			"isisAreaId": "490000",
+			"isisAreaID": "490000",
 			"links": [
 				{
 					"adjSid": 17,
@@ -237,14 +237,14 @@ JSON formatted response
 					"sidIndex": 1
 				}
 			],
-			"routerId": "0000.0aff.0001",
+			"routerID": "0000.0aff.0001",
 			"srgbBegin": 16000,
 			"srgbEnd": 24000
 		},
 		{
 			"asn": 65000,
 			"hostname": "host2",
-			"isisAreaId": "490000",
+			"isisAreaID": "490000",
 			"links": [
 				{
 					"adjSid": 17,
@@ -283,14 +283,14 @@ JSON formatted response
 					"prefix": "10.0.1.0/30"
 				}
 			],
-			"routerId": "0000.0aff.0003",
+			"routerID": "0000.0aff.0003",
 			"srgbBegin": 16000,
 			"srgbEnd": 24000
 		},
 		{
 			"asn": 65000,
 			"hostname": "host3",
-			"isisAreaId": "490000",
+			"isisAreaID": "490000",
 			"links": [
 				{
 					"adjSid": 24001,
@@ -329,7 +329,7 @@ JSON formatted response
 					"sidIndex": 2
 				}
 			],
-			"routerId": "0000.0aff.0002",
+			"routerID": "0000.0aff.0002",
 			"srgbBegin": 16000,
 			"srgbEnd": 24000
 		}

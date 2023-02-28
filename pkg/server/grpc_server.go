@@ -69,12 +69,12 @@ func (s *APIServer) createSRPolicy(ctx context.Context, input *pb.CreateSRPolicy
 			return &pb.SRPolicyStatus{IsSuccess: false}, errors.New("ted is disabled")
 		}
 
-		srcAddr, err = getLoopbackAddr(s.pce, input.GetAsn(), inputSRPolicy.GetSrcRouterId())
+		srcAddr, err = getLoopbackAddr(s.pce, input.GetAsn(), inputSRPolicy.GetSrcRouterID())
 		if err != nil {
 			return &pb.SRPolicyStatus{IsSuccess: false}, err
 		}
 
-		dstAddr, err = getLoopbackAddr(s.pce, input.GetAsn(), inputSRPolicy.GetDstRouterId())
+		dstAddr, err = getLoopbackAddr(s.pce, input.GetAsn(), inputSRPolicy.GetDstRouterID())
 		if err != nil {
 			return &pb.SRPolicyStatus{IsSuccess: false}, err
 		}
@@ -116,10 +116,10 @@ func (s *APIServer) createSRPolicy(ctx context.Context, input *pb.CreateSRPolicy
 		Preference:  100,
 	}
 
-	if id, exists := pcepSession.SearchSRPolicyPlspId(inputSRPolicy.GetColor(), dstAddr); exists {
+	if id, exists := pcepSession.SearchSRPolicyPlspID(inputSRPolicy.GetColor(), dstAddr); exists {
 		// Update SR Policy
-		s.pce.logger.Info("plspId check", zap.Uint32("plspId", id), zap.String("server", "grpc"))
-		srPolicy.PlspId = id
+		s.pce.logger.Info("plspID check", zap.Uint32("plspID", id), zap.String("server", "grpc"))
+		srPolicy.PlspID = id
 
 		if err := pcepSession.SendPCUpdate(srPolicy); err != nil {
 			return &pb.SRPolicyStatus{IsSuccess: false}, err
@@ -154,8 +154,8 @@ func validateInput(policy *pb.SRPolicy, asn uint32) bool {
 	return asn != 0 &&
 		policy.PcepSessionAddr != nil &&
 		policy.Color != 0 &&
-		policy.SrcRouterId != "" &&
-		policy.DstRouterId != ""
+		policy.SrcRouterID != "" &&
+		policy.DstRouterID != ""
 }
 
 func validateInputWithoutLinkState(policy *pb.SRPolicy, asn uint32) bool {
@@ -174,10 +174,10 @@ func getPcepSession(pce *Server, addr []byte) (*Session, error) {
 	return pcepSession, nil
 }
 
-func getLoopbackAddr(pce *Server, asn uint32, routerId string) (netip.Addr, error) {
-	node, ok := pce.ted.Nodes[asn][routerId]
+func getLoopbackAddr(pce *Server, asn uint32, routerID string) (netip.Addr, error) {
+	node, ok := pce.ted.Nodes[asn][routerID]
 	if !ok {
-		return netip.Addr{}, fmt.Errorf("no node with AS %d and router ID %s", asn, routerId)
+		return netip.Addr{}, fmt.Errorf("no node with AS %d and router ID %s", asn, routerID)
 	}
 	return node.LoopbackAddr()
 }
@@ -202,7 +202,7 @@ func getSegmentList(inputSRPolicy *pb.SRPolicy, asn uint32, ted *table.LsTed) ([
 		if err != nil {
 			return nil, err
 		}
-		segments, err = cspf.Cspf(inputSRPolicy.GetSrcRouterId(), inputSRPolicy.GetDstRouterId(), asn, metricType, ted)
+		segments, err = cspf.Cspf(inputSRPolicy.GetSrcRouterID(), inputSRPolicy.GetDstRouterID(), asn, metricType, ted)
 		if err != nil {
 			return nil, err
 		}
@@ -288,8 +288,8 @@ func (s *APIServer) GetTed(context.Context, *empty.Empty) (*pb.Ted, error) {
 		for _, lsNode := range lsNodes {
 			node := &pb.LsNode{
 				Asn:        lsNode.Asn,
-				RouterId:   lsNode.RouterId,
-				IsisAreaId: lsNode.IsisAreaId,
+				RouterID:   lsNode.RouterID,
+				IsisAreaID: lsNode.IsisAreaID,
 				Hostname:   lsNode.Hostname,
 				SrgbBegin:  lsNode.SrgbBegin,
 				SrgbEnd:    lsNode.SrgbEnd,
@@ -299,12 +299,12 @@ func (s *APIServer) GetTed(context.Context, *empty.Empty) (*pb.Ted, error) {
 
 			for _, lsLink := range lsNode.Links {
 				link := &pb.LsLink{
-					LocalRouterId:  lsLink.LocalNode.RouterId,
+					LocalRouterID:  lsLink.LocalNode.RouterID,
 					LocalAsn:       lsLink.LocalNode.Asn,
-					LocalIp:        lsLink.LocalIP.String(),
-					RemoteRouterId: lsLink.RemoteNode.RouterId,
+					LocalIP:        lsLink.LocalIP.String(),
+					RemoteRouterID: lsLink.RemoteNode.RouterID,
 					RemoteAsn:      lsLink.RemoteNode.Asn,
-					RemoteIp:       lsLink.RemoteIP.String(),
+					RemoteIP:       lsLink.RemoteIP.String(),
 					Metrics:        make([]*pb.Metric, 0, len(lsLink.Metrics)),
 					AdjSid:         lsLink.AdjSid,
 				}

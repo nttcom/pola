@@ -12,7 +12,7 @@ import (
 )
 
 type SRPolicy struct {
-	PlspId      uint32
+	PlspID      uint32
 	Name        string
 	SegmentList []Segment
 	SrcAddr     netip.Addr

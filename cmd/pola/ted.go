@@ -42,8 +42,8 @@ func print(jsonFlag bool) error {
 			for _, node := range as {
 				tmpNode := map[string]interface{}{ // TODO: Fix format according to readme
 					"asn":        node.Asn,
-					"routerId":   node.RouterId,
-					"isisAreaId": node.IsisAreaId,
+					"routerID":   node.RouterID,
+					"isisAreaID": node.IsisAreaID,
 					"hostname":   node.Hostname,
 					"srgbBegin":  node.SrgbBegin,
 					"srgbEnd":    node.SrgbEnd,
@@ -65,7 +65,7 @@ func print(jsonFlag bool) error {
 					tmpLink := map[string]interface{}{
 						"localIP":    link.LocalIP.String(),
 						"remoteIP":   link.RemoteIP.String(),
-						"remoteNode": link.RemoteNode.RouterId,
+						"remoteNode": link.RemoteNode.RouterID,
 						"metrics":    metrics,
 						"adjSid":     link.AdjSid,
 					}

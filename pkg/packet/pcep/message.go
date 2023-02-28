@@ -213,7 +213,7 @@ func (r *StateReport) decodeVendorInformationObject(messageBody []uint8) error {
 
 func (r *StateReport) ToSRPolicy(pcc PccType) table.SRPolicy {
 	srPolicy := table.SRPolicy{
-		PlspId:      r.LspObject.PlspId,
+		PlspID:      r.LspObject.PlspID,
 		Name:        r.LspObject.Name,
 		SegmentList: []table.Segment{},
 		SrcAddr:     r.LspObject.SrcAddr,
@@ -354,7 +354,7 @@ func (m *PCInitiateMessage) Serialize() ([]uint8, error) {
 	return bytePCInitiateMessage, nil
 }
 
-func NewPCInitiateMessage(srpId uint32, lspName string, segmentList []table.Segment, color uint32, preference uint32, srcAddr netip.Addr, dstAddr netip.Addr, opt ...Opt) (*PCInitiateMessage, error) {
+func NewPCInitiateMessage(srpID uint32, lspName string, segmentList []table.Segment, color uint32, preference uint32, srcAddr netip.Addr, dstAddr netip.Addr, opt ...Opt) (*PCInitiateMessage, error) {
 	opts := optParams{
 		pccType: RFC_COMPLIANT,
 	}
@@ -365,7 +365,7 @@ func NewPCInitiateMessage(srpId uint32, lspName string, segmentList []table.Segm
 
 	m := &PCInitiateMessage{}
 	var err error
-	if m.SrpObject, err = NewSrpObject(segmentList, srpId, false); err != nil {
+	if m.SrpObject, err = NewSrpObject(segmentList, srpID, false); err != nil {
 		return nil, err
 	}
 	if m.LspObject, err = NewLspObject(lspName, 0); err != nil { // PLSP-ID = 0
@@ -426,14 +426,14 @@ func (m *PCUpdMessage) Serialize() ([]uint8, error) {
 	return bytePCUpdMessage, err
 }
 
-func NewPCUpdMessage(srpId uint32, lspName string, plspId uint32, segmentList []table.Segment) (*PCUpdMessage, error) {
+func NewPCUpdMessage(srpID uint32, lspName string, plspID uint32, segmentList []table.Segment) (*PCUpdMessage, error) {
 	m := &PCUpdMessage{}
 	var err error
 
-	if m.SrpObject, err = NewSrpObject(segmentList, srpId, false); err != nil {
+	if m.SrpObject, err = NewSrpObject(segmentList, srpID, false); err != nil {
 		return nil, err
 	}
-	if m.LspObject, err = NewLspObject(lspName, plspId); err != nil {
+	if m.LspObject, err = NewLspObject(lspName, plspID); err != nil {
 		return nil, err
 	}
 	if m.EroObject, err = NewEroObject(segmentList); err != nil {

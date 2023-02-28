@@ -121,9 +121,9 @@ func ConvertToTedElem(dst *api.Destination) ([]table.TedElem, error) {
 
 func getLsNodeNLRI(typedLinkStateNlri *api.LsNodeNLRI, pathAttrs []*anypb.Any) (*table.LsNode, error) {
 	asn := typedLinkStateNlri.GetLocalNode().GetAsn()
-	routerId := typedLinkStateNlri.GetLocalNode().GetIgpRouterId()
+	routerID := typedLinkStateNlri.GetLocalNode().GetIgpRouterId()
 
-	lsNode := table.NewLsNode(asn, routerId)
+	lsNode := table.NewLsNode(asn, routerID)
 
 	for _, pathAttr := range pathAttrs {
 		typedPathAttr, err := pathAttr.UnmarshalNew()
@@ -145,7 +145,7 @@ func getLsNodeNLRI(typedLinkStateNlri *api.LsNodeNLRI, pathAttrs []*anypb.Any) (
 			}
 			strIsisArea += s
 		}
-		lsNode.IsisAreaId = strIsisArea
+		lsNode.IsisAreaID = strIsisArea
 		lsNode.Hostname = bgplsAttr.GetNode().GetName()
 
 		srCapabilities := bgplsAttr.GetNode().GetSrCapabilities().GetRanges()
@@ -245,11 +245,11 @@ func getLsPrefixV4(lsNlri *api.LsAddrPrefix, sidIndex uint32) (*table.LsPrefixV4
 	if !ok {
 		return nil, errors.New("invalid LS prefix v4 NLRI type")
 	}
-	localNodeId := prefv4Nlri.GetLocalNode().GetIgpRouterId()
+	localNodeID := prefv4Nlri.GetLocalNode().GetIgpRouterId()
 	localNodeAsn := prefv4Nlri.GetLocalNode().GetAsn()
 	prefixV4 := prefv4Nlri.GetPrefixDescriptor().GetIpReachability()
 
-	localNode := table.NewLsNode(localNodeAsn, localNodeId)
+	localNode := table.NewLsNode(localNodeAsn, localNodeID)
 	lsPrefixV4 := table.NewLsPrefixV4(localNode)
 	lsPrefixV4.SidIndex = sidIndex
 	if len(prefixV4) != 1 {

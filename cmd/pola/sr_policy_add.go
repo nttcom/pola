@@ -69,8 +69,8 @@ type SRPolicy struct {
 	PcepSessionAddr netip.Addr `yaml:"pcepSessionAddr"`
 	SrcAddr         netip.Addr `yaml:"srcAddr"`
 	DstAddr         netip.Addr `yaml:"dstAddr"`
-	SrcRouterId     string     `yaml:"srcRouterId"`
-	DstRouterId     string     `yaml:"dstRouterId"`
+	SrcRouterID     string     `yaml:"srcRouterID"`
+	DstRouterID     string     `yaml:"dstRouterID"`
 	Name            string     `yaml:"name"`
 	SegmentList     []Segment  `yaml:"segmentList"`
 	Color           uint32     `yaml:"color"`
@@ -148,8 +148,8 @@ func addSRPolicyLinkState(input InputFormat) error {
 		"asn: 65000\n" +
 		"srPolicy:\n" +
 		"  pcepSessionAddr: 192.0.2.1\n" +
-		"  srcRouterId: 0000.0aff.0001\n" +
-		"  dstRouterId: 0000.0aff.0004\n" +
+		"  srcRouterID: 0000.0aff.0001\n" +
+		"  dstRouterID: 0000.0aff.0004\n" +
 		"  name: name\n" +
 		"  color: 100\n" +
 		"  type: dynamic\n" +
@@ -158,15 +158,15 @@ func addSRPolicyLinkState(input InputFormat) error {
 		"asn: 65000\n" +
 		"srPolicy:\n" +
 		"  pcepSessionAddr: 192.0.2.1\n" +
-		"  srcRouterId: 0000.0aff.0001\n" +
-		"  dstRouterId: 0000.0aff.0002\n" +
+		"  srcRouterID: 0000.0aff.0001\n" +
+		"  dstRouterID: 0000.0aff.0002\n" +
 		"  name: name\n" +
 		"  color: 100\n" +
 		"  type: explicit\n" +
 		"  segmentList:\n" +
 		"    - sid: 16003\n" +
 		"    - sid: 16002\n"
-	if input.Asn == 0 || !input.SRPolicy.PcepSessionAddr.IsValid() || input.SRPolicy.Color == 0 || input.SRPolicy.SrcRouterId == "" || input.SRPolicy.DstRouterId == "" {
+	if input.Asn == 0 || !input.SRPolicy.PcepSessionAddr.IsValid() || input.SRPolicy.Color == 0 || input.SRPolicy.SrcRouterID == "" || input.SRPolicy.DstRouterID == "" {
 		errMsg := "invalid input\n" +
 			"input example is below\n\n" +
 			sampleInputDynamic +
@@ -216,8 +216,8 @@ func addSRPolicyLinkState(input InputFormat) error {
 
 	srPolicy := &pb.SRPolicy{
 		PcepSessionAddr: input.SRPolicy.PcepSessionAddr.AsSlice(),
-		SrcRouterId:     input.SRPolicy.SrcRouterId,
-		DstRouterId:     input.SRPolicy.DstRouterId,
+		SrcRouterID:     input.SRPolicy.SrcRouterID,
+		DstRouterID:     input.SRPolicy.DstRouterID,
 		Color:           input.SRPolicy.Color,
 		PolicyName:      input.SRPolicy.Name,
 		Type:            srPolicyType,

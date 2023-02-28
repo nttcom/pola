@@ -33,7 +33,7 @@ func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem
 	s := &Server{logger: logger}
 	if o.TedEnable {
 		s.ted = &table.LsTed{
-			Id:    1,
+			ID:    1,
 			Nodes: map[uint32]map[string]*table.LsNode{},
 		}
 
@@ -42,7 +42,7 @@ func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem
 			for {
 				tedElems := <-tedElemsChan
 				ted := &table.LsTed{
-					Id:    s.ted.Id,
+					ID:    s.ted.ID,
 					Nodes: map[uint32]map[string]*table.LsNode{},
 				}
 				ted.Update(tedElems)
@@ -88,9 +88,9 @@ func (s *Server) Serve(address string, port string) error {
 	}
 	defer l.Close()
 
-	sessionId := uint8(1)
+	sessionID := uint8(1)
 	for {
-		ss := NewSession(sessionId, s.logger)
+		ss := NewSession(sessionID, s.logger)
 		ss.tcpConn, err = l.AcceptTCP()
 		if err != nil {
 			return err
@@ -106,7 +106,7 @@ func (s *Server) Serve(address string, port string) error {
 			s.closeSession(ss)
 			s.logger.Info("Close PCEP session", zap.String("session", ss.peerAddr.String()))
 		}()
-		sessionId++
+		sessionID++
 	}
 }
 
@@ -115,7 +115,7 @@ func (s *Server) closeSession(session *Session) {
 
 	// Remove Session List
 	for i, v := range s.sessionList {
-		if v.sessionId == session.sessionId {
+		if v.sessionID == session.sessionID {
 			s.sessionList[i] = s.sessionList[len(s.sessionList)-1]
 			s.sessionList = s.sessionList[:len(s.sessionList)-1]
 			break

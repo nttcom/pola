@@ -20,11 +20,11 @@ func (x *SRPolicy) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	enc.AddString("SrcAddr", srcAddr.String())
 	dstAddr, _ := netip.AddrFromSlice(x.GetDstAddr())
 	enc.AddString("DstAddr", dstAddr.String())
-	if srcRouterId := x.GetSrcRouterId(); srcRouterId != "" {
-		enc.AddString("SrcRouterId", srcRouterId)
+	if srcRouterID := x.GetSrcRouterID(); srcRouterID != "" {
+		enc.AddString("SrcRouterID", srcRouterID)
 	}
-	if dstRouterId := x.DstRouterId; dstRouterId != "" {
-		enc.AddString("DstRouterId", dstRouterId)
+	if dstRouterID := x.DstRouterID; dstRouterID != "" {
+		enc.AddString("DstRouterID", dstRouterID)
 	}
 	enc.AddUint32("Color", x.GetColor())
 	enc.AddUint32("Preference", x.GetPreference())

@@ -18,11 +18,11 @@ import (
 )
 
 type Session struct {
-	sessionId       uint8
+	sessionID       uint8
 	peerAddr        netip.Addr
 	tcpConn         *net.TCPConn
 	isSynced        bool
-	srpIdHead       uint32 // 0x00000000 and 0xFFFFFFFF are reserved.
+	srpIDHead       uint32 // 0x00000000 and 0xFFFFFFFF are reserved.
 	srPolicies      []table.SRPolicy
 	logger          *zap.Logger
 	keepAlive       uint8
@@ -30,11 +30,11 @@ type Session struct {
 	pccCapabilities []pcep.CapabilityInterface
 }
 
-func NewSession(sessionId uint8, logger *zap.Logger) *Session {
+func NewSession(sessionID uint8, logger *zap.Logger) *Session {
 	return &Session{
-		sessionId: sessionId,
+		sessionID: sessionID,
 		isSynced:  false,
-		srpIdHead: uint32(1),
+		srpIDHead: uint32(1),
 		logger:    logger,
 		pccType:   pcep.RFC_COMPLIANT,
 	}
@@ -134,7 +134,7 @@ func (ss *Session) parseOpenMessage() (*pcep.OpenMessage, error) {
 }
 
 func (ss *Session) SendOpen() error {
-	openMessage, err := pcep.NewOpenMessage(ss.sessionId, ss.keepAlive, ss.pccCapabilities)
+	openMessage, err := pcep.NewOpenMessage(ss.sessionID, ss.keepAlive, ss.pccCapabilities)
 	if err != nil {
 		return err
 	}
@@ -227,12 +227,12 @@ func (ss *Session) handlePCRpt(length uint16) error {
 			go ss.RegisterSRPolicy(srPolicy)
 		} else if !sr.LspObject.SFlag {
 			switch {
-			case sr.LspObject.PlspId == 0:
+			case sr.LspObject.PlspID == 0:
 				ss.logger.Info("Finish PCRpt state synchronization", zap.String("session", ss.peerAddr.String()))
 				ss.isSynced = true
-			case sr.SrpObject.SrpId != 0:
+			case sr.SrpObject.SrpID != 0:
 				srPolicy := sr.ToSRPolicy(ss.pccType)
-				ss.logger.Info("Finish Stateful PCE request", zap.String("session", ss.peerAddr.String()), zap.Uint32("srpId", sr.SrpObject.SrpId))
+				ss.logger.Info("Finish Stateful PCE request", zap.String("session", ss.peerAddr.String()), zap.Uint32("srpID", sr.SrpObject.SrpID))
 				go ss.RegisterSRPolicy(srPolicy)
 			default:
 				// TODO: Need to implementation of PCUpdate for Passive stateful PCE
@@ -244,37 +244,37 @@ func (ss *Session) handlePCRpt(length uint16) error {
 }
 
 func (ss *Session) SendPCInitiate(srPolicy table.SRPolicy) error {
-	pcinitiateMessage, err := pcep.NewPCInitiateMessage(ss.srpIdHead, srPolicy.Name, srPolicy.SegmentList, srPolicy.Color, srPolicy.Preference, srPolicy.SrcAddr, srPolicy.DstAddr, pcep.VendorSpecific(ss.pccType))
+	pcinitiateMessage, err := pcep.NewPCInitiateMessage(ss.srpIDHead, srPolicy.Name, srPolicy.SegmentList, srPolicy.Color, srPolicy.Preference, srPolicy.SrcAddr, srPolicy.DstAddr, pcep.VendorSpecific(ss.pccType))
 	if err != nil {
 		return err
 	}
 	err = ss.sendPcepMessage(pcinitiateMessage, "Send PCInitiate")
 	if err == nil {
-		ss.srpIdHead++
+		ss.srpIDHead++
 	}
 	return err
 }
 
 func (ss *Session) SendPCUpdate(srPolicy table.SRPolicy) error {
-	pcupdateMessage, err := pcep.NewPCUpdMessage(ss.srpIdHead, srPolicy.Name, srPolicy.PlspId, srPolicy.SegmentList)
+	pcupdateMessage, err := pcep.NewPCUpdMessage(ss.srpIDHead, srPolicy.Name, srPolicy.PlspID, srPolicy.SegmentList)
 	if err != nil {
 		return err
 	}
 	err = ss.sendPcepMessage(pcupdateMessage, "Send PCUpdate")
 	if err == nil {
-		ss.srpIdHead++
+		ss.srpIDHead++
 	}
 	return err
 }
 
 func (ss *Session) RegisterSRPolicy(srPolicy table.SRPolicy) {
-	ss.DeleteSRPolicy(srPolicy.PlspId)
+	ss.DeleteSRPolicy(srPolicy.PlspID)
 	ss.srPolicies = append(ss.srPolicies, srPolicy)
 }
 
-func (ss *Session) DeleteSRPolicy(plspId uint32) {
+func (ss *Session) DeleteSRPolicy(plspID uint32) {
 	for i, v := range ss.srPolicies {
-		if v.PlspId == plspId {
+		if v.PlspID == plspID {
 			ss.srPolicies[i] = ss.srPolicies[len(ss.srPolicies)-1]
 			ss.srPolicies = ss.srPolicies[:len(ss.srPolicies)-1]
 			break
@@ -283,10 +283,10 @@ func (ss *Session) DeleteSRPolicy(plspId uint32) {
 }
 
 // SearchSRPolicyPlspID returns the PLSP-ID of a registered SR Policy, along with a boolean value indicating if it was found.
-func (ss *Session) SearchSRPolicyPlspId(color uint32, endpoint netip.Addr) (uint32, bool) {
+func (ss *Session) SearchSRPolicyPlspID(color uint32, endpoint netip.Addr) (uint32, bool) {
 	for _, v := range ss.srPolicies {
 		if v.Color == color && v.DstAddr == endpoint {
-			return v.PlspId, true
+			return v.PlspID, true
 		}
 	}
 	return 0, false
