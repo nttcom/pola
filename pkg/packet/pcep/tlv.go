@@ -88,7 +88,7 @@ const (
 
 const TL_LENGTH = 4
 
-type TlvInterface interface {
+type TLVInterface interface {
 	DecodeFromBytes(data []uint8) error
 	Serialize() []uint8
 	MarshalLogObject(enc zapcore.ObjectEncoder) error
@@ -403,7 +403,7 @@ func (tlv *PathSetupType) GetByteLength() uint16 {
 type PathSetupTypeCapability struct {
 	Length         uint16
 	PathSetupTypes Psts
-	SubTlvs        []TlvInterface
+	SubTLVs        []TLVInterface
 }
 
 func (tlv *PathSetupTypeCapability) DecodeFromBytes(data []uint8) error {
@@ -418,7 +418,7 @@ func (tlv *PathSetupTypeCapability) DecodeFromBytes(data []uint8) error {
 		pstNum += 4 - (pstNum % 4) // padding byte
 	}
 	var err error
-	tlv.SubTlvs, err = DecodeTLVs(data[8+pstNum : TL_LENGTH+tlv.Length]) // 8 byte: Type&Length (4 byte) + Reserve&pstNum (4 byte)
+	tlv.SubTLVs, err = DecodeTLVs(data[8+pstNum : TL_LENGTH+tlv.Length]) // 8 byte: Type&Length (4 byte) + Reserve&pstNum (4 byte)
 	if err != nil {
 		return err
 	}
@@ -451,8 +451,8 @@ func (tlv *PathSetupTypeCapability) Serialize() []uint8 {
 		val[4+i] = uint8(pst)
 	}
 
-	for _, subTlv := range tlv.SubTlvs {
-		val = append(val, subTlv.Serialize()...)
+	for _, subTLV := range tlv.SubTLVs {
+		val = append(val, subTLV.Serialize()...)
 	}
 	buf = append(buf, val...)
 	return buf
@@ -542,13 +542,13 @@ func (tlv *AssocTypeList) GetByteLength() uint16 {
 	}
 }
 
-type UndefinedTlv struct {
+type UndefinedTLV struct {
 	Typ    uint16
 	Length uint16
 	Value  []uint8
 }
 
-func (tlv *UndefinedTlv) DecodeFromBytes(data []uint8) error {
+func (tlv *UndefinedTLV) DecodeFromBytes(data []uint8) error {
 	tlv.Typ = binary.BigEndian.Uint16(data[0:2])
 	tlv.Length = binary.BigEndian.Uint16(data[2:4])
 
@@ -556,16 +556,16 @@ func (tlv *UndefinedTlv) DecodeFromBytes(data []uint8) error {
 	return nil
 }
 
-func (tlv *UndefinedTlv) Serialize() []uint8 {
+func (tlv *UndefinedTLV) Serialize() []uint8 {
 	bytePcepTLV := []uint8{}
 
-	byteTlvType := make([]uint8, 2)
-	binary.BigEndian.PutUint16(byteTlvType, tlv.Typ)
-	bytePcepTLV = append(bytePcepTLV, byteTlvType...) // Type (2byte)
+	byteTLVType := make([]uint8, 2)
+	binary.BigEndian.PutUint16(byteTLVType, tlv.Typ)
+	bytePcepTLV = append(bytePcepTLV, byteTLVType...) // Type (2byte)
 
-	byteTlvLength := make([]uint8, 2)
-	binary.BigEndian.PutUint16(byteTlvLength, tlv.Length)
-	bytePcepTLV = append(bytePcepTLV, byteTlvLength...) // Length (2byte)
+	byteTLVLength := make([]uint8, 2)
+	binary.BigEndian.PutUint16(byteTLVLength, tlv.Length)
+	bytePcepTLV = append(bytePcepTLV, byteTLVLength...) // Length (2byte)
 
 	bytePcepTLV = append(bytePcepTLV, tlv.Value...) // Value (Length byte)
 	if padding := tlv.Length % 4; padding != 0 {
@@ -575,19 +575,19 @@ func (tlv *UndefinedTlv) Serialize() []uint8 {
 	return bytePcepTLV
 }
 
-func (c *UndefinedTlv) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+func (tlv *UndefinedTLV) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	return nil
 }
 
-func (tlv *UndefinedTlv) Type() uint16 {
+func (tlv *UndefinedTLV) Type() uint16 {
 	return tlv.Typ
 }
 
-func (tlv *UndefinedTlv) Len() uint16 {
+func (tlv *UndefinedTLV) Len() uint16 {
 	return tlv.Length
 }
 
-func (tlv *UndefinedTlv) GetByteLength() uint16 {
+func (tlv *UndefinedTLV) GetByteLength() uint16 {
 	if tlv.Len()%4 == 0 {
 		return TL_LENGTH + tlv.Len()
 	} else {
@@ -595,12 +595,12 @@ func (tlv *UndefinedTlv) GetByteLength() uint16 {
 	}
 }
 
-func (tlv *UndefinedTlv) SetLength() {
+func (tlv *UndefinedTLV) SetLength() {
 	tlv.Length = uint16(len(tlv.Value))
 }
 
-func DecodeTLV(data []uint8) (TlvInterface, error) {
-	var tlv TlvInterface
+func DecodeTLV(data []uint8) (TLVInterface, error) {
+	var tlv TLVInterface
 	switch binary.BigEndian.Uint16(data[0:2]) {
 	case TLV_STATEFUL_PCE_CAPABILITY:
 		tlv = &StatefulPceCapability{}
@@ -619,7 +619,7 @@ func DecodeTLV(data []uint8) (TlvInterface, error) {
 	case TLV_ASSOC_TYPE_LIST:
 		tlv = &AssocTypeList{}
 	default:
-		tlv = &UndefinedTlv{}
+		tlv = &UndefinedTLV{}
 	}
 	if err := tlv.DecodeFromBytes(data); err != nil {
 		return nil, err
@@ -627,9 +627,9 @@ func DecodeTLV(data []uint8) (TlvInterface, error) {
 	return tlv, nil
 }
 
-func DecodeTLVs(data []uint8) ([]TlvInterface, error) {
-	tlvs := []TlvInterface{}
-	var tlv TlvInterface
+func DecodeTLVs(data []uint8) ([]TLVInterface, error) {
+	tlvs := []TLVInterface{}
+	var tlv TLVInterface
 	var err error
 
 	for {

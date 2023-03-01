@@ -30,39 +30,29 @@ type PceOptions struct {
 }
 
 func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem) ServerError {
-	var s *Server
+	s := &Server{logger: logger}
 	if o.TedEnable {
-		s = &Server{
-			ted: &table.LsTed{
-				Id:    1,
-				Nodes: map[uint32]map[string]*table.LsNode{},
-			},
+		s.ted = &table.LsTed{
+			ID:    1,
+			Nodes: map[uint32]map[string]*table.LsNode{},
 		}
 
-		// Update Ted
+		// Update TED
 		go func() {
 			for {
 				tedElems := <-tedElemsChan
-				s.ted = &table.LsTed{
-					Id:    s.ted.Id,
+				ted := &table.LsTed{
+					ID:    s.ted.ID,
 					Nodes: map[uint32]map[string]*table.LsNode{},
 				}
-
-				for _, tedElem := range tedElems {
-					tedElem.UpdateTed(s.ted)
-				}
+				ted.Update(tedElems)
+				s.ted = ted
 				logger.Info("Update TED")
 			}
 		}()
-	} else {
-		s = &Server{
-			ted: nil,
-		}
 	}
 
-	s.logger = logger
 	errChan := make(chan ServerError)
-	// Start PCEP listen
 	go func() {
 		if err := s.Serve(o.PcepAddr, o.PcepPort); err != nil {
 			errChan <- ServerError{
@@ -71,7 +61,7 @@ func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem
 			}
 		}
 	}()
-	// Start gRPC listen
+
 	go func() {
 		grpcServer := grpc.NewServer()
 		apiServer := NewAPIServer(s, grpcServer)
@@ -82,7 +72,6 @@ func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem
 			}
 		}
 	}()
-
 	serverError := <-errChan
 	return serverError
 }
@@ -97,11 +86,11 @@ func (s *Server) Serve(address string, port string) error {
 	if err != nil {
 		return err
 	}
-
 	defer l.Close()
-	sessionId := uint8(1)
+
+	sessionID := uint8(1)
 	for {
-		ss := NewSession(sessionId, s.logger)
+		ss := NewSession(sessionID, s.logger)
 		ss.tcpConn, err = l.AcceptTCP()
 		if err != nil {
 			return err
@@ -117,7 +106,7 @@ func (s *Server) Serve(address string, port string) error {
 			s.closeSession(ss)
 			s.logger.Info("Close PCEP session", zap.String("session", ss.peerAddr.String()))
 		}()
-		sessionId += 1
+		sessionID++
 	}
 }
 
@@ -126,7 +115,7 @@ func (s *Server) closeSession(session *Session) {
 
 	// Remove Session List
 	for i, v := range s.sessionList {
-		if v.sessionId == session.sessionId {
+		if v.sessionID == session.sessionID {
 			s.sessionList[i] = s.sessionList[len(s.sessionList)-1]
 			s.sessionList = s.sessionList[:len(s.sessionList)-1]
 			break
@@ -136,21 +125,20 @@ func (s *Server) closeSession(session *Session) {
 
 func (s *Server) SearchSession(peerAddr netip.Addr) *Session {
 	for _, pcepSession := range s.sessionList {
-		if pcepSession.peerAddr == peerAddr {
-			if !pcepSession.isSynced {
-				break
-			}
+		if pcepSession.peerAddr == peerAddr && pcepSession.isSynced {
 			return pcepSession
 		}
 	}
 	return nil
 }
 
-// return registered SR Policy map with key sessionAddr
+// SRPolicies returns a map of registered SR Policy with key sessionAddr
 func (s *Server) SRPolicies() map[netip.Addr][]table.SRPolicy {
-	srPolicies := map[netip.Addr][]table.SRPolicy{}
+	srPolicies := make(map[netip.Addr][]table.SRPolicy)
 	for _, ss := range s.sessionList {
-		srPolicies[ss.peerAddr] = ss.srPolicies
+		if ss.isSynced {
+			srPolicies[ss.peerAddr] = ss.srPolicies
+		}
 	}
 	return srPolicies
 }

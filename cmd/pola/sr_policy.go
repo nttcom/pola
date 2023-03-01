@@ -10,14 +10,13 @@ import (
 )
 
 func newSRPolicyCmd() *cobra.Command {
-
-	srPolicyCmd := &cobra.Command{
+	cmd := &cobra.Command{
 		Use: "sr-policy",
 		Run: func(cmd *cobra.Command, args []string) {
 			cmd.HelpFunc()(cmd, args)
 		},
+		Args: cobra.NoArgs,
 	}
-
-	srPolicyCmd.AddCommand(newSRPolicyListCmd(), newSRPolicyAddCmd())
-	return srPolicyCmd
+	cmd.AddCommand(newSRPolicyListCmd(), newSRPolicyAddCmd())
+	return cmd
 }

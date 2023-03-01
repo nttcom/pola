@@ -6,7 +6,7 @@
 package pcep
 
 type CapabilityInterface interface {
-	TlvInterface
+	TLVInterface
 }
 
 func PolaCapability() []CapabilityInterface {
@@ -22,7 +22,7 @@ func PolaCapability() []CapabilityInterface {
 		&PathSetupTypeCapability{
 			Length:         uint16(10),
 			PathSetupTypes: Psts{PST_RSVP_TE, PST_SR_TE, PST_SRV6_TE},
-			SubTlvs: []TlvInterface{
+			SubTLVs: []TLVInterface{
 				&SRPceCapability{
 					UnlimitedMSD:    false,
 					SupportNAI:      false,

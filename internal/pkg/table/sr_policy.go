@@ -12,7 +12,7 @@ import (
 )
 
 type SRPolicy struct {
-	PlspId      uint32
+	PlspID      uint32
 	Name        string
 	SegmentList []Segment
 	SrcAddr     netip.Addr
@@ -25,16 +25,18 @@ type Segment interface {
 	SidString() string
 }
 
-func NewSegment(sid string) (seg Segment, err error) {
-
-	if addr, err := netip.ParseAddr(sid); err == nil && addr.Is6() {
-		seg = NewSegmentSRv6(addr)
-	} else if i, err := strconv.ParseUint(sid, 10, 32); err == nil {
-		seg = NewSegmentSRMPLS(uint32(i))
-	} else {
-		return nil, errors.New("invalid SID")
+func NewSegment(sid string) (Segment, error) {
+	addr, err := netip.ParseAddr(sid)
+	if err == nil && addr.Is6() {
+		return NewSegmentSRv6(addr), nil
 	}
-	return seg, nil
+
+	i, err := strconv.ParseUint(sid, 10, 32)
+	if err == nil {
+		return NewSegmentSRMPLS(uint32(i)), nil
+	}
+
+	return nil, errors.New("invalid SID")
 }
 
 type SegmentSRv6 struct {
@@ -45,11 +47,10 @@ func (seg SegmentSRv6) SidString() string {
 	return seg.Sid.String()
 }
 
-func NewSegmentSRv6(sid netip.Addr) (seg SegmentSRv6) {
-	seg = SegmentSRv6{
+func NewSegmentSRv6(sid netip.Addr) SegmentSRv6 {
+	return SegmentSRv6{
 		Sid: sid,
 	}
-	return seg
 }
 
 type SegmentSRMPLS struct {
@@ -60,9 +61,8 @@ func (seg SegmentSRMPLS) SidString() string {
 	return strconv.Itoa(int(seg.Sid))
 }
 
-func NewSegmentSRMPLS(sid uint32) (seg SegmentSRMPLS) {
-	seg = SegmentSRMPLS{
+func NewSegmentSRMPLS(sid uint32) SegmentSRMPLS {
+	return SegmentSRMPLS{
 		Sid: sid,
 	}
-	return seg
 }
