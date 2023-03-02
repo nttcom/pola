@@ -12,15 +12,17 @@ option go_package = "github.com/nttcom/pola/api/grpc";
 import "google/protobuf/empty.proto";
 
 service PceService {
-  rpc CreateSRPolicy (CreateSRPolicyInput) returns (SRPolicyStatus) {};
+  rpc CreateSRPolicy (CreateSRPolicyInput) returns (RequestStatus) {};
 
-  rpc CreateSRPolicyWithoutLinkState (CreateSRPolicyInput) returns (SRPolicyStatus) {};
+  rpc CreateSRPolicyWithoutLinkState (CreateSRPolicyInput) returns (RequestStatus) {};
 
-  rpc GetPeerAddrList (google.protobuf.Empty) returns (PeerAddrList) {};
+  rpc GetSessionList (google.protobuf.Empty) returns (SessionList) {};
 
   rpc GetSRPolicyList (google.protobuf.Empty) returns (SRPolicyList) {};
 
   rpc GetTed (google.protobuf.Empty) returns (Ted) {};
+
+  rpc DeleteSession (Session) returns (RequestStatus) {};
 }
 
 message Segment {
@@ -51,12 +53,16 @@ message CreateSRPolicyInput {
     uint32 asn = 2;
 } 
 
-message SRPolicyStatus {
+message RequestStatus {
     bool isSuccess = 1;
 }
 
-message PeerAddrList {
-    repeated bytes PeerAddrs = 1; 
+message Session {
+    bytes Addr = 1;
+}
+
+message SessionList {
+    repeated Session Sessions = 1; 
 }
 
 message SRPolicyList {

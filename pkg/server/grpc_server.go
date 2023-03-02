@@ -17,6 +17,7 @@ import (
 	pb "github.com/nttcom/pola/api/grpc"
 	"github.com/nttcom/pola/internal/pkg/cspf"
 	"github.com/nttcom/pola/internal/pkg/table"
+	"github.com/nttcom/pola/pkg/packet/pcep"
 	"go.uber.org/zap"
 	grpc "google.golang.org/grpc"
 )
@@ -46,18 +47,18 @@ func (s *APIServer) Serve(address string, port string) error {
 	return s.grpcServer.Serve(grpcListener)
 }
 
-func (s *APIServer) CreateSRPolicy(ctx context.Context, input *pb.CreateSRPolicyInput) (*pb.SRPolicyStatus, error) {
+func (s *APIServer) CreateSRPolicy(ctx context.Context, input *pb.CreateSRPolicyInput) (*pb.RequestStatus, error) {
 	return s.createSRPolicy(ctx, input, true)
 }
 
-func (s *APIServer) CreateSRPolicyWithoutLinkState(ctx context.Context, input *pb.CreateSRPolicyInput) (*pb.SRPolicyStatus, error) {
+func (s *APIServer) CreateSRPolicyWithoutLinkState(ctx context.Context, input *pb.CreateSRPolicyInput) (*pb.RequestStatus, error) {
 	return s.createSRPolicy(ctx, input, false)
 }
 
-func (s *APIServer) createSRPolicy(ctx context.Context, input *pb.CreateSRPolicyInput, withLinkState bool) (*pb.SRPolicyStatus, error) {
+func (s *APIServer) createSRPolicy(ctx context.Context, input *pb.CreateSRPolicyInput, withLinkState bool) (*pb.RequestStatus, error) {
 	err := validate(input.GetSRPolicy(), input.GetAsn(), withLinkState)
 	if err != nil {
-		return &pb.SRPolicyStatus{IsSuccess: false}, err
+		return &pb.RequestStatus{IsSuccess: false}, err
 	}
 
 	inputSRPolicy := input.GetSRPolicy()
@@ -66,22 +67,22 @@ func (s *APIServer) createSRPolicy(ctx context.Context, input *pb.CreateSRPolicy
 
 	if withLinkState {
 		if s.pce.ted == nil {
-			return &pb.SRPolicyStatus{IsSuccess: false}, errors.New("ted is disabled")
+			return &pb.RequestStatus{IsSuccess: false}, errors.New("ted is disabled")
 		}
 
 		srcAddr, err = getLoopbackAddr(s.pce, input.GetAsn(), inputSRPolicy.GetSrcRouterID())
 		if err != nil {
-			return &pb.SRPolicyStatus{IsSuccess: false}, err
+			return &pb.RequestStatus{IsSuccess: false}, err
 		}
 
 		dstAddr, err = getLoopbackAddr(s.pce, input.GetAsn(), inputSRPolicy.GetDstRouterID())
 		if err != nil {
-			return &pb.SRPolicyStatus{IsSuccess: false}, err
+			return &pb.RequestStatus{IsSuccess: false}, err
 		}
 
 		segmentList, err = getSegmentList(inputSRPolicy, input.GetAsn(), s.pce.ted)
 		if err != nil {
-			return &pb.SRPolicyStatus{IsSuccess: false}, err
+			return &pb.RequestStatus{IsSuccess: false}, err
 		}
 	} else {
 		srcAddr, _ = netip.AddrFromSlice(inputSRPolicy.GetSrcAddr())
@@ -90,7 +91,7 @@ func (s *APIServer) createSRPolicy(ctx context.Context, input *pb.CreateSRPolicy
 		for _, segment := range inputSRPolicy.GetSegmentList() {
 			seg, err := table.NewSegment(segment.GetSid())
 			if err != nil {
-				return &pb.SRPolicyStatus{IsSuccess: false}, err
+				return &pb.RequestStatus{IsSuccess: false}, err
 			}
 			segmentList = append(segmentList, seg)
 		}
@@ -104,7 +105,7 @@ func (s *APIServer) createSRPolicy(ctx context.Context, input *pb.CreateSRPolicy
 
 	pcepSession, err := getPcepSession(s.pce, inputSRPolicy.GetPcepSessionAddr())
 	if err != nil {
-		return &pb.SRPolicyStatus{IsSuccess: false}, err
+		return &pb.RequestStatus{IsSuccess: false}, err
 	}
 
 	srPolicy := table.SRPolicy{
@@ -122,16 +123,16 @@ func (s *APIServer) createSRPolicy(ctx context.Context, input *pb.CreateSRPolicy
 		srPolicy.PlspID = id
 
 		if err := pcepSession.SendPCUpdate(srPolicy); err != nil {
-			return &pb.SRPolicyStatus{IsSuccess: false}, err
+			return &pb.RequestStatus{IsSuccess: false}, err
 		}
 	} else {
 		// Initiate SR Policy
 		if err := pcepSession.SendPCInitiate(srPolicy); err != nil {
-			return &pb.SRPolicyStatus{IsSuccess: false}, err
+			return &pb.RequestStatus{IsSuccess: false}, err
 		}
 	}
 
-	return &pb.SRPolicyStatus{IsSuccess: true}, nil
+	return &pb.RequestStatus{IsSuccess: true}, nil
 }
 
 func validate(inputSRPolicy *pb.SRPolicy, asn uint32, withLinkState bool) error {
@@ -228,12 +229,15 @@ func getMetricType(metricType pb.MetricType) (table.MetricType, error) {
 	}
 }
 
-func (s *APIServer) GetPeerAddrList(context.Context, *empty.Empty) (*pb.PeerAddrList, error) {
+func (s *APIServer) GetSessionList(context.Context, *empty.Empty) (*pb.SessionList, error) {
 	s.pce.logger.Info("Receive GetPeerAddrList API request", zap.String("server", "grpc"))
 
-	var ret pb.PeerAddrList
+	var ret pb.SessionList
 	for _, pcepSession := range s.pce.sessionList {
-		ret.PeerAddrs = append(ret.PeerAddrs, pcepSession.peerAddr.AsSlice())
+		ss := &pb.Session{
+			Addr: pcepSession.peerAddr.AsSlice(),
+		}
+		ret.Sessions = append(ret.Sessions, ss)
 	}
 
 	s.pce.logger.Info("Send GetPeerAddrList API reply", zap.String("server", "grpc"))
@@ -342,4 +346,18 @@ func (s *APIServer) GetTed(context.Context, *empty.Empty) (*pb.Ted, error) {
 
 	s.pce.logger.Info("Send GetTed API reply", zap.String("server", "grpc"))
 	return ret, nil
+}
+
+func (c *APIServer) DeleteSession(ctx context.Context, input *pb.Session) (*pb.RequestStatus, error) {
+	ssAddr, _ := netip.AddrFromSlice(input.GetAddr())
+
+	s := c.pce
+	ss := s.SearchSession(ssAddr)
+	if err := ss.SendClose(pcep.R_NO_EXPLANATION_PROVIDED); err != nil {
+		return &pb.RequestStatus{IsSuccess: false}, err
+	}
+	// Remove session info from PCE server
+	s.closeSession(ss)
+
+	return &pb.RequestStatus{IsSuccess: true}, nil
 }

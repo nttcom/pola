@@ -139,6 +139,82 @@ func NewKeepaliveMessage() (*KeepaliveMessage, error) {
 	return m, nil
 }
 
+// PCErr Message
+type PCErrMessage struct {
+	PcepErrorObject *PcepErrorObject
+}
+
+func (m *PCErrMessage) DecodeFromBytes(messageBody []uint8) error {
+	var commonObjectHeader CommonObjectHeader
+	if err := commonObjectHeader.DecodeFromBytes(messageBody); err != nil {
+		return err
+	}
+	pcepErrorObject := &PcepErrorObject{}
+	if err := pcepErrorObject.DecodeFromBytes(messageBody[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength]); err != nil {
+		return err
+	}
+	m.PcepErrorObject = pcepErrorObject
+	return nil
+}
+
+func (m *PCErrMessage) Serialize() []uint8 {
+	pcerrMessageLength := COMMON_HEADER_LENGTH + m.PcepErrorObject.getByteLength()
+	pcerrHeader := NewCommonHeader(MT_ERROR, pcerrMessageLength)
+	bytePCErrHeader := pcerrHeader.Serialize()
+	bytePcepErrorObject := m.PcepErrorObject.Serialize()
+	bytePCErrMessage := AppendByteSlices(bytePCErrHeader, bytePcepErrorObject)
+	return bytePCErrMessage
+}
+
+func NewPCErrMessage(errorType uint8, errorValue uint8, tlvs []TLVInterface) (*PCErrMessage, error) {
+	o, err := NewPcepErrorObject(errorType, errorValue, tlvs)
+	if err != nil {
+		return nil, err
+	}
+	m := &PCErrMessage{
+		PcepErrorObject: o,
+	}
+	return m, nil
+}
+
+// Close Message
+type CloseMessage struct {
+	CloseObject *CloseObject
+}
+
+func (m *CloseMessage) DecodeFromBytes(messageBody []uint8) error {
+	var commonObjectHeader CommonObjectHeader
+	if err := commonObjectHeader.DecodeFromBytes(messageBody); err != nil {
+		return err
+	}
+	closeObject := &CloseObject{}
+	if err := closeObject.DecodeFromBytes(messageBody[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength]); err != nil {
+		return err
+	}
+	m.CloseObject = closeObject
+	return nil
+}
+
+func (m *CloseMessage) Serialize() []uint8 {
+	closeMessageLength := COMMON_HEADER_LENGTH + m.CloseObject.getByteLength()
+	closeHeader := NewCommonHeader(MT_CLOSE, closeMessageLength)
+	byteCloseHeader := closeHeader.Serialize()
+	byteCloseObject := m.CloseObject.Serialize()
+	byteCloseMessage := AppendByteSlices(byteCloseHeader, byteCloseObject)
+	return byteCloseMessage
+}
+
+func NewCloseMessage(reason uint8) (*CloseMessage, error) {
+	o, err := NewCloseObject(reason)
+	if err != nil {
+		return nil, err
+	}
+	m := &CloseMessage{
+		CloseObject: o,
+	}
+	return m, nil
+}
+
 type StateReport struct {
 	SrpObject               *SrpObject
 	LspObject               *LspObject

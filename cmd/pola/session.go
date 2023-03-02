@@ -13,7 +13,7 @@ import (
 )
 
 func newSessionCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use: "session",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := showSession(jsonFmt); err != nil {
@@ -22,6 +22,9 @@ func newSessionCmd() *cobra.Command {
 			return nil
 		},
 	}
+
+	cmd.AddCommand(newSessionDelCmd())
+	return cmd
 }
 
 func showSession(jsonFlag bool) error {
