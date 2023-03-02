@@ -156,15 +156,17 @@ const (
 )
 
 type OpenObject struct {
-	Version   uint8
-	Flag      uint8
-	Keepalive uint8
-	Deadtime  uint8
-	Sid       uint8
-	Caps      []CapabilityInterface
+	ObjectType uint8
+	Version    uint8
+	Flag       uint8
+	Keepalive  uint8
+	Deadtime   uint8
+	Sid        uint8
+	Caps       []CapabilityInterface
 }
 
-func (o *OpenObject) DecodeFromBytes(objectBody []uint8) error {
+func (o *OpenObject) DecodeFromBytes(typ uint8, objectBody []uint8) error {
+	o.ObjectType = typ
 	o.Version = uint8(objectBody[0] >> 5)
 	o.Flag = uint8(objectBody[0] & 0x1f)
 	o.Keepalive = uint8(objectBody[1])
@@ -184,7 +186,7 @@ func (o *OpenObject) DecodeFromBytes(objectBody []uint8) error {
 }
 
 func (o *OpenObject) Serialize() []uint8 {
-	openObjectHeader := NewCommonObjectHeader(OC_OPEN, 1, o.getByteLength())
+	openObjectHeader := NewCommonObjectHeader(OC_OPEN, o.ObjectType, o.getByteLength())
 	byteOpenObjectHeader := openObjectHeader.Serialize()
 	buf := make([]uint8, 4)
 	buf[0] = o.Version << 5
@@ -213,35 +215,40 @@ func (o *OpenObject) getByteLength() uint16 {
 
 func NewOpenObject(sessionID uint8, keepalive uint8, capabilities []CapabilityInterface) (*OpenObject, error) {
 	o := &OpenObject{
-		Version:   uint8(1), // PCEP version. Current version is 1
-		Flag:      uint8(0),
-		Keepalive: keepalive,
-		Deadtime:  keepalive * 4,
-		Sid:       sessionID,
-		Caps:      capabilities,
+		ObjectType: OT_OPEN_OPEN,
+		Version:    uint8(1), // PCEP version. Current version is 1
+		Flag:       uint8(0),
+		Keepalive:  keepalive,
+		Deadtime:   keepalive * 4,
+		Sid:        sessionID,
+		Caps:       capabilities,
 	}
 	return o, nil
 }
 
 // BANDWIDTH Object (RFC5440 7.7)
 type BandwidthObject struct {
-	Bandwidth uint32
+	ObjectType uint8
+	Bandwidth  uint32
 }
 
-func (o *BandwidthObject) DecodeFromBytes(objectBody []uint8) error {
+func (o *BandwidthObject) DecodeFromBytes(typ uint8, objectBody []uint8) error {
+	o.ObjectType = typ
 	o.Bandwidth = binary.BigEndian.Uint32(objectBody[:])
 	return nil
 }
 
 // METRIC Object (RFC5440 7.8)
 type MetricObject struct {
+	ObjectType  uint8
 	CFlag       bool
 	BFlag       bool
 	MetricType  uint8
 	MetricValue uint32
 }
 
-func (o *MetricObject) DecodeFromBytes(objectBody []uint8) error {
+func (o *MetricObject) DecodeFromBytes(typ uint8, objectBody []uint8) error {
+	o.ObjectType = typ
 	o.CFlag = (objectBody[2] & 0x02) != 0
 	o.BFlag = (objectBody[2] & 0x01) != 0
 	o.MetricType = objectBody[3]
@@ -264,6 +271,7 @@ func (o *MetricObject) Serialize() []uint8 {
 
 // LSPA Object (RFC5440 7.11)
 type LspaObject struct {
+	ObjectType      uint8
 	ExcludeAny      uint32
 	IncludeAny      uint32
 	IncludeAll      uint32
@@ -272,7 +280,8 @@ type LspaObject struct {
 	LFlag           bool
 }
 
-func (o *LspaObject) DecodeFromBytes(objectBody []uint8) error {
+func (o *LspaObject) DecodeFromBytes(typ uint8, objectBody []uint8) error {
+	o.ObjectType = typ
 	o.ExcludeAny = binary.BigEndian.Uint32(objectBody[0:4])
 	o.IncludeAny = binary.BigEndian.Uint32(objectBody[4:8])
 	o.IncludeAll = binary.BigEndian.Uint32(objectBody[8:12])
@@ -301,12 +310,14 @@ const (
 )
 
 type PcepErrorObject struct {
+	ObjectType uint8
 	ErrorType  uint8
 	ErrorValue uint8
 	Tlvs       []TLVInterface
 }
 
-func (o *PcepErrorObject) DecodeFromBytes(objectBody []uint8) error {
+func (o *PcepErrorObject) DecodeFromBytes(typ uint8, objectBody []uint8) error {
+	o.ObjectType = typ
 	o.ErrorType = objectBody[2]
 	o.ErrorValue = objectBody[3]
 	if len(objectBody) > 4 {
@@ -320,7 +331,7 @@ func (o *PcepErrorObject) DecodeFromBytes(objectBody []uint8) error {
 }
 
 func (o *PcepErrorObject) Serialize() []uint8 {
-	pcepErrorObjectHeader := NewCommonObjectHeader(OC_PCEP_ERROR, OT_ERROR_ERROR, o.getByteLength())
+	pcepErrorObjectHeader := NewCommonObjectHeader(OC_PCEP_ERROR, o.ObjectType, o.getByteLength())
 	bytePcepErrorObjectHeader := pcepErrorObjectHeader.Serialize()
 
 	buf := make([]uint8, 4)
@@ -342,6 +353,7 @@ func (o *PcepErrorObject) getByteLength() uint16 {
 
 func NewPcepErrorObject(errorType uint8, errorValue uint8, tlvs []TLVInterface) (*PcepErrorObject, error) {
 	o := &PcepErrorObject{
+		ObjectType: OT_ERROR_ERROR,
 		ErrorType:  errorType,
 		ErrorValue: errorValue,
 		Tlvs:       tlvs,
@@ -361,16 +373,18 @@ const (
 )
 
 type CloseObject struct {
-	Reason uint8
+	ObjectType uint8
+	Reason     uint8
 }
 
-func (o *CloseObject) DecodeFromBytes(objectBody []uint8) error {
+func (o *CloseObject) DecodeFromBytes(typ uint8, objectBody []uint8) error {
+	o.ObjectType = typ
 	o.Reason = objectBody[3]
 	return nil
 }
 
 func (o *CloseObject) Serialize() []uint8 {
-	closeObjectHeader := NewCommonObjectHeader(OC_CLOSE, OT_CLOSE_CLOSE, o.getByteLength())
+	closeObjectHeader := NewCommonObjectHeader(OC_CLOSE, o.ObjectType, o.getByteLength())
 	byteCloseObjectHeader := closeObjectHeader.Serialize()
 
 	buf := make([]uint8, 4)
@@ -387,7 +401,8 @@ func (o *CloseObject) getByteLength() uint16 {
 
 func NewCloseObject(reason uint8) (*CloseObject, error) {
 	o := &CloseObject{
-		Reason: reason,
+		ObjectType: OT_CLOSE_CLOSE,
+		Reason:     reason,
 	}
 	return o, nil
 }
@@ -398,19 +413,21 @@ const (
 )
 
 type SrpObject struct {
-	RFlag bool
-	SrpID uint32 // 0x00000000 and 0xFFFFFFFF are reserved.
-	TLVs  []TLVInterface
+	ObjectType uint8
+	RFlag      bool
+	SrpID      uint32 // 0x00000000 and 0xFFFFFFFF are reserved.
+	TLVs       []TLVInterface
 }
 
-func (o *SrpObject) DecodeFromBytes(objectBody []uint8) error {
+func (o *SrpObject) DecodeFromBytes(typ uint8, objectBody []uint8) error {
+	o.ObjectType = typ
 	o.RFlag = (objectBody[3] & 0x01) != 0
 	o.SrpID = binary.BigEndian.Uint32(objectBody[4:8])
 	return nil
 }
 
 func (o *SrpObject) Serialize() []uint8 {
-	srpObjectHeader := NewCommonObjectHeader(OC_SRP, 1, o.getByteLength())
+	srpObjectHeader := NewCommonObjectHeader(OC_SRP, o.ObjectType, o.getByteLength())
 	byteSrpObjectHeader := srpObjectHeader.Serialize()
 
 	byteFlags := make([]uint8, 4)
@@ -438,27 +455,16 @@ func (o *SrpObject) getByteLength() uint16 {
 }
 
 func NewSrpObject(segs []table.Segment, srpID uint32, isRemove bool) (*SrpObject, error) {
-	var o *SrpObject
+	o := &SrpObject{
+		ObjectType: OT_SRP_SRP,
+		RFlag:      isRemove, // RFC8281 5.2
+		SrpID:      srpID,
+		TLVs:       []TLVInterface{},
+	}
 	if _, ok := segs[0].(table.SegmentSRMPLS); ok {
-		o = &SrpObject{
-			RFlag: isRemove, // RFC8281 5.2
-			SrpID: srpID,
-			TLVs: []TLVInterface{
-				&PathSetupType{
-					PathSetupType: PST_SR_TE,
-				},
-			},
-		}
+		o.TLVs = append(o.TLVs, &PathSetupType{PathSetupType: PST_SR_TE})
 	} else if _, ok := segs[0].(table.SegmentSRv6); ok {
-		o = &SrpObject{
-			RFlag: isRemove, // RFC8281 5.2
-			SrpID: srpID,
-			TLVs: []TLVInterface{
-				&PathSetupType{
-					PathSetupType: PST_SRV6_TE,
-				},
-			},
-		}
+		o.TLVs = append(o.TLVs, &PathSetupType{PathSetupType: PST_SRV6_TE})
 	} else {
 		return nil, errors.New("invalid Segment type")
 	}
@@ -471,19 +477,21 @@ const (
 )
 
 type LspObject struct {
-	Name    string
-	SrcAddr netip.Addr
-	DstAddr netip.Addr
-	PlspID  uint32
-	OFlag   uint8
-	AFlag   bool
-	RFlag   bool
-	SFlag   bool
-	DFlag   bool
-	TLVs    []TLVInterface
+	ObjectType uint8
+	Name       string
+	SrcAddr    netip.Addr
+	DstAddr    netip.Addr
+	PlspID     uint32
+	OFlag      uint8
+	AFlag      bool
+	RFlag      bool
+	SFlag      bool
+	DFlag      bool
+	TLVs       []TLVInterface
 }
 
-func (o *LspObject) DecodeFromBytes(objectBody []uint8) error {
+func (o *LspObject) DecodeFromBytes(typ uint8, objectBody []uint8) error {
+	o.ObjectType = typ
 	o.PlspID = uint32(binary.BigEndian.Uint32(objectBody[0:4]) >> 12) // 20 bits from top
 	o.OFlag = uint8(objectBody[3] & 0x0070 >> 4)
 	o.AFlag = (objectBody[3] & 0x08) != 0
@@ -516,7 +524,7 @@ func (o *LspObject) DecodeFromBytes(objectBody []uint8) error {
 }
 
 func (o *LspObject) Serialize() []uint8 {
-	lspObjectHeader := NewCommonObjectHeader(OC_LSP, 1, o.getByteLength())
+	lspObjectHeader := NewCommonObjectHeader(OC_LSP, o.ObjectType, o.getByteLength())
 	byteLspObjectHeader := lspObjectHeader.Serialize()
 
 	buf := make([]uint8, 4)
@@ -555,14 +563,15 @@ func (o *LspObject) getByteLength() uint16 {
 
 func NewLspObject(lspName string, plspID uint32) (*LspObject, error) {
 	o := &LspObject{
-		Name:   lspName,
-		PlspID: plspID,
-		OFlag:  uint8(1), // UP (RFC8231 7.3)
-		AFlag:  true,     // desired operational state is active (RFC8231 7.3)
-		RFlag:  false,    // TODO: Allow setting from function arguments
-		SFlag:  false,
-		DFlag:  true,
-		TLVs:   []TLVInterface{},
+		ObjectType: OT_LSP_LSP,
+		Name:       lspName,
+		PlspID:     plspID,
+		OFlag:      uint8(1), // UP (RFC8231 7.3)
+		AFlag:      true,     // desired operational state is active (RFC8231 7.3)
+		RFlag:      false,    // TODO: Allow setting from function arguments
+		SFlag:      false,
+		DFlag:      true,
+		TLVs:       []TLVInterface{},
 	}
 	symbolicPathNameTLV := &SymbolicPathName{
 		Name: lspName,
@@ -577,10 +586,12 @@ const (
 )
 
 type EroObject struct {
+	ObjectType    uint8
 	EroSubobjects []EroSubobject
 }
 
-func (o *EroObject) DecodeFromBytes(objectBody []uint8) error {
+func (o *EroObject) DecodeFromBytes(typ uint8, objectBody []uint8) error {
+	o.ObjectType = typ
 	if len(objectBody) == 0 {
 		return nil
 	}
@@ -615,7 +626,7 @@ func (o EroObject) Serialize() ([]uint8, error) {
 	if err != nil {
 		return nil, err
 	}
-	eroObjectHeader := NewCommonObjectHeader(OC_ERO, OT_ERO_EXPLICIT_ROUTE, eroObjectLength)
+	eroObjectHeader := NewCommonObjectHeader(OC_ERO, o.ObjectType, eroObjectLength)
 	byteEroObjectHeader := eroObjectHeader.Serialize()
 
 	byteEroObject := byteEroObjectHeader
@@ -641,6 +652,7 @@ func (o EroObject) getByteLength() (uint16, error) {
 
 func NewEroObject(segmentList []table.Segment) (*EroObject, error) {
 	o := &EroObject{
+		ObjectType:    OT_ERO_EXPLICIT_ROUTE,
 		EroSubobjects: []EroSubobject{},
 	}
 	err := o.AddEroSubobjects(segmentList)
@@ -925,19 +937,13 @@ type EndpointsObject struct {
 	DstAddr    netip.Addr
 }
 
-func (o EndpointsObject) Serialize() ([]uint8, error) {
-	var endpointsObjectHeader *CommonObjectHeader
+func (o *EndpointsObject) Serialize() ([]uint8, error) {
 	endpointsObjectLength, err := o.getByteLength()
 	if err != nil {
 		return nil, err
 	}
-	if o.SrcAddr.Is4() && o.DstAddr.Is4() {
-		endpointsObjectHeader = NewCommonObjectHeader(OC_END_POINTS, OT_EP_IPV4, endpointsObjectLength)
-	} else if o.SrcAddr.Is6() && o.DstAddr.Is6() {
-		endpointsObjectHeader = NewCommonObjectHeader(OC_END_POINTS, OT_EP_IPV6, endpointsObjectLength)
-	} else {
-		return nil, errors.New("invalid endpoints address")
-	}
+	endpointsObjectHeader := NewCommonObjectHeader(OC_END_POINTS, o.ObjectType, endpointsObjectLength)
+
 	byteEroObjectHeader := endpointsObjectHeader.Serialize()
 	byteEndpointsObject := AppendByteSlices(byteEroObjectHeader, o.SrcAddr.AsSlice(), o.DstAddr.AsSlice())
 	return byteEndpointsObject, nil
@@ -995,19 +1001,21 @@ const (
 )
 
 type AssociationObject struct {
-	RFlag     bool
-	AssocType uint16
-	AssocID   uint16
-	AssocSrc  netip.Addr
-	TLVs      []TLVInterface
+	ObjectType uint8
+	RFlag      bool
+	AssocType  uint16
+	AssocID    uint16
+	AssocSrc   netip.Addr
+	TLVs       []TLVInterface
 }
 
-func (o *AssociationObject) DecodeFromBytes(objectBody []uint8) error {
+func (o *AssociationObject) DecodeFromBytes(typ uint8, objectBody []uint8) error {
+	o.ObjectType = typ
 	o.RFlag = (objectBody[3] & 0x01) != 0
 	o.AssocType = uint16(binary.BigEndian.Uint16(objectBody[4:6]))
 	o.AssocID = uint16(binary.BigEndian.Uint16(objectBody[6:8]))
-	assocSrcBytes, _ := netip.AddrFromSlice(objectBody[8:12])
-	if assocSrcBytes.Is4() && assocSrcBytes.IsValid() {
+	if o.ObjectType == OT_ASSOC_IPV4 {
+		assocSrcBytes, _ := netip.AddrFromSlice(objectBody[8:12])
 		o.AssocSrc = assocSrcBytes
 		if len(objectBody) > 12 {
 			byteTLVs := objectBody[12:]
@@ -1016,7 +1024,7 @@ func (o *AssociationObject) DecodeFromBytes(objectBody []uint8) error {
 				return err
 			}
 		}
-	} else if assocSrcBytes.Is6() && assocSrcBytes.IsValid() {
+	} else if o.ObjectType == OT_ASSOC_IPV6 {
 		o.AssocSrc, _ = netip.AddrFromSlice(objectBody[8:24])
 		if len(objectBody) > 24 {
 			byteTLVs := objectBody[24:]
@@ -1031,19 +1039,12 @@ func (o *AssociationObject) DecodeFromBytes(objectBody []uint8) error {
 	return nil
 }
 
-func (o AssociationObject) Serialize() ([]uint8, error) {
-	var associationObjectHeader *CommonObjectHeader
+func (o *AssociationObject) Serialize() ([]uint8, error) {
 	associationObjectLength, err := o.getByteLength()
 	if err != nil {
 		return nil, err
 	}
-	if o.AssocSrc.Is4() {
-		associationObjectHeader = NewCommonObjectHeader(OC_ASSOCIATION, OT_ASSOC_IPV4, associationObjectLength)
-	} else if o.AssocSrc.Is6() {
-		associationObjectHeader = NewCommonObjectHeader(OC_ASSOCIATION, OT_ASSOC_IPV6, associationObjectLength)
-	} else {
-		return nil, errors.New("invalid association source address")
-	}
+	associationObjectHeader := NewCommonObjectHeader(OC_ASSOCIATION, o.ObjectType, associationObjectLength)
 
 	byteAssociationObjectHeader := associationObjectHeader.Serialize()
 
@@ -1093,11 +1094,19 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 	for _, o := range opt {
 		o(&opts)
 	}
-
+	var objType uint8
+	if dstAddr.Is4() && srcAddr.Is4() {
+		objType = OT_EP_IPV4
+	} else if dstAddr.Is6() && srcAddr.Is6() {
+		objType = OT_EP_IPV6
+	} else {
+		return nil, errors.New("invalid endpoints address")
+	}
 	o := &AssociationObject{
-		RFlag:    false,
-		TLVs:     []TLVInterface{},
-		AssocSrc: srcAddr,
+		ObjectType: objType,
+		RFlag:      false,
+		TLVs:       []TLVInterface{},
+		AssocSrc:   srcAddr,
 	}
 	if opts.pccType == JUNIPER_LEGACY {
 		o.AssocID = 0
@@ -1221,6 +1230,10 @@ func (o *AssociationObject) Preference() uint32 {
 
 // VENDOR-INFORMATION Object (RFC7470 4)
 const (
+	OT_VENDOR_SPECIFIC_CONSTRAINTS uint8 = 1
+)
+
+const (
 	EN_CISCO uint32 = 9
 
 	CISCO_SPEC_TLV_COLOR      uint16 = 1
@@ -1236,7 +1249,8 @@ type VendorInformationObject struct {
 	TLVs             []TLVInterface
 }
 
-func (o *VendorInformationObject) DecodeFromBytes(objectBody []uint8) error {
+func (o *VendorInformationObject) DecodeFromBytes(typ uint8, objectBody []uint8) error {
+	o.ObjectType = typ
 	o.EnterpriseNumber = binary.BigEndian.Uint32(objectBody[0:4])
 	if len(objectBody) > 4 {
 		byteTLVs := objectBody[4:]
@@ -1250,7 +1264,7 @@ func (o *VendorInformationObject) DecodeFromBytes(objectBody []uint8) error {
 }
 
 func (o *VendorInformationObject) Serialize() []uint8 {
-	vendorInformationObjectHeader := NewCommonObjectHeader(OC_VENDOR_INFORMATION, 1, o.getByteLength())
+	vendorInformationObjectHeader := NewCommonObjectHeader(OC_VENDOR_INFORMATION, o.ObjectType, o.getByteLength())
 	byteVendorInformationObjectHeader := vendorInformationObjectHeader.Serialize()
 
 	enterpriseNumber := Uint32ToByteSlice(o.EnterpriseNumber)
@@ -1273,13 +1287,12 @@ func (o VendorInformationObject) getByteLength() uint16 {
 }
 
 func NewVendorInformationObject(vendor PccType, color uint32, preference uint32) (*VendorInformationObject, error) {
-	var o *VendorInformationObject
+	o := &VendorInformationObject{ // for Cisco PCC
+		ObjectType: OT_VENDOR_SPECIFIC_CONSTRAINTS, // (RFC7470 4)
+		TLVs:       []TLVInterface{},
+	}
 	if vendor == CISCO_LEGACY {
-		o = &VendorInformationObject{ // for Cisco PCC
-			ObjectType:       uint8(1), // (RFC7470 4)
-			EnterpriseNumber: EN_CISCO,
-			TLVs:             []TLVInterface{},
-		}
+		o.EnterpriseNumber = EN_CISCO
 		vendorInformationObjectTLVs := []TLVInterface{
 			&UndefinedTLV{
 				Typ:    CISCO_SPEC_TLV_COLOR,
