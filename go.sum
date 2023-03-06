@@ -12,8 +12,8 @@ github.com/inconshreveable/mousetrap v1.0.1 h1:U3uMjPSQEBMNp1lFxmllqCPM6P5u/Xq7P
 github.com/inconshreveable/mousetrap v1.0.1/go.mod h1:vpF70FUmC8bwa3OWnCshd2FqLfsEA9PFc4w1p2J65bw=
 github.com/kr/pretty v0.3.1 h1:flRD4NNwYAUpkphVc1HcthR4KEIFJ65n8Mw5qdRn3LE=
 github.com/kr/text v0.2.0 h1:5Nx0Ya0ZqY2ygV366QzturHI13Jq95ApcVaJBhpS+AY=
-github.com/osrg/gobgp/v3 v3.11.0 h1:HismNqoeZJ96WoDjxg5A4mAvFmOcuct5QYktFc8euSo=
-github.com/osrg/gobgp/v3 v3.11.0/go.mod h1:/q/mr+dOuPf5hDlLiatVll1P7BX4pmiXQxd4ZZpUbkg=
+github.com/osrg/gobgp/v3 v3.12.0 h1:coxnxOntqE1tKMM3a4ftBGe5ft/I5rklxlezISpBXx4=
+github.com/osrg/gobgp/v3 v3.12.0/go.mod h1:rAPmqyijW79JIOkGu0BpLUCNdY769l7H+TlOKi5/5KY=
 github.com/pkg/errors v0.8.1 h1:iURUrRGxPUNPdy5/HRSm+Yj6okJ6UtLINN0Q9M4+h3I=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
