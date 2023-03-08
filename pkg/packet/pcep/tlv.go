@@ -818,7 +818,7 @@ const (
 	AssocTypePolicyAssociation                      AssocType = 0x03
 	AssocTypeSingleSidedBidirectionalLSPAssociation AssocType = 0x04
 	AssocTypeDoubleSidedBidirectionalLSPAssociation AssocType = 0x05
-	AssocTypeSrPolicyAssociation                    AssocType = 0x06
+	AssocTypeSRPolicyAssociation                    AssocType = 0x06
 	AssocTypeVnAssociationType                      AssocType = 0x07
 )
 
@@ -828,7 +828,7 @@ var assocTypeNames = map[AssocType]string{
 	AssocTypePolicyAssociation:                      "Policy Association",
 	AssocTypeSingleSidedBidirectionalLSPAssociation: "Single Sided Bidirectional LSP Association",
 	AssocTypeDoubleSidedBidirectionalLSPAssociation: "Double Sided Bidirectional LSP Association",
-	AssocTypeSrPolicyAssociation:                    "SR Policy Association",
+	AssocTypeSRPolicyAssociation:                    "SR Policy Association",
 	AssocTypeVnAssociationType:                      "VN Association Type",
 }
 

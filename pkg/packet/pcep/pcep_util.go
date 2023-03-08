@@ -5,7 +5,11 @@
 
 package pcep
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+
+	"golang.org/x/exp/constraints"
+)
 
 // AppendByteSlices concatenates byte slices into a single slice.
 func AppendByteSlices(byteSlices ...[]byte) []byte {
@@ -36,4 +40,19 @@ func Uint32ToByteSlice(input uint32) []byte {
 	uint32Bytes := make([]byte, 4)
 	binary.BigEndian.PutUint32(uint32Bytes, input)
 	return uint32Bytes
+}
+
+// IsBitSet checks if a specific bit is set in a uint8 value.
+func IsBitSet(value uint8, bit uint8) bool {
+	return (value & bit) != 0
+}
+
+type Bitwise interface {
+	constraints.Unsigned
+	~uint8 | ~uint16 | ~uint32
+}
+
+// SetBit sets a specific bit in a value of any unsigned integer type.
+func SetBit[T Bitwise](value, bit T) T {
+	return value | bit
 }
