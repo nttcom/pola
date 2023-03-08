@@ -186,7 +186,7 @@ func (o *OpenObject) DecodeFromBytes(typ uint8, objectBody []uint8) error {
 }
 
 func (o *OpenObject) Serialize() []uint8 {
-	openObjectHeader := NewCommonObjectHeader(OC_OPEN, o.ObjectType, o.getByteLength())
+	openObjectHeader := NewCommonObjectHeader(OC_OPEN, o.ObjectType, o.Len())
 	byteOpenObjectHeader := openObjectHeader.Serialize()
 	buf := make([]uint8, 4)
 	buf[0] = o.Version << 5
@@ -203,10 +203,10 @@ func (o *OpenObject) Serialize() []uint8 {
 	return byteOpenObject
 }
 
-func (o *OpenObject) getByteLength() uint16 {
+func (o *OpenObject) Len() uint16 {
 	tlvsByteLength := uint16(0)
 	for _, cap := range o.Caps {
-		tlvsByteLength += cap.GetByteLength()
+		tlvsByteLength += cap.Len()
 	}
 	// TODO: Calculate TLV length and record in open_object_length
 	// CommonObjectHeader(4byte) + openObject(4byte) + tlvslength(valiable)
@@ -331,7 +331,7 @@ func (o *PcepErrorObject) DecodeFromBytes(typ uint8, objectBody []uint8) error {
 }
 
 func (o *PcepErrorObject) Serialize() []uint8 {
-	pcepErrorObjectHeader := NewCommonObjectHeader(OC_PCEP_ERROR, o.ObjectType, o.getByteLength())
+	pcepErrorObjectHeader := NewCommonObjectHeader(OC_PCEP_ERROR, o.ObjectType, o.Len())
 	bytePcepErrorObjectHeader := pcepErrorObjectHeader.Serialize()
 
 	buf := make([]uint8, 4)
@@ -342,10 +342,10 @@ func (o *PcepErrorObject) Serialize() []uint8 {
 	return bytePcepErrorObject
 }
 
-func (o *PcepErrorObject) getByteLength() uint16 {
+func (o *PcepErrorObject) Len() uint16 {
 	tlvsByteLength := uint16(0)
 	for _, tlv := range o.Tlvs {
-		tlvsByteLength += tlv.GetByteLength()
+		tlvsByteLength += tlv.Len()
 	}
 	// CommonObjectHeader(4byte) + Flags,Error-Type,Error-value(4byte) + tlvslength(valiable)
 	return COMMON_OBJECT_HEADER_LENGTH + 4 + tlvsByteLength
@@ -384,7 +384,7 @@ func (o *CloseObject) DecodeFromBytes(typ uint8, objectBody []uint8) error {
 }
 
 func (o *CloseObject) Serialize() []uint8 {
-	closeObjectHeader := NewCommonObjectHeader(OC_CLOSE, o.ObjectType, o.getByteLength())
+	closeObjectHeader := NewCommonObjectHeader(OC_CLOSE, o.ObjectType, o.Len())
 	byteCloseObjectHeader := closeObjectHeader.Serialize()
 
 	buf := make([]uint8, 4)
@@ -394,7 +394,7 @@ func (o *CloseObject) Serialize() []uint8 {
 	return byteCloseObject
 }
 
-func (o *CloseObject) getByteLength() uint16 {
+func (o *CloseObject) Len() uint16 {
 	// CommonObjectHeader(4byte) + CloseObjectBody(4byte)
 	return COMMON_OBJECT_HEADER_LENGTH + 4
 }
@@ -427,7 +427,7 @@ func (o *SrpObject) DecodeFromBytes(typ uint8, objectBody []uint8) error {
 }
 
 func (o *SrpObject) Serialize() []uint8 {
-	srpObjectHeader := NewCommonObjectHeader(OC_SRP, o.ObjectType, o.getByteLength())
+	srpObjectHeader := NewCommonObjectHeader(OC_SRP, o.ObjectType, o.Len())
 	byteSrpObjectHeader := srpObjectHeader.Serialize()
 
 	byteFlags := make([]uint8, 4)
@@ -445,10 +445,10 @@ func (o *SrpObject) Serialize() []uint8 {
 	return byteSrpObject
 }
 
-func (o *SrpObject) getByteLength() uint16 {
+func (o *SrpObject) Len() uint16 {
 	tlvsByteLength := uint16(0)
 	for _, tlv := range o.TLVs {
-		tlvsByteLength += tlv.GetByteLength()
+		tlvsByteLength += tlv.Len()
 	}
 	// CommonObjectHeader(4byte) + Flags, SRP-ID(8byte)
 	return COMMON_OBJECT_HEADER_LENGTH + 8 + tlvsByteLength
@@ -524,7 +524,7 @@ func (o *LspObject) DecodeFromBytes(typ uint8, objectBody []uint8) error {
 }
 
 func (o *LspObject) Serialize() []uint8 {
-	lspObjectHeader := NewCommonObjectHeader(OC_LSP, o.ObjectType, o.getByteLength())
+	lspObjectHeader := NewCommonObjectHeader(OC_LSP, o.ObjectType, o.Len())
 	byteLspObjectHeader := lspObjectHeader.Serialize()
 
 	buf := make([]uint8, 4)
@@ -550,10 +550,10 @@ func (o *LspObject) Serialize() []uint8 {
 	return byteLspObject
 }
 
-func (o *LspObject) getByteLength() uint16 {
+func (o *LspObject) Len() uint16 {
 	tlvsByteLength := uint16(0)
 	for _, tlv := range o.TLVs {
-		tlvsByteLength += tlv.GetByteLength()
+		tlvsByteLength += tlv.Len()
 	}
 	// Flags, SRP-ID (4byte)
 	lspObjectBodyLength := uint16(4) + tlvsByteLength
@@ -608,7 +608,7 @@ func (o *EroObject) DecodeFromBytes(typ uint8, objectBody []uint8) error {
 			return err
 		}
 		o.EroSubobjects = append(o.EroSubobjects, eroSubobj)
-		if objByteLength, err := eroSubobj.getByteLength(); err != nil {
+		if objByteLength, err := eroSubobj.Len(); err != nil {
 			return err
 		} else if int(objByteLength) < len(objectBody) {
 			objectBody = objectBody[objByteLength:]
@@ -622,7 +622,7 @@ func (o *EroObject) DecodeFromBytes(typ uint8, objectBody []uint8) error {
 }
 
 func (o EroObject) Serialize() ([]uint8, error) {
-	eroObjectLength, err := o.getByteLength()
+	eroObjectLength, err := o.Len()
 	if err != nil {
 		return nil, err
 	}
@@ -637,10 +637,10 @@ func (o EroObject) Serialize() ([]uint8, error) {
 	return byteEroObject, nil
 }
 
-func (o EroObject) getByteLength() (uint16, error) {
+func (o EroObject) Len() (uint16, error) {
 	eroSubobjByteLength := uint16(0)
 	for _, eroSubObj := range o.EroSubobjects {
-		objByteLength, err := eroSubObj.getByteLength()
+		objByteLength, err := eroSubObj.Len()
 		if err != nil {
 			return 0, err
 		}
@@ -686,7 +686,7 @@ func (o *EroObject) ToSegmentList() []table.Segment {
 
 type EroSubobject interface {
 	DecodeFromBytes([]uint8) error
-	getByteLength() (uint16, error)
+	Len() (uint16, error)
 	Serialize() []uint8
 	ToSegment() table.Segment
 }
@@ -779,7 +779,7 @@ func (o *SREroSubobject) Serialize() []uint8 {
 	return byteSREroSubobject
 }
 
-func (o *SREroSubobject) getByteLength() (uint16, error) {
+func (o *SREroSubobject) Len() (uint16, error) {
 	if o.NaiType == NT_ABSENT {
 		// Type, Length, Flags (4byte) + SID (4byte)
 		return uint16(8), nil
@@ -805,7 +805,7 @@ func NewSREroSubObject(seg table.SegmentSRMPLS) (*SREroSubobject, error) {
 		MFlag:         true, // TODO: Determine either MPLS label or index
 		Segment:       seg,
 	}
-	length, err := subo.getByteLength()
+	length, err := subo.Len()
 	if err != nil {
 		return subo, err
 	}
@@ -887,7 +887,7 @@ func (o *SRv6EroSubobject) Serialize() []uint8 {
 	return byteSRv6EroSubobject
 }
 
-func (o *SRv6EroSubobject) getByteLength() (uint16, error) {
+func (o *SRv6EroSubobject) Len() (uint16, error) {
 	// The Length MUST be at least 24, and MUST be a multiple of 4.
 	// An SRv6-ERO subobject MUST contain at least one of a SRv6-SID or an NAI.
 	if o.NaiType == NT_MUST_NOT_BE_INCLUDED {
@@ -913,7 +913,7 @@ func NewSRv6EroSubObject(seg table.SegmentSRv6) (*SRv6EroSubobject, error) {
 		Behavior:      uint16(1),
 		Segment:       seg,
 	}
-	length, err := subo.getByteLength()
+	length, err := subo.Len()
 	if err != nil {
 		return subo, err
 	}
@@ -938,7 +938,7 @@ type EndpointsObject struct {
 }
 
 func (o *EndpointsObject) Serialize() ([]uint8, error) {
-	endpointsObjectLength, err := o.getByteLength()
+	endpointsObjectLength, err := o.Len()
 	if err != nil {
 		return nil, err
 	}
@@ -949,7 +949,7 @@ func (o *EndpointsObject) Serialize() ([]uint8, error) {
 	return byteEndpointsObject, nil
 }
 
-func (o EndpointsObject) getByteLength() (uint16, error) {
+func (o EndpointsObject) Len() (uint16, error) {
 	var length uint16
 	if o.SrcAddr.Is4() && o.DstAddr.Is4() {
 		// CommonObjectHeader(4byte) + srcIPv4 (4byte) + dstIPv4 (4byte)
@@ -1040,7 +1040,7 @@ func (o *AssociationObject) DecodeFromBytes(typ uint8, objectBody []uint8) error
 }
 
 func (o *AssociationObject) Serialize() ([]uint8, error) {
-	associationObjectLength, err := o.getByteLength()
+	associationObjectLength, err := o.Len()
 	if err != nil {
 		return nil, err
 	}
@@ -1068,10 +1068,10 @@ func (o *AssociationObject) Serialize() ([]uint8, error) {
 	return byteAssociationObject, nil
 }
 
-func (o AssociationObject) getByteLength() (uint16, error) {
+func (o AssociationObject) Len() (uint16, error) {
 	tlvsByteLength := uint16(0)
 	for _, tlv := range o.TLVs {
-		tlvsByteLength += tlv.GetByteLength()
+		tlvsByteLength += tlv.Len()
 	}
 	var associationObjectBodyLength uint16
 	if o.AssocSrc.Is4() {
@@ -1264,7 +1264,7 @@ func (o *VendorInformationObject) DecodeFromBytes(typ uint8, objectBody []uint8)
 }
 
 func (o *VendorInformationObject) Serialize() []uint8 {
-	vendorInformationObjectHeader := NewCommonObjectHeader(OC_VENDOR_INFORMATION, o.ObjectType, o.getByteLength())
+	vendorInformationObjectHeader := NewCommonObjectHeader(OC_VENDOR_INFORMATION, o.ObjectType, o.Len())
 	byteVendorInformationObjectHeader := vendorInformationObjectHeader.Serialize()
 
 	enterpriseNumber := Uint32ToByteSlice(o.EnterpriseNumber)
@@ -1280,7 +1280,7 @@ func (o *VendorInformationObject) Serialize() []uint8 {
 	return byteVendorInformationObject
 }
 
-func (o VendorInformationObject) getByteLength() uint16 {
+func (o VendorInformationObject) Len() uint16 {
 	// TODO: Expantion for IPv6 Endpoint
 	// CommonObjectHeader(4byte) + Enterprise Number (4byte) + colorTLV (8byte) + preferenceTLV (8byte)
 	return uint16(COMMON_OBJECT_HEADER_LENGTH + 4 + 8 + 8)
