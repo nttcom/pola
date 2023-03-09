@@ -1,0 +1,11 @@
+srPolicy:
+  pcepSessionAddr: "10.0.255.1"
+  srcAddr: "10.255.0.1"
+  dstAddr: "10.255.0.2"
+  name: pe01-policy1
+  color: 1
+  segmentList:
+    - sid: "16002"
+      nai: "10.255.0.2"
+    - sid: "16003"
+      nai: "10.255.0.3"

@@ -1,0 +1,46 @@
+name: sr-mpls_pcep
+topology:
+  kinds:
+    xrd:
+      image: ios-xr/xrd-control-plane:7.8.1
+    vr-vmx:
+      image: vrnetlab/vr-vmx:22.4R1.10
+  nodes:
+    pola-pce:
+      kind: linux
+      image: ghcr.io/nttcom/pola:latest
+      binds:
+        - polad/polad.yaml:/polad.yaml
+        - sr-policies/pe01-policy1.yaml:/pe01-policy1.yaml
+        - sr-policies/pe02-policy1.yaml:/pe02-policy1.yaml
+        - sr-policies/pe03-policy1.yaml:/pe03-policy1.yaml
+      exec:
+        - ip addr add 10.0.255.254/24 dev eth1
+    pe01:
+      kind: xrd
+      startup-config: startup-configs/pe01.cfg
+    pe02:
+      kind: vr-vmx
+      startup-config: startup-configs/pe02.cfg
+    pe03:
+      kind: linux
+      image: frrouting/frr:v8.4.1
+      binds:
+        - startup-configs/pe03/daemons:/etc/frr/daemons
+        - startup-configs/pe03/frr.conf:/etc/frr/frr.conf
+        - startup-configs/pe03/vtysh.sh:/vtysh.sh
+      exec:
+        - bash /vtysh.sh
+
+    switch:
+      kind: bridge
+  links:
+    # SR-MPLS domain
+    - endpoints: ["pe01:Gi0-0-0-0", "pe02:eth1"]
+    - endpoints: ["pe01:Gi0-0-0-1", "pe03:eth1"]
+    - endpoints: ["pe02:eth2", "pe03:eth2"]
+    # Switch
+    - endpoints: ["pola-pce:eth1", "switch:eth1"]
+    - endpoints: ["pe01:Gi0-0-0-2", "switch:eth2"]
+    - endpoints: ["pe02:eth3", "switch:eth3"]
+    - endpoints: ["pe03:eth3", "switch:eth4"] 
