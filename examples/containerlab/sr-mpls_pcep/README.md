@@ -75,7 +75,7 @@ $ docker logs clab-sr-mpls_pcep-pe02 -f
 <snip.>
 2023-02-20 15:03:26,233: launch     INFO     Startup complete in: 0:09:06.969773
 ```
-### Apply SR Policy
+### Check PCEP Session
 Connect to PCEP container, check PCEP session and SR policy
 ```bash
 $ sudo docker exec -it clab-sr-mpls_pcep-pola-pce bash
