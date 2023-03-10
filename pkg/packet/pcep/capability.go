@@ -20,7 +20,6 @@ func PolaCapability() []CapabilityInterface {
 			TriggeredInitialSync:       false,
 		},
 		&PathSetupTypeCapability{
-			Length:         uint16(10),
 			PathSetupTypes: Psts{PST_RSVP_TE, PST_SR_TE, PST_SRV6_TE},
 			SubTLVs: []TLVInterface{
 				&SRPceCapability{

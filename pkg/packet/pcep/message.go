@@ -104,7 +104,7 @@ func (m *OpenMessage) DecodeFromBytes(messageBody []uint8) error {
 
 func (m *OpenMessage) Serialize() ([]uint8, error) {
 	byteOpenObject := m.OpenObject.Serialize()
-	openMessageLength := COMMON_HEADER_LENGTH + m.OpenObject.getByteLength()
+	openMessageLength := COMMON_HEADER_LENGTH + m.OpenObject.Len()
 	openHeader := NewCommonHeader(MT_OPEN, openMessageLength)
 	byteOpenHeader := openHeader.Serialize()
 	byteOpenMessage := AppendByteSlices(byteOpenHeader, byteOpenObject)
@@ -158,7 +158,7 @@ func (m *PCErrMessage) DecodeFromBytes(messageBody []uint8) error {
 }
 
 func (m *PCErrMessage) Serialize() []uint8 {
-	pcerrMessageLength := COMMON_HEADER_LENGTH + m.PcepErrorObject.getByteLength()
+	pcerrMessageLength := COMMON_HEADER_LENGTH + m.PcepErrorObject.Len()
 	pcerrHeader := NewCommonHeader(MT_ERROR, pcerrMessageLength)
 	bytePCErrHeader := pcerrHeader.Serialize()
 	bytePcepErrorObject := m.PcepErrorObject.Serialize()
@@ -196,7 +196,7 @@ func (m *CloseMessage) DecodeFromBytes(messageBody []uint8) error {
 }
 
 func (m *CloseMessage) Serialize() []uint8 {
-	closeMessageLength := COMMON_HEADER_LENGTH + m.CloseObject.getByteLength()
+	closeMessageLength := COMMON_HEADER_LENGTH + m.CloseObject.Len()
 	closeHeader := NewCommonHeader(MT_CLOSE, closeMessageLength)
 	byteCloseHeader := closeHeader.Serialize()
 	byteCloseObject := m.CloseObject.Serialize()
@@ -379,17 +379,17 @@ type PCInitiateMessage struct {
 }
 
 func (m *PCInitiateMessage) Serialize() ([]uint8, error) {
-	eroObjectLength, err := m.EroObject.getByteLength()
+	eroObjectLength, err := m.EroObject.Len()
 	if err != nil {
 		return nil, err
 	}
-	endpointsObjectLength, err := m.EndpointsObject.getByteLength()
+	endpointsObjectLength, err := m.EndpointsObject.Len()
 	if err != nil {
 		return nil, err
 	}
 	pcinitiateMessageLength := COMMON_HEADER_LENGTH +
-		m.SrpObject.getByteLength() +
-		m.LspObject.getByteLength() +
+		m.SrpObject.Len() +
+		m.LspObject.Len() +
 		endpointsObjectLength +
 		eroObjectLength
 
@@ -412,7 +412,7 @@ func (m *PCInitiateMessage) Serialize() ([]uint8, error) {
 		if err != nil {
 			return nil, err
 		}
-		associationObjectLength, err := m.AssociationObject.getByteLength()
+		associationObjectLength, err := m.AssociationObject.Len()
 		if err != nil {
 			return nil, err
 		}
@@ -420,7 +420,7 @@ func (m *PCInitiateMessage) Serialize() ([]uint8, error) {
 	}
 	if m.VendorInformationObject != nil {
 		byteVendorInformationObject = append(byteVendorInformationObject, m.VendorInformationObject.Serialize()...)
-		pcinitiateMessageLength += m.VendorInformationObject.getByteLength()
+		pcinitiateMessageLength += m.VendorInformationObject.Len()
 	}
 
 	pcinitiateHeader := NewCommonHeader(MT_LSPINITREQ, pcinitiateMessageLength)
@@ -492,11 +492,11 @@ func (m *PCUpdMessage) Serialize() ([]uint8, error) {
 		return nil, err
 	}
 
-	eroObjectLength, err := m.EroObject.getByteLength()
+	eroObjectLength, err := m.EroObject.Len()
 	if err != nil {
 		return nil, err
 	}
-	pcupdMessageLength := COMMON_HEADER_LENGTH + m.SrpObject.getByteLength() + m.LspObject.getByteLength() + eroObjectLength
+	pcupdMessageLength := COMMON_HEADER_LENGTH + m.SrpObject.Len() + m.LspObject.Len() + eroObjectLength
 	pcupdHeader := NewCommonHeader(MT_UPDATE, pcupdMessageLength)
 	bytePCUpdHeader := pcupdHeader.Serialize()
 	bytePCUpdMessage := AppendByteSlices(bytePCUpdHeader, byteSrpObject, byteLspObject, byteEroObject)
