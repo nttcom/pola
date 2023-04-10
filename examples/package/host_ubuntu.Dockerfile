@@ -1,4 +1,4 @@
-FROM ubuntu:20.04
+FROM ubuntu:22.04
 LABEL maintainer "Motoki TAKENAKA <m.takenaka@ntt.com>"
 
 SHELL ["/bin/bash", "-c"]
