@@ -1,5 +1,5 @@
 <p align="center">
-<img src="https://github.com/nttcom/pola/blob/main/docs/figures/pola.png" alt="Pola" width="20%">
+<img src="https://github.com/nttcom/pola/blob/main/docs/figures/pola-logo.png" alt="Pola" width="20%">
 </p>
 
 # Pola PCE
@@ -10,14 +10,14 @@
 [![Go version](https://img.shields.io/github/go-mod/go-version/nttcom/pola)](https://go.dev/)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-PCEP Library and Stateful PCE Implementation with Go 
+Pola PCE is an implementation of the Path Computation Element (PCE) and a PCEP Library in Go.
 
 ## Features
-* Supports SRv6 and SR-MPLS
-* Active stateful PCE (PCInitiate, PCUpdate, etc.)
-* Provide dynamic/explicit SR policy defined as YAML
-  * Dynamic path: CSPF based on [GoBGP](https://github.com/osrg/gobgp) BGP-LS TED
-  * Explicit path: Define and provide any Segment List
+* Support for SRv6 and SR-MPLS
+* Implementation of active stateful PCE functionality (PCInitiate, PCUpdate, etc.)
+* Dynamic and explicit SR policy definition using YAML
+  * Dynamic path: Utilizes CSPF with GoBGP BGP-LS TED
+  * Explicit path: Allows users to define and provision any Segment List
 
 ## Interoperability
 ### SR-MPLS
@@ -35,10 +35,9 @@ PCEP Library and Stateful PCE Implementation with Go
   * [SRv6 Example](examples/containerlab/srv6_te_l3vpn)
 
 ## Contributing
-See [CONTRIBUTING](https://github.com/nttcom/pola/blob/main/CONTRIBUTING.md).  
-Please fork the repository and create a Pull Request.
-We welcome and appreciate your contribution.
+If you are interested in contributing to the project, please refer to the [CONTRIBUTING](https://github.com/nttcom/pola/blob/main/CONTRIBUTING.md) guidelines.  
+Feel free to fork the repository and create a Pull Request. Your contributions are highly appreciated.
 
 ## Licensing
-Pola PCE is under [MIT license](https://en.wikipedia.org/wiki/MIT_License). 
-See [LICENSE](https://github.com/nttcom/pola/blob/master/LICENSE) for the full license text.
+Pola PCE is licensed under the [MIT license](https://en.wikipedia.org/wiki/MIT_License).  
+For the full license text, see [LICENSE](https://github.com/nttcom/pola/blob/master/LICENSE).
