@@ -48,7 +48,7 @@ id = "UA-00000000-0"
 [languages]
 [languages.en]
 title = "Pola PCE"
-description = "PCEP Library and Stateful PCE Implementation with Go "
+description = "Stateful PCE Implementation and PCEP Library in Go"
 languageName ="English"
 weight = 1
 
@@ -66,8 +66,8 @@ section = ["HTML", "print"]
 copyright = "NTT Communications Corporation"
 version_menu = "Releases"
 archived_version = false
-version = "v1.0.1"
-url_latest_version = "https://github.com/nttcom/pola/releases/tag/v1.0.1"
+version = "v1.2.1"
+url_latest_version = "https://github.com/nttcom/pola/releases/tag/v1.2.1"
 github_repo = "https://github.com/nttcom/pola"
 github_project_repo = "https://github.com/nttcom/pola"
 github_branch = "gh-pages"
@@ -93,7 +93,7 @@ enable = false
 name = "GitHub"
 url = "https://github.com/nttcom/pola"
 icon = "fab fa-github"
-desc = "Pola on Github"
+desc = "Pola PCE on Github"
 
 [module]
 [module.hugoVersion]
