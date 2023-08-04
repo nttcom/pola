@@ -127,7 +127,7 @@ func (s *APIServer) createSRPolicy(ctx context.Context, input *pb.CreateSRPolicy
 		}
 	} else {
 		// Initiate SR Policy
-		if err := pcepSession.SendPCInitiate(srPolicy); err != nil {
+		if err := pcepSession.SendCreateLsp(srPolicy); err != nil {
 			return &pb.RequestStatus{IsSuccess: false}, err
 		}
 	}

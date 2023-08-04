@@ -461,6 +461,9 @@ func NewSrpObject(segs []table.Segment, srpID uint32, isRemove bool) (*SrpObject
 		SrpID:      srpID,
 		TLVs:       []TLVInterface{},
 	}
+	if len(segs) == 0 {
+		return o, nil
+	}
 	if _, ok := segs[0].(table.SegmentSRMPLS); ok {
 		o.TLVs = append(o.TLVs, &PathSetupType{PathSetupType: PST_SR_TE})
 	} else if _, ok := segs[0].(table.SegmentSRv6); ok {

@@ -285,8 +285,21 @@ func (ss *Session) handlePCRpt(length uint16) error {
 	return nil
 }
 
-func (ss *Session) SendPCInitiate(srPolicy table.SRPolicy) error {
-	pcinitiateMessage, err := pcep.NewPCInitiateMessage(ss.srpIDHead, srPolicy.Name, srPolicy.SegmentList, srPolicy.Color, srPolicy.Preference, srPolicy.SrcAddr, srPolicy.DstAddr, pcep.VendorSpecific(ss.pccType))
+func (ss *Session) SendDeleteAllLsp() error {
+	var srPolicy table.SRPolicy
+	return ss.sendPCInitiate(srPolicy, true)
+}
+
+func (ss *Session) SendDeleteLsp(srPolicy table.SRPolicy) error {
+	return ss.sendPCInitiate(srPolicy, true)
+}
+
+func (ss *Session) SendCreateLsp(srPolicy table.SRPolicy) error {
+	return ss.sendPCInitiate(srPolicy, false)
+}
+
+func (ss *Session) sendPCInitiate(srPolicy table.SRPolicy, lspDelete bool) error {
+	pcinitiateMessage, err := pcep.NewPCInitiateMessage(ss.srpIDHead, srPolicy.Name, lspDelete, srPolicy.PlspID, srPolicy.SegmentList, srPolicy.Color, srPolicy.Preference, srPolicy.SrcAddr, srPolicy.DstAddr, pcep.VendorSpecific(ss.pccType))
 	if err != nil {
 		return err
 	}

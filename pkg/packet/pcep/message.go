@@ -379,13 +379,21 @@ type PCInitiateMessage struct {
 }
 
 func (m *PCInitiateMessage) Serialize() ([]uint8, error) {
-	eroObjectLength, err := m.EroObject.Len()
-	if err != nil {
-		return nil, err
+	var eroObjectLength uint16
+	var err error
+	if m.EroObject != nil {
+		eroObjectLength, err = m.EroObject.Len()
+		if err != nil {
+			return nil, err
+		}
 	}
-	endpointsObjectLength, err := m.EndpointsObject.Len()
-	if err != nil {
-		return nil, err
+
+	var endpointsObjectLength uint16
+	if m.EndpointsObject != nil {
+		endpointsObjectLength, err = m.EndpointsObject.Len()
+		if err != nil {
+			return nil, err
+		}
 	}
 	pcinitiateMessageLength := COMMON_HEADER_LENGTH +
 		m.SrpObject.Len() +
@@ -395,13 +403,20 @@ func (m *PCInitiateMessage) Serialize() ([]uint8, error) {
 
 	byteSrpObject := m.SrpObject.Serialize()
 	byteLspObject := m.LspObject.Serialize()
-	byteEndpointsObject, err := m.EndpointsObject.Serialize()
-	if err != nil {
-		return nil, err
+
+	byteEndpointsObject := []uint8{}
+	if m.EndpointsObject != nil {
+		byteEndpointsObject, err = m.EndpointsObject.Serialize()
+		if err != nil {
+			return nil, err
+		}
 	}
-	byteEroObject, err := m.EroObject.Serialize()
-	if err != nil {
-		return nil, err
+	byteEroObject := []uint8{}
+	if m.EroObject != nil {
+		byteEroObject, err = m.EroObject.Serialize()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	byteVendorInformationObject := []uint8{}
@@ -431,7 +446,7 @@ func (m *PCInitiateMessage) Serialize() ([]uint8, error) {
 	return bytePCInitiateMessage, nil
 }
 
-func NewPCInitiateMessage(srpID uint32, lspName string, segmentList []table.Segment, color uint32, preference uint32, srcAddr netip.Addr, dstAddr netip.Addr, opt ...Opt) (*PCInitiateMessage, error) {
+func NewPCInitiateMessage(srpID uint32, lspName string, lspDelete bool, plspID uint32, segmentList []table.Segment, color uint32, preference uint32, srcAddr netip.Addr, dstAddr netip.Addr, opt ...Opt) (*PCInitiateMessage, error) {
 	opts := optParams{
 		pccType: RFC_COMPLIANT,
 	}
@@ -442,11 +457,19 @@ func NewPCInitiateMessage(srpID uint32, lspName string, segmentList []table.Segm
 
 	m := &PCInitiateMessage{}
 	var err error
-	if m.SrpObject, err = NewSrpObject(segmentList, srpID, false); err != nil {
+	if m.SrpObject, err = NewSrpObject(segmentList, srpID, lspDelete); err != nil {
 		return nil, err
 	}
-	if m.LspObject, err = NewLspObject(lspName, 0); err != nil { // PLSP-ID = 0
-		return nil, err
+
+	if lspDelete {
+		if m.LspObject, err = NewLspObject(lspName, plspID); err != nil {
+			return nil, err
+		}
+		return m, nil
+	} else {
+		if m.LspObject, err = NewLspObject(lspName, 0); err != nil {
+			return nil, err
+		}
 	}
 	if m.EndpointsObject, err = NewEndpointsObject(dstAddr, srcAddr); err != nil {
 		return nil, err
