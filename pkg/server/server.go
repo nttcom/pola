@@ -72,6 +72,7 @@ func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem
 			}
 		}
 	}()
+
 	serverError := <-errChan
 	return serverError
 }
