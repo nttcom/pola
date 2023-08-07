@@ -486,6 +486,7 @@ type LspObject struct {
 	DstAddr    netip.Addr
 	PlspID     uint32
 	LspID      uint16
+	CFlag      bool
 	OFlag      uint8
 	AFlag      bool
 	RFlag      bool
@@ -535,6 +536,9 @@ func (o *LspObject) Serialize() []uint8 {
 
 	buf := make([]uint8, 4)
 	binary.BigEndian.PutUint32(buf, uint32(o.PlspID<<12)+uint32(o.OFlag<<4))
+	if o.CFlag {
+		buf[3] = buf[3] | 0x80
+	}
 	if o.AFlag {
 		buf[3] = buf[3] | 0x08
 	}
@@ -572,6 +576,7 @@ func NewLspObject(lspName string, plspID uint32) (*LspObject, error) {
 		ObjectType: OT_LSP_LSP,
 		Name:       lspName,
 		PlspID:     plspID,
+		CFlag:      true,     // (RFC8281 5.3.1)
 		OFlag:      uint8(1), // UP (RFC8231 7.3)
 		AFlag:      true,     // desired operational state is active (RFC8231 7.3)
 		RFlag:      false,    // TODO: Allow setting from function arguments
