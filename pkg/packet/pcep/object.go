@@ -490,6 +490,7 @@ type LspObject struct {
 	RFlag      bool
 	SFlag      bool
 	DFlag      bool
+	CFlag      bool
 	TLVs       []TLVInterface
 }
 
@@ -574,6 +575,7 @@ func NewLspObject(lspName string, plspID uint32) (*LspObject, error) {
 		RFlag:      false,    // TODO: Allow setting from function arguments
 		SFlag:      false,
 		DFlag:      true,
+		CFlag:      true,
 		TLVs:       []TLVInterface{},
 	}
 	symbolicPathNameTLV := &SymbolicPathName{
