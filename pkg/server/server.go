@@ -8,10 +8,12 @@ package server
 import (
 	"net"
 	"net/netip"
+	"time"
 
 	"go.uber.org/zap"
 	grpc "google.golang.org/grpc"
 
+	"github.com/k0kubun/pp"
 	"github.com/nttcom/pola/internal/pkg/table"
 )
 
@@ -72,6 +74,51 @@ func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem
 			}
 		}
 	}()
+
+	session := NewSession(0, logger)
+	for {
+		// cisco の session
+		if session = s.SearchSession(netip.MustParseAddr("10.100.0.2")); session != nil {
+			break
+		}
+	}
+
+	srPolicy := table.SRPolicy{
+		PlspID: 3,
+		Name:   "sr-policy",
+		SegmentList: []table.Segment{
+			table.NewSegmentSRMPLS(10000),
+		},
+		SrcAddr:    netip.MustParseAddr("10.100.0.2"),
+		DstAddr:    netip.MustParseAddr("10.100.0.1"),
+		Color:      1000,
+		Preference: 10,
+	}
+	srPolicy2 := table.SRPolicy{
+		PlspID: 4,
+		Name:   "sr-policy2",
+		SegmentList: []table.Segment{
+			table.NewSegmentSRMPLS(20000),
+		},
+		SrcAddr:    netip.MustParseAddr("10.100.0.2"),
+		DstAddr:    netip.MustParseAddr("10.100.0.1"),
+		Color:      2000,
+		Preference: 10,
+	}
+
+	session.RequestSRPolicyCreated(srPolicy)
+	session.RequestSRPolicyCreated(srPolicy2)
+	pp.Println("!!!!!!!!!!!!!!!!! add sr policy !!!!!!!!!!!!!!!!")
+	time.Sleep(30 * time.Second)
+	if err := session.RequestSRPolicyDeleted(srPolicy); err != nil {
+		pp.Println("sendDeleteLsp srPolicy Error")
+		pp.Println(err)
+	}
+	if err := session.RequestSRPolicyDeleted(srPolicy2); err != nil {
+		pp.Println("sendDeleteLsp srPolicy2 Error")
+		pp.Println(err)
+	}
+	pp.Println("!!!!!!!!!!!!!!!!! delete sr policy !!!!!!!!!!!!!!!!")
 
 	serverError := <-errChan
 	return serverError
