@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/nttcom/pola/cmd/pola/grpc"
 	"github.com/spf13/cobra"
 )
 
@@ -25,7 +26,7 @@ func newTedCmd() *cobra.Command {
 }
 
 func print(jsonFlag bool) error {
-	ted, err := getTed(client)
+	ted, err := grpc.GetTed(client)
 	if err != nil {
 		return err
 	}

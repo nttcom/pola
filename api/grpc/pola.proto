@@ -16,6 +16,10 @@ service PceService {
 
   rpc CreateSRPolicyWithoutLinkState (CreateSRPolicyInput) returns (RequestStatus) {};
 
+  rpc DeleteSRPolicy (DeleteSRPolicyInput) returns (RequestStatus) {};
+
+  rpc DeleteSRPolicyWithoutLinkState (DeleteSRPolicyInput) returns (RequestStatus) {};
+
   rpc GetSessionList (google.protobuf.Empty) returns (SessionList) {};
 
   rpc GetSRPolicyList (google.protobuf.Empty) returns (SRPolicyList) {};
@@ -51,7 +55,12 @@ message SRPolicy {
 message CreateSRPolicyInput {
     SRPolicy SRPolicy = 1;
     uint32 asn = 2;
-} 
+}
+
+message DeleteSRPolicyInput {
+    SRPolicy SRPolicy = 1;
+    uint32 asn = 2;
+}
 
 message RequestStatus {
     bool isSuccess = 1;

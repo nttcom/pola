@@ -10,6 +10,7 @@ import (
 	"net/netip"
 
 	pb "github.com/nttcom/pola/api/grpc"
+	"github.com/nttcom/pola/cmd/pola/grpc"
 	"github.com/spf13/cobra"
 )
 
@@ -37,7 +38,7 @@ func delSession(session netip.Addr, jsonFlag bool) error {
 	ss := &pb.Session{
 		Addr: session.AsSlice(),
 	}
-	err := deleteSession(client, ss)
+	err := grpc.DeleteSession(client, ss)
 	if err != nil {
 		return err
 	}
