@@ -10,6 +10,8 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+
+	"github.com/nttcom/pola/cmd/pola/grpc"
 )
 
 func newSRPolicyListCmd() *cobra.Command {
@@ -25,7 +27,7 @@ func showSRPolicyList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	srPolicies, err := getSRPolicyList(client)
+	srPolicies, err := grpc.GetSRPolicyList(client)
 	if err != nil {
 		return err
 	}
