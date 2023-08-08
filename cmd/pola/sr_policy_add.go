@@ -117,7 +117,7 @@ func addSRPolicyNoLinkState(input InputFormat) error {
 			"    - sid: 16002\n\n"
 
 		errMsg := "invalid input\n" +
-			"input examplse is below\n\n" +
+			"input example is below\n\n" +
 			sampleInput
 		return errors.New(errMsg)
 	}
