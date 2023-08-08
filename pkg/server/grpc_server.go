@@ -56,9 +56,18 @@ func (s *APIServer) CreateSRPolicyWithoutLinkState(ctx context.Context, input *p
 }
 
 func (s *APIServer) createSRPolicy(ctx context.Context, input *pb.CreateSRPolicyInput, withLinkState bool) (*pb.RequestStatus, error) {
-	err := validate(input.GetSRPolicy(), input.GetAsn(), withLinkState)
-	if err != nil {
-		return &pb.RequestStatus{IsSuccess: false}, err
+	var err error
+
+	if withLinkState {
+		err = validate(input.GetSRPolicy(), input.GetAsn(), ValidationAdd)
+		if err != nil {
+			return &pb.RequestStatus{IsSuccess: false}, err
+		}
+	} else {
+		err = validate(input.GetSRPolicy(), input.GetAsn(), ValidationAddWithoutLinkState)
+		if err != nil {
+			return &pb.RequestStatus{IsSuccess: false}, err
+		}
 	}
 
 	inputSRPolicy := input.GetSRPolicy()
@@ -117,7 +126,7 @@ func (s *APIServer) createSRPolicy(ctx context.Context, input *pb.CreateSRPolicy
 		Preference:  100,
 	}
 
-	if id, exists := pcepSession.SearchSRPolicyPlspID(inputSRPolicy.GetColor(), dstAddr); exists {
+	if id, exists := pcepSession.SearchPlspID(inputSRPolicy.GetColor(), dstAddr); exists {
 		// Update SR Policy
 		s.pce.logger.Info("plspID check", zap.Uint32("plspID", id), zap.String("server", "grpc"))
 		srPolicy.PlspID = id
@@ -135,35 +144,102 @@ func (s *APIServer) createSRPolicy(ctx context.Context, input *pb.CreateSRPolicy
 	return &pb.RequestStatus{IsSuccess: true}, nil
 }
 
-func validate(inputSRPolicy *pb.SRPolicy, asn uint32, withLinkState bool) error {
-	var validator func(policy *pb.SRPolicy, asn uint32) bool
+func (s *APIServer) DeleteSRPolicy(ctx context.Context, input *pb.DeleteSRPolicyInput) (*pb.RequestStatus, error) {
+	return s.deleteSRPolicy(ctx, input)
+}
 
-	if withLinkState {
-		validator = validateInput
-	} else {
-		validator = validateInputWithoutLinkState
+func (s *APIServer) deleteSRPolicy(ctx context.Context, input *pb.DeleteSRPolicyInput) (*pb.RequestStatus, error) {
+	err := validate(input.GetSRPolicy(), input.GetAsn(), ValidationDelete)
+	if err != nil {
+		return &pb.RequestStatus{IsSuccess: false}, err
 	}
 
-	if !validator(inputSRPolicy, asn) {
+	inputSRPolicy := input.GetSRPolicy()
+	var srcAddr, dstAddr netip.Addr
+	var segmentList []table.Segment
+
+	srcAddr, _ = netip.AddrFromSlice(inputSRPolicy.GetSrcAddr())
+	dstAddr, _ = netip.AddrFromSlice(inputSRPolicy.GetDstAddr())
+	for _, segment := range inputSRPolicy.GetSegmentList() {
+		seg, err := table.NewSegment(segment.GetSid())
+		if err != nil {
+			return &pb.RequestStatus{IsSuccess: false}, err
+		}
+		segmentList = append(segmentList, seg)
+	}
+
+	inputJson, err := json.Marshal(input)
+	if err != nil {
+		return nil, err
+	}
+	s.pce.logger.Info("received DeleteSRPolicy API request", zap.String("input", string(inputJson)), zap.String("server", "grpc"))
+
+	pcepSession, err := getPcepSession(s.pce, inputSRPolicy.GetPcepSessionAddr())
+	if err != nil {
+		return &pb.RequestStatus{IsSuccess: false}, err
+	}
+
+	srPolicy := table.SRPolicy{
+		Name:        inputSRPolicy.GetPolicyName(),
+		SegmentList: segmentList,
+		SrcAddr:     srcAddr,
+		DstAddr:     dstAddr,
+		Color:       inputSRPolicy.GetColor(),
+		Preference:  100,
+	}
+
+	if id, exists := pcepSession.SearchPlspID(inputSRPolicy.GetColor(), dstAddr); exists {
+		// Delete SR Policy
+		s.pce.logger.Info("plspID check", zap.Uint32("plspID", id), zap.String("server", "grpc"))
+		srPolicy.PlspID = id
+
+		if err := pcepSession.RequestSRPolicyDeleted(srPolicy); err != nil {
+			return &pb.RequestStatus{IsSuccess: false}, nil
+		}
+	} else {
+		// Invalid SR Policy
+		return &pb.RequestStatus{IsSuccess: false}, fmt.Errorf("SR Policy not found")
+	}
+
+	return &pb.RequestStatus{IsSuccess: true}, nil
+}
+
+func validate(inputSRPolicy *pb.SRPolicy, asn uint32, validationKind ValidationKind) error {
+	if !validator[validationKind](inputSRPolicy, asn) {
 		return errors.New("invalid input")
 	}
 
 	return nil
 }
 
-func validateInput(policy *pb.SRPolicy, asn uint32) bool {
-	return asn != 0 &&
-		policy.PcepSessionAddr != nil &&
-		policy.Color != 0 &&
-		policy.SrcRouterID != "" &&
-		policy.DstRouterID != ""
-}
+type ValidationKind string
 
-func validateInputWithoutLinkState(policy *pb.SRPolicy, asn uint32) bool {
-	return policy.PcepSessionAddr != nil &&
-		len(policy.SrcAddr) > 0 &&
-		len(policy.DstAddr) > 0 &&
-		len(policy.SegmentList) > 0
+const (
+	ValidationAdd                 ValidationKind = "Add"
+	ValidationAddWithoutLinkState ValidationKind = "AddWithoutLinkState"
+	ValidationDelete              ValidationKind = "Delete"
+)
+
+var validator = map[ValidationKind]func(policy *pb.SRPolicy, asn uint32) bool{
+	ValidationKind("Add"): func(policy *pb.SRPolicy, asn uint32) bool {
+		return asn != 0 &&
+			policy.PcepSessionAddr != nil &&
+			policy.Color != 0 &&
+			policy.SrcRouterID != "" &&
+			policy.DstRouterID != ""
+	},
+	ValidationKind("AddWithoutLinkState"): func(policy *pb.SRPolicy, asn uint32) bool {
+		return policy.PcepSessionAddr != nil &&
+			len(policy.SrcAddr) > 0 &&
+			len(policy.DstAddr) > 0 &&
+			len(policy.SegmentList) > 0
+	},
+	ValidationKind("Delete"): func(policy *pb.SRPolicy, asn uint32) bool {
+		return policy.PcepSessionAddr != nil &&
+			policy.Color != 0 &&
+			len(policy.DstAddr) > 0 &&
+			policy.PolicyName != ""
+	},
 }
 
 func getPcepSession(pce *Server, addr []byte) (*Session, error) {

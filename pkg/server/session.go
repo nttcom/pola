@@ -409,8 +409,8 @@ func (ss *Session) SearchSRPolicy(plspID uint32) (*table.SRPolicy, bool) {
 	return nil, false
 }
 
-// SearchSRPolicyPlspID returns the PLSP-ID of a registered SR Policy, along with a boolean value indicating if it was found.
-func (ss *Session) SearchSRPolicyPlspID(color uint32, endpoint netip.Addr) (uint32, bool) {
+// SearchPlspID returns the PLSP-ID of a registered SR Policy, along with a boolean value indicating if it was found.
+func (ss *Session) SearchPlspID(color uint32, endpoint netip.Addr) (uint32, bool) {
 	for _, v := range ss.srPolicies {
 		if v.Color == color && v.DstAddr == endpoint {
 			return v.PlspID, true
