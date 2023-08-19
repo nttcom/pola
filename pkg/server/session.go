@@ -272,7 +272,7 @@ func (ss *Session) handlePCRpt(length uint16) error {
 			case sr.LspObject.PlspID == 0:
 				ss.logger.Info("Finish PCRpt state synchronization", zap.String("session", ss.peerAddr.String()))
 				ss.isSynced = true
-			case sr.LspObject.RFlag && sr.SrpObject.SrpID != 0:
+			case sr.SrpObject.RFlag && sr.SrpObject.SrpID != 0:
 				ss.logger.Info("Finish Stateful PCE request", zap.String("session", ss.peerAddr.String()), zap.Uint32("srpID", sr.SrpObject.SrpID))
 				ss.DeleteSRPolicy(sr.LspObject.PlspID)
 			case sr.SrpObject.SrpID != 0:
