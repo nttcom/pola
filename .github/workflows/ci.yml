@@ -22,4 +22,4 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v3
         with:
-          golangci_lint_flags: "--config=.github/.golangci.yml"
+          version: latest
