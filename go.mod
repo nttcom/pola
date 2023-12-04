@@ -4,7 +4,7 @@ go 1.20
 
 require (
 	github.com/golang/protobuf v1.5.3
-	github.com/osrg/gobgp/v3 v3.20.0
+	github.com/osrg/gobgp/v3 v3.21.0
 	github.com/spf13/cobra v1.8.0
 	go.uber.org/zap v1.26.0
 	google.golang.org/grpc v1.59.0
