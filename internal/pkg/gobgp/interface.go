@@ -30,7 +30,10 @@ func GetBgplsNlris(serverAddr string, serverPort string) ([]table.TedElem, error
 	gobgpAddress := serverAddr + ":" + serverPort
 
 	// Get connection
-	cc, err := grpc.Dial(gobgpAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	cc, err := grpc.NewClient(
+		gobgpAddress,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
 	if err != nil {
 		return nil, err
 	}
