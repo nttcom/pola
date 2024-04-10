@@ -5,10 +5,10 @@ LABEL maintainer "Motoki TAKENAKA <m.takenaka@ntt.com>"
 RUN apt-get update \
  && apt-get install -y bash-completion curl iproute2
 
-# Setup Go 1.18.8
-RUN curl -o ~/go1.18.8.linux-amd64.tar.gz -LO https://go.dev/dl/go1.18.8.linux-amd64.tar.gz \
+# Setup Go 1.22.2
+RUN curl -o ~/go1.22.2.linux-amd64.tar.gz -LO https://go.dev/dl/go1.22.2.linux-amd64.tar.gz \
     && rm -rf /usr/local/go \
-    && tar -C /usr/local -xzf ~/go1.18.8.linux-amd64.tar.gz \
+    && tar -C /usr/local -xzf ~/go1.22.2.linux-amd64.tar.gz \
     && echo "export PATH=$PATH:/usr/local/go/bin" > ~/.bashrc
 
 # Enable Completion 

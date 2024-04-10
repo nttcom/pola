@@ -36,7 +36,10 @@ func newRootCmd() *cobra.Command {
 }
 
 func persistentPreRunE(cmd *cobra.Command, args []string) error {
-	conn, err := grpc.Dial(net.JoinHostPort(cmd.Flag("host").Value.String(), cmd.Flag("port").Value.String()), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(
+		net.JoinHostPort(cmd.Flag("host").Value.String(), cmd.Flag("port").Value.String()),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
 	if err != nil {
 		return fmt.Errorf("failed to dial polad connection: %v", err)
 	}
