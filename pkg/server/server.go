@@ -133,8 +133,8 @@ func (s *Server) SearchSession(peerAddr netip.Addr) *Session {
 }
 
 // SRPolicies returns a map of registered SR Policy with key sessionAddr
-func (s *Server) SRPolicies() map[netip.Addr][]table.SRPolicy {
-	srPolicies := make(map[netip.Addr][]table.SRPolicy)
+func (s *Server) SRPolicies() map[netip.Addr][]*table.SRPolicy {
+	srPolicies := make(map[netip.Addr][]*table.SRPolicy)
 	for _, ss := range s.sessionList {
 		if ss.isSynced {
 			srPolicies[ss.peerAddr] = ss.srPolicies
