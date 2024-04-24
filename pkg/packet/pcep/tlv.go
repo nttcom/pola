@@ -377,6 +377,67 @@ func (tlv *PathSetupType) Len() uint16 {
 	return TL_LENGTH + TLV_PATH_SETUP_TYPE_LENGTH
 }
 
+type ExtendedAssociationID struct {
+	Color    uint32
+	Endpoint netip.Addr
+}
+
+func (tlv *ExtendedAssociationID) DecodeFromBytes(data []uint8) error {
+	l := binary.BigEndian.Uint16(data[2:4])
+
+	tlv.Color = binary.BigEndian.Uint32(data[4:8])
+
+	switch l {
+	case TLV_EXTENDED_ASSOCIATION_ID_IPV4_LENGTH:
+		tlv.Endpoint, _ = netip.AddrFromSlice(data[8:12])
+	case TLV_EXTENDED_ASSOCIATION_ID_IPV6_LENGTH:
+		tlv.Endpoint, _ = netip.AddrFromSlice(data[8:24])
+	}
+
+	return nil
+}
+
+func (tlv *ExtendedAssociationID) Serialize() []uint8 {
+	buf := []uint8{}
+
+	typ := make([]uint8, 2)
+	binary.BigEndian.PutUint16(typ, tlv.Type())
+	buf = append(buf, typ...)
+
+	length := make([]uint8, 2)
+	if tlv.Endpoint.Is4() {
+		binary.BigEndian.PutUint16(length, TLV_EXTENDED_ASSOCIATION_ID_IPV4_LENGTH)
+	} else if tlv.Endpoint.Is6() {
+		binary.BigEndian.PutUint16(length, TLV_EXTENDED_ASSOCIATION_ID_IPV6_LENGTH)
+	}
+	buf = append(buf, length...)
+
+	color := make([]uint8, 4)
+	binary.BigEndian.PutUint32(color, tlv.Color)
+	buf = append(buf, color...)
+
+	buf = append(buf, tlv.Endpoint.AsSlice()...)
+	return buf
+}
+
+func (tlv *ExtendedAssociationID) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	return nil
+}
+
+func (tlv *ExtendedAssociationID) Type() uint16 {
+	return TLV_EXTENDED_ASSOCIATION_ID
+}
+
+func (tlv *ExtendedAssociationID) Len() uint16 {
+	if tlv.Endpoint.Is4() {
+		return TL_LENGTH + TLV_EXTENDED_ASSOCIATION_ID_IPV4_LENGTH
+	} else if tlv.Endpoint.Is6() {
+		return TL_LENGTH + TLV_EXTENDED_ASSOCIATION_ID_IPV6_LENGTH
+	}
+	return 0
+
+}
+
 type PathSetupTypeCapability struct {
 	PathSetupTypes Psts
 	SubTLVs        []TLVInterface
@@ -528,6 +589,92 @@ func (tlv *AssocTypeList) Len() uint16 {
 		padding = 2
 	}
 	return TL_LENGTH + l + padding
+}
+
+type SRPolicyCandidatePathIdentifier struct {
+	OriginatorAddr netip.Addr // After DecodeFromBytes, even ipv4 addresses are assigned in ipv6 format
+}
+
+func (tlv *SRPolicyCandidatePathIdentifier) DecodeFromBytes(data []uint8) error {
+	tlv.OriginatorAddr, _ = netip.AddrFromSlice(data[12:28])
+	return nil
+}
+
+func (tlv *SRPolicyCandidatePathIdentifier) Serialize() []uint8 {
+	buf := []uint8{}
+
+	typ := make([]uint8, 2)
+	binary.BigEndian.PutUint16(typ, tlv.Type())
+	buf = append(buf, typ...)
+
+	length := make([]uint8, 2)
+	binary.BigEndian.PutUint16(length, TLV_SRPOLICY_CPATH_ID_LENGTH)
+	buf = append(buf, length...)
+
+	buf = append(buf, 0x0a)                   // protocol origin, PCEP = 10
+	buf = append(buf, 0x00, 0x00, 0x00)       // mbz
+	buf = append(buf, 0x00, 0x00, 0x00, 0x00) // Originator ASN
+	// Originator Address
+	if tlv.OriginatorAddr.Is4() {
+		buf = append(buf, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00)
+		buf = append(buf, tlv.OriginatorAddr.AsSlice()...)
+	} else if tlv.OriginatorAddr.Is6() {
+		buf = append(buf, tlv.OriginatorAddr.AsSlice()...)
+	}
+	buf = append(buf, 0x00, 0x00, 0x00, 0x01) // discriminator
+
+	return buf
+}
+
+func (tlv *SRPolicyCandidatePathIdentifier) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	return nil
+}
+
+func (tlv *SRPolicyCandidatePathIdentifier) Type() uint16 {
+	return TLV_SRPOLICY_CPATH_ID
+}
+
+func (tlv *SRPolicyCandidatePathIdentifier) Len() uint16 {
+	return TL_LENGTH + TLV_SRPOLICY_CPATH_ID_LENGTH
+}
+
+type SRPolicyCandidatePathPreference struct {
+	Preference uint32
+}
+
+func (tlv *SRPolicyCandidatePathPreference) DecodeFromBytes(data []uint8) error {
+	tlv.Preference = binary.BigEndian.Uint32(data[4:8])
+	return nil
+}
+
+func (tlv *SRPolicyCandidatePathPreference) Serialize() []uint8 {
+	buf := []uint8{}
+
+	typ := make([]uint8, 2)
+	binary.BigEndian.PutUint16(typ, tlv.Type())
+	buf = append(buf, typ...)
+
+	length := make([]uint8, 2)
+	binary.BigEndian.PutUint16(length, TLV_SRPOLICY_CPATH_PREFERENCE_LENGTH)
+	buf = append(buf, length...)
+
+	preference := make([]uint8, 4)
+	binary.BigEndian.PutUint32(preference, tlv.Preference)
+	buf = append(buf, preference...)
+
+	return buf
+}
+
+func (tlv *SRPolicyCandidatePathPreference) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	return nil
+}
+
+func (tlv *SRPolicyCandidatePathPreference) Type() uint16 {
+	return TLV_SRPOLICY_CPATH_PREFERENCE
+}
+
+func (tlv *SRPolicyCandidatePathPreference) Len() uint16 {
+	return TL_LENGTH + TLV_SRPOLICY_CPATH_PREFERENCE_LENGTH
 }
 
 type UndefinedTLV struct {
