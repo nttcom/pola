@@ -1140,59 +1140,17 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 	} else {
 		o.AssocID = 1                                  // (I.D. pce-segment-routing-policy-cp-07 5.1)
 		o.AssocType = ASSOC_TYPE_SR_POLICY_ASSOCIATION // (I.D. pce-segment-routing-policy-cp-07 5.1)
-		var associationObjectTLVs []TLVInterface
-		if srcAddr.Is4() {
-			associationObjectTLVs = []TLVInterface{
-				&UndefinedTLV{
-					Typ:    TLV_EXTENDED_ASSOCIATION_ID,
-					Length: TLV_EXTENDED_ASSOCIATION_ID_IPV4_LENGTH,
-					Value: AppendByteSlices(
-						Uint32ToByteSlice(color), dstAddr.AsSlice(),
-					),
-				},
-				&UndefinedTLV{
-					Typ:    TLV_SRPOLICY_CPATH_ID,
-					Length: TLV_SRPOLICY_CPATH_ID_LENGTH,
-					Value: []uint8{
-						0x00,             // protocol origin
-						0x00, 0x00, 0x00, // mbz
-						0x00, 0x00, 0x00, 0x00, // Originator ASN
-						0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Originator Address
-						0x00, 0x00, 0x00, 0x00, //discriminator
-					},
-				},
-				&UndefinedTLV{
-					Typ:    TLV_SRPOLICY_CPATH_PREFERENCE,
-					Length: TLV_SRPOLICY_CPATH_PREFERENCE_LENGTH,
-					Value:  Uint32ToByteSlice(preference),
-				},
-			}
-		} else if srcAddr.Is6() {
-			associationObjectTLVs = []TLVInterface{
-				&UndefinedTLV{
-					Typ:    TLV_EXTENDED_ASSOCIATION_ID,
-					Length: TLV_EXTENDED_ASSOCIATION_ID_IPV6_LENGTH,
-					Value: AppendByteSlices(
-						Uint32ToByteSlice(color), dstAddr.AsSlice(),
-					),
-				},
-				&UndefinedTLV{
-					Typ:    TLV_SRPOLICY_CPATH_ID,
-					Length: TLV_SRPOLICY_CPATH_ID_LENGTH,
-					Value: []uint8{
-						0x00,             // protocol origin
-						0x00, 0x00, 0x00, // mbz
-						0x00, 0x00, 0x00, 0x00, // Originator ASN
-						0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Originator Address
-						0x00, 0x00, 0x00, 0x00, //discriminator
-					},
-				},
-				&UndefinedTLV{
-					Typ:    TLV_SRPOLICY_CPATH_PREFERENCE,
-					Length: TLV_SRPOLICY_CPATH_PREFERENCE_LENGTH,
-					Value:  Uint32ToByteSlice(preference),
-				},
-			}
+		associationObjectTLVs := []TLVInterface{
+			&ExtendedAssociationID{
+				Color:    color,
+				Endpoint: dstAddr,
+			},
+			&SRPolicyCandidatePathIdentifier{
+				OriginatorAddr: dstAddr,
+			},
+			&SRPolicyCandidatePathPreference{
+				Preference: preference,
+			},
 		}
 		o.TLVs = append(o.TLVs, associationObjectTLVs...)
 	}
