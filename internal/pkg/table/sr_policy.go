@@ -11,6 +11,16 @@ import (
 	"strconv"
 )
 
+// sr-policy state
+type PolicyState string
+
+const (
+	POLICY_DOWN    = PolicyState("down")
+	POLICY_UP      = PolicyState("up")
+	POLICY_ACTIVE  = PolicyState("active")
+	POLICY_UNKNOWN = PolicyState("unknown")
+)
+
 type SRPolicy struct {
 	PlspID      uint32
 	Name        string
@@ -20,6 +30,7 @@ type SRPolicy struct {
 	Color       uint32
 	Preference  uint32
 	LspID       uint16
+	State       PolicyState
 }
 
 type Segment interface {
