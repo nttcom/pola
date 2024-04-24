@@ -314,9 +314,11 @@ func (ss *Session) RegisterSRPolicy(srPolicy table.SRPolicy) {
 	ss.srPolicies = append(ss.srPolicies, srPolicy)
 }
 
-func (ss *Session) DeleteSRPolicy(plspID uint32) {
+func (ss *Session) DeleteSRPolicy(sr pcep.StateReport) {
+	lspID := sr.LspObject.LspID
 	for i, v := range ss.srPolicies {
-		if v.PlspID == plspID {
+		// If the LSP ID is old, it is not the latest data update.
+		if v.PlspID == sr.LspObject.PlspID && v.LspID <= lspID {
 			ss.srPolicies[i] = ss.srPolicies[len(ss.srPolicies)-1]
 			ss.srPolicies = ss.srPolicies[:len(ss.srPolicies)-1]
 			break

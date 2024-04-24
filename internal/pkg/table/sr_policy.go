@@ -19,6 +19,7 @@ type SRPolicy struct {
 	DstAddr     netip.Addr
 	Color       uint32
 	Preference  uint32
+	LspID       uint16
 }
 
 type Segment interface {
