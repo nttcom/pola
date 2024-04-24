@@ -482,6 +482,7 @@ type LspObject struct {
 	SrcAddr    netip.Addr
 	DstAddr    netip.Addr
 	PlspID     uint32
+	LspID      uint16
 	OFlag      uint8
 	AFlag      bool
 	RFlag      bool
@@ -513,10 +514,12 @@ func (o *LspObject) DecodeFromBytes(typ uint8, objectBody []uint8) error {
 			if t, ok := tlv.(*IPv4LspIdentifiers); ok {
 				o.SrcAddr = t.IPv4TunnelSenderAddress
 				o.DstAddr = t.IPv4TunnelEndpointAddress
+				o.LspID = t.LspID
 			}
 			if t, ok := tlv.(*IPv6LspIdentifiers); ok {
 				o.SrcAddr = t.IPv6TunnelSenderAddress
 				o.DstAddr = t.IPv6TunnelEndpointAddress
+				o.LspID = t.LspID
 			}
 		}
 	}
