@@ -23,7 +23,7 @@ type Session struct {
 	tcpConn         *net.TCPConn
 	isSynced        bool
 	srpIDHead       uint32 // 0x00000000 and 0xFFFFFFFF are reserved.
-	srPolicies      []table.SRPolicy
+	srPolicies      []*table.SRPolicy
 	logger          *zap.Logger
 	keepAlive       uint8
 	pccType         pcep.PccType
@@ -263,25 +263,34 @@ func (ss *Session) handlePCRpt(length uint16) error {
 	}
 
 	for _, sr := range message.StateReports {
+		// synchronization
 		if sr.LspObject.SFlag {
-			srPolicy := sr.ToSRPolicy(ss.pccType)
-			ss.logger.Info("Synchronize SR Policy information", zap.String("session", ss.peerAddr.String()), zap.Any("SRPolicy", srPolicy), zap.Any("Message", message))
-			go ss.RegisterSRPolicy(srPolicy)
+			ss.logger.Info("Synchronize SR Policy information", zap.String("session", ss.peerAddr.String()), zap.Any("Message", message))
+			ss.RegisterSRPolicy(*sr)
 		} else if !sr.LspObject.SFlag {
 			switch {
+			// finish synchronization
 			case sr.LspObject.PlspID == 0:
 				ss.logger.Info("Finish PCRpt state synchronization", zap.String("session", ss.peerAddr.String()))
 				ss.isSynced = true
+			// response to request from PCE
 			case sr.SrpObject.SrpID != 0:
-				srPolicy := sr.ToSRPolicy(ss.pccType)
 				ss.logger.Info("Finish Stateful PCE request", zap.String("session", ss.peerAddr.String()), zap.Uint32("srpID", sr.SrpObject.SrpID))
-				go ss.RegisterSRPolicy(srPolicy)
+				if sr.LspObject.RFlag {
+					ss.DeleteSRPolicy(*sr)
+				} else {
+					ss.RegisterSRPolicy(*sr)
+				}
+
 			default:
-				// TODO: Need to implementation of PCUpdate for Passive stateful PCE
+				if sr.LspObject.RFlag {
+					ss.DeleteSRPolicy(*sr)
+				} else {
+					ss.RegisterSRPolicy(*sr)
+				}
 			}
 		}
 	}
-
 	return nil
 }
 
@@ -309,19 +318,82 @@ func (ss *Session) SendPCUpdate(srPolicy table.SRPolicy) error {
 	return err
 }
 
-func (ss *Session) RegisterSRPolicy(srPolicy table.SRPolicy) {
-	ss.DeleteSRPolicy(srPolicy.PlspID)
-	ss.srPolicies = append(ss.srPolicies, srPolicy)
+func (ss *Session) RegisterSRPolicy(sr pcep.StateReport) {
+	var color, preference uint32
+
+	if ss.pccType == pcep.CISCO_LEGACY {
+		color = sr.VendorInformationObject.Color()
+		preference = sr.VendorInformationObject.Preference()
+	} else {
+		color = sr.AssociationObject.Color()
+		preference = sr.AssociationObject.Preference()
+	}
+
+	lspID := sr.LspObject.LspID
+
+	var state table.PolicyState
+	switch sr.LspObject.OFlag {
+	case uint8(0x00):
+		state = table.POLICY_DOWN
+	case uint8(0x01):
+		state = table.POLICY_UP
+	case uint8(0x02):
+		state = table.POLICY_ACTIVE
+	default:
+		state = table.POLICY_UNKNOWN
+	}
+
+	if p, ok := ss.SearchSRPolicy(sr.LspObject.PlspID); ok {
+		// update
+		// If the LSP ID is old, it is not the latest data update.
+		if p.LspID <= lspID {
+			p.Update(
+				table.PolicyDiff{
+					Name:        &sr.LspObject.Name,
+					Color:       &color,
+					Preference:  &preference,
+					SegmentList: sr.EroObject.ToSegmentList(),
+					LspID:       lspID,
+					State:       state,
+				},
+			)
+		}
+	} else {
+		// create
+		p := table.NewSRPolicy(
+			sr.LspObject.PlspID,
+			sr.LspObject.Name,
+			sr.EroObject.ToSegmentList(),
+			sr.LspObject.SrcAddr,
+			sr.LspObject.DstAddr,
+			color,
+			preference,
+			lspID,
+			state,
+		)
+		ss.srPolicies = append(ss.srPolicies, p)
+	}
 }
 
-func (ss *Session) DeleteSRPolicy(plspID uint32) {
+func (ss *Session) DeleteSRPolicy(sr pcep.StateReport) {
+	lspID := sr.LspObject.LspID
 	for i, v := range ss.srPolicies {
-		if v.PlspID == plspID {
+		// If the LSP ID is old, it is not the latest data update.
+		if v.PlspID == sr.LspObject.PlspID && v.LspID <= lspID {
 			ss.srPolicies[i] = ss.srPolicies[len(ss.srPolicies)-1]
 			ss.srPolicies = ss.srPolicies[:len(ss.srPolicies)-1]
 			break
 		}
 	}
+}
+
+func (ss *Session) SearchSRPolicy(plspID uint32) (*table.SRPolicy, bool) {
+	for _, v := range ss.srPolicies {
+		if v.PlspID == plspID {
+			return v, true
+		}
+	}
+	return nil, false
 }
 
 // SearchSRPolicyPlspID returns the PLSP-ID of a registered SR Policy, along with a boolean value indicating if it was found.

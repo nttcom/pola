@@ -287,27 +287,6 @@ func (r *StateReport) decodeVendorInformationObject(objectType uint8, objectBody
 	return r.VendorInformationObject.DecodeFromBytes(objectType, objectBody)
 }
 
-func (r *StateReport) ToSRPolicy(pcc PccType) table.SRPolicy {
-	srPolicy := table.SRPolicy{
-		PlspID:      r.LspObject.PlspID,
-		Name:        r.LspObject.Name,
-		SegmentList: []table.Segment{},
-		SrcAddr:     r.LspObject.SrcAddr,
-		DstAddr:     r.LspObject.DstAddr,
-	}
-	if pcc == CISCO_LEGACY {
-		srPolicy.Color = r.VendorInformationObject.Color()
-		srPolicy.Preference = r.VendorInformationObject.Preference()
-	} else {
-		srPolicy.Color = r.AssociationObject.Color()
-		srPolicy.Preference = r.AssociationObject.Preference()
-	}
-
-	srPolicy.SegmentList = r.EroObject.ToSegmentList()
-
-	return srPolicy
-}
-
 // PCRpt Message
 type PCRptMessage struct {
 	StateReports []*StateReport

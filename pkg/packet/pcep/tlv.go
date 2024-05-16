@@ -214,6 +214,8 @@ func (tlv *SymbolicPathName) Len() uint16 {
 type IPv4LspIdentifiers struct {
 	IPv4TunnelSenderAddress   netip.Addr
 	IPv4TunnelEndpointAddress netip.Addr
+	LspID                     uint16
+	TunnelID                  uint16
 }
 
 func (tlv *IPv4LspIdentifiers) DecodeFromBytes(data []uint8) error {
@@ -221,6 +223,8 @@ func (tlv *IPv4LspIdentifiers) DecodeFromBytes(data []uint8) error {
 	if tlv.IPv4TunnelSenderAddress, ok = netip.AddrFromSlice(data[12:16]); !ok {
 		tlv.IPv4TunnelSenderAddress, _ = netip.AddrFromSlice(data[4:8])
 	}
+	tlv.LspID = binary.BigEndian.Uint16(data[8:10])
+	tlv.TunnelID = binary.BigEndian.Uint16(data[10:12])
 	tlv.IPv4TunnelEndpointAddress, _ = netip.AddrFromSlice(data[16:20])
 	return nil
 }
@@ -244,10 +248,14 @@ func (tlv *IPv4LspIdentifiers) Len() uint16 {
 type IPv6LspIdentifiers struct {
 	IPv6TunnelSenderAddress   netip.Addr
 	IPv6TunnelEndpointAddress netip.Addr
+	LspID                     uint16
+	TunnelID                  uint16
 }
 
 func (tlv *IPv6LspIdentifiers) DecodeFromBytes(data []uint8) error {
 	tlv.IPv6TunnelSenderAddress, _ = netip.AddrFromSlice(data[4:20])
+	tlv.LspID = binary.BigEndian.Uint16(data[20:22])
+	tlv.TunnelID = binary.BigEndian.Uint16(data[22:24])
 	tlv.IPv6TunnelEndpointAddress, _ = netip.AddrFromSlice(data[40:56])
 	return nil
 }
