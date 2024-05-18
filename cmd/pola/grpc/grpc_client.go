@@ -3,7 +3,7 @@
 // This software is released under the MIT License.
 // see https://github.com/nttcom/pola/blob/main/LICENSE
 
-package main
+package grpc
 
 import (
 	"context"
@@ -20,7 +20,7 @@ func withTimeout() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), time.Second)
 }
 
-func getSessionAddrList(client pb.PceServiceClient) ([]netip.Addr, error) {
+func GetSessionAddrList(client pb.PceServiceClient) ([]netip.Addr, error) {
 	ctx, cancel := withTimeout()
 	defer cancel()
 
@@ -38,7 +38,7 @@ func getSessionAddrList(client pb.PceServiceClient) ([]netip.Addr, error) {
 	return addrs, nil
 }
 
-func deleteSession(client pb.PceServiceClient, session *pb.Session) error {
+func DeleteSession(client pb.PceServiceClient, session *pb.Session) error {
 	ctx, cancel := withTimeout()
 	defer cancel()
 	_, err := client.DeleteSession(ctx, session)
@@ -48,7 +48,7 @@ func deleteSession(client pb.PceServiceClient, session *pb.Session) error {
 	return nil
 }
 
-func getSRPolicyList(client pb.PceServiceClient) (map[netip.Addr][]table.SRPolicy, error) {
+func GetSRPolicyList(client pb.PceServiceClient) (map[netip.Addr][]table.SRPolicy, error) {
 	ctx, cancel := withTimeout()
 	defer cancel()
 
@@ -85,7 +85,7 @@ func getSRPolicyList(client pb.PceServiceClient) (map[netip.Addr][]table.SRPolic
 	return policies, nil
 }
 
-func createSRPolicy(client pb.PceServiceClient, input *pb.CreateSRPolicyInput) error {
+func CreateSRPolicy(client pb.PceServiceClient, input *pb.CreateSRPolicyInput) error {
 	ctx, cancel := withTimeout()
 	defer cancel()
 
@@ -93,7 +93,7 @@ func createSRPolicy(client pb.PceServiceClient, input *pb.CreateSRPolicyInput) e
 	return err
 }
 
-func createSRPolicyWithoutLinkState(client pb.PceServiceClient, input *pb.CreateSRPolicyInput) error {
+func CreateSRPolicyWithoutLinkState(client pb.PceServiceClient, input *pb.CreateSRPolicyInput) error {
 	ctx, cancel := withTimeout()
 	defer cancel()
 
@@ -101,7 +101,15 @@ func createSRPolicyWithoutLinkState(client pb.PceServiceClient, input *pb.Create
 	return err
 }
 
-func getTed(client pb.PceServiceClient) (*table.LsTed, error) {
+func DeleteSRPolicy(client pb.PceServiceClient, input *pb.DeleteSRPolicyInput) error {
+	ctx, cancel := withTimeout()
+	defer cancel()
+
+	_, err := client.DeleteSRPolicy(ctx, input)
+	return err
+}
+
+func GetTed(client pb.PceServiceClient) (*table.LsTed, error) {
 	ctx, cancel := withTimeout()
 	defer cancel()
 

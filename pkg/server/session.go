@@ -294,8 +294,21 @@ func (ss *Session) handlePCRpt(length uint16) error {
 	return nil
 }
 
-func (ss *Session) SendPCInitiate(srPolicy table.SRPolicy) error {
-	pcinitiateMessage, err := pcep.NewPCInitiateMessage(ss.srpIDHead, srPolicy.Name, srPolicy.SegmentList, srPolicy.Color, srPolicy.Preference, srPolicy.SrcAddr, srPolicy.DstAddr, pcep.VendorSpecific(ss.pccType))
+func (ss *Session) RequestAllSRPolicyDeleted() error {
+	var srPolicy table.SRPolicy
+	return ss.sendPCInitiate(srPolicy, true)
+}
+
+func (ss *Session) RequestSRPolicyDeleted(srPolicy table.SRPolicy) error {
+	return ss.sendPCInitiate(srPolicy, true)
+}
+
+func (ss *Session) RequestSRPolicyCreated(srPolicy table.SRPolicy) error {
+	return ss.sendPCInitiate(srPolicy, false)
+}
+
+func (ss *Session) sendPCInitiate(srPolicy table.SRPolicy, lspDelete bool) error {
+	pcinitiateMessage, err := pcep.NewPCInitiateMessage(ss.srpIDHead, srPolicy.Name, lspDelete, srPolicy.PlspID, srPolicy.SegmentList, srPolicy.Color, srPolicy.Preference, srPolicy.SrcAddr, srPolicy.DstAddr, pcep.VendorSpecific(ss.pccType))
 	if err != nil {
 		return err
 	}
@@ -396,8 +409,8 @@ func (ss *Session) SearchSRPolicy(plspID uint32) (*table.SRPolicy, bool) {
 	return nil, false
 }
 
-// SearchSRPolicyPlspID returns the PLSP-ID of a registered SR Policy, along with a boolean value indicating if it was found.
-func (ss *Session) SearchSRPolicyPlspID(color uint32, endpoint netip.Addr) (uint32, bool) {
+// SearchPlspID returns the PLSP-ID of a registered SR Policy, along with a boolean value indicating if it was found.
+func (ss *Session) SearchPlspID(color uint32, endpoint netip.Addr) (uint32, bool) {
 	for _, v := range ss.srPolicies {
 		if v.Color == color && v.DstAddr == endpoint {
 			return v.PlspID, true

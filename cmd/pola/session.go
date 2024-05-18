@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/nttcom/pola/cmd/pola/grpc"
 	"github.com/spf13/cobra"
 )
 
@@ -28,7 +29,7 @@ func newSessionCmd() *cobra.Command {
 }
 
 func showSession(jsonFlag bool) error {
-	sessionAddrList, err := getSessionAddrList(client)
+	sessionAddrList, err := grpc.GetSessionAddrList(client)
 	if err != nil {
 		return err
 	}

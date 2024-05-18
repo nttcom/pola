@@ -11,9 +11,11 @@ import (
 	"net/netip"
 	"os"
 
-	pb "github.com/nttcom/pola/api/grpc"
 	"github.com/spf13/cobra"
 	yaml "gopkg.in/yaml.v2"
+
+	pb "github.com/nttcom/pola/api/grpc"
+	"github.com/nttcom/pola/cmd/pola/grpc"
 )
 
 func newSRPolicyAddCmd() *cobra.Command {
@@ -115,7 +117,7 @@ func addSRPolicyNoLinkState(input InputFormat) error {
 			"    - sid: 16002\n\n"
 
 		errMsg := "invalid input\n" +
-			"input examplse is below\n\n" +
+			"input example is below\n\n" +
 			sampleInput
 		return errors.New(errMsg)
 	}
@@ -136,7 +138,7 @@ func addSRPolicyNoLinkState(input InputFormat) error {
 	inputData := &pb.CreateSRPolicyInput{
 		SRPolicy: srPolicy,
 	}
-	if err := createSRPolicyWithoutLinkState(client, inputData); err != nil {
+	if err := grpc.CreateSRPolicyWithoutLinkState(client, inputData); err != nil {
 		return err
 	}
 
@@ -228,7 +230,7 @@ func addSRPolicyLinkState(input InputFormat) error {
 		SRPolicy: srPolicy,
 		Asn:      input.Asn,
 	}
-	if err := createSRPolicy(client, inputData); err != nil {
+	if err := grpc.CreateSRPolicy(client, inputData); err != nil {
 		return fmt.Errorf("gRPC Server Error: %s", err.Error())
 
 	}
