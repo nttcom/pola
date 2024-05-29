@@ -7,18 +7,29 @@ Displays the peer addresses of the active session.
 
 JSON formatted response
 ```json
-{
-    "sessions": [
-        {
-            "address": "192.0.2.1",
-            "status": "active",
-        },
-        {
-            "address": "192.0.2.2",
-            "status": "active",
-        },
+[
+  {
+    "Addr": "192.0.2.1",
+    "State": "UP",
+    "Caps": [
+      "Stateful",
+      "Update",
+      "Initiate",
+      "SR-TE",
     ]
-}
+  },
+  {
+    "Addr": "192.0.2.2",
+    "State": "UP",
+    "Caps": [
+      "Stateful",
+      "Update",
+      "Initiate",
+      "SR-TE",
+      "SRv6-TE"
+    ]
+  }
+]
 ```
 
 ### pola session del *Address* \[-j\]
