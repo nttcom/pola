@@ -75,6 +75,7 @@ message Session {
     bytes Addr = 1;
     SessionState State = 2;
     repeated string Caps = 3;
+    bool IsSynced = 4;
 }
 
 message SessionList {

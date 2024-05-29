@@ -29,32 +29,26 @@ func newSessionCmd() *cobra.Command {
 }
 
 func showSession(jsonFlag bool) error {
-	sessionAddrList, err := grpc.GetSessionAddrList(client)
+	sessions, err := grpc.GetSessions(client)
+
 	if err != nil {
 		return err
 	}
 
 	if jsonFlag {
 		// Output JSON format
-		peerAddrs := make([]map[string]string, 0, len(sessionAddrList))
-		for _, peerAddr := range sessionAddrList {
-			peerAddrs = append(peerAddrs, map[string]string{
-				"address": peerAddr.String(),
-				"status":  "active",
-			})
-		}
-		outputMap := map[string]interface{}{
-			"sessions": peerAddrs,
-		}
-		outputJSON, err := json.Marshal(outputMap)
+		outputJSON, err := json.Marshal(sessions)
 		if err != nil {
 			return err
 		}
 		fmt.Println(string(outputJSON))
 	} else {
 		// Output user-friendly format
-		for i, peerAddr := range sessionAddrList {
-			fmt.Printf("sessionAddr(%d): %s\n", i, peerAddr.String())
+		for i, ss := range sessions {
+			fmt.Printf("sessionAddr(%d): %s\n", i, ss.Addr.String())
+			fmt.Printf("  State: %s\n", ss.State)
+			fmt.Printf("  Capabilities: %s\n", ss.Caps)
+			fmt.Printf("  IsSynced: %t\n", ss.IsSynced)
 		}
 	}
 	return nil

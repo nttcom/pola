@@ -308,9 +308,10 @@ func (s *APIServer) GetSessionList(context.Context, *empty.Empty) (*pb.SessionLi
 	var ret pb.SessionList
 	for _, pcepSession := range s.pce.sessionList {
 		ss := &pb.Session{
-			Addr:  pcepSession.peerAddr.AsSlice(),
-			State: pb.SessionState_UP, // Only the UP state in the current specification
-			Caps:  []string{},
+			Addr:     pcepSession.peerAddr.AsSlice(),
+			State:    pb.SessionState_UP, // Only the UP state in the current specification
+			Caps:     []string{},
+			IsSynced: pcepSession.isSynced,
 		}
 		for _, cap := range pcepSession.pccCapabilities {
 			ss.Caps = append(ss.Caps, cap.CapStrings()...)
