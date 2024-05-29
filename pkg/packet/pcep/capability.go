@@ -7,6 +7,7 @@ package pcep
 
 type CapabilityInterface interface {
 	TLVInterface
+	CapStrings() []string
 }
 
 func PolaCapability() []CapabilityInterface {
