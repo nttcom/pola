@@ -20,7 +20,13 @@ func withTimeout() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), time.Second)
 }
 
-func GetSessionAddrList(client pb.PceServiceClient) ([]netip.Addr, error) {
+type Session struct {
+	Addr  netip.Addr
+	State string
+	Caps  []string
+}
+
+func GetSessions(client pb.PceServiceClient) ([]Session, error) {
 	ctx, cancel := withTimeout()
 	defer cancel()
 
@@ -29,13 +35,19 @@ func GetSessionAddrList(client pb.PceServiceClient) ([]netip.Addr, error) {
 		return nil, err
 	}
 
-	var addrs []netip.Addr
-	for _, ss := range ret.GetSessions() {
-		addr, _ := netip.AddrFromSlice(ss.GetAddr())
-		addrs = append(addrs, addr)
+	var sessions []Session
+	for _, pbss := range ret.GetSessions() {
+		addr, _ := netip.AddrFromSlice(pbss.GetAddr())
+		ss := Session{
+			Addr:  addr,
+			State: pbss.State.String(),
+			Caps:  []string{},
+		}
+		ss.Caps = append(ss.Caps, pbss.GetCaps()...)
+		sessions = append(sessions, ss)
 	}
 
-	return addrs, nil
+	return sessions, nil
 }
 
 func DeleteSession(client pb.PceServiceClient, session *pb.Session) error {
