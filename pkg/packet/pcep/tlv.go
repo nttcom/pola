@@ -10,6 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"slices"
+	"strconv"
 	"strings"
 
 	"go.uber.org/zap/zapcore"
@@ -161,6 +163,18 @@ func (tlv *StatefulPceCapability) Type() uint16 {
 
 func (tlv *StatefulPceCapability) Len() uint16 {
 	return TL_LENGTH + TLV_STATEFUL_PCE_CAPABILITY_LENGTH
+}
+
+func (tlv *StatefulPceCapability) CapStrings() []string {
+	ret := []string{}
+	ret = append(ret, "Stateful")
+	if tlv.LspUpdateCapability {
+		ret = append(ret, "Update")
+	}
+	if tlv.LspInstantiationCapability {
+		ret = append(ret, "Initiate")
+	}
+	return ret
 }
 
 type SymbolicPathName struct {
@@ -323,6 +337,10 @@ func (tlv *SRPceCapability) Type() uint16 {
 
 func (tlv *SRPceCapability) Len() uint16 {
 	return TL_LENGTH + TLV_SR_PCE_CAPABILITY_LENGTH
+}
+
+func (tlv *SRPceCapability) CapStrings() []string {
+	return []string{"SR-TE"}
 }
 
 type Pst uint8
@@ -532,6 +550,17 @@ func (tlv *PathSetupTypeCapability) Len() uint16 {
 	return TL_LENGTH + l
 }
 
+func (tlv *PathSetupTypeCapability) CapStrings() []string {
+	ret := []string{}
+	if slices.Contains(tlv.PathSetupTypes, PST_SR_TE) {
+		ret = append(ret, "SR-TE")
+	}
+	if slices.Contains(tlv.PathSetupTypes, PST_SRV6_TE) {
+		ret = append(ret, "SRv6-TE")
+	}
+	return ret
+}
+
 type AssocType uint16
 
 const (
@@ -597,6 +626,10 @@ func (tlv *AssocTypeList) Len() uint16 {
 		padding = 2
 	}
 	return TL_LENGTH + l + padding
+}
+
+func (tlv *AssocTypeList) CapStrings() []string {
+	return []string{}
 }
 
 type SRPolicyCandidatePathIdentifier struct {
@@ -732,6 +765,11 @@ func (tlv *UndefinedTLV) Len() uint16 {
 		padding = (4 - tlv.Length%4)
 	}
 	return TL_LENGTH + tlv.Length + padding
+}
+
+func (tlv *UndefinedTLV) CapStrings() []string {
+	cap := "unknown_type_" + strconv.FormatInt(int64(tlv.Typ), 10)
+	return []string{cap}
 }
 
 func (tlv *UndefinedTLV) SetLength() {

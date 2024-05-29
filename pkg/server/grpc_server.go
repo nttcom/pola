@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"slices"
 
 	"github.com/golang/protobuf/ptypes/empty"
 	pb "github.com/nttcom/pola/api/grpc"
@@ -145,10 +146,6 @@ func (s *APIServer) createSRPolicy(ctx context.Context, input *pb.CreateSRPolicy
 }
 
 func (s *APIServer) DeleteSRPolicy(ctx context.Context, input *pb.DeleteSRPolicyInput) (*pb.RequestStatus, error) {
-	return s.deleteSRPolicy(ctx, input)
-}
-
-func (s *APIServer) deleteSRPolicy(ctx context.Context, input *pb.DeleteSRPolicyInput) (*pb.RequestStatus, error) {
 	err := validate(input.GetSRPolicy(), input.GetAsn(), ValidationDelete)
 	if err != nil {
 		return &pb.RequestStatus{IsSuccess: false}, err
@@ -311,8 +308,14 @@ func (s *APIServer) GetSessionList(context.Context, *empty.Empty) (*pb.SessionLi
 	var ret pb.SessionList
 	for _, pcepSession := range s.pce.sessionList {
 		ss := &pb.Session{
-			Addr: pcepSession.peerAddr.AsSlice(),
+			Addr:  pcepSession.peerAddr.AsSlice(),
+			State: pb.SessionState_UP, // Only the UP state in the current specification
+			Caps:  []string{},
 		}
+		for _, cap := range pcepSession.pccCapabilities {
+			ss.Caps = append(ss.Caps, cap.CapStrings()...)
+		}
+		ss.Caps = slices.Compact(ss.Caps)
 		ret.Sessions = append(ret.Sessions, ss)
 	}
 
