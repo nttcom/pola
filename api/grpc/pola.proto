@@ -31,6 +31,9 @@ service PceService {
 
 message Segment {
     string sid = 1;
+    string sidStructure = 2;
+    string localAddr = 3;
+    string remoteAddr = 4;
 }
 
 enum SRPolicyType {
