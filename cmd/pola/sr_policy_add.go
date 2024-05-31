@@ -63,7 +63,10 @@ func newSRPolicyAddCmd() *cobra.Command {
 
 // Unify with table.Segment
 type Segment struct {
-	Sid string `yaml:"sid"`
+	Sid          string `yaml:"sid"`
+	LocalAddr    string `yaml:"localAddr"`
+	RemoteAddr   string `yaml:"remoteAddr"`
+	SidStructure string `yaml:"sidStructure"`
 }
 
 // Unify with table.SRPolciy
@@ -124,7 +127,13 @@ func addSRPolicyNoLinkState(input InputFormat) error {
 
 	segmentList := []*pb.Segment{}
 	for _, seg := range input.SRPolicy.SegmentList {
-		segmentList = append(segmentList, &pb.Segment{Sid: seg.Sid})
+		pbSeg := &pb.Segment{
+			Sid:          seg.Sid,
+			LocalAddr:    seg.LocalAddr,
+			RemoteAddr:   seg.RemoteAddr,
+			SidStructure: seg.SidStructure,
+		}
+		segmentList = append(segmentList, pbSeg)
 	}
 	srPolicy := &pb.SRPolicy{
 		PcepSessionAddr: input.SRPolicy.PcepSessionAddr.AsSlice(),
