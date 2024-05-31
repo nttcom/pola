@@ -13,6 +13,8 @@ import (
 	"net"
 	"net/netip"
 	"slices"
+	"strconv"
+	"strings"
 
 	"github.com/golang/protobuf/ptypes/empty"
 	pb "github.com/nttcom/pola/api/grpc"
@@ -26,13 +28,15 @@ import (
 type APIServer struct {
 	pce        *Server
 	grpcServer *grpc.Server
+	usidMode   bool
 	pb.UnimplementedPceServiceServer
 }
 
-func NewAPIServer(pce *Server, grpcServer *grpc.Server) *APIServer {
+func NewAPIServer(pce *Server, grpcServer *grpc.Server, usidMode bool) *APIServer {
 	s := &APIServer{
 		pce:        pce,
 		grpcServer: grpcServer,
+		usidMode:   usidMode,
 	}
 	pb.RegisterPceServiceServer(grpcServer, s)
 	return s
@@ -99,9 +103,45 @@ func (s *APIServer) createSRPolicy(ctx context.Context, input *pb.CreateSRPolicy
 		dstAddr, _ = netip.AddrFromSlice(inputSRPolicy.GetDstAddr())
 
 		for _, segment := range inputSRPolicy.GetSegmentList() {
-			seg, err := table.NewSegment(segment.GetSid())
-			if err != nil {
-				return &pb.RequestStatus{IsSuccess: false}, err
+			var seg table.Segment
+			if addr, err := netip.ParseAddr(segment.GetSid()); err == nil && addr.Is6() {
+				segSRv6 := table.NewSegmentSRv6(addr)
+
+				// handling of related to Nai
+				if segment.GetLocalAddr() != "" {
+					if la, addrErr := netip.ParseAddr(segment.GetLocalAddr()); addrErr == nil {
+						segSRv6.LocalAddr = la
+					} else {
+						return &pb.RequestStatus{IsSuccess: false}, addrErr
+					}
+					if segment.GetRemoteAddr() != "" {
+						if ra, addrErr := netip.ParseAddr(segment.GetRemoteAddr()); addrErr == nil {
+							segSRv6.RemoteAddr = ra
+						} else {
+							return &pb.RequestStatus{IsSuccess: false}, addrErr
+						}
+					}
+				}
+
+				// handling of related to SID Structure
+				if ss := strings.Split(segment.GetSidStructure(), ","); len(ss) == 4 {
+					segSRv6.Structure = []uint8{}
+					for _, strElem := range ss {
+						elem, err := strconv.Atoi(strElem)
+						if err != nil {
+							return &pb.RequestStatus{IsSuccess: false}, errors.New("invalid SidStructure information")
+						}
+						segSRv6.Structure = append(segSRv6.Structure, uint8(elem))
+					}
+
+				}
+				// usid option
+				segSRv6.USid = s.usidMode
+				seg = segSRv6
+			} else if i, err := strconv.ParseUint(segment.GetSid(), 10, 32); err == nil {
+				seg = table.NewSegmentSRMPLS(uint32(i))
+			} else {
+				return &pb.RequestStatus{IsSuccess: false}, errors.New("invalid SID")
 			}
 			segmentList = append(segmentList, seg)
 		}
