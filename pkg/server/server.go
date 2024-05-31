@@ -77,11 +77,17 @@ func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem
 	return serverError
 }
 
-func (s *Server) Serve(address string, port string) error {
-	localAddr, err := netip.ParseAddrPort(address + ":" + port)
+func (s *Server) Serve(address string, port string, usidMode bool) error {
+	a, err := netip.ParseAddr(address)
 	if err != nil {
 		return err
 	}
+	p, err := strconv.Atoi(port)
+	if err != nil {
+		return err
+	}
+	localAddr := netip.AddrPortFrom(a, uint16(p))
+
 	s.logger.Info("PCEP listen", zap.String("listenInfo", localAddr.String()))
 	l, err := net.ListenTCP("tcp", net.TCPAddrFromAddrPort(localAddr))
 	if err != nil {
