@@ -257,6 +257,9 @@ func (o *MetricObject) DecodeFromBytes(typ uint8, objectBody []uint8) error {
 }
 
 func (o *MetricObject) Serialize() []uint8 {
+	metricObjectHeader := NewCommonObjectHeader(OC_METRIC, o.ObjectType, o.Len())
+	byteMetricObjectHeader := metricObjectHeader.Serialize()
+
 	buf := make([]uint8, 8)
 	if o.CFlag {
 		buf[2] = buf[2] | 0x02
@@ -265,8 +268,24 @@ func (o *MetricObject) Serialize() []uint8 {
 		buf[2] = buf[2] | 0x01
 	}
 	buf[3] = o.MetricType
-	binary.BigEndian.PutUint32(buf[4:8], o.MetricValue)
-	return buf
+	tmpMetVal := math.Float32bits(float32(o.MetricValue))
+	binary.BigEndian.PutUint32(buf[4:8], tmpMetVal)
+	byteMetricObject := AppendByteSlices(byteMetricObjectHeader, buf)
+	return byteMetricObject
+}
+
+func (o *MetricObject) Len() uint16 {
+	// CommonObjectHeader(4byte) + Flags, SRP-ID(8byte)
+	return COMMON_OBJECT_HEADER_LENGTH + 8
+}
+
+func NewMetricObject() (*MetricObject, error) {
+	o := &MetricObject{
+		ObjectType:  uint8(1),
+		MetricType:  uint8(2),
+		MetricValue: uint32(30),
+	}
+	return o, nil
 }
 
 // LSPA Object (RFC5440 7.11)
@@ -292,6 +311,9 @@ func (o *LspaObject) DecodeFromBytes(typ uint8, objectBody []uint8) error {
 }
 
 func (o *LspaObject) Serialize() []uint8 {
+	lspaObjectHeader := NewCommonObjectHeader(OC_LSPA, o.ObjectType, o.Len())
+	byteLspaObjectHeader := lspaObjectHeader.Serialize()
+
 	buf := make([]uint8, 16)
 	binary.BigEndian.PutUint32(buf[0:4], o.ExcludeAny)
 	binary.BigEndian.PutUint32(buf[4:8], o.IncludeAny)
@@ -301,7 +323,24 @@ func (o *LspaObject) Serialize() []uint8 {
 	if o.LFlag {
 		buf[14] = buf[14] | 0x01
 	}
-	return buf
+
+	byteLspaObject := AppendByteSlices(byteLspaObjectHeader, buf)
+	return byteLspaObject
+}
+
+func (o *LspaObject) Len() uint16 {
+	// CommonObjectHeader(4byte) + Flags, SRP-ID(8byte)
+	return COMMON_OBJECT_HEADER_LENGTH + 16
+}
+
+func NewLspaObject() (*LspaObject, error) {
+	o := &LspaObject{
+		ObjectType:      uint8(1),
+		SetupPriority:   uint8(7),
+		HoldingPriority: uint8(7),
+		LFlag:           true,
+	}
+	return o, nil
 }
 
 // PCEP Error Object (RFC5440 7.15)
@@ -553,7 +592,7 @@ func (o *LspObject) Serialize() []uint8 {
 	}
 	byteTLVs := []uint8{}
 	for _, tlv := range o.TLVs {
-		byteTLVs = tlv.Serialize()
+		byteTLVs = AppendByteSlices(byteTLVs, tlv.Serialize())
 	}
 
 	byteLspObject := AppendByteSlices(byteLspObjectHeader, buf, byteTLVs)

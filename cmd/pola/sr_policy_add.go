@@ -44,7 +44,7 @@ func newSRPolicyAddCmd() *cobra.Command {
 			defer f.Close()
 			InputData := InputFormat{}
 			if err := yaml.NewDecoder(f).Decode(&InputData); err != nil {
-				return fmt.Errorf("file \"%s\" can't open", filepath)
+				return fmt.Errorf("file \"%s\" decode error:  %v", filepath, err)
 
 			}
 			if err := addSRPolicy(InputData, jsonFmt, noLinkStateFlag); err != nil {
