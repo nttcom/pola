@@ -8,6 +8,7 @@ package pcep
 import (
 	"encoding/binary"
 	"errors"
+	"math"
 	"net/netip"
 
 	"github.com/nttcom/pola/internal/pkg/table"
@@ -885,9 +886,7 @@ type SRv6EroSubobject struct {
 	TFlag         bool
 	FFlag         bool
 	SFlag         bool
-	Behavior      uint16
 	Segment       table.SegmentSRv6
-	Nai           netip.Addr
 }
 
 func (o *SRv6EroSubobject) DecodeFromBytes(subObj []uint8) error {
@@ -899,12 +898,15 @@ func (o *SRv6EroSubobject) DecodeFromBytes(subObj []uint8) error {
 	o.TFlag = (subObj[3] & 0x04) != 0
 	o.FFlag = (subObj[3] & 0x02) != 0
 	o.SFlag = (subObj[3] & 0x01) != 0
-	o.Behavior = binary.BigEndian.Uint16(subObj[6:8])
 
 	sid, _ := netip.AddrFromSlice(subObj[8:24])
 	o.Segment = table.NewSegmentSRv6(sid)
-	if o.NaiType == 2 {
-		o.Nai, _ = netip.AddrFromSlice(subObj[24:40])
+	if o.NaiType == NT_SRV6_NODE {
+		o.Segment.LocalAddr, _ = netip.AddrFromSlice(subObj[24:40])
+	}
+	if o.NaiType == NT_SRV6_ADJACENCY_GLOBAL {
+		o.Segment.LocalAddr, _ = netip.AddrFromSlice(subObj[24:40])
+		o.Segment.RemoteAddr, _ = netip.AddrFromSlice(subObj[40:56])
 	}
 	return nil
 }
@@ -931,38 +933,87 @@ func (o *SRv6EroSubobject) Serialize() []uint8 {
 	}
 	reserved := make([]uint8, 2)
 	behavior := make([]uint8, 2)
-	binary.BigEndian.PutUint16(behavior, o.Behavior)
+	binary.BigEndian.PutUint16(behavior, o.Segment.Behavior())
 	byteSid := o.Segment.Sid.AsSlice()
-	byteSRv6EroSubobject := AppendByteSlices(buf, reserved, behavior, byteSid)
+
+	byteNai := []uint8{}
+	if o.Segment.LocalAddr.IsValid() {
+		byteNai = append(byteNai, o.Segment.LocalAddr.AsSlice()...)
+		if o.Segment.RemoteAddr.IsValid() {
+			byteNai = append(byteNai, o.Segment.RemoteAddr.AsSlice()...)
+		}
+	}
+
+	byteSidStructure := []uint8{}
+	if o.Segment.Structure != nil {
+		byteSidStructure = append(byteSidStructure, o.Segment.Structure...)
+		byteSidStructure = append(byteSidStructure, make([]uint8, 4)...)
+	}
+
+	byteSRv6EroSubobject := AppendByteSlices(buf, reserved, behavior, byteSid, byteNai, byteSidStructure)
 	return byteSRv6EroSubobject
 }
 
 func (o *SRv6EroSubobject) Len() (uint16, error) {
 	// The Length MUST be at least 24, and MUST be a multiple of 4.
 	// An SRv6-ERO subobject MUST contain at least one of a SRv6-SID or an NAI.
-	if o.NaiType == NT_MUST_NOT_BE_INCLUDED {
-		// Type, Length, Flags (4byte) + Reserved(2byte) + Behavior(2byte) + SID (16byte)
-		return uint16(24), nil
-	} else if o.NaiType == NT_IPV6_NODE {
-		// Type, Length, Flags (4byte) + Reserved(2byte) + Behavior(2byte) + SID (16byte) + Nai (16byte)
-		return uint16(40), nil
-	} else {
-		return uint16(0), errors.New("unsupported naitype")
+
+	// Type, Length, Flags (4byte) + Reserved(2byte) + Behavior(2byte)
+	length := uint16(8)
+	// SRv6-SID value in the subobject body is NOT absent
+	if !o.SFlag {
+		length += 16
 	}
+	// NAI value in the subobject body is NOT absent
+	if !o.FFlag {
+		switch o.NaiType {
+		case NT_IPV6_NODE:
+			length += 16
+		case NT_SRV6_ADJACENCY_GLOBAL:
+			length += 32
+		case NT_SRV6_ADJACENCY_LINKLOCAL:
+			length += 40
+		case NT_MUST_NOT_BE_INCLUDED:
+			return uint16(0), errors.New("when naitype is 0 then FFlag must be 1")
+		default:
+			return uint16(0), errors.New("unsupported naitype")
+		}
+	}
+	if o.TFlag {
+		length += 8
+	}
+	return length, nil
 }
 
 func NewSRv6EroSubObject(seg table.SegmentSRv6) (*SRv6EroSubobject, error) {
 	subo := &SRv6EroSubobject{
 		LFlag:         false,
 		SubobjectType: ERO_SUBOBJECT_SRV6,
-		NaiType:       NT_MUST_NOT_BE_INCLUDED,
 		VFlag:         false,
-		TFlag:         false,
-		FFlag:         true,
-		SFlag:         false,
-		Behavior:      uint16(1),
+		SFlag:         false, // SID is absent
 		Segment:       seg,
 	}
+
+	if seg.Structure != nil {
+		subo.TFlag = true // the SID Structure value in the subobject body is present
+	} else {
+		subo.TFlag = false
+	}
+	if seg.LocalAddr.IsValid() {
+		subo.FFlag = false // Nai is present
+
+		if seg.RemoteAddr.IsValid() {
+			// End.X or uA
+			subo.NaiType = NT_SRV6_ADJACENCY_GLOBAL
+		} else {
+			// End or uN
+			subo.NaiType = NT_SRV6_NODE
+		}
+	} else {
+		subo.FFlag = true // SID is absent
+		subo.NaiType = NT_MUST_NOT_BE_INCLUDED
+	}
+
 	length, err := subo.Len()
 	if err != nil {
 		return subo, err

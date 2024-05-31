@@ -8,6 +8,7 @@ package server
 import (
 	"net"
 	"net/netip"
+	"strconv"
 
 	"go.uber.org/zap"
 	grpc "google.golang.org/grpc"
@@ -27,6 +28,7 @@ type PceOptions struct {
 	GrpcAddr  string
 	GrpcPort  string
 	TedEnable bool
+	USidMode  bool
 }
 
 func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem) ServerError {
@@ -54,7 +56,7 @@ func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem
 
 	errChan := make(chan ServerError)
 	go func() {
-		if err := s.Serve(o.PcepAddr, o.PcepPort); err != nil {
+		if err := s.Serve(o.PcepAddr, o.PcepPort, o.USidMode); err != nil {
 			errChan <- ServerError{
 				Server: "pcep",
 				Error:  err,
@@ -64,7 +66,7 @@ func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem
 
 	go func() {
 		grpcServer := grpc.NewServer()
-		apiServer := NewAPIServer(s, grpcServer)
+		apiServer := NewAPIServer(s, grpcServer, o.USidMode)
 		if err := apiServer.Serve(o.GrpcAddr, o.GrpcPort); err != nil {
 			errChan <- ServerError{
 				Server: "grpc",
