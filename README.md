@@ -13,7 +13,7 @@
 Pola PCE is an implementation of the Path Computation Element (PCE) and a PCEP Library in Go.
 
 ## Features
-* Support for SRv6 and SR-MPLS
+* Support for SRv6(full-SID/μSID) and SR-MPLS
 * Implementation of active stateful PCE functionality (PCInitiate, PCUpdate, etc.)
 * Dynamic and explicit SR policy definition using YAML
   * Dynamic path: Utilizes CSPF with GoBGP BGP-LS TED
@@ -25,8 +25,11 @@ Pola PCE is an implementation of the Path Computation Element (PCE) and a PCEP L
 * Junos
 * FRRouting
 
-### SRv6
+### SRv6 (full-SID)
 * Junos
+
+### SRv6 (μSID)
+* IOS-XR
 
 ## Installation & Use
 * [Getting Started](docs/sources/getting-started.md)
