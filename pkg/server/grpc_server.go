@@ -29,14 +29,16 @@ type APIServer struct {
 	pce        *Server
 	grpcServer *grpc.Server
 	usidMode   bool
+	logger     *zap.Logger
 	pb.UnimplementedPceServiceServer
 }
 
-func NewAPIServer(pce *Server, grpcServer *grpc.Server, usidMode bool) *APIServer {
+func NewAPIServer(pce *Server, grpcServer *grpc.Server, usidMode bool, logger *zap.Logger) *APIServer {
 	s := &APIServer{
 		pce:        pce,
 		grpcServer: grpcServer,
 		usidMode:   usidMode,
+		logger:     logger.With(zap.String("server", "grpc")),
 	}
 	pb.RegisterPceServiceServer(grpcServer, s)
 	return s
@@ -44,7 +46,7 @@ func NewAPIServer(pce *Server, grpcServer *grpc.Server, usidMode bool) *APIServe
 
 func (s *APIServer) Serve(address string, port string) error {
 	listenInfo := net.JoinHostPort(address, port)
-	s.pce.logger.Info("gRPC listen", zap.String("listenInfo", listenInfo), zap.String("server", "grpc"))
+	s.logger.Info("Start listening on gRPC port", zap.String("listenInfo", listenInfo))
 	grpcListener, err := net.Listen("tcp", listenInfo)
 	if err != nil {
 		return fmt.Errorf("failed to listen: %w", err)
@@ -60,7 +62,7 @@ func (s *APIServer) CreateSRPolicyWithoutLinkState(ctx context.Context, input *p
 	return s.createSRPolicy(ctx, input, false)
 }
 
-func (s *APIServer) createSRPolicy(ctx context.Context, input *pb.CreateSRPolicyInput, withLinkState bool) (*pb.RequestStatus, error) {
+func (s *APIServer) createSRPolicy(_ context.Context, input *pb.CreateSRPolicyInput, withLinkState bool) (*pb.RequestStatus, error) {
 	var err error
 
 	if withLinkState {
@@ -151,7 +153,8 @@ func (s *APIServer) createSRPolicy(ctx context.Context, input *pb.CreateSRPolicy
 	if err != nil {
 		return nil, err
 	}
-	s.pce.logger.Info("received CreateSRPolicy API request", zap.String("input", string(inputJson)), zap.String("server", "grpc"))
+	s.logger.Info("Received CreateSRPolicy API request")
+	s.logger.Debug("Received paramater", zap.String("input", string(inputJson)))
 
 	pcepSession, err := getPcepSession(s.pce, inputSRPolicy.GetPcepSessionAddr())
 	if err != nil {
@@ -169,7 +172,7 @@ func (s *APIServer) createSRPolicy(ctx context.Context, input *pb.CreateSRPolicy
 
 	if id, exists := pcepSession.SearchPlspID(inputSRPolicy.GetColor(), dstAddr); exists {
 		// Update SR Policy
-		s.pce.logger.Info("plspID check", zap.Uint32("plspID", id), zap.String("server", "grpc"))
+		s.logger.Debug("Request to update SR Policy", zap.Uint32("plspID", id))
 		srPolicy.PlspID = id
 
 		if err := pcepSession.SendPCUpdate(srPolicy); err != nil {
@@ -177,6 +180,7 @@ func (s *APIServer) createSRPolicy(ctx context.Context, input *pb.CreateSRPolicy
 		}
 	} else {
 		// Initiate SR Policy
+		s.logger.Debug("Request to create SR Policy")
 		if err := pcepSession.RequestSRPolicyCreated(srPolicy); err != nil {
 			return &pb.RequestStatus{IsSuccess: false}, err
 		}
@@ -209,7 +213,8 @@ func (s *APIServer) DeleteSRPolicy(ctx context.Context, input *pb.DeleteSRPolicy
 	if err != nil {
 		return nil, err
 	}
-	s.pce.logger.Info("received DeleteSRPolicy API request", zap.String("input", string(inputJson)), zap.String("server", "grpc"))
+	s.logger.Info("Received DeleteSRPolicy API request")
+	s.logger.Debug("Received paramater", zap.String("input", string(inputJson)))
 
 	pcepSession, err := getPcepSession(s.pce, inputSRPolicy.GetPcepSessionAddr())
 	if err != nil {
@@ -227,7 +232,7 @@ func (s *APIServer) DeleteSRPolicy(ctx context.Context, input *pb.DeleteSRPolicy
 
 	if id, exists := pcepSession.SearchPlspID(inputSRPolicy.GetColor(), dstAddr); exists {
 		// Delete SR Policy
-		s.pce.logger.Info("plspID check", zap.Uint32("plspID", id), zap.String("server", "grpc"))
+		s.logger.Debug("Request to delete SR Policy", zap.Uint32("plspID", id))
 		srPolicy.PlspID = id
 
 		if err := pcepSession.RequestSRPolicyDeleted(srPolicy); err != nil {
@@ -235,7 +240,7 @@ func (s *APIServer) DeleteSRPolicy(ctx context.Context, input *pb.DeleteSRPolicy
 		}
 	} else {
 		// Invalid SR Policy
-		return &pb.RequestStatus{IsSuccess: false}, fmt.Errorf("SR Policy not found")
+		return &pb.RequestStatus{IsSuccess: false}, fmt.Errorf("Requested SR Policy not found")
 	}
 
 	return &pb.RequestStatus{IsSuccess: true}, nil
@@ -243,7 +248,7 @@ func (s *APIServer) DeleteSRPolicy(ctx context.Context, input *pb.DeleteSRPolicy
 
 func validate(inputSRPolicy *pb.SRPolicy, asn uint32, validationKind ValidationKind) error {
 	if !validator[validationKind](inputSRPolicy, asn) {
-		return errors.New("invalid input")
+		return errors.New("validate error, invalid input")
 	}
 
 	return nil
@@ -343,7 +348,7 @@ func getMetricType(metricType pb.MetricType) (table.MetricType, error) {
 }
 
 func (s *APIServer) GetSessionList(context.Context, *empty.Empty) (*pb.SessionList, error) {
-	s.pce.logger.Info("Receive GetPeerAddrList API request", zap.String("server", "grpc"))
+	s.logger.Info("Received GetSessionList API request")
 
 	var ret pb.SessionList
 	for _, pcepSession := range s.pce.sessionList {
@@ -360,12 +365,12 @@ func (s *APIServer) GetSessionList(context.Context, *empty.Empty) (*pb.SessionLi
 		ret.Sessions = append(ret.Sessions, ss)
 	}
 
-	s.pce.logger.Info("Send GetPeerAddrList API reply", zap.String("server", "grpc"))
+	s.logger.Debug("Send GetPeerAddrList API reply")
 	return &ret, nil
 }
 
 func (s *APIServer) GetSRPolicyList(context.Context, *empty.Empty) (*pb.SRPolicyList, error) {
-	s.pce.logger.Info("Receive GetSRPolicyList API request", zap.String("server", "grpc"))
+	s.logger.Info("Received GetSRPolicyList API request")
 
 	var ret pb.SRPolicyList
 	for ssAddr, pols := range s.pce.SRPolicies() {
@@ -390,12 +395,12 @@ func (s *APIServer) GetSRPolicyList(context.Context, *empty.Empty) (*pb.SRPolicy
 		}
 	}
 
-	s.pce.logger.Info("Send SRPolicyList API reply", zap.String("server", "grpc"))
+	s.logger.Debug("Send SRPolicyList API reply")
 	return &ret, nil
 }
 
 func (s *APIServer) GetTed(context.Context, *empty.Empty) (*pb.Ted, error) {
-	s.pce.logger.Info("Receive GetTed API request", zap.String("server", "grpc"))
+	s.logger.Info("Received GetTed API request")
 
 	ret := &pb.Ted{
 		Enable: true,
@@ -464,7 +469,7 @@ func (s *APIServer) GetTed(context.Context, *empty.Empty) (*pb.Ted, error) {
 		}
 	}
 
-	s.pce.logger.Info("Send GetTed API reply", zap.String("server", "grpc"))
+	s.logger.Debug("Send GetTed API reply")
 	return ret, nil
 }
 
