@@ -59,6 +59,9 @@
                         },
                         "name": {
                             "type": "string"
+                        },
+                        "debug": {
+                            "type": "boolean"
                         }
                     },
                     "required": [
