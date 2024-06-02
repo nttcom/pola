@@ -49,7 +49,7 @@ func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem
 				}
 				ted.Update(tedElems)
 				s.ted = ted
-				logger.Info("Update TED")
+				logger.Debug("Update TED")
 			}
 		}()
 	}
@@ -66,7 +66,7 @@ func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem
 
 	go func() {
 		grpcServer := grpc.NewServer()
-		apiServer := NewAPIServer(s, grpcServer, o.USidMode)
+		apiServer := NewAPIServer(s, grpcServer, o.USidMode, logger)
 		if err := apiServer.Serve(o.GrpcAddr, o.GrpcPort); err != nil {
 			errChan <- ServerError{
 				Server: "grpc",
@@ -90,7 +90,7 @@ func (s *Server) Serve(address string, port string, usidMode bool) error {
 	}
 	localAddr := netip.AddrPortFrom(a, uint16(p))
 
-	s.logger.Info("PCEP listen", zap.String("listenInfo", localAddr.String()))
+	s.logger.Info("Start listening on PCEP port", zap.String("address", localAddr.String()))
 	l, err := net.ListenTCP("tcp", net.TCPAddrFromAddrPort(localAddr))
 	if err != nil {
 		return err
@@ -99,21 +99,22 @@ func (s *Server) Serve(address string, port string, usidMode bool) error {
 
 	sessionID := uint8(1)
 	for {
-		ss := NewSession(sessionID, s.logger)
-		ss.tcpConn, err = l.AcceptTCP()
+		tcpConn, err := l.AcceptTCP()
 		if err != nil {
 			return err
 		}
-		peerAddrPort, err := netip.ParseAddrPort(ss.tcpConn.RemoteAddr().String())
+		peerAddrPort, err := netip.ParseAddrPort(tcpConn.RemoteAddr().String())
 		if err != nil {
 			return err
 		}
-		ss.peerAddr = peerAddrPort.Addr()
+		ss := NewSession(sessionID, peerAddrPort.Addr(), tcpConn, s.logger)
+		ss.logger.Info("Start PCEP session")
+
 		s.sessionList = append(s.sessionList, ss)
 		go func() {
 			ss.Established()
 			s.closeSession(ss)
-			s.logger.Info("Close PCEP session", zap.String("session", ss.peerAddr.String()))
+			ss.logger.Info("Close PCEP session")
 		}()
 		sessionID++
 	}
