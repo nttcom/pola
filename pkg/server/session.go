@@ -188,6 +188,8 @@ func (ss *Session) ReceivePcepMessage() error {
 		if err != nil {
 			return err
 		}
+		// wait TCP reassembly packet
+		time.Sleep(10 * time.Millisecond)
 
 		switch commonHeader.MessageType {
 		case pcep.MT_KEEPALIVE:

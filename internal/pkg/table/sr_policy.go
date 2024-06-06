@@ -104,12 +104,44 @@ func NewSegment(sid string) (Segment, error) {
 	return nil, errors.New("invalid SID")
 }
 
+const (
+	BEHAVIOR_RESERVED uint16 = 0x0000
+	BEHAVIOR_END      uint16 = 0x0001
+	BEHAVIOR_END_X    uint16 = 0x0005
+	BEHAVIOR_UN       uint16 = 0x0030
+	BEHAVIOR_UA       uint16 = 0x0039
+)
+
 type SegmentSRv6 struct {
-	Sid netip.Addr
+	Sid        netip.Addr
+	LocalAddr  netip.Addr
+	RemoteAddr netip.Addr
+	Structure  []uint8
+	USid       bool
 }
 
 func (seg SegmentSRv6) SidString() string {
 	return seg.Sid.String()
+}
+
+func (seg SegmentSRv6) Behavior() uint16 {
+	if seg.LocalAddr.IsValid() {
+		if seg.USid {
+			if seg.RemoteAddr.IsValid() {
+				return BEHAVIOR_UA
+			} else {
+				return BEHAVIOR_UN
+			}
+		} else {
+			if seg.RemoteAddr.IsValid() {
+				return BEHAVIOR_END_X
+			} else {
+				return BEHAVIOR_END
+			}
+		}
+	} else {
+		return BEHAVIOR_RESERVED
+	}
 }
 
 func NewSegmentSRv6(sid netip.Addr) SegmentSRv6 {

@@ -46,6 +46,7 @@ type Global struct {
 	Log        Log        `yaml:"log"`
 	Ted        Ted        `yaml:"ted"`
 	Gobgp      Gobgp      `yaml:"gobgp"`
+	USidMode   bool       `yaml:"usid-mode"`
 }
 
 type Config struct {
