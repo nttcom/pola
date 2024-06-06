@@ -3,7 +3,7 @@ name: goreleaser
 on:
   push:
     tags:
-      - v[0-9]+.*
+      - v[0-9]+.[0-9]+.[0-9]+
 
 jobs:
   goreleaser:
@@ -17,7 +17,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: 'go.mod'
+          go-version-file: "go.mod"
           cache: false
 
       - name: Run GoReleaser
