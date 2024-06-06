@@ -1,0 +1,68 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+        "srPolicy": {
+            "type": "object",
+            "properties": {
+                "pcepSessionAddr": {
+                    "type": "string",
+                    "oneOf": [
+                        {
+                            "format": "ipv4"
+                        },
+                        {
+                            "format": "ipv6"
+                        }
+                    ]
+                },
+                "srcAddr": {
+                    "type": "string",
+                    "oneOf": [
+                        {
+                            "format": "ipv4"
+                        },
+                        {
+                            "format": "ipv6"
+                        }
+                    ]
+                },
+                "dstAddr": {
+                    "type": "string",
+                    "oneOf": [
+                        {
+                            "format": "ipv4"
+                        },
+                        {
+                            "format": "ipv6"
+                        }
+                    ]
+                },
+                "name": {
+                    "type": "string"
+                },
+                "color": {
+                    "type": "integer"
+                },
+                "segmentList": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "segment.json"
+                    }
+                }
+            },
+            "required": [
+                "pcepSessionAddr",
+                "srcAddr",
+                "dstAddr",
+                "name",
+                "color",
+                "segmentList"
+            ]
+        }
+    },
+    "required": [
+        "srPolicy"
+    ],
+    "additionalProperties": false
+}

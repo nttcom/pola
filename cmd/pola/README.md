@@ -1,5 +1,31 @@
 # Pola CLI Tool
 
+## Instllation
+
+### From Go Package
+
+```bash
+$ go install github.com/nttcom/pola/cmd/pola@latest
+```
+
+### From Source
+
+**Getting the Source**
+
+```bash
+$ git clone https://github.com/nttcom/pola.git
+```
+
+**Build & install**
+
+```bash
+$ cd pola
+$ go install ./cmd/pola
+
+# or, install with daemon
+$ go install ./...
+```
+
 ## Command Reference
 
 ### pola session \[-j\]
@@ -134,7 +160,7 @@ JSON formatted response
 
 ### pola sr-policy add -f _filepath_
 
-Create a new SR Policy using TED 
+Create a new SR Policy **using TED** 
 
 #### Case: Dynamic Path calculate
 
@@ -185,21 +211,33 @@ JSON formatted response
 
 ### pola sr-policy add -f _filepath_ --no-link-state
 
-Create a new SR Policy without using TED
+Create a new SR Policy **without using TED**
+
+Should write the `localAddress` (and `remoteAddr` if Adj-SID) of each sid for creation of Nai
+
+See [JSON shema](schemas/polad_config.json) for input details.
 
 YAML input format
 ```yaml
 srPolicy:
-  pcepSessionAddr: 192.0.2.1
-  srcAddr: 192.0.2.1
-  dstAddr: 192.0.2.2
-  name: name
+  pcepSessionAddr: "2001:0db8::1"
+  srcAddr: "2001:0db8::1"
+  dstAddr: "2001:0db8::2"
+  name: "policy-name"
   color: 100
   segmentList:
-    - sid: 16003
-      nai: 192.0.2.3
-    - sid: 16002
-      nai: 192.0.2.2
+    - sid: "2001:0db8:1005::"
+      localAddr: "2001:0db8::5"
+      sidStructure: "32,16,0,80"
+    - sid: "2001:0db8:1006::"
+      localAddr: "2001:0db8::6"
+      sidStructure: "32,16,0,80"
+    - sid: "2001:0db8:1005::"
+      localAddr: "2001:0db8::5"
+      sidStructure: "32,16,0,80"
+    - sid: "2001:0db8:1006::"
+      localAddr: "2001:0db8::6"
+      sidStructure: "32,16,0,80"
 ```
 
 json formatted response
