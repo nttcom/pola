@@ -133,10 +133,14 @@ func (s *Server) closeSession(session *Session) {
 	}
 }
 
-func (s *Server) SearchSession(peerAddr netip.Addr) *Session {
+// SearchSession returns a struct pointer of (Synced) session.
+// if not exist, return nil
+func (s *Server) SearchSession(peerAddr netip.Addr, onlySynced bool) *Session {
 	for _, pcepSession := range s.sessionList {
-		if pcepSession.peerAddr == peerAddr && pcepSession.isSynced {
-			return pcepSession
+		if pcepSession.peerAddr == peerAddr {
+			if !(onlySynced) || pcepSession.isSynced {
+				return pcepSession
+			}
 		}
 	}
 	return nil
