@@ -1,15 +1,13 @@
-FROM ubuntu:22.04
+FROM golang:1.22.4
 LABEL maintainer "Motoki TAKENAKA <m.takenaka@ntt.com>"
+
+WORKDIR /pola
+
+COPY . .
 
 # Install packages
 RUN apt-get update \
- && apt-get install -y bash-completion curl iproute2
-
-# Setup Go 1.22.2
-RUN curl -o ~/go1.22.2.linux-amd64.tar.gz -LO https://go.dev/dl/go1.22.2.linux-amd64.tar.gz \
-    && rm -rf /usr/local/go \
-    && tar -C /usr/local -xzf ~/go1.22.2.linux-amd64.tar.gz \
-    && echo "export PATH=$PATH:/usr/local/go/bin" > ~/.bashrc
+ && apt-get install -y bash-completion curl iproute2 wget vim iputils-ping net-tools
 
 # Enable Completion 
 RUN echo "" >> ~/.bashrc \
@@ -18,10 +16,12 @@ RUN echo "" >> ~/.bashrc \
  && echo "fi" >> ~/.bashrc
 
 # Install Pola
-SHELL ["/bin/bash", "-l", "-c"]
 
-ENV GOBIN /usr/local/go/bin
-RUN go install github.com/nttcom/pola/cmd/...@latest
+SHELL ["/bin/bash", "-c"]
+RUN go install ./cmd/...
+
+# remove build directory
+RUN rm -rf  ./*
 
 # Add completion
 RUN pola completion bash | tee -a /usr/share/bash-completion/completions/pola >/dev/null \

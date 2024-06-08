@@ -3,9 +3,9 @@ name: Push Docker image
 on:
   push:
     branches-ignore:
-      - '**'
+      - "**"
     tags:
-      - 'v*'
+      - "v*"
 
 env:
   REGISTRY: ghcr.io
@@ -46,7 +46,8 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ./build/package
+          context: .
+          file: ./build/package/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
