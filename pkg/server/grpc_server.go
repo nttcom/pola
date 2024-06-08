@@ -156,7 +156,7 @@ func (s *APIServer) createSRPolicy(_ context.Context, input *pb.CreateSRPolicyIn
 	s.logger.Info("Received CreateSRPolicy API request")
 	s.logger.Debug("Received paramater", zap.String("input", string(inputJson)))
 
-	pcepSession, err := getPcepSession(s.pce, inputSRPolicy.GetPcepSessionAddr())
+	pcepSession, err := getSyncedPcepSession(s.pce, inputSRPolicy.GetPcepSessionAddr())
 	if err != nil {
 		return &pb.RequestStatus{IsSuccess: false}, err
 	}
@@ -216,7 +216,7 @@ func (s *APIServer) DeleteSRPolicy(ctx context.Context, input *pb.DeleteSRPolicy
 	s.logger.Info("Received DeleteSRPolicy API request")
 	s.logger.Debug("Received paramater", zap.String("input", string(inputJson)))
 
-	pcepSession, err := getPcepSession(s.pce, inputSRPolicy.GetPcepSessionAddr())
+	pcepSession, err := getSyncedPcepSession(s.pce, inputSRPolicy.GetPcepSessionAddr())
 	if err != nil {
 		return &pb.RequestStatus{IsSuccess: false}, err
 	}
@@ -284,11 +284,11 @@ var validator = map[ValidationKind]func(policy *pb.SRPolicy, asn uint32) bool{
 	},
 }
 
-func getPcepSession(pce *Server, addr []byte) (*Session, error) {
+func getSyncedPcepSession(pce *Server, addr []byte) (*Session, error) {
 	pcepSessionAddr, _ := netip.AddrFromSlice(addr)
-	pcepSession := pce.SearchSession(pcepSessionAddr)
+	pcepSession := pce.SearchSession(pcepSessionAddr, true)
 	if pcepSession == nil {
-		return nil, fmt.Errorf("no session with %s", pcepSessionAddr)
+		return nil, fmt.Errorf("no synced session with %s", pcepSessionAddr)
 	}
 	return pcepSession, nil
 }
@@ -477,7 +477,10 @@ func (c *APIServer) DeleteSession(ctx context.Context, input *pb.Session) (*pb.R
 	ssAddr, _ := netip.AddrFromSlice(input.GetAddr())
 
 	s := c.pce
-	ss := s.SearchSession(ssAddr)
+	var ss *Session
+	if ss = s.SearchSession(ssAddr, false); ss == nil {
+		return nil, fmt.Errorf("no session with %s", ssAddr)
+	}
 	if err := ss.SendClose(pcep.R_NO_EXPLANATION_PROVIDED); err != nil {
 		return &pb.RequestStatus{IsSuccess: false}, err
 	}
