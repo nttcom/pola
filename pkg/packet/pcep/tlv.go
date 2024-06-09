@@ -154,6 +154,8 @@ func (tlv *StatefulPceCapability) Serialize() []uint8 {
 }
 
 func (tlv *StatefulPceCapability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	enc.AddString("type", "StatefulPceCapability")
+	enc.AddReflected("data", tlv)
 	return nil
 }
 
@@ -209,6 +211,8 @@ func (tlv *SymbolicPathName) Serialize() []uint8 {
 }
 
 func (tlv *SymbolicPathName) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	enc.AddString("type", "SymbolicPathName")
+	enc.AddReflected("data", tlv)
 	return nil
 }
 
@@ -248,6 +252,8 @@ func (tlv *IPv4LspIdentifiers) Serialize() []uint8 {
 }
 
 func (tlv *IPv4LspIdentifiers) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	enc.AddString("type", "IPv4LspIdentifiers")
+	enc.AddReflected("data", tlv)
 	return nil
 }
 
@@ -279,6 +285,8 @@ func (tlv *IPv6LspIdentifiers) Serialize() []uint8 {
 }
 
 func (tlv *IPv6LspIdentifiers) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	enc.AddString("type", "IPv6LspIdentifiers")
+	enc.AddReflected("data", tlv)
 	return nil
 }
 
@@ -328,6 +336,8 @@ func (tlv *SRPceCapability) Serialize() []uint8 {
 }
 
 func (tlv *SRPceCapability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	enc.AddString("type", "SRPceCapability")
+	enc.AddReflected("data", tlv)
 	return nil
 }
 
@@ -392,6 +402,8 @@ func (tlv *PathSetupType) Serialize() []uint8 {
 }
 
 func (tlv *PathSetupType) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	enc.AddString("type", "PathSetupType")
+	enc.AddReflected("data", tlv)
 	return nil
 }
 
@@ -447,6 +459,8 @@ func (tlv *ExtendedAssociationID) Serialize() []uint8 {
 }
 
 func (tlv *ExtendedAssociationID) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	enc.AddString("type", "ExtendedAssociationID")
+	enc.AddReflected("data", tlv)
 	return nil
 }
 
@@ -530,6 +544,8 @@ func (tlv *PathSetupTypeCapability) Serialize() []uint8 {
 }
 
 func (tlv *PathSetupTypeCapability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	enc.AddString("type", "PathSetupTypeCapability")
+	enc.AddReflected("data", tlv)
 	return nil
 }
 
@@ -612,6 +628,8 @@ func (tlv *AssocTypeList) Serialize() []uint8 {
 }
 
 func (tlv *AssocTypeList) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	enc.AddString("type", "AssocTypeList")
+	enc.AddReflected("data", tlv)
 	return nil
 }
 
@@ -668,7 +686,10 @@ func (tlv *SRPolicyCandidatePathIdentifier) Serialize() []uint8 {
 }
 
 func (tlv *SRPolicyCandidatePathIdentifier) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	enc.AddString("type", "SRPolicyCandidatePathIdentifier")
+	enc.AddReflected("data", tlv)
 	return nil
+
 }
 
 func (tlv *SRPolicyCandidatePathIdentifier) Type() uint16 {
@@ -707,6 +728,8 @@ func (tlv *SRPolicyCandidatePathPreference) Serialize() []uint8 {
 }
 
 func (tlv *SRPolicyCandidatePathPreference) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	enc.AddString("type", "SRPolicyCandidatePathPreference")
+	enc.AddReflected("data", tlv)
 	return nil
 }
 
@@ -752,6 +775,8 @@ func (tlv *UndefinedTLV) Serialize() []uint8 {
 }
 
 func (tlv *UndefinedTLV) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	enc.AddString("type", "UndefinedTLV")
+	enc.AddReflected("data", tlv)
 	return nil
 }
 

@@ -252,6 +252,7 @@ func (ss *Session) handlePCRpt(length uint16) error {
 	if err := message.DecodeFromBytes(messageBodyBytes); err != nil {
 		return err
 	}
+	ss.logger.Debug("PCRpt information", zap.Any("Message", message))
 
 	for _, sr := range message.StateReports {
 		// synchronization

@@ -12,6 +12,7 @@ import (
 	"net/netip"
 
 	"github.com/nttcom/pola/internal/pkg/table"
+	"go.uber.org/zap/zapcore"
 )
 
 const COMMON_HEADER_LENGTH uint16 = 4
@@ -285,6 +286,19 @@ func (r *StateReport) decodeAssociationObject(objectType uint8, objectBody []uin
 
 func (r *StateReport) decodeVendorInformationObject(objectType uint8, objectBody []uint8) error {
 	return r.VendorInformationObject.DecodeFromBytes(objectType, objectBody)
+}
+
+func (r *StateReport) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	if r.SrpObject != nil {
+		enc.AddReflected("SrpObjectTlvs", r.SrpObject.TLVs)
+	}
+	if r.LspObject != nil {
+		enc.AddReflected("LspObjectTlvs", r.LspObject.TLVs)
+	}
+	if r.AssociationObject != nil {
+		enc.AddReflected("AssocObjectTlvs", r.AssociationObject.TLVs)
+	}
+	return nil
 }
 
 // PCRpt Message
