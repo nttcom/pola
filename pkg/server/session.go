@@ -376,12 +376,19 @@ func (ss *Session) RegisterSRPolicy(sr pcep.StateReport) {
 		}
 	} else {
 		// create
+		var src, dst netip.Addr
+		if src = sr.LspObject.SrcAddr; !src.IsValid() {
+			src = sr.AssociationObject.AssocSrc
+		}
+		if dst = sr.LspObject.DstAddr; !dst.IsValid() {
+			dst = sr.AssociationObject.Endpoint()
+		}
 		p := table.NewSRPolicy(
 			sr.LspObject.PlspID,
 			sr.LspObject.Name,
 			sr.EroObject.ToSegmentList(),
-			sr.LspObject.SrcAddr,
-			sr.LspObject.DstAddr,
+			src,
+			dst,
 			color,
 			preference,
 			lspID,

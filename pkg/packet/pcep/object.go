@@ -1263,12 +1263,13 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 func (o *AssociationObject) Color() uint32 {
 	for _, tlv := range o.TLVs {
 		if t, ok := tlv.(*UndefinedTLV); ok {
-			if t.Type() == TLV_EXTENDED_ASSOCIATION_ID {
-				return uint32(binary.BigEndian.Uint32(t.Value[:4]))
-			} else if t.Type() == JUNIPER_SPEC_TLV_EXTENDED_ASSOCIATION_ID {
+			if t.Type() == JUNIPER_SPEC_TLV_EXTENDED_ASSOCIATION_ID {
 				return uint32(binary.BigEndian.Uint32(t.Value[:4]))
 			}
+		} else if t, ok := tlv.(*ExtendedAssociationID); ok {
+			return t.Color
 		}
+
 	}
 	return 0
 }
@@ -1277,14 +1278,23 @@ func (o *AssociationObject) Color() uint32 {
 func (o *AssociationObject) Preference() uint32 {
 	for _, tlv := range o.TLVs {
 		if t, ok := tlv.(*UndefinedTLV); ok {
-			if t.Type() == TLV_SRPOLICY_CPATH_PREFERENCE {
-				return uint32(binary.BigEndian.Uint32(t.Value))
-			} else if t.Type() == JUNIPER_SPEC_TLV_SRPOLICY_CPATH_PREFERENCE {
+			if t.Type() == JUNIPER_SPEC_TLV_SRPOLICY_CPATH_PREFERENCE {
 				return uint32(binary.BigEndian.Uint32(t.Value))
 			}
+		} else if t, ok := tlv.(*SRPolicyCandidatePathPreference); ok {
+			return t.Preference
 		}
 	}
 	return 0
+}
+
+func (o *AssociationObject) Endpoint() netip.Addr {
+	for _, tlv := range o.TLVs {
+		if t, ok := tlv.(*ExtendedAssociationID); ok {
+			return t.Endpoint
+		}
+	}
+	return netip.Addr{}
 }
 
 // VENDOR-INFORMATION Object (RFC7470 4)
