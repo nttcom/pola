@@ -138,7 +138,8 @@ func (ss *Session) ReceiveOpen() error {
 	if err != nil {
 		return err
 	}
-	ss.pccCapabilities = append(ss.pccCapabilities, openMessage.OpenObject.Caps...)
+
+	ss.pccCapabilities = pcep.PolaCapability(openMessage.OpenObject.Caps)
 
 	// pccType detection
 	// * FRRouting cannot be detected from the open message, so it is treated as an RFC compliant

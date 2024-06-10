@@ -78,6 +78,7 @@ const ( // PCEP TLV
 
 const (
 	TLV_STATEFUL_PCE_CAPABILITY_LENGTH      uint16 = 4
+	TLV_LSP_DB_VERSION_LENGTH               uint16 = 8
 	TLV_SR_PCE_CAPABILITY_LENGTH            uint16 = 4
 	TLV_PATH_SETUP_TYPE_LENGTH              uint16 = 4
 	TLV_EXTENDED_ASSOCIATION_ID_IPV4_LENGTH uint16 = 8
@@ -171,8 +172,20 @@ func (tlv *StatefulPceCapability) CapStrings() []string {
 	if tlv.LspUpdateCapability {
 		ret = append(ret, "Update")
 	}
+	if tlv.IncludeDBVersion {
+		ret = append(ret, "Include-DB-Ver")
+	}
 	if tlv.LspInstantiationCapability {
 		ret = append(ret, "Initiate")
+	}
+	if tlv.TriggeredResync {
+		ret = append(ret, "Triggerd-Resync")
+	}
+	if tlv.DeltaLspSyncCapability {
+		ret = append(ret, "Delta-LSP-Sync")
+	}
+	if tlv.TriggeredInitialSync {
+		ret = append(ret, "Triggerd-init-sync")
 	}
 	return ret
 }
@@ -288,6 +301,49 @@ func (tlv *IPv6LspIdentifiers) Type() uint16 {
 
 func (tlv *IPv6LspIdentifiers) Len() uint16 {
 	return TL_LENGTH + TLV_IPV6_LSP_IDENTIFIERS_LENGTH
+}
+
+type LSPDBVersion struct {
+	VersionNumber uint64
+}
+
+func (tlv *LSPDBVersion) DecodeFromBytes(data []uint8) error {
+	tlv.VersionNumber = binary.BigEndian.Uint64(data[4:12])
+	return nil
+}
+
+func (tlv *LSPDBVersion) Serialize() []uint8 {
+	buf := []uint8{}
+
+	typ := make([]uint8, 2)
+	binary.BigEndian.PutUint16(typ, tlv.Type())
+	buf = append(buf, typ...)
+
+	length := make([]uint8, 2)
+	binary.BigEndian.PutUint16(length, TLV_LSP_DB_VERSION_LENGTH)
+	buf = append(buf, length...)
+
+	val := make([]uint8, TLV_LSP_DB_VERSION_LENGTH)
+	binary.BigEndian.PutUint64(val, tlv.VersionNumber)
+
+	buf = append(buf, val...)
+	return buf
+}
+
+func (tlv *LSPDBVersion) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	return nil
+}
+
+func (tlv *LSPDBVersion) Type() uint16 {
+	return TLV_LSP_DB_VERSION
+}
+
+func (tlv *LSPDBVersion) Len() uint16 {
+	return TL_LENGTH + TLV_LSP_DB_VERSION_LENGTH
+}
+
+func (tlv *LSPDBVersion) CapStrings() []string {
+	return []string{"LSP-DB-VERSION"}
 }
 
 type SRPceCapability struct {
@@ -787,6 +843,8 @@ func DecodeTLV(data []uint8) (TLVInterface, error) {
 		tlv = &IPv4LspIdentifiers{}
 	case TLV_IPV6_LSP_IDENTIFIERS:
 		tlv = &IPv6LspIdentifiers{}
+	case TLV_LSP_DB_VERSION:
+		tlv = &LSPDBVersion{}
 	case TLV_SR_PCE_CAPABILITY:
 		tlv = &SRPceCapability{}
 	case TLV_PATH_SETUP_TYPE:
