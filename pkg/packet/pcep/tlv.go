@@ -874,10 +874,15 @@ func DecodeTLV(data []uint8) (TLVInterface, error) {
 		tlv = &SRPceCapability{}
 	case TLV_PATH_SETUP_TYPE:
 		tlv = &PathSetupType{}
+	case TLV_EXTENDED_ASSOCIATION_ID:
+		tlv = &ExtendedAssociationID{}
 	case TLV_PATH_SETUP_TYPE_CAPABILITY:
 		tlv = &PathSetupTypeCapability{}
 	case TLV_ASSOC_TYPE_LIST:
 		tlv = &AssocTypeList{}
+	case TLV_SRPOLICY_CPATH_PREFERENCE:
+		tlv = &SRPolicyCandidatePathPreference{}
+
 	default:
 		tlv = &UndefinedTLV{}
 	}
