@@ -86,6 +86,8 @@ func (p *SRPolicy) Update(df PolicyDiff) {
 	}
 }
 
+const SRV6_SID_BIT_LENGTH = 128
+
 type Segment interface {
 	SidString() string
 }

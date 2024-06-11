@@ -6,6 +6,8 @@
 package server
 
 import (
+	"errors"
+	"math"
 	"net"
 	"net/netip"
 	"strconv"
@@ -87,6 +89,9 @@ func (s *Server) Serve(address string, port string, usidMode bool) error {
 	p, err := strconv.Atoi(port)
 	if err != nil {
 		return err
+	}
+	if p > math.MaxUint16 {
+		return errors.New("invalid PCEP listen port")
 	}
 	localAddr := netip.AddrPortFrom(a, uint16(p))
 

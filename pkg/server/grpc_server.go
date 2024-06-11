@@ -133,7 +133,11 @@ func (s *APIServer) createSRPolicy(_ context.Context, input *pb.CreateSRPolicyIn
 						if err != nil {
 							return &pb.RequestStatus{IsSuccess: false}, errors.New("invalid SidStructure information")
 						}
-						segSRv6.Structure = append(segSRv6.Structure, uint8(elem))
+						if elem <= table.SRV6_SID_BIT_LENGTH {
+							segSRv6.Structure = append(segSRv6.Structure, uint8(elem))
+						} else {
+							return &pb.RequestStatus{IsSuccess: false}, errors.New("element of each Sid Structure less than bit length of SRv6 SID")
+						}
 					}
 
 				}
