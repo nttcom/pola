@@ -15,4 +15,5 @@
             "*policy*.yml"
         ],
     },
+    "files.insertFinalNewline": true,
 }
