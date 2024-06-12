@@ -16,6 +16,10 @@ service PceService {
 
   rpc CreateSRPolicyWithoutLinkState (CreateSRPolicyInput) returns (RequestStatus) {};
 
+  rpc DeleteSRPolicy (DeleteSRPolicyInput) returns (RequestStatus) {};
+
+  rpc DeleteSRPolicyWithoutLinkState (DeleteSRPolicyInput) returns (RequestStatus) {};
+
   rpc GetSessionList (google.protobuf.Empty) returns (SessionList) {};
 
   rpc GetSRPolicyList (google.protobuf.Empty) returns (SRPolicyList) {};
@@ -27,6 +31,9 @@ service PceService {
 
 message Segment {
     string sid = 1;
+    string sidStructure = 2;
+    string localAddr = 3;
+    string remoteAddr = 4;
 }
 
 enum SRPolicyType {
@@ -51,14 +58,27 @@ message SRPolicy {
 message CreateSRPolicyInput {
     SRPolicy SRPolicy = 1;
     uint32 asn = 2;
-} 
+}
+
+message DeleteSRPolicyInput {
+    SRPolicy SRPolicy = 1;
+    uint32 asn = 2;
+}
 
 message RequestStatus {
     bool isSuccess = 1;
 }
 
+enum SessionState {
+    DOWN = 0;
+    UP = 1;
+}
+
 message Session {
     bytes Addr = 1;
+    SessionState State = 2;
+    repeated string Caps = 3;
+    bool IsSynced = 4;
 }
 
 message SessionList {

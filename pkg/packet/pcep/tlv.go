@@ -10,6 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"slices"
+	"strconv"
 	"strings"
 
 	"go.uber.org/zap/zapcore"
@@ -76,6 +78,7 @@ const ( // PCEP TLV
 
 const (
 	TLV_STATEFUL_PCE_CAPABILITY_LENGTH      uint16 = 4
+	TLV_LSP_DB_VERSION_LENGTH               uint16 = 8
 	TLV_SR_PCE_CAPABILITY_LENGTH            uint16 = 4
 	TLV_PATH_SETUP_TYPE_LENGTH              uint16 = 4
 	TLV_EXTENDED_ASSOCIATION_ID_IPV4_LENGTH uint16 = 8
@@ -163,6 +166,30 @@ func (tlv *StatefulPceCapability) Len() uint16 {
 	return TL_LENGTH + TLV_STATEFUL_PCE_CAPABILITY_LENGTH
 }
 
+func (tlv *StatefulPceCapability) CapStrings() []string {
+	ret := []string{}
+	ret = append(ret, "Stateful")
+	if tlv.LspUpdateCapability {
+		ret = append(ret, "Update")
+	}
+	if tlv.IncludeDBVersion {
+		ret = append(ret, "Include-DB-Ver")
+	}
+	if tlv.LspInstantiationCapability {
+		ret = append(ret, "Initiate")
+	}
+	if tlv.TriggeredResync {
+		ret = append(ret, "Triggerd-Resync")
+	}
+	if tlv.DeltaLspSyncCapability {
+		ret = append(ret, "Delta-LSP-Sync")
+	}
+	if tlv.TriggeredInitialSync {
+		ret = append(ret, "Triggerd-init-sync")
+	}
+	return ret
+}
+
 type SymbolicPathName struct {
 	Name string
 }
@@ -214,6 +241,8 @@ func (tlv *SymbolicPathName) Len() uint16 {
 type IPv4LspIdentifiers struct {
 	IPv4TunnelSenderAddress   netip.Addr
 	IPv4TunnelEndpointAddress netip.Addr
+	LspID                     uint16
+	TunnelID                  uint16
 }
 
 func (tlv *IPv4LspIdentifiers) DecodeFromBytes(data []uint8) error {
@@ -221,6 +250,8 @@ func (tlv *IPv4LspIdentifiers) DecodeFromBytes(data []uint8) error {
 	if tlv.IPv4TunnelSenderAddress, ok = netip.AddrFromSlice(data[12:16]); !ok {
 		tlv.IPv4TunnelSenderAddress, _ = netip.AddrFromSlice(data[4:8])
 	}
+	tlv.LspID = binary.BigEndian.Uint16(data[8:10])
+	tlv.TunnelID = binary.BigEndian.Uint16(data[10:12])
 	tlv.IPv4TunnelEndpointAddress, _ = netip.AddrFromSlice(data[16:20])
 	return nil
 }
@@ -244,10 +275,14 @@ func (tlv *IPv4LspIdentifiers) Len() uint16 {
 type IPv6LspIdentifiers struct {
 	IPv6TunnelSenderAddress   netip.Addr
 	IPv6TunnelEndpointAddress netip.Addr
+	LspID                     uint16
+	TunnelID                  uint16
 }
 
 func (tlv *IPv6LspIdentifiers) DecodeFromBytes(data []uint8) error {
 	tlv.IPv6TunnelSenderAddress, _ = netip.AddrFromSlice(data[4:20])
+	tlv.LspID = binary.BigEndian.Uint16(data[20:22])
+	tlv.TunnelID = binary.BigEndian.Uint16(data[22:24])
 	tlv.IPv6TunnelEndpointAddress, _ = netip.AddrFromSlice(data[40:56])
 	return nil
 }
@@ -266,6 +301,49 @@ func (tlv *IPv6LspIdentifiers) Type() uint16 {
 
 func (tlv *IPv6LspIdentifiers) Len() uint16 {
 	return TL_LENGTH + TLV_IPV6_LSP_IDENTIFIERS_LENGTH
+}
+
+type LSPDBVersion struct {
+	VersionNumber uint64
+}
+
+func (tlv *LSPDBVersion) DecodeFromBytes(data []uint8) error {
+	tlv.VersionNumber = binary.BigEndian.Uint64(data[4:12])
+	return nil
+}
+
+func (tlv *LSPDBVersion) Serialize() []uint8 {
+	buf := []uint8{}
+
+	typ := make([]uint8, 2)
+	binary.BigEndian.PutUint16(typ, tlv.Type())
+	buf = append(buf, typ...)
+
+	length := make([]uint8, 2)
+	binary.BigEndian.PutUint16(length, TLV_LSP_DB_VERSION_LENGTH)
+	buf = append(buf, length...)
+
+	val := make([]uint8, TLV_LSP_DB_VERSION_LENGTH)
+	binary.BigEndian.PutUint64(val, tlv.VersionNumber)
+
+	buf = append(buf, val...)
+	return buf
+}
+
+func (tlv *LSPDBVersion) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	return nil
+}
+
+func (tlv *LSPDBVersion) Type() uint16 {
+	return TLV_LSP_DB_VERSION
+}
+
+func (tlv *LSPDBVersion) Len() uint16 {
+	return TL_LENGTH + TLV_LSP_DB_VERSION_LENGTH
+}
+
+func (tlv *LSPDBVersion) CapStrings() []string {
+	return []string{"LSP-DB-VERSION"}
 }
 
 type SRPceCapability struct {
@@ -315,6 +393,10 @@ func (tlv *SRPceCapability) Type() uint16 {
 
 func (tlv *SRPceCapability) Len() uint16 {
 	return TL_LENGTH + TLV_SR_PCE_CAPABILITY_LENGTH
+}
+
+func (tlv *SRPceCapability) CapStrings() []string {
+	return []string{"SR-TE"}
 }
 
 type Pst uint8
@@ -375,6 +457,67 @@ func (tlv *PathSetupType) Type() uint16 {
 
 func (tlv *PathSetupType) Len() uint16 {
 	return TL_LENGTH + TLV_PATH_SETUP_TYPE_LENGTH
+}
+
+type ExtendedAssociationID struct {
+	Color    uint32
+	Endpoint netip.Addr
+}
+
+func (tlv *ExtendedAssociationID) DecodeFromBytes(data []uint8) error {
+	l := binary.BigEndian.Uint16(data[2:4])
+
+	tlv.Color = binary.BigEndian.Uint32(data[4:8])
+
+	switch l {
+	case TLV_EXTENDED_ASSOCIATION_ID_IPV4_LENGTH:
+		tlv.Endpoint, _ = netip.AddrFromSlice(data[8:12])
+	case TLV_EXTENDED_ASSOCIATION_ID_IPV6_LENGTH:
+		tlv.Endpoint, _ = netip.AddrFromSlice(data[8:24])
+	}
+
+	return nil
+}
+
+func (tlv *ExtendedAssociationID) Serialize() []uint8 {
+	buf := []uint8{}
+
+	typ := make([]uint8, 2)
+	binary.BigEndian.PutUint16(typ, tlv.Type())
+	buf = append(buf, typ...)
+
+	length := make([]uint8, 2)
+	if tlv.Endpoint.Is4() {
+		binary.BigEndian.PutUint16(length, TLV_EXTENDED_ASSOCIATION_ID_IPV4_LENGTH)
+	} else if tlv.Endpoint.Is6() {
+		binary.BigEndian.PutUint16(length, TLV_EXTENDED_ASSOCIATION_ID_IPV6_LENGTH)
+	}
+	buf = append(buf, length...)
+
+	color := make([]uint8, 4)
+	binary.BigEndian.PutUint32(color, tlv.Color)
+	buf = append(buf, color...)
+
+	buf = append(buf, tlv.Endpoint.AsSlice()...)
+	return buf
+}
+
+func (tlv *ExtendedAssociationID) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	return nil
+}
+
+func (tlv *ExtendedAssociationID) Type() uint16 {
+	return TLV_EXTENDED_ASSOCIATION_ID
+}
+
+func (tlv *ExtendedAssociationID) Len() uint16 {
+	if tlv.Endpoint.Is4() {
+		return TL_LENGTH + TLV_EXTENDED_ASSOCIATION_ID_IPV4_LENGTH
+	} else if tlv.Endpoint.Is6() {
+		return TL_LENGTH + TLV_EXTENDED_ASSOCIATION_ID_IPV6_LENGTH
+	}
+	return 0
+
 }
 
 type PathSetupTypeCapability struct {
@@ -463,6 +606,17 @@ func (tlv *PathSetupTypeCapability) Len() uint16 {
 	return TL_LENGTH + l
 }
 
+func (tlv *PathSetupTypeCapability) CapStrings() []string {
+	ret := []string{}
+	if slices.Contains(tlv.PathSetupTypes, PST_SR_TE) {
+		ret = append(ret, "SR-TE")
+	}
+	if slices.Contains(tlv.PathSetupTypes, PST_SRV6_TE) {
+		ret = append(ret, "SRv6-TE")
+	}
+	return ret
+}
+
 type AssocType uint16
 
 const (
@@ -530,6 +684,96 @@ func (tlv *AssocTypeList) Len() uint16 {
 	return TL_LENGTH + l + padding
 }
 
+func (tlv *AssocTypeList) CapStrings() []string {
+	return []string{}
+}
+
+type SRPolicyCandidatePathIdentifier struct {
+	OriginatorAddr netip.Addr // After DecodeFromBytes, even ipv4 addresses are assigned in ipv6 format
+}
+
+func (tlv *SRPolicyCandidatePathIdentifier) DecodeFromBytes(data []uint8) error {
+	tlv.OriginatorAddr, _ = netip.AddrFromSlice(data[12:28])
+	return nil
+}
+
+func (tlv *SRPolicyCandidatePathIdentifier) Serialize() []uint8 {
+	buf := []uint8{}
+
+	typ := make([]uint8, 2)
+	binary.BigEndian.PutUint16(typ, tlv.Type())
+	buf = append(buf, typ...)
+
+	length := make([]uint8, 2)
+	binary.BigEndian.PutUint16(length, TLV_SRPOLICY_CPATH_ID_LENGTH)
+	buf = append(buf, length...)
+
+	buf = append(buf, 0x0a)                   // protocol origin, PCEP = 10
+	buf = append(buf, 0x00, 0x00, 0x00)       // mbz
+	buf = append(buf, 0x00, 0x00, 0x00, 0x00) // Originator ASN
+	// Originator Address
+	if tlv.OriginatorAddr.Is4() {
+		buf = append(buf, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00)
+		buf = append(buf, tlv.OriginatorAddr.AsSlice()...)
+	} else if tlv.OriginatorAddr.Is6() {
+		buf = append(buf, tlv.OriginatorAddr.AsSlice()...)
+	}
+	buf = append(buf, 0x00, 0x00, 0x00, 0x01) // discriminator
+
+	return buf
+}
+
+func (tlv *SRPolicyCandidatePathIdentifier) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	return nil
+}
+
+func (tlv *SRPolicyCandidatePathIdentifier) Type() uint16 {
+	return TLV_SRPOLICY_CPATH_ID
+}
+
+func (tlv *SRPolicyCandidatePathIdentifier) Len() uint16 {
+	return TL_LENGTH + TLV_SRPOLICY_CPATH_ID_LENGTH
+}
+
+type SRPolicyCandidatePathPreference struct {
+	Preference uint32
+}
+
+func (tlv *SRPolicyCandidatePathPreference) DecodeFromBytes(data []uint8) error {
+	tlv.Preference = binary.BigEndian.Uint32(data[4:8])
+	return nil
+}
+
+func (tlv *SRPolicyCandidatePathPreference) Serialize() []uint8 {
+	buf := []uint8{}
+
+	typ := make([]uint8, 2)
+	binary.BigEndian.PutUint16(typ, tlv.Type())
+	buf = append(buf, typ...)
+
+	length := make([]uint8, 2)
+	binary.BigEndian.PutUint16(length, TLV_SRPOLICY_CPATH_PREFERENCE_LENGTH)
+	buf = append(buf, length...)
+
+	preference := make([]uint8, 4)
+	binary.BigEndian.PutUint32(preference, tlv.Preference)
+	buf = append(buf, preference...)
+
+	return buf
+}
+
+func (tlv *SRPolicyCandidatePathPreference) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	return nil
+}
+
+func (tlv *SRPolicyCandidatePathPreference) Type() uint16 {
+	return TLV_SRPOLICY_CPATH_PREFERENCE
+}
+
+func (tlv *SRPolicyCandidatePathPreference) Len() uint16 {
+	return TL_LENGTH + TLV_SRPOLICY_CPATH_PREFERENCE_LENGTH
+}
+
 type UndefinedTLV struct {
 	Typ    uint16
 	Length uint16
@@ -579,6 +823,11 @@ func (tlv *UndefinedTLV) Len() uint16 {
 	return TL_LENGTH + tlv.Length + padding
 }
 
+func (tlv *UndefinedTLV) CapStrings() []string {
+	cap := "unknown_type_" + strconv.FormatInt(int64(tlv.Typ), 10)
+	return []string{cap}
+}
+
 func (tlv *UndefinedTLV) SetLength() {
 	tlv.Length = uint16(len(tlv.Value))
 }
@@ -594,14 +843,21 @@ func DecodeTLV(data []uint8) (TLVInterface, error) {
 		tlv = &IPv4LspIdentifiers{}
 	case TLV_IPV6_LSP_IDENTIFIERS:
 		tlv = &IPv6LspIdentifiers{}
+	case TLV_LSP_DB_VERSION:
+		tlv = &LSPDBVersion{}
 	case TLV_SR_PCE_CAPABILITY:
 		tlv = &SRPceCapability{}
 	case TLV_PATH_SETUP_TYPE:
 		tlv = &PathSetupType{}
+	case TLV_EXTENDED_ASSOCIATION_ID:
+		tlv = &ExtendedAssociationID{}
 	case TLV_PATH_SETUP_TYPE_CAPABILITY:
 		tlv = &PathSetupTypeCapability{}
 	case TLV_ASSOC_TYPE_LIST:
 		tlv = &AssocTypeList{}
+	case TLV_SRPOLICY_CPATH_PREFERENCE:
+		tlv = &SRPolicyCandidatePathPreference{}
+
 	default:
 		tlv = &UndefinedTLV{}
 	}

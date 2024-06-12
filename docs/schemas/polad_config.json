@@ -1,0 +1,137 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+        "global": {
+            "type": "object",
+            "properties": {
+                "pcep": {
+                    "type": "object",
+                    "properties": {
+                        "address": {
+                            "type": "string",
+                            "oneOf": [
+                                {
+                                    "format": "ipv4"
+                                },
+                                {
+                                    "format": "ipv6"
+                                }
+                            ]
+                        },
+                        "port": {
+                            "type": "integer"
+                        }
+                    },
+                    "required": [
+                        "address",
+                        "port"
+                    ]
+                },
+                "grpc-server": {
+                    "type": "object",
+                    "properties": {
+                        "address": {
+                            "type": "string",
+                            "oneOf": [
+                                {
+                                    "format": "ipv4"
+                                },
+                                {
+                                    "format": "ipv6"
+                                }
+                            ]
+                        },
+                        "port": {
+                            "type": "integer"
+                        }
+                    },
+                    "required": [
+                        "address",
+                        "port"
+                    ]
+                },
+                "log": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string"
+                        },
+                        "name": {
+                            "type": "string"
+                        },
+                        "debug": {
+                            "type": "boolean"
+                        }
+                    },
+                    "required": [
+                        "path",
+                        "name"
+                    ]
+                },
+                "ted": {
+                    "type": "object",
+                    "properties": {
+                        "enable": {
+                            "type": "boolean"
+                        },
+                        "source": {
+                            "type": "string",
+                            "enum": [
+                                "gobgp"
+                            ]
+                        }
+                    },
+                    "required": [
+                        "enable"
+                    ]
+                },
+                "gobgp": {
+                    "type": "object",
+                    "properties": {
+                        "grpc-client": {
+                            "type": "object",
+                            "properties": {
+                                "address": {
+                                    "type": "string",
+                                    "oneOf": [
+                                        {
+                                            "format": "ipv4"
+                                        },
+                                        {
+                                            "format": "ipv6"
+                                        }
+                                    ]
+                                },
+                                "port": {
+                                    "type": "integer"
+                                }
+                            },
+                            "required": [
+                                "address",
+                                "port"
+                            ]
+                        }
+                    },
+                    "required": [
+                        "grpc-client"
+                    ]
+                },
+                "usid-mode": {
+                    "type": "boolean",
+                    "default": false
+                }
+            },
+            "required": [
+                "pcep",
+                "grpc-server",
+                "log",
+                "ted"
+            ]
+        }
+    },
+    "required": [
+        "global"
+    ],
+    "additionalProperties": false
+}

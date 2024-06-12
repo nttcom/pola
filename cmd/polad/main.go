@@ -59,14 +59,14 @@ func main() {
 	defer fp.Close()
 
 	// Initialize logger
-	logger := logger.LogInit(fp)
+	logger := logger.LogInit(fp, c.Global.Log.Debug)
 	defer func() {
 		err := logger.Sync()
 		if err != nil {
 			logger.Panic("Failed to logger Sync", zap.Error(err))
+			log.Panic(err)
 		}
 	}()
-	zap.ReplaceGlobals(logger)
 
 	// Prepare TED update tools
 	var tedElemsChan chan []table.TedElem
@@ -76,6 +76,7 @@ func main() {
 			tedElemsChan = startGobgpUpdate(&c, logger)
 		default:
 			logger.Panic("Specified TED source is not defined")
+			log.Panic()
 		}
 	}
 
@@ -86,9 +87,11 @@ func main() {
 		GrpcAddr:  c.Global.GrpcServer.Address,
 		GrpcPort:  c.Global.GrpcServer.Port,
 		TedEnable: c.Global.Ted.Enable,
+		USidMode:  c.Global.USidMode,
 	}
 	if serverErr := server.NewPce(o, logger, tedElemsChan); serverErr.Error != nil {
 		logger.Panic("Failed to start new server", zap.String("server", serverErr.Server), zap.Error(serverErr.Error))
+		log.Panic()
 	}
 }
 
@@ -98,9 +101,9 @@ func startGobgpUpdate(c *config.Config, logger *zap.Logger) chan []table.TedElem
 	go func() {
 		for {
 			tedElems, err := gobgp.GetBgplsNlris(c.Global.Gobgp.GrpcClient.Address, c.Global.Gobgp.GrpcClient.Port)
-			logger.Info("Request TED update", zap.String("source", "GoBGP"), zap.String("session", c.Global.Gobgp.GrpcClient.Address+":"+c.Global.Gobgp.GrpcClient.Port))
+			logger.Debug("Request TED update", zap.String("source", "GoBGP"), zap.String("session", c.Global.Gobgp.GrpcClient.Address+":"+c.Global.Gobgp.GrpcClient.Port))
 			if err != nil {
-				logger.Info("Failed session with GoBGP", zap.Error(err))
+				logger.Error("Failed session with GoBGP", zap.Error(err))
 			} else {
 				tedElemsChan <- tedElems
 			}

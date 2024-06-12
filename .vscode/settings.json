@@ -1,0 +1,19 @@
+{
+    "yaml.format.enable": true,
+    "yaml.completion": true,
+    "yaml.validate": true,
+    "yaml.hover": true,
+    "yaml.schemas": {
+        "./docs/schemas/polad_config.json": [
+            "polad*.yaml",
+            "polad*.yml"
+        ],
+        "./cmd/pola/docs/schemas/policy.json": [
+            "*POLICY*.yaml",
+            "*POLICY*.yml",
+            "*policy*.yaml",
+            "*policy*.yml"
+        ],
+    },
+    "files.insertFinalNewline": true,
+}

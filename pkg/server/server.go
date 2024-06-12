@@ -6,8 +6,11 @@
 package server
 
 import (
+	"errors"
+	"math"
 	"net"
 	"net/netip"
+	"strconv"
 
 	"go.uber.org/zap"
 	grpc "google.golang.org/grpc"
@@ -27,6 +30,7 @@ type PceOptions struct {
 	GrpcAddr  string
 	GrpcPort  string
 	TedEnable bool
+	USidMode  bool
 }
 
 func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem) ServerError {
@@ -47,14 +51,14 @@ func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem
 				}
 				ted.Update(tedElems)
 				s.ted = ted
-				logger.Info("Update TED")
+				logger.Debug("Update TED")
 			}
 		}()
 	}
 
 	errChan := make(chan ServerError)
 	go func() {
-		if err := s.Serve(o.PcepAddr, o.PcepPort); err != nil {
+		if err := s.Serve(o.PcepAddr, o.PcepPort, o.USidMode); err != nil {
 			errChan <- ServerError{
 				Server: "pcep",
 				Error:  err,
@@ -64,7 +68,7 @@ func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem
 
 	go func() {
 		grpcServer := grpc.NewServer()
-		apiServer := NewAPIServer(s, grpcServer)
+		apiServer := NewAPIServer(s, grpcServer, o.USidMode, logger)
 		if err := apiServer.Serve(o.GrpcAddr, o.GrpcPort); err != nil {
 			errChan <- ServerError{
 				Server: "grpc",
@@ -72,16 +76,26 @@ func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem
 			}
 		}
 	}()
+
 	serverError := <-errChan
 	return serverError
 }
 
-func (s *Server) Serve(address string, port string) error {
-	localAddr, err := netip.ParseAddrPort(address + ":" + port)
+func (s *Server) Serve(address string, port string, usidMode bool) error {
+	a, err := netip.ParseAddr(address)
 	if err != nil {
 		return err
 	}
-	s.logger.Info("PCEP listen", zap.String("listenInfo", localAddr.String()))
+	p, err := strconv.Atoi(port)
+	if err != nil {
+		return err
+	}
+	if p > math.MaxUint16 {
+		return errors.New("invalid PCEP listen port")
+	}
+	localAddr := netip.AddrPortFrom(a, uint16(p))
+
+	s.logger.Info("Start listening on PCEP port", zap.String("address", localAddr.String()))
 	l, err := net.ListenTCP("tcp", net.TCPAddrFromAddrPort(localAddr))
 	if err != nil {
 		return err
@@ -90,21 +104,22 @@ func (s *Server) Serve(address string, port string) error {
 
 	sessionID := uint8(1)
 	for {
-		ss := NewSession(sessionID, s.logger)
-		ss.tcpConn, err = l.AcceptTCP()
+		tcpConn, err := l.AcceptTCP()
 		if err != nil {
 			return err
 		}
-		peerAddrPort, err := netip.ParseAddrPort(ss.tcpConn.RemoteAddr().String())
+		peerAddrPort, err := netip.ParseAddrPort(tcpConn.RemoteAddr().String())
 		if err != nil {
 			return err
 		}
-		ss.peerAddr = peerAddrPort.Addr()
+		ss := NewSession(sessionID, peerAddrPort.Addr(), tcpConn, s.logger)
+		ss.logger.Info("Start PCEP session")
+
 		s.sessionList = append(s.sessionList, ss)
 		go func() {
 			ss.Established()
 			s.closeSession(ss)
-			s.logger.Info("Close PCEP session", zap.String("session", ss.peerAddr.String()))
+			ss.logger.Info("Close PCEP session")
 		}()
 		sessionID++
 	}
@@ -123,18 +138,22 @@ func (s *Server) closeSession(session *Session) {
 	}
 }
 
-func (s *Server) SearchSession(peerAddr netip.Addr) *Session {
+// SearchSession returns a struct pointer of (Synced) session.
+// if not exist, return nil
+func (s *Server) SearchSession(peerAddr netip.Addr, onlySynced bool) *Session {
 	for _, pcepSession := range s.sessionList {
-		if pcepSession.peerAddr == peerAddr && pcepSession.isSynced {
-			return pcepSession
+		if pcepSession.peerAddr == peerAddr {
+			if !(onlySynced) || pcepSession.isSynced {
+				return pcepSession
+			}
 		}
 	}
 	return nil
 }
 
 // SRPolicies returns a map of registered SR Policy with key sessionAddr
-func (s *Server) SRPolicies() map[netip.Addr][]table.SRPolicy {
-	srPolicies := make(map[netip.Addr][]table.SRPolicy)
+func (s *Server) SRPolicies() map[netip.Addr][]*table.SRPolicy {
+	srPolicies := make(map[netip.Addr][]*table.SRPolicy)
 	for _, ss := range s.sessionList {
 		if ss.isSynced {
 			srPolicies[ss.peerAddr] = ss.srPolicies

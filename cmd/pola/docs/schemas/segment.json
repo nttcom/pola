@@ -1,0 +1,56 @@
+{
+    "type": "object",
+    "properties": {
+        "sid": {
+            "oneOf": [
+                {
+                    "type": "string",
+                    "oneOf": [
+                        {
+                            "format": "ipv4"
+                        },
+                        {
+                            "format": "ipv6"
+                        }
+                    ],
+                    "$comment": "SRv6 format"
+                },
+                {
+                    "type": "integer",
+                    "$comment": "SR-MPLS format"
+                }
+            ]
+        },
+        "localAddr": {
+            "type": "string",
+            "oneOf": [
+                {
+                    "format": "ipv4"
+                },
+                {
+                    "format": "ipv6"
+                }
+            ]
+        },
+        "remoteAddr": {
+            "type": "string",
+            "oneOf": [
+                {
+                    "format": "ipv4"
+                },
+                {
+                    "format": "ipv6"
+                }
+            ]
+        },
+        "sidStructure": {
+            "type": "string",
+            "pattern": "^[0-9]+,[0-9]+,[0-9]+,[0-9]+$",
+            "$comment": "<locator-block>,<locator-node>,<function>,<argument>"
+        }
+    },
+    "required": [
+        "sid"
+    ],
+    "additionalProperties": false
+}

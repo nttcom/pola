@@ -27,8 +27,9 @@ type GrpcClient struct {
 }
 
 type Log struct {
-	Path string `yaml:"path"`
-	Name string `yaml:"name"`
+	Path  string `yaml:"path"`
+	Name  string `yaml:"name"`
+	Debug bool   `yaml:"debug"`
 }
 
 type Gobgp struct {
@@ -46,6 +47,7 @@ type Global struct {
 	Log        Log        `yaml:"log"`
 	Ted        Ted        `yaml:"ted"`
 	Gobgp      Gobgp      `yaml:"gobgp"`
+	USidMode   bool       `yaml:"usid-mode"`
 }
 
 type Config struct {

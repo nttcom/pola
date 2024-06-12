@@ -23,34 +23,35 @@ type Session struct {
 	tcpConn         *net.TCPConn
 	isSynced        bool
 	srpIDHead       uint32 // 0x00000000 and 0xFFFFFFFF are reserved.
-	srPolicies      []table.SRPolicy
+	srPolicies      []*table.SRPolicy
 	logger          *zap.Logger
 	keepAlive       uint8
 	pccType         pcep.PccType
 	pccCapabilities []pcep.CapabilityInterface
 }
 
-func NewSession(sessionID uint8, logger *zap.Logger) *Session {
+func NewSession(sessionID uint8, peerAddr netip.Addr, tcpConn *net.TCPConn, logger *zap.Logger) *Session {
 	return &Session{
 		sessionID: sessionID,
 		isSynced:  false,
 		srpIDHead: uint32(1),
-		logger:    logger,
+		logger:    logger.With(zap.String("server", "pcep"), zap.String("session", peerAddr.String())),
 		pccType:   pcep.RFC_COMPLIANT,
+		peerAddr:  peerAddr,
+		tcpConn:   tcpConn,
 	}
 }
 
 func (ss *Session) Established() {
 	if err := ss.Open(); err != nil {
-		ss.logger.Info("PCEP OPEN error", zap.String("session", ss.peerAddr.String()), zap.Error(err))
+		ss.logger.Debug("ERROR! PCEP OPEN", zap.Error(err))
 		return
 	}
-
-	ss.logger.Info("PCEP session established")
+	ss.logger.Debug("PCEP session established")
 
 	// Send the initial keepalive message
 	if err := ss.SendKeepalive(); err != nil {
-		ss.logger.Info("Keepalive send error", zap.String("session", ss.peerAddr.String()), zap.Error(err))
+		ss.logger.Debug("ERROR! Send Keepalive Message", zap.Error(err))
 		return
 	}
 
@@ -60,7 +61,7 @@ func (ss *Session) Established() {
 	// Receive PCEP messages in a separate goroutine
 	go func() {
 		if err := ss.ReceivePcepMessage(); err != nil {
-			ss.logger.Info("Receive PCEP Message error", zap.String("session", ss.peerAddr.String()), zap.Error(err))
+			ss.logger.Debug("ERROR! Receive PCEP Message", zap.Error(err))
 		}
 		done <- struct{}{}
 	}()
@@ -74,21 +75,19 @@ func (ss *Session) Established() {
 			return
 		case <-ticker.C:
 			if err := ss.SendKeepalive(); err != nil {
-				ss.logger.Info("Keepalive send error", zap.String("session", ss.peerAddr.String()), zap.Error(err))
+				ss.logger.Debug("ERROR! Send Keepalive Message", zap.Error(err))
+				done <- struct{}{}
 			}
 		}
 	}
 }
 
-func (ss *Session) sendPcepMessage(message pcep.Message, logMessage string) error {
+func (ss *Session) sendPcepMessage(message pcep.Message) error {
 	byteMessage, err := message.Serialize()
 	if err != nil {
 		return err
 	}
-
-	ss.logger.Info(logMessage, zap.String("session", ss.peerAddr.String()))
 	if _, err = ss.tcpConn.Write(byteMessage); err != nil {
-		ss.logger.Info(logMessage+" send error", zap.String("session", ss.peerAddr.String()), zap.Error(err))
 		return err
 	}
 	return nil
@@ -133,27 +132,21 @@ func (ss *Session) parseOpenMessage() (*pcep.OpenMessage, error) {
 	return &openMessage, nil
 }
 
-func (ss *Session) SendOpen() error {
-	openMessage, err := pcep.NewOpenMessage(ss.sessionID, ss.keepAlive, ss.pccCapabilities)
-	if err != nil {
-		return err
-	}
-
-	return ss.sendPcepMessage(openMessage, "Send Open")
-}
-
 func (ss *Session) ReceiveOpen() error {
+	ss.logger.Debug("Receive Open Message")
 	openMessage, err := ss.parseOpenMessage()
 	if err != nil {
 		return err
 	}
-	ss.pccCapabilities = append(ss.pccCapabilities, openMessage.OpenObject.Caps...)
+
+	ss.pccCapabilities = pcep.PolaCapability(openMessage.OpenObject.Caps)
 
 	// pccType detection
 	// * FRRouting cannot be detected from the open message, so it is treated as an RFC compliant
 	ss.pccType = pcep.DeterminePccType(ss.pccCapabilities)
+	ss.logger.Debug("Determine PCC Type", zap.Int("pcc-type", int(ss.pccType)))
 	ss.keepAlive = openMessage.OpenObject.Keepalive
-	ss.logger.Info("Receive Open", zap.String("session", ss.peerAddr.String()))
+
 	return nil
 }
 
@@ -162,7 +155,8 @@ func (ss *Session) SendKeepalive() error {
 	if err != nil {
 		return err
 	}
-	return ss.sendPcepMessage(keepaliveMessage, "Send Keepalive")
+	ss.logger.Debug("Send Keepalive Message")
+	return ss.sendPcepMessage(keepaliveMessage)
 }
 
 func (ss *Session) SendClose(reason uint8) error {
@@ -172,8 +166,7 @@ func (ss *Session) SendClose(reason uint8) error {
 	}
 	byteCloseMessage := closeMessage.Serialize()
 
-	ss.logger.Info("Send Close",
-		zap.String("session", ss.peerAddr.String()),
+	ss.logger.Debug("Send Close Message",
 		zap.Uint8("reason", closeMessage.CloseObject.Reason),
 		zap.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#close-object-reason-field"))
 	if _, err := ss.tcpConn.Write(byteCloseMessage); err != nil {
@@ -188,10 +181,12 @@ func (ss *Session) ReceivePcepMessage() error {
 		if err != nil {
 			return err
 		}
+		// wait TCP reassembly packet
+		time.Sleep(10 * time.Millisecond)
 
 		switch commonHeader.MessageType {
 		case pcep.MT_KEEPALIVE:
-			ss.logger.Info("Received Keepalive", zap.String("session", ss.peerAddr.String()))
+			ss.logger.Debug("Received Keepalive")
 		case pcep.MT_REPORT:
 			err = ss.handlePCRpt(commonHeader.MessageLength)
 			if err != nil {
@@ -207,8 +202,7 @@ func (ss *Session) ReceivePcepMessage() error {
 				return err
 			}
 
-			ss.logger.Info("Received PCErr",
-				zap.String("session", ss.peerAddr.String()),
+			ss.logger.Debug("Received PCErr",
 				zap.Uint8("error-Type", pcerrMessage.PcepErrorObject.ErrorType),
 				zap.Uint8("error-value", pcerrMessage.PcepErrorObject.ErrorValue),
 				zap.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#pcep-error-object"))
@@ -221,15 +215,13 @@ func (ss *Session) ReceivePcepMessage() error {
 			if err := closeMessage.DecodeFromBytes(byteCloseMessageBody); err != nil {
 				return err
 			}
-			ss.logger.Info("Received Close",
-				zap.String("session", ss.peerAddr.String()),
+			ss.logger.Debug("Received Close",
 				zap.Uint8("reason", closeMessage.CloseObject.Reason),
 				zap.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#close-object-reason-field"))
 			// Close session if get Close Message
 			return nil
 		default:
-			ss.logger.Info("Received unsupported MessageType",
-				zap.String("session", ss.peerAddr.String()),
+			ss.logger.Debug("Received unsupported MessageType",
 				zap.Uint8("MessageType", commonHeader.MessageType))
 		}
 	}
@@ -250,7 +242,7 @@ func (ss *Session) readCommonHeader() (*pcep.CommonHeader, error) {
 }
 
 func (ss *Session) handlePCRpt(length uint16) error {
-	ss.logger.Info("Received PCRpt", zap.String("session", ss.peerAddr.String()))
+	ss.logger.Debug("Received PCRpt Message")
 
 	messageBodyBytes := make([]uint8, length-pcep.COMMON_HEADER_LENGTH)
 	if _, err := ss.tcpConn.Read(messageBodyBytes); err != nil {
@@ -263,34 +255,66 @@ func (ss *Session) handlePCRpt(length uint16) error {
 	}
 
 	for _, sr := range message.StateReports {
+		// synchronization
 		if sr.LspObject.SFlag {
-			srPolicy := sr.ToSRPolicy(ss.pccType)
-			ss.logger.Info("Synchronize SR Policy information", zap.String("session", ss.peerAddr.String()), zap.Any("SRPolicy", srPolicy), zap.Any("Message", message))
-			go ss.RegisterSRPolicy(srPolicy)
+			ss.logger.Debug("Synchronize SR Policy information", zap.Any("Message", message))
+			ss.RegisterSRPolicy(*sr)
 		} else if !sr.LspObject.SFlag {
 			switch {
+			// finish synchronization
 			case sr.LspObject.PlspID == 0:
-				ss.logger.Info("Finish PCRpt state synchronization", zap.String("session", ss.peerAddr.String()))
+				ss.logger.Debug("Finish PCRpt state synchronization")
 				ss.isSynced = true
+			// response to request from PCE
 			case sr.SrpObject.SrpID != 0:
-				srPolicy := sr.ToSRPolicy(ss.pccType)
-				ss.logger.Info("Finish Stateful PCE request", zap.String("session", ss.peerAddr.String()), zap.Uint32("srpID", sr.SrpObject.SrpID))
-				go ss.RegisterSRPolicy(srPolicy)
+				ss.logger.Debug("Finish Stateful PCE request", zap.Uint32("srpID", sr.SrpObject.SrpID))
+				if sr.LspObject.RFlag {
+					ss.DeleteSRPolicy(*sr)
+				} else {
+					ss.RegisterSRPolicy(*sr)
+				}
+
 			default:
-				// TODO: Need to implementation of PCUpdate for Passive stateful PCE
+				if sr.LspObject.RFlag {
+					ss.DeleteSRPolicy(*sr)
+				} else {
+					ss.RegisterSRPolicy(*sr)
+				}
 			}
 		}
 	}
-
 	return nil
 }
 
-func (ss *Session) SendPCInitiate(srPolicy table.SRPolicy) error {
-	pcinitiateMessage, err := pcep.NewPCInitiateMessage(ss.srpIDHead, srPolicy.Name, srPolicy.SegmentList, srPolicy.Color, srPolicy.Preference, srPolicy.SrcAddr, srPolicy.DstAddr, pcep.VendorSpecific(ss.pccType))
+func (ss *Session) RequestAllSRPolicyDeleted() error {
+	var srPolicy table.SRPolicy
+	return ss.SendPCInitiate(srPolicy, true)
+}
+
+func (ss *Session) RequestSRPolicyDeleted(srPolicy table.SRPolicy) error {
+	return ss.SendPCInitiate(srPolicy, true)
+}
+
+func (ss *Session) RequestSRPolicyCreated(srPolicy table.SRPolicy) error {
+	return ss.SendPCInitiate(srPolicy, false)
+}
+
+func (ss *Session) SendOpen() error {
+	openMessage, err := pcep.NewOpenMessage(ss.sessionID, ss.keepAlive, ss.pccCapabilities)
 	if err != nil {
 		return err
 	}
-	err = ss.sendPcepMessage(pcinitiateMessage, "Send PCInitiate")
+	ss.logger.Debug("Send Open Message")
+	return ss.sendPcepMessage(openMessage)
+}
+
+func (ss *Session) SendPCInitiate(srPolicy table.SRPolicy, lspDelete bool) error {
+	pcinitiateMessage, err := pcep.NewPCInitiateMessage(ss.srpIDHead, srPolicy.Name, lspDelete, srPolicy.PlspID, srPolicy.SegmentList, srPolicy.Color, srPolicy.Preference, srPolicy.SrcAddr, srPolicy.DstAddr, pcep.VendorSpecific(ss.pccType))
+	if err != nil {
+		return err
+	}
+	ss.logger.Debug("Send PCInitiate Message")
+	err = ss.sendPcepMessage(pcinitiateMessage)
 	if err == nil {
 		ss.srpIDHead++
 	}
@@ -302,21 +326,83 @@ func (ss *Session) SendPCUpdate(srPolicy table.SRPolicy) error {
 	if err != nil {
 		return err
 	}
-	err = ss.sendPcepMessage(pcupdateMessage, "Send PCUpdate")
+	ss.logger.Debug("Send Update Message")
+	err = ss.sendPcepMessage(pcupdateMessage)
 	if err == nil {
 		ss.srpIDHead++
 	}
 	return err
 }
 
-func (ss *Session) RegisterSRPolicy(srPolicy table.SRPolicy) {
-	ss.DeleteSRPolicy(srPolicy.PlspID)
-	ss.srPolicies = append(ss.srPolicies, srPolicy)
+func (ss *Session) RegisterSRPolicy(sr pcep.StateReport) {
+	var color, preference uint32
+
+	if ss.pccType == pcep.CISCO_LEGACY {
+		color = sr.VendorInformationObject.Color()
+		preference = sr.VendorInformationObject.Preference()
+	} else {
+		color = sr.AssociationObject.Color()
+		preference = sr.AssociationObject.Preference()
+	}
+
+	lspID := sr.LspObject.LspID
+
+	var state table.PolicyState
+	switch sr.LspObject.OFlag {
+	case uint8(0x00):
+		state = table.POLICY_DOWN
+	case uint8(0x01):
+		state = table.POLICY_UP
+	case uint8(0x02):
+		state = table.POLICY_ACTIVE
+	default:
+		state = table.POLICY_UNKNOWN
+	}
+
+	if p, ok := ss.SearchSRPolicy(sr.LspObject.PlspID); ok {
+		// update
+		// If the LSP ID is old, it is not the latest data update.
+		if p.LspID <= lspID {
+			p.Update(
+				table.PolicyDiff{
+					Name:        &sr.LspObject.Name,
+					Color:       &color,
+					Preference:  &preference,
+					SegmentList: sr.EroObject.ToSegmentList(),
+					LspID:       lspID,
+					State:       state,
+				},
+			)
+		}
+	} else {
+		// create
+		var src, dst netip.Addr
+		if src = sr.LspObject.SrcAddr; !src.IsValid() {
+			src = sr.AssociationObject.AssocSrc
+		}
+		if dst = sr.LspObject.DstAddr; !dst.IsValid() {
+			dst = sr.AssociationObject.Endpoint()
+		}
+		p := table.NewSRPolicy(
+			sr.LspObject.PlspID,
+			sr.LspObject.Name,
+			sr.EroObject.ToSegmentList(),
+			src,
+			dst,
+			color,
+			preference,
+			lspID,
+			state,
+		)
+		ss.srPolicies = append(ss.srPolicies, p)
+	}
 }
 
-func (ss *Session) DeleteSRPolicy(plspID uint32) {
+func (ss *Session) DeleteSRPolicy(sr pcep.StateReport) {
+	lspID := sr.LspObject.LspID
 	for i, v := range ss.srPolicies {
-		if v.PlspID == plspID {
+		// If the LSP ID is old, it is not the latest data update.
+		if v.PlspID == sr.LspObject.PlspID && v.LspID <= lspID {
 			ss.srPolicies[i] = ss.srPolicies[len(ss.srPolicies)-1]
 			ss.srPolicies = ss.srPolicies[:len(ss.srPolicies)-1]
 			break
@@ -324,8 +410,17 @@ func (ss *Session) DeleteSRPolicy(plspID uint32) {
 	}
 }
 
-// SearchSRPolicyPlspID returns the PLSP-ID of a registered SR Policy, along with a boolean value indicating if it was found.
-func (ss *Session) SearchSRPolicyPlspID(color uint32, endpoint netip.Addr) (uint32, bool) {
+func (ss *Session) SearchSRPolicy(plspID uint32) (*table.SRPolicy, bool) {
+	for _, v := range ss.srPolicies {
+		if v.PlspID == plspID {
+			return v, true
+		}
+	}
+	return nil, false
+}
+
+// SearchPlspID returns the PLSP-ID of a registered SR Policy, along with a boolean value indicating if it was found.
+func (ss *Session) SearchPlspID(color uint32, endpoint netip.Addr) (uint32, bool) {
 	for _, v := range ss.srPolicies {
 		if v.Color == color && v.DstAddr == endpoint {
 			return v.PlspID, true

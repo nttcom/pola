@@ -11,9 +11,11 @@ import (
 	"net/netip"
 	"os"
 
-	pb "github.com/nttcom/pola/api/grpc"
 	"github.com/spf13/cobra"
 	yaml "gopkg.in/yaml.v2"
+
+	pb "github.com/nttcom/pola/api/grpc"
+	"github.com/nttcom/pola/cmd/pola/grpc"
 )
 
 func newSRPolicyAddCmd() *cobra.Command {
@@ -42,7 +44,7 @@ func newSRPolicyAddCmd() *cobra.Command {
 			defer f.Close()
 			InputData := InputFormat{}
 			if err := yaml.NewDecoder(f).Decode(&InputData); err != nil {
-				return fmt.Errorf("file \"%s\" can't open", filepath)
+				return fmt.Errorf("file \"%s\" decode error:  %v", filepath, err)
 
 			}
 			if err := addSRPolicy(InputData, jsonFmt, noLinkStateFlag); err != nil {
@@ -61,7 +63,10 @@ func newSRPolicyAddCmd() *cobra.Command {
 
 // Unify with table.Segment
 type Segment struct {
-	Sid string `yaml:"sid"`
+	Sid          string `yaml:"sid"`
+	LocalAddr    string `yaml:"localAddr"`
+	RemoteAddr   string `yaml:"remoteAddr"`
+	SidStructure string `yaml:"sidStructure"`
 }
 
 // Unify with table.SRPolciy
@@ -115,14 +120,20 @@ func addSRPolicyNoLinkState(input InputFormat) error {
 			"    - sid: 16002\n\n"
 
 		errMsg := "invalid input\n" +
-			"input examplse is below\n\n" +
+			"input example is below\n\n" +
 			sampleInput
 		return errors.New(errMsg)
 	}
 
 	segmentList := []*pb.Segment{}
 	for _, seg := range input.SRPolicy.SegmentList {
-		segmentList = append(segmentList, &pb.Segment{Sid: seg.Sid})
+		pbSeg := &pb.Segment{
+			Sid:          seg.Sid,
+			LocalAddr:    seg.LocalAddr,
+			RemoteAddr:   seg.RemoteAddr,
+			SidStructure: seg.SidStructure,
+		}
+		segmentList = append(segmentList, pbSeg)
 	}
 	srPolicy := &pb.SRPolicy{
 		PcepSessionAddr: input.SRPolicy.PcepSessionAddr.AsSlice(),
@@ -136,7 +147,7 @@ func addSRPolicyNoLinkState(input InputFormat) error {
 	inputData := &pb.CreateSRPolicyInput{
 		SRPolicy: srPolicy,
 	}
-	if err := createSRPolicyWithoutLinkState(client, inputData); err != nil {
+	if err := grpc.CreateSRPolicyWithoutLinkState(client, inputData); err != nil {
 		return err
 	}
 
@@ -228,7 +239,7 @@ func addSRPolicyLinkState(input InputFormat) error {
 		SRPolicy: srPolicy,
 		Asn:      input.Asn,
 	}
-	if err := createSRPolicy(client, inputData); err != nil {
+	if err := grpc.CreateSRPolicy(client, inputData); err != nil {
 		return fmt.Errorf("gRPC Server Error: %s", err.Error())
 
 	}
