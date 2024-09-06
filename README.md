@@ -30,6 +30,8 @@ Pola PCE is an implementation of the Path Computation Element (PCE) and a PCEP L
 
 ### SRv6 (uSID)
 * IOS-XR
+* Junos
+* VRP
 
 ## Installation & Use
 * [Getting Started](docs/sources/getting-started.md)
