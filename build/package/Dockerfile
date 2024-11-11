@@ -1,4 +1,4 @@
-FROM golang:1.23.2
+FROM golang:1.23.3
 LABEL maintainer "Motoki TAKENAKA <m.takenaka@ntt.com>"
 
 WORKDIR /pola
