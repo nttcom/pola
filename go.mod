@@ -4,7 +4,7 @@ go 1.23.2
 
 require (
 	github.com/golang/protobuf v1.5.4
-	github.com/osrg/gobgp/v3 v3.31.0
+	github.com/osrg/gobgp/v3 v3.32.0
 	github.com/spf13/cobra v1.8.1
 	go.uber.org/zap v1.27.0
 	google.golang.org/grpc v1.68.1
