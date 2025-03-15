@@ -19,3 +19,7 @@ themes/
 # Other
 .DS_Store
 *.swp
+
+# binary
+cmd/pola/pola
+cmd/polad/polad

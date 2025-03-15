@@ -341,7 +341,21 @@ func (ss *Session) RegisterSRPolicy(sr pcep.StateReport) {
 		color = sr.VendorInformationObject.Color()
 		preference = sr.VendorInformationObject.Preference()
 	} else {
-		color = sr.AssociationObject.Color()
+		// Search for ColorCapability in pccCapabilities
+		hasColorCapability := false
+		for _, cap := range ss.pccCapabilities {
+			if statefulCap, ok := cap.(*pcep.StatefulPceCapability); ok {
+				if statefulCap.ColorCapability {
+					hasColorCapability = true
+					break
+				}
+			}
+		}
+		if hasColorCapability {
+			color = sr.LspObject.Color()
+		} else {
+			color = sr.AssociationObject.Color()
+		}
 		preference = sr.AssociationObject.Preference()
 	}
 
