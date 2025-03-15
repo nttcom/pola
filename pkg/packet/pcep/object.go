@@ -631,6 +631,17 @@ func NewLspObject(lspName string, plspID uint32) (*LspObject, error) {
 	return o, nil
 }
 
+// (I.D.draft-ietf-pce-pcep-color-12)
+func (o *LspObject) Color() uint32 {
+	for _, tlv := range o.TLVs {
+		if t, ok := tlv.(*Color); ok {
+			return t.Color
+		}
+
+	}
+	return 0
+}
+
 // ERO Object (RFC5440 7.9)
 const (
 	OT_ERO_EXPLICIT_ROUTE uint8 = 0x01
