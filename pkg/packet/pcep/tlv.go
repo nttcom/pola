@@ -250,6 +250,9 @@ func (tlv *StatefulPceCapability) CapStrings() []string {
 	if tlv.TriggeredInitialSync {
 		ret = append(ret, "Triggerd-init-sync")
 	}
+	if tlv.ColorCapability {
+		ret = append(ret, "Color")
+	}
 	return ret
 }
 
