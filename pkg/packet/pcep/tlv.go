@@ -49,7 +49,7 @@ const ( // PCEP TLV
 	TLV_EXTENDED_ASSOCIATION_ID               uint16 = 0x1f // RFC8697
 	TLV_P2MP_IPV4_LSP_IDENTIFIERS             uint16 = 0x20 // RFC8623
 	TLV_P2MP_IPV6_LSP_IDENTIFIERS             uint16 = 0x21 // RFC8623
-	TLV_PATH_SETUP_TYPE_CAPABILITY            uint16 = 0x22 // RFC8409
+	TLV_PATH_SETUP_TYPE_CAPABILITY            uint16 = 0x22 // RFC8408
 	TLV_ASSOC_TYPE_LIST                       uint16 = 0x23 // RFC8697
 	TLV_AUTO_BANDWIDTH_CAPABILITY             uint16 = 0x24 // RFC8733
 	TLV_AUTO_BANDWIDTH_ATTRIBUTES             uint16 = 0x25 // RFC8733
@@ -66,14 +66,28 @@ const ( // PCEP TLV
 	TLV_POLICY_PARAMETERSjTLV                 uint16 = 0x30 // RFC9005
 	TLV_SCHED_LSP_ATTRIBUTE                   uint16 = 0x31 // RFC8934
 	TLV_SCHED_PD_LSP_ATTRIBUTE                uint16 = 0x32 // RFC8934
-	TLV_PCE_FLOWSPEC_CAPABILITY               uint16 = 0x33 // ietf-pce-pcep-flowspec-12
-	TLV_FLOW_FILTER                           uint16 = 0x34 // ietf-pce-pcep-flowspec-12
-	TLV_L2_FLOW_FILTER                        uint16 = 0x35 // ietf-pce-pcep-flowspec-12
+	TLV_PCE_FLOWSPEC_CAPABILITY               uint16 = 0x33 // RFC9168
+	TLV_FLOW_FILTER                           uint16 = 0x34 // RFC9168
 	TLV_BIDIRECTIONAL_LSP_ASSOCIATION_GROUP   uint16 = 0x36 // RFC9059
+	TLV_TE_PATH_BINDING                       uint16 = 0x37 // RFC9604
 	TLV_SRPOLICY_POL_NAME                     uint16 = 0x38 // ietf-pce-segment-routing-policy-cp-07
 	TLV_SRPOLICY_CPATH_ID                     uint16 = 0x39 // ietf-pce-segment-routing-policy-cp-07
 	TLV_SRPOLICY_CPATH_NAME                   uint16 = 0x3a // ietf-pce-segment-routing-policy-cp-07
 	TLV_SRPOLICY_CPATH_PREFERENCE             uint16 = 0x3b // ietf-pce-segment-routing-policy-cp-07
+	TLV_MULTIPATH_CAP                         uint16 = 0x3c // ietf-pce-pcep-multipath-07
+	TLV_MULTIPATH_WIGHT                       uint16 = 0x3d // ietf-pce-pcep-multipath-07
+	TLV_MULTIPATH_BACKUP                      uint16 = 0x3e // ietf-pce-pcep-multipath-07
+	TLV_LSP_EXTENDED_FLAG                     uint16 = 0x3f // RFC9357
+	TLV_VIRTUAL_NETWORK_TLV                   uint16 = 0x41 // RFC9358
+	TLV_SR_ALGORITHM                          uint16 = 0x42 // ietf-pce-sid-algo-12
+	TLV_COMPUTATION_PRIORITY                  uint16 = 0x44 // ietf-pce-segment-routing-policy-cp-14
+	TLV_EXPLICIT_NULL_LABEL_POLICY            uint16 = 0x45 // draft-ietf-pce-segment-routing-policy-cp-14
+	TLV_INVALIDATION                          uint16 = 0x4c // draft-ietf-pce-segment-routing-policy-cp-14
+	TLV_SRPOLICY_CAPABILITY                   uint16 = 0x4d // draft-ietf-pce-segment-routing-policy-cp-14
+	TLV_PATH_RECOMPUTATION                    uint16 = 0x4e // draft-ietf-pce-circuit-style-pcep-extensions-03
+	TLV_SR_P2MP_POLICY_CAPABILITY             uint16 = 0x4f // draft-ietf-pce-sr-p2mp-policy-09
+	TLV_IPV4_SR_P2MP_INSTANCE_ID              uint16 = 0x50 // draft-ietf-pce-sr-p2mp-policy-09
+	TLV_IPV6_SR_P2MP_INSTANCE_ID              uint16 = 0x51 // draft-ietf-pce-sr-p2mp-policy-09
 )
 
 const (
@@ -100,22 +114,37 @@ type TLVInterface interface {
 }
 
 type StatefulPceCapability struct {
-	LspUpdateCapability        bool
-	IncludeDBVersion           bool
-	LspInstantiationCapability bool
-	TriggeredResync            bool
-	DeltaLspSyncCapability     bool
-	TriggeredInitialSync       bool
+	LspUpdateCapability            bool // 31
+	IncludeDBVersion               bool // 30
+	LspInstantiationCapability     bool // 29
+	TriggeredResync                bool // 28
+	DeltaLspSyncCapability         bool // 27
+	TriggeredInitialSync           bool // 26
+	P2mpCapability                 bool // 25
+	P2mpLspUpdateCapability        bool // 24
+	P2mpLspInstantiationCapability bool // 23
+	LspSchedulingCapability        bool // 22
+	PdLspCapability                bool // 21
+	PathRecomputationCapability    bool // 19
+	StrictPathCapability           bool // 18
+	Relax                          bool // 17
 }
 
-func (tlv *StatefulPceCapability) DecodeFromBytes(data []uint8) error {
-	tlv.LspUpdateCapability = (data[7] & 0x01) != 0
-	tlv.IncludeDBVersion = (data[7] & 0x02) != 0
-	tlv.LspInstantiationCapability = (data[7] & 0x04) != 0
-	tlv.TriggeredResync = (data[7] & 0x08) != 0
-	tlv.DeltaLspSyncCapability = (data[7] & 0x10) != 0
-	tlv.TriggeredInitialSync = (data[7] & 0x20) != 0
-
+func (tlv *StatefulPceCapability) DecodeFromBytes(flags []uint8) error {
+	tlv.LspUpdateCapability = (flags[3] & 0x01) != 0
+	tlv.IncludeDBVersion = (flags[3] & 0x02) != 0
+	tlv.LspInstantiationCapability = (flags[3] & 0x04) != 0
+	tlv.TriggeredResync = (flags[3] & 0x08) != 0
+	tlv.DeltaLspSyncCapability = (flags[3] & 0x10) != 0
+	tlv.TriggeredInitialSync = (flags[3] & 0x20) != 0
+	tlv.P2mpCapability = (flags[3] & 0x40) != 0
+	tlv.P2mpLspUpdateCapability = (flags[3] & 0x80) != 0
+	tlv.P2mpLspInstantiationCapability = (flags[2] & 0x01) != 0
+	tlv.LspSchedulingCapability = (flags[2] & 0x02) != 0
+	tlv.PdLspCapability = (flags[2] & 0x04) != 0
+	tlv.PathRecomputationCapability = (flags[2] & 0x10) != 0
+	tlv.StrictPathCapability = (flags[2] & 0x20) != 0
+	tlv.Relax = (flags[2] & 0x40) != 0
 	return nil
 }
 
@@ -130,26 +159,53 @@ func (tlv *StatefulPceCapability) Serialize() []uint8 {
 	binary.BigEndian.PutUint16(length, TLV_STATEFUL_PCE_CAPABILITY_LENGTH)
 	buf = append(buf, length...)
 
-	val := make([]uint8, TLV_STATEFUL_PCE_CAPABILITY_LENGTH)
+	flags := make([]uint8, TLV_STATEFUL_PCE_CAPABILITY_LENGTH)
 	if tlv.LspUpdateCapability {
-		val[3] = val[3] | 0x01
+		flags[3] = flags[3] | 0x01
 	}
 	if tlv.IncludeDBVersion {
-		val[3] = val[3] | 0x02
+		flags[3] = flags[3] | 0x02
 	}
 	if tlv.LspInstantiationCapability {
-		val[3] = val[3] | 0x04
+		flags[3] = flags[3] | 0x04
 	}
 	if tlv.TriggeredResync {
-		val[3] = val[3] | 0x08
+		flags[3] = flags[3] | 0x08
 	}
 	if tlv.DeltaLspSyncCapability {
-		val[3] = val[3] | 0x10
+		flags[3] = flags[3] | 0x10
 	}
 	if tlv.TriggeredInitialSync {
-		val[3] = val[3] | 0x20
+		flags[3] = flags[3] | 0x20
 	}
-	buf = append(buf, val...)
+	if tlv.P2mpCapability {
+		flags[3] = flags[3] | 0x40
+	}
+	if tlv.P2mpLspUpdateCapability {
+		flags[3] = flags[3] | 0x80
+	}
+	if tlv.P2mpLspInstantiationCapability {
+		flags[2] = flags[2] | 0x01
+	}
+	if tlv.P2mpLspInstantiationCapability {
+		flags[2] = flags[2] | 0x01
+	}
+	if tlv.LspSchedulingCapability {
+		flags[2] = flags[2] | 0x02
+	}
+	if tlv.PdLspCapability {
+		flags[2] = flags[2] | 0x04
+	}
+	if tlv.PathRecomputationCapability {
+		flags[2] = flags[2] | 0x10
+	}
+	if tlv.StrictPathCapability {
+		flags[2] = flags[2] | 0x20
+	}
+	if tlv.Relax {
+		flags[2] = flags[2] | 0x40
+	}
+	buf = append(buf, flags...)
 
 	return buf
 }
