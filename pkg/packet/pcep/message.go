@@ -441,12 +441,12 @@ func NewPCInitiateMessage(srpID uint32, lspName string, lspDelete bool, plspID u
 	}
 
 	if lspDelete {
-		if m.LspObject, err = NewLspObject(lspName, plspID); err != nil {
+		if m.LspObject, err = NewLspObject(lspName, &color, plspID); err != nil {
 			return nil, err
 		}
 		return m, nil
 	} else {
-		if m.LspObject, err = NewLspObject(lspName, 0); err != nil {
+		if m.LspObject, err = NewLspObject(lspName, &color, 0); err != nil {
 			return nil, err
 		}
 	}
@@ -515,7 +515,7 @@ func NewPCUpdMessage(srpID uint32, lspName string, plspID uint32, segmentList []
 	if m.SrpObject, err = NewSrpObject(segmentList, srpID, false); err != nil {
 		return nil, err
 	}
-	if m.LspObject, err = NewLspObject(lspName, plspID); err != nil {
+	if m.LspObject, err = NewLspObject(lspName, nil, plspID); err != nil {
 		return nil, err
 	}
 	if m.EroObject, err = NewEroObject(segmentList); err != nil {

@@ -80,6 +80,7 @@ const ( // PCEP TLV
 	TLV_LSP_EXTENDED_FLAG                     uint16 = 0x3f // RFC9357
 	TLV_VIRTUAL_NETWORK_TLV                   uint16 = 0x41 // RFC9358
 	TLV_SR_ALGORITHM                          uint16 = 0x42 // ietf-pce-sid-algo-12
+	TLV_COLOR                                 uint16 = 0x43 // ietf-pce-pcep-color-06
 	TLV_COMPUTATION_PRIORITY                  uint16 = 0x44 // ietf-pce-segment-routing-policy-cp-14
 	TLV_EXPLICIT_NULL_LABEL_POLICY            uint16 = 0x45 // draft-ietf-pce-segment-routing-policy-cp-14
 	TLV_INVALIDATION                          uint16 = 0x4c // draft-ietf-pce-segment-routing-policy-cp-14
@@ -101,6 +102,7 @@ const (
 	TLV_IPV6_LSP_IDENTIFIERS_LENGTH         uint16 = 52
 	TLV_SRPOLICY_CPATH_ID_LENGTH            uint16 = 28
 	TLV_SRPOLICY_CPATH_PREFERENCE_LENGTH    uint16 = 4
+	TLV_COLOR_LENGTH                        uint16 = 4
 )
 
 const TL_LENGTH = 4
@@ -125,6 +127,7 @@ type StatefulPceCapability struct {
 	P2mpLspInstantiationCapability bool // 23
 	LspSchedulingCapability        bool // 22
 	PdLspCapability                bool // 21
+	ColorCapability                bool // 20
 	PathRecomputationCapability    bool // 19
 	StrictPathCapability           bool // 18
 	Relax                          bool // 17
@@ -142,6 +145,7 @@ func (tlv *StatefulPceCapability) DecodeFromBytes(flags []uint8) error {
 	tlv.P2mpLspInstantiationCapability = (flags[2] & 0x01) != 0
 	tlv.LspSchedulingCapability = (flags[2] & 0x02) != 0
 	tlv.PdLspCapability = (flags[2] & 0x04) != 0
+	tlv.ColorCapability = (flags[2] & 0x08) != 0
 	tlv.PathRecomputationCapability = (flags[2] & 0x10) != 0
 	tlv.StrictPathCapability = (flags[2] & 0x20) != 0
 	tlv.Relax = (flags[2] & 0x40) != 0
@@ -196,6 +200,9 @@ func (tlv *StatefulPceCapability) Serialize() []uint8 {
 	if tlv.PdLspCapability {
 		flags[2] = flags[2] | 0x04
 	}
+	if tlv.ColorCapability {
+		flags[2] = flags[2] | 0x08
+	}
 	if tlv.PathRecomputationCapability {
 		flags[2] = flags[2] | 0x10
 	}
@@ -242,6 +249,9 @@ func (tlv *StatefulPceCapability) CapStrings() []string {
 	}
 	if tlv.TriggeredInitialSync {
 		ret = append(ret, "Triggerd-init-sync")
+	}
+	if tlv.ColorCapability {
+		ret = append(ret, "Color")
 	}
 	return ret
 }
@@ -830,6 +840,45 @@ func (tlv *SRPolicyCandidatePathPreference) Len() uint16 {
 	return TL_LENGTH + TLV_SRPOLICY_CPATH_PREFERENCE_LENGTH
 }
 
+type Color struct {
+	Color uint32
+}
+
+func (tlv *Color) DecodeFromBytes(data []uint8) error {
+	tlv.Color = binary.BigEndian.Uint32(data[4:8])
+	return nil
+}
+
+func (tlv *Color) Serialize() []uint8 {
+	buf := []uint8{}
+
+	typ := make([]uint8, 2)
+	binary.BigEndian.PutUint16(typ, tlv.Type())
+	buf = append(buf, typ...)
+
+	length := make([]uint8, 2)
+	binary.BigEndian.PutUint16(length, TLV_COLOR)
+	buf = append(buf, length...)
+
+	color := make([]uint8, 4)
+	binary.BigEndian.PutUint32(color, tlv.Color)
+	buf = append(buf, color...)
+
+	return buf
+}
+
+func (tlv *Color) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	return nil
+}
+
+func (tlv *Color) Type() uint16 {
+	return TLV_COLOR
+}
+
+func (tlv *Color) Len() uint16 {
+	return TL_LENGTH + TLV_COLOR_LENGTH
+}
+
 type UndefinedTLV struct {
 	Typ    uint16
 	Length uint16
@@ -913,6 +962,8 @@ func DecodeTLV(data []uint8) (TLVInterface, error) {
 		tlv = &AssocTypeList{}
 	case TLV_SRPOLICY_CPATH_PREFERENCE:
 		tlv = &SRPolicyCandidatePathPreference{}
+	case TLV_COLOR:
+		tlv = &Color{}
 
 	default:
 		tlv = &UndefinedTLV{}

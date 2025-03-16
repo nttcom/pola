@@ -612,7 +612,7 @@ func (o *LspObject) Len() uint16 {
 	return uint16(COMMON_OBJECT_HEADER_LENGTH) + lspObjectBodyLength
 }
 
-func NewLspObject(lspName string, plspID uint32) (*LspObject, error) {
+func NewLspObject(lspName string, color *uint32, plspID uint32) (*LspObject, error) {
 	o := &LspObject{
 		ObjectType: OT_LSP_LSP,
 		Name:       lspName,
@@ -628,8 +628,30 @@ func NewLspObject(lspName string, plspID uint32) (*LspObject, error) {
 	symbolicPathNameTLV := &SymbolicPathName{
 		Name: lspName,
 	}
+
 	o.TLVs = append(o.TLVs, TLVInterface(symbolicPathNameTLV))
+
+	var colorTLV *Color
+	if color != nil {
+		colorTLV = &Color{
+			Color: *color,
+		}
+	}
+	if colorTLV != nil {
+		o.TLVs = append(o.TLVs, TLVInterface(colorTLV))
+	}
 	return o, nil
+}
+
+// (I.D.draft-ietf-pce-pcep-color-12)
+func (o *LspObject) Color() uint32 {
+	for _, tlv := range o.TLVs {
+		if t, ok := tlv.(*Color); ok {
+			return t.Color
+		}
+
+	}
+	return 0
 }
 
 // ERO Object (RFC5440 7.9)
