@@ -27,6 +27,7 @@ func PolaCapability(caps []CapabilityInterface) []CapabilityInterface {
 				P2mpLspInstantiationCapability: false,
 				LspSchedulingCapability:        false,
 				PdLspCapability:                false,
+				ColorCapability:                true,
 				PathRecomputationCapability:    false,
 				StrictPathCapability:           false,
 				Relax:                          false,
