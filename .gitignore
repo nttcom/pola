@@ -19,3 +19,7 @@ themes/
 # Other
 .DS_Store
 *.swp
+
+# Binaries (Go build artifacts)
+cmd/pola/pola
+cmd/polad/polad
