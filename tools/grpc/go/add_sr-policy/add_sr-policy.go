@@ -27,11 +27,17 @@ func main() {
 	if err != nil {
 		log.Fatalf("Can't connect: %v", err)
 	}
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			log.Printf("warning: failed to close connection: %v", err)
+		}
+	}()
+
 	c := pb.NewPceServiceClient(conn)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
+
 	ssAddr, _ := netip.ParseAddr("192.0.2.1")
 	r, err := c.CreateSRPolicy(ctx, &pb.CreateSRPolicyInput{
 		Asn: 65000,

@@ -28,7 +28,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("did not connect: %v", err)
 	}
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			log.Printf("warning: failed to close connection: %v", err)
+		}
+	}()
+
 	c := pb.NewPceServiceClient(conn)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)

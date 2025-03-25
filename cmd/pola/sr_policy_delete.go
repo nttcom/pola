@@ -34,7 +34,12 @@ func newSRPolicyDeleteCmd() *cobra.Command {
 			if openErr != nil {
 				return fmt.Errorf("file \"%s\" can't open", filepath)
 			}
-			defer f.Close()
+			defer func() {
+				if err := f.Close(); err != nil {
+					fmt.Fprintf(os.Stderr, "warning: failed to close file \"%s\": %v\n", filepath, err)
+				}
+			}()
+
 			InputData := InputFormat{}
 			if err := yaml.NewDecoder(f).Decode(&InputData); err != nil {
 				return fmt.Errorf("file \"%s\" can't open", filepath)

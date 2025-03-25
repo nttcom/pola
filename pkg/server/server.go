@@ -100,7 +100,11 @@ func (s *Server) Serve(address string, port string, usidMode bool) error {
 	if err != nil {
 		return err
 	}
-	defer l.Close()
+	defer func() {
+		if err := l.Close(); err != nil {
+			s.logger.Warn("failed to close PCEP listener", zap.Error(err))
+		}
+	}()
 
 	sessionID := uint8(1)
 	for {
@@ -126,7 +130,9 @@ func (s *Server) Serve(address string, port string, usidMode bool) error {
 }
 
 func (s *Server) closeSession(session *Session) {
-	session.tcpConn.Close()
+	if err := session.tcpConn.Close(); err != nil {
+		s.logger.Warn("failed to close TCP connection", zap.Error(err))
+	}
 
 	// Remove Session List
 	for i, v := range s.sessionList {

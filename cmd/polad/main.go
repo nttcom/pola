@@ -56,15 +56,18 @@ func main() {
 	if err != nil {
 		log.Panic(err)
 	}
-	defer fp.Close()
+	defer func() {
+		if err := fp.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to close log file \"%s\": %v\n", c.Global.Log.Path+c.Global.Log.Name, err)
+		}
+	}()
 
 	// Initialize logger
 	logger := logger.LogInit(fp, c.Global.Log.Debug)
 	defer func() {
-		err := logger.Sync()
-		if err != nil {
-			logger.Panic("Failed to logger Sync", zap.Error(err))
-			log.Panic(err)
+		if err := logger.Sync(); err != nil {
+			logger.Panic("Failed to sync logger", zap.Error(err))
+			log.Panicf("failed to sync logger: %v", err)
 		}
 	}()
 

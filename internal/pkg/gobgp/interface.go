@@ -9,8 +9,10 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"net/netip"
+	"os"
 	"strings"
 
 	"github.com/golang/protobuf/ptypes/any"
@@ -37,7 +39,11 @@ func GetBgplsNlris(serverAddr string, serverPort string) ([]table.TedElem, error
 	if err != nil {
 		return nil, err
 	}
-	defer cc.Close()
+	defer func() {
+		if err := cc.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to close gRPC client connection: %v\n", err)
+		}
+	}()
 
 	// Create gRPC client
 	client := api.NewGobgpApiClient(cc)
