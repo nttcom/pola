@@ -43,18 +43,18 @@ func main() {
 	// Read configuration file
 	c, err := config.ReadConfigFile(f.configFile)
 	if err != nil {
-		log.Panic(err)
+		log.Panicf("failed to read config file: %v", err)
 	}
 
 	// Create log directory if it does not exist
 	if err := os.MkdirAll(c.Global.Log.Path, 0755); err != nil {
-		log.Panic(err)
+		log.Panicf("failed to create log directory: %v", err)
 	}
 
 	// Open log file
 	fp, err := os.OpenFile(c.Global.Log.Path+c.Global.Log.Name, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
-		log.Panic(err)
+		log.Panicf("failed to open log file: %v", err)
 	}
 	defer func() {
 		if err := fp.Close(); err != nil {
@@ -83,7 +83,7 @@ func main() {
 			}
 		default:
 			logger.Panic("Specified TED source is not defined")
-			log.Panic()
+			log.Panic("specified TED source is not defined")
 		}
 	}
 
@@ -98,7 +98,7 @@ func main() {
 	}
 	if serverErr := server.NewPce(o, logger, tedElemsChan); serverErr.Error != nil {
 		logger.Panic("Failed to start new server", zap.String("server", serverErr.Server), zap.Error(serverErr.Error))
-		log.Panic()
+		log.Panicf("failed to start new server: %v", serverErr.Error)
 	}
 }
 

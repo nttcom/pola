@@ -21,12 +21,13 @@ import (
 
 func main() {
 	flag.Parse()
+
 	conn, err := grpc.NewClient(
 		"localhost:50051",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
-		log.Fatalf("did not connect: %v", err)
+		log.Fatalf("unable to connect: %v", err)
 	}
 	defer func() {
 		if err := conn.Close(); err != nil {
@@ -38,24 +39,22 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
+
 	var empty empty.Empty
 
 	ret, err := c.GetTed(ctx, &empty)
 	if err != nil {
-		log.Fatalf("did not get TED info: %v", err)
+		log.Fatalf("unable to get TED info: %v", err)
 	}
 
 	for _, node := range ret.GetLsNodes() {
-		fmt.Printf("node info:\n")
-		fmt.Printf("%#v\n", node)
+		fmt.Printf("node info: %#v\n", node)
 		for _, prefix := range node.GetLsPrefixes() {
-			fmt.Printf("prefix info:\n")
-			fmt.Printf("%#v\n", prefix)
+			fmt.Printf("prefix info: %#v\n", prefix)
 		}
 		for _, link := range node.GetLsLinks() {
-			fmt.Printf("link info:\n")
-			fmt.Printf("%#v\n", link)
+			fmt.Printf("link info: %#v\n", link)
 		}
-		fmt.Printf("\n\n")
+		fmt.Println()
 	}
 }

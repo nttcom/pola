@@ -21,18 +21,17 @@ func newSRPolicyDeleteCmd() *cobra.Command {
 	srPolicyDeleteCmd := &cobra.Command{
 		Use: "delete",
 		RunE: func(cmd *cobra.Command, args []string) error {
-
 			filepath, err := cmd.Flags().GetString("file")
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to retrieve 'file' flag: %v", err)
 			}
 			if filepath == "" {
 				return fmt.Errorf("file path option \"-f filepath\" is mandatory")
-
 			}
-			f, openErr := os.Open(filepath)
-			if openErr != nil {
-				return fmt.Errorf("file \"%s\" can't open", filepath)
+
+			f, err := os.Open(filepath)
+			if err != nil {
+				return fmt.Errorf("failed to open file \"%s\": %v", filepath, err)
 			}
 			defer func() {
 				if err := f.Close(); err != nil {
@@ -40,21 +39,21 @@ func newSRPolicyDeleteCmd() *cobra.Command {
 				}
 			}()
 
-			InputData := InputFormat{}
-			if err := yaml.NewDecoder(f).Decode(&InputData); err != nil {
-				return fmt.Errorf("file \"%s\" can't open", filepath)
+			var inputData InputFormat
+			if err := yaml.NewDecoder(f).Decode(&inputData); err != nil {
+				return fmt.Errorf("failed to decode file \"%s\": %v", filepath, err)
 			}
-			if err := deleteSRPolicy(InputData, jsonFmt); err != nil {
-				return err
+
+			if err := deleteSRPolicy(inputData, jsonFmt); err != nil {
+				return fmt.Errorf("failed to delete SR policy: %v", err)
 			}
 			return nil
 		},
 	}
 
-	srPolicyDeleteCmd.Flags().StringP("file", "f", "", "[mandatory] path to yaml formatted LSP information file")
+	srPolicyDeleteCmd.Flags().StringP("file", "f", "", "[mandatory] path to YAML formatted LSP information file")
 
 	return srPolicyDeleteCmd
-
 }
 
 func deleteSRPolicy(input InputFormat, jsonFlag bool) error {

@@ -20,12 +20,13 @@ import (
 
 func main() {
 	flag.Parse()
+
 	conn, err := grpc.NewClient(
 		"localhost:50051",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
-		log.Fatalf("Can't connect: %v", err)
+		log.Fatalf("can't connect: %v", err)
 	}
 	defer func() {
 		if err := conn.Close(); err != nil {
@@ -38,9 +39,10 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	ssAddr, _ := netip.ParseAddr("192.0.2.1")
-	srcAddr, _ := netip.ParseAddr("192.0.2.1")
-	dstAddr, _ := netip.ParseAddr("192.0.2.2")
+	ssAddr := netip.MustParseAddr("192.0.2.1")
+	srcAddr := netip.MustParseAddr("192.0.2.1")
+	dstAddr := netip.MustParseAddr("192.0.2.2")
+
 	r, err := c.CreateSRPolicyWithoutLinkState(ctx, &pb.CreateSRPolicyInput{
 		SRPolicy: &pb.SRPolicy{
 			PcepSessionAddr: ssAddr.AsSlice(),
@@ -48,14 +50,16 @@ func main() {
 			DstAddr:         dstAddr.AsSlice(),
 			Color:           uint32(100),
 			PolicyName:      "sample-name",
-			SegmentList: []*pb.Segment{{Sid: "16002"},
+			SegmentList: []*pb.Segment{
+				{Sid: "16002"},
 				{Sid: "16003"},
 				{Sid: "16004"},
 			},
 		},
 	})
 	if err != nil {
-		log.Fatalf("CreateLsp error: %v", err)
+		log.Fatalf("c.CreateSRPolicyWithoutLinkState error: %v", err)
 	}
+
 	log.Printf("Success: %#v", r)
 }

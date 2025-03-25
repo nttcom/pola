@@ -244,7 +244,7 @@ func (s *APIServer) DeleteSRPolicy(ctx context.Context, input *pb.DeleteSRPolicy
 		}
 	} else {
 		// Invalid SR Policy
-		return &pb.RequestStatus{IsSuccess: false}, fmt.Errorf("Requested SR Policy not found")
+		return &pb.RequestStatus{IsSuccess: false}, fmt.Errorf("requested SR Policy not found")
 	}
 
 	return &pb.RequestStatus{IsSuccess: true}, nil
