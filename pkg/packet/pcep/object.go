@@ -648,11 +648,12 @@ func (o *EroObject) DecodeFromBytes(typ uint8, objectBody []uint8) error {
 	}
 	for {
 		var eroSubobj EroSubobject
-		if (objectBody[0] & 0x7f) == 36 {
+		switch objectBody[0] & 0x7f {
+		case OT_ERO_SR:
 			eroSubobj = &SREroSubobject{}
-		} else if (objectBody[0] & 0x7f) == 40 {
+		case OT_ERO_SRV6:
 			eroSubobj = &SRv6EroSubobject{}
-		} else {
+		default:
 			return errors.New("invalid Subobject type")
 		}
 		if err := eroSubobj.DecodeFromBytes(objectBody); err != nil {
@@ -761,7 +762,10 @@ func NewEroSubobject(seg table.Segment) (EroSubobject, error) {
 }
 
 // SR-ERO Subobject (RFC8664 4.3.1)
-const ERO_SUBOBJECT_SR uint8 = 0x24
+const (
+	OT_ERO_SR uint8 = 0x24
+)
+
 const (
 	NT_ABSENT                   uint8 = 0x00 // RFC 8664 4.3.1
 	NT_IPV4_NODE                uint8 = 0x01 // RFC 8664 4.3.1
@@ -831,16 +835,17 @@ func (o *SREroSubobject) Serialize() []uint8 {
 }
 
 func (o *SREroSubobject) Len() (uint16, error) {
-	if o.NaiType == NT_ABSENT {
+	switch o.NaiType {
+	case NT_ABSENT:
 		// Type, Length, Flags (4byte) + SID (4byte)
 		return uint16(8), nil
-	} else if o.NaiType == NT_IPV4_NODE {
+	case NT_IPV4_NODE:
 		// Type, Length, Flags (4byte) + SID (4byte) + Nai (4byte)
 		return uint16(12), nil
-	} else if o.NaiType == NT_IPV6_NODE {
+	case NT_IPV6_NODE:
 		// Type, Length, Flags (4byte) + SID (4byte) + Nai (16byte)
 		return uint16(24), nil
-	} else {
+	default:
 		return uint16(0), errors.New("unsupported naitype")
 	}
 }
@@ -848,7 +853,7 @@ func (o *SREroSubobject) Len() (uint16, error) {
 func NewSREroSubObject(seg table.SegmentSRMPLS) (*SREroSubobject, error) {
 	subo := &SREroSubobject{
 		LFlag:         false,
-		SubobjectType: ERO_SUBOBJECT_SR,
+		SubobjectType: OT_ERO_SR,
 		NaiType:       NT_ABSENT,
 		FFlag:         true, // Nai is absent
 		SFlag:         false,
@@ -868,8 +873,11 @@ func (o *SREroSubobject) ToSegment() table.Segment {
 	return o.Segment
 }
 
-// SRv6-ERO Subobject (draft-ietf-pce-segment-routing-ipv6 4.3.1)
-const ERO_SUBOBJECT_SRV6 uint8 = 0x28
+// SRv6-ERO Subobject (RFC9603 4.3.1)
+const (
+	OT_ERO_SRV6 uint8 = 0x28
+)
+
 const (
 	NT_MUST_NOT_BE_INCLUDED     uint8 = 0x00 // draft-ietf-pce-segment-routing-ipv6 4.3.1
 	NT_SRV6_NODE                uint8 = 0x02 // draft-ietf-pce-segment-routing-ipv6 4.3.1
@@ -988,7 +996,7 @@ func (o *SRv6EroSubobject) Len() (uint16, error) {
 func NewSRv6EroSubObject(seg table.SegmentSRv6) (*SRv6EroSubobject, error) {
 	subo := &SRv6EroSubobject{
 		LFlag:         false,
-		SubobjectType: ERO_SUBOBJECT_SRV6,
+		SubobjectType: OT_ERO_SRV6,
 		VFlag:         false,
 		SFlag:         false, // SID is absent
 		Segment:       seg,
@@ -1115,7 +1123,9 @@ func (o *AssociationObject) DecodeFromBytes(typ uint8, objectBody []uint8) error
 	o.RFlag = (objectBody[3] & 0x01) != 0
 	o.AssocType = uint16(binary.BigEndian.Uint16(objectBody[4:6]))
 	o.AssocID = uint16(binary.BigEndian.Uint16(objectBody[6:8]))
-	if o.ObjectType == OT_ASSOC_IPV4 {
+
+	switch o.ObjectType {
+	case OT_ASSOC_IPV4:
 		assocSrcBytes, _ := netip.AddrFromSlice(objectBody[8:12])
 		o.AssocSrc = assocSrcBytes
 		if len(objectBody) > 12 {
@@ -1125,7 +1135,7 @@ func (o *AssociationObject) DecodeFromBytes(typ uint8, objectBody []uint8) error
 				return err
 			}
 		}
-	} else if o.ObjectType == OT_ASSOC_IPV6 {
+	case OT_ASSOC_IPV6:
 		o.AssocSrc, _ = netip.AddrFromSlice(objectBody[8:24])
 		if len(objectBody) > 24 {
 			byteTLVs := objectBody[24:]
@@ -1134,9 +1144,10 @@ func (o *AssociationObject) DecodeFromBytes(typ uint8, objectBody []uint8) error
 				return err
 			}
 		}
-	} else {
+	default:
 		return errors.New("invalid association source address")
 	}
+
 	return nil
 }
 
