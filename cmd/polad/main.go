@@ -77,6 +77,10 @@ func main() {
 		switch c.Global.Ted.Source {
 		case "gobgp":
 			tedElemsChan = startGobgpUpdate(&c, logger)
+			if tedElemsChan == nil {
+				logger.Panic("GoBGP update channel is nil")
+				log.Panic("GoBGP update channel is nil")
+			}
 		default:
 			logger.Panic("Specified TED source is not defined")
 			log.Panic()
@@ -99,6 +103,10 @@ func main() {
 }
 
 func startGobgpUpdate(c *config.Config, logger *zap.Logger) chan []table.TedElem {
+	if c.Global.Ted == nil {
+		logger.Error("TED does not exist")
+		return nil
+	}
 	tedElemsChan := make(chan []table.TedElem)
 
 	go func() {

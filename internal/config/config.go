@@ -46,7 +46,7 @@ type Global struct {
 	Pcep       Pcep       `yaml:"pcep"`
 	GrpcServer GrpcServer `yaml:"grpc-server"`
 	Log        Log        `yaml:"log"`
-	Ted        Ted        `yaml:"ted"`
+	Ted        *Ted       `yaml:"ted"`
 	Gobgp      Gobgp      `yaml:"gobgp"`
 	USidMode   bool       `yaml:"usid-mode"`
 }
