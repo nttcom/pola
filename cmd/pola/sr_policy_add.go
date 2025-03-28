@@ -45,9 +45,9 @@ func newSRPolicyAddCmd() *cobra.Command {
 				}
 			}()
 
-			var inputData InputFormat
+			inputData := InputFormat{}
 			if err := yaml.NewDecoder(f).Decode(&inputData); err != nil {
-				return fmt.Errorf("failed to decode file \"%s\": %v", filepath, err)
+				return fmt.Errorf("YAML syntax error in file \"%s\": %v", filepath, err)
 			}
 
 			if err := addSRPolicy(inputData, jsonFmt, noLinkStateFlag); err != nil {

@@ -41,7 +41,7 @@ func newSRPolicyDeleteCmd() *cobra.Command {
 
 			var inputData InputFormat
 			if err := yaml.NewDecoder(f).Decode(&inputData); err != nil {
-				return fmt.Errorf("failed to decode file \"%s\": %v", filepath, err)
+				return fmt.Errorf("YAML syntax error in file \"%s\": %v", filepath, err)
 			}
 
 			if err := deleteSRPolicy(inputData, jsonFmt); err != nil {
@@ -64,9 +64,8 @@ func deleteSRPolicy(input InputFormat, jsonFlag bool) error {
 			"  color: 100\n" +
 			"  name: name\n"
 		errMsg := "invalid input\n" +
-			"input example is below\n\n" +
+			"Input example is below:\n\n" +
 			sampleInput
-
 		return errors.New(errMsg)
 	}
 
