@@ -128,12 +128,12 @@ func addSRPolicyNoLinkState(input InputFormat) error {
 	}
 
 	segmentList := []*pb.Segment{}
-	for _, seg := range input.SRPolicy.SegmentList {
+	for _, segment := range input.SRPolicy.SegmentList {
 		pbSeg := &pb.Segment{
-			Sid:          seg.Sid,
-			LocalAddr:    seg.LocalAddr,
-			RemoteAddr:   seg.RemoteAddr,
-			SidStructure: seg.SidStructure,
+			Sid:          segment.Sid,
+			LocalAddr:    segment.LocalAddr,
+			RemoteAddr:   segment.RemoteAddr,
+			SidStructure: segment.SidStructure,
 		}
 		segmentList = append(segmentList, pbSeg)
 	}
@@ -201,8 +201,8 @@ func addSRPolicyLinkState(input InputFormat) error {
 			return errors.New(errMsg)
 		}
 		srPolicyType = pb.SRPolicyType_EXPLICIT
-		for _, seg := range input.SRPolicy.SegmentList {
-			segmentList = append(segmentList, &pb.Segment{Sid: seg.Sid})
+		for _, segment := range input.SRPolicy.SegmentList {
+			segmentList = append(segmentList, &pb.Segment{Sid: segment.Sid})
 		}
 	case "dynamic":
 		if input.SRPolicy.Metric == "" {
