@@ -69,7 +69,7 @@ node_configs:
   - name: pola
     cmds:
       - cmd: 'ip a add 10.0.255.254/24 dev net0'
-      - cmd: '/usr/local/go/bin/polad -f config.yaml > /dev/null 2>&1 &'
+      - cmd: '/go/bin/polad -f /config.yaml > /dev/null 2>&1 &'
   - name: pe01
     cmds:
       - cmd: sysctl -w net.ipv4.ip_forward=1
@@ -132,6 +132,7 @@ node_configs:
           -c '  import vpn'
           -c ' exit-address-family'
           -c 'exit'
+          -c '!'
           -c 'route-map color1 permit 1'
           -c ' set sr-te color 1'
           -c 'exit'
