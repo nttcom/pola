@@ -114,20 +114,14 @@ func ConvertToTedElem(dst *api.Destination) ([]table.TedElem, error) {
 				return nil, err
 			}
 			return lsPrefixV4List, nil
-		// Add case for LsPrefixV6NLRI
-		case *api.LsPrefixV6NLRI:
-			lsPrefixV6List, err := getLsPrefixV6List(linkStateNlri, path.GetPattrs())
-			if err != nil {
-				return nil, err
-			}
-			return lsPrefixV6List, nil
 		// Add case for LsSrv6SIDNLRI
 		case *api.LsSrv6SIDNLRI:
-			lsSrv6SID, err := getLsSrv6SIDNLRI(linkStateNlri, path.GetPattrs())
+			//fmt.Printf("LsSrv6SIDNLRI: %v\n", linkStateNlri)
+			lsSrv6SIDList, err := getLsSrv6SIDNLRIList(linkStateNlri, path.GetPattrs())
 			if err != nil {
 				return nil, err
 			}
-			return []table.TedElem{lsSrv6SID}, nil
+			return lsSrv6SIDList, nil
 		default:
 			return nil, errors.New("invalid linkStateNlri type")
 		}
@@ -280,10 +274,9 @@ func getLsPrefixV4(lsNlri *api.LsAddrPrefix, sidIndex uint32) (*table.LsPrefixV4
 	return lsPrefixV4, nil
 }
 
-// Add function to get LsPrefixV6NLRI
-func getLsPrefixV6List(lsPrefixV6Nlri *api.LsPrefixV6NLRI, pathAttrs []*any.Any) ([]table.TedElem, error) {
-	var lsPrefixV6List []table.TedElem
-	var sidIndex uint32
+func getLsSrv6SIDNLRIList(lsSRv6SIDNlri *api.LsSrv6SIDNLRI, pathAttrs []*anypb.Any) ([]table.TedElem, error) {
+	var lsSrv6SIDList []table.TedElem
+	var endpointBehavior uint32
 
 	for _, pathAttr := range pathAttrs {
 		typedPathAttr, err := pathAttr.UnmarshalNew()
@@ -292,78 +285,54 @@ func getLsPrefixV6List(lsPrefixV6Nlri *api.LsPrefixV6NLRI, pathAttrs []*any.Any)
 		}
 
 		switch typedPathAttr := typedPathAttr.(type) {
-		case *api.IPv6AddressSpecificExtended:
-			sidIndex = typedPathAttr.GetSubType()
-
+		case *api.SRv6EndPointBehavior:
+			endpointBehavior = uint32(typedPathAttr.GetBehavior())
 		case *api.MpReachNLRIAttribute:
 			for _, nlri := range typedPathAttr.GetNlris() {
 				typedNlri, err := nlri.UnmarshalNew()
 				if err != nil {
 					return nil, err
 				}
-
 				if lsNlri, ok := typedNlri.(*api.LsAddrPrefix); ok {
-					lsPrefixV6, err := getLsPrefixV6(lsNlri, sidIndex)
+					lsSrv6SID, err := getLsSrv6SIDNLRI(lsNlri, endpointBehavior)
 					if err != nil {
 						return nil, err
 					}
-					lsPrefixV6List = append(lsPrefixV6List, lsPrefixV6)
+					lsSrv6SIDList = append(lsSrv6SIDList, lsSrv6SID)
 				}
 			}
 		}
 	}
-
-	return lsPrefixV6List, nil
+	return lsSrv6SIDList, nil
 }
 
-func getLsPrefixV6(lsNlri *api.LsAddrPrefix, sidIndex uint32) (*table.LsPrefixV6, error) {
-	prefNlri, err := lsNlri.GetNlri().UnmarshalNew()
+func getLsSrv6SIDNLRI(lsNlri *api.LsAddrPrefix, endpointBehavior uint32) (*table.LsSrv6SID, error) {
+	srv6Nlri, err := lsNlri.GetNlri().UnmarshalNew()
 	if err != nil {
 		return nil, err
 	}
-	prefv6Nlri, ok := prefNlri.(*api.LsPrefixV6NLRI)
+	srv6SIDNlri, ok := srv6Nlri.(*api.LsSrv6SIDNLRI)
 	if !ok {
-		return nil, errors.New("invalid LS prefix v6 NLRI type")
+		return nil, errors.New("invalid LS SRv6 SID NLRI type")
 	}
-	localNodeID := prefv6Nlri.GetLocalNode().GetIgpRouterId()
-	localNodeAsn := prefv6Nlri.GetLocalNode().GetAsn()
-	prefixV6 := prefv6Nlri.GetPrefixDescriptor().GetIpReachability()
+	localNodeID := srv6SIDNlri.GetLocalNode().GetIgpRouterId()
+	localNodeAsn := srv6SIDNlri.GetLocalNode().GetAsn()
+	srv6SIDs := srv6SIDNlri.GetSrv6SidInformation().GetSids()
+	multiTopoIDs := srv6SIDNlri.GetMultiTopoId().GetMultiTopoIds()
+	serviceType := srv6SIDNlri.GetServiceChaining().GetServicetype()
+	trafficType := srv6SIDNlri.GetServiceChaining().GetTraffictype()
+	opaqueType := srv6SIDNlri.GetOpaqueMetadata().GetOpaquetype()
+	value := srv6SIDNlri.GetOpaqueMetadata().GetValue()
 
 	localNode := table.NewLsNode(localNodeAsn, localNodeID)
-	lsPrefixV6 := table.NewLsPrefixV6(localNode)
-	lsPrefixV6.SidIndex = sidIndex
-	if len(prefixV6) != 1 {
-		return nil, errors.New("invalid prefix length")
-	}
-	lsPrefixV6.Prefix, err = netip.ParsePrefix(prefixV6[0])
-	if err != nil {
-		return nil, err
-	}
-
-	return lsPrefixV6, nil
-}
-
-// Add function to get LsSrv6SIDNLRI
-func getLsSrv6SIDNLRI(typedLinkStateNlri *api.LsSrv6SIDNLRI, pathAttrs []*anypb.Any) (*table.LsSrv6SID, error) {
-	localNode := table.NewLsNode(typedLinkStateNlri.GetLocalNode().GetAsn(), typedLinkStateNlri.GetLocalNode().GetIgpRouterId())
 	lsSrv6SID := table.NewLsSrv6SID(localNode)
+	lsSrv6SID.EndpointBehavior = endpointBehavior
+	lsSrv6SID.Sids = srv6SIDs
+	lsSrv6SID.MultiTopoIDs = multiTopoIDs
+	lsSrv6SID.ServiceType = serviceType
+	lsSrv6SID.TrafficType = trafficType
+	lsSrv6SID.OpaqueType = opaqueType
+	lsSrv6SID.Value = value
 
-	lsSrv6SID.Sids = typedLinkStateNlri.GetSrv6SidInformation().GetSids()
-	lsSrv6SID.MultiTopoIDs = typedLinkStateNlri.GetMultiTopoId().GetMultiTopoIds()
-	lsSrv6SID.ServiceType = typedLinkStateNlri.GetServiceChaining().GetServicetype()
-	lsSrv6SID.TrafficType = typedLinkStateNlri.GetServiceChaining().GetTraffictype()
-	lsSrv6SID.OpaqueType = typedLinkStateNlri.GetOpaqueMetadata().GetOpaquetype()
-	lsSrv6SID.Value = typedLinkStateNlri.GetOpaqueMetadata().GetValue()
-
-	for _, pathAttr := range pathAttrs {
-		typedPathAttr, err := pathAttr.UnmarshalNew()
-		if err != nil {
-			return nil, err
-		}
-
-		if endpointBehavior, ok := typedPathAttr.(*api.SRv6EndPointBehavior); ok {
-			lsSrv6SID.EndpointBehavior = uint32(endpointBehavior.GetBehavior())
-		}
-	}
 	return lsSrv6SID, nil
 }

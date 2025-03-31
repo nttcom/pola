@@ -18,9 +18,14 @@ type LsTed struct {
 }
 
 func (ted *LsTed) Update(tedElems []TedElem) {
+	// check Before State Update TED
+	fmt.Printf("Before State Update TED: %v\n", ted)
 	for _, tedElem := range tedElems {
 		tedElem.UpdateTed(ted)
 	}
+	// check After State Update TED
+	fmt.Printf("After State Update TED: %v\n", ted)
+	ted.Print()
 }
 
 func (ted *LsTed) Print() {
@@ -39,15 +44,6 @@ func (ted *LsTed) Print() {
 					fmt.Printf("      index: %d\n", prefix.SidIndex)
 				}
 			}
-
-			fmt.Printf("  PrefixesV6:\n")
-			for _, prefix := range node.PrefixesV6 {
-				fmt.Printf("    %s\n", prefix.Prefix.String())
-				if prefix.SidIndex != 0 {
-					fmt.Printf("      index: %d\n", prefix.SidIndex)
-				}
-			}
-
 			fmt.Printf("  Links:\n")
 			for _, link := range node.Links {
 				fmt.Printf("    Local: %s Remote: %s\n", link.LocalIP.String(), link.RemoteIP.String())
@@ -58,7 +54,6 @@ func (ted *LsTed) Print() {
 				}
 				fmt.Printf("      Adj-SID: %d\n", link.AdjSid)
 			}
-
 			fmt.Printf("  SRv6 SIDs:\n")
 			for _, srv6SID := range node.SRv6SIDs {
 				fmt.Printf("    SIDs: %v\n", srv6SID.Sids)
@@ -89,8 +84,7 @@ type LsNode struct {
 	SrgbEnd    uint32 // in BGP-LS Attr
 	Links      []*LsLink
 	Prefixes   []*LsPrefixV4
-	PrefixesV6 []*LsPrefixV6 // for SRv6
-	SRv6SIDs   []*LsSrv6SID  // for SRv6
+	SRv6SIDs   []*LsSrv6SID // for SRv6
 }
 
 func NewLsNode(asn uint32, nodeID string) *LsNode {
@@ -225,40 +219,6 @@ func (lp *LsPrefixV4) UpdateTed(ted *LsTed) {
 	}
 
 	localNode.Prefixes = append(localNode.Prefixes, lp)
-}
-
-// Add LsPrefixV6 TED
-type LsPrefixV6 struct {
-	LocalNode *LsNode      // primary key, in MP_REACH_NLRI Attr
-	Prefix    netip.Prefix // in MP_REACH_NLRI Attr
-	SidIndex  uint32       // in BGP-LS Attr (only for Lo Address Prefix)
-}
-
-func NewLsPrefixV6(localNode *LsNode) *LsPrefixV6 {
-	return &LsPrefixV6{
-		LocalNode: localNode,
-	}
-}
-
-func (lp *LsPrefixV6) UpdateTed(ted *LsTed) {
-	nodes, asn := ted.Nodes, lp.LocalNode.Asn
-
-	if _, ok := nodes[asn]; !ok {
-		nodes[asn] = make(map[string]*LsNode)
-	}
-
-	if _, ok := nodes[asn][lp.LocalNode.RouterID]; !ok {
-		nodes[asn][lp.LocalNode.RouterID] = NewLsNode(lp.LocalNode.Asn, lp.LocalNode.RouterID)
-	}
-
-	localNode := nodes[asn][lp.LocalNode.RouterID]
-	for _, pref := range localNode.Prefixes {
-		if pref.Prefix.String() == lp.Prefix.String() {
-			return
-		}
-	}
-
-	localNode.PrefixesV6 = append(localNode.PrefixesV6, lp)
 }
 
 // // LsSrv6SID represents a SRv6 SID
