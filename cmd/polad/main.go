@@ -101,7 +101,7 @@ func startGobgpUpdate(c *config.Config, logger *zap.Logger) chan []table.TedElem
 	go func() {
 		for {
 			tedElems, err := gobgp.GetBgplsNlris(c.Global.Gobgp.GrpcClient.Address, c.Global.Gobgp.GrpcClient.Port)
-			logger.Debug("Request TED update", zap.String("source", "GoBGP"), zap.String("session", c.Global.Gobgp.GrpcClient.Address+":"+c.Global.Gobgp.GrpcClient.Port))
+			logger.Info("Request TED update", zap.String("source", "GoBGP"), zap.String("session", c.Global.Gobgp.GrpcClient.Address+":"+c.Global.Gobgp.GrpcClient.Port))
 			if err != nil {
 				logger.Error("Failed session with GoBGP", zap.Error(err))
 			} else {
