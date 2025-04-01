@@ -13,8 +13,6 @@ import (
 	"net"
 	"net/netip"
 	"slices"
-	"strconv"
-	"strings"
 
 	"github.com/golang/protobuf/ptypes/empty"
 	pb "github.com/nttcom/pola/api/grpc"
@@ -62,103 +60,57 @@ func (s *APIServer) CreateSRPolicyWithoutLinkState(ctx context.Context, input *p
 	return s.createSRPolicy(ctx, input, false)
 }
 
-func (s *APIServer) createSRPolicy(_ context.Context, input *pb.CreateSRPolicyInput, withLinkState bool) (*pb.RequestStatus, error) {
-	var err error
-
+func validateCreateSRPolicy(input *pb.CreateSRPolicyInput, withLinkState bool) error {
 	if withLinkState {
-		err = validate(input.GetSRPolicy(), input.GetAsn(), ValidationAdd)
-		if err != nil {
-			return &pb.RequestStatus{IsSuccess: false}, err
-		}
-	} else {
-		err = validate(input.GetSRPolicy(), input.GetAsn(), ValidationAddWithoutLinkState)
-		if err != nil {
-			return &pb.RequestStatus{IsSuccess: false}, err
-		}
+		return validate(input.GetSRPolicy(), input.GetAsn(), ValidationAdd)
 	}
+	return validate(input.GetSRPolicy(), input.GetAsn(), ValidationAddWithoutLinkState)
+}
 
-	inputSRPolicy := input.GetSRPolicy()
+func buildSegmentList(s *APIServer, input *pb.CreateSRPolicyInput, withLinkState bool) ([]table.Segment, netip.Addr, netip.Addr, error) {
 	var srcAddr, dstAddr netip.Addr
 	var segmentList []table.Segment
+	var err error
+
+	inputSRPolicy := input.GetSRPolicy()
 
 	if withLinkState {
 		if s.pce.ted == nil {
-			return &pb.RequestStatus{IsSuccess: false}, errors.New("ted is disabled")
+			return nil, netip.Addr{}, netip.Addr{}, errors.New("ted is disabled")
 		}
 
 		srcAddr, err = getLoopbackAddr(s.pce, input.GetAsn(), inputSRPolicy.GetSrcRouterID())
 		if err != nil {
-			return &pb.RequestStatus{IsSuccess: false}, err
+			return nil, netip.Addr{}, netip.Addr{}, err
 		}
 
 		dstAddr, err = getLoopbackAddr(s.pce, input.GetAsn(), inputSRPolicy.GetDstRouterID())
 		if err != nil {
-			return &pb.RequestStatus{IsSuccess: false}, err
+			return nil, netip.Addr{}, netip.Addr{}, err
 		}
 
 		segmentList, err = getSegmentList(inputSRPolicy, input.GetAsn(), s.pce.ted)
 		if err != nil {
-			return &pb.RequestStatus{IsSuccess: false}, err
+			return nil, netip.Addr{}, netip.Addr{}, err
 		}
 	} else {
 		srcAddr, _ = netip.AddrFromSlice(inputSRPolicy.GetSrcAddr())
 		dstAddr, _ = netip.AddrFromSlice(inputSRPolicy.GetDstAddr())
 
 		for _, segment := range inputSRPolicy.GetSegmentList() {
-			var sid table.Segment
-			if addr, err := netip.ParseAddr(segment.GetSid()); err == nil && addr.Is6() {
-				segmentSRv6 := table.NewSegmentSRv6(addr)
-
-				// handling of related to Nai
-				if segment.GetLocalAddr() != "" {
-					if la, addrErr := netip.ParseAddr(segment.GetLocalAddr()); addrErr == nil {
-						segmentSRv6.LocalAddr = la
-					} else {
-						return &pb.RequestStatus{IsSuccess: false}, addrErr
-					}
-					if segment.GetRemoteAddr() != "" {
-						if ra, addrErr := netip.ParseAddr(segment.GetRemoteAddr()); addrErr == nil {
-							segmentSRv6.RemoteAddr = ra
-						} else {
-							return &pb.RequestStatus{IsSuccess: false}, addrErr
-						}
-					}
-				}
-
-				// handling of related to SID Structure
-				if ss := strings.Split(segment.GetSidStructure(), ","); len(ss) == 4 {
-					segmentSRv6.Structure = []uint8{}
-					for _, strElem := range ss {
-						elem, err := strconv.Atoi(strElem)
-						if err != nil {
-							return &pb.RequestStatus{IsSuccess: false}, errors.New("invalid SidStructure information")
-						}
-						if elem <= table.SRV6_SID_BIT_LENGTH {
-							segmentSRv6.Structure = append(segmentSRv6.Structure, uint8(elem))
-						} else {
-							return &pb.RequestStatus{IsSuccess: false}, errors.New("element of each Sid Structure less than bit length of SRv6 SID")
-						}
-					}
-
-				}
-				// usid option
-				segmentSRv6.USid = s.usidMode
-				sid = segmentSRv6
-			} else if i, err := strconv.ParseUint(segment.GetSid(), 10, 32); err == nil {
-				sid = table.NewSegmentSRMPLS(uint32(i))
-			} else {
-				return &pb.RequestStatus{IsSuccess: false}, errors.New("invalid SID")
+			seg, err := table.NewSegment(segment.GetSid())
+			if err != nil {
+				return nil, netip.Addr{}, netip.Addr{}, err
 			}
-			segmentList = append(segmentList, sid)
+			segmentList = append(segmentList, seg)
 		}
 	}
 
-	inputJson, err := json.Marshal(input)
-	if err != nil {
-		return nil, err
-	}
-	s.logger.Info("Received CreateSRPolicy API request")
-	s.logger.Debug("Received paramater", zap.String("input", string(inputJson)))
+	return segmentList, srcAddr, dstAddr, nil
+}
+
+func sendSRPolicyRequest(s *APIServer, input *pb.CreateSRPolicyInput, segmentList []table.Segment, srcAddr, dstAddr netip.Addr) (*pb.RequestStatus, error) {
+	inputSRPolicy := input.GetSRPolicy()
 
 	pcepSession, err := getSyncedPcepSession(s.pce, inputSRPolicy.GetPcepSessionAddr())
 	if err != nil {
@@ -175,7 +127,6 @@ func (s *APIServer) createSRPolicy(_ context.Context, input *pb.CreateSRPolicyIn
 	}
 
 	if id, exists := pcepSession.SearchPlspID(inputSRPolicy.GetColor(), dstAddr); exists {
-		// Update SR Policy
 		s.logger.Debug("Request to update SR Policy", zap.Uint32("plspID", id))
 		srPolicy.PlspID = id
 
@@ -183,7 +134,6 @@ func (s *APIServer) createSRPolicy(_ context.Context, input *pb.CreateSRPolicyIn
 			return &pb.RequestStatus{IsSuccess: false}, err
 		}
 	} else {
-		// Initiate SR Policy
 		s.logger.Debug("Request to create SR Policy")
 		if err := pcepSession.RequestSRPolicyCreated(srPolicy); err != nil {
 			return &pb.RequestStatus{IsSuccess: false}, err
@@ -191,6 +141,19 @@ func (s *APIServer) createSRPolicy(_ context.Context, input *pb.CreateSRPolicyIn
 	}
 
 	return &pb.RequestStatus{IsSuccess: true}, nil
+}
+
+func (s *APIServer) createSRPolicy(_ context.Context, input *pb.CreateSRPolicyInput, withLinkState bool) (*pb.RequestStatus, error) {
+	if err := validateCreateSRPolicy(input, withLinkState); err != nil {
+		return &pb.RequestStatus{IsSuccess: false}, err
+	}
+
+	segmentList, srcAddr, dstAddr, err := buildSegmentList(s, input, withLinkState)
+	if err != nil {
+		return &pb.RequestStatus{IsSuccess: false}, err
+	}
+
+	return sendSRPolicyRequest(s, input, segmentList, srcAddr, dstAddr)
 }
 
 func (s *APIServer) DeleteSRPolicy(ctx context.Context, input *pb.DeleteSRPolicyInput) (*pb.RequestStatus, error) {
