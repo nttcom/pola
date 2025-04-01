@@ -739,8 +739,8 @@ func NewEroObject(segmentList []table.Segment) (*EroObject, error) {
 }
 
 func (o *EroObject) AddEroSubobjects(SegmentList []table.Segment) error {
-	for _, seg := range SegmentList {
-		eroSubobject, err := NewEroSubobject(seg)
+	for _, segment := range SegmentList {
+		eroSubobject, err := NewEroSubobject(segment)
 		if err != nil {
 			return err
 		}

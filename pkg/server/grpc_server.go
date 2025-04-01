@@ -105,20 +105,20 @@ func (s *APIServer) createSRPolicy(_ context.Context, input *pb.CreateSRPolicyIn
 		dstAddr, _ = netip.AddrFromSlice(inputSRPolicy.GetDstAddr())
 
 		for _, segment := range inputSRPolicy.GetSegmentList() {
-			var seg table.Segment
+			var sid table.Segment
 			if addr, err := netip.ParseAddr(segment.GetSid()); err == nil && addr.Is6() {
-				segSRv6 := table.NewSegmentSRv6(addr)
+				segmentSRv6 := table.NewSegmentSRv6(addr)
 
 				// handling of related to Nai
 				if segment.GetLocalAddr() != "" {
 					if la, addrErr := netip.ParseAddr(segment.GetLocalAddr()); addrErr == nil {
-						segSRv6.LocalAddr = la
+						segmentSRv6.LocalAddr = la
 					} else {
 						return &pb.RequestStatus{IsSuccess: false}, addrErr
 					}
 					if segment.GetRemoteAddr() != "" {
 						if ra, addrErr := netip.ParseAddr(segment.GetRemoteAddr()); addrErr == nil {
-							segSRv6.RemoteAddr = ra
+							segmentSRv6.RemoteAddr = ra
 						} else {
 							return &pb.RequestStatus{IsSuccess: false}, addrErr
 						}
@@ -127,14 +127,14 @@ func (s *APIServer) createSRPolicy(_ context.Context, input *pb.CreateSRPolicyIn
 
 				// handling of related to SID Structure
 				if ss := strings.Split(segment.GetSidStructure(), ","); len(ss) == 4 {
-					segSRv6.Structure = []uint8{}
+					segmentSRv6.Structure = []uint8{}
 					for _, strElem := range ss {
 						elem, err := strconv.Atoi(strElem)
 						if err != nil {
 							return &pb.RequestStatus{IsSuccess: false}, errors.New("invalid SidStructure information")
 						}
 						if elem <= table.SRV6_SID_BIT_LENGTH {
-							segSRv6.Structure = append(segSRv6.Structure, uint8(elem))
+							segmentSRv6.Structure = append(segmentSRv6.Structure, uint8(elem))
 						} else {
 							return &pb.RequestStatus{IsSuccess: false}, errors.New("element of each Sid Structure less than bit length of SRv6 SID")
 						}
@@ -142,14 +142,14 @@ func (s *APIServer) createSRPolicy(_ context.Context, input *pb.CreateSRPolicyIn
 
 				}
 				// usid option
-				segSRv6.USid = s.usidMode
-				seg = segSRv6
+				segmentSRv6.USid = s.usidMode
+				sid = segmentSRv6
 			} else if i, err := strconv.ParseUint(segment.GetSid(), 10, 32); err == nil {
-				seg = table.NewSegmentSRMPLS(uint32(i))
+				sid = table.NewSegmentSRMPLS(uint32(i))
 			} else {
 				return &pb.RequestStatus{IsSuccess: false}, errors.New("invalid SID")
 			}
-			segmentList = append(segmentList, seg)
+			segmentList = append(segmentList, sid)
 		}
 	}
 
@@ -306,7 +306,7 @@ func getLoopbackAddr(pce *Server, asn uint32, routerID string) (netip.Addr, erro
 }
 
 func getSegmentList(inputSRPolicy *pb.SRPolicy, asn uint32, ted *table.LsTed) ([]table.Segment, error) {
-	var segments []table.Segment
+	var segmentList []table.Segment
 
 	switch inputSRPolicy.GetType() {
 	case pb.SRPolicyType_EXPLICIT:
@@ -314,18 +314,18 @@ func getSegmentList(inputSRPolicy *pb.SRPolicy, asn uint32, ted *table.LsTed) ([
 			return nil, errors.New("no segments in SRPolicy input")
 		}
 		for _, segment := range inputSRPolicy.GetSegmentList() {
-			seg, err := table.NewSegment(segment.GetSid())
+			sid, err := table.NewSegment(segment.GetSid())
 			if err != nil {
 				return nil, err
 			}
-			segments = append(segments, seg)
+			segmentList = append(segmentList, sid)
 		}
 	case pb.SRPolicyType_DYNAMIC:
 		metricType, err := getMetricType(inputSRPolicy.GetMetric())
 		if err != nil {
 			return nil, err
 		}
-		segments, err = cspf.Cspf(inputSRPolicy.GetSrcRouterID(), inputSRPolicy.GetDstRouterID(), asn, metricType, ted)
+		segmentList, err = cspf.Cspf(inputSRPolicy.GetSrcRouterID(), inputSRPolicy.GetDstRouterID(), asn, metricType, ted)
 		if err != nil {
 			return nil, err
 		}
@@ -333,7 +333,7 @@ func getSegmentList(inputSRPolicy *pb.SRPolicy, asn uint32, ted *table.LsTed) ([
 		return nil, errors.New("undefined SR Policy type")
 	}
 
-	return segments, nil
+	return segmentList, nil
 }
 
 func getMetricType(metricType pb.MetricType) (table.MetricType, error) {
@@ -377,21 +377,21 @@ func (s *APIServer) GetSRPolicyList(context.Context, *empty.Empty) (*pb.SRPolicy
 	s.logger.Info("Received GetSRPolicyList API request")
 
 	var ret pb.SRPolicyList
-	for ssAddr, pols := range s.pce.SRPolicies() {
-		for _, pol := range pols {
+	for ssAddr, policies := range s.pce.SRPolicies() {
+		for _, policy := range policies {
 			srPolicyData := &pb.SRPolicy{
 				PcepSessionAddr: ssAddr.AsSlice(),
 				SegmentList:     make([]*pb.Segment, 0),
-				Color:           pol.Color,
-				Preference:      pol.Preference,
-				PolicyName:      pol.Name,
-				SrcAddr:         pol.SrcAddr.AsSlice(),
-				DstAddr:         pol.DstAddr.AsSlice(),
+				Color:           policy.Color,
+				Preference:      policy.Preference,
+				PolicyName:      policy.Name,
+				SrcAddr:         policy.SrcAddr.AsSlice(),
+				DstAddr:         policy.DstAddr.AsSlice(),
 			}
 
-			for _, seg := range pol.SegmentList {
+			for _, segment := range policy.SegmentList {
 				srPolicyData.SegmentList = append(srPolicyData.SegmentList, &pb.Segment{
-					Sid: seg.SidString(),
+					Sid: segment.SidString(),
 				})
 			}
 
