@@ -335,13 +335,33 @@ func (ss *Session) SendPCUpdate(srPolicy table.SRPolicy) error {
 }
 
 func (ss *Session) RegisterSRPolicy(sr pcep.StateReport) {
-	var color, preference uint32
+	var color uint32 = 0      // Default color value (RFC does not specify a default)
+	var preference uint32 = 0 // Default preference value (RFC does not specify a default)
 
 	if ss.pccType == pcep.CISCO_LEGACY {
+		// In Cisco legacy mode, get color and preference from Vendor Information Object
 		color = sr.VendorInformationObject.Color()
 		preference = sr.VendorInformationObject.Preference()
 	} else {
-		color = sr.AssociationObject.Color()
+		// TODO: Move hasColorCapability to Session struct
+		hasColorCapability := false
+		for _, cap := range ss.pccCapabilities {
+			if statefulCap, ok := cap.(*pcep.StatefulPceCapability); ok {
+				if statefulCap.ColorCapability {
+					hasColorCapability = true
+					break
+				}
+			}
+		}
+
+		// SR Policy Association color takes precedence over LSP Object Color TLV
+		// Ref: https://datatracker.ietf.org/doc/draft-ietf-pce-pcep-color/12/ Section 2
+		if sr.AssociationObject.Color() != 0 {
+			color = sr.AssociationObject.Color()
+		} else if hasColorCapability {
+			color = sr.LspObject.Color()
+		}
+
 		preference = sr.AssociationObject.Preference()
 	}
 
