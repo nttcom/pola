@@ -91,6 +91,20 @@ const ( // PCEP TLV
 	TLV_IPV6_SR_P2MP_INSTANCE_ID              uint16 = 0x51 // draft-ietf-pce-sr-p2mp-policy-09
 )
 
+var tlvMap = map[uint16]func() TLVInterface{
+	TLV_STATEFUL_PCE_CAPABILITY:    func() TLVInterface { return &StatefulPceCapability{} },
+	TLV_SYMBOLIC_PATH_NAME:         func() TLVInterface { return &SymbolicPathName{} },
+	TLV_IPV4_LSP_IDENTIFIERS:       func() TLVInterface { return &IPv4LspIdentifiers{} },
+	TLV_IPV6_LSP_IDENTIFIERS:       func() TLVInterface { return &IPv6LspIdentifiers{} },
+	TLV_LSP_DB_VERSION:             func() TLVInterface { return &LSPDBVersion{} },
+	TLV_SR_PCE_CAPABILITY:          func() TLVInterface { return &SRPceCapability{} },
+	TLV_PATH_SETUP_TYPE:            func() TLVInterface { return &PathSetupType{} },
+	TLV_EXTENDED_ASSOCIATION_ID:    func() TLVInterface { return &ExtendedAssociationID{} },
+	TLV_PATH_SETUP_TYPE_CAPABILITY: func() TLVInterface { return &PathSetupTypeCapability{} },
+	TLV_ASSOC_TYPE_LIST:            func() TLVInterface { return &AssocTypeList{} },
+	TLV_COLOR:                      func() TLVInterface { return &Color{} },
+}
+
 const (
 	TLV_STATEFUL_PCE_CAPABILITY_LENGTH      uint16 = 4
 	TLV_LSP_DB_VERSION_LENGTH               uint16 = 8
@@ -928,59 +942,46 @@ func (tlv *UndefinedTLV) SetLength() {
 }
 
 func DecodeTLV(data []uint8) (TLVInterface, error) {
-	var tlv TLVInterface
-	switch binary.BigEndian.Uint16(data[0:2]) {
-	case TLV_STATEFUL_PCE_CAPABILITY:
-		tlv = &StatefulPceCapability{}
-	case TLV_SYMBOLIC_PATH_NAME:
-		tlv = &SymbolicPathName{}
-	case TLV_IPV4_LSP_IDENTIFIERS:
-		tlv = &IPv4LspIdentifiers{}
-	case TLV_IPV6_LSP_IDENTIFIERS:
-		tlv = &IPv6LspIdentifiers{}
-	case TLV_LSP_DB_VERSION:
-		tlv = &LSPDBVersion{}
-	case TLV_SR_PCE_CAPABILITY:
-		tlv = &SRPceCapability{}
-	case TLV_PATH_SETUP_TYPE:
-		tlv = &PathSetupType{}
-	case TLV_EXTENDED_ASSOCIATION_ID:
-		tlv = &ExtendedAssociationID{}
-	case TLV_PATH_SETUP_TYPE_CAPABILITY:
-		tlv = &PathSetupTypeCapability{}
-	case TLV_ASSOC_TYPE_LIST:
-		tlv = &AssocTypeList{}
-	case TLV_SRPOLICY_CPATH_PREFERENCE:
-		tlv = &SRPolicyCandidatePathPreference{}
-	case TLV_COLOR:
-		tlv = &Color{}
+	if len(data) < 2 {
+		return nil, errors.New("insufficient data to read TLV type")
+	}
 
-	default:
-		tlv = &UndefinedTLV{}
+	tlvType := binary.BigEndian.Uint16(data[0:2])
+
+	if createTLV, found := tlvMap[tlvType]; found {
+		tlv := createTLV()
+		if err := tlv.DecodeFromBytes(data); err != nil {
+			return nil, fmt.Errorf("error decoding TLV type %x: %w", tlvType, err)
+		}
+		return tlv, nil
 	}
+
+	tlv := &UndefinedTLV{}
 	if err := tlv.DecodeFromBytes(data); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error decoding undefined TLV type %x: %w", tlvType, err)
 	}
+
 	return tlv, nil
 }
 
 func DecodeTLVs(data []uint8) ([]TLVInterface, error) {
-	tlvs := []TLVInterface{}
-	var tlv TLVInterface
-	var err error
+	var tlvs []TLVInterface
 
-	for {
-		if tlv, err = DecodeTLV(data); err != nil {
+	for len(data) > 0 {
+		tlv, err := DecodeTLV(data)
+		if err != nil {
 			return nil, err
 		}
+
 		tlvs = append(tlvs, tlv)
-		if int(tlv.Len()) < len(data) {
-			data = data[tlv.Len():]
-		} else if int(tlv.Len()) == len(data) {
-			break
-		} else {
-			return nil, errors.New("tlvs decode error")
+
+		tlvLen := int(tlv.Len())
+		if len(data) < tlvLen {
+			return nil, fmt.Errorf("expected TLV length %d but found %d bytes remaining", tlvLen, len(data))
 		}
+
+		data = data[tlvLen:]
 	}
+
 	return tlvs, nil
 }
