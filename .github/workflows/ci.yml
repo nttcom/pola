@@ -17,9 +17,10 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event.pull_request.draft == false
     steps:
-      - uses: actions/setup-go@v5
       - uses: actions/checkout@v4
-      - name: golangci-lint
+      - uses: actions/setup-go@v5
+      - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v7
         with:
           version: latest
+          args: --config=.golangci.yml
