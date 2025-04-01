@@ -152,6 +152,12 @@ func (tlv *StatefulPceCapability) DecodeFromBytes(flags []uint8) error {
 	return nil
 }
 
+func setFlag(flags []uint8, index int, mask uint8, condition bool) {
+	if condition {
+		flags[index] = flags[index] | mask
+	}
+}
+
 func (tlv *StatefulPceCapability) Serialize() []uint8 {
 	buf := []uint8{}
 
@@ -164,54 +170,23 @@ func (tlv *StatefulPceCapability) Serialize() []uint8 {
 	buf = append(buf, length...)
 
 	flags := make([]uint8, TLV_STATEFUL_PCE_CAPABILITY_LENGTH)
-	if tlv.LspUpdateCapability {
-		flags[3] = flags[3] | 0x01
-	}
-	if tlv.IncludeDBVersion {
-		flags[3] = flags[3] | 0x02
-	}
-	if tlv.LspInstantiationCapability {
-		flags[3] = flags[3] | 0x04
-	}
-	if tlv.TriggeredResync {
-		flags[3] = flags[3] | 0x08
-	}
-	if tlv.DeltaLspSyncCapability {
-		flags[3] = flags[3] | 0x10
-	}
-	if tlv.TriggeredInitialSync {
-		flags[3] = flags[3] | 0x20
-	}
-	if tlv.P2mpCapability {
-		flags[3] = flags[3] | 0x40
-	}
-	if tlv.P2mpLspUpdateCapability {
-		flags[3] = flags[3] | 0x80
-	}
-	if tlv.P2mpLspInstantiationCapability {
-		flags[2] = flags[2] | 0x01
-	}
-	if tlv.P2mpLspInstantiationCapability {
-		flags[2] = flags[2] | 0x01
-	}
-	if tlv.LspSchedulingCapability {
-		flags[2] = flags[2] | 0x02
-	}
-	if tlv.PdLspCapability {
-		flags[2] = flags[2] | 0x04
-	}
-	if tlv.ColorCapability {
-		flags[2] = flags[2] | 0x08
-	}
-	if tlv.PathRecomputationCapability {
-		flags[2] = flags[2] | 0x10
-	}
-	if tlv.StrictPathCapability {
-		flags[2] = flags[2] | 0x20
-	}
-	if tlv.Relax {
-		flags[2] = flags[2] | 0x40
-	}
+
+	setFlag(flags, 3, 0x01, tlv.LspUpdateCapability)
+	setFlag(flags, 3, 0x02, tlv.IncludeDBVersion)
+	setFlag(flags, 3, 0x04, tlv.LspInstantiationCapability)
+	setFlag(flags, 3, 0x08, tlv.TriggeredResync)
+	setFlag(flags, 3, 0x10, tlv.DeltaLspSyncCapability)
+	setFlag(flags, 3, 0x20, tlv.TriggeredInitialSync)
+	setFlag(flags, 3, 0x40, tlv.P2mpCapability)
+	setFlag(flags, 3, 0x80, tlv.P2mpLspUpdateCapability)
+	setFlag(flags, 2, 0x01, tlv.P2mpLspInstantiationCapability)
+	setFlag(flags, 2, 0x02, tlv.LspSchedulingCapability)
+	setFlag(flags, 2, 0x04, tlv.PdLspCapability)
+	setFlag(flags, 2, 0x08, tlv.ColorCapability)
+	setFlag(flags, 2, 0x10, tlv.PathRecomputationCapability)
+	setFlag(flags, 2, 0x20, tlv.StrictPathCapability)
+	setFlag(flags, 2, 0x40, tlv.Relax)
+
 	buf = append(buf, flags...)
 
 	return buf
