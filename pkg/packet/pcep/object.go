@@ -42,53 +42,54 @@ func DeterminePccType(caps []CapabilityInterface) (pccType PccType) {
 
 const COMMON_OBJECT_HEADER_LENGTH uint16 = 4
 
-const ( // PCEP Object-Class (1 byte)
-	OC_RESERVED       uint8 = 0x00 // RFC5440
-	OC_OPEN           uint8 = 0x01 // RFC5440
-	OC_RP             uint8 = 0x02 // RFC5440
-	OC_NO_PATH        uint8 = 0x03 // RFC5440
-	OC_END_POINTS     uint8 = 0x04 // RFC5440
-	OC_BANDWIDTH      uint8 = 0x05 // RFC5440
-	OC_METRIC         uint8 = 0x06 // RFC5440
-	OC_ERO            uint8 = 0x07 // RFC5440
-	OC_RRO            uint8 = 0x08 // RFC5440
-	OC_LSPA           uint8 = 0x09 // RFC5440
-	OC_IRO            uint8 = 0x0a // RFC5440
-	OC_SVRC           uint8 = 0x0b // RFC5440
-	OC_NOTIFICATION   uint8 = 0x0c // RFC5440
-	OC_PCEP_ERROR     uint8 = 0x0d // RFC5440
-	OC_LOAD_BALANCING uint8 = 0x0e // RFC5440
-	OC_CLOSE          uint8 = 0x0f // RFC5440
-	OC_PATH_KEY       uint8 = 0x10 // RFC5520
-	OC_XRO            uint8 = 0x11 // RFC5521
-	// 0x12 is Unassigned
-	OC_MONITORING uint8 = 0x13 // RFC5886
-	OC_PCC_REQ_ID uint8 = 0x14 // RFC5886
-	OC_OF         uint8 = 0x15 // RFC5541
-	OC_CLASSTYPE  uint8 = 0x16 // RFC5455
-	// 0x17 is Unassigned
-	OC_GLOBAL_CONSTRAINTS  uint8 = 0x18 // RFC5557
-	OC_PCE_ID              uint8 = 0x19 // RFC5886
-	OC_PROC_TIME           uint8 = 0x1a // RFC5886
-	OC_OVERLOAD            uint8 = 0x1b // RFC5886
-	OC_UNREACH_DESTINATION uint8 = 0x1c // RFC8306
-	OC_SERO                uint8 = 0x1d // RFC8306
-	OC_SRRO                uint8 = 0x1e // RFC8306
-	OC_BNC                 uint8 = 0x1f // RFC8306
-	OC_LSP                 uint8 = 0x20 // RFC8231
-	OC_SRP                 uint8 = 0x21 // RFC8231
-	OC_VENDOR_INFORMATION  uint8 = 0x22 // RFC7470
-	OC_BU                  uint8 = 0x23 // RFC8233
-	OC_INTER_LAYER         uint8 = 0x24 // RFC8282
-	OC_SWITCH_LAYER        uint8 = 0x25 // RFC8282
-	OC_REQ_ADAP_CAP        uint8 = 0x26 // RFC8282
-	OC_SERVER_INDICATION   uint8 = 0x27 // RFC8282
-	OC_ASSOCIATION         uint8 = 0x28 // RFC8697
-	OC_S2LS                uint8 = 0x29 // RFC8623
-	OC_WA                  uint8 = 0x2a // RFC8780
-	OC_FLOWSPEC            uint8 = 0x2b // RFC9168
-	OC_CCI_OBJECT_TYPE     uint8 = 0x2c // RFC9050
-	OC_PATH_ATTRIB         uint8 = 0x2d // draft-ietf-pce-multipath-07
+const ( // PCEP Object-Class (1 byte) Ref: https://www.iana.org/assignments/pcep/pcep.xhtml#pcep-objects
+	OC_RESERVED                              uint8 = 0x00 // RFC5440
+	OC_OPEN                                  uint8 = 0x01 // RFC5440
+	OC_RP                                    uint8 = 0x02 // RFC5440
+	OC_NO_PATH                               uint8 = 0x03 // RFC5440
+	OC_END_POINTS                            uint8 = 0x04 // RFC5440
+	OC_BANDWIDTH                             uint8 = 0x05 // RFC5440
+	OC_METRIC                                uint8 = 0x06 // RFC5440
+	OC_ERO                                   uint8 = 0x07 // RFC5440
+	OC_RRO                                   uint8 = 0x08 // RFC5440
+	OC_LSPA                                  uint8 = 0x09 // RFC5440
+	OC_IRO                                   uint8 = 0x0a // RFC5440
+	OC_SVRC                                  uint8 = 0x0b // RFC5440
+	OC_NOTIFICATION                          uint8 = 0x0c // RFC5440
+	OC_PCEP_ERROR                            uint8 = 0x0d // RFC5440
+	OC_LOAD_BALANCING                        uint8 = 0x0e // RFC5440
+	OC_CLOSE                                 uint8 = 0x0f // RFC5440
+	OC_PATH_KEY                              uint8 = 0x10 // RFC5520
+	OC_XRO                                   uint8 = 0x11 // RFC5521
+	OC_MONITORING                            uint8 = 0x13 // RFC5886
+	OC_PCC_REQ_ID                            uint8 = 0x14 // RFC5886
+	OC_OF                                    uint8 = 0x15 // RFC5541
+	OC_CLASSTYPE                             uint8 = 0x16 // RFC5455
+	OC_GLOBAL_CONSTRAINTS                    uint8 = 0x18 // RFC5557
+	OC_PCE_ID                                uint8 = 0x19 // RFC5886
+	OC_PROC_TIME                             uint8 = 0x1a // RFC5886
+	OC_OVERLOAD                              uint8 = 0x1b // RFC5886
+	OC_UNREACH_DESTINATION                   uint8 = 0x1c // RFC8306
+	OC_SERO                                  uint8 = 0x1d // RFC8306
+	OC_SRRO                                  uint8 = 0x1e // RFC8306
+	OC_BNC                                   uint8 = 0x1f // RFC8306
+	OC_LSP                                   uint8 = 0x20 // RFC8231
+	OC_SRP                                   uint8 = 0x21 // RFC8231
+	OC_VENDOR_INFORMATION                    uint8 = 0x22 // RFC7470
+	OC_BU                                    uint8 = 0x23 // RFC8233
+	OC_INTER_LAYER                           uint8 = 0x24 // RFC8282
+	OC_SWITCH_LAYER                          uint8 = 0x25 // RFC8282
+	OC_REQ_ADAP_CAP                          uint8 = 0x26 // RFC8282
+	OC_SERVER_INDICATION                     uint8 = 0x27 // RFC8282
+	OC_ASSOCIATION                           uint8 = 0x28 // RFC8697
+	OC_S2LS                                  uint8 = 0x29 // RFC8623
+	OC_WA                                    uint8 = 0x2a // RFC8780
+	OC_FLOWSPEC                              uint8 = 0x2b // RFC9168
+	OC_CCI_OBJECT_TYPE                       uint8 = 0x2c // RFC9050
+	OC_PATH_ATTRIB                           uint8 = 0x2d // draft-ietf-pce-multipath-07
+	OC_BGP_PEER_INFO_OBJECT_TYPE             uint8 = 0x2c // RFC9757
+	OC_EXPLICIT_PEER_ROUTE_OBJECT_TYPE       uint8 = 0x2d // RFC9757
+	OC_PEER_PREFIX_ADVERTISEMENT_OBJECT_TYPE uint8 = 0x2e // RFC9757
 )
 
 type CommonObjectHeader struct { // RFC5440 7.2
@@ -648,11 +649,12 @@ func (o *EroObject) DecodeFromBytes(typ uint8, objectBody []uint8) error {
 	}
 	for {
 		var eroSubobj EroSubobject
-		if (objectBody[0] & 0x7f) == 36 {
+		switch objectBody[0] & 0x7f {
+		case OT_ERO_SR:
 			eroSubobj = &SREroSubobject{}
-		} else if (objectBody[0] & 0x7f) == 40 {
+		case OT_ERO_SRV6:
 			eroSubobj = &SRv6EroSubobject{}
-		} else {
+		default:
 			return errors.New("invalid Subobject type")
 		}
 		if err := eroSubobj.DecodeFromBytes(objectBody); err != nil {
@@ -761,7 +763,10 @@ func NewEroSubobject(seg table.Segment) (EroSubobject, error) {
 }
 
 // SR-ERO Subobject (RFC8664 4.3.1)
-const ERO_SUBOBJECT_SR uint8 = 0x24
+const (
+	OT_ERO_SR uint8 = 0x24
+)
+
 const (
 	NT_ABSENT                   uint8 = 0x00 // RFC 8664 4.3.1
 	NT_IPV4_NODE                uint8 = 0x01 // RFC 8664 4.3.1
@@ -831,16 +836,17 @@ func (o *SREroSubobject) Serialize() []uint8 {
 }
 
 func (o *SREroSubobject) Len() (uint16, error) {
-	if o.NaiType == NT_ABSENT {
+	switch o.NaiType {
+	case NT_ABSENT:
 		// Type, Length, Flags (4byte) + SID (4byte)
 		return uint16(8), nil
-	} else if o.NaiType == NT_IPV4_NODE {
+	case NT_IPV4_NODE:
 		// Type, Length, Flags (4byte) + SID (4byte) + Nai (4byte)
 		return uint16(12), nil
-	} else if o.NaiType == NT_IPV6_NODE {
+	case NT_IPV6_NODE:
 		// Type, Length, Flags (4byte) + SID (4byte) + Nai (16byte)
 		return uint16(24), nil
-	} else {
+	default:
 		return uint16(0), errors.New("unsupported naitype")
 	}
 }
@@ -848,7 +854,7 @@ func (o *SREroSubobject) Len() (uint16, error) {
 func NewSREroSubObject(seg table.SegmentSRMPLS) (*SREroSubobject, error) {
 	subo := &SREroSubobject{
 		LFlag:         false,
-		SubobjectType: ERO_SUBOBJECT_SR,
+		SubobjectType: OT_ERO_SR,
 		NaiType:       NT_ABSENT,
 		FFlag:         true, // Nai is absent
 		SFlag:         false,
@@ -868,8 +874,11 @@ func (o *SREroSubobject) ToSegment() table.Segment {
 	return o.Segment
 }
 
-// SRv6-ERO Subobject (draft-ietf-pce-segment-routing-ipv6 4.3.1)
-const ERO_SUBOBJECT_SRV6 uint8 = 0x28
+// SRv6-ERO Subobject (RFC9603 4.3.1)
+const (
+	OT_ERO_SRV6 uint8 = 0x28
+)
+
 const (
 	NT_MUST_NOT_BE_INCLUDED     uint8 = 0x00 // draft-ietf-pce-segment-routing-ipv6 4.3.1
 	NT_SRV6_NODE                uint8 = 0x02 // draft-ietf-pce-segment-routing-ipv6 4.3.1
@@ -988,7 +997,7 @@ func (o *SRv6EroSubobject) Len() (uint16, error) {
 func NewSRv6EroSubObject(seg table.SegmentSRv6) (*SRv6EroSubobject, error) {
 	subo := &SRv6EroSubobject{
 		LFlag:         false,
-		SubobjectType: ERO_SUBOBJECT_SRV6,
+		SubobjectType: OT_ERO_SRV6,
 		VFlag:         false,
 		SFlag:         false, // SID is absent
 		Segment:       seg,
@@ -1115,7 +1124,9 @@ func (o *AssociationObject) DecodeFromBytes(typ uint8, objectBody []uint8) error
 	o.RFlag = (objectBody[3] & 0x01) != 0
 	o.AssocType = uint16(binary.BigEndian.Uint16(objectBody[4:6]))
 	o.AssocID = uint16(binary.BigEndian.Uint16(objectBody[6:8]))
-	if o.ObjectType == OT_ASSOC_IPV4 {
+
+	switch o.ObjectType {
+	case OT_ASSOC_IPV4:
 		assocSrcBytes, _ := netip.AddrFromSlice(objectBody[8:12])
 		o.AssocSrc = assocSrcBytes
 		if len(objectBody) > 12 {
@@ -1125,7 +1136,7 @@ func (o *AssociationObject) DecodeFromBytes(typ uint8, objectBody []uint8) error
 				return err
 			}
 		}
-	} else if o.ObjectType == OT_ASSOC_IPV6 {
+	case OT_ASSOC_IPV6:
 		o.AssocSrc, _ = netip.AddrFromSlice(objectBody[8:24])
 		if len(objectBody) > 24 {
 			byteTLVs := objectBody[24:]
@@ -1134,9 +1145,10 @@ func (o *AssociationObject) DecodeFromBytes(typ uint8, objectBody []uint8) error
 				return err
 			}
 		}
-	} else {
+	default:
 		return errors.New("invalid association source address")
 	}
+
 	return nil
 }
 

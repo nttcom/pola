@@ -6,6 +6,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 
 	"gopkg.in/yaml.v3"
@@ -45,7 +46,7 @@ type Global struct {
 	Pcep       Pcep       `yaml:"pcep"`
 	GrpcServer GrpcServer `yaml:"grpc-server"`
 	Log        Log        `yaml:"log"`
-	Ted        Ted        `yaml:"ted"`
+	Ted        *Ted       `yaml:"ted"`
 	Gobgp      Gobgp      `yaml:"gobgp"`
 	USidMode   bool       `yaml:"usid-mode"`
 }
@@ -61,7 +62,11 @@ func ReadConfigFile(configFile string) (Config, error) {
 	if err != nil {
 		return *c, err
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to close file \"%s\": %v\n", configFile, err)
+		}
+	}()
 
 	if err := yaml.NewDecoder(f).Decode(c); err != nil {
 		return *c, err

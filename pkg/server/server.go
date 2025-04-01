@@ -7,6 +7,7 @@ package server
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"net"
 	"net/netip"
@@ -78,55 +79,62 @@ func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem
 	}()
 
 	serverError := <-errChan
+	logger.Error("Server encountered an error", zap.String("server", serverError.Server), zap.Error(serverError.Error))
 	return serverError
 }
 
 func (s *Server) Serve(address string, port string, usidMode bool) error {
 	a, err := netip.ParseAddr(address)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to parse address %s: %w", address, err)
 	}
 	p, err := strconv.Atoi(port)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to convert port %s: %w", port, err)
 	}
 	if p > math.MaxUint16 {
 		return errors.New("invalid PCEP listen port")
 	}
 	localAddr := netip.AddrPortFrom(a, uint16(p))
 
-	s.logger.Info("Start listening on PCEP port", zap.String("address", localAddr.String()))
+	s.logger.Info("start listening on PCEP port", zap.String("address", localAddr.String()))
 	l, err := net.ListenTCP("tcp", net.TCPAddrFromAddrPort(localAddr))
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to listen on PCEP port %s: %w", localAddr.String(), err)
 	}
-	defer l.Close()
+	defer func() {
+		if err := l.Close(); err != nil {
+			s.logger.Warn("failed to close PCEP listener", zap.Error(err))
+		}
+	}()
 
 	sessionID := uint8(1)
 	for {
 		tcpConn, err := l.AcceptTCP()
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to accept TCP connection: %w", err)
 		}
 		peerAddrPort, err := netip.ParseAddrPort(tcpConn.RemoteAddr().String())
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to parse remote address %s: %w", tcpConn.RemoteAddr().String(), err)
 		}
 		ss := NewSession(sessionID, peerAddrPort.Addr(), tcpConn, s.logger)
-		ss.logger.Info("Start PCEP session")
+		ss.logger.Info("start PCEP session")
 
 		s.sessionList = append(s.sessionList, ss)
 		go func() {
 			ss.Established()
 			s.closeSession(ss)
-			ss.logger.Info("Close PCEP session")
+			ss.logger.Info("close PCEP session")
 		}()
 		sessionID++
 	}
 }
 
 func (s *Server) closeSession(session *Session) {
-	session.tcpConn.Close()
+	if err := session.tcpConn.Close(); err != nil {
+		s.logger.Warn("failed to close TCP connection", zap.Error(err))
+	}
 
 	// Remove Session List
 	for i, v := range s.sessionList {
@@ -139,11 +147,11 @@ func (s *Server) closeSession(session *Session) {
 }
 
 // SearchSession returns a struct pointer of (Synced) session.
-// if not exist, return nil
+// If not exist, return nil
 func (s *Server) SearchSession(peerAddr netip.Addr, onlySynced bool) *Session {
 	for _, pcepSession := range s.sessionList {
 		if pcepSession.peerAddr == peerAddr {
-			if !(onlySynced) || pcepSession.isSynced {
+			if !onlySynced || pcepSession.isSynced {
 				return pcepSession
 			}
 		}

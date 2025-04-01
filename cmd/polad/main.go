@@ -43,28 +43,31 @@ func main() {
 	// Read configuration file
 	c, err := config.ReadConfigFile(f.configFile)
 	if err != nil {
-		log.Panic(err)
+		log.Panicf("failed to read config file: %v", err)
 	}
 
 	// Create log directory if it does not exist
 	if err := os.MkdirAll(c.Global.Log.Path, 0755); err != nil {
-		log.Panic(err)
+		log.Panicf("failed to create log directory: %v", err)
 	}
 
 	// Open log file
 	fp, err := os.OpenFile(c.Global.Log.Path+c.Global.Log.Name, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
-		log.Panic(err)
+		log.Panicf("failed to open log file: %v", err)
 	}
-	defer fp.Close()
+	defer func() {
+		if err := fp.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to close log file \"%s\": %v\n", c.Global.Log.Path+c.Global.Log.Name, err)
+		}
+	}()
 
 	// Initialize logger
 	logger := logger.LogInit(fp, c.Global.Log.Debug)
 	defer func() {
-		err := logger.Sync()
-		if err != nil {
-			logger.Panic("Failed to logger Sync", zap.Error(err))
-			log.Panic(err)
+		if err := logger.Sync(); err != nil {
+			logger.Panic("Failed to sync logger", zap.Error(err))
+			log.Panicf("failed to sync logger: %v", err)
 		}
 	}()
 
@@ -74,9 +77,13 @@ func main() {
 		switch c.Global.Ted.Source {
 		case "gobgp":
 			tedElemsChan = startGobgpUpdate(&c, logger)
+			if tedElemsChan == nil {
+				logger.Panic("GoBGP update channel is nil")
+				log.Panic("GoBGP update channel is nil")
+			}
 		default:
 			logger.Panic("Specified TED source is not defined")
-			log.Panic()
+			log.Panic("specified TED source is not defined")
 		}
 	}
 
@@ -91,11 +98,15 @@ func main() {
 	}
 	if serverErr := server.NewPce(o, logger, tedElemsChan); serverErr.Error != nil {
 		logger.Panic("Failed to start new server", zap.String("server", serverErr.Server), zap.Error(serverErr.Error))
-		log.Panic()
+		log.Panicf("failed to start new server: %v", serverErr.Error)
 	}
 }
 
 func startGobgpUpdate(c *config.Config, logger *zap.Logger) chan []table.TedElem {
+	if c.Global.Ted == nil {
+		logger.Error("TED does not exist")
+		return nil
+	}
 	tedElemsChan := make(chan []table.TedElem)
 
 	go func() {

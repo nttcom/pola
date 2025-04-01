@@ -22,22 +22,30 @@ import (
 
 func main() {
 	flag.Parse()
+
 	conn, err := grpc.NewClient(
 		"localhost:50051",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
-		log.Fatalf("did not connect: %v", err)
+		log.Fatalf("unable to connect to the server: %v", err)
 	}
-	defer conn.Close()
+
+	defer func() {
+		if err := conn.Close(); err != nil {
+			log.Printf("warning: failed to close connection: %v", err)
+		}
+	}()
+
 	c := pb.NewPceServiceClient(conn)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
+
 	var empty empty.Empty
 	ret, err := c.GetSRPolicyList(ctx, &empty)
 	if err != nil {
-		log.Fatalf("could not greet: %v", err)
+		log.Fatalf("unable to get SR policy list from server: %v", err)
 	}
 
 	for i, srPolicy := range ret.GetSRPolicies() {
@@ -50,9 +58,10 @@ func main() {
 		fmt.Printf("  path: ")
 
 		if len(srPolicy.GetSegmentList()) == 0 {
-			fmt.Printf("None \n")
+			fmt.Printf("None\n")
 			continue
 		}
+
 		for j, segment := range srPolicy.GetSegmentList() {
 			fmt.Printf("%s", segment.GetSid())
 			if j == len(srPolicy.GetSegmentList())-1 {

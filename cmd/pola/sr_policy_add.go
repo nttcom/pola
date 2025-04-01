@@ -22,43 +22,45 @@ func newSRPolicyAddCmd() *cobra.Command {
 	srPolicyAddCmd := &cobra.Command{
 		Use: "add",
 		RunE: func(cmd *cobra.Command, args []string) error {
-
 			noLinkStateFlag, err := cmd.Flags().GetBool("no-link-state")
 			if err != nil {
-				return fmt.Errorf("flag error")
-
+				return fmt.Errorf("failed to retrieve 'no-link-state' flag: %v", err)
 			}
 
 			filepath, err := cmd.Flags().GetString("file")
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to retrieve 'file' flag: %v", err)
 			}
 			if filepath == "" {
 				return fmt.Errorf("file path option \"-f filepath\" is mandatory")
+			}
 
+			f, err := os.Open(filepath)
+			if err != nil {
+				return fmt.Errorf("failed to open file \"%s\": %v", filepath, err)
 			}
-			f, openErr := os.Open(filepath)
-			if openErr != nil {
-				return fmt.Errorf("file \"%s\" can't open", filepath)
-			}
-			defer f.Close()
-			InputData := InputFormat{}
-			if err := yaml.NewDecoder(f).Decode(&InputData); err != nil {
-				return fmt.Errorf("file \"%s\" decode error:  %v", filepath, err)
+			defer func() {
+				if err := f.Close(); err != nil {
+					fmt.Fprintf(os.Stderr, "warning: failed to close file \"%s\": %v\n", filepath, err)
+				}
+			}()
 
+			var inputData InputFormat
+			if err := yaml.NewDecoder(f).Decode(&inputData); err != nil {
+				return fmt.Errorf("failed to decode file \"%s\": %v", filepath, err)
 			}
-			if err := addSRPolicy(InputData, jsonFmt, noLinkStateFlag); err != nil {
-				return err
+
+			if err := addSRPolicy(inputData, jsonFmt, noLinkStateFlag); err != nil {
+				return fmt.Errorf("failed to add SR policy: %v", err)
 			}
 			return nil
 		},
 	}
 
 	srPolicyAddCmd.Flags().BoolP("no-link-state", "l", false, "add SR Policy without Link State")
-	srPolicyAddCmd.Flags().StringP("file", "f", "", "[mandatory] path to yaml formatted LSP information file")
+	srPolicyAddCmd.Flags().StringP("file", "f", "", "[mandatory] path to YAML formatted LSP information file")
 
 	return srPolicyAddCmd
-
 }
 
 // Unify with table.Segment

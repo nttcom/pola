@@ -450,29 +450,32 @@ func NewPCInitiateMessage(srpID uint32, lspName string, lspDelete bool, plspID u
 			return nil, err
 		}
 	}
+
 	if m.EndpointsObject, err = NewEndpointsObject(dstAddr, srcAddr); err != nil {
 		return nil, err
 	}
 	if m.EroObject, err = NewEroObject(segmentList); err != nil {
 		return m, err
 	}
-	if opts.pccType == JUNIPER_LEGACY {
+
+	switch opts.pccType {
+	case JUNIPER_LEGACY:
 		if m.AssociationObject, err = NewAssociationObject(srcAddr, dstAddr, color, preference, VendorSpecific(opts.pccType)); err != nil {
 			return nil, err
 		}
-	} else if opts.pccType == CISCO_LEGACY {
+	case CISCO_LEGACY:
 		if m.VendorInformationObject, err = NewVendorInformationObject(CISCO_LEGACY, color, preference); err != nil {
 			return nil, err
 		}
-	} else if opts.pccType == RFC_COMPLIANT {
+	case RFC_COMPLIANT:
 		if m.AssociationObject, err = NewAssociationObject(srcAddr, dstAddr, color, preference); err != nil {
 			return nil, err
 		}
-		// FRRouting is treated as an RFC compliant
+		// FRRouting is considered RFC compliant
 		if m.VendorInformationObject, err = NewVendorInformationObject(CISCO_LEGACY, color, preference); err != nil {
 			return nil, err
 		}
-	} else {
+	default:
 		return nil, errors.New("undefined pcc type")
 	}
 
