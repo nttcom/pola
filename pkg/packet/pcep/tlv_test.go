@@ -7,6 +7,7 @@ package pcep
 
 import (
 	"encoding/binary"
+	"net/netip"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -220,6 +221,143 @@ func TestSymbolicPathName_Len(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.expected, tt.input.Len())
+		})
+	}
+}
+
+func TestIPv4LspIdentifiers_DecodeFromBytes(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []uint8
+		expected *IPv4LspIdentifiers
+		err      bool
+	}{
+		{
+			name:     "Valid IPv4 LSP Identifiers",
+			input:    NewIPv4LspIdentifiers(netip.MustParseAddr("192.0.2.1"), netip.MustParseAddr("192.0.2.2"), 1, 2, 1234).Serialize(),
+			expected: NewIPv4LspIdentifiers(netip.MustParseAddr("192.0.2.1"), netip.MustParseAddr("192.0.2.2"), 1, 2, 1234),
+			err:      false,
+		},
+		{
+			name: "Invalid IPv4 LSP Identifiers (truncated '192.0.2.1')",
+			input: []uint8{
+				0x00, 0x12, 0x00, 0x14, // Type (0x12) and Length (0x10)
+				0xC0, 0x00, 0x02, // Incomplete address: missing last byte (0x01)
+			},
+			expected: NewIPv4LspIdentifiers(netip.Addr{}, netip.Addr{}, 0, 0, 0),
+			err:      true,
+		},
+		{
+			name: "Invalid IPv4 LSP Identifiers (extra bytes after '192.0.2.1')",
+			input: []uint8{
+				0x00, 0x12, 0x00, 0x14, // Type (0x12) and Length (0x10)
+				0xC0, 0x00, 0x02, 0x01, // Valid IPv4 address: 192.0.2.1
+				0xDE, 0xAD, 0xBE, 0xEF, // Extra unexpected bytes
+			},
+			expected: NewIPv4LspIdentifiers(netip.Addr{}, netip.Addr{}, 0, 0, 0),
+			err:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var tlv IPv4LspIdentifiers
+			err := tlv.DecodeFromBytes(tt.input)
+			if tt.err {
+				assert.Error(t, err, "expected error for input: %v", tt.input)
+			} else {
+				assert.NoError(t, err, "unexpected error for input: %v", tt.input)
+				assert.Equal(t, tt.expected, &tlv)
+			}
+		})
+	}
+}
+
+func TestIPv4LspIdentifiers_Serialize(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    *IPv4LspIdentifiers
+		expected []uint8
+	}{
+		{
+			name:     "Valid IPv4 LSP Identifiers",
+			input:    NewIPv4LspIdentifiers(netip.MustParseAddr("192.0.2.1"), netip.MustParseAddr("192.0.2.2"), 1, 2, 1234),
+			expected: NewIPv4LspIdentifiers(netip.MustParseAddr("192.0.2.1"), netip.MustParseAddr("192.0.2.2"), 1, 2, 1234).Serialize(),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.input.Serialize())
+		})
+	}
+}
+
+func TestIPv6LspIdentifiers_DecodeFromBytes(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []uint8
+		expected *IPv6LspIdentifiers
+		err      bool
+	}{
+		{
+			name:     "Valid IPv6 LSP Identifiers",
+			input:    NewIPv6LspIdentifiers(netip.MustParseAddr("2001:db8::1"), netip.MustParseAddr("2001:db8::2"), 1, 2, [16]byte{}).Serialize(),
+			expected: NewIPv6LspIdentifiers(netip.MustParseAddr("2001:db8::1"), netip.MustParseAddr("2001:db8::2"), 1, 2, [16]byte{}),
+			err:      false,
+		},
+		{
+			name: "Invalid IPv6 LSP Identifiers (truncated '2001:db8::1')",
+			input: []uint8{
+				0x00, 0x13, 0x00, 0x20, // Type IPV6-LSP-IDENTIFIERS (0x13)、Length 56 (0x38)
+				0x20, 0x01, 0x0D, 0xB8, // Start of '2001:db8::'
+				0x00, 0x00, 0x00, // Incomplete (should be 16 bytes total)
+			},
+			expected: NewIPv6LspIdentifiers(netip.Addr{}, netip.Addr{}, 0, 0, [16]byte{}),
+			err:      true,
+		},
+		{
+			name: "Invalid IPv6 LSP Identifiers (extra bytes after '2001:db8::1')",
+			input: []uint8{
+				0x00, 0x13, 0x00, 0x20, // Type IPV6-LSP-IDENTIFIERS (0x13)、Length 56 (0x38)
+				0x20, 0x01, 0x0D, 0xB8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, // Valid IPv6: 2001:db8::1
+				0xCA, 0xFE, 0xBA, 0xBE, // Extra unexpected bytes
+			},
+			expected: NewIPv6LspIdentifiers(netip.Addr{}, netip.Addr{}, 0, 0, [16]byte{}),
+			err:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var tlv IPv6LspIdentifiers
+			err := tlv.DecodeFromBytes(tt.input)
+			if tt.err {
+				assert.Error(t, err, "expected error for input: %v", tt.input)
+			} else {
+				assert.NoError(t, err, "unexpected error for input: %v", tt.input)
+				assert.Equal(t, tt.expected, &tlv)
+			}
+		})
+	}
+}
+
+func TestIPv6LspIdentifiers_Serialize(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    *IPv6LspIdentifiers
+		expected []uint8
+	}{
+		{
+			name:     "Valid IPv6 LSP Identifiers",
+			input:    NewIPv6LspIdentifiers(netip.MustParseAddr("2001:db8::1"), netip.MustParseAddr("2001:db8::2"), 1, 2, [16]byte{}),
+			expected: NewIPv6LspIdentifiers(netip.MustParseAddr("2001:db8::1"), netip.MustParseAddr("2001:db8::2"), 1, 2, [16]byte{}).Serialize(),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.input.Serialize())
 		})
 	}
 }
