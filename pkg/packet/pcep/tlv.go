@@ -636,11 +636,11 @@ type ExtendedAssociationID struct {
 }
 
 func (tlv *ExtendedAssociationID) DecodeFromBytes(data []uint8) error {
-	l := binary.BigEndian.Uint16(data[2:4])
+	length := binary.BigEndian.Uint16(data[2:4])
 
 	tlv.Color = binary.BigEndian.Uint32(data[4:8])
 
-	switch l {
+	switch length {
 	case TLV_EXTENDED_ASSOCIATION_ID_IPV4_LENGTH:
 		tlv.Endpoint, _ = netip.AddrFromSlice(data[8:12])
 	case TLV_EXTENDED_ASSOCIATION_ID_IPV6_LENGTH:
@@ -697,7 +697,7 @@ type PathSetupTypeCapability struct {
 }
 
 func (tlv *PathSetupTypeCapability) DecodeFromBytes(data []uint8) error {
-	l := binary.BigEndian.Uint16(data[2:4])
+	length := binary.BigEndian.Uint16(data[2:4])
 
 	pstNum := int(data[7])
 	for i := 0; i < pstNum; i++ {
@@ -708,7 +708,7 @@ func (tlv *PathSetupTypeCapability) DecodeFromBytes(data []uint8) error {
 		pstNum += 4 - (pstNum % 4) // padding byte
 	}
 	var err error
-	tlv.SubTLVs, err = DecodeTLVs(data[8+pstNum : TL_LENGTH+l]) // 8 byte: Type&Length (4 byte) + Reserve&pstNum (4 byte)
+	tlv.SubTLVs, err = DecodeTLVs(data[8+pstNum : TL_LENGTH+length]) // 8 byte: Type&Length (4 byte) + Reserve&pstNum (4 byte)
 	if err != nil {
 		return err
 	}
@@ -724,17 +724,17 @@ func (tlv *PathSetupTypeCapability) Serialize() []uint8 {
 
 	numOfPst := uint16(len(tlv.PathSetupTypes))
 
-	l := uint16(4) // 4 byte: reserve & num of PSTs field
-	l += numOfPst
+	length := uint16(4) // 4 byte: reserve & num of PSTs field
+	length += numOfPst
 	if numOfPst%4 != 0 {
-		l += 4 - (numOfPst % 4)
+		length += 4 - (numOfPst % 4)
 	}
 	for _, subTLV := range tlv.SubTLVs {
-		l += subTLV.Len()
+		length += subTLV.Len()
 	}
-	length := make([]uint8, 2)
-	binary.BigEndian.PutUint16(length, l)
-	buf = append(buf, length...)
+	lengthBytes := make([]uint8, 2)
+	binary.BigEndian.PutUint16(lengthBytes, length)
+	buf = append(buf, lengthBytes...)
 
 	var val []uint8
 	if numOfPst%4 == 0 {
@@ -765,16 +765,16 @@ func (tlv *PathSetupTypeCapability) Type() uint16 {
 }
 
 func (tlv *PathSetupTypeCapability) Len() uint16 {
-	l := uint16(4) // 4 byte: reserve & num of PSTs field
+	length := uint16(4) // 4 byte: reserve & num of PSTs field
 	numOfPst := uint16(len(tlv.PathSetupTypes))
-	l += numOfPst
+	length += numOfPst
 	if numOfPst%4 != 0 {
-		l += 4 - (numOfPst % 4)
+		length += 4 - (numOfPst % 4)
 	}
 	for _, subTLV := range tlv.SubTLVs {
-		l += subTLV.Len()
+		length += subTLV.Len()
 	}
-	return TL_LENGTH + l
+	return TL_LENGTH + length
 }
 
 func (tlv *PathSetupTypeCapability) CapStrings() []string {
@@ -821,18 +821,18 @@ func (tlv *AssocTypeList) Serialize() []uint8 {
 	binary.BigEndian.PutUint16(typ, tlv.Type())
 	buf = append(buf, typ...)
 
-	l := uint16(len(tlv.AssocTypes)) * 2
-	length := make([]uint8, 2)
-	binary.BigEndian.PutUint16(length, l)
-	buf = append(buf, length...)
+	length := uint16(len(tlv.AssocTypes)) * 2
+	lengthBytes := make([]uint8, 2)
+	binary.BigEndian.PutUint16(lengthBytes, length)
+	buf = append(buf, lengthBytes...)
 
 	for _, at := range tlv.AssocTypes {
 		binAt := make([]uint8, 2)
 		binary.BigEndian.PutUint16(binAt, uint16(at))
 		buf = append(buf, binAt...)
 	}
-	if l%4 != 0 {
-		pad := make([]uint8, 4-(l%4))
+	if length%4 != 0 {
+		pad := make([]uint8, 4-(length%4))
 		buf = append(buf, pad...)
 	}
 	return buf
@@ -847,12 +847,12 @@ func (tlv *AssocTypeList) Type() uint16 {
 }
 
 func (tlv *AssocTypeList) Len() uint16 {
-	l := uint16(len(tlv.AssocTypes)) * 2
+	length := uint16(len(tlv.AssocTypes)) * 2
 	padding := uint16(0)
-	if l%4 != 0 {
+	if length%4 != 0 {
 		padding = 2
 	}
-	return TL_LENGTH + l + padding
+	return TL_LENGTH + length + padding
 }
 
 func (tlv *AssocTypeList) CapStrings() []string {
