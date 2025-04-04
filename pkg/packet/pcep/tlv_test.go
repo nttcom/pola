@@ -143,3 +143,89 @@ func TestStatefulPCECapability_CapStrings(t *testing.T) {
 		})
 	}
 }
+
+func TestSymbolicPathName_DecodeFromBytes(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []uint8
+		expected *SymbolicPathName
+		err      bool
+	}{
+		{
+			name:     "Valid Symbolic Path Name",
+			input:    NewSymbolicPathName("Test").Serialize(),
+			expected: NewSymbolicPathName("Test"),
+			err:      false,
+		},
+		{
+			name:     "Invalid input (too short data)",
+			input:    []byte{0x00, 0x11, 0x00, 0x02, 'T'}, // Input too short for valid decoding
+			expected: NewSymbolicPathName(""),
+			err:      true,
+		},
+		{
+			name:     "Invalid input (too long data)",
+			input:    []byte{0x00, 0x11, 0x00, 0x01, 'T', 'e'}, // Input too long for valid decoding
+			expected: NewSymbolicPathName(""),
+			err:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var tlv SymbolicPathName
+			err := tlv.DecodeFromBytes(tt.input)
+			if tt.err {
+				assert.Error(t, err, "expected error for input: %v", tt.input)
+			} else {
+				assert.NoError(t, err, "unexpected error for input: %v", tt.input)
+				assert.Equal(t, tt.expected, &tlv)
+			}
+		})
+	}
+}
+
+func TestSymbolicPathName_Serialize(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    *SymbolicPathName
+		expected []uint8
+	}{
+		{
+			name:     "Valid Symbolic Path Name",
+			input:    NewSymbolicPathName("Test"),
+			expected: NewSymbolicPathName("Test").Serialize(),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.input.Serialize())
+		})
+	}
+}
+
+func TestSymbolicPathName_Len(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    *SymbolicPathName
+		expected uint16
+	}{
+		{
+			name:     "Symbolic Path Name length",
+			input:    NewSymbolicPathName("Test"),
+			expected: TLVHeaderLength + 4,
+		},
+		{
+			name:     "Symbolic Path Name with padding",
+			input:    NewSymbolicPathName("ABC"), // 3 bytes + 1 byte padding
+			expected: TLVHeaderLength + 3 + 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.input.Len())
+		})
+	}
+}

@@ -379,35 +379,35 @@ type SymbolicPathName struct {
 	Name string
 }
 
-func (tlv *SymbolicPathName) DecodeFromBytes(data []uint8) error {
-	length := binary.BigEndian.Uint16(data[2:4])
-	tlv.Name = string(data[4 : 4+length])
-	return nil
-}
-
-func (tlv *SymbolicPathName) Serialize() []uint8 {
-	buf := []uint8{}
-
-	typ := make([]uint8, 2)
-	binary.BigEndian.PutUint16(typ, uint16(tlv.Type()))
-	buf = append(buf, typ...)
-
-	l := uint16(len(tlv.Name))
-	length := make([]uint8, 2)
-	binary.BigEndian.PutUint16(length, l)
-	buf = append(buf, length...)
-
-	buf = append(buf, []uint8(tlv.Name)...)
-
-	if l%4 != 0 {
-		pad := make([]uint8, 4-l%4)
-		buf = append(buf, pad...)
+func (tlv *SymbolicPathName) DecodeFromBytes(data []byte) error {
+	if len(data) < TLVHeaderLength {
+		return fmt.Errorf("data is too short: expected at least %d bytes, but got %d bytes for SymbolicPathName", TLVHeaderLength, len(data))
 	}
-	return buf
+
+	length := binary.BigEndian.Uint16(data[2:4])
+	totalLength := int(TLVHeaderLength + length)
+	if len(data) != totalLength {
+		return fmt.Errorf("data length mismatch: expected %d bytes, but got %d bytes for SymbolicPathName", totalLength, len(data))
+	}
+
+	tlv.Name = string(data[TLVHeaderLength:totalLength])
+	return nil
 }
 
-func (tlv *SymbolicPathName) MarshalLogObject(enc zapcore.ObjectEncoder) error {
-	return nil
+func (tlv *SymbolicPathName) Serialize() []byte {
+	nameLen := uint16(len(tlv.Name))
+	padding := (4 - (nameLen % 4)) % 4 // Padding for 4-byte alignment
+
+	buf := make([]byte, 0, TLVHeaderLength+int(nameLen)+int(padding))
+	buf = append(buf, Uint16ToByteSlice(uint16(tlv.Type()))...)
+	buf = append(buf, Uint16ToByteSlice(nameLen)...)
+	buf = append(buf, []byte(tlv.Name)...)
+
+	if padding > 0 {
+		buf = append(buf, make([]byte, padding)...)
+	}
+
+	return buf
 }
 
 func (tlv *SymbolicPathName) Type() TLVType {
@@ -415,12 +415,22 @@ func (tlv *SymbolicPathName) Type() TLVType {
 }
 
 func (tlv *SymbolicPathName) Len() uint16 {
-	l := uint16(len(tlv.Name))
+	length := uint16(len(tlv.Name))
 	padding := uint16(0)
-	if l%4 != 0 {
-		padding = (4 - l%4)
+	if mod := length % 4; mod != 0 {
+		padding = 4 - mod
 	}
-	return TLVHeaderLength + l + padding
+
+	return TLVHeaderLength + length + padding
+}
+
+func (tlv *SymbolicPathName) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	enc.AddString("symbolicPathName", tlv.Name)
+	return nil
+}
+
+func NewSymbolicPathName(name string) *SymbolicPathName {
+	return &SymbolicPathName{Name: name}
 }
 
 type IPv4LSPIdentifiers struct {
