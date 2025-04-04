@@ -585,6 +585,11 @@ type LSPDBVersion struct {
 }
 
 func (tlv *LSPDBVersion) DecodeFromBytes(data []uint8) error {
+	expectedLength := TLVHeaderLength + int(TLVLSPDBVersionValueLength)
+	if len(data) != expectedLength {
+		return fmt.Errorf("data length mismatch: expected %d bytes, but got %d bytes for LSPDBVersion", expectedLength, len(data))
+	}
+
 	tlv.VersionNumber = binary.BigEndian.Uint64(data[4:12])
 	return nil
 }
@@ -621,6 +626,12 @@ func (tlv *LSPDBVersion) Len() uint16 {
 
 func (tlv *LSPDBVersion) CapStrings() []string {
 	return []string{"LSP-DB-VERSION"}
+}
+
+func NewLSPDBVersion(version uint64) *LSPDBVersion {
+	return &LSPDBVersion{
+		VersionNumber: version,
+	}
 }
 
 type SRPCECapability struct {

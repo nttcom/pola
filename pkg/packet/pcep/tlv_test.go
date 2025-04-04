@@ -367,3 +367,88 @@ func TestIPv6LSPIdentifiers_Serialize(t *testing.T) {
 		})
 	}
 }
+
+func TestLSPDBVersion_DecodeFromBytes(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []uint8
+		expected *LSPDBVersion
+		err      bool
+	}{
+		{
+			name:     "Valid LSPDB Version",
+			input:    NewLSPDBVersion(12345).Serialize(),
+			expected: NewLSPDBVersion(12345),
+			err:      false,
+		},
+		{
+			name:     "Invalid input (too short data)",
+			input:    []byte{0x00, 0x17, 0x00, 0x02}, // Type LSP-DB-VERSION (0x17)、Input too short for valid decoding
+			expected: NewLSPDBVersion(0),
+			err:      true,
+		},
+		{
+			name: "Invalid input (too long data)",
+			input: []byte{
+				0x00, 0x17, 0x00, 0x09, // Type LSP-DB-VERSION (0x17)、Length 8
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x30, 0x39,
+				0x00, // Extra bytes after version
+			},
+			expected: NewLSPDBVersion(0),
+			err:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var tlv LSPDBVersion
+			err := tlv.DecodeFromBytes(tt.input)
+			if tt.err {
+				assert.Error(t, err, "expected error for input: %v", tt.input)
+			} else {
+				assert.NoError(t, err, "unexpected error for input: %v", tt.input)
+				assert.Equal(t, tt.expected, &tlv)
+			}
+		})
+	}
+}
+
+func TestLSPDBVersion_Serialize(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    *LSPDBVersion
+		expected []uint8
+	}{
+		{
+			name:     "Valid LSPDB Version",
+			input:    NewLSPDBVersion(12345),
+			expected: NewLSPDBVersion(12345).Serialize(),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.input.Serialize())
+		})
+	}
+}
+
+func TestLSPDBVersion_Len(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    *LSPDBVersion
+		expected uint16
+	}{
+		{
+			name:     "LSPDB Version length",
+			input:    NewLSPDBVersion(12345),
+			expected: TLVHeaderLength + TLVLSPDBVersionValueLength,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.input.Len())
+		})
+	}
+}
