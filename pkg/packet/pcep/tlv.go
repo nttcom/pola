@@ -147,81 +147,71 @@ type StatefulPceCapability struct {
 	Relax                          bool // 17
 }
 
-func (tlv *StatefulPceCapability) DecodeFromBytes(flags []uint8) error {
-	if len(flags) < 4 {
-		return fmt.Errorf("flags array is too short, expected at least 4 bytes but got %d", len(flags))
+const (
+	LSP_UPDATE_CAPABILITY_BIT         uint8 = 0x01
+	INCLUDE_DB_VERSION_CAPABILITY_BIT uint8 = 0x02
+	LSP_INSTANTIATION_CAPABILITY_BIT  uint8 = 0x04
+	TRIGGERED_RESYNC_CAPABILITY_BIT   uint8 = 0x08
+	DELTA_LSP_SYNC_CAPABILITY_BIT     uint8 = 0x10
+	TRIGGERED_INITIAL_SYNC_BIT        uint8 = 0x20
+)
+
+func (tlv *StatefulPceCapability) DecodeFromBytes(data []uint8) error {
+	if len(data) < int(tlv.Len()) {
+		return fmt.Errorf("data is too short: expected at least %d bytes, but got %d bytes for StatefulPceCapability", tlv.Len(), len(data))
 	}
 
-	flagMap := []struct {
-		field *bool
-		mask  uint8
-		index int
-	}{
-		{&tlv.LspUpdateCapability, 0x01, 3},
-		{&tlv.IncludeDBVersion, 0x02, 3},
-		{&tlv.LspInstantiationCapability, 0x04, 3},
-		{&tlv.TriggeredResync, 0x08, 3},
-		{&tlv.DeltaLspSyncCapability, 0x10, 3},
-		{&tlv.TriggeredInitialSync, 0x20, 3},
-		{&tlv.P2mpCapability, 0x40, 3},
-		{&tlv.P2mpLspUpdateCapability, 0x80, 3},
-		{&tlv.P2mpLspInstantiationCapability, 0x01, 2},
-		{&tlv.LspSchedulingCapability, 0x02, 2},
-		{&tlv.PdLspCapability, 0x04, 2},
-		{&tlv.ColorCapability, 0x08, 2},
-		{&tlv.PathRecomputationCapability, 0x10, 2},
-		{&tlv.StrictPathCapability, 0x20, 2},
-		{&tlv.Relax, 0x40, 2},
-	}
-
-	for _, f := range flagMap {
-		*f.field = (flags[f.index] & f.mask) != 0
-	}
+	flags := data[7]
+	tlv.LspUpdateCapability = IsBitSet(flags, LSP_UPDATE_CAPABILITY_BIT)
+	tlv.IncludeDBVersion = IsBitSet(flags, INCLUDE_DB_VERSION_CAPABILITY_BIT)
+	tlv.LspInstantiationCapability = IsBitSet(flags, LSP_INSTANTIATION_CAPABILITY_BIT)
+	tlv.TriggeredResync = IsBitSet(flags, TRIGGERED_RESYNC_CAPABILITY_BIT)
+	tlv.DeltaLspSyncCapability = IsBitSet(flags, DELTA_LSP_SYNC_CAPABILITY_BIT)
+	tlv.TriggeredInitialSync = IsBitSet(flags, TRIGGERED_INITIAL_SYNC_BIT)
 
 	return nil
 }
 
-func setFlag(flags []uint8, index int, mask uint8, condition bool) {
-	if condition {
-		flags[index] = flags[index] | mask
-	}
-}
-
 func (tlv *StatefulPceCapability) Serialize() []uint8 {
-	buf := []uint8{}
+	buf := make([]uint8, 0, TLV_STATEFUL_PCE_CAPABILITY_LENGTH+4)
+	buf = append(buf, Uint16ToByteSlice(tlv.Type())...)
+	buf = append(buf, Uint16ToByteSlice(TLV_STATEFUL_PCE_CAPABILITY_LENGTH)...)
 
-	typ := make([]uint8, 2)
-	binary.BigEndian.PutUint16(typ, tlv.Type())
-	buf = append(buf, typ...)
+	var val uint32 = 0
 
-	length := make([]uint8, 2)
-	binary.BigEndian.PutUint16(length, TLV_STATEFUL_PCE_CAPABILITY_LENGTH)
-	buf = append(buf, length...)
+	if tlv.LspUpdateCapability {
+		val = SetBit(val, uint32(LSP_UPDATE_CAPABILITY_BIT))
+	}
+	if tlv.IncludeDBVersion {
+		val = SetBit(val, uint32(INCLUDE_DB_VERSION_CAPABILITY_BIT))
+	}
+	if tlv.LspInstantiationCapability {
+		val = SetBit(val, uint32(LSP_INSTANTIATION_CAPABILITY_BIT))
+	}
+	if tlv.TriggeredResync {
+		val = SetBit(val, uint32(TRIGGERED_RESYNC_CAPABILITY_BIT))
+	}
+	if tlv.DeltaLspSyncCapability {
+		val = SetBit(val, uint32(DELTA_LSP_SYNC_CAPABILITY_BIT))
+	}
+	if tlv.TriggeredInitialSync {
+		val = SetBit(val, uint32(TRIGGERED_INITIAL_SYNC_BIT))
+	}
 
-	flags := make([]uint8, TLV_STATEFUL_PCE_CAPABILITY_LENGTH)
-
-	setFlag(flags, 3, 0x01, tlv.LspUpdateCapability)
-	setFlag(flags, 3, 0x02, tlv.IncludeDBVersion)
-	setFlag(flags, 3, 0x04, tlv.LspInstantiationCapability)
-	setFlag(flags, 3, 0x08, tlv.TriggeredResync)
-	setFlag(flags, 3, 0x10, tlv.DeltaLspSyncCapability)
-	setFlag(flags, 3, 0x20, tlv.TriggeredInitialSync)
-	setFlag(flags, 3, 0x40, tlv.P2mpCapability)
-	setFlag(flags, 3, 0x80, tlv.P2mpLspUpdateCapability)
-	setFlag(flags, 2, 0x01, tlv.P2mpLspInstantiationCapability)
-	setFlag(flags, 2, 0x02, tlv.LspSchedulingCapability)
-	setFlag(flags, 2, 0x04, tlv.PdLspCapability)
-	setFlag(flags, 2, 0x08, tlv.ColorCapability)
-	setFlag(flags, 2, 0x10, tlv.PathRecomputationCapability)
-	setFlag(flags, 2, 0x20, tlv.StrictPathCapability)
-	setFlag(flags, 2, 0x40, tlv.Relax)
-
-	buf = append(buf, flags...)
+	b := make([]byte, 4)
+	binary.BigEndian.PutUint32(b, val)
+	buf = append(buf, b...)
 
 	return buf
 }
 
 func (tlv *StatefulPceCapability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	enc.AddBool("lspUpdateCapability", tlv.LspUpdateCapability)
+	enc.AddBool("includeDBVersion", tlv.IncludeDBVersion)
+	enc.AddBool("lspInstantiationCapability", tlv.LspInstantiationCapability)
+	enc.AddBool("triggeredResync", tlv.TriggeredResync)
+	enc.AddBool("deltaLspSyncCapability", tlv.DeltaLspSyncCapability)
+	enc.AddBool("triggeredInitialSync", tlv.TriggeredInitialSync)
 	return nil
 }
 
@@ -234,8 +224,7 @@ func (tlv *StatefulPceCapability) Len() uint16 {
 }
 
 func (tlv *StatefulPceCapability) CapStrings() []string {
-	ret := []string{}
-	ret = append(ret, "Stateful")
+	ret := []string{"Stateful"}
 	if tlv.LspUpdateCapability {
 		ret = append(ret, "Update")
 	}
@@ -246,18 +235,56 @@ func (tlv *StatefulPceCapability) CapStrings() []string {
 		ret = append(ret, "Initiate")
 	}
 	if tlv.TriggeredResync {
-		ret = append(ret, "Triggerd-Resync")
+		ret = append(ret, "Triggered-Resync")
 	}
 	if tlv.DeltaLspSyncCapability {
 		ret = append(ret, "Delta-LSP-Sync")
 	}
 	if tlv.TriggeredInitialSync {
-		ret = append(ret, "Triggerd-init-sync")
+		ret = append(ret, "Triggered-init-sync")
 	}
 	if tlv.ColorCapability {
 		ret = append(ret, "Color")
 	}
 	return ret
+}
+
+func (tlv *StatefulPceCapability) FromBits(b uint8) {
+	tlv.LspUpdateCapability = b&LSP_UPDATE_CAPABILITY_BIT != 0
+	tlv.IncludeDBVersion = b&INCLUDE_DB_VERSION_CAPABILITY_BIT != 0
+	tlv.LspInstantiationCapability = b&LSP_INSTANTIATION_CAPABILITY_BIT != 0
+	tlv.TriggeredResync = b&TRIGGERED_RESYNC_CAPABILITY_BIT != 0
+	tlv.DeltaLspSyncCapability = b&DELTA_LSP_SYNC_CAPABILITY_BIT != 0
+	tlv.TriggeredInitialSync = b&TRIGGERED_INITIAL_SYNC_BIT != 0
+}
+
+func NewStatefulPceCapability(bits uint8) *StatefulPceCapability {
+	tlv := &StatefulPceCapability{}
+	tlv.FromBits(bits)
+	return tlv
+}
+
+func (tlv *StatefulPceCapability) CapabilityBits() uint8 {
+	var b uint8
+	if tlv.LspUpdateCapability {
+		b |= LSP_UPDATE_CAPABILITY_BIT
+	}
+	if tlv.IncludeDBVersion {
+		b |= INCLUDE_DB_VERSION_CAPABILITY_BIT
+	}
+	if tlv.LspInstantiationCapability {
+		b |= LSP_INSTANTIATION_CAPABILITY_BIT
+	}
+	if tlv.TriggeredResync {
+		b |= TRIGGERED_RESYNC_CAPABILITY_BIT
+	}
+	if tlv.DeltaLspSyncCapability {
+		b |= DELTA_LSP_SYNC_CAPABILITY_BIT
+	}
+	if tlv.TriggeredInitialSync {
+		b |= TRIGGERED_INITIAL_SYNC_BIT
+	}
+	return b
 }
 
 type SymbolicPathName struct {
