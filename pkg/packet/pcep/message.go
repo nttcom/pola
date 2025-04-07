@@ -14,37 +14,72 @@ import (
 	"github.com/nttcom/pola/internal/pkg/table"
 )
 
-const COMMON_HEADER_LENGTH uint16 = 4
+const CommonHeaderLength uint16 = 4
 
-const ( // PCEP Message-Type (1byte)
-	MT_RESERVED     uint8 = 0x00 // RFC5440
-	MT_OPEN         uint8 = 0x01 // RFC5440
-	MT_KEEPALIVE    uint8 = 0x02 // RFC5440
-	MT_PCREQ        uint8 = 0x03 // RFC5440
-	MT_PCREP        uint8 = 0x04 // RFC5440
-	MT_NOTIFICATION uint8 = 0x05 // RFC5440
-	MT_ERROR        uint8 = 0x06 // RFC5440
-	MT_CLOSE        uint8 = 0x07 // RFC5440
-	MT_PCMONREQ     uint8 = 0x08 // RFC5886
-	MT_PCMONREP     uint8 = 0x09 // RFC5886
-	MT_REPORT       uint8 = 0x0a // RFC8231
-	MT_UPDATE       uint8 = 0x0b // RFC8281
-	MT_LSPINITREQ   uint8 = 0x0c // RFC8281
-	MT_STARTTLS     uint8 = 0x0d // RFC8253
+// PCEP Message-Type (1 byte)
+type MessageType uint8
+
+const (
+	MessageTypeOpen         MessageType = 0x01
+	MessageTypeKeepalive    MessageType = 0x02
+	MessageTypePcreq        MessageType = 0x03
+	MessageTypePcrep        MessageType = 0x04
+	MessageTypeNotification MessageType = 0x05
+	MessageTypeError        MessageType = 0x06
+	MessageTypeClose        MessageType = 0x07
+	MessageTypePcmReq       MessageType = 0x08
+	MessageTypePcmRep       MessageType = 0x09
+	MessageTypeReport       MessageType = 0x0a
+	MessageTypeUpdate       MessageType = 0x0b
+	MessageTypeLSPInitReq   MessageType = 0x0c
+	MessageTypeStartTLS     MessageType = 0x0d
 )
+
+var messageTypeDescriptions = map[MessageType]struct {
+	Description string
+	Reference   string
+}{
+	MessageTypeOpen:         {"Open", "RFC5440"},
+	MessageTypeKeepalive:    {"Keepalive", "RFC5440"},
+	MessageTypePcreq:        {"Path Computation Request", "RFC5440"},
+	MessageTypePcrep:        {"Path Computation Reply", "RFC5440"},
+	MessageTypeNotification: {"Notification", "RFC5440"},
+	MessageTypeError:        {"Error", "RFC5440"},
+	MessageTypeClose:        {"Close", "RFC5440"},
+	MessageTypePcmReq:       {"Path Computation Monitoring Request", "RFC5886"},
+	MessageTypePcmRep:       {"Path Computation Monitoring Reply", "RFC5886"},
+	MessageTypeReport:       {"Report", "RFC8231"},
+	MessageTypeUpdate:       {"Update", "RFC8281"},
+	MessageTypeLSPInitReq:   {"LSP Initiate Request", "RFC8281"},
+	MessageTypeStartTLS:     {"StartTLS", "RFC8253"},
+}
+
+func (t MessageType) String() string {
+	if desc, ok := messageTypeDescriptions[t]; ok {
+		return fmt.Sprintf("%s (0x%02x)", desc.Description, uint8(t))
+	}
+	return fmt.Sprintf("Unknown MessageType (0x%02x)", uint8(t))
+}
+
+func (t MessageType) StringWithReference() string {
+	if desc, ok := messageTypeDescriptions[t]; ok {
+		return fmt.Sprintf("%s (0x%02x) [%s]", desc.Description, uint8(t), desc.Reference)
+	}
+	return fmt.Sprintf("Unknown MessageType (0x%02x)", uint8(t))
+}
 
 // Common header of PCEP Message
 type CommonHeader struct { // RFC5440 6.1
 	Version       uint8 // Current version is 1
 	Flag          uint8
-	MessageType   uint8
+	MessageType   MessageType
 	MessageLength uint16
 }
 
 func (h *CommonHeader) DecodeFromBytes(header []uint8) error {
 	h.Version = uint8(header[0] >> 5)
 	h.Flag = uint8(header[0] & 0x1f)
-	h.MessageType = uint8(header[1])
+	h.MessageType = MessageType(header[1])
 	h.MessageLength = binary.BigEndian.Uint16(header[2:4])
 	return nil
 }
@@ -53,14 +88,14 @@ func (h *CommonHeader) Serialize() []uint8 {
 	buf := make([]uint8, 0, 4)
 	verFlag := uint8(h.Version<<5 | h.Flag)
 	buf = append(buf, verFlag)
-	buf = append(buf, h.MessageType)
+	buf = append(buf, uint8(h.MessageType))
 	messageLength := make([]uint8, 2)
 	binary.BigEndian.PutUint16(messageLength, h.MessageLength)
 	buf = append(buf, messageLength...)
 	return buf
 }
 
-func NewCommonHeader(messageType uint8, messageLength uint16) *CommonHeader {
+func NewCommonHeader(messageType MessageType, messageLength uint16) *CommonHeader {
 	h := &CommonHeader{
 		Version:       uint8(1),
 		Flag:          uint8(0),
@@ -104,8 +139,8 @@ func (m *OpenMessage) DecodeFromBytes(messageBody []uint8) error {
 
 func (m *OpenMessage) Serialize() ([]uint8, error) {
 	byteOpenObject := m.OpenObject.Serialize()
-	openMessageLength := COMMON_HEADER_LENGTH + m.OpenObject.Len()
-	openHeader := NewCommonHeader(MT_OPEN, openMessageLength)
+	openMessageLength := CommonHeaderLength + m.OpenObject.Len()
+	openHeader := NewCommonHeader(MessageTypeOpen, openMessageLength)
 	byteOpenHeader := openHeader.Serialize()
 	byteOpenMessage := AppendByteSlices(byteOpenHeader, byteOpenObject)
 	return byteOpenMessage, nil
@@ -127,8 +162,8 @@ type KeepaliveMessage struct {
 }
 
 func (m *KeepaliveMessage) Serialize() ([]uint8, error) {
-	keepaliveMessageLength := COMMON_HEADER_LENGTH
-	keepaliveHeader := NewCommonHeader(MT_KEEPALIVE, keepaliveMessageLength)
+	keepaliveMessageLength := CommonHeaderLength
+	keepaliveHeader := NewCommonHeader(MessageTypeKeepalive, keepaliveMessageLength)
 	byteKeepaliveHeader := keepaliveHeader.Serialize()
 	byteKeepaliveMessage := byteKeepaliveHeader
 	return byteKeepaliveMessage, nil
@@ -158,8 +193,8 @@ func (m *PCErrMessage) DecodeFromBytes(messageBody []uint8) error {
 }
 
 func (m *PCErrMessage) Serialize() []uint8 {
-	pcerrMessageLength := COMMON_HEADER_LENGTH + m.PcepErrorObject.Len()
-	pcerrHeader := NewCommonHeader(MT_ERROR, pcerrMessageLength)
+	pcerrMessageLength := CommonHeaderLength + m.PcepErrorObject.Len()
+	pcerrHeader := NewCommonHeader(MessageTypeError, pcerrMessageLength)
 	bytePCErrHeader := pcerrHeader.Serialize()
 	bytePcepErrorObject := m.PcepErrorObject.Serialize()
 	bytePCErrMessage := AppendByteSlices(bytePCErrHeader, bytePcepErrorObject)
@@ -196,8 +231,8 @@ func (m *CloseMessage) DecodeFromBytes(messageBody []uint8) error {
 }
 
 func (m *CloseMessage) Serialize() []uint8 {
-	closeMessageLength := COMMON_HEADER_LENGTH + m.CloseObject.Len()
-	closeHeader := NewCommonHeader(MT_CLOSE, closeMessageLength)
+	closeMessageLength := CommonHeaderLength + m.CloseObject.Len()
+	closeHeader := NewCommonHeader(MessageTypeClose, closeMessageLength)
 	byteCloseHeader := closeHeader.Serialize()
 	byteCloseObject := m.CloseObject.Serialize()
 	byteCloseMessage := AppendByteSlices(byteCloseHeader, byteCloseObject)
@@ -374,7 +409,7 @@ func (m *PCInitiateMessage) Serialize() ([]uint8, error) {
 			return nil, err
 		}
 	}
-	pcinitiateMessageLength := COMMON_HEADER_LENGTH +
+	pcinitiateMessageLength := CommonHeaderLength +
 		m.SrpObject.Len() +
 		m.LspObject.Len() +
 		endpointsObjectLength +
@@ -417,7 +452,7 @@ func (m *PCInitiateMessage) Serialize() ([]uint8, error) {
 		pcinitiateMessageLength += m.VendorInformationObject.Len()
 	}
 
-	pcinitiateHeader := NewCommonHeader(MT_LSPINITREQ, pcinitiateMessageLength)
+	pcinitiateHeader := NewCommonHeader(MessageTypeLSPInitReq, pcinitiateMessageLength)
 	bytePCInitiateHeader := pcinitiateHeader.Serialize()
 	bytePCInitiateMessage := AppendByteSlices(
 		bytePCInitiateHeader, byteSrpObject, byteLspObject, byteEndpointsObject, byteEroObject, byteAssociationObject, byteVendorInformationObject,
@@ -501,8 +536,8 @@ func (m *PCUpdMessage) Serialize() ([]uint8, error) {
 	if err != nil {
 		return nil, err
 	}
-	pcupdMessageLength := COMMON_HEADER_LENGTH + m.SrpObject.Len() + m.LspObject.Len() + eroObjectLength
-	pcupdHeader := NewCommonHeader(MT_UPDATE, pcupdMessageLength)
+	pcupdMessageLength := CommonHeaderLength + m.SrpObject.Len() + m.LspObject.Len() + eroObjectLength
+	pcupdHeader := NewCommonHeader(MessageTypeUpdate, pcupdMessageLength)
 	bytePCUpdHeader := pcupdHeader.Serialize()
 	bytePCUpdMessage := AppendByteSlices(bytePCUpdHeader, byteSrpObject, byteLspObject, byteEroObject)
 	return bytePCUpdMessage, err
