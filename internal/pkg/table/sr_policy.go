@@ -29,7 +29,7 @@ type SRPolicy struct {
 	DstAddr     netip.Addr
 	Color       uint32
 	Preference  uint32
-	LspID       uint16
+	LSPID       uint16
 	State       PolicyState
 }
 
@@ -52,7 +52,7 @@ func NewSRPolicy(
 		DstAddr:     dstAddr,
 		Color:       color,
 		Preference:  preference,
-		LspID:       lspID,
+		LSPID:       lspID,
 		State:       state,
 	}
 
@@ -65,13 +65,13 @@ type PolicyDiff struct {
 	Color       *uint32
 	Preference  *uint32
 	SegmentList []Segment
-	LspID       uint16
+	LSPID       uint16
 	State       PolicyState
 }
 
 func (p *SRPolicy) Update(df PolicyDiff) {
 	p.State = df.State
-	p.LspID = df.LspID
+	p.LSPID = df.LSPID
 	if df.Name != nil {
 		p.Name = *df.Name
 	}
