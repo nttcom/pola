@@ -31,16 +31,16 @@ func TestPolaCapability(t *testing.T) {
 					PathSetupTypes: Psts{PathSetupTypeRSVPTE, PathSetupTypeSRTE, PathSetupTypeSRv6TE},
 					SubTLVs: []TLVInterface{
 						&SRPCECapability{
-							UnlimitedMSD:    false,
-							SupportNAI:      false,
-							MaximumSidDepth: uint8(16),
+							HasUnlimitedMaxSIDDepth: false,
+							IsNAISupported:          false,
+							MaximumSidDepth:         uint8(16),
 						},
 					},
 				},
 				&SRPCECapability{
-					UnlimitedMSD:    false,
-					SupportNAI:      false,
-					MaximumSidDepth: uint8(16),
+					HasUnlimitedMaxSIDDepth: false,
+					IsNAISupported:          false,
+					MaximumSidDepth:         uint8(16),
 				},
 				&AssocTypeList{
 					AssocTypes: []AssocType{AssocTypePathProtectionAssociation, AssocTypeSRPolicyAssociation},
@@ -68,16 +68,16 @@ func TestPolaCapability(t *testing.T) {
 					PathSetupTypes: Psts{PathSetupTypeRSVPTE, PathSetupTypeSRTE, PathSetupTypeSRv6TE},
 					SubTLVs: []TLVInterface{
 						&SRPCECapability{
-							UnlimitedMSD:    false,
-							SupportNAI:      false,
-							MaximumSidDepth: uint8(16),
+							HasUnlimitedMaxSIDDepth: false,
+							IsNAISupported:          false,
+							MaximumSidDepth:         uint8(16),
 						},
 					},
 				},
 				&SRPCECapability{
-					UnlimitedMSD:    false,
-					SupportNAI:      false,
-					MaximumSidDepth: uint8(16),
+					HasUnlimitedMaxSIDDepth: false,
+					IsNAISupported:          false,
+					MaximumSidDepth:         uint8(16),
 				},
 				&AssocTypeList{
 					AssocTypes: []AssocType{AssocTypePathProtectionAssociation, AssocTypeSRPolicyAssociation},

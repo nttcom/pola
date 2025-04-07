@@ -635,43 +635,70 @@ func NewLSPDBVersion(version uint64) *LSPDBVersion {
 }
 
 type SRPCECapability struct {
-	UnlimitedMSD    bool
-	SupportNAI      bool
-	MaximumSidDepth uint8
+	HasUnlimitedMaxSIDDepth bool
+	IsNAISupported          bool
+	MaximumSidDepth         uint8
 }
 
-func (tlv *SRPCECapability) DecodeFromBytes(data []uint8) error {
-	tlv.UnlimitedMSD = (data[6] & 0x01) != 0
-	tlv.SupportNAI = (data[6] & 0x02) != 0
-	tlv.MaximumSidDepth = data[7]
+const (
+	UnlimitedMaximumSIDDepthFlag uint8 = 0x01
+	NAISupportedFlag             uint8 = 0x02
+)
+
+const (
+	SRPCECapabilityFlagsIndex = 2
+	SRPCECapabilityMSDIndex   = 3
+)
+
+func (tlv *SRPCECapability) DecodeFromBytes(data []byte) error {
+	expectedLength := TLVHeaderLength + int(TLVSRPCECapabilityValueLength)
+	if len(data) != expectedLength {
+		return fmt.Errorf("data length mismatch: expected %d bytes, but got %d bytes for SRPCECapability", expectedLength, len(data))
+	}
+
+	// Extract TLV value field (after 4-byte TLV header)
+	val := data[TLVHeaderLength:]
+
+	if len(val) != int(TLVSRPCECapabilityValueLength) {
+		return fmt.Errorf("invalid value length for SRPCECapability: expected %d bytes, but got %d bytes", TLVSRPCECapabilityValueLength, len(val))
+	}
+
+	flags := val[SRPCECapabilityFlagsIndex]
+	tlv.HasUnlimitedMaxSIDDepth = IsBitSet(flags, UnlimitedMaximumSIDDepthFlag)
+	tlv.IsNAISupported = IsBitSet(flags, NAISupportedFlag)
+	tlv.MaximumSidDepth = val[SRPCECapabilityMSDIndex]
+
 	return nil
 }
 
-func (tlv *SRPCECapability) Serialize() []uint8 {
-	buf := []uint8{}
+func (tlv *SRPCECapability) Serialize() []byte {
+	buf := make([]byte, 0, TLVHeaderLength+TLVSRPCECapabilityValueLength)
 
-	typ := make([]uint8, 2)
+	typ := make([]byte, 2)
 	binary.BigEndian.PutUint16(typ, uint16(tlv.Type()))
 	buf = append(buf, typ...)
 
-	length := make([]uint8, 2)
+	length := make([]byte, 2)
 	binary.BigEndian.PutUint16(length, TLVSRPCECapabilityValueLength)
 	buf = append(buf, length...)
 
-	val := make([]uint8, TLVSRPCECapabilityValueLength)
-	if tlv.UnlimitedMSD {
-		val[2] = val[2] | 0x01
+	val := make([]byte, TLVSRPCECapabilityValueLength)
+	if tlv.HasUnlimitedMaxSIDDepth {
+		val[SRPCECapabilityFlagsIndex] = SetBit(val[SRPCECapabilityFlagsIndex], UnlimitedMaximumSIDDepthFlag)
 	}
-	if tlv.SupportNAI {
-		val[2] = val[2] | 0x02
+	if tlv.IsNAISupported {
+		val[SRPCECapabilityFlagsIndex] = SetBit(val[SRPCECapabilityFlagsIndex], NAISupportedFlag)
 	}
-	val[3] = tlv.MaximumSidDepth
+	val[SRPCECapabilityMSDIndex] = tlv.MaximumSidDepth
 
 	buf = append(buf, val...)
 	return buf
 }
 
 func (tlv *SRPCECapability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	enc.AddBool("unlimited_max_sid_depth", tlv.HasUnlimitedMaxSIDDepth)
+	enc.AddBool("nai_is_supported", tlv.IsNAISupported)
+	enc.AddUint8("maximum_sid_depth", tlv.MaximumSidDepth)
 	return nil
 }
 
@@ -684,7 +711,22 @@ func (tlv *SRPCECapability) Len() uint16 {
 }
 
 func (tlv *SRPCECapability) CapStrings() []string {
-	return []string{"SR-TE"}
+	var ret []string
+	if tlv.HasUnlimitedMaxSIDDepth {
+		ret = append(ret, "Unlimited-SID-Depth")
+	}
+	if tlv.IsNAISupported {
+		ret = append(ret, "NAI-Supported")
+	}
+	return ret
+}
+
+func NewSRPCECapability(hasUnlimitedMaxSIDDepth bool, isNAISupported bool, maximumSidDepth uint8) *SRPCECapability {
+	return &SRPCECapability{
+		HasUnlimitedMaxSIDDepth: hasUnlimitedMaxSIDDepth,
+		IsNAISupported:          isNAISupported,
+		MaximumSidDepth:         maximumSidDepth,
+	}
 }
 
 type Pst uint8
