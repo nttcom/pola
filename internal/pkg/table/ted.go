@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"reflect"
 	"strconv"
 )
 
@@ -21,6 +22,11 @@ func (ted *LsTed) Update(tedElems []TedElem) {
 	// check Before State Update TED
 	fmt.Printf("Before State Update TED: %v\n", ted)
 	for _, tedElem := range tedElems {
+		if tedElem == nil || reflect.ValueOf(tedElem).IsNil() {
+			// Skipping TedElem is nil
+			// fmt.Printf("TedElem is nil, skipping: %v\n", tedElem)
+			continue
+		}
 		tedElem.UpdateTed(ted)
 	}
 	// check After State Update TED
