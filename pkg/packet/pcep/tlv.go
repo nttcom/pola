@@ -764,7 +764,11 @@ func (ts Psts) MarshalJSON() ([]byte, error) {
 	if ts == nil {
 		result = "null"
 	} else {
-		result = strings.Join(strings.Fields(fmt.Sprintf("%d", ts)), ",")
+		var values []string
+		for _, pst := range ts {
+			values = append(values, fmt.Sprintf("%d", pst))
+		}
+		result = strings.Join(values, ",")
 	}
 	return []byte(result), nil
 }
