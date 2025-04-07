@@ -102,7 +102,7 @@ func (ss *Session) Open() error {
 }
 
 func (ss *Session) parseOpenMessage() (*pcep.OpenMessage, error) {
-	byteOpenHeader := make([]uint8, pcep.COMMON_HEADER_LENGTH)
+	byteOpenHeader := make([]uint8, pcep.CommonHeaderLength)
 	if _, err := ss.tcpConn.Read(byteOpenHeader); err != nil {
 		return nil, err
 	}
@@ -115,11 +115,11 @@ func (ss *Session) parseOpenMessage() (*pcep.OpenMessage, error) {
 	if openHeader.Version != 1 {
 		return nil, fmt.Errorf("PCEP version mismatch (receive version: %d)", openHeader.Version)
 	}
-	if openHeader.MessageType != pcep.MT_OPEN {
-		return nil, fmt.Errorf("this peer has not been opened (messageType: %d)", openHeader.MessageType)
+	if openHeader.MessageType != pcep.MessageTypeOpen {
+		return nil, fmt.Errorf("this peer has not been opened (messageType: %s)", openHeader.MessageType.String())
 	}
 
-	byteOpenObject := make([]uint8, openHeader.MessageLength-pcep.COMMON_HEADER_LENGTH)
+	byteOpenObject := make([]uint8, openHeader.MessageLength-pcep.CommonHeaderLength)
 	if _, err := ss.tcpConn.Read(byteOpenObject); err != nil {
 		return nil, err
 	}
@@ -185,15 +185,15 @@ func (ss *Session) ReceivePcepMessage() error {
 		time.Sleep(10 * time.Millisecond)
 
 		switch commonHeader.MessageType {
-		case pcep.MT_KEEPALIVE:
+		case pcep.MessageTypeKeepalive:
 			ss.logger.Debug("Received Keepalive")
-		case pcep.MT_REPORT:
+		case pcep.MessageTypeReport:
 			err = ss.handlePCRpt(commonHeader.MessageLength)
 			if err != nil {
 				return err
 			}
-		case pcep.MT_ERROR:
-			bytePCErrMessageBody := make([]uint8, commonHeader.MessageLength-pcep.COMMON_HEADER_LENGTH)
+		case pcep.MessageTypeError:
+			bytePCErrMessageBody := make([]uint8, commonHeader.MessageLength-pcep.CommonHeaderLength)
 			if _, err := ss.tcpConn.Read(bytePCErrMessageBody); err != nil {
 				return err
 			}
@@ -206,8 +206,8 @@ func (ss *Session) ReceivePcepMessage() error {
 				zap.Uint8("error-Type", pcerrMessage.PcepErrorObject.ErrorType),
 				zap.Uint8("error-value", pcerrMessage.PcepErrorObject.ErrorValue),
 				zap.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#pcep-error-object"))
-		case pcep.MT_CLOSE:
-			byteCloseMessageBody := make([]uint8, commonHeader.MessageLength-pcep.COMMON_HEADER_LENGTH)
+		case pcep.MessageTypeClose:
+			byteCloseMessageBody := make([]uint8, commonHeader.MessageLength-pcep.CommonHeaderLength)
 			if _, err := ss.tcpConn.Read(byteCloseMessageBody); err != nil {
 				return err
 			}
@@ -222,13 +222,13 @@ func (ss *Session) ReceivePcepMessage() error {
 			return nil
 		default:
 			ss.logger.Debug("Received unsupported MessageType",
-				zap.Uint8("MessageType", commonHeader.MessageType))
+				zap.String("MessageType", commonHeader.MessageType.String()))
 		}
 	}
 }
 
 func (ss *Session) readCommonHeader() (*pcep.CommonHeader, error) {
-	commonHeaderBytes := make([]uint8, pcep.COMMON_HEADER_LENGTH)
+	commonHeaderBytes := make([]uint8, pcep.CommonHeaderLength)
 	if _, err := ss.tcpConn.Read(commonHeaderBytes); err != nil {
 		return nil, err
 	}
@@ -244,7 +244,7 @@ func (ss *Session) readCommonHeader() (*pcep.CommonHeader, error) {
 func (ss *Session) handlePCRpt(length uint16) error {
 	ss.logger.Debug("Received PCRpt Message")
 
-	messageBodyBytes := make([]uint8, length-pcep.COMMON_HEADER_LENGTH)
+	messageBodyBytes := make([]uint8, length-pcep.CommonHeaderLength)
 	if _, err := ss.tcpConn.Read(messageBodyBytes); err != nil {
 		return err
 	}
