@@ -452,3 +452,84 @@ func TestLSPDBVersion_Len(t *testing.T) {
 		})
 	}
 }
+
+func TestSRPCECapability_DecodeFromBytes(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []uint8
+		expected *SRPCECapability
+		err      bool
+	}{
+		{
+			name:     "Valid SRPCE Capability",
+			input:    NewSRPCECapability(true, true, 42).Serialize(), // Maximum SID Depth 42
+			expected: NewSRPCECapability(true, true, 42),
+			err:      false,
+		},
+		{
+			name:     "Invalid input (too short data)",
+			input:    []uint8{0x00, 0x11, 0x00, 0x02}, // Too short for valid decoding
+			expected: NewSRPCECapability(false, false, 0),
+			err:      true,
+		},
+		{
+			name:     "Invalid input (too long data)",
+			input:    []uint8{0x00, 0x11, 0x00, 0x02, 0x00, 0x00, 0x03, 0x05, 0x01}, // Too long for valid decoding
+			expected: NewSRPCECapability(false, false, 0),
+			err:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var tlv SRPCECapability
+			err := tlv.DecodeFromBytes(tt.input)
+			if tt.err {
+				assert.Error(t, err, "expected error for input: %v", tt.input)
+			} else {
+				assert.NoError(t, err, "unexpected error for input: %v", tt.input)
+				assert.Equal(t, tt.expected, &tlv)
+			}
+		})
+	}
+}
+
+func TestSRPCECapability_Serialize(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    *SRPCECapability
+		expected []uint8
+	}{
+		{
+			name:     "Valid SRPCE Capability",
+			input:    NewSRPCECapability(true, true, 5),
+			expected: NewSRPCECapability(true, true, 5).Serialize(),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.input.Serialize())
+		})
+	}
+}
+
+func TestSRPCECapability_Len(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    *SRPCECapability
+		expected uint16
+	}{
+		{
+			name:     "SRPCE Capability length",
+			input:    NewSRPCECapability(true, true, 5),
+			expected: TLVHeaderLength + TLVSRPCECapabilityValueLength,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.input.Len())
+		})
+	}
+}
