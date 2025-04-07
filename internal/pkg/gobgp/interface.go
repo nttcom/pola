@@ -66,7 +66,6 @@ func GetBgplsNlris(serverAddr string, serverPort string) ([]table.TedElem, error
 			}
 			return nil, err
 		}
-		// fmt.Printf("Destination %v\n", r.Destination)
 		convertedElems, err := ConvertToTedElem(r.Destination)
 		if err != nil {
 			return nil, err
@@ -116,7 +115,6 @@ func ConvertToTedElem(dst *api.Destination) ([]table.TedElem, error) {
 			return lsPrefixV4List, nil
 		// Add case for LsSrv6SIDNLRI
 		case *api.LsSrv6SIDNLRI:
-			//fmt.Printf("LsSrv6SIDNLRI: %v\n", linkStateNlri)
 			lsSrv6SIDList, err := getLsSrv6SIDNLRIList(linkStateNlri, path.GetPattrs())
 			if err != nil {
 				return nil, err
@@ -124,7 +122,6 @@ func ConvertToTedElem(dst *api.Destination) ([]table.TedElem, error) {
 			return lsSrv6SIDList, nil
 		// Skipping LsPrefixV6NLRI process
 		case *api.LsPrefixV6NLRI:
-			// fmt.Printf("linkStateNlrit type is LsPrefixV6Nlri\n")
 			return nil, nil
 		default:
 			return nil, errors.New("invalid linkStateNlri type")
@@ -165,9 +162,7 @@ func getLsNodeNLRI(typedLinkStateNlri *api.LsNodeNLRI, pathAttrs []*anypb.Any) (
 
 		srCapabilities := bgplsAttr.GetNode().GetSrCapabilities().GetRanges()
 		if len(srCapabilities) != 1 {
-			// Skipping SR Capabilities process
-			// fmt.Printf("SR Capabilities is invalid\n")
-			// return nil, errors.New("SR Capabilities is invalid")
+			return nil, errors.New("SR Capabilities is invalid")
 		} else {
 			lsNode.SrgbBegin = srCapabilities[0].GetBegin()
 			lsNode.SrgbEnd = srCapabilities[0].GetEnd()
@@ -183,16 +178,12 @@ func getLsLinkNLRI(typedLinkStateNlri *api.LsLinkNLRI, pathAttrs []*anypb.Any) (
 
 	localIP, err := netip.ParseAddr(typedLinkStateNlri.GetLinkDescriptor().GetInterfaceAddrIpv4())
 	if err != nil {
-		// Skipping local IP process
-		// fmt.Printf("interface address is empty \n")
-		return nil, nil
+		return nil, err
 	}
 
 	remoteIP, err := netip.ParseAddr(typedLinkStateNlri.GetLinkDescriptor().GetNeighborAddrIpv4())
 	if err != nil {
-		// Skipping remote IP process
-		// fmt.Printf("neighbor address is empty \n")
-		return nil, nil
+		return nil, err
 	}
 
 	lsLink := table.NewLsLink(localNode, remoteNode)
