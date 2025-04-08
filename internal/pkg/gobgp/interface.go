@@ -159,10 +159,11 @@ func getLsNodeNLRI(typedLinkStateNlri *api.LsNodeNLRI, pathAttrs []*anypb.Any) (
 
 		srCapabilities := bgplsAttr.GetNode().GetSrCapabilities().GetRanges()
 		if len(srCapabilities) != 1 {
-			return nil, errors.New("invalid SR Capability TLV")
+			return nil, fmt.Errorf("expected 1 SR Capability TLV, got: %d", len(srCapabilities))
+		} else {
+			lsNode.SrgbBegin = srCapabilities[0].GetBegin()
+			lsNode.SrgbEnd = srCapabilities[0].GetEnd()
 		}
-		lsNode.SrgbBegin = srCapabilities[0].GetBegin()
-		lsNode.SrgbEnd = srCapabilities[0].GetEnd()
 	}
 
 	return lsNode, nil
