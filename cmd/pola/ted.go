@@ -86,6 +86,21 @@ func print(jsonFlag bool) error {
 				}
 				tmpNode["prefixes"] = prefixes
 
+				srv6SIDs := []map[string]interface{}{}
+				for _, srv6SID := range node.SRv6SIDs {
+					tmpSrv6SID := map[string]interface{}{
+						"sids":             srv6SID.Sids,
+						"endpointBehavior": srv6SID.EndpointBehavior,
+						"multiTopoIDs":     srv6SID.MultiTopoIDs,
+						"serviceType":      srv6SID.ServiceType,
+						"trafficType":      srv6SID.TrafficType,
+						"opaqueType":       srv6SID.OpaqueType,
+						"value":            hex.EncodeToString(srv6SID.Value),
+					}
+					srv6SIDs = append(srv6SIDs, tmpSrv6SID)
+				}
+				tmpNode["srv6SIDs"] = srv6SIDs
+
 				nodes = append(nodes, tmpNode)
 			}
 		}
