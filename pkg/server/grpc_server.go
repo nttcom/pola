@@ -441,16 +441,21 @@ func (s *APIServer) GetTed(context.Context, *empty.Empty) (*pb.Ted, error) {
 }
 
 func (c *APIServer) DeleteSession(ctx context.Context, input *pb.Session) (*pb.RequestStatus, error) {
-	ssAddr, _ := netip.AddrFromSlice(input.GetAddr())
+	ssAddr, ok := netip.AddrFromSlice(input.GetAddr())
+	if !ok {
+		return nil, fmt.Errorf("invalid address: %v", input.GetAddr())
+	}
 
 	s := c.pce
-	var ss *Session
-	if ss = s.SearchSession(ssAddr, false); ss == nil {
-		return nil, fmt.Errorf("no session with %s", ssAddr)
+	ss := s.SearchSession(ssAddr, false)
+	if ss == nil {
+		return nil, fmt.Errorf("no session with address %s found", ssAddr)
 	}
-	if err := ss.SendClose(pcep.R_NO_EXPLANATION_PROVIDED); err != nil {
-		return &pb.RequestStatus{IsSuccess: false}, err
+
+	if err := ss.SendClose(pcep.CloseReasonNoExplanationProvided); err != nil {
+		return &pb.RequestStatus{IsSuccess: false}, fmt.Errorf("failed to send close message: %v", err)
 	}
+
 	// Remove session info from PCE server
 	s.closeSession(ss)
 
