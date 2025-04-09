@@ -159,7 +159,7 @@ func (ss *Session) SendKeepalive() error {
 	return ss.sendPcepMessage(keepaliveMessage)
 }
 
-func (ss *Session) SendClose(reason uint8) error {
+func (ss *Session) SendClose(reason pcep.CloseReason) error {
 	closeMessage, err := pcep.NewCloseMessage(reason)
 	if err != nil {
 		return err
@@ -167,7 +167,7 @@ func (ss *Session) SendClose(reason uint8) error {
 	byteCloseMessage := closeMessage.Serialize()
 
 	ss.logger.Debug("Send Close Message",
-		zap.Uint8("reason", closeMessage.CloseObject.Reason),
+		zap.Uint8("reason", uint8(closeMessage.CloseObject.Reason)),
 		zap.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#close-object-reason-field"))
 	if _, err := ss.tcpConn.Write(byteCloseMessage); err != nil {
 		return err
@@ -216,7 +216,7 @@ func (ss *Session) ReceivePcepMessage() error {
 				return err
 			}
 			ss.logger.Debug("Received Close",
-				zap.Uint8("reason", closeMessage.CloseObject.Reason),
+				zap.String("reason", closeMessage.CloseObject.Reason.String()),
 				zap.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#close-object-reason-field"))
 			// Close session if get Close Message
 			return nil
