@@ -462,7 +462,7 @@ func (m *PCInitiateMessage) Serialize() ([]uint8, error) {
 
 func NewPCInitiateMessage(srpID uint32, lspName string, lspDelete bool, plspID uint32, segmentList []table.Segment, color uint32, preference uint32, srcAddr netip.Addr, dstAddr netip.Addr, opt ...Opt) (*PCInitiateMessage, error) {
 	opts := optParams{
-		pccType: RFC_COMPLIANT,
+		pccType: RFCCompliant,
 	}
 
 	for _, o := range opt {
@@ -494,20 +494,20 @@ func NewPCInitiateMessage(srpID uint32, lspName string, lspDelete bool, plspID u
 	}
 
 	switch opts.pccType {
-	case JUNIPER_LEGACY:
+	case JuniperLegacy:
 		if m.AssociationObject, err = NewAssociationObject(srcAddr, dstAddr, color, preference, VendorSpecific(opts.pccType)); err != nil {
 			return nil, err
 		}
-	case CISCO_LEGACY:
-		if m.VendorInformationObject, err = NewVendorInformationObject(CISCO_LEGACY, color, preference); err != nil {
+	case CiscoLegacy:
+		if m.VendorInformationObject, err = NewVendorInformationObject(CiscoLegacy, color, preference); err != nil {
 			return nil, err
 		}
-	case RFC_COMPLIANT:
+	case RFCCompliant:
 		if m.AssociationObject, err = NewAssociationObject(srcAddr, dstAddr, color, preference); err != nil {
 			return nil, err
 		}
 		// FRRouting is considered RFC compliant
-		if m.VendorInformationObject, err = NewVendorInformationObject(CISCO_LEGACY, color, preference); err != nil {
+		if m.VendorInformationObject, err = NewVendorInformationObject(CiscoLegacy, color, preference); err != nil {
 			return nil, err
 		}
 	default:

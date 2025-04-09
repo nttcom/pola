@@ -91,6 +91,13 @@ const ( // PCEP TLV
 	TLV_IPV6_SR_P2MP_INSTANCE_ID              uint16 = 0x51 // draft-ietf-pce-sr-p2mp-policy-09
 )
 
+// Juniper specific TLV (deprecated)
+const (
+	TLVExtendedAssociationIDIPv4Juniper uint16 = 0xffe3
+	TLVSrPolicyCPathIDJuniper           uint16 = 0xffe4
+	TLVSrPolicyCPathPreferenceJuniper   uint16 = 0xffe5
+)
+
 var tlvMap = map[uint16]func() TLVInterface{
 	TLV_STATEFUL_PCE_CAPABILITY:    func() TLVInterface { return &StatefulPceCapability{} },
 	TLV_SYMBOLIC_PATH_NAME:         func() TLVInterface { return &SymbolicPathName{} },
@@ -117,6 +124,17 @@ const (
 	TLV_SRPOLICY_CPATH_ID_LENGTH            uint16 = 28
 	TLV_SRPOLICY_CPATH_PREFERENCE_LENGTH    uint16 = 4
 	TLV_COLOR_LENGTH                        uint16 = 4
+)
+
+// Cisco specific SubTLV
+const (
+	SubTLVColorCisco      uint16 = 0x01
+	SubTLVPreferenceCisco uint16 = 0x03
+)
+
+const (
+	SubTLVColorCiscoValueLength      uint16 = 4
+	SubTLVPreferenceCiscoValueLength uint16 = 4
 )
 
 const TL_LENGTH = 4

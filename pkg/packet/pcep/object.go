@@ -17,21 +17,21 @@ import (
 type PccType int
 
 const (
-	CISCO_LEGACY PccType = iota
-	JUNIPER_LEGACY
-	RFC_COMPLIANT
+	CiscoLegacy PccType = iota
+	JuniperLegacy
+	RFCCompliant
 )
 
 // Determine PCC type from capability
 func DeterminePccType(caps []CapabilityInterface) (pccType PccType) {
-	pccType = RFC_COMPLIANT
+	pccType = RFCCompliant
 	for _, cap := range caps {
 		if t, ok := cap.(*AssocTypeList); ok {
 			for _, v := range t.AssocTypes {
 				if v == AssocType(20) { // Cisco specific Assoc-Type
-					pccType = CISCO_LEGACY
+					pccType = CiscoLegacy
 				} else if v == AssocType(65505) { // Juniper specific Assoc-Type
-					pccType = JUNIPER_LEGACY
+					pccType = JuniperLegacy
 					break
 				}
 			}
@@ -1123,13 +1123,8 @@ const (
 	ASSOC_TYPE_SR_POLICY_ASSOCIATION uint16 = 0x06
 )
 
-// Juniper specific TLV (deprecated)
 const (
-	JUNIPER_SPEC_TLV_EXTENDED_ASSOCIATION_ID   uint16 = 65507
-	JUNIPER_SPEC_TLV_SRPOLICY_CPATH_ID         uint16 = 65508
-	JUNIPER_SPEC_TLV_SRPOLICY_CPATH_PREFERENCE uint16 = 65509
-
-	JUNIPER_SPEC_ASSOC_TYPE_SR_POLICY_ASSOCIATION uint16 = 65505
+	AssociationTypeSRPolicyAssociationJuniper uint16 = 0xffe1 // Juniper specific TLV (deprecated)
 )
 
 type AssociationObject struct {
@@ -1223,7 +1218,7 @@ func (o AssociationObject) Len() (uint16, error) {
 
 func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, preference uint32, opt ...Opt) (*AssociationObject, error) {
 	opts := optParams{
-		pccType: RFC_COMPLIANT,
+		pccType: RFCCompliant,
 	}
 
 	for _, o := range opt {
@@ -1243,19 +1238,19 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 		TLVs:       []TLVInterface{},
 		AssocSrc:   srcAddr,
 	}
-	if opts.pccType == JUNIPER_LEGACY {
+	if opts.pccType == JuniperLegacy {
 		o.AssocID = 0
-		o.AssocType = JUNIPER_SPEC_ASSOC_TYPE_SR_POLICY_ASSOCIATION
+		o.AssocType = AssociationTypeSRPolicyAssociationJuniper
 		associationObjectTLVs := []TLVInterface{
 			&UndefinedTLV{
-				Typ:    JUNIPER_SPEC_TLV_EXTENDED_ASSOCIATION_ID,
-				Length: TLV_EXTENDED_ASSOCIATION_ID_IPV4_LENGTH, // JUNIPER_LEGACY has only IPv4 implementation
+				Typ:    TLVExtendedAssociationIDIPv4Juniper,
+				Length: TLV_EXTENDED_ASSOCIATION_ID_IPV4_LENGTH, // JuniperLegacy has only IPv4 implementation
 				Value: AppendByteSlices(
 					Uint32ToByteSlice(color), dstAddr.AsSlice(),
 				),
 			},
 			&UndefinedTLV{
-				Typ:    JUNIPER_SPEC_TLV_SRPOLICY_CPATH_ID,
+				Typ:    TLVSrPolicyCPathIDJuniper,
 				Length: TLV_SRPOLICY_CPATH_ID_LENGTH,
 				Value: []uint8{
 					0x00,             // protocol origin
@@ -1266,15 +1261,15 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 				},
 			},
 			&UndefinedTLV{
-				Typ:    JUNIPER_SPEC_TLV_SRPOLICY_CPATH_PREFERENCE,
+				Typ:    TLVSrPolicyCPathPreferenceJuniper,
 				Length: TLV_SRPOLICY_CPATH_PREFERENCE_LENGTH,
 				Value:  Uint32ToByteSlice(preference),
 			},
 		}
 		o.TLVs = append(o.TLVs, associationObjectTLVs...)
 	} else {
-		o.AssocID = 1                                  // (I.D. pce-segment-routing-policy-cp-07 5.1)
-		o.AssocType = ASSOC_TYPE_SR_POLICY_ASSOCIATION // (I.D. pce-segment-routing-policy-cp-07 5.1)
+		o.AssocID = 1                                    // (I.D. pce-segment-routing-policy-cp-07 5.1)
+		o.AssocType = AssociationTypeSRPolicyAssociation // (I.D. pce-segment-routing-policy-cp-07 5.1)
 		associationObjectTLVs := []TLVInterface{
 			&ExtendedAssociationID{
 				Color:    color,
@@ -1297,7 +1292,7 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 func (o *AssociationObject) Color() uint32 {
 	for _, tlv := range o.TLVs {
 		if t, ok := tlv.(*UndefinedTLV); ok {
-			if t.Type() == JUNIPER_SPEC_TLV_EXTENDED_ASSOCIATION_ID {
+			if t.Type() == TLVExtendedAssociationIDIPv4Juniper {
 				return uint32(binary.BigEndian.Uint32(t.Value[:4]))
 			}
 		} else if t, ok := tlv.(*ExtendedAssociationID); ok {
@@ -1312,7 +1307,7 @@ func (o *AssociationObject) Color() uint32 {
 func (o *AssociationObject) Preference() uint32 {
 	for _, tlv := range o.TLVs {
 		if t, ok := tlv.(*UndefinedTLV); ok {
-			if t.Type() == JUNIPER_SPEC_TLV_SRPOLICY_CPATH_PREFERENCE {
+			if t.Type() == TLVSrPolicyCPathPreferenceJuniper {
 				return uint32(binary.BigEndian.Uint32(t.Value))
 			}
 		} else if t, ok := tlv.(*SRPolicyCandidatePathPreference); ok {
@@ -1337,13 +1332,7 @@ const (
 )
 
 const (
-	EN_CISCO uint32 = 9
-
-	CISCO_SPEC_TLV_COLOR      uint16 = 1
-	CISCO_SPEC_TLV_PREFERENCE uint16 = 3
-
-	CISCO_SPEC_TLV_COLOR_LENGTH      uint16 = 4
-	CISCO_SPEC_TLV_PREFERENCE_LENGTH uint16 = 4
+	EnterpriseNumberCisco uint32 = 9
 )
 
 type VendorInformationObject struct {
@@ -1394,19 +1383,19 @@ func NewVendorInformationObject(vendor PccType, color uint32, preference uint32)
 		ObjectType: OT_VENDOR_SPECIFIC_CONSTRAINTS, // (RFC7470 4)
 		TLVs:       []TLVInterface{},
 	}
-	if vendor == CISCO_LEGACY {
-		o.EnterpriseNumber = EN_CISCO
+	if vendor == CiscoLegacy {
+		o.EnterpriseNumber = EnterpriseNumberCisco
 		vendorInformationObjectTLVs := []TLVInterface{
 			&UndefinedTLV{
-				Typ:    CISCO_SPEC_TLV_COLOR,
-				Length: CISCO_SPEC_TLV_COLOR_LENGTH, // TODO: 20 if ipv6 endpoint
+				Typ:    TLVColorCisco,
+				Length: TLVColorCiscoLength, // TODO: 20 if ipv6 endpoint
 				Value: AppendByteSlices(
 					Uint32ToByteSlice(color),
 				),
 			},
 			&UndefinedTLV{
-				Typ:    CISCO_SPEC_TLV_PREFERENCE,
-				Length: CISCO_SPEC_TLV_PREFERENCE_LENGTH,
+				Typ:    TLVPreferenceCisco,
+				Length: TLVPreferenceCiscoLength,
 				Value:  Uint32ToByteSlice(preference),
 			},
 		}
@@ -1420,7 +1409,7 @@ func NewVendorInformationObject(vendor PccType, color uint32, preference uint32)
 func (o *VendorInformationObject) Color() uint32 {
 	for _, tlv := range o.TLVs {
 		if t, ok := tlv.(*UndefinedTLV); ok {
-			if t.Type() == CISCO_SPEC_TLV_COLOR {
+			if t.Type() == TLVColorCisco {
 				return uint32(binary.BigEndian.Uint32(t.Value))
 			}
 		}
@@ -1431,7 +1420,7 @@ func (o *VendorInformationObject) Color() uint32 {
 func (o *VendorInformationObject) Preference() uint32 {
 	for _, tlv := range o.TLVs {
 		if t, ok := tlv.(*UndefinedTLV); ok {
-			if t.Type() == CISCO_SPEC_TLV_PREFERENCE {
+			if t.Type() == TLVPreferenceCisco {
 				return uint32(binary.BigEndian.Uint32(t.Value))
 			}
 		}
