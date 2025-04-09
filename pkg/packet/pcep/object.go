@@ -216,18 +216,6 @@ func NewCommonObjectHeader(objectClass ObjectClass, objectType ObjectType, messa
 	return h
 }
 
-type optParams struct {
-	pccType PccType
-}
-
-type Opt func(*optParams)
-
-func VendorSpecific(pt PccType) Opt {
-	return func(op *optParams) {
-		op.pccType = pt
-	}
-}
-
 // OPEN Object (RFC5440 7.3)
 const (
 	ObjectTypeOpenOpen ObjectType = 0x01
@@ -1583,4 +1571,16 @@ func (o *VendorInformationObject) Preference() uint32 {
 		}
 	}
 	return 0
+}
+
+type optParams struct {
+	pccType PccType
+}
+
+type Opt func(*optParams)
+
+func VendorSpecific(pt PccType) Opt {
+	return func(op *optParams) {
+		op.pccType = pt
+	}
 }
