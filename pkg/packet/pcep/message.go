@@ -238,7 +238,7 @@ func (m *CloseMessage) Serialize() []uint8 {
 	return byteCloseMessage
 }
 
-func NewCloseMessage(reason uint8) (*CloseMessage, error) {
+func NewCloseMessage(reason CloseReason) (*CloseMessage, error) {
 	o, err := NewCloseObject(reason)
 	if err != nil {
 		return nil, err

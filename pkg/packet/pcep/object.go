@@ -483,20 +483,49 @@ const (
 	ObjectTypeCloseClose ObjectType = 0x01
 )
 
+type CloseReason uint8
+
 const (
-	R_NO_EXPLANATION_PROVIDED               uint8 = 0x01
-	R_DEADTIMER_EXPIRED                     uint8 = 0x02
-	R_RECEPTION_OF_A_MALFORMED_PCEP_MESSAGE uint8 = 0x03
+	CloseReasonNoExplanationProvided           CloseReason = 0x01
+	CloseReasonDeadTimerExpired                CloseReason = 0x02
+	CloseReasonMalformedPCEPMessage            CloseReason = 0x03
+	CloseReasonTooManyUnknownRequestsReplies   CloseReason = 0x04
+	CloseReasonTooManyUnrecognizedPCEPMessages CloseReason = 0x05
 )
+
+var closeReasonDescriptions = map[CloseReason]struct {
+	Description string
+	Reference   string
+}{
+	CloseReasonNoExplanationProvided:           {"No explanation provided", "RFC5440"},
+	CloseReasonDeadTimerExpired:                {"DeadTimer expired", "RFC5440"},
+	CloseReasonMalformedPCEPMessage:            {"Reception of a malformed PCEP message", "RFC5440"},
+	CloseReasonTooManyUnknownRequestsReplies:   {"Reception of an unacceptable number of unknown requests/replies", "RFC5440"},
+	CloseReasonTooManyUnrecognizedPCEPMessages: {"Reception of an unacceptable number of unrecognized PCEP messages", "RFC5440"},
+}
+
+func (r CloseReason) String() string {
+	if desc, ok := closeReasonDescriptions[r]; ok {
+		return fmt.Sprintf("%s (0x%02x)", desc.Description, uint8(r))
+	}
+	return fmt.Sprintf("Unknown Close Reason (0x%02x)", uint8(r))
+}
+
+func (r CloseReason) StringWithReference() string {
+	if desc, ok := closeReasonDescriptions[r]; ok {
+		return fmt.Sprintf("%s (0x%02x) [%s]", desc.Description, r, desc.Reference)
+	}
+	return fmt.Sprintf("Unknown Close Reason (0x%02x)", uint8(r))
+}
 
 type CloseObject struct {
 	ObjectType ObjectType
-	Reason     uint8
+	Reason     CloseReason
 }
 
 func (o *CloseObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
 	o.ObjectType = typ
-	o.Reason = objectBody[3]
+	o.Reason = CloseReason(objectBody[3])
 	return nil
 }
 
@@ -506,7 +535,7 @@ func (o *CloseObject) Serialize() []uint8 {
 
 	buf := make([]uint8, 4)
 
-	buf[3] = o.Reason
+	buf[3] = uint8(o.Reason)
 	byteCloseObject := AppendByteSlices(byteCloseObjectHeader, buf)
 	return byteCloseObject
 }
@@ -516,7 +545,7 @@ func (o *CloseObject) Len() uint16 {
 	return commonObjectHeaderLength + 4
 }
 
-func NewCloseObject(reason uint8) (*CloseObject, error) {
+func NewCloseObject(reason CloseReason) (*CloseObject, error) {
 	o := &CloseObject{
 		ObjectType: ObjectTypeCloseClose,
 		Reason:     reason,
