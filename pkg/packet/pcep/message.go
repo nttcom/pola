@@ -117,20 +117,19 @@ type OpenMessage struct {
 func (m *OpenMessage) DecodeFromBytes(messageBody []uint8) error {
 	var commonObjectHeader CommonObjectHeader
 	if err := commonObjectHeader.DecodeFromBytes(messageBody); err != nil {
-		return err
+		return fmt.Errorf("failed to decode common object header: %w", err)
 	}
 
-	if commonObjectHeader.ObjectClass != OC_OPEN {
+	if commonObjectHeader.ObjectClass != ObjectClassOpen {
 		return fmt.Errorf("unsupported ObjectClass: %d", commonObjectHeader.ObjectClass)
 	}
-	if commonObjectHeader.ObjectType != OT_OPEN_OPEN {
+	if commonObjectHeader.ObjectType != ObjectTypeOpenOpen {
 		return fmt.Errorf("unsupported ObjectType: %d", commonObjectHeader.ObjectType)
 	}
 
 	openObject := &OpenObject{}
-	err := openObject.DecodeFromBytes(commonObjectHeader.ObjectType, messageBody[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength])
-	if err != nil {
-		return err
+	if err := openObject.DecodeFromBytes(commonObjectHeader.ObjectType, messageBody[commonObjectHeaderLength:commonObjectHeader.ObjectLength]); err != nil {
+		return fmt.Errorf("failed to decode OpenObject: %w", err)
 	}
 	m.OpenObject = openObject
 
@@ -185,7 +184,7 @@ func (m *PCErrMessage) DecodeFromBytes(messageBody []uint8) error {
 		return err
 	}
 	pcepErrorObject := &PcepErrorObject{}
-	if err := pcepErrorObject.DecodeFromBytes(commonObjectHeader.ObjectType, messageBody[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength]); err != nil {
+	if err := pcepErrorObject.DecodeFromBytes(commonObjectHeader.ObjectType, messageBody[commonObjectHeaderLength:commonObjectHeader.ObjectLength]); err != nil {
 		return err
 	}
 	m.PcepErrorObject = pcepErrorObject
@@ -223,7 +222,7 @@ func (m *CloseMessage) DecodeFromBytes(messageBody []uint8) error {
 		return err
 	}
 	closeObject := &CloseObject{}
-	if err := closeObject.DecodeFromBytes(commonObjectHeader.ObjectType, messageBody[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength]); err != nil {
+	if err := closeObject.DecodeFromBytes(commonObjectHeader.ObjectType, messageBody[commonObjectHeaderLength:commonObjectHeader.ObjectLength]); err != nil {
 		return err
 	}
 	m.CloseObject = closeObject
@@ -275,7 +274,7 @@ func NewStateReport() (*StateReport, error) {
 	return sr, nil
 }
 
-func (r *StateReport) decodeBandwidthObject(objectType uint8, objectBody []uint8) error {
+func (r *StateReport) decodeBandwidthObject(objectType ObjectType, objectBody []uint8) error {
 	bandwidthObject := &BandwidthObject{}
 	if err := bandwidthObject.DecodeFromBytes(objectType, objectBody); err != nil {
 		return err
@@ -284,7 +283,7 @@ func (r *StateReport) decodeBandwidthObject(objectType uint8, objectBody []uint8
 	return nil
 }
 
-func (r *StateReport) decodeMetricObject(objectType uint8, objectBody []uint8) error {
+func (r *StateReport) decodeMetricObject(objectType ObjectType, objectBody []uint8) error {
 	metricObject := &MetricObject{}
 	if err := metricObject.DecodeFromBytes(objectType, objectBody); err != nil {
 		return err
@@ -293,19 +292,19 @@ func (r *StateReport) decodeMetricObject(objectType uint8, objectBody []uint8) e
 	return nil
 }
 
-func (r *StateReport) decodeEroObject(objectType uint8, objectBody []uint8) error {
+func (r *StateReport) decodeEroObject(objectType ObjectType, objectBody []uint8) error {
 	return r.EroObject.DecodeFromBytes(objectType, objectBody)
 }
 
-func (r *StateReport) decodeLspaObject(objectType uint8, objectBody []uint8) error {
+func (r *StateReport) decodeLspaObject(objectType ObjectType, objectBody []uint8) error {
 	return r.LspaObject.DecodeFromBytes(objectType, objectBody)
 }
 
-func (r *StateReport) decodeLspObject(objectType uint8, objectBody []uint8) error {
+func (r *StateReport) decodeLspObject(objectType ObjectType, objectBody []uint8) error {
 	return r.LspObject.DecodeFromBytes(objectType, objectBody)
 }
 
-func (r *StateReport) decodeSrpObject(objectType uint8, objectBody []uint8) error {
+func (r *StateReport) decodeSrpObject(objectType ObjectType, objectBody []uint8) error {
 	srpObject := &SrpObject{}
 	if err := srpObject.DecodeFromBytes(objectType, objectBody); err != nil {
 		return err
@@ -314,11 +313,11 @@ func (r *StateReport) decodeSrpObject(objectType uint8, objectBody []uint8) erro
 	return nil
 }
 
-func (r *StateReport) decodeAssociationObject(objectType uint8, objectBody []uint8) error {
+func (r *StateReport) decodeAssociationObject(objectType ObjectType, objectBody []uint8) error {
 	return r.AssociationObject.DecodeFromBytes(objectType, objectBody)
 }
 
-func (r *StateReport) decodeVendorInformationObject(objectType uint8, objectBody []uint8) error {
+func (r *StateReport) decodeVendorInformationObject(objectType ObjectType, objectBody []uint8) error {
 	return r.VendorInformationObject.DecodeFromBytes(objectType, objectBody)
 }
 
@@ -327,20 +326,20 @@ type PCRptMessage struct {
 	StateReports []*StateReport
 }
 
-var decodeFuncs = map[uint8]func(*StateReport, uint8, []uint8) error{
-	OC_BANDWIDTH:          (*StateReport).decodeBandwidthObject,
-	OC_METRIC:             (*StateReport).decodeMetricObject,
-	OC_ERO:                (*StateReport).decodeEroObject,
-	OC_LSPA:               (*StateReport).decodeLspaObject,
-	OC_LSP:                (*StateReport).decodeLspObject,
-	OC_SRP:                (*StateReport).decodeSrpObject,
-	OC_ASSOCIATION:        (*StateReport).decodeAssociationObject,
-	OC_VENDOR_INFORMATION: (*StateReport).decodeVendorInformationObject,
+var decodeFuncs = map[ObjectClass]func(*StateReport, ObjectType, []uint8) error{
+	ObjectClassBandwidth:         (*StateReport).decodeBandwidthObject,
+	ObjectClassMetric:            (*StateReport).decodeMetricObject,
+	ObjectClassERO:               (*StateReport).decodeEroObject,
+	ObjectClassLSPA:              (*StateReport).decodeLspaObject,
+	ObjectClassLSP:               (*StateReport).decodeLspObject,
+	ObjectClassSRP:               (*StateReport).decodeSrpObject,
+	ObjectClassAssociation:       (*StateReport).decodeAssociationObject,
+	ObjectClassVendorInformation: (*StateReport).decodeVendorInformationObject,
 }
 
 func (m *PCRptMessage) DecodeFromBytes(messageBody []uint8) error {
-	// previousOC: To determine the delimitation of StateReports from the order of object classes
-	var previousOC uint8
+	// previousObjectClass: To track the object class and handle the delimitation of StateReports
+	var previousObjectClass ObjectClass
 	var sr *StateReport
 	for len(messageBody) > 0 {
 		var commonObjectHeader CommonObjectHeader
@@ -349,30 +348,31 @@ func (m *PCRptMessage) DecodeFromBytes(messageBody []uint8) error {
 		}
 		decodeFunc, ok := decodeFuncs[commonObjectHeader.ObjectClass]
 		if !ok {
-			// Skip if object class not registered in decodeFunc
+			// Skip the current object if the object class is not registered in decodeFuncs
 			messageBody = messageBody[commonObjectHeader.ObjectLength:]
 			continue
 		}
-		if (previousOC != OC_SRP && commonObjectHeader.ObjectClass == OC_LSP) || commonObjectHeader.ObjectClass == OC_SRP {
-			// If sr is not zero value, this StateReport is already updated.
-			var err error
+		if (previousObjectClass != ObjectClassSRP && commonObjectHeader.ObjectClass == ObjectClassLSP) || commonObjectHeader.ObjectClass == ObjectClassSRP {
 			if sr != nil {
 				m.StateReports = append(m.StateReports, sr)
 			}
+
+			var err error
 			sr, err = NewStateReport()
 			if err != nil {
 				return err
 			}
 		}
-		if err := decodeFunc(sr, commonObjectHeader.ObjectType, messageBody[COMMON_OBJECT_HEADER_LENGTH:commonObjectHeader.ObjectLength]); err != nil {
+		if err := decodeFunc(sr, commonObjectHeader.ObjectType, messageBody[commonObjectHeaderLength:commonObjectHeader.ObjectLength]); err != nil {
 			return err
 		}
-		previousOC = commonObjectHeader.ObjectClass
+		previousObjectClass = commonObjectHeader.ObjectClass
 		messageBody = messageBody[commonObjectHeader.ObjectLength:]
 	}
 	if sr != nil {
 		m.StateReports = append(m.StateReports, sr)
 	}
+
 	return nil
 }
 
