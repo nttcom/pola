@@ -36,7 +36,7 @@ func NewSession(sessionID uint8, peerAddr netip.Addr, tcpConn *net.TCPConn, logg
 		isSynced:  false,
 		srpIDHead: uint32(1),
 		logger:    logger.With(zap.String("server", "pcep"), zap.String("session", peerAddr.String())),
-		pccType:   pcep.RFC_COMPLIANT,
+		pccType:   pcep.RFCCompliant,
 		peerAddr:  peerAddr,
 		tcpConn:   tcpConn,
 	}
@@ -338,7 +338,7 @@ func (ss *Session) RegisterSRPolicy(sr pcep.StateReport) {
 	var color uint32 = 0      // Default color value (RFC does not specify a default)
 	var preference uint32 = 0 // Default preference value (RFC does not specify a default)
 
-	if ss.pccType == pcep.CISCO_LEGACY {
+	if ss.pccType == pcep.CiscoLegacy {
 		// In Cisco legacy mode, get color and preference from Vendor Information Object
 		color = sr.VendorInformationObject.Color()
 		preference = sr.VendorInformationObject.Preference()
