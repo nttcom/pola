@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/netip"
 	"os"
+	"reflect"
 	"strings"
 
 	"github.com/nttcom/pola/internal/pkg/table"
@@ -316,6 +317,36 @@ func getLsSrv6SIDNLRIList(lsSRv6SIDNlri *api.LsSrv6SIDNLRI, pathAttrs []*anypb.A
 	return lsSrv6SIDList, nil
 }
 
+// extractField retrieves a field by its name using reflection and returns its value.
+func extractField(v any, fieldName string) reflect.Value {
+	val := reflect.ValueOf(v)
+	if val.Kind() == reflect.Pointer && val.IsNil() {
+		return reflect.Value{}
+	}
+	if val.Kind() == reflect.Pointer {
+		val = val.Elem()
+	}
+	field := val.FieldByName(fieldName)
+	if !field.IsValid() {
+		return reflect.Value{}
+	}
+	return field
+}
+
+// extractMethodValue extracts the method's return value using reflection.
+func extractMethodValue(val reflect.Value, methodName string) (any, error) {
+	method := val.MethodByName(methodName)
+	if !method.IsValid() {
+		return nil, fmt.Errorf("method %s not found or invalid", methodName)
+	}
+	res := method.Call(nil)
+	if len(res) != 1 {
+		return nil, fmt.Errorf("method %s returned unexpected number of results", methodName)
+	}
+	return res[0].Interface(), nil
+}
+
+// getLsSrv6SIDNLRI processes the LS SRv6 SID NLRI and returns a corresponding LsSrv6SID.
 func getLsSrv6SIDNLRI(lsNlri *api.LsAddrPrefix, endpointBehavior uint32) (*table.LsSrv6SID, error) {
 	srv6Nlri, err := lsNlri.GetNlri().UnmarshalNew()
 	if err != nil {
@@ -329,10 +360,42 @@ func getLsSrv6SIDNLRI(lsNlri *api.LsAddrPrefix, endpointBehavior uint32) (*table
 	localNodeAsn := srv6SIDNlri.GetLocalNode().GetAsn()
 	srv6SIDs := srv6SIDNlri.GetSrv6SidInformation().GetSids()
 	multiTopoIDs := srv6SIDNlri.GetMultiTopoId().GetMultiTopoIds()
-	serviceType := srv6SIDNlri.GetServiceChaining().GetServicetype()
-	trafficType := srv6SIDNlri.GetServiceChaining().GetTraffictype()
-	opaqueType := srv6SIDNlri.GetOpaqueMetadata().GetOpaquetype()
-	value := srv6SIDNlri.GetOpaqueMetadata().GetValue()
+
+	// Reflect processing for draft-ietf-idr-bgp-ls-sr-service-segments until merged into GoBGP master.
+	var serviceType, trafficType, opaqueType uint32
+	var value []byte
+	if scVal := extractField(srv6SIDNlri, "ServiceChaining"); scVal.IsValid() {
+		if st, err := extractMethodValue(scVal, "GetServicetype"); err == nil {
+			if stVal, ok := st.(uint32); ok {
+				serviceType = stVal
+			}
+		} else {
+			return nil, fmt.Errorf("failed to extract ServiceType: %w", err)
+		}
+		if tt, err := extractMethodValue(scVal, "GetTraffictype"); err == nil {
+			if ttVal, ok := tt.(uint32); ok {
+				trafficType = ttVal
+			}
+		} else {
+			return nil, fmt.Errorf("failed to extract TrafficType: %w", err)
+		}
+	}
+	if omVal := extractField(srv6SIDNlri, "OpaqueMetadata"); omVal.IsValid() {
+		if ot, err := extractMethodValue(omVal, "GetOpaquetype"); err == nil {
+			if otVal, ok := ot.(uint32); ok {
+				opaqueType = otVal
+			}
+		} else {
+			return nil, fmt.Errorf("failed to extract OpaqueType: %w", err)
+		}
+		if val, err := extractMethodValue(omVal, "GetValue"); err == nil {
+			if v, ok := val.([]byte); ok {
+				value = v
+			}
+		} else {
+			return nil, fmt.Errorf("failed to extract Value: %w", err)
+		}
+	}
 
 	localNode := table.NewLsNode(localNodeAsn, localNodeID)
 	lsSrv6SID := table.NewLsSrv6SID(localNode)
