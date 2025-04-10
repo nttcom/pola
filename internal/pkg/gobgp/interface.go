@@ -22,11 +22,6 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
-type GobgpOptions struct {
-	GobgpAddr string
-	GobgpPort string
-}
-
 func GetBgplsNlris(serverAddr string, serverPort string) ([]table.TedElem, error) {
 	gobgpAddress := serverAddr + ":" + serverPort
 
@@ -120,7 +115,7 @@ func ConvertToTedElem(dst *api.Destination) ([]table.TedElem, error) {
 			}
 			return lsPrefixV4List, nil
 		case *api.LsSrv6SIDNLRI:
-			lsSrv6SIDList, err := getLsSrv6SIDNLRIList(linkStateNlri, path.GetPattrs())
+			lsSrv6SIDList, err := getLsSrv6SIDNLRIList(path.GetPattrs())
 			if err != nil {
 				return nil, err
 			}
@@ -284,7 +279,7 @@ func getLsPrefixV4(lsNlri *api.LsAddrPrefix, sidIndex uint32) (*table.LsPrefixV4
 	return lsPrefixV4, nil
 }
 
-func getLsSrv6SIDNLRIList(lsSRv6SIDNlri *api.LsSrv6SIDNLRI, pathAttrs []*anypb.Any) ([]table.TedElem, error) {
+func getLsSrv6SIDNLRIList(pathAttrs []*anypb.Any) ([]table.TedElem, error) {
 	var lsSrv6SIDList []table.TedElem
 	var endpointBehavior uint32
 
