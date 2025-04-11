@@ -134,6 +134,19 @@ func ConvertToTedElem(dst *api.Destination) ([]table.TedElem, error) {
 	}
 }
 
+// formatIsisAreaID formats the ISIS Area ID into a human-readable string.
+func formatIsisAreaID(isisArea []byte) string {
+	tmpIsisArea := hex.EncodeToString(isisArea)
+	var strIsisArea strings.Builder
+	for i, s := range strings.Split(tmpIsisArea, "") {
+		if (len(tmpIsisArea)-i)%4 == 0 && i != 0 {
+			strIsisArea.WriteString(".")
+		}
+		strIsisArea.WriteString(s)
+	}
+	return strIsisArea.String()
+}
+
 func getLsNodeNLRI(typedLinkStateNlri *api.LsNodeNLRI, pathAttrs []*anypb.Any) (*table.LsNode, error) {
 	asn := typedLinkStateNlri.GetLocalNode().GetAsn()
 	routerID := typedLinkStateNlri.GetLocalNode().GetIgpRouterId()
@@ -152,24 +165,14 @@ func getLsNodeNLRI(typedLinkStateNlri *api.LsNodeNLRI, pathAttrs []*anypb.Any) (
 		}
 
 		isisArea := bgplsAttr.GetNode().GetIsisArea()
-		tmpIsisArea := hex.EncodeToString(isisArea)
-		strIsisArea := ""
-		for i, s := range strings.Split(tmpIsisArea, "") {
-			if (len(tmpIsisArea)-i)%4 == 0 {
-				strIsisArea += "."
-			}
-			strIsisArea += s
-		}
-		lsNode.IsisAreaID = strIsisArea
+		lsNode.IsisAreaID = formatIsisAreaID(isisArea)
 		lsNode.Hostname = bgplsAttr.GetNode().GetName()
-
 		srCapabilities := bgplsAttr.GetNode().GetSrCapabilities().GetRanges()
 		if len(srCapabilities) != 1 {
 			return nil, fmt.Errorf("expected 1 SR Capability TLV, got: %d", len(srCapabilities))
-		} else {
-			lsNode.SrgbBegin = srCapabilities[0].GetBegin()
-			lsNode.SrgbEnd = srCapabilities[0].GetEnd()
 		}
+		lsNode.SrgbBegin = srCapabilities[0].GetBegin()
+		lsNode.SrgbEnd = srCapabilities[0].GetEnd()
 	}
 
 	return lsNode, nil
