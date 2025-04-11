@@ -24,9 +24,9 @@ import (
 )
 
 func GetBgplsNlris(serverAddr string, serverPort string) ([]table.TedElem, error) {
-	gobgpAddress := serverAddr + ":" + serverPort
+	gobgpAddress := fmt.Sprintf("%s:%s", serverAddr, serverPort)
 
-	// Get connection
+	// Establish gRPC connection
 	cc, err := grpc.NewClient(
 		gobgpAddress,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
