@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/netip"
 	"os"
+	"reflect"
 	"strings"
 
 	"github.com/nttcom/pola/internal/pkg/table"
@@ -22,31 +23,27 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
-type GobgpOptions struct {
-	GobgpAddr string
-	GobgpPort string
-}
-
 func GetBgplsNlris(serverAddr string, serverPort string) ([]table.TedElem, error) {
-	gobgpAddress := serverAddr + ":" + serverPort
+	gobgpAddress := fmt.Sprintf("%s:%s", serverAddr, serverPort)
 
-	// Get connection
+	// Establish gRPC connection
 	cc, err := grpc.NewClient(
 		gobgpAddress,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create gRPC client: %v", err)
+		return nil, fmt.Errorf("failed to create gRPC client (address: %s): %w", gobgpAddress, err)
 	}
 	defer func() {
 		if err := cc.Close(); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: failed to close gRPC client connection: %v\n", err)
+			fmt.Fprintf(os.Stderr, "failed to close gRPC client connection: %v\n", err)
 		}
 	}()
 
 	// Create gRPC client
 	client := api.NewGobgpApiClient(cc)
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	req := &api.ListPathRequest{
 		TableType: api.TableType_GLOBAL,
@@ -60,7 +57,7 @@ func GetBgplsNlris(serverAddr string, serverPort string) ([]table.TedElem, error
 
 	stream, err := client.ListPath(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve paths: %v", err)
+		return nil, fmt.Errorf("failed to retrieve paths from gRPC server: %w", err)
 	}
 
 	var tedElems []table.TedElem
@@ -70,15 +67,17 @@ func GetBgplsNlris(serverAddr string, serverPort string) ([]table.TedElem, error
 			if err == io.EOF {
 				break
 			}
-			return nil, fmt.Errorf("error receiving stream data: %v", err)
+			return nil, fmt.Errorf("error receiving stream data: %w", err)
 		}
+
 		convertedElems, err := ConvertToTedElem(r.Destination)
 		if err != nil {
-			return nil, fmt.Errorf("failed to convert path to TED element: %v", err)
+			return nil, fmt.Errorf("failed to convert path to TED element (destination: %v): %w", r.Destination, err)
 		}
 
 		tedElems = append(tedElems, convertedElems...)
 	}
+
 	return tedElems, nil
 }
 
@@ -90,50 +89,62 @@ func ConvertToTedElem(dst *api.Destination) ([]table.TedElem, error) {
 	path := dst.GetPaths()[0]
 	nlri, err := path.GetNlri().UnmarshalNew()
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal NLRI: %v", err)
+		return nil, fmt.Errorf("failed to unmarshal NLRI: %w", err)
 	}
 
 	switch nlri := nlri.(type) {
 	case *api.LsAddrPrefix:
 		linkStateNlri, err := nlri.GetNlri().UnmarshalNew()
 		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal LS Address Prefix: %v", err)
+			return nil, fmt.Errorf("failed to unmarshal LS Address Prefix: %w", err)
 		}
 
 		switch linkStateNlri := linkStateNlri.(type) {
 		case *api.LsNodeNLRI:
 			lsNode, err := getLsNodeNLRI(linkStateNlri, path.GetPattrs())
 			if err != nil {
-				return nil, fmt.Errorf("failed to process LS Node NLRI: %v", err)
+				return nil, fmt.Errorf("failed to process LS Node NLRI: %w", err)
 			}
 			return []table.TedElem{lsNode}, nil
 		case *api.LsLinkNLRI:
 			lsLink, err := getLsLinkNLRI(linkStateNlri, path.GetPattrs())
 			if err != nil {
-				return nil, fmt.Errorf("failed to process LS Link NLRI: %v", err)
+				return nil, fmt.Errorf("failed to process LS Link NLRI: %w", err)
 			}
 			return []table.TedElem{lsLink}, nil
 		case *api.LsPrefixV4NLRI:
 			lsPrefixV4List, err := getLsPrefixV4List(path.GetPattrs())
 			if err != nil {
-				return nil, fmt.Errorf("failed to process LS Prefix V4 NLRI: %v", err)
+				return nil, fmt.Errorf("failed to process LS Prefix V4 NLRI: %w", err)
 			}
 			return lsPrefixV4List, nil
 		case *api.LsSrv6SIDNLRI:
-			lsSrv6SIDList, err := getLsSrv6SIDNLRIList(linkStateNlri, path.GetPattrs())
+			lsSrv6SIDList, err := getLsSrv6SIDNLRIList(path.GetPattrs())
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("failed to process LS SRv6 SID NLRI: %w", err)
 			}
 			return lsSrv6SIDList, nil
-		// TODO: Implement LsPrefixV6NLRI handling
 		case *api.LsPrefixV6NLRI:
-			return nil, nil
+			return nil, nil // TODO: Implement LsPrefixV6NLRI handling
 		default:
-			return nil, errors.New("invalid LS Link State NLRI type")
+			return nil, fmt.Errorf("invalid LS Link State NLRI type: %T", linkStateNlri)
 		}
 	default:
-		return nil, errors.New("invalid NLRI type")
+		return nil, fmt.Errorf("invalid NLRI type: %T", nlri)
 	}
+}
+
+// formatIsisAreaID formats the ISIS Area ID into a human-readable string.
+func formatIsisAreaID(isisArea []byte) string {
+	tmpIsisArea := hex.EncodeToString(isisArea)
+	var strIsisArea strings.Builder
+	for i, s := range strings.Split(tmpIsisArea, "") {
+		if (len(tmpIsisArea)-i)%4 == 0 && i != 0 {
+			strIsisArea.WriteString(".")
+		}
+		strIsisArea.WriteString(s)
+	}
+	return strIsisArea.String()
 }
 
 func getLsNodeNLRI(typedLinkStateNlri *api.LsNodeNLRI, pathAttrs []*anypb.Any) (*table.LsNode, error) {
@@ -145,7 +156,7 @@ func getLsNodeNLRI(typedLinkStateNlri *api.LsNodeNLRI, pathAttrs []*anypb.Any) (
 	for _, pathAttr := range pathAttrs {
 		typedPathAttr, err := pathAttr.UnmarshalNew()
 		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal path attribute: %v", err)
+			return nil, fmt.Errorf("failed to unmarshal path attribute: %w", err)
 		}
 
 		bgplsAttr, ok := typedPathAttr.(*api.LsAttribute)
@@ -154,24 +165,14 @@ func getLsNodeNLRI(typedLinkStateNlri *api.LsNodeNLRI, pathAttrs []*anypb.Any) (
 		}
 
 		isisArea := bgplsAttr.GetNode().GetIsisArea()
-		tmpIsisArea := hex.EncodeToString(isisArea)
-		strIsisArea := ""
-		for i, s := range strings.Split(tmpIsisArea, "") {
-			if (len(tmpIsisArea)-i)%4 == 0 {
-				strIsisArea += "."
-			}
-			strIsisArea += s
-		}
-		lsNode.IsisAreaID = strIsisArea
+		lsNode.IsisAreaID = formatIsisAreaID(isisArea)
 		lsNode.Hostname = bgplsAttr.GetNode().GetName()
-
 		srCapabilities := bgplsAttr.GetNode().GetSrCapabilities().GetRanges()
 		if len(srCapabilities) != 1 {
 			return nil, fmt.Errorf("expected 1 SR Capability TLV, got: %d", len(srCapabilities))
-		} else {
-			lsNode.SrgbBegin = srCapabilities[0].GetBegin()
-			lsNode.SrgbEnd = srCapabilities[0].GetEnd()
 		}
+		lsNode.SrgbBegin = srCapabilities[0].GetBegin()
+		lsNode.SrgbEnd = srCapabilities[0].GetEnd()
 	}
 
 	return lsNode, nil
@@ -183,12 +184,12 @@ func getLsLinkNLRI(typedLinkStateNlri *api.LsLinkNLRI, pathAttrs []*anypb.Any) (
 
 	localIP, err := netip.ParseAddr(typedLinkStateNlri.GetLinkDescriptor().GetInterfaceAddrIpv4())
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse local IP address: %v", err)
+		return nil, fmt.Errorf("failed to parse local IP address %q: %v", typedLinkStateNlri.GetLinkDescriptor().GetInterfaceAddrIpv4(), err)
 	}
 
 	remoteIP, err := netip.ParseAddr(typedLinkStateNlri.GetLinkDescriptor().GetNeighborAddrIpv4())
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse remote IP address: %v", err)
+		return nil, fmt.Errorf("failed to parse remote IP address %q: %v", typedLinkStateNlri.GetLinkDescriptor().GetNeighborAddrIpv4(), err)
 	}
 
 	lsLink := table.NewLsLink(localNode, remoteNode)
@@ -198,7 +199,7 @@ func getLsLinkNLRI(typedLinkStateNlri *api.LsLinkNLRI, pathAttrs []*anypb.Any) (
 	for _, pathAttr := range pathAttrs {
 		typedPathAttr, err := pathAttr.UnmarshalNew()
 		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal path attribute: %v", err)
+			return nil, fmt.Errorf("failed to unmarshal path attribute %v: %v", pathAttr, err)
 		}
 
 		bgplsAttr, ok := typedPathAttr.(*api.LsAttribute)
@@ -226,7 +227,7 @@ func getLsPrefixV4List(pathAttrs []*anypb.Any) ([]table.TedElem, error) {
 	for _, pathAttr := range pathAttrs {
 		typedPathAttr, err := pathAttr.UnmarshalNew()
 		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal path attribute: %v", err)
+			return nil, fmt.Errorf("failed to unmarshal path attribute: %w", err)
 		}
 
 		switch typedPathAttr := typedPathAttr.(type) {
@@ -237,17 +238,21 @@ func getLsPrefixV4List(pathAttrs []*anypb.Any) ([]table.TedElem, error) {
 			for _, nlri := range typedPathAttr.GetNlris() {
 				typedNlri, err := nlri.UnmarshalNew()
 				if err != nil {
-					return nil, fmt.Errorf("failed to unmarshal NLRI: %v", err)
+					return nil, fmt.Errorf("failed to unmarshal NLRI: %w", err)
 				}
 
 				if lsNlri, ok := typedNlri.(*api.LsAddrPrefix); ok {
 					lsPrefixV4, err := getLsPrefixV4(lsNlri, sidIndex)
 					if err != nil {
-						return nil, fmt.Errorf("failed to get LS Prefix V4: %v", err)
+						return nil, fmt.Errorf("failed to get LS Prefix V4: %w", err)
 					}
 					lsPrefixV4List = append(lsPrefixV4List, lsPrefixV4)
+				} else {
+					return nil, fmt.Errorf("unexpected NLRI type: %T", typedNlri)
 				}
 			}
+		default:
+			return nil, fmt.Errorf("unexpected path attribute type: %T", typedPathAttr)
 		}
 	}
 
@@ -257,11 +262,11 @@ func getLsPrefixV4List(pathAttrs []*anypb.Any) ([]table.TedElem, error) {
 func getLsPrefixV4(lsNlri *api.LsAddrPrefix, sidIndex uint32) (*table.LsPrefixV4, error) {
 	prefNlri, err := lsNlri.GetNlri().UnmarshalNew()
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal LS Prefix V4: %v", err)
+		return nil, fmt.Errorf("failed to unmarshal LS Prefix V4: %w", err)
 	}
 	prefv4Nlri, ok := prefNlri.(*api.LsPrefixV4NLRI)
 	if !ok {
-		return nil, errors.New("invalid LS prefix v4 NLRI type")
+		return nil, fmt.Errorf("invalid LS prefix v4 NLRI type: %T", prefNlri)
 	}
 
 	localNodeID := prefv4Nlri.GetLocalNode().GetIgpRouterId()
@@ -273,25 +278,25 @@ func getLsPrefixV4(lsNlri *api.LsAddrPrefix, sidIndex uint32) (*table.LsPrefixV4
 	lsPrefixV4.SidIndex = sidIndex
 
 	if len(prefixV4) != 1 {
-		return nil, errors.New("invalid prefix length: expected 1 prefix")
+		return nil, fmt.Errorf("invalid prefix length: expected 1, got %d", len(prefixV4))
 	}
 
 	lsPrefixV4.Prefix, err = netip.ParsePrefix(prefixV4[0])
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse prefix: %v", err)
+		return nil, fmt.Errorf("failed to parse prefix %q: %w", prefixV4[0], err)
 	}
 
 	return lsPrefixV4, nil
 }
 
-func getLsSrv6SIDNLRIList(lsSRv6SIDNlri *api.LsSrv6SIDNLRI, pathAttrs []*anypb.Any) ([]table.TedElem, error) {
+func getLsSrv6SIDNLRIList(pathAttrs []*anypb.Any) ([]table.TedElem, error) {
 	var lsSrv6SIDList []table.TedElem
 	var endpointBehavior uint32
 
 	for _, pathAttr := range pathAttrs {
 		typedPathAttr, err := pathAttr.UnmarshalNew()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to unmarshal path attribute: %w", err)
 		}
 
 		switch typedPathAttr := typedPathAttr.(type) {
@@ -301,38 +306,104 @@ func getLsSrv6SIDNLRIList(lsSRv6SIDNlri *api.LsSrv6SIDNLRI, pathAttrs []*anypb.A
 			for _, nlri := range typedPathAttr.GetNlris() {
 				typedNlri, err := nlri.UnmarshalNew()
 				if err != nil {
-					return nil, err
+					return nil, fmt.Errorf("failed to unmarshal NLRI: %w", err)
 				}
 				if lsNlri, ok := typedNlri.(*api.LsAddrPrefix); ok {
 					lsSrv6SID, err := getLsSrv6SIDNLRI(lsNlri, endpointBehavior)
 					if err != nil {
-						return nil, err
+						return nil, fmt.Errorf("failed to process LS SRv6 SID NLRI: %w", err)
 					}
 					lsSrv6SIDList = append(lsSrv6SIDList, lsSrv6SID)
+				} else {
+					return nil, fmt.Errorf("unexpected NLRI type: %T", typedNlri)
 				}
 			}
+		default:
+			return nil, fmt.Errorf("unexpected path attribute type: %T", typedPathAttr)
 		}
 	}
 	return lsSrv6SIDList, nil
 }
 
+// extractField retrieves a field by its name using reflection and returns its value.
+func extractField(v any, fieldName string) reflect.Value {
+	val := reflect.ValueOf(v)
+	if val.Kind() == reflect.Pointer && val.IsNil() {
+		return reflect.Value{}
+	}
+	if val.Kind() == reflect.Pointer {
+		val = val.Elem()
+	}
+	field := val.FieldByName(fieldName)
+	if !field.IsValid() {
+		return reflect.Value{}
+	}
+	return field
+}
+
+// extractMethodValue extracts the method's return value using reflection.
+func extractMethodValue(val reflect.Value, methodName string) (any, error) {
+	method := val.MethodByName(methodName)
+	if !method.IsValid() {
+		return nil, fmt.Errorf("method %s not found or invalid", methodName)
+	}
+	res := method.Call(nil)
+	if len(res) != 1 {
+		return nil, fmt.Errorf("method %s returned unexpected number of results", methodName)
+	}
+	return res[0].Interface(), nil
+}
+
+// getLsSrv6SIDNLRI processes the LS SRv6 SID NLRI and returns a corresponding LsSrv6SID.
 func getLsSrv6SIDNLRI(lsNlri *api.LsAddrPrefix, endpointBehavior uint32) (*table.LsSrv6SID, error) {
 	srv6Nlri, err := lsNlri.GetNlri().UnmarshalNew()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to unmarshal LS NLRI: %w", err)
 	}
 	srv6SIDNlri, ok := srv6Nlri.(*api.LsSrv6SIDNLRI)
 	if !ok {
-		return nil, errors.New("invalid LS SRv6 SID NLRI type")
+		return nil, fmt.Errorf("invalid LS SRv6 SID NLRI type: %T", srv6Nlri)
 	}
 	localNodeID := srv6SIDNlri.GetLocalNode().GetIgpRouterId()
 	localNodeAsn := srv6SIDNlri.GetLocalNode().GetAsn()
 	srv6SIDs := srv6SIDNlri.GetSrv6SidInformation().GetSids()
 	multiTopoIDs := srv6SIDNlri.GetMultiTopoId().GetMultiTopoIds()
-	serviceType := srv6SIDNlri.GetServiceChaining().GetServicetype()
-	trafficType := srv6SIDNlri.GetServiceChaining().GetTraffictype()
-	opaqueType := srv6SIDNlri.GetOpaqueMetadata().GetOpaquetype()
-	value := srv6SIDNlri.GetOpaqueMetadata().GetValue()
+
+	// Reflect processing for draft-ietf-idr-bgp-ls-sr-service-segments until merged into GoBGP master.
+	var serviceType, trafficType, opaqueType uint32
+	var value []byte
+	if scVal := extractField(srv6SIDNlri, "ServiceChaining"); scVal.IsValid() {
+		if st, err := extractMethodValue(scVal, "GetServicetype"); err == nil {
+			if stVal, ok := st.(uint32); ok {
+				serviceType = stVal
+			}
+		} else {
+			return nil, fmt.Errorf("failed to extract ServiceType: %w", err)
+		}
+		if tt, err := extractMethodValue(scVal, "GetTraffictype"); err == nil {
+			if ttVal, ok := tt.(uint32); ok {
+				trafficType = ttVal
+			}
+		} else {
+			return nil, fmt.Errorf("failed to extract TrafficType: %w", err)
+		}
+	}
+	if omVal := extractField(srv6SIDNlri, "OpaqueMetadata"); omVal.IsValid() {
+		if ot, err := extractMethodValue(omVal, "GetOpaquetype"); err == nil {
+			if otVal, ok := ot.(uint32); ok {
+				opaqueType = otVal
+			}
+		} else {
+			return nil, fmt.Errorf("failed to extract OpaqueType: %w", err)
+		}
+		if val, err := extractMethodValue(omVal, "GetValue"); err == nil {
+			if v, ok := val.([]byte); ok {
+				value = v
+			}
+		} else {
+			return nil, fmt.Errorf("failed to extract Value: %w", err)
+		}
+	}
 
 	localNode := table.NewLsNode(localNodeAsn, localNodeID)
 	lsSrv6SID := table.NewLsSrv6SID(localNode)
