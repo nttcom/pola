@@ -129,7 +129,7 @@ func ConvertToTedElem(dst *api.Destination) ([]table.TedElem, error) {
 			return nil, fmt.Errorf("invalid LS Link State NLRI type: %T", linkStateNlri)
 		}
 	default:
-		return nil, errors.New("invalid NLRI type")
+		return nil, fmt.Errorf("invalid NLRI type: %T", nlri)
 	}
 }
 
