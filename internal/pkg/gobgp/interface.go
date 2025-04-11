@@ -23,9 +23,9 @@ import (
 )
 
 func GetBgplsNlris(serverAddr string, serverPort string) ([]table.TedElem, error) {
-	gobgpAddress := serverAddr + ":" + serverPort
+	gobgpAddress := fmt.Sprintf("%s:%s", serverAddr, serverPort)
 
-	// Get connection
+	// Establish gRPC connection
 	cc, err := grpc.NewClient(
 		gobgpAddress,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -120,9 +120,8 @@ func ConvertToTedElem(dst *api.Destination) ([]table.TedElem, error) {
 				return nil, err
 			}
 			return lsSrv6SIDList, nil
-		// TODO: Implement LsPrefixV6NLRI handling
 		case *api.LsPrefixV6NLRI:
-			return nil, nil
+			return nil, nil // TODO: Implement LsPrefixV6NLRI handling
 		default:
 			return nil, errors.New("invalid LS Link State NLRI type")
 		}
