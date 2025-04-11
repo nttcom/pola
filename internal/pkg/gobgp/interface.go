@@ -123,9 +123,8 @@ func ConvertToTedElem(dst *api.Destination) ([]table.TedElem, error) {
 				return nil, fmt.Errorf("failed to process LS SRv6 SID NLRI: %w", err)
 			}
 			return lsSrv6SIDList, nil
-		// TODO: Implement LsPrefixV6NLRI handling
 		case *api.LsPrefixV6NLRI:
-			return nil, nil
+			return nil, nil // TODO: Implement LsPrefixV6NLRI handling
 		default:
 			return nil, fmt.Errorf("invalid LS Link State NLRI type: %T", linkStateNlri)
 		}
