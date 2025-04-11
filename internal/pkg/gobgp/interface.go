@@ -41,7 +41,8 @@ func GetBgplsNlris(serverAddr string, serverPort string) ([]table.TedElem, error
 
 	// Create gRPC client
 	client := api.NewGobgpApiClient(cc)
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	req := &api.ListPathRequest{
 		TableType: api.TableType_GLOBAL,
