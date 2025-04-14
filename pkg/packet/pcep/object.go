@@ -29,9 +29,9 @@ func DeterminePccType(caps []CapabilityInterface) (pccType PccType) {
 	for _, cap := range caps {
 		if t, ok := cap.(*AssocTypeList); ok {
 			for _, v := range t.AssocTypes {
-				if v == AssocType(20) { // Cisco specific Assoc-Type
+				if v == AssociationTypeSRPolicyAssociationCisco {
 					pccType = CiscoLegacy
-				} else if v == AssocType(65505) { // Juniper specific Assoc-Type
+				} else if v == AssociationTypeSRPolicyAssociationJuniper {
 					pccType = JuniperLegacy
 					break
 				}
@@ -355,7 +355,7 @@ func NewMetricObject() (*MetricObject, error) {
 }
 
 // LSPA Object (RFC5440 7.11)
-type LspaObject struct {
+type LSPAObject struct {
 	ObjectType      ObjectType
 	ExcludeAny      uint32
 	IncludeAny      uint32
@@ -365,7 +365,7 @@ type LspaObject struct {
 	LFlag           bool
 }
 
-func (o *LspaObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
+func (o *LSPAObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
 	o.ObjectType = typ
 	o.ExcludeAny = binary.BigEndian.Uint32(objectBody[0:4])
 	o.IncludeAny = binary.BigEndian.Uint32(objectBody[4:8])
@@ -376,9 +376,9 @@ func (o *LspaObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
 	return nil
 }
 
-func (o *LspaObject) Serialize() []uint8 {
+func (o *LSPAObject) Serialize() []uint8 {
 	lspaObjectHeader := NewCommonObjectHeader(ObjectClassLSPA, o.ObjectType, o.Len())
-	byteLspaObjectHeader := lspaObjectHeader.Serialize()
+	byteLSPAObjectHeader := lspaObjectHeader.Serialize()
 
 	buf := make([]uint8, 16)
 	binary.BigEndian.PutUint32(buf[0:4], o.ExcludeAny)
@@ -390,17 +390,17 @@ func (o *LspaObject) Serialize() []uint8 {
 		buf[14] = buf[14] | 0x01
 	}
 
-	byteLspaObject := AppendByteSlices(byteLspaObjectHeader, buf)
-	return byteLspaObject
+	byteLSPAObject := AppendByteSlices(byteLSPAObjectHeader, buf)
+	return byteLSPAObject
 }
 
-func (o *LspaObject) Len() uint16 {
+func (o *LSPAObject) Len() uint16 {
 	// CommonObjectHeader(4byte) + Flags, SRP-ID(8byte)
 	return commonObjectHeaderLength + 16
 }
 
-func NewLspaObject() (*LspaObject, error) {
-	o := &LspaObject{
+func NewLSPAObject() (*LSPAObject, error) {
+	o := &LSPAObject{
 		ObjectType:      ObjectType(1),
 		SetupPriority:   uint8(7),
 		HoldingPriority: uint8(7),
@@ -599,9 +599,9 @@ func NewSrpObject(segs []table.Segment, srpID uint32, isRemove bool) (*SrpObject
 		return o, nil
 	}
 	if _, ok := segs[0].(table.SegmentSRMPLS); ok {
-		o.TLVs = append(o.TLVs, &PathSetupType{PathSetupType: PST_SR_TE})
+		o.TLVs = append(o.TLVs, &PathSetupType{PathSetupType: PathSetupTypeSRTE})
 	} else if _, ok := segs[0].(table.SegmentSRv6); ok {
-		o.TLVs = append(o.TLVs, &PathSetupType{PathSetupType: PST_SRV6_TE})
+		o.TLVs = append(o.TLVs, &PathSetupType{PathSetupType: PathSetupTypeSRv6TE})
 	} else {
 		return nil, errors.New("invalid Segment type")
 	}
@@ -613,13 +613,13 @@ const (
 	ObjectTypeLSPLSP ObjectType = 0x01
 )
 
-type LspObject struct {
+type LSPObject struct {
 	ObjectType ObjectType
 	Name       string
 	SrcAddr    netip.Addr
 	DstAddr    netip.Addr
 	PlspID     uint32
-	LspID      uint16
+	LSPID      uint16
 	CFlag      bool
 	OFlag      uint8
 	AFlag      bool
@@ -629,7 +629,7 @@ type LspObject struct {
 	TLVs       []TLVInterface
 }
 
-func (o *LspObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
+func (o *LSPObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
 	o.ObjectType = typ
 	o.PlspID = uint32(binary.BigEndian.Uint32(objectBody[0:4]) >> 12) // 20 bits from top
 	o.OFlag = uint8(objectBody[3] & 0x0070 >> 4)
@@ -649,24 +649,24 @@ func (o *LspObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
 			if t, ok := tlv.(*SymbolicPathName); ok {
 				o.Name = t.Name
 			}
-			if t, ok := tlv.(*IPv4LspIdentifiers); ok {
+			if t, ok := tlv.(*IPv4LSPIdentifiers); ok {
 				o.SrcAddr = t.IPv4TunnelSenderAddress
 				o.DstAddr = t.IPv4TunnelEndpointAddress
-				o.LspID = t.LspID
+				o.LSPID = t.LSPID
 			}
-			if t, ok := tlv.(*IPv6LspIdentifiers); ok {
+			if t, ok := tlv.(*IPv6LSPIdentifiers); ok {
 				o.SrcAddr = t.IPv6TunnelSenderAddress
 				o.DstAddr = t.IPv6TunnelEndpointAddress
-				o.LspID = t.LspID
+				o.LSPID = t.LSPID
 			}
 		}
 	}
 	return nil
 }
 
-func (o *LspObject) Serialize() []uint8 {
+func (o *LSPObject) Serialize() []uint8 {
 	lspObjectHeader := NewCommonObjectHeader(ObjectClassLSP, o.ObjectType, o.Len())
-	byteLspObjectHeader := lspObjectHeader.Serialize()
+	byteLSPObjectHeader := lspObjectHeader.Serialize()
 
 	buf := make([]uint8, 4)
 	binary.BigEndian.PutUint32(buf, uint32(o.PlspID<<12)+uint32(o.OFlag<<4))
@@ -690,11 +690,11 @@ func (o *LspObject) Serialize() []uint8 {
 		byteTLVs = AppendByteSlices(byteTLVs, tlv.Serialize())
 	}
 
-	byteLspObject := AppendByteSlices(byteLspObjectHeader, buf, byteTLVs)
-	return byteLspObject
+	byteLSPObject := AppendByteSlices(byteLSPObjectHeader, buf, byteTLVs)
+	return byteLSPObject
 }
 
-func (o *LspObject) Len() uint16 {
+func (o *LSPObject) Len() uint16 {
 	tlvsByteLength := uint16(0)
 	for _, tlv := range o.TLVs {
 		tlvsByteLength += tlv.Len()
@@ -705,8 +705,8 @@ func (o *LspObject) Len() uint16 {
 	return uint16(commonObjectHeaderLength) + lspObjectBodyLength
 }
 
-func NewLspObject(lspName string, color *uint32, plspID uint32) (*LspObject, error) {
-	o := &LspObject{
+func NewLSPObject(lspName string, color *uint32, plspID uint32) (*LSPObject, error) {
+	o := &LSPObject{
 		ObjectType: ObjectTypeLSPLSP,
 		Name:       lspName,
 		PlspID:     plspID,
@@ -737,7 +737,7 @@ func NewLspObject(lspName string, color *uint32, plspID uint32) (*LspObject, err
 }
 
 // (I.D.draft-ietf-pce-pcep-color-12)
-func (o *LspObject) Color() uint32 {
+func (o *LSPObject) Color() uint32 {
 	for _, tlv := range o.TLVs {
 		if t, ok := tlv.(*Color); ok {
 			return t.Color
@@ -1264,18 +1264,19 @@ func NewEndpointsObject(dstAddr netip.Addr, srcAddr netip.Addr) (*EndpointsObjec
 // ASSOCIATION Object (RFC8697 6.)
 const (
 	ObjectTypeAssociationIPv4 ObjectType = 0x01
-	ObjectTypeAssociationIPV6 ObjectType = 0x02
+	ObjectTypeAssociationIPv6 ObjectType = 0x02
 )
 
 const (
-	AssociationTypeSRPolicyAssociation        uint16 = 0x06
-	AssociationTypeSRPolicyAssociationJuniper uint16 = 0xffe1 // Juniper specific TLV (deprecated)
+	AssociationTypeSRPolicyAssociation        AssocType = 0x06
+	AssociationTypeSRPolicyAssociationCisco   AssocType = 0x14
+	AssociationTypeSRPolicyAssociationJuniper AssocType = 0xffe1 // Juniper specific TLV (deprecated)
 )
 
 type AssociationObject struct {
 	ObjectType ObjectType
 	RFlag      bool
-	AssocType  uint16
+	AssocType  AssocType
 	AssocID    uint16
 	AssocSrc   netip.Addr
 	TLVs       []TLVInterface
@@ -1284,7 +1285,7 @@ type AssociationObject struct {
 func (o *AssociationObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
 	o.ObjectType = typ
 	o.RFlag = (objectBody[3] & 0x01) != 0
-	o.AssocType = uint16(binary.BigEndian.Uint16(objectBody[4:6]))
+	o.AssocType = AssocType(binary.BigEndian.Uint16(objectBody[4:6]))
 	o.AssocID = uint16(binary.BigEndian.Uint16(objectBody[6:8]))
 
 	switch o.ObjectType {
@@ -1298,7 +1299,7 @@ func (o *AssociationObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) 
 				return err
 			}
 		}
-	case ObjectTypeAssociationIPV6:
+	case ObjectTypeAssociationIPv6:
 		o.AssocSrc, _ = netip.AddrFromSlice(objectBody[8:24])
 		if len(objectBody) > 24 {
 			byteTLVs := objectBody[24:]
@@ -1329,7 +1330,7 @@ func (o *AssociationObject) Serialize() ([]uint8, error) {
 		buf[4] = buf[4] | 0x01
 	}
 
-	assocType := Uint16ToByteSlice(o.AssocType)
+	assocType := Uint16ToByteSlice(uint16(o.AssocType))
 	assocID := Uint16ToByteSlice(o.AssocID)
 
 	byteTLVs := []uint8{}
@@ -1389,14 +1390,14 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 		associationObjectTLVs := []TLVInterface{
 			&UndefinedTLV{
 				Typ:    TLVExtendedAssociationIDIPv4Juniper,
-				Length: TLV_EXTENDED_ASSOCIATION_ID_IPV4_LENGTH, // JuniperLegacy has only IPv4 implementation
+				Length: TLVExtendedAssociationIDIPv4ValueLength, // JuniperLegacy has only IPv4 implementation
 				Value: AppendByteSlices(
 					Uint32ToByteSlice(color), dstAddr.AsSlice(),
 				),
 			},
 			&UndefinedTLV{
 				Typ:    TLVSrPolicyCPathIDJuniper,
-				Length: TLV_SRPOLICY_CPATH_ID_LENGTH,
+				Length: TLVSRPolicyCPathIDValueLength,
 				Value: []uint8{
 					0x00,             // protocol origin
 					0x00, 0x00, 0x00, // mbz
@@ -1407,7 +1408,7 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 			},
 			&UndefinedTLV{
 				Typ:    TLVSrPolicyCPathPreferenceJuniper,
-				Length: TLV_SRPOLICY_CPATH_PREFERENCE_LENGTH,
+				Length: TLVSrPolicyCPathPreferenceValueLength,
 				Value:  Uint32ToByteSlice(preference),
 			},
 		}
@@ -1532,15 +1533,15 @@ func NewVendorInformationObject(vendor PccType, color uint32, preference uint32)
 		o.EnterpriseNumber = EnterpriseNumberCisco
 		vendorInformationObjectTLVs := []TLVInterface{
 			&UndefinedTLV{
-				Typ:    TLVColorCisco,
-				Length: TLVColorCiscoLength, // TODO: 20 if ipv6 endpoint
+				Typ:    SubTLVColorCisco,
+				Length: SubTLVColorCiscoValueLength, // TODO: 20 if ipv6 endpoint
 				Value: AppendByteSlices(
 					Uint32ToByteSlice(color),
 				),
 			},
 			&UndefinedTLV{
-				Typ:    TLVPreferenceCisco,
-				Length: TLVPreferenceCiscoLength,
+				Typ:    SubTLVPreferenceCisco,
+				Length: SubTLVPreferenceCiscoValueLength,
 				Value:  Uint32ToByteSlice(preference),
 			},
 		}
@@ -1554,7 +1555,7 @@ func NewVendorInformationObject(vendor PccType, color uint32, preference uint32)
 func (o *VendorInformationObject) Color() uint32 {
 	for _, tlv := range o.TLVs {
 		if t, ok := tlv.(*UndefinedTLV); ok {
-			if t.Type() == TLVColorCisco {
+			if t.Type() == SubTLVColorCisco {
 				return uint32(binary.BigEndian.Uint32(t.Value))
 			}
 		}
@@ -1565,7 +1566,7 @@ func (o *VendorInformationObject) Color() uint32 {
 func (o *VendorInformationObject) Preference() uint32 {
 	for _, tlv := range o.TLVs {
 		if t, ok := tlv.(*UndefinedTLV); ok {
-			if t.Type() == TLVPreferenceCisco {
+			if t.Type() == SubTLVPreferenceCisco {
 				return uint32(binary.BigEndian.Uint32(t.Value))
 			}
 		}

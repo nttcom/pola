@@ -251,9 +251,9 @@ func NewCloseMessage(reason CloseReason) (*CloseMessage, error) {
 
 type StateReport struct {
 	SrpObject               *SrpObject
-	LspObject               *LspObject
+	LSPObject               *LSPObject
 	EroObject               *EroObject
-	LspaObject              *LspaObject
+	LSPAObject              *LSPAObject
 	MetricObjects           []*MetricObject
 	BandwidthObjects        []*BandwidthObject
 	AssociationObject       *AssociationObject
@@ -263,9 +263,9 @@ type StateReport struct {
 func NewStateReport() (*StateReport, error) {
 	sr := &StateReport{
 		SrpObject:               &SrpObject{},
-		LspObject:               &LspObject{},
+		LSPObject:               &LSPObject{},
 		EroObject:               &EroObject{},
-		LspaObject:              &LspaObject{},
+		LSPAObject:              &LSPAObject{},
 		MetricObjects:           []*MetricObject{},
 		BandwidthObjects:        []*BandwidthObject{},
 		AssociationObject:       &AssociationObject{},
@@ -296,12 +296,12 @@ func (r *StateReport) decodeEroObject(objectType ObjectType, objectBody []uint8)
 	return r.EroObject.DecodeFromBytes(objectType, objectBody)
 }
 
-func (r *StateReport) decodeLspaObject(objectType ObjectType, objectBody []uint8) error {
-	return r.LspaObject.DecodeFromBytes(objectType, objectBody)
+func (r *StateReport) decodeLSPAObject(objectType ObjectType, objectBody []uint8) error {
+	return r.LSPAObject.DecodeFromBytes(objectType, objectBody)
 }
 
-func (r *StateReport) decodeLspObject(objectType ObjectType, objectBody []uint8) error {
-	return r.LspObject.DecodeFromBytes(objectType, objectBody)
+func (r *StateReport) decodeLSPObject(objectType ObjectType, objectBody []uint8) error {
+	return r.LSPObject.DecodeFromBytes(objectType, objectBody)
 }
 
 func (r *StateReport) decodeSrpObject(objectType ObjectType, objectBody []uint8) error {
@@ -330,8 +330,8 @@ var decodeFuncs = map[ObjectClass]func(*StateReport, ObjectType, []uint8) error{
 	ObjectClassBandwidth:         (*StateReport).decodeBandwidthObject,
 	ObjectClassMetric:            (*StateReport).decodeMetricObject,
 	ObjectClassERO:               (*StateReport).decodeEroObject,
-	ObjectClassLSPA:              (*StateReport).decodeLspaObject,
-	ObjectClassLSP:               (*StateReport).decodeLspObject,
+	ObjectClassLSPA:              (*StateReport).decodeLSPAObject,
+	ObjectClassLSP:               (*StateReport).decodeLSPObject,
 	ObjectClassSRP:               (*StateReport).decodeSrpObject,
 	ObjectClassAssociation:       (*StateReport).decodeAssociationObject,
 	ObjectClassVendorInformation: (*StateReport).decodeVendorInformationObject,
@@ -385,7 +385,7 @@ func NewPCRptMessage() *PCRptMessage {
 // PCInitiate Message
 type PCInitiateMessage struct {
 	SrpObject               *SrpObject
-	LspObject               *LspObject
+	LSPObject               *LSPObject
 	EndpointsObject         *EndpointsObject
 	EroObject               *EroObject
 	AssociationObject       *AssociationObject
@@ -411,12 +411,12 @@ func (m *PCInitiateMessage) Serialize() ([]uint8, error) {
 	}
 	pcinitiateMessageLength := CommonHeaderLength +
 		m.SrpObject.Len() +
-		m.LspObject.Len() +
+		m.LSPObject.Len() +
 		endpointsObjectLength +
 		eroObjectLength
 
 	byteSrpObject := m.SrpObject.Serialize()
-	byteLspObject := m.LspObject.Serialize()
+	byteLSPObject := m.LSPObject.Serialize()
 
 	byteEndpointsObject := []uint8{}
 	if m.EndpointsObject != nil {
@@ -455,7 +455,7 @@ func (m *PCInitiateMessage) Serialize() ([]uint8, error) {
 	pcinitiateHeader := NewCommonHeader(MessageTypeLSPInitReq, pcinitiateMessageLength)
 	bytePCInitiateHeader := pcinitiateHeader.Serialize()
 	bytePCInitiateMessage := AppendByteSlices(
-		bytePCInitiateHeader, byteSrpObject, byteLspObject, byteEndpointsObject, byteEroObject, byteAssociationObject, byteVendorInformationObject,
+		bytePCInitiateHeader, byteSrpObject, byteLSPObject, byteEndpointsObject, byteEroObject, byteAssociationObject, byteVendorInformationObject,
 	)
 	return bytePCInitiateMessage, nil
 }
@@ -476,12 +476,12 @@ func NewPCInitiateMessage(srpID uint32, lspName string, lspDelete bool, plspID u
 	}
 
 	if lspDelete {
-		if m.LspObject, err = NewLspObject(lspName, &color, plspID); err != nil {
+		if m.LSPObject, err = NewLSPObject(lspName, &color, plspID); err != nil {
 			return nil, err
 		}
 		return m, nil
 	} else {
-		if m.LspObject, err = NewLspObject(lspName, &color, 0); err != nil {
+		if m.LSPObject, err = NewLSPObject(lspName, &color, 0); err != nil {
 			return nil, err
 		}
 	}
@@ -520,13 +520,13 @@ func NewPCInitiateMessage(srpID uint32, lspName string, lspDelete bool, plspID u
 // PCUpdate Message
 type PCUpdMessage struct {
 	SrpObject *SrpObject
-	LspObject *LspObject
+	LSPObject *LSPObject
 	EroObject *EroObject
 }
 
 func (m *PCUpdMessage) Serialize() ([]uint8, error) {
 	byteSrpObject := m.SrpObject.Serialize()
-	byteLspObject := m.LspObject.Serialize()
+	byteLSPObject := m.LSPObject.Serialize()
 	byteEroObject, err := m.EroObject.Serialize()
 	if err != nil {
 		return nil, err
@@ -536,10 +536,10 @@ func (m *PCUpdMessage) Serialize() ([]uint8, error) {
 	if err != nil {
 		return nil, err
 	}
-	pcupdMessageLength := CommonHeaderLength + m.SrpObject.Len() + m.LspObject.Len() + eroObjectLength
+	pcupdMessageLength := CommonHeaderLength + m.SrpObject.Len() + m.LSPObject.Len() + eroObjectLength
 	pcupdHeader := NewCommonHeader(MessageTypeUpdate, pcupdMessageLength)
 	bytePCUpdHeader := pcupdHeader.Serialize()
-	bytePCUpdMessage := AppendByteSlices(bytePCUpdHeader, byteSrpObject, byteLspObject, byteEroObject)
+	bytePCUpdMessage := AppendByteSlices(bytePCUpdHeader, byteSrpObject, byteLSPObject, byteEroObject)
 	return bytePCUpdMessage, err
 }
 
@@ -550,7 +550,7 @@ func NewPCUpdMessage(srpID uint32, lspName string, plspID uint32, segmentList []
 	if m.SrpObject, err = NewSrpObject(segmentList, srpID, false); err != nil {
 		return nil, err
 	}
-	if m.LspObject, err = NewLspObject(lspName, nil, plspID); err != nil {
+	if m.LSPObject, err = NewLSPObject(lspName, nil, plspID); err != nil {
 		return nil, err
 	}
 	if m.EroObject, err = NewEroObject(segmentList); err != nil {
