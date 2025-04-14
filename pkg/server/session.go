@@ -256,26 +256,26 @@ func (ss *Session) handlePCRpt(length uint16) error {
 
 	for _, sr := range message.StateReports {
 		// synchronization
-		if sr.LspObject.SFlag {
+		if sr.LSPObject.SFlag {
 			ss.logger.Debug("Synchronize SR Policy information", zap.Any("Message", message))
 			ss.RegisterSRPolicy(*sr)
-		} else if !sr.LspObject.SFlag {
+		} else if !sr.LSPObject.SFlag {
 			switch {
 			// finish synchronization
-			case sr.LspObject.PlspID == 0:
+			case sr.LSPObject.PlspID == 0:
 				ss.logger.Debug("Finish PCRpt state synchronization")
 				ss.isSynced = true
 			// response to request from PCE
 			case sr.SrpObject.SrpID != 0:
 				ss.logger.Debug("Finish Stateful PCE request", zap.Uint32("srpID", sr.SrpObject.SrpID))
-				if sr.LspObject.RFlag {
+				if sr.LSPObject.RFlag {
 					ss.DeleteSRPolicy(*sr)
 				} else {
 					ss.RegisterSRPolicy(*sr)
 				}
 
 			default:
-				if sr.LspObject.RFlag {
+				if sr.LSPObject.RFlag {
 					ss.DeleteSRPolicy(*sr)
 				} else {
 					ss.RegisterSRPolicy(*sr)
@@ -359,16 +359,16 @@ func (ss *Session) RegisterSRPolicy(sr pcep.StateReport) {
 		if sr.AssociationObject.Color() != 0 {
 			color = sr.AssociationObject.Color()
 		} else if hasColorCapability {
-			color = sr.LspObject.Color()
+			color = sr.LSPObject.Color()
 		}
 
 		preference = sr.AssociationObject.Preference()
 	}
 
-	lspID := sr.LspObject.LspID
+	lspID := sr.LSPObject.LSPID
 
 	var state table.PolicyState
-	switch sr.LspObject.OFlag {
+	switch sr.LSPObject.OFlag {
 	case uint8(0x00):
 		state = table.POLICY_DOWN
 	case uint8(0x01):
@@ -379,17 +379,17 @@ func (ss *Session) RegisterSRPolicy(sr pcep.StateReport) {
 		state = table.POLICY_UNKNOWN
 	}
 
-	if p, ok := ss.SearchSRPolicy(sr.LspObject.PlspID); ok {
+	if p, ok := ss.SearchSRPolicy(sr.LSPObject.PlspID); ok {
 		// update
 		// If the LSP ID is old, it is not the latest data update.
-		if p.LspID <= lspID {
+		if p.LSPID <= lspID {
 			p.Update(
 				table.PolicyDiff{
-					Name:        &sr.LspObject.Name,
+					Name:        &sr.LSPObject.Name,
 					Color:       &color,
 					Preference:  &preference,
 					SegmentList: sr.EroObject.ToSegmentList(),
-					LspID:       lspID,
+					LSPID:       lspID,
 					State:       state,
 				},
 			)
@@ -397,15 +397,15 @@ func (ss *Session) RegisterSRPolicy(sr pcep.StateReport) {
 	} else {
 		// create
 		var src, dst netip.Addr
-		if src = sr.LspObject.SrcAddr; !src.IsValid() {
+		if src = sr.LSPObject.SrcAddr; !src.IsValid() {
 			src = sr.AssociationObject.AssocSrc
 		}
-		if dst = sr.LspObject.DstAddr; !dst.IsValid() {
+		if dst = sr.LSPObject.DstAddr; !dst.IsValid() {
 			dst = sr.AssociationObject.Endpoint()
 		}
 		p := table.NewSRPolicy(
-			sr.LspObject.PlspID,
-			sr.LspObject.Name,
+			sr.LSPObject.PlspID,
+			sr.LSPObject.Name,
 			sr.EroObject.ToSegmentList(),
 			src,
 			dst,
@@ -419,10 +419,10 @@ func (ss *Session) RegisterSRPolicy(sr pcep.StateReport) {
 }
 
 func (ss *Session) DeleteSRPolicy(sr pcep.StateReport) {
-	lspID := sr.LspObject.LspID
+	lspID := sr.LSPObject.LSPID
 	for i, v := range ss.srPolicies {
 		// If the LSP ID is old, it is not the latest data update.
-		if v.PlspID == sr.LspObject.PlspID && v.LspID <= lspID {
+		if v.PlspID == sr.LSPObject.PlspID && v.LSPID <= lspID {
 			ss.srPolicies[i] = ss.srPolicies[len(ss.srPolicies)-1]
 			ss.srPolicies = ss.srPolicies[:len(ss.srPolicies)-1]
 			break
