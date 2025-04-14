@@ -22,7 +22,7 @@ import (
 	"github.com/nttcom/pola/pkg/server"
 )
 
-const TED_UPDATE_INTERVAL = 1 // (min)
+const TEDUpdateInterval = 1 // (min)
 
 type flags struct {
 	configFile string
@@ -118,7 +118,7 @@ func startGobgpUpdate(c *config.Config, logger *zap.Logger) chan []table.TedElem
 			} else {
 				tedElemsChan <- tedElems
 			}
-			time.Sleep(TED_UPDATE_INTERVAL * time.Minute)
+			time.Sleep(TEDUpdateInterval * time.Minute)
 		}
 	}()
 
