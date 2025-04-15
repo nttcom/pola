@@ -14,8 +14,8 @@ import (
 // Implements zapcore.ObjectMarshaler interface for SRPolicy
 func (x *SRPolicy) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	// Convert IP address slices to netip.Addr
-	ssAddr, _ := netip.AddrFromSlice(x.GetPcepSessionAddr())
-	enc.AddString("PcepSessionAddr", ssAddr.String())
+	ssAddr, _ := netip.AddrFromSlice(x.GetPCEPSessionAddr())
+	enc.AddString("PCEPSessionAddr", ssAddr.String())
 	srcAddr, _ := netip.AddrFromSlice(x.GetSrcAddr())
 	enc.AddString("SrcAddr", srcAddr.String())
 	dstAddr, _ := netip.AddrFromSlice(x.GetDstAddr())
@@ -43,6 +43,6 @@ func (x *SRPolicy) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 
 // Implements zapcore.ObjectMarshaler interface for Segment
 func (x *Segment) MarshalLogObject(enc zapcore.ObjectEncoder) error {
-	enc.AddString("Sid", x.GetSid())
+	enc.AddString("SID", x.GetSid())
 	return nil
 }

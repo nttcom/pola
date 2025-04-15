@@ -414,14 +414,14 @@ const (
 	ObjectTypeErrorError ObjectType = 0x01
 )
 
-type PcepErrorObject struct {
+type PCEPErrorObject struct {
 	ObjectType ObjectType
 	ErrorType  uint8
 	ErrorValue uint8
 	Tlvs       []TLVInterface
 }
 
-func (o *PcepErrorObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
+func (o *PCEPErrorObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
 	o.ObjectType = typ
 	o.ErrorType = objectBody[2]
 	o.ErrorValue = objectBody[3]
@@ -435,19 +435,19 @@ func (o *PcepErrorObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) er
 	return nil
 }
 
-func (o *PcepErrorObject) Serialize() []uint8 {
+func (o *PCEPErrorObject) Serialize() []uint8 {
 	pcepErrorObjectHeader := NewCommonObjectHeader(ObjectClassPCEPError, o.ObjectType, o.Len())
-	bytePcepErrorObjectHeader := pcepErrorObjectHeader.Serialize()
+	bytePCEPErrorObjectHeader := pcepErrorObjectHeader.Serialize()
 
 	buf := make([]uint8, 4)
 
 	buf[2] = o.ErrorType
 	buf[3] = o.ErrorValue
-	bytePcepErrorObject := AppendByteSlices(bytePcepErrorObjectHeader, buf)
-	return bytePcepErrorObject
+	bytePCEPErrorObject := AppendByteSlices(bytePCEPErrorObjectHeader, buf)
+	return bytePCEPErrorObject
 }
 
-func (o *PcepErrorObject) Len() uint16 {
+func (o *PCEPErrorObject) Len() uint16 {
 	tlvsByteLength := uint16(0)
 	for _, tlv := range o.Tlvs {
 		tlvsByteLength += tlv.Len()
@@ -456,8 +456,8 @@ func (o *PcepErrorObject) Len() uint16 {
 	return commonObjectHeaderLength + 4 + tlvsByteLength
 }
 
-func NewPcepErrorObject(errorType uint8, errorValue uint8, tlvs []TLVInterface) (*PcepErrorObject, error) {
-	o := &PcepErrorObject{
+func NewPCEPErrorObject(errorType uint8, errorValue uint8, tlvs []TLVInterface) (*PCEPErrorObject, error) {
+	o := &PCEPErrorObject{
 		ObjectType: ObjectTypeErrorError,
 		ErrorType:  errorType,
 		ErrorValue: errorValue,

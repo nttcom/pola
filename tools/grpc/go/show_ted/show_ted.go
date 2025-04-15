@@ -35,14 +35,14 @@ func main() {
 		}
 	}()
 
-	c := pb.NewPceServiceClient(conn)
+	c := pb.NewPCEServiceClient(conn)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
 	var empty empty.Empty
 
-	ret, err := c.GetTed(ctx, &empty)
+	ret, err := c.GetTED(ctx, &empty)
 	if err != nil {
 		log.Fatalf("unable to get TED info: %v", err)
 	}

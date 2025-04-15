@@ -12,18 +12,18 @@ import (
 	"strconv"
 )
 
-type LsTed struct {
+type LsTED struct {
 	ID    int
 	Nodes map[uint32]map[string]*LsNode // { ASN1: {"NodeID1": node1, "NodeID2": node2}, ASN2: {"NodeID3": node3, "NodeID4": node4}}
 }
 
-func (ted *LsTed) Update(tedElems []TedElem) {
+func (ted *LsTED) Update(tedElems []TEDElem) {
 	for _, tedElem := range tedElems {
-		tedElem.UpdateTed(ted)
+		tedElem.UpdateTED(ted)
 	}
 }
 
-func (ted *LsTed) Print() {
+func (ted *LsTED) Print() {
 	for _, nodes := range ted.Nodes {
 		nodeCnt := 1
 		for nodeID, node := range nodes {
@@ -66,12 +66,12 @@ func (ted *LsTed) Print() {
 	}
 }
 
-type TedElem interface {
-	UpdateTed(ted *LsTed)
+type TEDElem interface {
+	UpdateTED(ted *LsTED)
 }
 
 type LsNode struct {
-	Asn        uint32 // primary key, in MP_REACH_NLRI Attr
+	ASN        uint32 // primary key, in MP_REACH_NLRI Attr
 	RouterID   string // primary key, in MP_REACH_NLRI Attr
 	IsisAreaID string // in BGP-LS Attr
 	Hostname   string // in BGP-LS Attr
@@ -84,7 +84,7 @@ type LsNode struct {
 
 func NewLsNode(asn uint32, nodeID string) *LsNode {
 	return &LsNode{
-		Asn:      asn,
+		ASN:      asn,
 		RouterID: nodeID,
 	}
 }
@@ -116,8 +116,8 @@ func (n *LsNode) LoopbackAddr() (netip.Addr, error) {
 	return netip.Addr{}, errors.New("node doesn't have a loopback address")
 }
 
-func (n *LsNode) UpdateTed(ted *LsTed) {
-	nodes, asn := ted.Nodes, n.Asn
+func (n *LsNode) UpdateTED(ted *LsTED) {
+	nodes, asn := ted.Nodes, n.ASN
 
 	if _, ok := nodes[asn]; !ok {
 		nodes[asn] = make(map[string]*LsNode)
@@ -163,22 +163,22 @@ func (l *LsLink) Metric(metricType MetricType) (uint32, error) {
 	return 0, fmt.Errorf("metric %s not defined", metricType)
 }
 
-func (l *LsLink) UpdateTed(ted *LsTed) {
-	nodes, asn := ted.Nodes, l.LocalNode.Asn
+func (l *LsLink) UpdateTED(ted *LsTED) {
+	nodes, asn := ted.Nodes, l.LocalNode.ASN
 
 	if _, ok := nodes[asn]; !ok {
 		nodes[asn] = make(map[string]*LsNode)
 	}
 
 	if _, ok := nodes[asn][l.LocalNode.RouterID]; !ok {
-		nodes[asn][l.LocalNode.RouterID] = NewLsNode(l.LocalNode.Asn, l.LocalNode.RouterID)
+		nodes[asn][l.LocalNode.RouterID] = NewLsNode(l.LocalNode.ASN, l.LocalNode.RouterID)
 	}
 
-	if _, ok := nodes[l.RemoteNode.Asn][l.RemoteNode.RouterID]; !ok {
-		nodes[l.RemoteNode.Asn][l.RemoteNode.RouterID] = NewLsNode(l.RemoteNode.Asn, l.RemoteNode.RouterID)
+	if _, ok := nodes[l.RemoteNode.ASN][l.RemoteNode.RouterID]; !ok {
+		nodes[l.RemoteNode.ASN][l.RemoteNode.RouterID] = NewLsNode(l.RemoteNode.ASN, l.RemoteNode.RouterID)
 	}
 
-	l.LocalNode, l.RemoteNode = nodes[asn][l.LocalNode.RouterID], nodes[l.RemoteNode.Asn][l.RemoteNode.RouterID]
+	l.LocalNode, l.RemoteNode = nodes[asn][l.LocalNode.RouterID], nodes[l.RemoteNode.ASN][l.RemoteNode.RouterID]
 
 	l.LocalNode.AddLink(l)
 }
@@ -195,15 +195,15 @@ func NewLsPrefixV4(localNode *LsNode) *LsPrefixV4 {
 	}
 }
 
-func (lp *LsPrefixV4) UpdateTed(ted *LsTed) {
-	nodes, asn := ted.Nodes, lp.LocalNode.Asn
+func (lp *LsPrefixV4) UpdateTED(ted *LsTED) {
+	nodes, asn := ted.Nodes, lp.LocalNode.ASN
 
 	if _, ok := nodes[asn]; !ok {
 		nodes[asn] = make(map[string]*LsNode)
 	}
 
 	if _, ok := nodes[asn][lp.LocalNode.RouterID]; !ok {
-		nodes[asn][lp.LocalNode.RouterID] = NewLsNode(lp.LocalNode.Asn, lp.LocalNode.RouterID)
+		nodes[asn][lp.LocalNode.RouterID] = NewLsNode(lp.LocalNode.ASN, lp.LocalNode.RouterID)
 	}
 
 	localNode := nodes[asn][lp.LocalNode.RouterID]
@@ -233,15 +233,15 @@ func NewLsSrv6SID(node *LsNode) *LsSrv6SID {
 	}
 }
 
-func (s *LsSrv6SID) UpdateTed(ted *LsTed) {
-	nodes, asn := ted.Nodes, s.LocalNode.Asn
+func (s *LsSrv6SID) UpdateTED(ted *LsTED) {
+	nodes, asn := ted.Nodes, s.LocalNode.ASN
 
 	if _, ok := nodes[asn]; !ok {
 		nodes[asn] = make(map[string]*LsNode)
 	}
 
 	if _, ok := nodes[asn][s.LocalNode.RouterID]; !ok {
-		nodes[asn][s.LocalNode.RouterID] = NewLsNode(s.LocalNode.Asn, s.LocalNode.RouterID)
+		nodes[asn][s.LocalNode.RouterID] = NewLsNode(s.LocalNode.ASN, s.LocalNode.RouterID)
 	}
 
 	s.LocalNode = nodes[asn][s.LocalNode.RouterID]
