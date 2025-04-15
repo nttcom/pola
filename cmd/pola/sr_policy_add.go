@@ -63,30 +63,28 @@ func newSRPolicyAddCmd() *cobra.Command {
 	return srPolicyAddCmd
 }
 
-// Unify with table.Segment
 type Segment struct {
-	Sid          string `yaml:"sid"`
-	LocalAddr    string `yaml:"localAddr"`
-	RemoteAddr   string `yaml:"remoteAddr"`
-	SidStructure string `yaml:"sidStructure"`
+	SID          string `yaml:"sid"`
+	LocalAddr    string `yaml:"local_addr"`
+	RemoteAddr   string `yaml:"remote_addr"`
+	SIDStructure string `yaml:"sid_structure"`
 }
 
-// Unify with table.SRPolciy
 type SRPolicy struct {
-	PCEPSessionAddr netip.Addr `yaml:"pcepSessionAddr"`
-	SrcAddr         netip.Addr `yaml:"srcAddr"`
-	DstAddr         netip.Addr `yaml:"dstAddr"`
-	SrcRouterID     string     `yaml:"srcRouterID"`
-	DstRouterID     string     `yaml:"dstRouterID"`
+	PCEPSessionAddr netip.Addr `yaml:"pcep_session_addr"`
+	SrcAddr         netip.Addr `yaml:"src_addr"`
+	DstAddr         netip.Addr `yaml:"dst_addr"`
+	SrcRouterID     string     `yaml:"src_router_id"`
+	DstRouterID     string     `yaml:"dst_router_id"`
 	Name            string     `yaml:"name"`
-	SegmentList     []Segment  `yaml:"segmentList"`
+	SegmentList     []Segment  `yaml:"segment_list"`
 	Color           uint32     `yaml:"color"`
 	Type            string     `yaml:"type"`
 	Metric          string     `yaml:"metric"`
 }
 
 type InputFormat struct {
-	SRPolicy SRPolicy `yaml:"srPolicy"`
+	SRPolicy SRPolicy `yaml:"sr_policy"`
 	ASN      uint32   `yaml:"asn"`
 }
 
@@ -130,10 +128,10 @@ func addSRPolicyWithoutSIDValidation(input InputFormat) error {
 	segmentList := []*pb.Segment{}
 	for _, segment := range input.SRPolicy.SegmentList {
 		pbSeg := &pb.Segment{
-			Sid:          segment.Sid,
+			Sid:          segment.SID,
 			LocalAddr:    segment.LocalAddr,
 			RemoteAddr:   segment.RemoteAddr,
-			SidStructure: segment.SidStructure,
+			SidStructure: segment.SIDStructure,
 		}
 		segmentList = append(segmentList, pbSeg)
 	}
@@ -202,7 +200,7 @@ func addSRPolicyWithSIDValidation(input InputFormat) error {
 		}
 		srPolicyType = pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT
 		for _, segment := range input.SRPolicy.SegmentList {
-			segmentList = append(segmentList, &pb.Segment{Sid: segment.Sid})
+			segmentList = append(segmentList, &pb.Segment{Sid: segment.SID})
 		}
 	case "dynamic":
 		if input.SRPolicy.Metric == "" {
