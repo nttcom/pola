@@ -27,7 +27,7 @@ type Session struct {
 	IsSynced bool
 }
 
-func GetSessions(client pb.PceServiceClient) ([]Session, error) {
+func GetSessions(client pb.PCEServiceClient) ([]Session, error) {
 	ctx, cancel := withTimeout()
 	defer cancel()
 
@@ -52,7 +52,7 @@ func GetSessions(client pb.PceServiceClient) ([]Session, error) {
 	return sessions, nil
 }
 
-func DeleteSession(client pb.PceServiceClient, session *pb.Session) error {
+func DeleteSession(client pb.PCEServiceClient, session *pb.Session) error {
 	ctx, cancel := withTimeout()
 	defer cancel()
 	_, err := client.DeleteSession(ctx, session)
@@ -62,7 +62,7 @@ func DeleteSession(client pb.PceServiceClient, session *pb.Session) error {
 	return nil
 }
 
-func GetSRPolicyList(client pb.PceServiceClient) (map[netip.Addr][]table.SRPolicy, error) {
+func GetSRPolicyList(client pb.PCEServiceClient) (map[netip.Addr][]table.SRPolicy, error) {
 	ctx, cancel := withTimeout()
 	defer cancel()
 
@@ -74,7 +74,7 @@ func GetSRPolicyList(client pb.PceServiceClient) (map[netip.Addr][]table.SRPolic
 	policies := make(map[netip.Addr][]table.SRPolicy, len(ret.GetSRPolicies()))
 
 	for _, p := range ret.GetSRPolicies() {
-		peerAddr, _ := netip.AddrFromSlice(p.PcepSessionAddr)
+		peerAddr, _ := netip.AddrFromSlice(p.PCEPSessionAddr)
 		srcAddr, _ := netip.AddrFromSlice(p.SrcAddr)
 		dstAddr, _ := netip.AddrFromSlice(p.DstAddr)
 		var segmentList []table.Segment
@@ -99,7 +99,7 @@ func GetSRPolicyList(client pb.PceServiceClient) (map[netip.Addr][]table.SRPolic
 	return policies, nil
 }
 
-func CreateSRPolicy(client pb.PceServiceClient, input *pb.CreateSRPolicyInput) error {
+func CreateSRPolicy(client pb.PCEServiceClient, input *pb.CreateSRPolicyInput) error {
 	ctx, cancel := withTimeout()
 	defer cancel()
 
@@ -107,7 +107,7 @@ func CreateSRPolicy(client pb.PceServiceClient, input *pb.CreateSRPolicyInput) e
 	return err
 }
 
-func CreateSRPolicyWithoutLinkState(client pb.PceServiceClient, input *pb.CreateSRPolicyInput) error {
+func CreateSRPolicyWithoutLinkState(client pb.PCEServiceClient, input *pb.CreateSRPolicyInput) error {
 	ctx, cancel := withTimeout()
 	defer cancel()
 
@@ -115,7 +115,7 @@ func CreateSRPolicyWithoutLinkState(client pb.PceServiceClient, input *pb.Create
 	return err
 }
 
-func DeleteSRPolicy(client pb.PceServiceClient, input *pb.DeleteSRPolicyInput) error {
+func DeleteSRPolicy(client pb.PCEServiceClient, input *pb.DeleteSRPolicyInput) error {
 	ctx, cancel := withTimeout()
 	defer cancel()
 
@@ -123,11 +123,11 @@ func DeleteSRPolicy(client pb.PceServiceClient, input *pb.DeleteSRPolicyInput) e
 	return err
 }
 
-func GetTed(client pb.PceServiceClient) (*table.LsTed, error) {
+func GetTED(client pb.PCEServiceClient) (*table.LsTED, error) {
 	ctx, cancel := withTimeout()
 	defer cancel()
 
-	ret, err := client.GetTed(ctx, &empty.Empty{})
+	ret, err := client.GetTED(ctx, &empty.Empty{})
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +136,7 @@ func GetTed(client pb.PceServiceClient) (*table.LsTed, error) {
 		return nil, errors.New("ted is disabled")
 	}
 
-	ted := &table.LsTed{
+	ted := &table.LsTED{
 		ID:    1,
 		Nodes: make(map[uint32]map[string]*table.LsNode),
 	}
@@ -152,8 +152,8 @@ func GetTed(client pb.PceServiceClient) (*table.LsTed, error) {
 	return ted, nil
 }
 
-// initializeLsNodes initializes LsNodes in the LsTed table using the given array of nodes
-func initializeLsNodes(ted *table.LsTed, nodes []*pb.LsNode) {
+// initializeLsNodes initializes LsNodes in the LsTED table using the given array of nodes
+func initializeLsNodes(ted *table.LsTED, nodes []*pb.LsNode) {
 	for _, node := range nodes {
 		lsNode := table.NewLsNode(node.GetAsn(), node.GetRouterID())
 		lsNode.Hostname = node.GetHostname()
@@ -161,17 +161,17 @@ func initializeLsNodes(ted *table.LsTed, nodes []*pb.LsNode) {
 		lsNode.SrgbBegin = node.GetSrgbBegin()
 		lsNode.SrgbEnd = node.GetSrgbEnd()
 
-		if _, ok := ted.Nodes[lsNode.Asn]; !ok {
-			ted.Nodes[lsNode.Asn] = map[string]*table.LsNode{}
+		if _, ok := ted.Nodes[lsNode.ASN]; !ok {
+			ted.Nodes[lsNode.ASN] = map[string]*table.LsNode{}
 		}
-		ted.Nodes[lsNode.Asn][lsNode.RouterID] = lsNode
+		ted.Nodes[lsNode.ASN][lsNode.RouterID] = lsNode
 	}
 }
 
-func addLsNode(ted *table.LsTed, node *pb.LsNode) error {
+func addLsNode(ted *table.LsTED, node *pb.LsNode) error {
 	for _, link := range node.GetLsLinks() {
-		localNode := ted.Nodes[link.LocalAsn][link.LocalRouterID]
-		remoteNode := ted.Nodes[link.RemoteAsn][link.RemoteRouterID]
+		localNode := ted.Nodes[link.LocalASN][link.LocalRouterID]
+		remoteNode := ted.Nodes[link.RemoteASN][link.RemoteRouterID]
 		lsLink, err := createLsLink(localNode, remoteNode, link)
 		if err != nil {
 			return err
@@ -206,7 +206,7 @@ func createLsLink(localNode, remoteNode *table.LsNode, link *pb.LsLink) (*table.
 	lsLink := &table.LsLink{
 		LocalNode:  localNode,
 		RemoteNode: remoteNode,
-		AdjSid:     link.GetAdjSid(),
+		AdjSid:     link.GetAdjSID(),
 	}
 	var err error
 	lsLink.LocalIP, err = netip.ParseAddr(link.GetLocalIP())
@@ -229,14 +229,14 @@ func createLsLink(localNode, remoteNode *table.LsNode, link *pb.LsLink) (*table.
 
 func createMetric(metricInfo *pb.Metric) (*table.Metric, error) {
 	switch metricInfo.GetType() {
-	case pb.MetricType_IGP:
-		return table.NewMetric(table.IGP_METRIC, metricInfo.GetValue()), nil
-	case pb.MetricType_TE:
-		return table.NewMetric(table.TE_METRIC, metricInfo.GetValue()), nil
-	case pb.MetricType_DELAY:
-		return table.NewMetric(table.DELAY_METRIC, metricInfo.GetValue()), nil
-	case pb.MetricType_HOPCOUNT:
-		return table.NewMetric(table.HOPCOUNT_METRIC, metricInfo.GetValue()), nil
+	case pb.MetricType_METRIC_TYPE_IGP:
+		return table.NewMetric(table.IGPMetric, metricInfo.GetValue()), nil
+	case pb.MetricType_METRIC_TYPE_TE:
+		return table.NewMetric(table.TEMetric, metricInfo.GetValue()), nil
+	case pb.MetricType_METRIC_TYPE_DELAY:
+		return table.NewMetric(table.DelayMetric, metricInfo.GetValue()), nil
+	case pb.MetricType_METRIC_TYPE_HOPCOUNT:
+		return table.NewMetric(table.HopcountMetric, metricInfo.GetValue()), nil
 	default:
 		return nil, errors.New("unknown metric type")
 	}

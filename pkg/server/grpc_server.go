@@ -28,7 +28,7 @@ type APIServer struct {
 	grpcServer *grpc.Server
 	usidMode   bool
 	logger     *zap.Logger
-	pb.UnimplementedPceServiceServer
+	pb.UnimplementedPCEServiceServer
 }
 
 func NewAPIServer(pce *Server, grpcServer *grpc.Server, usidMode bool, logger *zap.Logger) *APIServer {
@@ -38,7 +38,7 @@ func NewAPIServer(pce *Server, grpcServer *grpc.Server, usidMode bool, logger *z
 		usidMode:   usidMode,
 		logger:     logger.With(zap.String("server", "grpc")),
 	}
-	pb.RegisterPceServiceServer(grpcServer, s)
+	pb.RegisterPCEServiceServer(grpcServer, s)
 	return s
 }
 
@@ -112,7 +112,7 @@ func buildSegmentList(s *APIServer, input *pb.CreateSRPolicyInput, withLinkState
 func sendSRPolicyRequest(s *APIServer, input *pb.CreateSRPolicyInput, segmentList []table.Segment, srcAddr, dstAddr netip.Addr) (*pb.RequestStatus, error) {
 	inputSRPolicy := input.GetSRPolicy()
 
-	pcepSession, err := getSyncedPcepSession(s.pce, inputSRPolicy.GetPcepSessionAddr())
+	pcepSession, err := getSyncedPCEPSession(s.pce, inputSRPolicy.GetPCEPSessionAddr())
 	if err != nil {
 		return &pb.RequestStatus{IsSuccess: false}, err
 	}
@@ -176,14 +176,14 @@ func (s *APIServer) DeleteSRPolicy(ctx context.Context, input *pb.DeleteSRPolicy
 		segmentList = append(segmentList, seg)
 	}
 
-	inputJson, err := json.Marshal(input)
+	inputJSON, err := json.Marshal(input)
 	if err != nil {
 		return nil, err
 	}
 	s.logger.Info("Received DeleteSRPolicy API request")
-	s.logger.Debug("Received paramater", zap.String("input", string(inputJson)))
+	s.logger.Debug("Received paramater", zap.String("input", string(inputJSON)))
 
-	pcepSession, err := getSyncedPcepSession(s.pce, inputSRPolicy.GetPcepSessionAddr())
+	pcepSession, err := getSyncedPCEPSession(s.pce, inputSRPolicy.GetPCEPSessionAddr())
 	if err != nil {
 		return &pb.RequestStatus{IsSuccess: false}, err
 	}
@@ -232,26 +232,26 @@ const (
 var validator = map[ValidationKind]func(policy *pb.SRPolicy, asn uint32) bool{
 	ValidationKind("Add"): func(policy *pb.SRPolicy, asn uint32) bool {
 		return asn != 0 &&
-			policy.PcepSessionAddr != nil &&
+			policy.PCEPSessionAddr != nil &&
 			policy.Color != 0 &&
 			policy.SrcRouterID != "" &&
 			policy.DstRouterID != ""
 	},
 	ValidationKind("AddWithoutLinkState"): func(policy *pb.SRPolicy, asn uint32) bool {
-		return policy.PcepSessionAddr != nil &&
+		return policy.PCEPSessionAddr != nil &&
 			len(policy.SrcAddr) > 0 &&
 			len(policy.DstAddr) > 0 &&
 			len(policy.SegmentList) > 0
 	},
 	ValidationKind("Delete"): func(policy *pb.SRPolicy, asn uint32) bool {
-		return policy.PcepSessionAddr != nil &&
+		return policy.PCEPSessionAddr != nil &&
 			policy.Color != 0 &&
 			len(policy.DstAddr) > 0 &&
 			policy.PolicyName != ""
 	},
 }
 
-func getSyncedPcepSession(pce *Server, addr []byte) (*Session, error) {
+func getSyncedPCEPSession(pce *Server, addr []byte) (*Session, error) {
 	pcepSessionAddr, _ := netip.AddrFromSlice(addr)
 	pcepSession := pce.SearchSession(pcepSessionAddr, true)
 	if pcepSession == nil {
@@ -268,7 +268,7 @@ func getLoopbackAddr(pce *Server, asn uint32, routerID string) (netip.Addr, erro
 	return node.LoopbackAddr()
 }
 
-func getSegmentList(inputSRPolicy *pb.SRPolicy, asn uint32, ted *table.LsTed) ([]table.Segment, error) {
+func getSegmentList(inputSRPolicy *pb.SRPolicy, asn uint32, ted *table.LsTED) ([]table.Segment, error) {
 	var segmentList []table.Segment
 
 	switch inputSRPolicy.GetType() {
@@ -301,14 +301,14 @@ func getSegmentList(inputSRPolicy *pb.SRPolicy, asn uint32, ted *table.LsTed) ([
 
 func getMetricType(metricType pb.MetricType) (table.MetricType, error) {
 	switch metricType {
-	case pb.MetricType_IGP:
-		return table.IGP_METRIC, nil
-	case pb.MetricType_TE:
-		return table.TE_METRIC, nil
-	case pb.MetricType_DELAY:
-		return table.DELAY_METRIC, nil
-	case pb.MetricType_HOPCOUNT:
-		return table.HOPCOUNT_METRIC, nil
+	case pb.MetricType_METRIC_TYPE_IGP:
+		return table.IGPMetric, nil
+	case pb.MetricType_METRIC_TYPE_TE:
+		return table.TEMetric, nil
+	case pb.MetricType_METRIC_TYPE_DELAY:
+		return table.DelayMetric, nil
+	case pb.MetricType_METRIC_TYPE_HOPCOUNT:
+		return table.HopcountMetric, nil
 	default:
 		return 0, fmt.Errorf("unknown metric type: %v", metricType)
 	}
@@ -343,7 +343,7 @@ func (s *APIServer) GetSRPolicyList(context.Context, *empty.Empty) (*pb.SRPolicy
 	for ssAddr, policies := range s.pce.SRPolicies() {
 		for _, policy := range policies {
 			srPolicyData := &pb.SRPolicy{
-				PcepSessionAddr: ssAddr.AsSlice(),
+				PCEPSessionAddr: ssAddr.AsSlice(),
 				SegmentList:     make([]*pb.Segment, 0),
 				Color:           policy.Color,
 				Preference:      policy.Preference,
@@ -366,10 +366,10 @@ func (s *APIServer) GetSRPolicyList(context.Context, *empty.Empty) (*pb.SRPolicy
 	return &ret, nil
 }
 
-func (s *APIServer) GetTed(context.Context, *empty.Empty) (*pb.Ted, error) {
-	s.logger.Info("Received GetTed API request")
+func (s *APIServer) GetTED(context.Context, *empty.Empty) (*pb.TED, error) {
+	s.logger.Info("Received GetTED API request")
 
-	ret := &pb.Ted{
+	ret := &pb.TED{
 		Enable: true,
 	}
 
@@ -383,7 +383,7 @@ func (s *APIServer) GetTed(context.Context, *empty.Empty) (*pb.Ted, error) {
 	for _, lsNodes := range s.pce.ted.Nodes {
 		for _, lsNode := range lsNodes {
 			node := &pb.LsNode{
-				Asn:        lsNode.Asn,
+				Asn:        lsNode.ASN,
 				RouterID:   lsNode.RouterID,
 				IsisAreaID: lsNode.IsisAreaID,
 				Hostname:   lsNode.Hostname,
@@ -396,13 +396,13 @@ func (s *APIServer) GetTed(context.Context, *empty.Empty) (*pb.Ted, error) {
 			for _, lsLink := range lsNode.Links {
 				link := &pb.LsLink{
 					LocalRouterID:  lsLink.LocalNode.RouterID,
-					LocalAsn:       lsLink.LocalNode.Asn,
+					LocalASN:       lsLink.LocalNode.ASN,
 					LocalIP:        lsLink.LocalIP.String(),
 					RemoteRouterID: lsLink.RemoteNode.RouterID,
-					RemoteAsn:      lsLink.RemoteNode.Asn,
+					RemoteASN:      lsLink.RemoteNode.ASN,
 					RemoteIP:       lsLink.RemoteIP.String(),
 					Metrics:        make([]*pb.Metric, 0, len(lsLink.Metrics)),
-					AdjSid:         lsLink.AdjSid,
+					AdjSID:         lsLink.AdjSid,
 				}
 
 				for _, lsMetric := range lsLink.Metrics {
@@ -436,7 +436,7 @@ func (s *APIServer) GetTed(context.Context, *empty.Empty) (*pb.Ted, error) {
 		}
 	}
 
-	s.logger.Debug("Send GetTed API reply")
+	s.logger.Debug("Send GetTED API reply")
 	return ret, nil
 }
 

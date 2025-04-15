@@ -60,7 +60,7 @@ func (ss *Session) Established() {
 
 	// Receive PCEP messages in a separate goroutine
 	go func() {
-		if err := ss.ReceivePcepMessage(); err != nil {
+		if err := ss.ReceivePCEPMessage(); err != nil {
 			ss.logger.Debug("ERROR! Receive PCEP Message", zap.Error(err))
 		}
 		done <- struct{}{}
@@ -82,7 +82,7 @@ func (ss *Session) Established() {
 	}
 }
 
-func (ss *Session) sendPcepMessage(message pcep.Message) error {
+func (ss *Session) sendPCEPMessage(message pcep.Message) error {
 	byteMessage, err := message.Serialize()
 	if err != nil {
 		return err
@@ -156,7 +156,7 @@ func (ss *Session) SendKeepalive() error {
 		return err
 	}
 	ss.logger.Debug("Send Keepalive Message")
-	return ss.sendPcepMessage(keepaliveMessage)
+	return ss.sendPCEPMessage(keepaliveMessage)
 }
 
 func (ss *Session) SendClose(reason pcep.CloseReason) error {
@@ -175,7 +175,7 @@ func (ss *Session) SendClose(reason pcep.CloseReason) error {
 	return nil
 }
 
-func (ss *Session) ReceivePcepMessage() error {
+func (ss *Session) ReceivePCEPMessage() error {
 	for {
 		commonHeader, err := ss.readCommonHeader()
 		if err != nil {
@@ -203,8 +203,8 @@ func (ss *Session) ReceivePcepMessage() error {
 			}
 
 			ss.logger.Debug("Received PCErr",
-				zap.Uint8("error-Type", pcerrMessage.PcepErrorObject.ErrorType),
-				zap.Uint8("error-value", pcerrMessage.PcepErrorObject.ErrorValue),
+				zap.Uint8("error-Type", pcerrMessage.PCEPErrorObject.ErrorType),
+				zap.Uint8("error-value", pcerrMessage.PCEPErrorObject.ErrorValue),
 				zap.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#pcep-error-object"))
 		case pcep.MessageTypeClose:
 			byteCloseMessageBody := make([]uint8, commonHeader.MessageLength-pcep.CommonHeaderLength)
@@ -305,7 +305,7 @@ func (ss *Session) SendOpen() error {
 		return err
 	}
 	ss.logger.Debug("Send Open Message")
-	return ss.sendPcepMessage(openMessage)
+	return ss.sendPCEPMessage(openMessage)
 }
 
 func (ss *Session) SendPCInitiate(srPolicy table.SRPolicy, lspDelete bool) error {
@@ -314,7 +314,7 @@ func (ss *Session) SendPCInitiate(srPolicy table.SRPolicy, lspDelete bool) error
 		return err
 	}
 	ss.logger.Debug("Send PCInitiate Message")
-	err = ss.sendPcepMessage(pcinitiateMessage)
+	err = ss.sendPCEPMessage(pcinitiateMessage)
 	if err == nil {
 		ss.srpIDHead++
 	}
@@ -327,7 +327,7 @@ func (ss *Session) SendPCUpdate(srPolicy table.SRPolicy) error {
 		return err
 	}
 	ss.logger.Debug("Send Update Message")
-	err = ss.sendPcepMessage(pcupdateMessage)
+	err = ss.sendPCEPMessage(pcupdateMessage)
 	if err == nil {
 		ss.srpIDHead++
 	}
@@ -346,7 +346,7 @@ func (ss *Session) RegisterSRPolicy(sr pcep.StateReport) {
 		// TODO: Move hasColorCapability to Session struct
 		hasColorCapability := false
 		for _, cap := range ss.pccCapabilities {
-			if statefulCap, ok := cap.(*pcep.StatefulPceCapability); ok {
+			if statefulCap, ok := cap.(*pcep.StatefulPCECapability); ok {
 				if statefulCap.ColorCapability {
 					hasColorCapability = true
 					break
@@ -370,13 +370,13 @@ func (ss *Session) RegisterSRPolicy(sr pcep.StateReport) {
 	var state table.PolicyState
 	switch sr.LSPObject.OFlag {
 	case uint8(0x00):
-		state = table.POLICY_DOWN
+		state = table.PolicyDown
 	case uint8(0x01):
-		state = table.POLICY_UP
+		state = table.PolicyUp
 	case uint8(0x02):
-		state = table.POLICY_ACTIVE
+		state = table.PolicyActive
 	default:
-		state = table.POLICY_UNKNOWN
+		state = table.PolicyUnknown
 	}
 
 	if p, ok := ss.SearchSRPolicy(sr.LSPObject.PlspID); ok {

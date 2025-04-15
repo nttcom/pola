@@ -414,14 +414,14 @@ const (
 	ObjectTypeErrorError ObjectType = 0x01
 )
 
-type PcepErrorObject struct {
+type PCEPErrorObject struct {
 	ObjectType ObjectType
 	ErrorType  uint8
 	ErrorValue uint8
 	Tlvs       []TLVInterface
 }
 
-func (o *PcepErrorObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
+func (o *PCEPErrorObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
 	o.ObjectType = typ
 	o.ErrorType = objectBody[2]
 	o.ErrorValue = objectBody[3]
@@ -435,19 +435,19 @@ func (o *PcepErrorObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) er
 	return nil
 }
 
-func (o *PcepErrorObject) Serialize() []uint8 {
+func (o *PCEPErrorObject) Serialize() []uint8 {
 	pcepErrorObjectHeader := NewCommonObjectHeader(ObjectClassPCEPError, o.ObjectType, o.Len())
-	bytePcepErrorObjectHeader := pcepErrorObjectHeader.Serialize()
+	bytePCEPErrorObjectHeader := pcepErrorObjectHeader.Serialize()
 
 	buf := make([]uint8, 4)
 
 	buf[2] = o.ErrorType
 	buf[3] = o.ErrorValue
-	bytePcepErrorObject := AppendByteSlices(bytePcepErrorObjectHeader, buf)
-	return bytePcepErrorObject
+	bytePCEPErrorObject := AppendByteSlices(bytePCEPErrorObjectHeader, buf)
+	return bytePCEPErrorObject
 }
 
-func (o *PcepErrorObject) Len() uint16 {
+func (o *PCEPErrorObject) Len() uint16 {
 	tlvsByteLength := uint16(0)
 	for _, tlv := range o.Tlvs {
 		tlvsByteLength += tlv.Len()
@@ -456,8 +456,8 @@ func (o *PcepErrorObject) Len() uint16 {
 	return commonObjectHeaderLength + 4 + tlvsByteLength
 }
 
-func NewPcepErrorObject(errorType uint8, errorValue uint8, tlvs []TLVInterface) (*PcepErrorObject, error) {
-	o := &PcepErrorObject{
+func NewPCEPErrorObject(errorType uint8, errorValue uint8, tlvs []TLVInterface) (*PCEPErrorObject, error) {
+	o := &PCEPErrorObject{
 		ObjectType: ObjectTypeErrorError,
 		ErrorType:  errorType,
 		ErrorValue: errorValue,
@@ -600,7 +600,6 @@ func NewSrpObject(segs []table.Segment, srpID uint32, isRemove bool) (*SrpObject
 	}
 	if _, ok := segs[0].(table.SegmentSRMPLS); ok {
 		o.TLVs = append(o.TLVs, &PathSetupType{PathSetupType: PathSetupTypeSRTE})
-	} else if _, ok := segs[0].(table.SegmentSRv6); ok {
 		o.TLVs = append(o.TLVs, &PathSetupType{PathSetupType: PathSetupTypeSRv6TE})
 	} else {
 		return nil, errors.New("invalid Segment type")
@@ -767,7 +766,7 @@ func (o *EroObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
 		switch SubObjectType(objectBody[0] & 0x7f) {
 		case SubObjectTypeEROSR:
 			eroSubobj = &SREroSubobject{}
-		case OT_ERO_SRV6:
+		case SubObjectTypeEROSRv6:
 			eroSubobj = &SRv6EroSubobject{}
 		default:
 			return errors.New("invalid Subobject type")
@@ -1020,7 +1019,7 @@ func (o *SREroSubobject) ToSegment() table.Segment {
 
 // SRv6-ERO Subobject (RFC9603 4.3.1)
 const (
-	OT_ERO_SRV6 SubObjectType = 0x28
+	SubObjectTypeEROSRv6 SubObjectType = 0x28
 )
 
 type NAITypeSRv6 uint8
@@ -1167,7 +1166,7 @@ func (o *SRv6EroSubobject) Len() (uint16, error) {
 func NewSRv6EroSubObject(seg table.SegmentSRv6) (*SRv6EroSubobject, error) {
 	subo := &SRv6EroSubobject{
 		LFlag:         false,
-		SubobjectType: OT_ERO_SRV6,
+		SubobjectType: SubObjectTypeEROSRv6,
 		VFlag:         false,
 		SFlag:         false, // SID is absent
 		Segment:       seg,
