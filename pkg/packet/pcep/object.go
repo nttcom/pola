@@ -600,7 +600,6 @@ func NewSrpObject(segs []table.Segment, srpID uint32, isRemove bool) (*SrpObject
 	}
 	if _, ok := segs[0].(table.SegmentSRMPLS); ok {
 		o.TLVs = append(o.TLVs, &PathSetupType{PathSetupType: PathSetupTypeSRTE})
-	} else if _, ok := segs[0].(table.SegmentSRv6); ok {
 		o.TLVs = append(o.TLVs, &PathSetupType{PathSetupType: PathSetupTypeSRv6TE})
 	} else {
 		return nil, errors.New("invalid Segment type")
@@ -767,7 +766,7 @@ func (o *EroObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
 		switch SubObjectType(objectBody[0] & 0x7f) {
 		case SubObjectTypeEROSR:
 			eroSubobj = &SREroSubobject{}
-		case OT_ERO_SRV6:
+		case SubObjectTypeEROSRv6:
 			eroSubobj = &SRv6EroSubobject{}
 		default:
 			return errors.New("invalid Subobject type")
@@ -1020,7 +1019,7 @@ func (o *SREroSubobject) ToSegment() table.Segment {
 
 // SRv6-ERO Subobject (RFC9603 4.3.1)
 const (
-	OT_ERO_SRV6 SubObjectType = 0x28
+	SubObjectTypeEROSRv6 SubObjectType = 0x28
 )
 
 type NAITypeSRv6 uint8
@@ -1167,7 +1166,7 @@ func (o *SRv6EroSubobject) Len() (uint16, error) {
 func NewSRv6EroSubObject(seg table.SegmentSRv6) (*SRv6EroSubobject, error) {
 	subo := &SRv6EroSubobject{
 		LFlag:         false,
-		SubobjectType: OT_ERO_SRV6,
+		SubobjectType: SubObjectTypeEROSRv6,
 		VFlag:         false,
 		SFlag:         false, // SID is absent
 		Segment:       seg,

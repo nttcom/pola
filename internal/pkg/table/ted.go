@@ -268,21 +268,21 @@ func NewMetric(metricType MetricType, value uint32) *Metric {
 type MetricType int
 
 const (
-	IGP_METRIC MetricType = iota
-	TE_METRIC
-	DELAY_METRIC
-	HOPCOUNT_METRIC
+	IGPMetric MetricType = iota
+	TEMetric
+	DelayMetric
+	HopcountMetric
 )
 
 func (m MetricType) String() string {
 	switch m {
-	case IGP_METRIC:
+	case IGPMetric:
 		return "IGP"
-	case TE_METRIC:
+	case TEMetric:
 		return "TE"
-	case DELAY_METRIC:
+	case DelayMetric:
 		return "DELAY"
-	case HOPCOUNT_METRIC:
+	case HopcountMetric:
 		return "HOPCOUNT"
 	default:
 		return "Unknown"
