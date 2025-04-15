@@ -5,7 +5,7 @@
 
 package server
 
-type ServerError struct {
+type Error struct {
 	Error  error
 	Server string
 }

@@ -14,7 +14,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newTedCmd() *cobra.Command {
+func newTEDCmd() *cobra.Command {
 	return &cobra.Command{
 		Use: "ted",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -27,7 +27,7 @@ func newTedCmd() *cobra.Command {
 }
 
 func print(jsonFlag bool) error {
-	ted, err := grpc.GetTed(client)
+	ted, err := grpc.GetTED(client)
 	if err != nil {
 		return err
 	}
@@ -43,7 +43,7 @@ func print(jsonFlag bool) error {
 		for _, as := range ted.Nodes {
 			for _, node := range as {
 				tmpNode := map[string]interface{}{ // TODO: Fix format according to readme
-					"asn":        node.Asn,
+					"asn":        node.ASN,
 					"routerID":   node.RouterID,
 					"isisAreaID": node.IsisAreaID,
 					"hostname":   node.Hostname,

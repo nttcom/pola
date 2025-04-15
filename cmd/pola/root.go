@@ -9,14 +9,14 @@ import (
 	"fmt"
 	"net"
 
-	pb "github.com/nttcom/pola/api/grpc"
+	pb "github.com/nttcom/pola/api/pola/v1"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
 var (
-	client  pb.PceServiceClient
+	client  pb.PCEServiceClient
 	jsonFmt bool
 )
 
@@ -28,7 +28,7 @@ func newRootCmd() *cobra.Command {
 	rootCmd.PersistentFlags().String("host", "127.0.0.1", "polad connection address")
 	rootCmd.PersistentFlags().StringP("port", "p", "50051", "polad connection port")
 
-	rootCmd.AddCommand(newSessionCmd(), newSRPolicyCmd(), newTedCmd())
+	rootCmd.AddCommand(newSessionCmd(), newSRPolicyCmd(), newTEDCmd())
 	rootCmd.PersistentPreRunE = persistentPreRunE
 	rootCmd.Run = runRootCmd
 
@@ -44,7 +44,7 @@ func persistentPreRunE(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to dial polad connection: %v", err)
 	}
 
-	client = pb.NewPceServiceClient(conn)
+	client = pb.NewPCEServiceClient(conn)
 	return nil
 }
 

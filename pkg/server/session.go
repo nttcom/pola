@@ -36,7 +36,7 @@ func NewSession(sessionID uint8, peerAddr netip.Addr, tcpConn *net.TCPConn, logg
 		isSynced:  false,
 		srpIDHead: uint32(1),
 		logger:    logger.With(zap.String("server", "pcep"), zap.String("session", peerAddr.String())),
-		pccType:   pcep.RFC_COMPLIANT,
+		pccType:   pcep.RFCCompliant,
 		peerAddr:  peerAddr,
 		tcpConn:   tcpConn,
 	}
@@ -60,7 +60,7 @@ func (ss *Session) Established() {
 
 	// Receive PCEP messages in a separate goroutine
 	go func() {
-		if err := ss.ReceivePcepMessage(); err != nil {
+		if err := ss.ReceivePCEPMessage(); err != nil {
 			ss.logger.Debug("ERROR! Receive PCEP Message", zap.Error(err))
 		}
 		done <- struct{}{}
@@ -82,7 +82,7 @@ func (ss *Session) Established() {
 	}
 }
 
-func (ss *Session) sendPcepMessage(message pcep.Message) error {
+func (ss *Session) sendPCEPMessage(message pcep.Message) error {
 	byteMessage, err := message.Serialize()
 	if err != nil {
 		return err
@@ -102,7 +102,7 @@ func (ss *Session) Open() error {
 }
 
 func (ss *Session) parseOpenMessage() (*pcep.OpenMessage, error) {
-	byteOpenHeader := make([]uint8, pcep.COMMON_HEADER_LENGTH)
+	byteOpenHeader := make([]uint8, pcep.CommonHeaderLength)
 	if _, err := ss.tcpConn.Read(byteOpenHeader); err != nil {
 		return nil, err
 	}
@@ -115,11 +115,11 @@ func (ss *Session) parseOpenMessage() (*pcep.OpenMessage, error) {
 	if openHeader.Version != 1 {
 		return nil, fmt.Errorf("PCEP version mismatch (receive version: %d)", openHeader.Version)
 	}
-	if openHeader.MessageType != pcep.MT_OPEN {
-		return nil, fmt.Errorf("this peer has not been opened (messageType: %d)", openHeader.MessageType)
+	if openHeader.MessageType != pcep.MessageTypeOpen {
+		return nil, fmt.Errorf("this peer has not been opened (messageType: %s)", openHeader.MessageType.String())
 	}
 
-	byteOpenObject := make([]uint8, openHeader.MessageLength-pcep.COMMON_HEADER_LENGTH)
+	byteOpenObject := make([]uint8, openHeader.MessageLength-pcep.CommonHeaderLength)
 	if _, err := ss.tcpConn.Read(byteOpenObject); err != nil {
 		return nil, err
 	}
@@ -156,10 +156,10 @@ func (ss *Session) SendKeepalive() error {
 		return err
 	}
 	ss.logger.Debug("Send Keepalive Message")
-	return ss.sendPcepMessage(keepaliveMessage)
+	return ss.sendPCEPMessage(keepaliveMessage)
 }
 
-func (ss *Session) SendClose(reason uint8) error {
+func (ss *Session) SendClose(reason pcep.CloseReason) error {
 	closeMessage, err := pcep.NewCloseMessage(reason)
 	if err != nil {
 		return err
@@ -167,7 +167,7 @@ func (ss *Session) SendClose(reason uint8) error {
 	byteCloseMessage := closeMessage.Serialize()
 
 	ss.logger.Debug("Send Close Message",
-		zap.Uint8("reason", closeMessage.CloseObject.Reason),
+		zap.Uint8("reason", uint8(closeMessage.CloseObject.Reason)),
 		zap.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#close-object-reason-field"))
 	if _, err := ss.tcpConn.Write(byteCloseMessage); err != nil {
 		return err
@@ -175,7 +175,7 @@ func (ss *Session) SendClose(reason uint8) error {
 	return nil
 }
 
-func (ss *Session) ReceivePcepMessage() error {
+func (ss *Session) ReceivePCEPMessage() error {
 	for {
 		commonHeader, err := ss.readCommonHeader()
 		if err != nil {
@@ -185,15 +185,15 @@ func (ss *Session) ReceivePcepMessage() error {
 		time.Sleep(10 * time.Millisecond)
 
 		switch commonHeader.MessageType {
-		case pcep.MT_KEEPALIVE:
+		case pcep.MessageTypeKeepalive:
 			ss.logger.Debug("Received Keepalive")
-		case pcep.MT_REPORT:
+		case pcep.MessageTypeReport:
 			err = ss.handlePCRpt(commonHeader.MessageLength)
 			if err != nil {
 				return err
 			}
-		case pcep.MT_ERROR:
-			bytePCErrMessageBody := make([]uint8, commonHeader.MessageLength-pcep.COMMON_HEADER_LENGTH)
+		case pcep.MessageTypeError:
+			bytePCErrMessageBody := make([]uint8, commonHeader.MessageLength-pcep.CommonHeaderLength)
 			if _, err := ss.tcpConn.Read(bytePCErrMessageBody); err != nil {
 				return err
 			}
@@ -203,11 +203,11 @@ func (ss *Session) ReceivePcepMessage() error {
 			}
 
 			ss.logger.Debug("Received PCErr",
-				zap.Uint8("error-Type", pcerrMessage.PcepErrorObject.ErrorType),
-				zap.Uint8("error-value", pcerrMessage.PcepErrorObject.ErrorValue),
+				zap.Uint8("error-Type", pcerrMessage.PCEPErrorObject.ErrorType),
+				zap.Uint8("error-value", pcerrMessage.PCEPErrorObject.ErrorValue),
 				zap.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#pcep-error-object"))
-		case pcep.MT_CLOSE:
-			byteCloseMessageBody := make([]uint8, commonHeader.MessageLength-pcep.COMMON_HEADER_LENGTH)
+		case pcep.MessageTypeClose:
+			byteCloseMessageBody := make([]uint8, commonHeader.MessageLength-pcep.CommonHeaderLength)
 			if _, err := ss.tcpConn.Read(byteCloseMessageBody); err != nil {
 				return err
 			}
@@ -216,19 +216,19 @@ func (ss *Session) ReceivePcepMessage() error {
 				return err
 			}
 			ss.logger.Debug("Received Close",
-				zap.Uint8("reason", closeMessage.CloseObject.Reason),
+				zap.String("reason", closeMessage.CloseObject.Reason.String()),
 				zap.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#close-object-reason-field"))
 			// Close session if get Close Message
 			return nil
 		default:
 			ss.logger.Debug("Received unsupported MessageType",
-				zap.Uint8("MessageType", commonHeader.MessageType))
+				zap.String("MessageType", commonHeader.MessageType.String()))
 		}
 	}
 }
 
 func (ss *Session) readCommonHeader() (*pcep.CommonHeader, error) {
-	commonHeaderBytes := make([]uint8, pcep.COMMON_HEADER_LENGTH)
+	commonHeaderBytes := make([]uint8, pcep.CommonHeaderLength)
 	if _, err := ss.tcpConn.Read(commonHeaderBytes); err != nil {
 		return nil, err
 	}
@@ -244,7 +244,7 @@ func (ss *Session) readCommonHeader() (*pcep.CommonHeader, error) {
 func (ss *Session) handlePCRpt(length uint16) error {
 	ss.logger.Debug("Received PCRpt Message")
 
-	messageBodyBytes := make([]uint8, length-pcep.COMMON_HEADER_LENGTH)
+	messageBodyBytes := make([]uint8, length-pcep.CommonHeaderLength)
 	if _, err := ss.tcpConn.Read(messageBodyBytes); err != nil {
 		return err
 	}
@@ -256,26 +256,26 @@ func (ss *Session) handlePCRpt(length uint16) error {
 
 	for _, sr := range message.StateReports {
 		// synchronization
-		if sr.LspObject.SFlag {
+		if sr.LSPObject.SFlag {
 			ss.logger.Debug("Synchronize SR Policy information", zap.Any("Message", message))
 			ss.RegisterSRPolicy(*sr)
-		} else if !sr.LspObject.SFlag {
+		} else if !sr.LSPObject.SFlag {
 			switch {
 			// finish synchronization
-			case sr.LspObject.PlspID == 0:
+			case sr.LSPObject.PlspID == 0:
 				ss.logger.Debug("Finish PCRpt state synchronization")
 				ss.isSynced = true
 			// response to request from PCE
 			case sr.SrpObject.SrpID != 0:
 				ss.logger.Debug("Finish Stateful PCE request", zap.Uint32("srpID", sr.SrpObject.SrpID))
-				if sr.LspObject.RFlag {
+				if sr.LSPObject.RFlag {
 					ss.DeleteSRPolicy(*sr)
 				} else {
 					ss.RegisterSRPolicy(*sr)
 				}
 
 			default:
-				if sr.LspObject.RFlag {
+				if sr.LSPObject.RFlag {
 					ss.DeleteSRPolicy(*sr)
 				} else {
 					ss.RegisterSRPolicy(*sr)
@@ -305,7 +305,7 @@ func (ss *Session) SendOpen() error {
 		return err
 	}
 	ss.logger.Debug("Send Open Message")
-	return ss.sendPcepMessage(openMessage)
+	return ss.sendPCEPMessage(openMessage)
 }
 
 func (ss *Session) SendPCInitiate(srPolicy table.SRPolicy, lspDelete bool) error {
@@ -314,7 +314,7 @@ func (ss *Session) SendPCInitiate(srPolicy table.SRPolicy, lspDelete bool) error
 		return err
 	}
 	ss.logger.Debug("Send PCInitiate Message")
-	err = ss.sendPcepMessage(pcinitiateMessage)
+	err = ss.sendPCEPMessage(pcinitiateMessage)
 	if err == nil {
 		ss.srpIDHead++
 	}
@@ -327,7 +327,7 @@ func (ss *Session) SendPCUpdate(srPolicy table.SRPolicy) error {
 		return err
 	}
 	ss.logger.Debug("Send Update Message")
-	err = ss.sendPcepMessage(pcupdateMessage)
+	err = ss.sendPCEPMessage(pcupdateMessage)
 	if err == nil {
 		ss.srpIDHead++
 	}
@@ -338,7 +338,7 @@ func (ss *Session) RegisterSRPolicy(sr pcep.StateReport) {
 	var color uint32 = 0      // Default color value (RFC does not specify a default)
 	var preference uint32 = 0 // Default preference value (RFC does not specify a default)
 
-	if ss.pccType == pcep.CISCO_LEGACY {
+	if ss.pccType == pcep.CiscoLegacy {
 		// In Cisco legacy mode, get color and preference from Vendor Information Object
 		color = sr.VendorInformationObject.Color()
 		preference = sr.VendorInformationObject.Preference()
@@ -346,7 +346,7 @@ func (ss *Session) RegisterSRPolicy(sr pcep.StateReport) {
 		// TODO: Move hasColorCapability to Session struct
 		hasColorCapability := false
 		for _, cap := range ss.pccCapabilities {
-			if statefulCap, ok := cap.(*pcep.StatefulPceCapability); ok {
+			if statefulCap, ok := cap.(*pcep.StatefulPCECapability); ok {
 				if statefulCap.ColorCapability {
 					hasColorCapability = true
 					break
@@ -359,37 +359,37 @@ func (ss *Session) RegisterSRPolicy(sr pcep.StateReport) {
 		if sr.AssociationObject.Color() != 0 {
 			color = sr.AssociationObject.Color()
 		} else if hasColorCapability {
-			color = sr.LspObject.Color()
+			color = sr.LSPObject.Color()
 		}
 
 		preference = sr.AssociationObject.Preference()
 	}
 
-	lspID := sr.LspObject.LspID
+	lspID := sr.LSPObject.LSPID
 
 	var state table.PolicyState
-	switch sr.LspObject.OFlag {
+	switch sr.LSPObject.OFlag {
 	case uint8(0x00):
-		state = table.POLICY_DOWN
+		state = table.PolicyDown
 	case uint8(0x01):
-		state = table.POLICY_UP
+		state = table.PolicyUp
 	case uint8(0x02):
-		state = table.POLICY_ACTIVE
+		state = table.PolicyActive
 	default:
-		state = table.POLICY_UNKNOWN
+		state = table.PolicyUnknown
 	}
 
-	if p, ok := ss.SearchSRPolicy(sr.LspObject.PlspID); ok {
+	if p, ok := ss.SearchSRPolicy(sr.LSPObject.PlspID); ok {
 		// update
 		// If the LSP ID is old, it is not the latest data update.
-		if p.LspID <= lspID {
+		if p.LSPID <= lspID {
 			p.Update(
 				table.PolicyDiff{
-					Name:        &sr.LspObject.Name,
+					Name:        &sr.LSPObject.Name,
 					Color:       &color,
 					Preference:  &preference,
 					SegmentList: sr.EroObject.ToSegmentList(),
-					LspID:       lspID,
+					LSPID:       lspID,
 					State:       state,
 				},
 			)
@@ -397,15 +397,15 @@ func (ss *Session) RegisterSRPolicy(sr pcep.StateReport) {
 	} else {
 		// create
 		var src, dst netip.Addr
-		if src = sr.LspObject.SrcAddr; !src.IsValid() {
+		if src = sr.LSPObject.SrcAddr; !src.IsValid() {
 			src = sr.AssociationObject.AssocSrc
 		}
-		if dst = sr.LspObject.DstAddr; !dst.IsValid() {
+		if dst = sr.LSPObject.DstAddr; !dst.IsValid() {
 			dst = sr.AssociationObject.Endpoint()
 		}
 		p := table.NewSRPolicy(
-			sr.LspObject.PlspID,
-			sr.LspObject.Name,
+			sr.LSPObject.PlspID,
+			sr.LSPObject.Name,
 			sr.EroObject.ToSegmentList(),
 			src,
 			dst,
@@ -419,10 +419,10 @@ func (ss *Session) RegisterSRPolicy(sr pcep.StateReport) {
 }
 
 func (ss *Session) DeleteSRPolicy(sr pcep.StateReport) {
-	lspID := sr.LspObject.LspID
+	lspID := sr.LSPObject.LSPID
 	for i, v := range ss.srPolicies {
 		// If the LSP ID is old, it is not the latest data update.
-		if v.PlspID == sr.LspObject.PlspID && v.LspID <= lspID {
+		if v.PlspID == sr.LSPObject.PlspID && v.LSPID <= lspID {
 			ss.srPolicies[i] = ss.srPolicies[len(ss.srPolicies)-1]
 			ss.srPolicies = ss.srPolicies[:len(ss.srPolicies)-1]
 			break
