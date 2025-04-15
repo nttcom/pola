@@ -95,52 +95,57 @@ func TestUint32ToByteSlice(t *testing.T) {
 }
 
 func TestIsBitSet(t *testing.T) {
-	tests := []struct {
+	type testCase[T Bitwise] struct {
 		name     string
-		value    uint8
-		bit      uint8
+		value    T
+		mask     T
 		expected bool
-	}{
-		{
-			name:     "Check if bit 0 is set",
-			value:    0x01,
-			bit:      0x01,
-			expected: true,
-		},
-		{
-			name:     "Check if bit 1 is set",
-			value:    0x02,
-			bit:      0x02,
-			expected: true,
-		},
-		{
-			name:     "Check if bit 0 is not set",
-			value:    0x00,
-			bit:      0x01,
-			expected: false,
-		},
-		{
-			name:     "Check if bit 1 is not set",
-			value:    0x00,
-			bit:      0x02,
-			expected: false,
-		},
-		{
-			name:     "Check if bit 2 is not set",
-			value:    0x04,
-			bit:      0x08,
-			expected: false,
-		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := IsBitSet(tt.value, tt.bit)
-			if result != tt.expected {
-				t.Errorf("Test %s failed: expected %v, got %v", tt.name, tt.expected, result)
-			}
-		})
-	}
+	t.Run("uint8", func(t *testing.T) {
+		tests := []testCase[uint8]{
+			{"bit 0 set", 0x01, 0x01, true},
+			{"bit 1 set", 0x03, 0x02, true},
+			{"bit 2 not set", 0x03, 0x04, false},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				if got := IsBitSet(tt.value, tt.mask); got != tt.expected {
+					t.Errorf("expected %v, got %v", tt.expected, got)
+				}
+			})
+		}
+	})
+
+	t.Run("uint16", func(t *testing.T) {
+		tests := []testCase[uint16]{
+			{"bit 8 set", 0x0100, 0x0100, true},
+			{"bit 9 set", 0x0201, 0x0200, true},
+			{"bit 10 not set", 0x0201, 0x0400, false},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				if got := IsBitSet(tt.value, tt.mask); got != tt.expected {
+					t.Errorf("expected %v, got %v", tt.expected, got)
+				}
+			})
+		}
+	})
+
+	t.Run("uint32", func(t *testing.T) {
+		tests := []testCase[uint32]{
+			{"bit 16 set", 0x00010000, 0x00010000, true},
+			{"bit 17 set", 0x00020001, 0x00020000, true},
+			{"bit 18 not set", 0x00020001, 0x00040000, false},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				if got := IsBitSet(tt.value, tt.mask); got != tt.expected {
+					t.Errorf("expected %v, got %v", tt.expected, got)
+				}
+			})
+		}
+	})
 }
 
 func TestSetBit(t *testing.T) {
