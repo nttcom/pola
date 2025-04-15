@@ -221,7 +221,7 @@ JSON formatted response
 }
 ```
 
-### pola sr-policy add -f `filepath` --no-link-state
+### pola sr-policy add -f `filepath` --explicit-path
 
 Create a new SR Policy **without using TED**
 
