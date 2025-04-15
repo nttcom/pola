@@ -34,7 +34,7 @@ func main() {
 		}
 	}()
 
-	c := pb.NewPceServiceClient(conn)
+	c := pb.NewPCEServiceClient(conn)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -44,7 +44,7 @@ func main() {
 	r, err := c.CreateSRPolicy(ctx, &pb.CreateSRPolicyInput{
 		Asn: 65000,
 		SRPolicy: &pb.SRPolicy{
-			PcepSessionAddr: ssAddr.AsSlice(),
+			PCEPSessionAddr: ssAddr.AsSlice(),
 			SrcRouterID:     "0000.0aff.0001",
 			DstRouterID:     "0000.0aff.0004",
 			Color:           uint32(100),
