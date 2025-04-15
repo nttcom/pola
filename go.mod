@@ -3,7 +3,6 @@ module github.com/nttcom/pola
 go 1.24.2
 
 require (
-	github.com/golang/protobuf v1.5.4
 	github.com/osrg/gobgp/v3 v3.36.0
 	github.com/spf13/cobra v1.9.1
 	go.uber.org/zap v1.27.0
