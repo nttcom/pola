@@ -2,21 +2,25 @@
 
 Example topology powered by [Containerlab](https://containerlab.dev/)
 
-![](./topo.png)
+![Topology](./topo.png)
 
 ## Requirements
+
 * container host (Linux)
 * Juniper vMX image
 
 ## Usage
 
 ### Install Containerlab & Juniper vMX
+
 [Install Containerlab](https://containerlab.dev/install/)
+
 ```bash
-$ sudo bash -c "$(curl -sL https://get.containerlab.dev)"
+sudo bash -c "$(curl -sL https://get.containerlab.dev)"
 ```
 
 Install Juniper vMX on [Vrnetlab](https://containerlab.dev/manual/vrnetlab/)
+
 ```bash
 $ sudo apt install make
 $ git clone https://github.com/hellt/vrnetlab && cd vrnetlab/vmx
@@ -34,21 +38,25 @@ $ sudo docker builder prune -a
 ```
 
 ### Building a Lab Network
+
 Create bridge
+
 ```bash
-$ sudo ip link add switch type bridge
-$ sudo ip link set dev switch up
+sudo ip link add switch type bridge
+sudo ip link set dev switch up
 ```
 
 Start Containerlab network
-```bash
-$ git clone https://github.com/nttcom/pola
-$ cd pola/examples/containerlab/srv6_te_l3vpn
 
-$ sudo containerlab deploy
+```bash
+git clone https://github.com/nttcom/pola
+cd pola/examples/containerlab/srv6_te_l3vpn
+
+sudo containerlab deploy
 ```
 
 Wait for starting vMX after execute `sudo containerlab deploy` (it takes some time).
+
 ```bash
 $ docker logs clab-srv6_te_l3vpn-pe01 -f
 <snip.>
@@ -56,7 +64,9 @@ $ docker logs clab-srv6_te_l3vpn-pe01 -f
 ```
 
 ### Apply SR Policy
+
 Connect to PCEP container, check PCEP session and SR policy
+
 ```bash
 $ sudo docker exec -it clab-srv6_te_l3vpn-pola-pce bash
 
@@ -71,6 +81,7 @@ no SR Policies
 ```
 
 Apply and check SR Policy
+
 ```bash
 # pola sr-policy add -f pe01-policy1.yaml --no-link-state
 success!
@@ -96,8 +107,10 @@ Session: fd00::2
 ```
 
 Enter container pe01 and check SR Policy
+
 * user: admin
 * pass: admin@123
+
 ```bash
 # exit
 $ ssh clab-srv6_te_l3vpn-pe01 -l admin
@@ -151,6 +164,7 @@ fd00:a2::/64       *[BGP/170] 00:32:08, localpref 100, from fd00:ffff::2
 Enter container host01 and check SRv6-TE
 
 * ping over VPN
+
 ```bash
 admin@pe01> exit
 
@@ -170,6 +184,7 @@ PING fd00:a2::1(fd00:a2::1) 56 data bytes
 ```
 
 * Capture on containerlab host
+
 ```bash
 $ sudo ip netns exec clab-srv6_te_l3vpn-pe01 tcpdump -nni eth1
 tcpdump: verbose output suppressed, use -v or -vv for full protocol decode
@@ -182,7 +197,8 @@ listening on eth1, link-type EN10MB (Ethernet), capture size 262144 bytes
 01:05:34.067531 IP6 fd00:ffff::2 > fd00:ffff:1:0:4:a::: srcrt (len=4, type=4, segleft=0[|srcrt]
 ```
 
-Also, you can analyze with Wireshark on your Local PC ([ref: Packet capture & Wireshark](https://containerlab.dev/manual/wireshark/)).
+Also, you can analyze with Wireshark on your Local PC
+([ref: Packet capture & Wireshark](https://containerlab.dev/manual/wireshark/)).
 
 ```bash
 ssh $clab_host "sudo -S ip netns exec clab-srv6_te_l3vpn-pe01 tcpdump -U -nni eth1 -w -"  | wireshark -k -i -
