@@ -15,10 +15,10 @@ import (
 type PolicyState string
 
 const (
-	POLICY_DOWN    = PolicyState("down")
-	POLICY_UP      = PolicyState("up")
-	POLICY_ACTIVE  = PolicyState("active")
-	POLICY_UNKNOWN = PolicyState("unknown")
+	PolicyDown    = PolicyState("down")
+	PolicyUp      = PolicyState("up")
+	PolicyActive  = PolicyState("active")
+	PolicyUnknown = PolicyState("unknown")
 )
 
 type SRPolicy struct {
@@ -34,7 +34,7 @@ type SRPolicy struct {
 }
 
 func NewSRPolicy(
-	plspId uint32,
+	plspID uint32,
 	name string,
 	segmentList []Segment,
 	srcAddr netip.Addr,
@@ -45,7 +45,7 @@ func NewSRPolicy(
 	state PolicyState,
 ) *SRPolicy {
 	p := &SRPolicy{
-		PlspID:      plspId,
+		PlspID:      plspID,
 		Name:        name,
 		SegmentList: segmentList,
 		SrcAddr:     srcAddr,
@@ -86,7 +86,7 @@ func (p *SRPolicy) Update(df PolicyDiff) {
 	}
 }
 
-const SRV6_SID_BIT_LENGTH = 128
+const SRv6SIDBitLength = 128
 
 type Segment interface {
 	SidString() string
@@ -107,11 +107,11 @@ func NewSegment(sid string) (Segment, error) {
 }
 
 const (
-	BEHAVIOR_RESERVED uint16 = 0x0000
-	BEHAVIOR_END      uint16 = 0x0001
-	BEHAVIOR_END_X    uint16 = 0x0005
-	BEHAVIOR_UN       uint16 = 0x0030
-	BEHAVIOR_UA       uint16 = 0x0039
+	BehaviorReserved uint16 = 0x0000
+	BehaviorEND      uint16 = 0x0001
+	BehaviorENDX     uint16 = 0x0005
+	BehaviorUN       uint16 = 0x0030
+	BehaviorUA       uint16 = 0x0039
 )
 
 type SegmentSRv6 struct {
@@ -127,23 +127,19 @@ func (seg SegmentSRv6) SidString() string {
 }
 
 func (seg SegmentSRv6) Behavior() uint16 {
-	if seg.LocalAddr.IsValid() {
-		if seg.USid {
-			if seg.RemoteAddr.IsValid() {
-				return BEHAVIOR_UA
-			} else {
-				return BEHAVIOR_UN
-			}
-		} else {
-			if seg.RemoteAddr.IsValid() {
-				return BEHAVIOR_END_X
-			} else {
-				return BEHAVIOR_END
-			}
-		}
-	} else {
-		return BEHAVIOR_RESERVED
+	if !seg.LocalAddr.IsValid() {
+		return BehaviorReserved
 	}
+	if seg.USid {
+		if seg.RemoteAddr.IsValid() {
+			return BehaviorUA
+		}
+		return BehaviorUN
+	}
+	if seg.RemoteAddr.IsValid() {
+		return BehaviorENDX
+	}
+	return BehaviorEND
 }
 
 func NewSegmentSRv6(sid netip.Addr) SegmentSRv6 {

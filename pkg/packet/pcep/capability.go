@@ -14,8 +14,8 @@ func PolaCapability(caps []CapabilityInterface) []CapabilityInterface {
 	polaCaps := []CapabilityInterface{}
 	for _, cap := range caps {
 		switch tlv := cap.(type) {
-		case *StatefulPceCapability:
-			tlv = &StatefulPceCapability{
+		case *StatefulPCECapability:
+			tlv = &StatefulPCECapability{
 				LSPUpdateCapability:            true,
 				IncludeDBVersion:               false,
 				LSPInstantiationCapability:     true,

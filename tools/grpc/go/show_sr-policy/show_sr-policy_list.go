@@ -37,7 +37,7 @@ func main() {
 		}
 	}()
 
-	c := pb.NewPceServiceClient(conn)
+	c := pb.NewPCEServiceClient(conn)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -50,7 +50,7 @@ func main() {
 
 	for i, srPolicy := range ret.GetSRPolicies() {
 		fmt.Printf("srPolicy(%d): \n", i)
-		sessionAddr := net.IP(srPolicy.GetPcepSessionAddr())
+		sessionAddr := net.IP(srPolicy.GetPCEPSessionAddr())
 		fmt.Printf("  sessionAddr: %s\n", sessionAddr.String())
 		fmt.Printf("  policyName: %s\n", srPolicy.GetPolicyName())
 		fmt.Printf("  SrcAddr: %s\n", net.IP(srPolicy.GetSrcAddr()))
