@@ -34,7 +34,7 @@ type Log struct {
 }
 
 type GoBGP struct {
-	GRPCClient GRPCClient `yaml:"grpc-client"`
+	GRPCClient GRPCClient `yaml:"grpc_client"`
 }
 
 type TED struct {
@@ -44,11 +44,11 @@ type TED struct {
 
 type Global struct {
 	PCEP       PCEP       `yaml:"pcep"`
-	GRPCServer GRPCServer `yaml:"grpc-server"`
+	GRPCServer GRPCServer `yaml:"grpc_server"`
 	Log        Log        `yaml:"log"`
 	TED        *TED       `yaml:"ted"`
 	GoBGP      GoBGP      `yaml:"gobgp"`
-	USidMode   bool       `yaml:"usid-mode"`
+	USidMode   bool       `yaml:"usid_mode"`
 }
 
 type Config struct {
