@@ -3,7 +3,7 @@
 // This software is released under the MIT License.
 // see https://github.com/nttcom/pola/blob/main/LICENSE
 
-package grpc
+package v1
 
 import (
 	"net/netip"
@@ -14,16 +14,16 @@ import (
 // Implements zapcore.ObjectMarshaler interface for SRPolicy
 func (x *SRPolicy) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	// Convert IP address slices to netip.Addr
-	ssAddr, _ := netip.AddrFromSlice(x.GetPCEPSessionAddr())
+	ssAddr, _ := netip.AddrFromSlice(x.GetPcepSessionAddr())
 	enc.AddString("PCEPSessionAddr", ssAddr.String())
 	srcAddr, _ := netip.AddrFromSlice(x.GetSrcAddr())
 	enc.AddString("SrcAddr", srcAddr.String())
 	dstAddr, _ := netip.AddrFromSlice(x.GetDstAddr())
 	enc.AddString("DstAddr", dstAddr.String())
-	if srcRouterID := x.GetSrcRouterID(); srcRouterID != "" {
+	if srcRouterID := x.GetSrcRouterId(); srcRouterID != "" {
 		enc.AddString("SrcRouterID", srcRouterID)
 	}
-	if dstRouterID := x.DstRouterID; dstRouterID != "" {
+	if dstRouterID := x.DstRouterId; dstRouterID != "" {
 		enc.AddString("DstRouterID", dstRouterID)
 	}
 	enc.AddUint32("Color", x.GetColor())
@@ -31,11 +31,11 @@ func (x *SRPolicy) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	enc.AddString("PolicyName", x.GetPolicyName())
 	enc.AddString("Type", x.GetType().String())
 
-	if x.GetType() == SRPolicyType_EXPLICIT {
+	if x.GetType() == SRPolicyType_SR_POLICY_TYPE_EXPLICIT {
 		if err := enc.AddReflected("SegmentList", x.GetSegmentList()); err != nil {
 			return err
 		}
-	} else if x.GetType() == SRPolicyType_DYNAMIC {
+	} else if x.GetType() == SRPolicyType_SR_POLICY_TYPE_DYNAMIC {
 		enc.AddString("Metric", x.Metric.String())
 	}
 	return nil

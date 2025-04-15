@@ -16,8 +16,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	empty "github.com/golang/protobuf/ptypes/empty"
-	pb "github.com/nttcom/pola/api/grpc"
+	pb "github.com/nttcom/pola/api/pola/v1"
 )
 
 func main() {
@@ -41,9 +40,8 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	var empty empty.Empty
 
-	ret, err := c.GetSessionList(ctx, &empty)
+	ret, err := c.GetSessionList(ctx, &pb.GetSessionListRequest{})
 	if err != nil {
 		log.Fatalf("unable to get session list from server: %v", err)
 	}

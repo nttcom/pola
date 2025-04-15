@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"os"
 
-	pb "github.com/nttcom/pola/api/grpc"
+	pb "github.com/nttcom/pola/api/pola/v1"
 	"github.com/spf13/cobra"
 	yaml "gopkg.in/yaml.v2"
 
@@ -70,13 +70,13 @@ func deleteSRPolicy(input InputFormat, jsonFlag bool) error {
 	}
 
 	srPolicy := &pb.SRPolicy{
-		PCEPSessionAddr: input.SRPolicy.PCEPSessionAddr.AsSlice(),
+		PcepSessionAddr: input.SRPolicy.PCEPSessionAddr.AsSlice(),
 		DstAddr:         input.SRPolicy.DstAddr.AsSlice(),
 		Color:           input.SRPolicy.Color,
 		PolicyName:      input.SRPolicy.Name,
 	}
-	inputData := &pb.DeleteSRPolicyInput{
-		SRPolicy: srPolicy,
+	inputData := &pb.DeleteSRPolicyRequest{
+		SrPolicy: srPolicy,
 		Asn:      input.ASN,
 	}
 	if err := grpc.DeleteSRPolicy(client, inputData); err != nil {
