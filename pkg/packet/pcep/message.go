@@ -175,7 +175,7 @@ func NewKeepaliveMessage() (*KeepaliveMessage, error) {
 
 // PCErr Message
 type PCErrMessage struct {
-	PcepErrorObject *PcepErrorObject
+	PCEPErrorObject *PCEPErrorObject
 }
 
 func (m *PCErrMessage) DecodeFromBytes(messageBody []uint8) error {
@@ -183,30 +183,30 @@ func (m *PCErrMessage) DecodeFromBytes(messageBody []uint8) error {
 	if err := commonObjectHeader.DecodeFromBytes(messageBody); err != nil {
 		return err
 	}
-	pcepErrorObject := &PcepErrorObject{}
+	pcepErrorObject := &PCEPErrorObject{}
 	if err := pcepErrorObject.DecodeFromBytes(commonObjectHeader.ObjectType, messageBody[commonObjectHeaderLength:commonObjectHeader.ObjectLength]); err != nil {
 		return err
 	}
-	m.PcepErrorObject = pcepErrorObject
+	m.PCEPErrorObject = pcepErrorObject
 	return nil
 }
 
 func (m *PCErrMessage) Serialize() []uint8 {
-	pcerrMessageLength := CommonHeaderLength + m.PcepErrorObject.Len()
+	pcerrMessageLength := CommonHeaderLength + m.PCEPErrorObject.Len()
 	pcerrHeader := NewCommonHeader(MessageTypeError, pcerrMessageLength)
 	bytePCErrHeader := pcerrHeader.Serialize()
-	bytePcepErrorObject := m.PcepErrorObject.Serialize()
-	bytePCErrMessage := AppendByteSlices(bytePCErrHeader, bytePcepErrorObject)
+	bytePCEPErrorObject := m.PCEPErrorObject.Serialize()
+	bytePCErrMessage := AppendByteSlices(bytePCErrHeader, bytePCEPErrorObject)
 	return bytePCErrMessage
 }
 
 func NewPCErrMessage(errorType uint8, errorValue uint8, tlvs []TLVInterface) (*PCErrMessage, error) {
-	o, err := NewPcepErrorObject(errorType, errorValue, tlvs)
+	o, err := NewPCEPErrorObject(errorType, errorValue, tlvs)
 	if err != nil {
 		return nil, err
 	}
 	m := &PCErrMessage{
-		PcepErrorObject: o,
+		PCEPErrorObject: o,
 	}
 	return m, nil
 }
@@ -471,6 +471,7 @@ func NewPCInitiateMessage(srpID uint32, lspName string, lspDelete bool, plspID u
 
 	m := &PCInitiateMessage{}
 	var err error
+
 	if m.SrpObject, err = NewSrpObject(segmentList, srpID, lspDelete); err != nil {
 		return nil, err
 	}
@@ -480,12 +481,11 @@ func NewPCInitiateMessage(srpID uint32, lspName string, lspDelete bool, plspID u
 			return nil, err
 		}
 		return m, nil
-	} else {
-		if m.LSPObject, err = NewLSPObject(lspName, &color, 0); err != nil {
-			return nil, err
-		}
 	}
 
+	if m.LSPObject, err = NewLSPObject(lspName, &color, 0); err != nil {
+		return nil, err
+	}
 	if m.EndpointsObject, err = NewEndpointsObject(dstAddr, srcAddr); err != nil {
 		return nil, err
 	}

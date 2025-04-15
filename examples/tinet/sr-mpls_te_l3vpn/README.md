@@ -2,37 +2,43 @@
 
 Example topology powered by [Tinet](https://github.com/tinynetwork/tinet)
 
-![](./topo.png)
+![Topology](./topo.png)
 
 ## Usage
 
 ### Install Tinet
+
 Install Open vSwitch
+
 ```bash
-$ sudo apt update
-$ sudo apt install openvswitch-switch openvswitch-common
+sudo apt update
+sudo apt install openvswitch-switch openvswitch-common
 ```
 
 Install Tinet
+
 ```bash
-$ curl -Lo /usr/bin/tinet https://github.com/tinynetwork/tinet/releases/download/v0.0.2/tinet
-$ chmod +x /usr/bin/tinet
-$ tinet --version
+curl -Lo /usr/bin/tinet https://github.com/tinynetwork/tinet/releases/download/v0.0.2/tinet
+chmod +x /usr/bin/tinet
+tinet --version
 ```
 
 ### Building a Lab Network
-Get spec.yaml, and start Docker network
-```bash
-$ git clone https://github.com/nttcom/pola
-$ cd pola/examples/tinet/sr-mpls_te_l3vpn
 
-$ tinet upconf | sudo sh -x
-$ docker ps
+Get spec.yaml, and start Docker network
+
+```bash
+git clone https://github.com/nttcom/pola
+cd pola/examples/tinet/sr-mpls_te_l3vpn
+
+tinet upconf | sudo sh -x
+docker ps
 ```
 
 Connect to PCEP container, check PCEP session and SR policy
+
 ```bash
-$ docker exec -it pola /bin/bash
+docker exec -it pola /bin/bash
 
 # pola session
 peerAddr(0): 10.0.255.1
@@ -40,10 +46,13 @@ peerAddr(0): 10.0.255.1
 ```
 
 ### Apply SR Policy
+
 Create policy1.yaml (Explicit SR Policy: Segment List 16002/16004/16003 to pe01)
+
 ```bash
 # vi policy1.yaml
 ```
+
 ```yaml
 srPolicy:
   name: policy1
@@ -61,13 +70,14 @@ srPolicy:
 ```
 
 Apply and check SR Policy
+
 ```bash
 # pola sr-policy add -f policy1.yaml --no-link-state
 success!
 
 # pola sr-policy list
 LSP(0):
-  PcepSessionAddr: 10.0.255.1
+  PCEPSessionAddr: 10.0.255.1
   PolicyName: policy1
   SrcAddr: 10.0.255.1
   DstAddr: 10.255.0.3
@@ -79,9 +89,10 @@ LSP(0):
 ```
 
 Enter container pe01 and check SR Policy
+
 ```bash
 # exit
-$ docker exec -it pe01 /bin/bash
+docker exec -it pe01 /bin/bash
 root@pe01:/# vtysh
 
 Hello, this is FRRouting (version 8.2.2).
@@ -105,12 +116,14 @@ Endpoint: 10.255.0.3  Color: 1  Name: name  BSID: -  Status: Active
 ```
 
 Add Color setting
+
 ```bash
-$ docker exec -it pe01 /bin/bash
-$ vtysh -c 'conf t' -c 'router bgp 65000' -c 'address-family ipv4 vpn' -c 'neighbor 10.255.0.3 route-map color1 in'
+docker exec -it pe01 /bin/bash
+vtysh -c 'conf t' -c 'router bgp 65000' -c 'address-family ipv4 vpn' -c 'neighbor 10.255.0.3 route-map color1 in'
 ```
 
 Check SR header with tcpdump
+
 ```bash
 root@host01:/# ping 192.168.1.2
 PING 192.168.1.2 (192.168.1.2) 56(84) bytes of data.

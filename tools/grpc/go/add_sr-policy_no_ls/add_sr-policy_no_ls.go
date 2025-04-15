@@ -34,7 +34,7 @@ func main() {
 		}
 	}()
 
-	c := pb.NewPceServiceClient(conn)
+	c := pb.NewPCEServiceClient(conn)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -45,7 +45,7 @@ func main() {
 
 	r, err := c.CreateSRPolicyWithoutLinkState(ctx, &pb.CreateSRPolicyInput{
 		SRPolicy: &pb.SRPolicy{
-			PcepSessionAddr: ssAddr.AsSlice(),
+			PCEPSessionAddr: ssAddr.AsSlice(),
 			SrcAddr:         srcAddr.AsSlice(),
 			DstAddr:         dstAddr.AsSlice(),
 			Color:           uint32(100),

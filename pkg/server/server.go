@@ -21,23 +21,23 @@ import (
 
 type Server struct {
 	sessionList []*Session
-	ted         *table.LsTed
+	ted         *table.LsTED
 	logger      *zap.Logger
 }
 
-type PceOptions struct {
-	PcepAddr  string
-	PcepPort  string
-	GrpcAddr  string
-	GrpcPort  string
-	TedEnable bool
+type PCEOptions struct {
+	PCEPAddr  string
+	PCEPPort  string
+	GRPCAddr  string
+	GRPCPort  string
+	TEDEnable bool
 	USidMode  bool
 }
 
-func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem) ServerError {
+func NewPCE(o *PCEOptions, logger *zap.Logger, tedElemsChan chan []table.TEDElem) Error {
 	s := &Server{logger: logger}
-	if o.TedEnable {
-		s.ted = &table.LsTed{
+	if o.TEDEnable {
+		s.ted = &table.LsTED{
 			ID:    1,
 			Nodes: map[uint32]map[string]*table.LsNode{},
 		}
@@ -46,7 +46,7 @@ func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem
 		go func() {
 			for {
 				tedElems := <-tedElemsChan
-				ted := &table.LsTed{
+				ted := &table.LsTED{
 					ID:    s.ted.ID,
 					Nodes: map[uint32]map[string]*table.LsNode{},
 				}
@@ -57,10 +57,10 @@ func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem
 		}()
 	}
 
-	errChan := make(chan ServerError)
+	errChan := make(chan Error)
 	go func() {
-		if err := s.Serve(o.PcepAddr, o.PcepPort, o.USidMode); err != nil {
-			errChan <- ServerError{
+		if err := s.Serve(o.PCEPAddr, o.PCEPPort, o.USidMode); err != nil {
+			errChan <- Error{
 				Server: "pcep",
 				Error:  err,
 			}
@@ -70,8 +70,8 @@ func NewPce(o *PceOptions, logger *zap.Logger, tedElemsChan chan []table.TedElem
 	go func() {
 		grpcServer := grpc.NewServer()
 		apiServer := NewAPIServer(s, grpcServer, o.USidMode, logger)
-		if err := apiServer.Serve(o.GrpcAddr, o.GrpcPort); err != nil {
-			errChan <- ServerError{
+		if err := apiServer.Serve(o.GRPCAddr, o.GRPCPort); err != nil {
+			errChan <- Error{
 				Server: "grpc",
 				Error:  err,
 			}
