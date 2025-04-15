@@ -172,12 +172,12 @@ func (s *APIServer) DeleteSRPolicy(ctx context.Context, input *pb.DeleteSRPolicy
 		segmentList = append(segmentList, seg)
 	}
 
-	inputJson, err := json.Marshal(input)
+	inputJSON, err := json.Marshal(input)
 	if err != nil {
 		return nil, err
 	}
 	s.logger.Info("Received DeleteSRPolicy API request")
-	s.logger.Debug("Received paramater", zap.String("input", string(inputJson)))
+	s.logger.Debug("Received paramater", zap.String("input", string(inputJSON)))
 
 	pcepSession, err := getSyncedPCEPSession(s.pce, inputSRPolicy.GetPcepSessionAddr())
 	if err != nil {
@@ -297,13 +297,13 @@ func getSegmentList(inputSRPolicy *pb.SRPolicy, asn uint32, ted *table.LsTED) ([
 func getMetricType(metricType pb.MetricType) (table.MetricType, error) {
 	switch metricType {
 	case pb.MetricType_METRIC_TYPE_IGP:
-		return table.IGP_METRIC, nil
+		return table.IGPMetric, nil
 	case pb.MetricType_METRIC_TYPE_TE:
-		return table.TE_METRIC, nil
+		return table.TEMetric, nil
 	case pb.MetricType_METRIC_TYPE_DELAY:
-		return table.DELAY_METRIC, nil
+		return table.DelayMetric, nil
 	case pb.MetricType_METRIC_TYPE_HOPCOUNT:
-		return table.HOPCOUNT_METRIC, nil
+		return table.HopcountMetric, nil
 	default:
 		return 0, fmt.Errorf("unknown metric type: %v", metricType)
 	}

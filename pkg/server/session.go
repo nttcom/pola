@@ -370,13 +370,13 @@ func (ss *Session) RegisterSRPolicy(sr pcep.StateReport) {
 	var state table.PolicyState
 	switch sr.LSPObject.OFlag {
 	case uint8(0x00):
-		state = table.POLICY_DOWN
+		state = table.PolicyDown
 	case uint8(0x01):
-		state = table.POLICY_UP
+		state = table.PolicyUp
 	case uint8(0x02):
-		state = table.POLICY_ACTIVE
+		state = table.PolicyActive
 	default:
-		state = table.POLICY_UNKNOWN
+		state = table.PolicyUnknown
 	}
 
 	if p, ok := ss.SearchSRPolicy(sr.LSPObject.PlspID); ok {
