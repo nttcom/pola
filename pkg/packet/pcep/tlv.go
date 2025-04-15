@@ -777,8 +777,17 @@ type PathSetupType struct {
 	PathSetupType Pst
 }
 
+const (
+	PathSetupTypePathSetupTypeIndex = 3
+)
+
 func (tlv *PathSetupType) DecodeFromBytes(data []uint8) error {
-	tlv.PathSetupType = Pst(data[7])
+	expectedLength := TLVHeaderLength + int(TLVPathSetupTypeValueLength)
+	if len(data) != expectedLength {
+		return fmt.Errorf("data length mismatch: expected %d bytes, but got %d bytes for PathSetupType", expectedLength, len(data))
+	}
+
+	tlv.PathSetupType = Pst(data[TLVHeaderLength+PathSetupTypePathSetupTypeIndex])
 	return nil
 }
 
@@ -794,7 +803,7 @@ func (tlv *PathSetupType) Serialize() []uint8 {
 	buf = append(buf, length...)
 
 	val := make([]uint8, TLVPathSetupTypeValueLength)
-	val[3] = uint8(tlv.PathSetupType)
+	val[PathSetupTypePathSetupTypeIndex] = uint8(tlv.PathSetupType)
 
 	buf = append(buf, val...)
 	return buf
@@ -810,6 +819,12 @@ func (tlv *PathSetupType) Type() TLVType {
 
 func (tlv *PathSetupType) Len() uint16 {
 	return TLVHeaderLength + TLVPathSetupTypeValueLength
+}
+
+func NewPathSetupType(pst Pst) *PathSetupType {
+	return &PathSetupType{
+		PathSetupType: pst,
+	}
 }
 
 type ExtendedAssociationID struct {
