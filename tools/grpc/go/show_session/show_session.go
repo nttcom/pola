@@ -37,7 +37,7 @@ func main() {
 		}
 	}()
 
-	c := pb.NewPceServiceClient(conn)
+	c := pb.NewPCEServiceClient(conn)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()

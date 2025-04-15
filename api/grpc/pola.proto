@@ -11,21 +11,14 @@ option go_package = "github.com/nttcom/pola/api/grpc";
 
 import "google/protobuf/empty.proto";
 
-service PceService {
+service PCEService {
   rpc CreateSRPolicy (CreateSRPolicyInput) returns (RequestStatus) {};
-
   rpc CreateSRPolicyWithoutLinkState (CreateSRPolicyInput) returns (RequestStatus) {};
-
   rpc DeleteSRPolicy (DeleteSRPolicyInput) returns (RequestStatus) {};
-
   rpc DeleteSRPolicyWithoutLinkState (DeleteSRPolicyInput) returns (RequestStatus) {};
-
   rpc GetSessionList (google.protobuf.Empty) returns (SessionList) {};
-
   rpc GetSRPolicyList (google.protobuf.Empty) returns (SRPolicyList) {};
-
-  rpc GetTed (google.protobuf.Empty) returns (Ted) {};
-
+  rpc GetTED (google.protobuf.Empty) returns (TED) {};
   rpc DeleteSession (Session) returns (RequestStatus) {};
 }
 
@@ -42,7 +35,7 @@ enum SRPolicyType {
 }
 
 message SRPolicy {
-    bytes pcepSessionAddr = 1;
+    bytes PCEPSessionAddr = 1;
     bytes srcAddr = 2;
     bytes dstAddr = 3;
     string srcRouterID = 4;
@@ -108,13 +101,13 @@ message Metric {
 
 message LsLink {
     string localRouterID = 1;
-    uint32 localAsn = 2;
+    uint32 localASN = 2;
     string localIP = 3;
     string remoteRouterID = 4;
-    uint32 remoteAsn = 5;
+    uint32 remoteASN = 5;
     string remoteIP = 6;
     repeated Metric metrics = 7;
-    uint32 adjSid = 8;
+    uint32 adjSID = 8;
 } 
 
 message LsNode {
@@ -129,7 +122,7 @@ message LsNode {
 }
 
 
-message Ted {
+message TED {
     bool enable = 1;
     repeated  LsNode lsNodes = 2;
 }
