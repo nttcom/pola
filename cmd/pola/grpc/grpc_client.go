@@ -222,13 +222,13 @@ func createLsLink(localNode, remoteNode *table.LsNode, link *pb.LsLink) (*table.
 func createMetric(metricInfo *pb.Metric) (*table.Metric, error) {
 	switch metricInfo.GetType() {
 	case pb.MetricType_METRIC_TYPE_IGP:
-		return table.NewMetric(table.IGP_METRIC, metricInfo.GetValue()), nil
+		return table.NewMetric(table.IGPMetric, metricInfo.GetValue()), nil
 	case pb.MetricType_METRIC_TYPE_TE:
-		return table.NewMetric(table.TE_METRIC, metricInfo.GetValue()), nil
+		return table.NewMetric(table.TEMetric, metricInfo.GetValue()), nil
 	case pb.MetricType_METRIC_TYPE_DELAY:
-		return table.NewMetric(table.DELAY_METRIC, metricInfo.GetValue()), nil
+		return table.NewMetric(table.DelayMetric, metricInfo.GetValue()), nil
 	case pb.MetricType_METRIC_TYPE_HOPCOUNT:
-		return table.NewMetric(table.HOPCOUNT_METRIC, metricInfo.GetValue()), nil
+		return table.NewMetric(table.HopcountMetric, metricInfo.GetValue()), nil
 	default:
 		return nil, errors.New("unknown metric type")
 	}
