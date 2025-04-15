@@ -533,3 +533,84 @@ func TestSRPCECapability_Len(t *testing.T) {
 		})
 	}
 }
+
+func TestPathSetupType_DecodeFromBytes(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []uint8
+		expected *PathSetupType
+		err      bool
+	}{
+		{
+			name:     "Valid PathSetupType SRv6TE",
+			input:    NewPathSetupType(PathSetupTypeSRv6TE).Serialize(),
+			expected: NewPathSetupType(PathSetupTypeSRv6TE),
+			err:      false,
+		},
+		{
+			name:     "Invalid input (too short)",
+			input:    []uint8{0x00, 0x15, 0x00, 0x04}, // insufficient data
+			expected: NewPathSetupType(0),
+			err:      true,
+		},
+		{
+			name:     "Invalid input (too long)",
+			input:    append(NewPathSetupType(PathSetupTypeSRTE).Serialize(), 0x00, 0x00),
+			expected: NewPathSetupType(0),
+			err:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var tlv PathSetupType
+			err := tlv.DecodeFromBytes(tt.input)
+			if tt.err {
+				assert.Error(t, err, "expected error for input: %v", tt.input)
+			} else {
+				assert.NoError(t, err, "unexpected error for input: %v", tt.input)
+				assert.Equal(t, tt.expected, &tlv)
+			}
+		})
+	}
+}
+
+func TestPathSetupType_Serialize(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    *PathSetupType
+		expected []uint8
+	}{
+		{
+			name:     "Serialize PathSetupType SRTE",
+			input:    NewPathSetupType(PathSetupTypeSRTE),
+			expected: NewPathSetupType(PathSetupTypeSRTE).Serialize(),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.input.Serialize())
+		})
+	}
+}
+
+func TestPathSetupType_Len(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    *PathSetupType
+		expected uint16
+	}{
+		{
+			name:     "Length should be header + value length",
+			input:    NewPathSetupType(PathSetupTypeRSVPTE),
+			expected: TLVHeaderLength + TLVPathSetupTypeValueLength,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.input.Len())
+		})
+	}
+}
