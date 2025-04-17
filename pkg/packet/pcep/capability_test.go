@@ -84,6 +84,13 @@ func TestPolaCapability(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "Includes LSPDBVersion (should be skipped)",
+			input: []CapabilityInterface{
+				&LSPDBVersion{},
+			},
+			expected: []CapabilityInterface{},
+		},
 	}
 
 	for _, tt := range tests {
