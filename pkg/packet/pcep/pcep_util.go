@@ -9,12 +9,12 @@ import "encoding/binary"
 
 // AppendByteSlices concatenates multiple byte slices into a single slice.
 func AppendByteSlices(slices ...[]byte) []byte {
-	totalLength := 0
+	totalLen := 0
 	for _, s := range slices {
-		totalLength += len(s)
+		totalLen += len(s)
 	}
 
-	result := make([]byte, totalLength)
+	result := make([]byte, totalLen)
 	offset := 0
 	for _, s := range slices {
 		copy(result[offset:], s)
