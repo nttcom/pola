@@ -1329,7 +1329,7 @@ func (o *AssociationObject) Serialize() ([]uint8, error) {
 		buf[4] = buf[4] | 0x01
 	}
 
-	assocType := Uint16ToByteSlice(uint16(o.AssocType))
+	assocType := Uint16ToByteSlice(o.AssocType)
 	assocID := Uint16ToByteSlice(o.AssocID)
 
 	byteTLVs := []uint8{}
