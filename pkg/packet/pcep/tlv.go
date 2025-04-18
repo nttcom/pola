@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"go.uber.org/zap/zapcore"
 )
@@ -394,6 +395,10 @@ func (tlv *SymbolicPathName) DecodeFromBytes(data []byte) error {
 	}
 
 	tlv.Name = string(data[TLVHeaderLength:totalLength])
+	if !utf8.Valid([]byte(tlv.Name)) {
+		return fmt.Errorf("invalid UTF-8 sequence in SymbolicPathName")
+	}
+
 	return nil
 }
 
