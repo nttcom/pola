@@ -168,46 +168,59 @@ func TestIsBitSet(t *testing.T) {
 
 func TestSetBit(t *testing.T) {
 	tests := []struct {
-		name     string
-		value    uint8
-		bit      uint8
-		expected uint8
+		name      string
+		value     uint8
+		bit       uint8
+		condition bool
+		expected  uint8
 	}{
 		{
-			name:     "Set bit 0",
-			value:    0x00,
-			bit:      0x01,
-			expected: 0x01,
+			name:      "Set bit 0",
+			value:     0x00,
+			bit:       0x01,
+			condition: true,
+			expected:  0x01,
 		},
 		{
-			name:     "Set bit 1",
-			value:    0x00,
-			bit:      0x02,
-			expected: 0x02,
+			name:      "Set bit 1",
+			value:     0x00,
+			bit:       0x02,
+			condition: true,
+			expected:  0x02,
 		},
 		{
-			name:     "Set bit 0 when bit 0 is already set",
-			value:    0x01,
-			bit:      0x01,
-			expected: 0x01,
+			name:      "Set bit 0 when bit 0 is already set",
+			value:     0x01,
+			bit:       0x01,
+			condition: true,
+			expected:  0x01,
 		},
 		{
-			name:     "Set bit 1 when bit 0 is already set",
-			value:    0x01,
-			bit:      0x02,
-			expected: 0x03,
+			name:      "Set bit 1 when bit 0 is already set",
+			value:     0x01,
+			bit:       0x02,
+			condition: true,
+			expected:  0x03,
 		},
 		{
-			name:     "Set bit 0 when bit 1 is already set",
-			value:    0x02,
-			bit:      0x01,
-			expected: 0x03,
+			name:      "Set bit 0 when bit 1 is already set",
+			value:     0x02,
+			bit:       0x01,
+			condition: true,
+			expected:  0x03,
+		},
+		{
+			name:      "Do not set bit 0 when condition is false",
+			value:     0x00,
+			bit:       0x01,
+			condition: false,
+			expected:  0x00,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := SetBit(tt.value, tt.bit)
+			result := SetBit(tt.value, tt.bit, tt.condition)
 			if result != tt.expected {
 				t.Errorf("Test %s failed: expected %v, got %v", tt.name, tt.expected, result)
 			}
