@@ -198,9 +198,7 @@ func (h *CommonObjectHeader) Serialize() []uint8 {
 		Flagbyte = Flagbyte | IFlagMask
 	}
 	buf = append(buf, Flagbyte)
-	objectLength := make([]uint8, 2)
-	binary.BigEndian.PutUint16(objectLength, h.ObjectLength)
-	buf = append(buf, objectLength...)
+	buf = append(buf, Uint16ToByteSlice(h.ObjectLength)...)
 	return buf
 }
 
@@ -1110,8 +1108,7 @@ func (o *SRv6EroSubobject) Serialize() []uint8 {
 		buf[3] = buf[3] | 0x01
 	}
 	reserved := make([]uint8, 2)
-	behavior := make([]uint8, 2)
-	binary.BigEndian.PutUint16(behavior, o.Segment.Behavior())
+	behavior := Uint16ToByteSlice(o.Segment.Behavior())
 	byteSid := o.Segment.Sid.AsSlice()
 
 	byteNAI := []uint8{}

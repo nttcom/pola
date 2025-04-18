@@ -274,27 +274,18 @@ func (tlv *StatefulPCECapability) DecodeFromBytes(data []byte) error {
 		return fmt.Errorf("data is too short: expected at least %d bytes, but got %d bytes for StatefulPCECapability", tlv.Len(), len(data))
 	}
 
-	flagByte := uint32(data[TLVHeaderLength+StatefulPCECapabilityFlagsIndex])
-	tlv.LSPUpdateCapability = IsBitSet(flagByte, LSPUpdateCapabilityBit)
-	tlv.IncludeDBVersion = IsBitSet(flagByte, IncludeDBVersionCapabilityBit)
-	tlv.LSPInstantiationCapability = IsBitSet(flagByte, LSPInstantiationCapabilityBit)
-	tlv.TriggeredResync = IsBitSet(flagByte, TriggeredResyncCapabilityBit)
-	tlv.DeltaLSPSyncCapability = IsBitSet(flagByte, DeltaLSPSyncCapabilityBit)
-	tlv.TriggeredInitialSync = IsBitSet(flagByte, TriggeredInitialSyncBit)
+	flags := uint32(data[TLVHeaderLength+StatefulPCECapabilityFlagsIndex])
+	tlv.ExtractCapabilities(flags)
 
 	return nil
 }
 
 func (tlv *StatefulPCECapability) Serialize() []byte {
-	buf := make([]byte, 0, TLVHeaderLength+TLVStatefulPCECapabilityValueLength)
-	buf = append(buf, byte(tlv.Type()>>8), byte(tlv.Type()))
-	buf = append(buf, byte(TLVStatefulPCECapabilityValueLength>>8), byte(TLVStatefulPCECapabilityValueLength))
-
-	val := make([]byte, TLVStatefulPCECapabilityValueLength)
-	binary.BigEndian.PutUint32(val, tlv.CapabilityBits())
-	buf = append(buf, val...)
-
-	return buf
+	return AppendByteSlices(
+		Uint16ToByteSlice(tlv.Type()),
+		Uint16ToByteSlice(TLVStatefulPCECapabilityValueLength),
+		Uint32ToByteSlice(tlv.SetFlags()),
+	)
 }
 
 func (tlv *StatefulPCECapability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
@@ -313,6 +304,26 @@ func (tlv *StatefulPCECapability) Type() TLVType {
 
 func (tlv *StatefulPCECapability) Len() uint16 {
 	return TLVHeaderLength + TLVStatefulPCECapabilityValueLength
+}
+
+func (tlv *StatefulPCECapability) ExtractCapabilities(flags uint32) {
+	tlv.LSPUpdateCapability = flags&LSPUpdateCapabilityBit != 0
+	tlv.IncludeDBVersion = flags&IncludeDBVersionCapabilityBit != 0
+	tlv.LSPInstantiationCapability = flags&LSPInstantiationCapabilityBit != 0
+	tlv.TriggeredResync = flags&TriggeredResyncCapabilityBit != 0
+	tlv.DeltaLSPSyncCapability = flags&DeltaLSPSyncCapabilityBit != 0
+	tlv.TriggeredInitialSync = flags&TriggeredInitialSyncBit != 0
+}
+
+func (tlv *StatefulPCECapability) SetFlags() uint32 {
+	var flags uint32
+	flags = SetBit(flags, LSPUpdateCapabilityBit, tlv.LSPUpdateCapability)
+	flags = SetBit(flags, IncludeDBVersionCapabilityBit, tlv.IncludeDBVersion)
+	flags = SetBit(flags, LSPInstantiationCapabilityBit, tlv.LSPInstantiationCapability)
+	flags = SetBit(flags, TriggeredResyncCapabilityBit, tlv.TriggeredResync)
+	flags = SetBit(flags, DeltaLSPSyncCapabilityBit, tlv.DeltaLSPSyncCapability)
+	flags = SetBit(flags, TriggeredInitialSyncBit, tlv.TriggeredInitialSync)
+	return flags
 }
 
 func (tlv *StatefulPCECapability) CapStrings() []string {
@@ -341,42 +352,10 @@ func (tlv *StatefulPCECapability) CapStrings() []string {
 	return ret
 }
 
-func (tlv *StatefulPCECapability) FromBits(bits uint32) {
-	tlv.LSPUpdateCapability = bits&LSPUpdateCapabilityBit != 0
-	tlv.IncludeDBVersion = bits&IncludeDBVersionCapabilityBit != 0
-	tlv.LSPInstantiationCapability = bits&LSPInstantiationCapabilityBit != 0
-	tlv.TriggeredResync = bits&TriggeredResyncCapabilityBit != 0
-	tlv.DeltaLSPSyncCapability = bits&DeltaLSPSyncCapabilityBit != 0
-	tlv.TriggeredInitialSync = bits&TriggeredInitialSyncBit != 0
-}
-
-func NewStatefulPCECapability(bits uint32) *StatefulPCECapability {
+func NewStatefulPCECapability(flags uint32) *StatefulPCECapability {
 	tlv := &StatefulPCECapability{}
-	tlv.FromBits(bits)
+	tlv.ExtractCapabilities(flags)
 	return tlv
-}
-
-func (tlv *StatefulPCECapability) CapabilityBits() uint32 {
-	var flags uint32
-	if tlv.LSPUpdateCapability {
-		flags = SetBit(flags, LSPUpdateCapabilityBit)
-	}
-	if tlv.IncludeDBVersion {
-		flags = SetBit(flags, IncludeDBVersionCapabilityBit)
-	}
-	if tlv.LSPInstantiationCapability {
-		flags = SetBit(flags, LSPInstantiationCapabilityBit)
-	}
-	if tlv.TriggeredResync {
-		flags = SetBit(flags, TriggeredResyncCapabilityBit)
-	}
-	if tlv.DeltaLSPSyncCapability {
-		flags = SetBit(flags, DeltaLSPSyncCapabilityBit)
-	}
-	if tlv.TriggeredInitialSync {
-		flags = SetBit(flags, TriggeredInitialSyncBit)
-	}
-	return flags
 }
 
 type SymbolicPathName struct {
@@ -403,19 +382,20 @@ func (tlv *SymbolicPathName) DecodeFromBytes(data []byte) error {
 }
 
 func (tlv *SymbolicPathName) Serialize() []byte {
+	const alignment = 4
+
 	nameLen := uint16(len(tlv.Name))
-	padding := (4 - (nameLen % 4)) % 4 // Padding for 4-byte alignment
+	padding := (alignment - (nameLen % alignment)) % alignment // Padding for 4-byte alignment
 
-	buf := make([]byte, 0, TLVHeaderLength+int(nameLen)+int(padding))
-	buf = append(buf, Uint16ToByteSlice(tlv.Type())...)
-	buf = append(buf, Uint16ToByteSlice(nameLen)...)
-	buf = append(buf, []byte(tlv.Name)...)
+	value := make([]byte, 0, int(nameLen)+int(padding))
+	value = append(value, []byte(tlv.Name)...)
+	value = append(value, make([]byte, padding)...)
 
-	if padding > 0 {
-		buf = append(buf, make([]byte, padding)...)
-	}
-
-	return buf
+	return AppendByteSlices(
+		Uint16ToByteSlice(tlv.Type()),
+		Uint16ToByteSlice(nameLen),
+		value,
+	)
 }
 
 func (tlv *SymbolicPathName) Type() TLVType {
@@ -478,26 +458,20 @@ func (tlv *IPv4LSPIdentifiers) DecodeFromBytes(data []byte) error {
 	return nil
 }
 
-func (tlv *IPv4LSPIdentifiers) Serialize() []uint8 {
-	buf := make([]uint8, 0, TLVHeaderLength+TLVIPv4LSPIdentifiersValueLength)
+func (tlv *IPv4LSPIdentifiers) Serialize() []byte {
+	value := make([]byte, TLVIPv4LSPIdentifiersValueLength)
 
-	typ := make([]uint8, 2)
-	binary.BigEndian.PutUint16(typ, uint16(tlv.Type()))
-	buf = append(buf, typ...)
+	copy(value[0:4], tlv.IPv4TunnelSenderAddress.AsSlice())
+	binary.BigEndian.PutUint16(value[4:6], tlv.LSPID)
+	binary.BigEndian.PutUint16(value[6:8], tlv.TunnelID)
+	binary.BigEndian.PutUint32(value[8:12], tlv.ExtendedTunnelID)
+	copy(value[12:16], tlv.IPv4TunnelEndpointAddress.AsSlice())
 
-	length := make([]uint8, 2)
-	binary.BigEndian.PutUint16(length, TLVIPv4LSPIdentifiersValueLength)
-	buf = append(buf, length...)
-
-	val := make([]byte, TLVIPv4LSPIdentifiersValueLength)
-	copy(val[0:4], tlv.IPv4TunnelSenderAddress.AsSlice())
-	binary.BigEndian.PutUint16(val[4:6], tlv.LSPID)
-	binary.BigEndian.PutUint16(val[6:8], tlv.TunnelID)
-	binary.BigEndian.PutUint32(val[8:12], tlv.ExtendedTunnelID)
-	copy(val[12:16], tlv.IPv4TunnelEndpointAddress.AsSlice())
-	buf = append(buf, val...)
-
-	return buf
+	return AppendByteSlices(
+		Uint16ToByteSlice(tlv.Type()),
+		Uint16ToByteSlice(TLVIPv4LSPIdentifiersValueLength),
+		value,
+	)
 }
 
 func (tlv *IPv4LSPIdentifiers) MarshalLogObject(enc zapcore.ObjectEncoder) error {
