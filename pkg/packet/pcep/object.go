@@ -1395,7 +1395,7 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 				),
 			},
 			&UndefinedTLV{
-				Typ:    TLVSrPolicyCPathIDJuniper,
+				Typ:    TLVSRPolicyCPathIDJuniper,
 				Length: TLVSRPolicyCPathIDValueLength,
 				Value: []uint8{
 					0x00,             // protocol origin
@@ -1406,8 +1406,8 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 				},
 			},
 			&UndefinedTLV{
-				Typ:    TLVSrPolicyCPathPreferenceJuniper,
-				Length: TLVSrPolicyCPathPreferenceValueLength,
+				Typ:    TLVSRPolicyCPathPreferenceJuniper,
+				Length: TLVSRPolicyCPathPreferenceValueLength,
 				Value:  Uint32ToByteSlice(preference),
 			},
 		}
@@ -1452,7 +1452,7 @@ func (o *AssociationObject) Color() uint32 {
 func (o *AssociationObject) Preference() uint32 {
 	for _, tlv := range o.TLVs {
 		if t, ok := tlv.(*UndefinedTLV); ok {
-			if t.Type() == TLVSrPolicyCPathPreferenceJuniper {
+			if t.Type() == TLVSRPolicyCPathPreferenceJuniper {
 				return uint32(binary.BigEndian.Uint32(t.Value))
 			}
 		} else if t, ok := tlv.(*SRPolicyCandidatePathPreference); ok {

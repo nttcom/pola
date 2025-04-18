@@ -192,15 +192,15 @@ const (
 	TLVExtendedAssociationIDIPv4ValueLength uint16 = 8
 	TLVExtendedAssociationIDIPv6ValueLength uint16 = 20
 	TLVSRPolicyCPathIDValueLength           uint16 = 28
-	TLVSrPolicyCPathPreferenceValueLength   uint16 = 4
+	TLVSRPolicyCPathPreferenceValueLength   uint16 = 4
 	TLVColorValueLength                     uint16 = 4
 )
 
 // Juniper specific TLV (deprecated)
 const (
 	TLVExtendedAssociationIDIPv4Juniper TLVType = 0xffe3
-	TLVSrPolicyCPathIDJuniper           TLVType = 0xffe4
-	TLVSrPolicyCPathPreferenceJuniper   TLVType = 0xffe5
+	TLVSRPolicyCPathIDJuniper           TLVType = 0xffe4
+	TLVSRPolicyCPathPreferenceJuniper   TLVType = 0xffe5
 )
 
 // Cisco specific SubTLV
@@ -1139,7 +1139,7 @@ func (tlv *SRPolicyCandidatePathPreference) Serialize() []uint8 {
 	buf = append(buf, typ...)
 
 	length := make([]uint8, 2)
-	binary.BigEndian.PutUint16(length, TLVSrPolicyCPathPreferenceValueLength)
+	binary.BigEndian.PutUint16(length, TLVSRPolicyCPathPreferenceValueLength)
 	buf = append(buf, length...)
 
 	preference := make([]uint8, 4)
@@ -1158,7 +1158,7 @@ func (tlv *SRPolicyCandidatePathPreference) Type() TLVType {
 }
 
 func (tlv *SRPolicyCandidatePathPreference) Len() uint16 {
-	return TLVHeaderLength + TLVSrPolicyCPathPreferenceValueLength
+	return TLVHeaderLength + TLVSRPolicyCPathPreferenceValueLength
 }
 
 type Color struct {
