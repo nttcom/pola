@@ -6,7 +6,6 @@
 package pcep
 
 import (
-	"encoding/binary"
 	"net/netip"
 	"testing"
 
@@ -76,10 +75,11 @@ func TestStatefulPCECapability_Serialize(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tlv := NewStatefulPCECapability(tt.bits)
-			expected := make([]uint8, TLVHeaderLength+TLVStatefulPCECapabilityValueLength)
-			binary.BigEndian.PutUint16(expected[0:2], uint16(TLVStatefulPCECapability))
-			binary.BigEndian.PutUint16(expected[2:4], TLVStatefulPCECapabilityValueLength)
-			binary.BigEndian.PutUint32(expected[4:8], tlv.CapabilityBits())
+			expected := AppendByteSlices(
+				Uint16ToByteSlice(TLVStatefulPCECapability),
+				Uint16ToByteSlice(TLVStatefulPCECapabilityValueLength),
+				Uint32ToByteSlice(tlv.SetFlags()),
+			)
 
 			assert.Equal(t, expected, tlv.Serialize(), "serialized output mismatch")
 		})
