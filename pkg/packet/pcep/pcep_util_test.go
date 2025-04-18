@@ -41,24 +41,42 @@ func TestAppendByteSlices(t *testing.T) {
 func TestUint16ToByteSlice(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    uint16
+		input    any
 		expected []byte
 	}{
 		{
-			name:     "Convert 0x0102 to bytes",
-			input:    0x0102,
+			name:     "Convert uint16 0x0102 to bytes",
+			input:    uint16(0x0102),
 			expected: []byte{0x01, 0x02},
 		},
 		{
-			name:     "Convert 0xFFFF to bytes",
-			input:    0xFFFF,
+			name:     "Convert uint16 0xFFFF to bytes",
+			input:    uint16(0xFFFF),
+			expected: []byte{0xFF, 0xFF},
+		},
+		{
+			name:     "Convert TLVType 0x0102 to bytes",
+			input:    TLVType(0x0102),
+			expected: []byte{0x01, 0x02},
+		},
+		{
+			name:     "Convert TLVType 0xFFFF to bytes",
+			input:    TLVType(0xFFFF),
 			expected: []byte{0xFF, 0xFF},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := Uint16ToByteSlice(tt.input)
+			var result []byte
+			switch v := tt.input.(type) {
+			case uint16:
+				result = Uint16ToByteSlice(v)
+			case TLVType:
+				result = Uint16ToByteSlice(v)
+			default:
+				t.Fatalf("unexpected type %T", v)
+			}
 			if !bytes.Equal(result, tt.expected) {
 				t.Errorf("expected %v, got %v", tt.expected, result)
 			}
