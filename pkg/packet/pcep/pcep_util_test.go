@@ -112,6 +112,34 @@ func TestUint32ToByteSlice(t *testing.T) {
 	}
 }
 
+func TestUint64ToByteSlice(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    uint64
+		expected []byte
+	}{
+		{
+			name:     "Convert 0x0102030405060708 to bytes",
+			input:    0x0102030405060708,
+			expected: []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08},
+		},
+		{
+			name:     "Convert 0xFFFFFFFFFFFFFFFF to bytes",
+			input:    0xFFFFFFFFFFFFFFFF,
+			expected: []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := Uint64ToByteSlice(tt.input)
+			if !bytes.Equal(result, tt.expected) {
+				t.Errorf("expected %v, got %v", tt.expected, result)
+			}
+		})
+	}
+}
+
 func TestIsBitSet(t *testing.T) {
 	type testCase[T Bitwise] struct {
 		name     string

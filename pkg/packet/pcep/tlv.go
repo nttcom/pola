@@ -577,21 +577,11 @@ func (tlv *LSPDBVersion) DecodeFromBytes(data []byte) error {
 }
 
 func (tlv *LSPDBVersion) Serialize() []byte {
-	buf := []byte{}
-
-	typ := make([]byte, 2)
-	binary.BigEndian.PutUint16(typ, uint16(tlv.Type()))
-	buf = append(buf, typ...)
-
-	length := make([]byte, 2)
-	binary.BigEndian.PutUint16(length, TLVLSPDBVersionValueLength)
-	buf = append(buf, length...)
-
-	val := make([]byte, TLVLSPDBVersionValueLength)
-	binary.BigEndian.PutUint64(val, tlv.VersionNumber)
-
-	buf = append(buf, val...)
-	return buf
+	return AppendByteSlices(
+		Uint16ToByteSlice(tlv.Type()),
+		Uint16ToByteSlice(TLVLSPDBVersionValueLength),
+		Uint64ToByteSlice(tlv.VersionNumber),
+	)
 }
 
 func (tlv *LSPDBVersion) MarshalLogObject(enc zapcore.ObjectEncoder) error {

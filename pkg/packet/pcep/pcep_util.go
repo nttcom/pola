@@ -41,6 +41,20 @@ func Uint32ToByteSlice(v uint32) []byte {
 	}
 }
 
+// Uint64ToByteSlice converts a uint64 value to a big-endian byte slice.
+func Uint64ToByteSlice(v uint64) []byte {
+	return []byte{
+		byte(v >> 56),
+		byte(v >> 48),
+		byte(v >> 40),
+		byte(v >> 32),
+		byte(v >> 24),
+		byte(v >> 16),
+		byte(v >> 8),
+		byte(v),
+	}
+}
+
 // Bitwise is a type constraint for unsigned integer types (uint8, uint16, uint32).
 type Bitwise interface {
 	constraints.Unsigned
