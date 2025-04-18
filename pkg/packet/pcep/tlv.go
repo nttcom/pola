@@ -268,7 +268,7 @@ const (
 	StatefulPCECapabilityFlagsIndex = 3
 )
 
-func (tlv *StatefulPCECapability) DecodeFromBytes(data []uint8) error {
+func (tlv *StatefulPCECapability) DecodeFromBytes(data []byte) error {
 	if len(data) < int(tlv.Len()) {
 		return fmt.Errorf("data is too short: expected at least %d bytes, but got %d bytes for StatefulPCECapability", tlv.Len(), len(data))
 	}
