@@ -402,7 +402,7 @@ func (tlv *SymbolicPathName) Serialize() []byte {
 	padding := (4 - (nameLen % 4)) % 4 // Padding for 4-byte alignment
 
 	buf := make([]byte, 0, TLVHeaderLength+int(nameLen)+int(padding))
-	buf = append(buf, Uint16ToByteSlice(uint16(tlv.Type()))...)
+	buf = append(buf, Uint16ToByteSlice(tlv.Type())...)
 	buf = append(buf, Uint16ToByteSlice(nameLen)...)
 	buf = append(buf, []byte(tlv.Name)...)
 
