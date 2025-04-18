@@ -159,14 +159,34 @@ func TestSymbolicPathName_DecodeFromBytes(t *testing.T) {
 			err:      false,
 		},
 		{
-			name:     "Invalid input (too short data)",
-			input:    []byte{0x00, 0x11, 0x00, 0x02, 'T'}, // Input too short for valid decoding
+			name:     "Input too short to contain TLV header",
+			input:    []byte{0x00, 0x11, 0x00}, // Less than TLVHeaderLength (4 bytes)
 			expected: NewSymbolicPathName(""),
 			err:      true,
 		},
 		{
-			name:     "Invalid input (too long data)",
-			input:    []byte{0x00, 0x11, 0x00, 0x01, 'T', 'e'}, // Input too long for valid decoding
+			name:     "Declared name length longer than actual data",
+			input:    []byte{0x00, 0x11, 0x00, 0x02, 'T'}, // Declared 2 bytes, only 1 provided
+			expected: NewSymbolicPathName(""),
+			err:      true,
+		},
+		{
+			name:     "Declared name length shorter than actual data",
+			input:    []byte{0x00, 0x11, 0x00, 0x01, 'T', 'e'}, // Declared 1 byte, but extra provided
+			expected: NewSymbolicPathName(""),
+			err:      true,
+		},
+		{
+			name: "Invalid UTF-8 sequence in name",
+			input: func() []byte {
+				invalidName := []byte{0xff} // 0xff is invalid as standalone UTF-8
+				length := Uint16ToByteSlice(uint16(len(invalidName)))
+				return AppendByteSlices(
+					Uint16ToByteSlice(uint16(0x0011)), // Type
+					length,
+					invalidName,
+				)
+			}(),
 			expected: NewSymbolicPathName(""),
 			err:      true,
 		},
@@ -227,6 +247,35 @@ func TestSymbolicPathName_Len(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.expected, tt.input.Len())
+		})
+	}
+}
+
+func TestSymbolicPathName_MarshalLogObject(t *testing.T) {
+	tests := []struct {
+		name     string
+		tlv      *SymbolicPathName
+		expected string
+	}{
+		{
+			name:     "Valid symbolic path name",
+			tlv:      &SymbolicPathName{Name: "pathA"},
+			expected: "pathA",
+		},
+		{
+			name:     "Empty symbolic path name",
+			tlv:      &SymbolicPathName{Name: ""},
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			enc := zapcore.NewMapObjectEncoder()
+			err := tt.tlv.MarshalLogObject(enc)
+
+			assert.NoError(t, err, "expected no error while marshaling log object")
+			assert.Equal(t, tt.expected, enc.Fields["symbolicPathName"], "field 'symbolicPathName' mismatch")
 		})
 	}
 }
