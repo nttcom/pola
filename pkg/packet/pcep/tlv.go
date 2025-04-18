@@ -19,7 +19,8 @@ import (
 
 type TLVType uint16
 
-const ( // PCEP TLV
+// PCEP TLV types
+const (
 	TLVNoPathVector                       TLVType = 0x01
 	TLVOverloadDuration                   TLVType = 0x02
 	TLVReqMissing                         TLVType = 0x03
@@ -177,32 +178,19 @@ func (t TLVType) String() string {
 	return fmt.Sprintf("Unknown TLV (0x%04x)", uint16(t))
 }
 
-var tlvMap = map[TLVType]func() TLVInterface{
-	TLVStatefulPCECapability:   func() TLVInterface { return &StatefulPCECapability{} },
-	TLVSymbolicPathName:        func() TLVInterface { return &SymbolicPathName{} },
-	TLVIPv4LSPIdentifiers:      func() TLVInterface { return &IPv4LSPIdentifiers{} },
-	TLVIPv6LSPIdentifiers:      func() TLVInterface { return &IPv6LSPIdentifiers{} },
-	TLVLSPDBVersion:            func() TLVInterface { return &LSPDBVersion{} },
-	TLVSRPCECapability:         func() TLVInterface { return &SRPCECapability{} },
-	TLVPathSetupType:           func() TLVInterface { return &PathSetupType{} },
-	TLVExtendedAssociationID:   func() TLVInterface { return &ExtendedAssociationID{} },
-	TLVPathSetupTypeCapability: func() TLVInterface { return &PathSetupTypeCapability{} },
-	TLVAssocTypeList:           func() TLVInterface { return &AssocTypeList{} },
-	TLVColor:                   func() TLVInterface { return &Color{} },
-}
-
+// TLV header length (type + length)
 const TLVHeaderLength = 4
 
-// TLV value lengths (in bytes), excluding the 4-byte TLV header (type + length)
+// TLV value lengths, excluding the 4-byte TLV header (type + length)
 const (
 	TLVStatefulPCECapabilityValueLength     uint16 = 4
+	TLVIPv4LSPIdentifiersValueLength        uint16 = 16
+	TLVIPv6LSPIdentifiersValueLength        uint16 = 52
 	TLVLSPDBVersionValueLength              uint16 = 8
 	TLVSRPCECapabilityValueLength           uint16 = 4
 	TLVPathSetupTypeValueLength             uint16 = 4
 	TLVExtendedAssociationIDIPv4ValueLength uint16 = 8
 	TLVExtendedAssociationIDIPv6ValueLength uint16 = 20
-	TLVIPv4LSPIdentifiersValueLength        uint16 = 16
-	TLVIPv6LSPIdentifiersValueLength        uint16 = 52
 	TLVSRPolicyCPathIDValueLength           uint16 = 28
 	TLVSRPolicyCPathPreferenceValueLength   uint16 = 4
 	TLVColorValueLength                     uint16 = 4
@@ -221,6 +209,7 @@ const (
 	SubTLVPreferenceCisco TLVType = 0x03
 )
 
+// Cisco specific SubTLV length
 const (
 	SubTLVColorCiscoValueLength      uint16 = 4
 	SubTLVPreferenceCiscoValueLength uint16 = 4
@@ -232,6 +221,20 @@ type TLVInterface interface {
 	MarshalLogObject(enc zapcore.ObjectEncoder) error
 	Type() TLVType
 	Len() uint16 // Total length of Type, Length, and Value
+}
+
+var tlvMap = map[TLVType]func() TLVInterface{
+	TLVStatefulPCECapability:   func() TLVInterface { return &StatefulPCECapability{} },
+	TLVSymbolicPathName:        func() TLVInterface { return &SymbolicPathName{} },
+	TLVIPv4LSPIdentifiers:      func() TLVInterface { return &IPv4LSPIdentifiers{} },
+	TLVIPv6LSPIdentifiers:      func() TLVInterface { return &IPv6LSPIdentifiers{} },
+	TLVLSPDBVersion:            func() TLVInterface { return &LSPDBVersion{} },
+	TLVSRPCECapability:         func() TLVInterface { return &SRPCECapability{} },
+	TLVPathSetupType:           func() TLVInterface { return &PathSetupType{} },
+	TLVExtendedAssociationID:   func() TLVInterface { return &ExtendedAssociationID{} },
+	TLVPathSetupTypeCapability: func() TLVInterface { return &PathSetupTypeCapability{} },
+	TLVAssocTypeList:           func() TLVInterface { return &AssocTypeList{} },
+	TLVColor:                   func() TLVInterface { return &Color{} },
 }
 
 type StatefulPCECapability struct {
