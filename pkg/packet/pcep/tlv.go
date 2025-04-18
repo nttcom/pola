@@ -686,12 +686,8 @@ func (tlv *SRPCECapability) Serialize() []byte {
 	buf = append(buf, length...)
 
 	val := make([]byte, TLVSRPCECapabilityValueLength)
-	if tlv.HasUnlimitedMaxSIDDepth {
-		val[SRPCECapabilityFlagsIndex] = SetBit(val[SRPCECapabilityFlagsIndex], UnlimitedMaximumSIDDepthFlag)
-	}
-	if tlv.IsNAISupported {
-		val[SRPCECapabilityFlagsIndex] = SetBit(val[SRPCECapabilityFlagsIndex], NAISupportedFlag)
-	}
+	val[SRPCECapabilityFlagsIndex] = SetBit(val[SRPCECapabilityFlagsIndex], UnlimitedMaximumSIDDepthFlag, tlv.HasUnlimitedMaxSIDDepth)
+	val[SRPCECapabilityFlagsIndex] = SetBit(val[SRPCECapabilityFlagsIndex], NAISupportedFlag, tlv.IsNAISupported)
 	val[SRPCECapabilityMSDIndex] = tlv.MaximumSidDepth
 
 	buf = append(buf, val...)
