@@ -89,9 +89,7 @@ func (h *CommonHeader) Serialize() []uint8 {
 	verFlag := uint8(h.Version<<5 | h.Flag)
 	buf = append(buf, verFlag)
 	buf = append(buf, uint8(h.MessageType))
-	messageLength := make([]uint8, 2)
-	binary.BigEndian.PutUint16(messageLength, h.MessageLength)
-	buf = append(buf, messageLength...)
+	buf = append(buf, Uint16ToByteSlice(h.MessageLength)...)
 	return buf
 }
 
