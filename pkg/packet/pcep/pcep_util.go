@@ -49,6 +49,9 @@ func IsBitSet[T Bitwise](value, mask T) bool {
 }
 
 // SetBit sets a specific bit in the value of any unsigned integer type.
-func SetBit[T Bitwise](value, bit T) T {
-	return value | bit
+func SetBit[T Bitwise](value, bit T, condition bool) T {
+	if condition {
+		return value | bit
+	}
+	return value
 }
