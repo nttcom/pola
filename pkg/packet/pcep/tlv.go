@@ -409,13 +409,13 @@ func (tlv *SymbolicPathName) Type() TLVType {
 }
 
 func (tlv *SymbolicPathName) Len() uint16 {
-	length := uint16(len(tlv.Name))
+	nameLen := uint16(len(tlv.Name))
 	padding := uint16(0)
-	if mod := length % 4; mod != 0 {
+	if mod := nameLen % 4; mod != 0 {
 		padding = 4 - mod
 	}
 
-	return TLVHeaderLength + length + padding
+	return TLVHeaderLength + nameLen + padding
 }
 
 func (tlv *SymbolicPathName) MarshalLogObject(enc zapcore.ObjectEncoder) error {
@@ -649,7 +649,6 @@ func (tlv *SRPCECapability) DecodeFromBytes(data []byte) error {
 func (tlv *SRPCECapability) Serialize() []byte {
 	value := make([]byte, TLVSRPCECapabilityValueLength)
 
-	// Set flags and MSD using Offset constants
 	value[SRPCECapabilityFlagsOffset] = SetBit(value[SRPCECapabilityFlagsOffset], UnlimitedMaximumSIDDepthFlag, tlv.HasUnlimitedMaxSIDDepth)
 	value[SRPCECapabilityFlagsOffset] = SetBit(value[SRPCECapabilityFlagsOffset], NAISupportedFlag, tlv.IsNAISupported)
 	value[SRPCECapabilityMSDOffset] = tlv.MaximumSidDepth
