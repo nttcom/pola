@@ -259,12 +259,13 @@ type StatefulPCECapability struct {
 }
 
 const (
-	LSPUpdateCapabilityBit        uint32 = 0x01
-	IncludeDBVersionCapabilityBit uint32 = 0x02
-	LSPInstantiationCapabilityBit uint32 = 0x04
-	TriggeredResyncCapabilityBit  uint32 = 0x08
-	DeltaLSPSyncCapabilityBit     uint32 = 0x10
-	TriggeredInitialSyncBit       uint32 = 0x20
+	LSPUpdateCapabilityBit        uint32 = 0x00000001
+	IncludeDBVersionCapabilityBit uint32 = 0x00000002
+	LSPInstantiationCapabilityBit uint32 = 0x00000004
+	TriggeredResyncCapabilityBit  uint32 = 0x00000008
+	DeltaLSPSyncCapabilityBit     uint32 = 0x00000010
+	TriggeredInitialSyncBit       uint32 = 0x00000020
+	ColorCapabilityBit            uint32 = 0x00000800
 )
 
 const (
@@ -297,6 +298,7 @@ func (tlv *StatefulPCECapability) MarshalLogObject(enc zapcore.ObjectEncoder) er
 	enc.AddBool("triggeredResync", tlv.TriggeredResync)
 	enc.AddBool("deltaLSPSyncCapability", tlv.DeltaLSPSyncCapability)
 	enc.AddBool("triggeredInitialSync", tlv.TriggeredInitialSync)
+	enc.AddBool("colorCapability", tlv.ColorCapability)
 	return nil
 }
 
@@ -315,6 +317,7 @@ func (tlv *StatefulPCECapability) ExtractCapabilities(flags uint32) {
 	tlv.TriggeredResync = flags&TriggeredResyncCapabilityBit != 0
 	tlv.DeltaLSPSyncCapability = flags&DeltaLSPSyncCapabilityBit != 0
 	tlv.TriggeredInitialSync = flags&TriggeredInitialSyncBit != 0
+	tlv.ColorCapability = flags&ColorCapabilityBit != 0
 }
 
 func (tlv *StatefulPCECapability) SetFlags() uint32 {
@@ -325,6 +328,7 @@ func (tlv *StatefulPCECapability) SetFlags() uint32 {
 	flags = SetBit(flags, TriggeredResyncCapabilityBit, tlv.TriggeredResync)
 	flags = SetBit(flags, DeltaLSPSyncCapabilityBit, tlv.DeltaLSPSyncCapability)
 	flags = SetBit(flags, TriggeredInitialSyncBit, tlv.TriggeredInitialSync)
+	flags = SetBit(flags, ColorCapabilityBit, tlv.ColorCapability)
 	return flags
 }
 

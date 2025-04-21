@@ -236,8 +236,8 @@ func TestStatefulPCECapability_CapStrings(t *testing.T) {
 	}{
 		{
 			name:     "All capabilities enabled",
-			bits:     0x3F,
-			expected: []string{"Stateful", "Update", "Include-DB-Ver", "Instantiation", "Triggered-Resync", "Delta-LSP-Sync", "Triggered-Initial-Sync"},
+			bits:     uint32(0x0000083F),
+			expected: []string{"Stateful", "Update", "Include-DB-Ver", "Instantiation", "Triggered-Resync", "Delta-LSP-Sync", "Triggered-Initial-Sync", "Color"},
 		},
 		{
 			name:     "No capabilities enabled",
