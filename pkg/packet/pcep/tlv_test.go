@@ -649,6 +649,15 @@ func TestLSPDBVersion_Serialize(t *testing.T) {
 	}
 }
 
+func TestLSPDBVersion_MarshalLogObject(t *testing.T) {
+	tlv := &LSPDBVersion{}
+	enc := zapcore.NewMapObjectEncoder()
+
+	err := tlv.MarshalLogObject(enc)
+
+	assert.NoError(t, err, "expected no error while marshaling LSPDBVersion")
+}
+
 func TestLSPDBVersion_Len(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -667,6 +676,15 @@ func TestLSPDBVersion_Len(t *testing.T) {
 			assert.Equal(t, tt.expected, tt.input.Len())
 		})
 	}
+}
+
+func TestLSPDBVersion_CapStrings(t *testing.T) {
+	tlv := &LSPDBVersion{}
+
+	expected := []string{"LSP-DB-VERSION"}
+	actual := tlv.CapStrings()
+
+	assert.Equal(t, expected, actual, "CapStrings() did not return expected value")
 }
 
 func TestSRPCECapability_DecodeFromBytes(t *testing.T) {
@@ -730,6 +748,53 @@ func TestSRPCECapability_Serialize(t *testing.T) {
 	}
 }
 
+func TestSRPCECapability_MarshalLogObject(t *testing.T) {
+	tests := []struct {
+		name     string
+		tlv      *SRPCECapability
+		expected map[string]interface{}
+	}{
+		{
+			name: "All fields set",
+			tlv: &SRPCECapability{
+				HasUnlimitedMaxSIDDepth: true,
+				IsNAISupported:          true,
+				MaximumSidDepth:         255,
+			},
+			expected: map[string]interface{}{
+				"unlimited_max_sid_depth": true,
+				"nai_is_supported":        true,
+				"maximum_sid_depth":       uint8(255),
+			},
+		},
+		{
+			name: "No capability set",
+			tlv: &SRPCECapability{
+				HasUnlimitedMaxSIDDepth: false,
+				IsNAISupported:          false,
+				MaximumSidDepth:         0,
+			},
+			expected: map[string]interface{}{
+				"unlimited_max_sid_depth": false,
+				"nai_is_supported":        false,
+				"maximum_sid_depth":       uint8(0),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			enc := zapcore.NewMapObjectEncoder()
+			err := tt.tlv.MarshalLogObject(enc)
+
+			assert.NoError(t, err, "expected no error while marshaling log object")
+			for k, v := range tt.expected {
+				assert.Equal(t, v, enc.Fields[k], "field %q mismatch", k)
+			}
+		})
+	}
+}
+
 func TestSRPCECapability_Len(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -746,6 +811,48 @@ func TestSRPCECapability_Len(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.expected, tt.input.Len())
+		})
+	}
+}
+
+func TestSRPCECapability_CapStrings(t *testing.T) {
+	tests := []struct {
+		name     string
+		tlv      *SRPCECapability
+		expected []string
+	}{
+		{
+			name: "All capabilities",
+			tlv: &SRPCECapability{
+				HasUnlimitedMaxSIDDepth: true,
+				IsNAISupported:          true,
+			},
+			expected: []string{"Unlimited-SID-Depth", "NAI-Supported"},
+		},
+		{
+			name: "Only UnlimitedMaxSIDDepth",
+			tlv: &SRPCECapability{
+				HasUnlimitedMaxSIDDepth: true,
+			},
+			expected: []string{"Unlimited-SID-Depth"},
+		},
+		{
+			name: "Only NAISupported",
+			tlv: &SRPCECapability{
+				IsNAISupported: true,
+			},
+			expected: []string{"NAI-Supported"},
+		},
+		{
+			name:     "No capabilities",
+			tlv:      &SRPCECapability{},
+			expected: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.tlv.CapStrings())
 		})
 	}
 }
@@ -809,6 +916,16 @@ func TestPathSetupType_Serialize(t *testing.T) {
 			assert.Equal(t, tt.expected, tt.input.Serialize())
 		})
 	}
+}
+
+func TestPathSetupType_MarshalLogObject(t *testing.T) {
+	tlv := &PathSetupType{}
+	enc := zapcore.NewMapObjectEncoder()
+
+	err := tlv.MarshalLogObject(enc)
+
+	assert.NoError(t, err, "expected no error while marshaling PathSetupType")
+	assert.Empty(t, enc.Fields, "expected no fields to be marshaled for PathSetupType")
 }
 
 func TestPathSetupType_Len(t *testing.T) {
