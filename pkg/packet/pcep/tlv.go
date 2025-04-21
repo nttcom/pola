@@ -625,8 +625,8 @@ const (
 )
 
 const (
-	SRPCECapabilityFlagsIndex = 2
-	SRPCECapabilityMSDIndex   = 3
+	SRPCECapabilityFlagsOffset = 0
+	SRPCECapabilityMSDOffset   = 1
 )
 
 func (tlv *SRPCECapability) DecodeFromBytes(data []byte) error {
@@ -635,39 +635,30 @@ func (tlv *SRPCECapability) DecodeFromBytes(data []byte) error {
 		return fmt.Errorf("data length mismatch: expected %d bytes, but got %d bytes for SRPCECapability", expectedLength, len(data))
 	}
 
-	// Extract TLV value field (after 4-byte TLV header)
-	val := data[TLVHeaderLength:]
+	// Remove TLV header
+	data = data[TLVHeaderLength:]
 
-	if len(val) != int(TLVSRPCECapabilityValueLength) {
-		return fmt.Errorf("invalid value length for SRPCECapability: expected %d bytes, but got %d bytes", TLVSRPCECapabilityValueLength, len(val))
-	}
-
-	flags := val[SRPCECapabilityFlagsIndex]
+	flags := data[SRPCECapabilityFlagsOffset]
 	tlv.HasUnlimitedMaxSIDDepth = IsBitSet(flags, UnlimitedMaximumSIDDepthFlag)
 	tlv.IsNAISupported = IsBitSet(flags, NAISupportedFlag)
-	tlv.MaximumSidDepth = val[SRPCECapabilityMSDIndex]
+	tlv.MaximumSidDepth = data[SRPCECapabilityMSDOffset]
 
 	return nil
 }
 
 func (tlv *SRPCECapability) Serialize() []byte {
-	buf := make([]byte, 0, TLVHeaderLength+TLVSRPCECapabilityValueLength)
+	value := make([]byte, TLVSRPCECapabilityValueLength)
 
-	typ := make([]byte, 2)
-	binary.BigEndian.PutUint16(typ, uint16(tlv.Type()))
-	buf = append(buf, typ...)
+	// Set flags and MSD using Offset constants
+	value[SRPCECapabilityFlagsOffset] = SetBit(value[SRPCECapabilityFlagsOffset], UnlimitedMaximumSIDDepthFlag, tlv.HasUnlimitedMaxSIDDepth)
+	value[SRPCECapabilityFlagsOffset] = SetBit(value[SRPCECapabilityFlagsOffset], NAISupportedFlag, tlv.IsNAISupported)
+	value[SRPCECapabilityMSDOffset] = tlv.MaximumSidDepth
 
-	length := make([]byte, 2)
-	binary.BigEndian.PutUint16(length, TLVSRPCECapabilityValueLength)
-	buf = append(buf, length...)
-
-	val := make([]byte, TLVSRPCECapabilityValueLength)
-	val[SRPCECapabilityFlagsIndex] = SetBit(val[SRPCECapabilityFlagsIndex], UnlimitedMaximumSIDDepthFlag, tlv.HasUnlimitedMaxSIDDepth)
-	val[SRPCECapabilityFlagsIndex] = SetBit(val[SRPCECapabilityFlagsIndex], NAISupportedFlag, tlv.IsNAISupported)
-	val[SRPCECapabilityMSDIndex] = tlv.MaximumSidDepth
-
-	buf = append(buf, val...)
-	return buf
+	return AppendByteSlices(
+		Uint16ToByteSlice(tlv.Type()),
+		Uint16ToByteSlice(TLVSRPCECapabilityValueLength),
+		value,
+	)
 }
 
 func (tlv *SRPCECapability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
