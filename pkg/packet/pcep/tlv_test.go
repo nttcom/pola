@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+// TestTLVType_String tests the String method for TLVType.
 func TestTLVType_String(t *testing.T) {
 	tests := map[string]struct {
 		tlvType  TLVType
@@ -28,7 +29,7 @@ func TestTLVType_String(t *testing.T) {
 			expected: "IPV4-LSP-IDENTIFIERS (RFC8231)",
 		},
 		"String: Unknown TLVType": {
-			tlvType:  TLVType(0x9999), // Invalid type
+			tlvType:  TLVType(0x9999), // Unknown type
 			expected: "Unknown TLV (0x9999)",
 		},
 	}
@@ -41,6 +42,7 @@ func TestTLVType_String(t *testing.T) {
 	}
 }
 
+// TestTLVMap tests the mapping of TLVType to TLVInterface.
 func TestTLVMap(t *testing.T) {
 	tests := []struct {
 		name     string
