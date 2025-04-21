@@ -235,6 +235,8 @@ var tlvMap = map[TLVType]func() TLVInterface{
 	TLVExtendedAssociationID:   func() TLVInterface { return &ExtendedAssociationID{} },
 	TLVPathSetupTypeCapability: func() TLVInterface { return &PathSetupTypeCapability{} },
 	TLVAssocTypeList:           func() TLVInterface { return &AssocTypeList{} },
+	TLVSRPolicyCPathID:         func() TLVInterface { return &SRPolicyCandidatePathIdentifier{} },
+	TLVSRPolicyCPathPreference: func() TLVInterface { return &SRPolicyCandidatePathPreference{} },
 	TLVColor:                   func() TLVInterface { return &Color{} },
 }
 
