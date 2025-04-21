@@ -143,7 +143,7 @@ func TestStatefulPCECapability_DecodeFromBytes(t *testing.T) {
 		},
 		{
 			name:     "Input too short (missing TLV body)",
-			input:    []uint8{uint8(TLVStatefulPCECapability >> 8), uint8(TLVStatefulPCECapability & 0xFF), 0x00, 0x04}, // type=0x0010, length=4, but body missing
+			input:    []byte{byte(TLVStatefulPCECapability >> 8), byte(TLVStatefulPCECapability & 0xFF), 0x00, 0x04}, // type=0x0010, length=4, but body missing
 			expected: nil,
 			err:      true,
 		},
@@ -257,7 +257,7 @@ func TestStatefulPCECapability_CapStrings(t *testing.T) {
 func TestSymbolicPathName_DecodeFromBytes(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    []uint8
+		input    []byte
 		expected *SymbolicPathName
 		err      bool
 	}{
@@ -319,7 +319,7 @@ func TestSymbolicPathName_Serialize(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    *SymbolicPathName
-		expected []uint8
+		expected []byte
 	}{
 		{
 			name:     "Valid Symbolic Path Name",
@@ -392,7 +392,7 @@ func TestSymbolicPathName_MarshalLogObject(t *testing.T) {
 func TestIPv4LSPIdentifiers_DecodeFromBytes(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    []uint8
+		input    []byte
 		expected *IPv4LSPIdentifiers
 		err      bool
 	}{
@@ -404,7 +404,7 @@ func TestIPv4LSPIdentifiers_DecodeFromBytes(t *testing.T) {
 		},
 		{
 			name: "Invalid IPv4 LSP Identifiers (truncated '192.0.2.1')",
-			input: []uint8{
+			input: []byte{
 				0x00, 0x12, 0x00, 0x14, // Type (0x12) and Length (0x10)
 				0xC0, 0x00, 0x02, // Incomplete address: missing last byte (0x01)
 			},
@@ -441,7 +441,7 @@ func TestIPv4LSPIdentifiers_Serialize(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    *IPv4LSPIdentifiers
-		expected []uint8
+		expected []byte
 	}{
 		{
 			name:     "Valid IPv4 LSP Identifiers",
@@ -489,7 +489,7 @@ func TestIPv4LSPIdentifiers_Len(t *testing.T) {
 func TestIPv6LSPIdentifiers_DecodeFromBytes(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    []uint8
+		input    []byte
 		expected *IPv6LSPIdentifiers
 		err      bool
 	}{
@@ -501,7 +501,7 @@ func TestIPv6LSPIdentifiers_DecodeFromBytes(t *testing.T) {
 		},
 		{
 			name: "Invalid IPv6 LSP Identifiers (truncated '2001:db8::1')",
-			input: []uint8{
+			input: []byte{
 				0x00, 0x13, 0x00, 0x20, // Type IPV6-LSP-IDENTIFIERS (0x13)、Length 56 (0x38)
 				0x20, 0x01, 0x0D, 0xB8, // Start of '2001:db8::'
 				0x00, 0x00, 0x00, // Incomplete (should be 16 bytes total)
@@ -539,7 +539,7 @@ func TestIPv6LSPIdentifiers_Serialize(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    *IPv6LSPIdentifiers
-		expected []uint8
+		expected []byte
 	}{
 		{
 			name:     "Valid IPv6 LSP Identifiers",
@@ -587,7 +587,7 @@ func TestIPv6LSPIdentifiers_Len(t *testing.T) {
 func TestLSPDBVersion_DecodeFromBytes(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    []uint8
+		input    []byte
 		expected *LSPDBVersion
 		err      bool
 	}{
@@ -633,7 +633,7 @@ func TestLSPDBVersion_Serialize(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    *LSPDBVersion
-		expected []uint8
+		expected []byte
 	}{
 		{
 			name:     "Valid LSPDB Version",
@@ -690,7 +690,7 @@ func TestLSPDBVersion_CapStrings(t *testing.T) {
 func TestSRPCECapability_DecodeFromBytes(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    []uint8
+		input    []byte
 		expected *SRPCECapability
 		err      bool
 	}{
@@ -702,13 +702,13 @@ func TestSRPCECapability_DecodeFromBytes(t *testing.T) {
 		},
 		{
 			name:     "Invalid input (too short data)",
-			input:    []uint8{0x00, 0x11, 0x00, 0x02}, // Too short for valid decoding
+			input:    []byte{byte(TLVSRPCECapability >> 8), byte(TLVSRPCECapability & 0xFF), 0x00, 0x02}, // Too short for valid decoding
 			expected: NewSRPCECapability(false, false, 0),
 			err:      true,
 		},
 		{
 			name:     "Invalid input (too long data)",
-			input:    []uint8{0x00, 0x11, 0x00, 0x02, 0x00, 0x00, 0x03, 0x05, 0x01}, // Too long for valid decoding
+			input:    []byte{byte(TLVSRPCECapability >> 8), byte(TLVSRPCECapability & 0xFF), 0x00, 0x02, 0x00, 0x00, 0x03, 0x05, 0x01}, // Too long for valid decoding
 			expected: NewSRPCECapability(false, false, 0),
 			err:      true,
 		},
@@ -732,7 +732,7 @@ func TestSRPCECapability_Serialize(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    *SRPCECapability
-		expected []uint8
+		expected []byte
 	}{
 		{
 			name:     "Valid SRPCE Capability",
@@ -764,7 +764,7 @@ func TestSRPCECapability_MarshalLogObject(t *testing.T) {
 			expected: map[string]interface{}{
 				"unlimited_max_sid_depth": true,
 				"nai_is_supported":        true,
-				"maximum_sid_depth":       uint8(255),
+				"maximum_sid_depth":       byte(255),
 			},
 		},
 		{
@@ -777,7 +777,7 @@ func TestSRPCECapability_MarshalLogObject(t *testing.T) {
 			expected: map[string]interface{}{
 				"unlimited_max_sid_depth": false,
 				"nai_is_supported":        false,
-				"maximum_sid_depth":       uint8(0),
+				"maximum_sid_depth":       byte(0),
 			},
 		},
 	}
@@ -922,7 +922,7 @@ func TestPsts_MarshalJSON(t *testing.T) {
 func TestPathSetupType_DecodeFromBytes(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    []uint8
+		input    []byte
 		expected *PathSetupType
 		err      bool
 	}{
@@ -964,7 +964,7 @@ func TestPathSetupType_Serialize(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    *PathSetupType
-		expected []uint8
+		expected []byte
 	}{
 		{
 			name:     "Serialize PathSetupType SRTE",
