@@ -124,6 +124,7 @@ func TestTLVMap(t *testing.T) {
 	}
 }
 
+// TestStatefulPCECapability_DecodeFromBytes tests the DecodeFromBytes method for StatefulPCECapability.
 func TestStatefulPCECapability_DecodeFromBytes(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -132,71 +133,72 @@ func TestStatefulPCECapability_DecodeFromBytes(t *testing.T) {
 		err      bool
 	}{
 		{
-			name:     "Single capability: LSP Update enabled",
+			name:     "DecodeFromBytes: Single capability (LSP Update enabled)",
 			input:    NewStatefulPCECapability(0x01).Serialize(),
 			expected: NewStatefulPCECapability(0x01),
 			err:      false,
 		},
 		{
-			name:     "All capabilities enabled",
+			name:     "DecodeFromBytes: All capabilities enabled",
 			input:    NewStatefulPCECapability(0x3F).Serialize(),
 			expected: NewStatefulPCECapability(0x3F),
 			err:      false,
 		},
 		{
-			name:     "Input too short (missing TLV body)",
-			input:    []byte{byte(TLVStatefulPCECapability >> 8), byte(TLVStatefulPCECapability & 0xFF), 0x00, 0x04}, // type=0x0010, length=4, but body missing
+			name:     "DecodeFromBytes: Input too short (missing TLV body)",
+			input:    []byte{byte(TLVStatefulPCECapability >> 8), byte(TLVStatefulPCECapability & 0xFF), 0x00, 0x04},
 			expected: nil,
 			err:      true,
 		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var actual StatefulPCECapability
 			err := actual.DecodeFromBytes(tt.input)
 			if tt.err {
-				assert.Error(t, err, "expected error for input: %v", tt.input)
+				assert.Error(t, err, "DecodeFromBytes failed for input: %v", tt.input)
 			} else {
-				assert.NoError(t, err, "unexpected error for input: %v", tt.input)
-				assert.Equal(t, *tt.expected, actual, "decoded capability mismatch")
+				assert.NoError(t, err, "DecodeFromBytes returned unexpected error for input: %v", tt.input)
+				assert.Equal(t, *tt.expected, actual, "Decoded capability mismatch")
 			}
 		})
 	}
 }
 
+// TestStatefulPCECapability_Serialize tests the Serialize method for StatefulPCECapability.
 func TestStatefulPCECapability_Serialize(t *testing.T) {
 	tests := []struct {
-		name string
-		bits uint32
+		name     string
+		input    *StatefulPCECapability
+		expected []byte
 	}{
 		{
-			name: "LSP Update Capability enabled",
-			bits: 0x01,
+			name:     "Serialize: LSP Update Capability enabled",
+			input:    NewStatefulPCECapability(0x01),
+			expected: []byte{byte(TLVStatefulPCECapability >> 8), byte(TLVStatefulPCECapability & 0xFF), 0x00, 0x04, 0x00, 0x00, 0x00, 0x01},
 		},
 		{
-			name: "All capabilities enabled",
-			bits: 0x3F,
+			name:     "Serialize: All capabilities enabled",
+			input:    NewStatefulPCECapability(0x3F),
+			expected: []byte{byte(TLVStatefulPCECapability >> 8), byte(TLVStatefulPCECapability & 0xFF), 0x00, 0x04, 0x00, 0x00, 0x00, 0x3F},
 		},
 		{
-			name: "No capabilities enabled",
-			bits: 0x00,
+			name:     "Serialize: No capabilities enabled",
+			input:    NewStatefulPCECapability(0x00),
+			expected: []byte{byte(TLVStatefulPCECapability >> 8), byte(TLVStatefulPCECapability & 0xFF), 0x00, 0x04, 0x00, 0x00, 0x00, 0x00},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tlv := NewStatefulPCECapability(tt.bits)
-			expected := AppendByteSlices(
-				Uint16ToByteSlice(TLVStatefulPCECapability),
-				Uint16ToByteSlice(TLVStatefulPCECapabilityValueLength),
-				Uint32ToByteSlice(tlv.SetFlags()),
-			)
-
-			assert.Equal(t, expected, tlv.Serialize(), "serialized output mismatch")
+			actual := tt.input.Serialize()
+			assert.Equal(t, tt.expected, actual, "Serialized output mismatch in test case: %s", tt.name)
 		})
 	}
 }
 
+// TestStatefulPCECapability_MarshalLogObject tests the MarshalLogObject method for StatefulPCECapability.
 func TestStatefulPCECapability_MarshalLogObject(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -224,12 +226,13 @@ func TestStatefulPCECapability_MarshalLogObject(t *testing.T) {
 			enc := zapcore.NewMapObjectEncoder()
 			err := tt.tlv.MarshalLogObject(enc)
 
-			assert.NoError(t, err, "expected no error while marshaling log object")
-			assert.Equal(t, tt.expected, enc.Fields["lspUpdateCapability"], "field 'lspUpdateCapability' mismatch")
+			assert.NoError(t, err, "Expected no error while marshaling log object")
+			assert.Equal(t, tt.expected, enc.Fields["lspUpdateCapability"], "Field 'lspUpdateCapability' mismatch")
 		})
 	}
 }
 
+// TestStatefulPCECapability_CapStrings tests the CapStrings method for StatefulPCECapability.
 func TestStatefulPCECapability_CapStrings(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -251,7 +254,7 @@ func TestStatefulPCECapability_CapStrings(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			input := NewStatefulPCECapability(tt.bits)
-			assert.ElementsMatch(t, tt.expected, input.CapStrings(), "capabilities mismatch")
+			assert.ElementsMatch(t, tt.expected, input.CapStrings(), "Capabilities mismatch")
 		})
 	}
 }
