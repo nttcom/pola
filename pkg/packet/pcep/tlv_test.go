@@ -857,6 +857,68 @@ func TestSRPCECapability_CapStrings(t *testing.T) {
 	}
 }
 
+func TestPst_String(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    Pst
+		expected string
+	}{
+		{
+			name:     "Known PathSetupType",
+			input:    Pst(0x01),
+			expected: "Traffic engineering path is set up using Segment Routing (RFC8664)", // Corrected expected value
+		},
+		{
+			name:     "Unknown PathSetupType",
+			input:    Pst(0xFF), // Unknown value
+			expected: "Unknown PathSetupType (0xff)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.input.String())
+		})
+	}
+}
+
+func TestPsts_MarshalJSON(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    Psts
+		expected string
+	}{
+		{
+			name:     "Nil Psts",
+			input:    nil,
+			expected: "null", // Expected output when Psts is nil
+		},
+		{
+			name:     "Empty Psts",
+			input:    Psts{},
+			expected: "", // Expected empty string for empty Psts
+		},
+		{
+			name:     "Single Pst",
+			input:    Psts{Pst(0x01)}, // Using a hypothetical value of 0x01
+			expected: "1",             // Expected output as a string representing the number 1
+		},
+		{
+			name:     "Multiple Psts",
+			input:    Psts{Pst(0x01), Pst(0x02)}, // Using multiple hypothetical values
+			expected: "1,2",                      // Expected output as a comma-separated string "1,2"
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actual, err := tt.input.MarshalJSON()
+			assert.NoError(t, err)                       // Ensure no error occurs
+			assert.Equal(t, tt.expected, string(actual)) // Check if the result matches the expected output
+		})
+	}
+}
+
 func TestPathSetupType_DecodeFromBytes(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -871,8 +933,8 @@ func TestPathSetupType_DecodeFromBytes(t *testing.T) {
 			err:      false,
 		},
 		{
-			name:     "Invalid input (too short)",
-			input:    []uint8{0x00, 0x15, 0x00, 0x04}, // 不足データ
+			name:     "Invalid input (too short data)",
+			input:    []byte{0x00, 0x15, 0x00, 0x04},
 			expected: NewPathSetupType(0),
 			err:      true,
 		},

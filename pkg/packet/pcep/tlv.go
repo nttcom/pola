@@ -748,9 +748,8 @@ const (
 )
 
 func (tlv *PathSetupType) DecodeFromBytes(data []byte) error {
-	expectedLength := TLVHeaderLength + int(TLVPathSetupTypeValueLength)
-	if len(data) != expectedLength {
-		return fmt.Errorf("data length mismatch: expected %d bytes, but got %d bytes for PathSetupType", expectedLength, len(data))
+	if len(data) != int(tlv.Len()) {
+		return fmt.Errorf("data length mismatch: expected %d bytes, but got %d bytes for PathSetupType", tlv.Len(), len(data))
 	}
 
 	tlv.PathSetupType = Pst(data[TLVHeaderLength+PathSetupTypePathSetupTypeIndex])
@@ -758,21 +757,14 @@ func (tlv *PathSetupType) DecodeFromBytes(data []byte) error {
 }
 
 func (tlv *PathSetupType) Serialize() []byte {
-	buf := []byte{}
+	value := make([]byte, TLVPathSetupTypeValueLength)
+	value[PathSetupTypePathSetupTypeIndex] = byte(tlv.PathSetupType)
 
-	typ := make([]byte, 2)
-	binary.BigEndian.PutUint16(typ, uint16(tlv.Type()))
-	buf = append(buf, typ...)
-
-	length := make([]byte, 2)
-	binary.BigEndian.PutUint16(length, TLVPathSetupTypeValueLength)
-	buf = append(buf, length...)
-
-	val := make([]byte, TLVPathSetupTypeValueLength)
-	val[PathSetupTypePathSetupTypeIndex] = byte(tlv.PathSetupType)
-
-	buf = append(buf, val...)
-	return buf
+	return AppendByteSlices(
+		Uint16ToByteSlice(tlv.Type()),
+		Uint16ToByteSlice(TLVPathSetupTypeValueLength),
+		value,
+	)
 }
 
 func (tlv *PathSetupType) MarshalLogObject(enc zapcore.ObjectEncoder) error {
