@@ -7,16 +7,125 @@ package pcep
 
 import (
 	"net/netip"
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap/zapcore"
 )
 
+func TestTLVType_String(t *testing.T) {
+	tests := map[string]struct {
+		tlvType  TLVType
+		expected string
+	}{
+		"String: Valid TLVType (StatefulPCECapability)": {
+			tlvType:  TLVStatefulPCECapability,
+			expected: "STATEFUL-PCE-CAPABILITY (RFC8231)",
+		},
+		"String: Valid TLVType (IPv4LSPIdentifiers)": {
+			tlvType:  TLVIPv4LSPIdentifiers,
+			expected: "IPV4-LSP-IDENTIFIERS (RFC8231)",
+		},
+		"String: Unknown TLVType": {
+			tlvType:  TLVType(0x9999), // Invalid type
+			expected: "Unknown TLV (0x9999)",
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			actual := tt.tlvType.String()
+			assert.Equal(t, tt.expected, actual, "String() returned unexpected value")
+		})
+	}
+}
+
+func TestTLVMap(t *testing.T) {
+	tests := []struct {
+		name     string
+		tlvType  TLVType
+		expected TLVInterface
+	}{
+		{
+			name:     "Map: StatefulPCECapability",
+			tlvType:  TLVStatefulPCECapability,
+			expected: &StatefulPCECapability{},
+		},
+		{
+			name:     "Map: SymbolicPathName",
+			tlvType:  TLVSymbolicPathName,
+			expected: &SymbolicPathName{},
+		},
+		{
+			name:     "Map: IPv4LSPIdentifiers",
+			tlvType:  TLVIPv4LSPIdentifiers,
+			expected: &IPv4LSPIdentifiers{},
+		},
+		{
+			name:     "Map: IPv6LSPIdentifiers",
+			tlvType:  TLVIPv6LSPIdentifiers,
+			expected: &IPv6LSPIdentifiers{},
+		},
+		{
+			name:     "Map: LSPDBVersion",
+			tlvType:  TLVLSPDBVersion,
+			expected: &LSPDBVersion{},
+		},
+		{
+			name:     "Map: SRPCECapability",
+			tlvType:  TLVSRPCECapability,
+			expected: &SRPCECapability{},
+		},
+		{
+			name:     "Map: PathSetupType",
+			tlvType:  TLVPathSetupType,
+			expected: &PathSetupType{},
+		},
+		{
+			name:     "Map: ExtendedAssociationID",
+			tlvType:  TLVExtendedAssociationID,
+			expected: &ExtendedAssociationID{},
+		},
+		{
+			name:     "Map: PathSetupTypeCapability",
+			tlvType:  TLVPathSetupTypeCapability,
+			expected: &PathSetupTypeCapability{},
+		},
+		{
+			name:     "Map: AssocTypeList",
+			tlvType:  TLVAssocTypeList,
+			expected: &AssocTypeList{},
+		},
+		{
+			name:     "Map: SRPolicyCPathID",
+			tlvType:  TLVSRPolicyCPathID,
+			expected: &SRPolicyCandidatePathIdentifier{},
+		},
+		{
+			name:     "Map: SRPolicyCPathPreference",
+			tlvType:  TLVSRPolicyCPathPreference,
+			expected: &SRPolicyCandidatePathPreference{},
+		},
+		{
+			name:     "Map: Color",
+			tlvType:  TLVColor,
+			expected: &Color{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actual := tlvMap[tt.tlvType]()
+			assert.Equal(t, reflect.TypeOf(tt.expected), reflect.TypeOf(actual), "Map returned unexpected type")
+		})
+	}
+}
+
 func TestStatefulPCECapability_DecodeFromBytes(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    []uint8
+		input    []byte
 		expected *StatefulPCECapability
 		err      bool
 	}{
