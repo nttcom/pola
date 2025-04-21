@@ -432,10 +432,10 @@ type IPv4LSPIdentifiers struct {
 }
 
 const (
-	IPv4LSPIdentifiersTunnelSenderAddressIndex = 4
-	IPv4LSPIdentifiersLSPIDIndex               = 6
-	IPv4LSPIdentifiersTunnelIDIndex            = 8
-	IPv4LSPIdentifiersExtendedTunnelIDIndex    = 12
+	IPv4LSPIdentifiersLSPIDOffset                 = 4
+	IPv4LSPIdentifiersTunnelIDOffset              = 6
+	IPv4LSPIdentifiersExtendedTunnelIDOffset      = 8
+	IPv4LSPIdentifiersTunnelEndpointAddressOffset = 12
 )
 
 func (tlv *IPv4LSPIdentifiers) DecodeFromBytes(data []byte) error {
@@ -444,18 +444,14 @@ func (tlv *IPv4LSPIdentifiers) DecodeFromBytes(data []byte) error {
 		return fmt.Errorf("data length mismatch: expected %d bytes, but got %d bytes for IPv4LSPIdentifiers", expectedLength, len(data))
 	}
 
-	var ok bool
-	if tlv.IPv4TunnelSenderAddress, ok = netip.AddrFromSlice(data[TLVHeaderLength : TLVHeaderLength+IPv4LSPIdentifiersTunnelSenderAddressIndex]); !ok {
-		return fmt.Errorf("failed to parse IPv4TunnelSenderAddress")
-	}
+	// Remove TLV header
+	data = data[TLVHeaderLength:]
 
-	tlv.LSPID = binary.BigEndian.Uint16(data[TLVHeaderLength+IPv4LSPIdentifiersTunnelSenderAddressIndex : TLVHeaderLength+IPv4LSPIdentifiersLSPIDIndex])
-	tlv.TunnelID = binary.BigEndian.Uint16(data[TLVHeaderLength+IPv4LSPIdentifiersLSPIDIndex : TLVHeaderLength+IPv4LSPIdentifiersTunnelIDIndex])
-	tlv.ExtendedTunnelID = binary.BigEndian.Uint32(data[TLVHeaderLength+IPv4LSPIdentifiersTunnelIDIndex : TLVHeaderLength+IPv4LSPIdentifiersExtendedTunnelIDIndex])
-
-	if tlv.IPv4TunnelEndpointAddress, ok = netip.AddrFromSlice(data[TLVHeaderLength+IPv4LSPIdentifiersExtendedTunnelIDIndex : TLVHeaderLength+TLVIPv4LSPIdentifiersValueLength]); !ok {
-		return fmt.Errorf("failed to parse IPv4TunnelEndpointAddress")
-	}
+	tlv.IPv4TunnelSenderAddress, _ = netip.AddrFromSlice(data[:IPv4LSPIdentifiersLSPIDOffset])
+	tlv.LSPID = binary.BigEndian.Uint16(data[IPv4LSPIdentifiersLSPIDOffset:IPv4LSPIdentifiersTunnelIDOffset])
+	tlv.TunnelID = binary.BigEndian.Uint16(data[IPv4LSPIdentifiersTunnelIDOffset:IPv4LSPIdentifiersExtendedTunnelIDOffset])
+	tlv.ExtendedTunnelID = binary.BigEndian.Uint32(data[IPv4LSPIdentifiersExtendedTunnelIDOffset:IPv4LSPIdentifiersTunnelEndpointAddressOffset])
+	tlv.IPv4TunnelEndpointAddress, _ = netip.AddrFromSlice(data[IPv4LSPIdentifiersTunnelEndpointAddressOffset:TLVIPv4LSPIdentifiersValueLength])
 
 	return nil
 }
@@ -463,11 +459,11 @@ func (tlv *IPv4LSPIdentifiers) DecodeFromBytes(data []byte) error {
 func (tlv *IPv4LSPIdentifiers) Serialize() []byte {
 	value := make([]byte, TLVIPv4LSPIdentifiersValueLength)
 
-	copy(value[0:4], tlv.IPv4TunnelSenderAddress.AsSlice())
-	binary.BigEndian.PutUint16(value[4:6], tlv.LSPID)
-	binary.BigEndian.PutUint16(value[6:8], tlv.TunnelID)
-	binary.BigEndian.PutUint32(value[8:12], tlv.ExtendedTunnelID)
-	copy(value[12:16], tlv.IPv4TunnelEndpointAddress.AsSlice())
+	copy(value[:IPv4LSPIdentifiersLSPIDOffset], tlv.IPv4TunnelSenderAddress.AsSlice())
+	binary.BigEndian.PutUint16(value[IPv4LSPIdentifiersLSPIDOffset:IPv4LSPIdentifiersTunnelIDOffset], tlv.LSPID)
+	binary.BigEndian.PutUint16(value[IPv4LSPIdentifiersTunnelIDOffset:IPv4LSPIdentifiersExtendedTunnelIDOffset], tlv.TunnelID)
+	binary.BigEndian.PutUint32(value[IPv4LSPIdentifiersExtendedTunnelIDOffset:IPv4LSPIdentifiersTunnelEndpointAddressOffset], tlv.ExtendedTunnelID)
+	copy(value[IPv4LSPIdentifiersTunnelEndpointAddressOffset:], tlv.IPv4TunnelEndpointAddress.AsSlice())
 
 	return AppendByteSlices(
 		Uint16ToByteSlice(tlv.Type()),
@@ -506,40 +502,45 @@ type IPv6LSPIdentifiers struct {
 	ExtendedTunnelID          [16]byte
 }
 
+const (
+	IPv6LSPIdentifiersLSPIDOffset                 = 16
+	IPv6LSPIdentifiersTunnelIDOffset              = 18
+	IPv6LSPIdentifiersExtendedTunnelIDOffset      = 20
+	IPv6LSPIdentifiersTunnelEndpointAddressOffset = 36
+)
+
 func (tlv *IPv6LSPIdentifiers) DecodeFromBytes(data []byte) error {
 	expectedLength := TLVHeaderLength + int(TLVIPv6LSPIdentifiersValueLength)
 	if len(data) != expectedLength {
 		return fmt.Errorf("data length mismatch: expected %d bytes, but got %d bytes for IPv6LSPIdentifiers", expectedLength, len(data))
 	}
 
-	var ok bool
-	if tlv.IPv6TunnelSenderAddress, ok = netip.AddrFromSlice(data[4:20]); !ok {
-		return fmt.Errorf("failed to parse IPv6TunnelSenderAddress")
-	}
+	// Remove TLV header
+	data = data[TLVHeaderLength:]
 
-	tlv.LSPID = binary.BigEndian.Uint16(data[20:22])
-	tlv.TunnelID = binary.BigEndian.Uint16(data[22:24])
-	copy(tlv.ExtendedTunnelID[:], data[24:40])
-
-	if tlv.IPv6TunnelEndpointAddress, ok = netip.AddrFromSlice(data[40:56]); !ok {
-		return fmt.Errorf("failed to parse IPv6TunnelEndpointAddress")
-	}
+	tlv.IPv6TunnelSenderAddress, _ = netip.AddrFromSlice(data[:IPv6LSPIdentifiersLSPIDOffset])
+	tlv.LSPID = binary.BigEndian.Uint16(data[IPv6LSPIdentifiersLSPIDOffset:IPv6LSPIdentifiersTunnelIDOffset])
+	tlv.TunnelID = binary.BigEndian.Uint16(data[IPv6LSPIdentifiersTunnelIDOffset:IPv6LSPIdentifiersExtendedTunnelIDOffset])
+	copy(tlv.ExtendedTunnelID[:], data[IPv6LSPIdentifiersExtendedTunnelIDOffset:IPv6LSPIdentifiersTunnelEndpointAddressOffset])
+	tlv.IPv6TunnelEndpointAddress, _ = netip.AddrFromSlice(data[IPv6LSPIdentifiersTunnelEndpointAddressOffset:TLVIPv6LSPIdentifiersValueLength])
 
 	return nil
 }
 
 func (tlv *IPv6LSPIdentifiers) Serialize() []byte {
-	buf := make([]byte, tlv.Len())
+	value := make([]byte, TLVIPv6LSPIdentifiersValueLength)
 
-	binary.BigEndian.PutUint16(buf[0:2], uint16(tlv.Type()))
-	binary.BigEndian.PutUint16(buf[2:4], TLVIPv6LSPIdentifiersValueLength)
-	copy(buf[4:20], tlv.IPv6TunnelSenderAddress.AsSlice())
-	binary.BigEndian.PutUint16(buf[20:22], tlv.LSPID)
-	binary.BigEndian.PutUint16(buf[22:24], tlv.TunnelID)
-	copy(buf[24:40], tlv.ExtendedTunnelID[:])
-	copy(buf[40:56], tlv.IPv6TunnelEndpointAddress.AsSlice())
+	copy(value[:IPv6LSPIdentifiersLSPIDOffset], tlv.IPv6TunnelSenderAddress.AsSlice())
+	binary.BigEndian.PutUint16(value[IPv6LSPIdentifiersLSPIDOffset:IPv6LSPIdentifiersTunnelIDOffset], tlv.LSPID)
+	binary.BigEndian.PutUint16(value[IPv6LSPIdentifiersTunnelIDOffset:IPv6LSPIdentifiersExtendedTunnelIDOffset], tlv.TunnelID)
+	copy(value[IPv6LSPIdentifiersExtendedTunnelIDOffset:IPv6LSPIdentifiersTunnelEndpointAddressOffset], tlv.ExtendedTunnelID[:])
+	copy(value[IPv6LSPIdentifiersTunnelEndpointAddressOffset:], tlv.IPv6TunnelEndpointAddress.AsSlice())
 
-	return buf
+	return AppendByteSlices(
+		Uint16ToByteSlice(tlv.Type()),
+		Uint16ToByteSlice(TLVIPv6LSPIdentifiersValueLength),
+		value,
+	)
 }
 
 func (tlv *IPv6LSPIdentifiers) MarshalLogObject(enc zapcore.ObjectEncoder) error {

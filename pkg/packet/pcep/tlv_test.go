@@ -348,6 +348,35 @@ func TestIPv4LSPIdentifiers_Serialize(t *testing.T) {
 	}
 }
 
+func TestIPv4LSPIdentifiers_MarshalLogObject(t *testing.T) {
+	tlv := &IPv4LSPIdentifiers{}
+	enc := zapcore.NewMapObjectEncoder()
+
+	err := tlv.MarshalLogObject(enc)
+
+	assert.NoError(t, err, "expected no error while marshaling IPv4LSPIdentifiers")
+}
+
+func TestIPv4LSPIdentifiers_Len(t *testing.T) {
+	tests := []struct {
+		name     string
+		tlv      *IPv4LSPIdentifiers
+		expected uint16
+	}{
+		{
+			name:     "IPv4LSPIdentifiers length",
+			tlv:      &IPv4LSPIdentifiers{},
+			expected: TLVHeaderLength + TLVIPv4LSPIdentifiersValueLength,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.tlv.Len())
+		})
+	}
+}
+
 func TestIPv6LSPIdentifiers_DecodeFromBytes(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -413,6 +442,35 @@ func TestIPv6LSPIdentifiers_Serialize(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.expected, tt.input.Serialize())
+		})
+	}
+}
+
+func TestIPv6LSPIdentifiers_MarshalLogObject(t *testing.T) {
+	tlv := &IPv6LSPIdentifiers{}
+	enc := zapcore.NewMapObjectEncoder()
+
+	err := tlv.MarshalLogObject(enc)
+
+	assert.NoError(t, err, "expected no error while marshaling IPv6LSPIdentifiers")
+}
+
+func TestIPv6LSPIdentifiers_Len(t *testing.T) {
+	tests := []struct {
+		name     string
+		tlv      *IPv6LSPIdentifiers
+		expected uint16
+	}{
+		{
+			name:     "IPv6LSPIdentifiers length",
+			tlv:      &IPv6LSPIdentifiers{},
+			expected: TLVHeaderLength + TLVIPv6LSPIdentifiersValueLength,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.tlv.Len())
 		})
 	}
 }
