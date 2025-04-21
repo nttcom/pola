@@ -790,16 +790,28 @@ type ExtendedAssociationID struct {
 }
 
 func (tlv *ExtendedAssociationID) DecodeFromBytes(data []byte) error {
-	length := binary.BigEndian.Uint16(data[2:4])
+	if len(data) < TLVHeaderLength {
+		return fmt.Errorf("extended association ID: too short (got %d bytes, want at least %d)", len(data), TLVHeaderLength)
+	}
+
+	length := int(binary.BigEndian.Uint16(data[2:4]))
+	if len(data) != TLVHeaderLength+length {
+		return fmt.Errorf("extended association ID: invalid length (expected %d bytes, got %d)", TLVHeaderLength+length, len(data))
+	}
 
 	tlv.Color = binary.BigEndian.Uint32(data[4:8])
 
+	var addrBytes []byte
 	switch length {
-	case TLVExtendedAssociationIDIPv4ValueLength:
-		tlv.Endpoint, _ = netip.AddrFromSlice(data[8:12])
-	case TLVExtendedAssociationIDIPv6ValueLength:
-		tlv.Endpoint, _ = netip.AddrFromSlice(data[8:24])
+	case int(TLVExtendedAssociationIDIPv4ValueLength):
+		addrBytes = data[8:12]
+	case int(TLVExtendedAssociationIDIPv6ValueLength):
+		addrBytes = data[8:24]
+	default:
+		return fmt.Errorf("extended association ID: unsupported value length %d", length)
 	}
+
+	tlv.Endpoint, _ = netip.AddrFromSlice(addrBytes)
 
 	return nil
 }
@@ -843,6 +855,13 @@ func (tlv *ExtendedAssociationID) Len() uint16 {
 	}
 	return 0
 
+}
+
+func NewExtendedAssociationID(color uint32, endpoint netip.Addr) *ExtendedAssociationID {
+	return &ExtendedAssociationID{
+		Color:    color,
+		Endpoint: endpoint,
+	}
 }
 
 type PathSetupTypeCapability struct {

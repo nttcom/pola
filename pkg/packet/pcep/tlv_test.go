@@ -1009,3 +1009,132 @@ func TestPathSetupType_Len(t *testing.T) {
 		})
 	}
 }
+
+func TestExtendedAssociationID_DecodeFromBytes(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []byte
+		expected *ExtendedAssociationID
+		err      bool
+	}{
+		{
+			name:     "Valid IPv4 ExtendedAssociationID",
+			input:    NewExtendedAssociationID(uint32(1), netip.MustParseAddr("127.0.0.1")).Serialize(),
+			expected: &ExtendedAssociationID{Color: 1, Endpoint: netip.MustParseAddr("127.0.0.1")},
+			err:      false,
+		},
+		{
+			name:     "Valid IPv6 ExtendedAssociationID",
+			input:    NewExtendedAssociationID(uint32(1), netip.MustParseAddr("2001:db8::1")).Serialize(),
+			expected: &ExtendedAssociationID{Color: 1, Endpoint: netip.MustParseAddr("2001:db8::1")},
+			err:      false,
+		},
+		{
+			name:     "Too short (less than TLVHeaderLength)",
+			input:    []byte{byte(TLVExtendedAssociationID >> 8), byte(TLVExtendedAssociationID & 0xFF), 0x00},
+			expected: &ExtendedAssociationID{},
+			err:      true,
+		},
+		{
+			name: "Invalid length",
+			input: []byte{
+				byte(TLVExtendedAssociationID >> 8), byte(TLVExtendedAssociationID & 0xFF),
+				0x00, 0x10, //IPv6 address length = 16 bytes
+				0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, // Too long address data (should be 16 bytes)
+			},
+			expected: &ExtendedAssociationID{},
+			err:      true,
+		},
+		{
+			name: "Unsupported value length(not IPv4 or IPv6)",
+			input: []byte{
+				byte(TLVExtendedAssociationID >> 8), byte(TLVExtendedAssociationID & 0xFF),
+				0x00, 0x0f, // Invalid address length = 15 bytes
+				0x00, 0x00, 0x00, 0x01, // Color
+				0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, // 11 bytes dummy address data (15 - 4 = 11)
+			},
+			expected: &ExtendedAssociationID{},
+			err:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var tlv ExtendedAssociationID
+			err := tlv.DecodeFromBytes(tt.input)
+			if tt.err {
+				assert.Error(t, err, "expected error for test case: %s", tt.name)
+			} else {
+				assert.NoError(t, err, "unexpected error for test case: %s", tt.name)
+				assert.Equal(t, tt.expected, &tlv)
+			}
+		})
+	}
+}
+
+func TestExtendedAssociationID_Serialize(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    *ExtendedAssociationID
+		expected []byte
+	}{
+		{
+			name:     "Serialize IPv4 ExtendedAssociationID",
+			input:    &ExtendedAssociationID{Color: 1, Endpoint: netip.MustParseAddr("127.0.0.1")},
+			expected: []byte{byte(TLVExtendedAssociationID >> 8), byte(TLVExtendedAssociationID & 0xFF), 0x00, 0x08, 0x00, 0x00, 0x00, 0x01, 0x7f, 0x00, 0x00, 0x01}, // Expected serialized data for IPv4
+		},
+		{
+			name:     "Serialize IPv6 ExtendedAssociationID",
+			input:    &ExtendedAssociationID{Color: 1, Endpoint: netip.MustParseAddr("2001:db8::1")},
+			expected: []byte{byte(TLVExtendedAssociationID >> 8), byte(TLVExtendedAssociationID & 0xFF), 0x00, 0x14, 0x00, 0x00, 0x00, 0x01, 0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01}, // Expected serialized data for IPv6 (2001:db8::1)
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.input.Serialize())
+		})
+	}
+}
+
+func TestExtendedAssociationID_MarshalLogObject(t *testing.T) {
+	tlv := &ExtendedAssociationID{Color: 1, Endpoint: netip.MustParseAddr("127.0.0.1")}
+	enc := zapcore.NewMapObjectEncoder()
+
+	err := tlv.MarshalLogObject(enc)
+
+	assert.NoError(t, err, "expected no error while marshaling ExtendedAssociationID")
+}
+
+func TestExtendedAssociationID_Len(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    *ExtendedAssociationID
+		expected uint16
+	}{
+		{
+			name:     "IPv4 ExtendedAssociationID length",
+			input:    &ExtendedAssociationID{Color: 1, Endpoint: netip.MustParseAddr("127.0.0.1")},
+			expected: TLVHeaderLength + TLVExtendedAssociationIDIPv4ValueLength,
+		},
+		{
+			name:     "IPv6 ExtendedAssociationID length",
+			input:    &ExtendedAssociationID{Color: 1, Endpoint: netip.MustParseAddr("2001:db8::1")},
+			expected: TLVHeaderLength + TLVExtendedAssociationIDIPv6ValueLength,
+		},
+		{
+			name: "Unsupported value length (not IPv4 or IPv6)",
+			input: &ExtendedAssociationID{
+				Color:    1,
+				Endpoint: netip.Addr{}, // Invalid address (not IPv4 or IPv6)
+			},
+			expected: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.input.Len())
+		})
+	}
+}
