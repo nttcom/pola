@@ -344,8 +344,6 @@ func getLsSrv6SIDNLRIList(pathAttrs []*anypb.Any) ([]table.TEDElem, error) {
 					return nil, fmt.Errorf("unexpected NLRI type: %T", typedNLRI)
 				}
 			}
-		default:
-			return nil, fmt.Errorf("unexpected path attribute type: %T", typedPathAttr)
 		}
 	}
 	return lsSrv6SIDList, nil
