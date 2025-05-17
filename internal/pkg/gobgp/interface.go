@@ -112,20 +112,18 @@ func ConvertToTEDElem(dst *api.Destination) ([]table.TEDElem, error) {
 				return nil, fmt.Errorf("failed to process LS Link NLRI: %w", err)
 			}
 			return []table.TEDElem{lsLink}, nil
-		case *api.LsPrefixV4NLRI:
-			lsPrefixV4List, err := getLsPrefixV4List(path.GetPattrs())
+		case *api.LsPrefixV4NLRI, *api.LsPrefixV6NLRI:
+			lsPrefixList, err := getLsPrefixList(path.GetPattrs())
 			if err != nil {
 				return nil, fmt.Errorf("failed to process LS Prefix V4 NLRI: %w", err)
 			}
-			return lsPrefixV4List, nil
+			return lsPrefixList, nil
 		case *api.LsSrv6SIDNLRI:
 			lsSrv6SIDList, err := getLsSrv6SIDNLRIList(path.GetPattrs())
 			if err != nil {
 				return nil, fmt.Errorf("failed to process LS SRv6 SID NLRI: %w", err)
 			}
 			return lsSrv6SIDList, nil
-		case *api.LsPrefixV6NLRI:
-			return nil, nil // TODO: Implement LsPrefixV6NLRI handling
 		default:
 			return nil, fmt.Errorf("invalid LS Link State NLRI type: %T", linkStateNLRI)
 		}
@@ -220,73 +218,81 @@ func getLsLinkNLRI(typedLinkStateNLRI *api.LsLinkNLRI, pathAttrs []*anypb.Any) (
 	return lsLink, nil
 }
 
-func getLsPrefixV4List(pathAttrs []*anypb.Any) ([]table.TEDElem, error) {
-	var lsPrefixV4List []table.TEDElem
+func getLsPrefixList(pathAttrs []*anypb.Any) ([]table.TEDElem, error) {
+	var lsPrefixList []table.TEDElem
 	var sidIndex uint32
 
 	for _, pathAttr := range pathAttrs {
 		typedPathAttr, err := pathAttr.UnmarshalNew()
 		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal path attribute: %w", err)
+			return nil, fmt.Errorf("failed to unmarshal path attribute: %v", err)
 		}
 
 		switch typedPathAttr := typedPathAttr.(type) {
 		case *api.LsAttribute:
-			sidIndex = typedPathAttr.GetPrefix().GetSrPrefixSid()
-
+			if typedPathAttr.GetPrefix().GetSrPrefixSid() != 0 {
+				sidIndex = typedPathAttr.GetPrefix().GetSrPrefixSid()
+			} else {
+				sidIndex = 0
+			}
 		case *api.MpReachNLRIAttribute:
 			for _, nlri := range typedPathAttr.GetNlris() {
-				typedNLRI, err := nlri.UnmarshalNew()
+				typedNlri, err := nlri.UnmarshalNew()
 				if err != nil {
-					return nil, fmt.Errorf("failed to unmarshal NLRI: %w", err)
+					return nil, fmt.Errorf("failed to unmarshal NLRI: %v", err)
 				}
 
-				if lsNLRI, ok := typedNLRI.(*api.LsAddrPrefix); ok {
-					lsPrefixV4, err := getLsPrefixV4(lsNLRI, sidIndex)
+				if lsNlri, ok := typedNlri.(*api.LsAddrPrefix); ok {
+					lsPrefix, err := getLsPrefix(lsNlri, sidIndex)
 					if err != nil {
-						return nil, fmt.Errorf("failed to get LS Prefix V4: %w", err)
+						return nil, fmt.Errorf("failed to get LS Prefix: %v", err)
 					}
-					lsPrefixV4List = append(lsPrefixV4List, lsPrefixV4)
-				} else {
-					return nil, fmt.Errorf("unexpected NLRI type: %T", typedNLRI)
+					lsPrefixList = append(lsPrefixList, lsPrefix)
 				}
 			}
-		default:
-			return nil, fmt.Errorf("unexpected path attribute type: %T", typedPathAttr)
 		}
 	}
 
-	return lsPrefixV4List, nil
+	return lsPrefixList, nil
 }
 
-func getLsPrefixV4(lsNLRI *api.LsAddrPrefix, sidIndex uint32) (*table.LsPrefixV4, error) {
-	prefixNLRI, err := lsNLRI.GetNlri().UnmarshalNew()
+func getLsPrefix(lsNlri *api.LsAddrPrefix, sidIndex uint32) (*table.LsPrefix, error) {
+	nlri, err := lsNlri.GetNlri().UnmarshalNew()
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal LS Prefix V4: %w", err)
-	}
-	prefixv4NLRI, ok := prefixNLRI.(*api.LsPrefixV4NLRI)
-	if !ok {
-		return nil, fmt.Errorf("invalid LS prefix v4 NLRI type: %T", prefixNLRI)
+		return nil, fmt.Errorf("failed to unmarshal LS Prefix V4: %v", err)
 	}
 
-	localNodeID := prefixv4NLRI.GetLocalNode().GetIgpRouterId()
-	localNodeASN := prefixv4NLRI.GetLocalNode().GetAsn()
-	prefixV4 := prefixv4NLRI.GetPrefixDescriptor().GetIpReachability()
+	var localNodeID string
+	var localNodeAsn uint32
+	var prefix []string
 
-	localNode := table.NewLsNode(localNodeASN, localNodeID)
-	lsPrefixV4 := table.NewLsPrefixV4(localNode)
-	lsPrefixV4.SidIndex = sidIndex
-
-	if len(prefixV4) != 1 {
-		return nil, fmt.Errorf("invalid prefix length: expected 1, got %d", len(prefixV4))
+	switch prefNlri := nlri.(type) {
+	case *api.LsPrefixV4NLRI:
+		localNodeID = prefNlri.GetLocalNode().GetIgpRouterId()
+		localNodeAsn = prefNlri.GetLocalNode().GetAsn()
+		prefix = prefNlri.GetPrefixDescriptor().GetIpReachability()
+	case *api.LsPrefixV6NLRI:
+		localNodeID = prefNlri.GetLocalNode().GetIgpRouterId()
+		localNodeAsn = prefNlri.GetLocalNode().GetAsn()
+		prefix = prefNlri.GetPrefixDescriptor().GetIpReachability()
+	default:
+		return nil, errors.New("invalid LS prefix NLRI type")
 	}
 
-	lsPrefixV4.Prefix, err = netip.ParsePrefix(prefixV4[0])
+	localNode := table.NewLsNode(localNodeAsn, localNodeID)
+	lsPrefix := table.NewLsPrefix(localNode)
+	lsPrefix.SidIndex = sidIndex
+
+	if len(prefix) != 1 {
+		return nil, errors.New("invalid prefix length: expected 1 prefix")
+	}
+
+	lsPrefix.Prefix, err = netip.ParsePrefix(prefix[0])
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse prefix %q: %w", prefixV4[0], err)
+		return nil, fmt.Errorf("failed to parse prefix: %v", err)
 	}
 
-	return lsPrefixV4, nil
+	return lsPrefix, nil
 }
 
 func getLsSrv6SIDNLRIList(pathAttrs []*anypb.Any) ([]table.TEDElem, error) {
