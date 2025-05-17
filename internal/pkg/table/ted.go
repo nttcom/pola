@@ -269,14 +269,14 @@ const (
 func (m MetricType) String() string {
 	switch m {
 	case IGPMetric:
-		return "IGP"
+		return "METRIC_TYPE_IGP"
 	case TEMetric:
-		return "TE"
+		return "METRIC_TYPE_TE"
 	case DelayMetric:
-		return "DELAY"
+		return "METRIC_TYPE_DELAY"
 	case HopcountMetric:
-		return "HOPCOUNT"
+		return "METRIC_TYPE_HOPCOUNT"
 	default:
-		return "Unknown"
+		return "METRIC_TYPE_UNSPECIFIED"
 	}
 }
