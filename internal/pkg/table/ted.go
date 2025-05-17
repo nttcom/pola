@@ -219,7 +219,7 @@ func (lp *LsPrefix) UpdateTED(ted *LsTED) {
 type LsSrv6SID struct {
 	LocalNode        *LsNode  // primary key, in MP_REACH_NLRI Attr
 	Sids             []string // in LsSrv6SID Attr
-	EndpointBehavior uint32   // in srv6EndpointBehavior Attr
+	EndpointBehavior uint32   // in BGP-LS Attr
 	MultiTopoIDs     []uint32 // in LsSrv6SID Attr
 	ServiceType      uint32   // in LsSrv6SID Attr
 	TrafficType      uint32   // in LsSrv6SID Attr
