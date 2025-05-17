@@ -74,7 +74,7 @@ type LsNode struct {
 	SrgbBegin  uint32 // in BGP-LS Attr
 	SrgbEnd    uint32 // in BGP-LS Attr
 	Links      []*LsLink
-	Prefixes   []*LsPrefixV4
+	Prefixes   []*LsPrefix
 	SRv6SIDs   []*LsSrv6SID
 }
 
@@ -179,19 +179,19 @@ func (l *LsLink) UpdateTED(ted *LsTED) {
 	l.LocalNode.AddLink(l)
 }
 
-type LsPrefixV4 struct {
+type LsPrefix struct {
 	LocalNode *LsNode      // primary key, in MP_REACH_NLRI Attr
 	Prefix    netip.Prefix // in MP_REACH_NLRI Attr
 	SidIndex  uint32       // in BGP-LS Attr (only for Lo Address Prefix)
 }
 
-func NewLsPrefixV4(localNode *LsNode) *LsPrefixV4 {
-	return &LsPrefixV4{
+func NewLsPrefix(localNode *LsNode) *LsPrefix {
+	return &LsPrefix{
 		LocalNode: localNode,
 	}
 }
 
-func (lp *LsPrefixV4) UpdateTED(ted *LsTED) {
+func (lp *LsPrefix) UpdateTED(ted *LsTED) {
 	nodes, asn := ted.Nodes, lp.LocalNode.ASN
 
 	if _, ok := nodes[asn]; !ok {
