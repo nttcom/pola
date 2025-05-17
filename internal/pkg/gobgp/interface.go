@@ -326,8 +326,8 @@ func getLsSrv6SIDNLRIList(pathAttrs []*anypb.Any) ([]table.TEDElem, error) {
 		}
 
 		switch typedPathAttr := typedPathAttr.(type) {
-		case *api.SRv6EndPointBehavior:
-			endpointBehavior = uint32(typedPathAttr.GetBehavior())
+		case *api.LsAttribute:
+			// TODO: Handle LsAttribute for SRv6 SID
 		case *api.MpReachNLRIAttribute:
 			for _, nlri := range typedPathAttr.GetNlris() {
 				typedNLRI, err := nlri.UnmarshalNew()
