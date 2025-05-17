@@ -179,11 +179,19 @@ func addLsNode(ted *table.LsTED, node *pb.LsNode) error {
 		ted.Nodes[node.GetAsn()][node.GetRouterId()].Prefixes = append(ted.Nodes[node.GetAsn()][node.GetRouterId()].Prefixes, lsPrefix)
 	}
 
+	for _, srv6SID := range node.LsSrv6Sids {
+		lsSrv6SID, err := createSrv6SID(ted.Nodes[node.GetAsn()][node.GetRouterId()], srv6SID)
+		if err != nil {
+			return err
+		}
+		ted.Nodes[node.GetAsn()][node.GetRouterId()].SRv6SIDs = append(ted.Nodes[node.GetAsn()][node.GetRouterId()].SRv6SIDs, lsSrv6SID)
+	}
+
 	return nil
 }
 
-func createLsPrefix(lsNode *table.LsNode, prefix *pb.LsPrefix) (*table.LsPrefixV4, error) {
-	lsPrefix := table.NewLsPrefixV4(lsNode)
+func createLsPrefix(lsNode *table.LsNode, prefix *pb.LsPrefix) (*table.LsPrefix, error) {
+	lsPrefix := table.NewLsPrefix(lsNode)
 	var err error
 	lsPrefix.Prefix, err = netip.ParsePrefix(prefix.GetPrefix())
 	if err != nil {
@@ -232,4 +240,22 @@ func createMetric(metricInfo *pb.Metric) (*table.Metric, error) {
 	default:
 		return nil, errors.New("unknown metric type")
 	}
+}
+
+func createSrv6SID(lsNode *table.LsNode, srv6SID *pb.LsSrv6SID) (*table.LsSrv6SID, error) {
+	lsSrv6SID := table.NewLsSrv6SID(lsNode)
+
+	lsSrv6SID.EndpointBehavior = srv6SID.GetEndpointBehavior()
+	lsSrv6SID.ServiceType = srv6SID.GetServiceType()
+	lsSrv6SID.TrafficType = srv6SID.GetTrafficType()
+	lsSrv6SID.OpaqueType = srv6SID.GetOpaqueType()
+	lsSrv6SID.Value = srv6SID.GetValue()
+	for _, sid := range srv6SID.GetSids() {
+		lsSrv6SID.Sids = append(lsSrv6SID.Sids, sid.GetSid())
+	}
+	for _, topoID := range srv6SID.GetMultiTopoIds() {
+		lsSrv6SID.MultiTopoIDs = append(lsSrv6SID.MultiTopoIDs, topoID.GetMultiTopoId())
+	}
+
+	return lsSrv6SID, nil
 }
