@@ -36,7 +36,7 @@ net.ipv4.udp_mem=1124736 10000000 67108864
 $ sysctl -p
 ```
 
-host-check (see: [link](https://xrdocs.io/virtual-routing/tutorials/2022-08-22-setting-up-host-environment-to-run-xrd/))
+host-check (see: [Setting up the Host Environment to run XRd](https://xrdocs.io/virtual-routing/tutorials/2022-08-22-setting-up-host-environment-to-run-xrd/))
 
 ```bash
 git clone https://github.com/ios-xr/xrd-tools
