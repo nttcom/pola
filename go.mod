@@ -7,7 +7,7 @@ require (
 	github.com/osrg/gobgp/v3 v3.37.0
 	github.com/spf13/cobra v1.9.1
 	go.uber.org/zap v1.27.0
-	google.golang.org/grpc v1.72.0
+	google.golang.org/grpc v1.72.1
 	google.golang.org/protobuf v1.36.6
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
