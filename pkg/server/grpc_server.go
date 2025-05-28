@@ -390,6 +390,7 @@ func (s *APIServer) GetTED(ctx context.Context, req *pb.GetTEDRequest) (*pb.GetT
 				SrgbEnd:    lsNode.SrgbEnd,
 				LsLinks:    make([]*pb.LsLink, 0, len(lsNode.Links)),
 				LsPrefixes: make([]*pb.LsPrefix, 0, len(lsNode.Prefixes)),
+				LsSrv6Sids: make([]*pb.LsSrv6SID, 0, len(lsNode.SRv6SIDs)),
 			}
 
 			for _, lsLink := range lsNode.Links {
@@ -428,6 +429,31 @@ func (s *APIServer) GetTED(ctx context.Context, req *pb.GetTEDRequest) (*pb.GetT
 				}
 
 				node.LsPrefixes = append(node.LsPrefixes, prefix)
+			}
+
+			for _, lsSrv6SID := range lsNode.SRv6SIDs {
+				srv6SID := &pb.LsSrv6SID{
+					EndpointBehavior: lsSrv6SID.EndpointBehavior,
+					ServiceType:      lsSrv6SID.ServiceType,
+					TrafficType:      lsSrv6SID.TrafficType,
+					OpaqueType:       lsSrv6SID.OpaqueType,
+					Value:            lsSrv6SID.Value,
+					Sids:             make([]*pb.SID, 0, len(lsSrv6SID.Sids)),
+					MultiTopoIds:     make([]*pb.MultiTopoID, 0, len(lsSrv6SID.MultiTopoIDs)),
+				}
+
+				for _, sid := range lsSrv6SID.Sids {
+					srv6SID.Sids = append(srv6SID.Sids, &pb.SID{
+						Sid: sid,
+					})
+				}
+
+				for _, topoID := range lsSrv6SID.MultiTopoIDs {
+					srv6SID.MultiTopoIds = append(srv6SID.MultiTopoIds, &pb.MultiTopoID{
+						MultiTopoId: topoID,
+					})
+				}
+				node.LsSrv6Sids = append(node.LsSrv6Sids, srv6SID)
 			}
 
 			ret.LsNodes = append(ret.LsNodes, node)

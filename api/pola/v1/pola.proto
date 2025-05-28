@@ -85,6 +85,24 @@ message SRPolicyList {
   repeated SRPolicy sr_policies = 1;
 }
 
+message LsSrv6SID {
+  repeated SID sids = 1;
+	uint32 endpoint_behavior = 2;
+	repeated MultiTopoID multi_topo_ids = 3;
+	uint32 service_type = 4;
+	uint32 traffic_type = 5;
+	uint32 opaque_type = 6;
+	bytes value = 7;
+}
+
+message SID {
+    string sid = 1;
+}
+
+message MultiTopoID {
+    uint32 multi_topo_id = 1;
+}
+
 message LsPrefix {
   string prefix = 1;
   uint32 sid_index = 2;
@@ -123,6 +141,7 @@ message LsNode {
   uint32 srgb_end = 6;
   repeated LsLink ls_links = 7;
   repeated LsPrefix ls_prefixes = 8;
+  repeated LsSrv6SID ls_srv6_sids = 9;
 }
 
 message TED {
