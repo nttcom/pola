@@ -600,6 +600,7 @@ func NewSrpObject(segs []table.Segment, srpID uint32, isRemove bool) (*SrpObject
 	}
 	if _, ok := segs[0].(table.SegmentSRMPLS); ok {
 		o.TLVs = append(o.TLVs, &PathSetupType{PathSetupType: PathSetupTypeSRTE})
+	} else if _, ok := segs[0].(table.SegmentSRv6); ok {
 		o.TLVs = append(o.TLVs, &PathSetupType{PathSetupType: PathSetupTypeSRv6TE})
 	} else {
 		return nil, errors.New("invalid Segment type")
