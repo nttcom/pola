@@ -49,7 +49,7 @@ func (ted *LsTED) Print() {
 				}
 				fmt.Printf("      Adj-SID: %d\n", link.AdjSid)
 				fmt.Printf("      SRv6 End.X SID:\n")
-				fmt.Printf("        EndpointBehavior: %x\n", link.Srv6EndXSID.EndpointBehavior)
+				fmt.Printf("        EndpointBehavior: %s\n", BehaviorToString(link.Srv6EndXSID.EndpointBehavior))
 				fmt.Printf("        SIDs: %v\n", link.Srv6EndXSID.Sids)
 				fmt.Printf("        SID Structure: Block: %d, Node: %d, Func: %d, Arg: %d\n",
 					link.Srv6EndXSID.Srv6SIDStructure.LocalBlock,
@@ -62,7 +62,7 @@ func (ted *LsTED) Print() {
 				fmt.Printf("    SIDs: %v\n", srv6SID.Sids)
 				fmt.Printf("    Block: %d, Node: %d, Func: %d, Arg: %d\n", srv6SID.SIDStructure.LocalBlock,
 					srv6SID.SIDStructure.LocalNode, srv6SID.SIDStructure.LocalFunc, srv6SID.SIDStructure.LocalArg)
-				fmt.Printf("    EndpointBehavior: %x, Flags: %d, Algorithm: %d\n", srv6SID.EndpointBehavior.Behavior,
+				fmt.Printf("    EndpointBehavior: %s, Flags: %d, Algorithm: %d\n", BehaviorToString(srv6SID.EndpointBehavior.Behavior),
 					srv6SID.EndpointBehavior.Flags, srv6SID.EndpointBehavior.Algorithm)
 				fmt.Printf("    MultiTopoIDs: %v\n", srv6SID.MultiTopoIDs)
 			}
@@ -108,7 +108,20 @@ func (n *LsNode) NodeSegment() (Segment, error) {
 			return seg, nil
 		}
 	}
-	// TODO: for SRv6 Segment
+	// for SRv6 Segment
+	for _, srv6SID := range n.SRv6SIDs {
+		if len(srv6SID.Sids) > 0 {
+			addr, err := netip.ParseAddr(srv6SID.Sids[FirstSIDIndex])
+			if err != nil {
+				return nil, err
+			}
+			seg, err := NewSegmentSRv6WithNodeInfo(addr, n)
+			if err != nil {
+				return nil, err
+			}
+			return seg, nil
+		}
+	}
 
 	return nil, errors.New("node doesn't have a Node SID")
 }
