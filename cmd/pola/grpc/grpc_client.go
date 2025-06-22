@@ -224,6 +224,13 @@ func createLsLink(localNode, remoteNode *table.LsNode, link *pb.LsLink) (*table.
 		}
 		lsLink.Metrics = append(lsLink.Metrics, metric)
 	}
+	if link.GetSrv6EndXSid() != nil {
+		srv6EndXSID, err := createSrv6EndXSID(link.GetSrv6EndXSid())
+		if err != nil {
+			return nil, err
+		}
+		lsLink.Srv6EndXSID = srv6EndXSID
+	}
 	return lsLink, nil
 }
 
@@ -242,10 +249,28 @@ func createMetric(metricInfo *pb.Metric) (*table.Metric, error) {
 	}
 }
 
+func createSrv6EndXSID(srv6EndXSID *pb.Srv6EndXSID) (*table.Srv6EndXSID, error) {
+	lsSrv6EndXSID := &table.Srv6EndXSID{
+		EndpointBehavior: uint16(srv6EndXSID.EndpointBehavior),
+		Sids:             []string{},
+		Srv6SIDStructure: table.SIDStructure{
+			LocalBlock: uint8(srv6EndXSID.GetSidStructure().GetLocalBlock()),
+			LocalNode:  uint8(srv6EndXSID.GetSidStructure().GetLocalNode()),
+			LocalFunc:  uint8(srv6EndXSID.GetSidStructure().GetLocalFunc()),
+			LocalArg:   uint8(srv6EndXSID.GetSidStructure().GetLocalArg()),
+		},
+	}
+
+	for _, sid := range srv6EndXSID.GetSids() {
+		lsSrv6EndXSID.Sids = append(lsSrv6EndXSID.Sids, sid.GetSid())
+	}
+
+	return lsSrv6EndXSID, nil
+}
+
 func createSrv6SID(lsNode *table.LsNode, srv6SID *pb.LsSrv6SID) (*table.LsSrv6SID, error) {
 	lsSrv6SID := table.NewLsSrv6SID(lsNode)
 
-	lsSrv6SID.EndpointBehavior = srv6SID.GetEndpointBehavior()
 	lsSrv6SID.ServiceType = srv6SID.GetServiceType()
 	lsSrv6SID.TrafficType = srv6SID.GetTrafficType()
 	lsSrv6SID.OpaqueType = srv6SID.GetOpaqueType()
@@ -256,6 +281,15 @@ func createSrv6SID(lsNode *table.LsNode, srv6SID *pb.LsSrv6SID) (*table.LsSrv6SI
 	for _, topoID := range srv6SID.GetMultiTopoIds() {
 		lsSrv6SID.MultiTopoIDs = append(lsSrv6SID.MultiTopoIDs, topoID.GetMultiTopoId())
 	}
+
+	lsSrv6SID.EndpointBehavior.Behavior = uint16(srv6SID.GetEndpointBehavior().GetBehavior())
+	lsSrv6SID.EndpointBehavior.Flags = uint8(srv6SID.GetEndpointBehavior().GetFlags())
+	lsSrv6SID.EndpointBehavior.Algorithm = uint8(srv6SID.GetEndpointBehavior().GetAlgorithm())
+
+	lsSrv6SID.SIDStructure.LocalBlock = uint8(srv6SID.GetSidStructure().GetLocalBlock())
+	lsSrv6SID.SIDStructure.LocalNode = uint8(srv6SID.GetSidStructure().GetLocalNode())
+	lsSrv6SID.SIDStructure.LocalFunc = uint8(srv6SID.GetSidStructure().GetLocalFunc())
+	lsSrv6SID.SIDStructure.LocalArg = uint8(srv6SID.GetSidStructure().GetLocalArg())
 
 	return lsSrv6SID, nil
 }
