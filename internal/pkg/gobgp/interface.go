@@ -233,6 +233,22 @@ func getLsLinkNLRI(typedLinkStateNLRI *api.LsLinkNLRI, pathAttrs []*anypb.Any) (
 		}
 
 		lsLink.AdjSid = bgplsAttr.GetLink().GetSrAdjacencySid()
+
+		// handle SRv6 SID TLV
+		var srv6EndXSID *api.LsSrv6EndXSID
+		srv6EndXSID = bgplsAttr.GetLink().GetSrv6EndXSid()
+		if srv6EndXSID != nil {
+			lsLink.Srv6EndXSID = &table.Srv6EndXSID{
+				EndpointBehavior: uint16(srv6EndXSID.EndpointBehavior),
+				Sids:             srv6EndXSID.Sids,
+				Srv6SIDStructure: table.SIDStructure{
+					LocalBlock: uint8(srv6EndXSID.Srv6SidStructure.GetLocalBlock()),
+					LocalNode:  uint8(srv6EndXSID.Srv6SidStructure.GetLocalNode()),
+					LocalFunc:  uint8(srv6EndXSID.Srv6SidStructure.GetLocalFunc()),
+					LocalArg:   uint8(srv6EndXSID.Srv6SidStructure.GetLocalArg()),
+				},
+			}
+		}
 	}
 
 	return lsLink, nil
@@ -317,7 +333,8 @@ func getLsPrefix(lsNlri *api.LsAddrPrefix, sidIndex uint32) (*table.LsPrefix, er
 
 func getLsSrv6SIDNLRIList(pathAttrs []*anypb.Any) ([]table.TEDElem, error) {
 	var lsSrv6SIDList []table.TEDElem
-	var endpointBehavior uint32
+	var endpointBehavior *api.LsSrv6EndpointBehavior
+	var srv6SIDStructure *api.LsSrv6SIDStructure
 
 	for _, pathAttr := range pathAttrs {
 		typedPathAttr, err := pathAttr.UnmarshalNew()
@@ -327,7 +344,9 @@ func getLsSrv6SIDNLRIList(pathAttrs []*anypb.Any) ([]table.TEDElem, error) {
 
 		switch typedPathAttr := typedPathAttr.(type) {
 		case *api.LsAttribute:
-			// TODO: Handle LsAttribute for SRv6 SID
+			// handle LsAttribute for SRv6 SID
+			srv6SIDStructure = typedPathAttr.GetSrv6Sid().GetSrv6SidStructure()
+			endpointBehavior = typedPathAttr.GetSrv6Sid().GetSrv6EndpointBehavior()
 		case *api.MpReachNLRIAttribute:
 			for _, nlri := range typedPathAttr.GetNlris() {
 				typedNLRI, err := nlri.UnmarshalNew()
@@ -335,7 +354,7 @@ func getLsSrv6SIDNLRIList(pathAttrs []*anypb.Any) ([]table.TEDElem, error) {
 					return nil, fmt.Errorf("failed to unmarshal NLRI: %w", err)
 				}
 				if lsNLRI, ok := typedNLRI.(*api.LsAddrPrefix); ok {
-					lsSrv6SID, err := getLsSrv6SIDNLRI(lsNLRI, endpointBehavior)
+					lsSrv6SID, err := getLsSrv6SIDNLRI(lsNLRI, endpointBehavior, srv6SIDStructure)
 					if err != nil {
 						return nil, fmt.Errorf("failed to process LS SRv6 SID NLRI: %w", err)
 					}
@@ -379,7 +398,7 @@ func extractMethodValue(val reflect.Value, methodName string) (any, error) {
 }
 
 // getLsSrv6SIDNLRI processes the LS SRv6 SID NLRI and returns a corresponding LsSrv6SID.
-func getLsSrv6SIDNLRI(lsNLRI *api.LsAddrPrefix, endpointBehavior uint32) (*table.LsSrv6SID, error) {
+func getLsSrv6SIDNLRI(lsNLRI *api.LsAddrPrefix, endpointBehavior *api.LsSrv6EndpointBehavior, srv6SIDStructure *api.LsSrv6SIDStructure) (*table.LsSrv6SID, error) {
 	srv6NLRI, err := lsNLRI.GetNlri().UnmarshalNew()
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal LS NLRI: %w", err)
@@ -431,7 +450,13 @@ func getLsSrv6SIDNLRI(lsNLRI *api.LsAddrPrefix, endpointBehavior uint32) (*table
 
 	localNode := table.NewLsNode(localNodeASN, localNodeID)
 	lsSrv6SID := table.NewLsSrv6SID(localNode)
-	lsSrv6SID.EndpointBehavior = endpointBehavior
+	lsSrv6SID.SIDStructure.LocalBlock = uint8(srv6SIDStructure.GetLocalBlock())
+	lsSrv6SID.SIDStructure.LocalNode = uint8(srv6SIDStructure.GetLocalNode())
+	lsSrv6SID.SIDStructure.LocalFunc = uint8(srv6SIDStructure.GetLocalFunc())
+	lsSrv6SID.SIDStructure.LocalArg = uint8(srv6SIDStructure.GetLocalArg())
+	lsSrv6SID.EndpointBehavior.Behavior = uint16(endpointBehavior.GetEndpointBehavior())
+	lsSrv6SID.EndpointBehavior.Flags = uint8(endpointBehavior.GetFlags())
+	lsSrv6SID.EndpointBehavior.Algorithm = uint8(endpointBehavior.GetAlgorithm())
 	lsSrv6SID.Sids = srv6SIDs
 	lsSrv6SID.MultiTopoIDs = multiTopoIDs
 	lsSrv6SID.ServiceType = serviceType
