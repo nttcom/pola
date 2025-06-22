@@ -246,10 +246,6 @@ func createSrv6SID(lsNode *table.LsNode, srv6SID *pb.LsSrv6SID) (*table.LsSrv6SI
 	lsSrv6SID := table.NewLsSrv6SID(lsNode)
 
 	lsSrv6SID.EndpointBehavior = srv6SID.GetEndpointBehavior()
-	lsSrv6SID.ServiceType = srv6SID.GetServiceType()
-	lsSrv6SID.TrafficType = srv6SID.GetTrafficType()
-	lsSrv6SID.OpaqueType = srv6SID.GetOpaqueType()
-	lsSrv6SID.Value = srv6SID.GetValue()
 	for _, sid := range srv6SID.GetSids() {
 		lsSrv6SID.Sids = append(lsSrv6SID.Sids, sid.GetSid())
 	}
