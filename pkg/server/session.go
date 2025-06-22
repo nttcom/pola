@@ -6,11 +6,13 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/netip"
 	"time"
 
+	"github.com/nttcom/pola/internal/pkg/cspf"
 	"github.com/nttcom/pola/internal/pkg/table"
 	"github.com/nttcom/pola/pkg/packet/pcep"
 
@@ -28,9 +30,10 @@ type Session struct {
 	keepAlive       uint8
 	pccType         pcep.PccType
 	pccCapabilities []pcep.CapabilityInterface
+	ted             *table.LsTED
 }
 
-func NewSession(sessionID uint8, peerAddr netip.Addr, tcpConn *net.TCPConn, logger *zap.Logger) *Session {
+func NewSession(sessionID uint8, peerAddr netip.Addr, tcpConn *net.TCPConn, logger *zap.Logger, ted *table.LsTED) *Session {
 	return &Session{
 		sessionID: sessionID,
 		isSynced:  false,
@@ -39,6 +42,7 @@ func NewSession(sessionID uint8, peerAddr netip.Addr, tcpConn *net.TCPConn, logg
 		pccType:   pcep.RFCCompliant,
 		peerAddr:  peerAddr,
 		tcpConn:   tcpConn,
+		ted:       ted,
 	}
 }
 
@@ -273,7 +277,21 @@ func (ss *Session) handlePCRpt(length uint16) error {
 				} else {
 					ss.RegisterSRPolicy(*sr)
 				}
+			// receive SR Policy with PLSP-ID
+			case sr.LSPObject.PlspID != 0:
+				ss.logger.Debug("Received SR Policy", zap.Uint32("plspID", sr.LSPObject.PlspID))
+				computedSegmentList, err := ss.computePathFromTED(*sr)
+				if err != nil {
+					ss.logger.Error("Failed to compute path from TED", zap.Error(err))
+					return err
+				}
+				sr.EroObject = createEroFromSegmentList(computedSegmentList)
 
+				ss.RegisterSRPolicy(*sr)
+
+				if policy, found := ss.SearchSRPolicy(sr.LSPObject.PlspID); found {
+					ss.SendPCUpdate(*policy)
+				}
 			default:
 				if sr.LSPObject.RFlag {
 					ss.DeleteSRPolicy(*sr)
@@ -284,6 +302,139 @@ func (ss *Session) handlePCRpt(length uint16) error {
 		}
 	}
 	return nil
+}
+
+func (ss *Session) computePathFromTED(sr pcep.StateReport) ([]table.Segment, error) {
+	if ss.ted == nil {
+		return nil, errors.New("TED not available")
+	}
+
+	srcRouterID, dstRouterID, err := ss.extractSrcDstRouterIDs(sr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract router IDs: %w", err)
+	}
+
+	asn, err := ss.extractASN(srcRouterID)
+	if err != nil {
+		ss.logger.Error("Could not determine ASN", zap.Error(err))
+	}
+
+	metricType := ss.selectMetricType(sr)
+
+	ss.logger.Debug("Computed CSPF parameters",
+		zap.String("srcRouterID", srcRouterID),
+		zap.String("dstRouterID", dstRouterID),
+		zap.Uint32("asn", asn),
+		zap.String("metricType", metricType.String()))
+
+	segmentList, err := cspf.Cspf(srcRouterID, dstRouterID, asn, metricType, ss.ted)
+	if err != nil {
+		return nil, fmt.Errorf("CSPF computation failed: %w", err)
+	}
+
+	return segmentList, nil
+}
+
+func (ss *Session) extractSrcDstRouterIDs(sr pcep.StateReport) (string, string, error) {
+	var srcAddr, dstAddr netip.Addr
+
+	if sr.LSPObject.SrcAddr.IsValid() {
+		srcAddr = sr.LSPObject.SrcAddr
+	}
+	if sr.LSPObject.DstAddr.IsValid() {
+		dstAddr = sr.LSPObject.DstAddr
+	}
+
+	if !srcAddr.IsValid() || !dstAddr.IsValid() {
+		return "", "", errors.New("could not extract valid source and destination addresses")
+	}
+
+	srcRouterID, err := ss.findRouterIDFromAddress(srcAddr)
+	if err != nil {
+		return "", "", fmt.Errorf("cannot find source router ID for %s: %w", srcAddr, err)
+	}
+
+	dstRouterID, err := ss.findRouterIDFromAddress(dstAddr)
+	if err != nil {
+		return "", "", fmt.Errorf("cannot find destination router ID for %s: %w", dstAddr, err)
+	}
+
+	return srcRouterID, dstRouterID, nil
+}
+
+func (ss *Session) findRouterIDFromAddress(addr netip.Addr) (string, error) {
+	for _, nodes := range ss.ted.Nodes {
+		for routerID, node := range nodes {
+			for _, prefix := range node.Prefixes {
+				if prefix.Prefix.Contains(addr) {
+					return routerID, nil
+				}
+			}
+			if node.RouterID == addr.String() {
+				return routerID, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("address %s not found in TED", addr)
+}
+
+func (ss *Session) extractASN(srcRouterID string) (uint32, error) {
+	for asn, nodes := range ss.ted.Nodes {
+		if _, exists := nodes[srcRouterID]; exists {
+			return asn, nil
+		}
+	}
+	return 0, fmt.Errorf("ASN not found for router %s", srcRouterID)
+}
+
+func (ss *Session) selectMetricType(sr pcep.StateReport) table.MetricType {
+	if len(sr.MetricObjects) > 0 {
+		switch sr.MetricObjects[0].MetricType {
+		case 1:
+			return table.IGPMetric
+		case 2:
+			return table.TEMetric
+		case 3:
+			return table.DelayMetric
+		case 4:
+			return table.HopcountMetric
+		default:
+			return table.TEMetric
+		}
+	}
+
+	switch ss.pccType {
+	case pcep.CiscoLegacy:
+		return table.TEMetric
+	case pcep.JuniperLegacy:
+		return table.IGPMetric
+	default:
+		return table.TEMetric
+	}
+}
+
+func createEroFromSegmentList(segmentList []table.Segment) *pcep.EroObject {
+	eroObject := &pcep.EroObject{
+		ObjectType:    pcep.ObjectTypeEROExplicitRoute,
+		EroSubobjects: make([]pcep.EroSubobject, 0),
+	}
+
+	for _, segment := range segmentList {
+		switch seg := segment.(type) {
+		case table.SegmentSRMPLS:
+			subobj, err := pcep.NewSREroSubObject(seg)
+			if err == nil {
+				eroObject.EroSubobjects = append(eroObject.EroSubobjects, subobj)
+			}
+		case table.SegmentSRv6:
+			subobj, err := pcep.NewSRv6EroSubObject(seg)
+			if err == nil {
+				eroObject.EroSubobjects = append(eroObject.EroSubobjects, subobj)
+			}
+		}
+	}
+
+	return eroObject
 }
 
 func (ss *Session) RequestAllSRPolicyDeleted() error {
