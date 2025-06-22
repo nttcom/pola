@@ -232,7 +232,7 @@ var validator = map[ValidationKind]func(policy *pb.SRPolicy, asn uint32) bool{
 			policy.SrcRouterId != "" &&
 			policy.DstRouterId != ""
 	},
-	ValidationKind("AddWithoutLinkState"): func(policy *pb.SRPolicy, asn uint32) bool {
+	ValidationKind("AddDisablePathCompute"): func(policy *pb.SRPolicy, asn uint32) bool {
 		return policy.PcepSessionAddr != nil &&
 			len(policy.SrcAddr) > 0 &&
 			len(policy.DstAddr) > 0 &&
@@ -419,6 +419,23 @@ func (s *APIServer) GetTED(ctx context.Context, req *pb.GetTEDRequest) (*pb.GetT
 					link.Metrics = append(link.Metrics, metric)
 				}
 
+				link.Srv6EndXSid = &pb.Srv6EndXSID{
+					EndpointBehavior: uint32(lsLink.Srv6EndXSID.EndpointBehavior),
+					Sids:             make([]*pb.SID, 0, len(lsLink.Srv6EndXSID.Sids)),
+					SidStructure: &pb.SidStructure{
+						LocalBlock: uint32(lsLink.Srv6EndXSID.Srv6SIDStructure.LocalBlock),
+						LocalNode:  uint32(lsLink.Srv6EndXSID.Srv6SIDStructure.LocalNode),
+						LocalFunc:  uint32(lsLink.Srv6EndXSID.Srv6SIDStructure.LocalFunc),
+						LocalArg:   uint32(lsLink.Srv6EndXSID.Srv6SIDStructure.LocalArg),
+					},
+				}
+
+				for _, sid := range lsLink.Srv6EndXSID.Sids {
+					link.Srv6EndXSid.Sids = append(link.Srv6EndXSid.Sids, &pb.SID{
+						Sid: sid,
+					})
+				}
+
 				node.LsLinks = append(node.LsLinks, link)
 			}
 
@@ -433,9 +450,8 @@ func (s *APIServer) GetTED(ctx context.Context, req *pb.GetTEDRequest) (*pb.GetT
 
 			for _, lsSrv6SID := range lsNode.SRv6SIDs {
 				srv6SID := &pb.LsSrv6SID{
-					EndpointBehavior: lsSrv6SID.EndpointBehavior,
-					Sids:             make([]*pb.SID, 0, len(lsSrv6SID.Sids)),
-					MultiTopoIds:     make([]*pb.MultiTopoID, 0, len(lsSrv6SID.MultiTopoIDs)),
+					Sids:         make([]*pb.SID, 0, len(lsSrv6SID.Sids)),
+					MultiTopoIds: make([]*pb.MultiTopoID, 0, len(lsSrv6SID.MultiTopoIDs)),
 				}
 
 				for _, sid := range lsSrv6SID.Sids {
@@ -449,6 +465,20 @@ func (s *APIServer) GetTED(ctx context.Context, req *pb.GetTEDRequest) (*pb.GetT
 						MultiTopoId: topoID,
 					})
 				}
+
+				srv6SID.EndpointBehavior = &pb.EndpointBehavior{
+					Behavior:  uint32(lsSrv6SID.EndpointBehavior.Behavior),
+					Flags:     uint32(lsSrv6SID.EndpointBehavior.Flags),
+					Algorithm: uint32(lsSrv6SID.EndpointBehavior.Algorithm),
+				}
+
+				srv6SID.SidStructure = &pb.SidStructure{
+					LocalBlock: uint32(lsSrv6SID.SIDStructure.LocalBlock),
+					LocalNode:  uint32(lsSrv6SID.SIDStructure.LocalNode),
+					LocalFunc:  uint32(lsSrv6SID.SIDStructure.LocalFunc),
+					LocalArg:   uint32(lsSrv6SID.SIDStructure.LocalArg),
+				}
+
 				node.LsSrv6Sids = append(node.LsSrv6Sids, srv6SID)
 			}
 
