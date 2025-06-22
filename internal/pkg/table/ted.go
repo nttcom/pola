@@ -48,11 +48,22 @@ func (ted *LsTED) Print() {
 					fmt.Printf("        %s: %d\n", metric.Type.String(), metric.Value)
 				}
 				fmt.Printf("      Adj-SID: %d\n", link.AdjSid)
+				fmt.Printf("      SRv6 End.X SID:\n")
+				fmt.Printf("        EndpointBehavior: %x\n", link.Srv6EndXSID.EndpointBehavior)
+				fmt.Printf("        SIDs: %v\n", link.Srv6EndXSID.Sids)
+				fmt.Printf("        SID Structure: Block: %d, Node: %d, Func: %d, Arg: %d\n",
+					link.Srv6EndXSID.Srv6SIDStructure.LocalBlock,
+					link.Srv6EndXSID.Srv6SIDStructure.LocalNode,
+					link.Srv6EndXSID.Srv6SIDStructure.LocalFunc,
+					link.Srv6EndXSID.Srv6SIDStructure.LocalArg)
 			}
 			fmt.Printf("  SRv6 SIDs:\n")
 			for _, srv6SID := range node.SRv6SIDs {
 				fmt.Printf("    SIDs: %v\n", srv6SID.Sids)
-				fmt.Printf("    EndpointBehavior: %d\n", srv6SID.EndpointBehavior)
+				fmt.Printf("    Block: %d, Node: %d, Func: %d, Arg: %d\n", srv6SID.SIDStructure.LocalBlock,
+					srv6SID.SIDStructure.LocalNode, srv6SID.SIDStructure.LocalFunc, srv6SID.SIDStructure.LocalArg)
+				fmt.Printf("    EndpointBehavior: %x, Flags: %d, Algorithm: %d\n", srv6SID.EndpointBehavior.Behavior,
+					srv6SID.EndpointBehavior.Flags, srv6SID.EndpointBehavior.Algorithm)
 				fmt.Printf("    MultiTopoIDs: %v\n", srv6SID.MultiTopoIDs)
 			}
 
@@ -134,12 +145,13 @@ func (n *LsNode) AddLink(link *LsLink) {
 }
 
 type LsLink struct {
-	LocalNode  *LsNode    // Primary key, in MP_REACH_NLRI Attr
-	RemoteNode *LsNode    // Primary key, in MP_REACH_NLRI Attr
-	LocalIP    netip.Addr // In MP_REACH_NLRI Attr
-	RemoteIP   netip.Addr // In MP_REACH_NLRI Attr
-	Metrics    []*Metric  // In BGP-LS Attr
-	AdjSid     uint32     // In BGP-LS Attr
+	LocalNode   *LsNode      // Primary key, in MP_REACH_NLRI Attr
+	RemoteNode  *LsNode      // Primary key, in MP_REACH_NLRI Attr
+	LocalIP     netip.Addr   // In MP_REACH_NLRI Attr
+	RemoteIP    netip.Addr   // In MP_REACH_NLRI Attr
+	Metrics     []*Metric    // In BGP-LS Attr
+	AdjSid      uint32       // In BGP-LS Attr
+	Srv6EndXSID *Srv6EndXSID // In BGP-LS Attr
 }
 
 func NewLsLink(localNode *LsNode, remoteNode *LsNode) *LsLink {
@@ -212,11 +224,25 @@ func (lp *LsPrefix) UpdateTED(ted *LsTED) {
 	localNode.Prefixes = append(localNode.Prefixes, lp)
 }
 
+type SIDStructure struct {
+	LocalBlock uint8
+	LocalNode  uint8
+	LocalFunc  uint8
+	LocalArg   uint8
+}
+
+type EndpointBehavior struct {
+	Behavior  uint16
+	Flags     uint8
+	Algorithm uint8
+}
+
 type LsSrv6SID struct {
-	LocalNode        *LsNode  // primary key, in MP_REACH_NLRI Attr
-	Sids             []string // in LsSrv6SID Attr
-	EndpointBehavior uint32   // in BGP-LS Attr
-	MultiTopoIDs     []uint32 // in LsSrv6SID Attr
+	LocalNode        *LsNode          // primary key, in MP_REACH_NLRI Attr
+	Sids             []string         // in LsSrv6SID Attr
+	EndpointBehavior EndpointBehavior // in BGP-LS Attr
+	SIDStructure     SIDStructure     // in BGP-LS Attr
+	MultiTopoIDs     []uint32         // in LsSrv6SID Attr
 }
 
 func NewLsSrv6SID(node *LsNode) *LsSrv6SID {
@@ -279,4 +305,10 @@ func (m MetricType) String() string {
 	default:
 		return "METRIC_TYPE_UNSPECIFIED"
 	}
+}
+
+type Srv6EndXSID struct {
+	EndpointBehavior uint16
+	Sids             []string
+	Srv6SIDStructure SIDStructure
 }
