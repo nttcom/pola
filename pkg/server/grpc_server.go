@@ -209,6 +209,12 @@ func (s *APIServer) DeleteSRPolicy(ctx context.Context, input *pb.DeleteSRPolicy
 }
 
 func validate(inputSRPolicy *pb.SRPolicy, asn uint32, validationKind ValidationKind) error {
+	if inputSRPolicy == nil {
+		return errors.New("validate error, input is nil")
+	}
+	if asn == 0 {
+		return errors.New("validate error, ASN is nil")
+	}
 	if !validator[validationKind](inputSRPolicy, asn) {
 		return errors.New("validate error, invalid input")
 	}
