@@ -85,22 +85,36 @@ message SRPolicyList {
   repeated SRPolicy sr_policies = 1;
 }
 
-message LsSrv6SID {
-  repeated SID sids = 1;
-	uint32 endpoint_behavior = 2;
-	repeated MultiTopoID multi_topo_ids = 3;
-	uint32 service_type = 4;
-	uint32 traffic_type = 5;
-	uint32 opaque_type = 6;
-	bytes value = 7;
+message EndpointBehavior {
+  uint32 behavior = 1;
+  uint32 flags = 2;
+  uint32 algorithm = 3;
+}
+
+message SidStructure {
+  uint32 local_block = 1;
+  uint32 local_node = 2;
+  uint32 local_func = 3;
+  uint32 local_arg = 4;
 }
 
 message SID {
-    string sid = 1;
+  string sid = 1;
 }
 
 message MultiTopoID {
-    uint32 multi_topo_id = 1;
+  uint32 multi_topo_id = 1;
+}
+
+message LsSrv6SID {
+  repeated SID sids = 1;
+	EndpointBehavior endpoint_behavior = 2;
+  SidStructure sid_structure = 3;
+	repeated MultiTopoID multi_topo_ids = 4;
+	uint32 service_type = 5;
+	uint32 traffic_type = 6;
+	uint32 opaque_type = 7;
+	bytes value = 8;
 }
 
 message LsPrefix {
@@ -121,6 +135,12 @@ message Metric {
   uint32 value = 2;
 }
 
+message Srv6EndXSID {
+  uint32 endpoint_behavior = 1;
+  repeated SID sids = 2;
+  SidStructure sid_structure = 3;
+}
+
 message LsLink {
   string local_router_id = 1;
   uint32 local_asn = 2;
@@ -130,6 +150,7 @@ message LsLink {
   string remote_ip = 6;
   repeated Metric metrics = 7;
   uint32 adj_sid = 8;
+  Srv6EndXSID srv6_end_x_sid = 9;
 }
 
 message LsNode {
