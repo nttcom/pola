@@ -277,7 +277,7 @@ func (tlv *StatefulPCECapability) DecodeFromBytes(data []byte) error {
 		return fmt.Errorf("data is too short: expected at least %d bytes, but got %d bytes for StatefulPCECapability", tlv.Len(), len(data))
 	}
 
-	flags := uint32(data[TLVHeaderLength+StatefulPCECapabilityFlagsIndex])
+	flags := binary.BigEndian.Uint32(data[TLVHeaderLength:])
 	tlv.ExtractCapabilities(flags)
 
 	return nil
