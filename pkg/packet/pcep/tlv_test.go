@@ -7,478 +7,374 @@ package pcep
 
 import (
 	"net/netip"
-	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zapcore"
 )
 
 // TestTLVType_String tests the String method for TLVType.
 func TestTLVType_String(t *testing.T) {
-	tests := map[string]struct {
+	cases := map[string]struct {
 		tlvType  TLVType
 		expected string
 	}{
-		"String: Valid TLVType (StatefulPCECapability)": {
-			tlvType:  TLVStatefulPCECapability,
-			expected: "STATEFUL-PCE-CAPABILITY (RFC8231)",
-		},
-		"String: Valid TLVType (IPv4LSPIdentifiers)": {
-			tlvType:  TLVIPv4LSPIdentifiers,
-			expected: "IPV4-LSP-IDENTIFIERS (RFC8231)",
-		},
-		"String: Unknown TLVType": {
-			tlvType:  TLVType(0x9999), // Unknown type
-			expected: "Unknown TLV (0x9999)",
-		},
+		"StatefulPCECapability": {TLVStatefulPCECapability, "STATEFUL-PCE-CAPABILITY (RFC8231)"},
+		"IPv4LSPIdentifiers":    {TLVIPv4LSPIdentifiers, "IPV4-LSP-IDENTIFIERS (RFC8231)"},
+		"UnknownType":           {TLVType(0xdead), "Unknown TLV (0xdead)"},
 	}
 
-	for name, tt := range tests {
+	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
 			actual := tt.tlvType.String()
-			assert.Equal(t, tt.expected, actual, "String() returned unexpected value")
+			assert.Equal(t, tt.expected, actual, "unexpected TLVType.String() result")
 		})
 	}
 }
 
 // TestTLVMap tests the mapping of TLVType to TLVInterface.
 func TestTLVMap(t *testing.T) {
-	tests := []struct {
-		name     string
+	cases := map[string]struct {
 		tlvType  TLVType
 		expected TLVInterface
 	}{
-		{
-			name:     "Map: StatefulPCECapability",
-			tlvType:  TLVStatefulPCECapability,
-			expected: &StatefulPCECapability{},
-		},
-		{
-			name:     "Map: SymbolicPathName",
-			tlvType:  TLVSymbolicPathName,
-			expected: &SymbolicPathName{},
-		},
-		{
-			name:     "Map: IPv4LSPIdentifiers",
-			tlvType:  TLVIPv4LSPIdentifiers,
-			expected: &IPv4LSPIdentifiers{},
-		},
-		{
-			name:     "Map: IPv6LSPIdentifiers",
-			tlvType:  TLVIPv6LSPIdentifiers,
-			expected: &IPv6LSPIdentifiers{},
-		},
-		{
-			name:     "Map: LSPDBVersion",
-			tlvType:  TLVLSPDBVersion,
-			expected: &LSPDBVersion{},
-		},
-		{
-			name:     "Map: SRPCECapability",
-			tlvType:  TLVSRPCECapability,
-			expected: &SRPCECapability{},
-		},
-		{
-			name:     "Map: PathSetupType",
-			tlvType:  TLVPathSetupType,
-			expected: &PathSetupType{},
-		},
-		{
-			name:     "Map: ExtendedAssociationID",
-			tlvType:  TLVExtendedAssociationID,
-			expected: &ExtendedAssociationID{},
-		},
-		{
-			name:     "Map: PathSetupTypeCapability",
-			tlvType:  TLVPathSetupTypeCapability,
-			expected: &PathSetupTypeCapability{},
-		},
-		{
-			name:     "Map: AssocTypeList",
-			tlvType:  TLVAssocTypeList,
-			expected: &AssocTypeList{},
-		},
-		{
-			name:     "Map: SRPolicyCPathID",
-			tlvType:  TLVSRPolicyCPathID,
-			expected: &SRPolicyCandidatePathIdentifier{},
-		},
-		{
-			name:     "Map: SRPolicyCPathPreference",
-			tlvType:  TLVSRPolicyCPathPreference,
-			expected: &SRPolicyCandidatePathPreference{},
-		},
-		{
-			name:     "Map: Color",
-			tlvType:  TLVColor,
-			expected: &Color{},
-		},
+		"StatefulPCECapability":   {TLVStatefulPCECapability, &StatefulPCECapability{}},
+		"SymbolicPathName":        {TLVSymbolicPathName, &SymbolicPathName{}},
+		"IPv4LSPIdentifiers":      {TLVIPv4LSPIdentifiers, &IPv4LSPIdentifiers{}},
+		"IPv6LSPIdentifiers":      {TLVIPv6LSPIdentifiers, &IPv6LSPIdentifiers{}},
+		"LSPDBVersion":            {TLVLSPDBVersion, &LSPDBVersion{}},
+		"SRPCECapability":         {TLVSRPCECapability, &SRPCECapability{}},
+		"PathSetupType":           {TLVPathSetupType, &PathSetupType{}},
+		"ExtendedAssociationID":   {TLVExtendedAssociationID, &ExtendedAssociationID{}},
+		"PathSetupTypeCapability": {TLVPathSetupTypeCapability, &PathSetupTypeCapability{}},
+		"AssocTypeList":           {TLVAssocTypeList, &AssocTypeList{}},
+		"SRPolicyCPathID":         {TLVSRPolicyCPathID, &SRPolicyCandidatePathIdentifier{}},
+		"SRPolicyCPathPreference": {TLVSRPolicyCPathPreference, &SRPolicyCandidatePathPreference{}},
+		"Color":                   {TLVColor, &Color{}},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			actual := tlvMap[tt.tlvType]()
-			assert.Equal(t, reflect.TypeOf(tt.expected), reflect.TypeOf(actual), "Map returned unexpected type")
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			constructor, ok := tlvMap[tt.tlvType]
+			require.True(t, ok, "constructor not found for TLVType '%s'", name)
+
+			actual := constructor()
+			assert.IsType(t, tt.expected, actual, "unexpected type for TLV '%s'", name)
 		})
 	}
 }
 
-// TestStatefulPCECapability_DecodeFromBytes tests the DecodeFromBytes method for StatefulPCECapability.
-func TestStatefulPCECapability_DecodeFromBytes(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    []byte
-		expected *StatefulPCECapability
-		err      bool
-	}{
-		{
-			name:     "DecodeFromBytes: Single capability (LSP Update enabled)",
-			input:    NewStatefulPCECapability(0x01).Serialize(),
-			expected: NewStatefulPCECapability(0x01),
-			err:      false,
-		},
-		{
-			name:     "DecodeFromBytes: All capabilities enabled",
-			input:    NewStatefulPCECapability(0x3F).Serialize(),
-			expected: NewStatefulPCECapability(0x3F),
-			err:      false,
-		},
-		{
-			name:     "DecodeFromBytes: Input too short (missing TLV body)",
-			input:    []byte{byte(TLVStatefulPCECapability >> 8), byte(TLVStatefulPCECapability & 0xFF), 0x00, 0x04},
-			expected: nil,
-			err:      true,
-		},
-	}
+// TLVTestCase defines a common structure for TLV test cases.
+type TLVTestCase struct {
+	input    []byte
+	expected TLVInterface
+	wantErr  bool
+}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var actual StatefulPCECapability
-			err := actual.DecodeFromBytes(tt.input)
-			if tt.err {
-				assert.Error(t, err, "DecodeFromBytes failed for input: %v", tt.input)
+// runTLVDecodeTests is a helper function to run DecodeFromBytes tests for TLVs.
+func runTLVDecodeTests(t *testing.T, cases map[string]TLVTestCase, constructor func() TLVInterface) {
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			tlv := constructor()
+			err := tlv.DecodeFromBytes(tt.input)
+
+			if tt.wantErr {
+				assert.Error(t, err, "expected error for '%s' but got none", name)
 			} else {
-				assert.NoError(t, err, "DecodeFromBytes returned unexpected error for input: %v", tt.input)
-				assert.Equal(t, *tt.expected, actual, "Decoded capability mismatch")
+				assert.NoError(t, err, "unexpected error for '%s'", name)
+				assert.Equal(t, tt.expected, tlv, "decoded value mismatch for '%s'", name)
 			}
 		})
 	}
+}
+
+// runTLVSerializeTests is a helper function to run Serialize tests for TLVs.
+func runTLVSerializeTests(t *testing.T, cases map[string]struct {
+	input    TLVInterface
+	expected []byte
+}) {
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			actual := tt.input.Serialize()
+			assert.Equal(t, tt.expected, actual, "serialized value mismatch for '%s'", name)
+		})
+	}
+}
+
+type CapStringsInterface interface {
+	CapStrings() []string
+}
+
+// runCapStringsTests is a helper function to run CapStrings tests for capabilities.
+func runCapStringsTests(t *testing.T, cases map[string]struct {
+	input    CapStringsInterface
+	expected []string
+}) {
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			actual := tt.input.CapStrings()
+			assert.Equal(t, tt.expected, actual, "capabilities mismatch for '%s'", name)
+		})
+	}
+}
+
+// runTLVLenTests is a helper function to run Len tests for TLVs.
+func runTLVLenTests(t *testing.T, cases map[string]struct {
+	input    TLVInterface
+	expected uint16
+}) {
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			actual := tt.input.Len()
+			assert.Equal(t, tt.expected, actual, "length mismatch for '%s'", name)
+		})
+	}
+}
+
+// tlvHeader generates a 4-byte TLV header with the given type and length in big-endian format.
+func tlvHeader(tlvType TLVType, length uint16) []byte {
+	return []byte{byte(tlvType >> 8), byte(tlvType & 0xff), byte(length >> 8), byte(length & 0xff)}
+}
+
+// Test data for StatefulPCECapability tests.
+var (
+	// StatefulPCECapability instance with only the LSP Update capability enabled.
+	testStatefulLSPUpdate = NewStatefulPCECapability(0x00000001)
+	// StatefulPCECapability instance with all capabilities enabled.
+	testStatefulAll = NewStatefulPCECapability(0x0000083f)
+	// StatefulPCECapability instance with no capabilities enabled.
+	testStatefulNone = NewStatefulPCECapability(0x00000000)
+
+	// Serialized TLV bytes for a StatefulPCECapability with only the LSP Update capability enabled.
+	testStatefulLSPUpdateBytes = append(tlvHeader(TLVStatefulPCECapability, 4), 0x00, 0x00, 0x00, 0x01)
+	// Serialized TLV bytes for a StatefulPCECapability with all capabilities enabled.
+	testStatefulAllBytes = append(tlvHeader(TLVStatefulPCECapability, 4), 0x00, 0x00, 0x08, 0x3f)
+	// Serialized TLV bytes for a StatefulPCECapability with no capabilities enabled.
+	testStatefulNoneBytes = append(tlvHeader(TLVStatefulPCECapability, 4), 0x00, 0x00, 0x00, 0x00)
+	// Serialized TLV header only to simulate missing TLV body.
+	testStatefulMissingTLVBody = tlvHeader(TLVStatefulPCECapability, 4)
+
+	// Expected capability strings when all capabilities are enabled.
+	testCapsAllStrings = []string{
+		"Stateful", "Update", "Include-DB-Ver", "Instantiation",
+		"Triggered-Resync", "Delta-LSP-Sync", "Triggered-Initial-Sync", "Color",
+	}
+	// Expected capability strings when no additional capabilities are enabled.
+	testCapsNoneStrings = []string{"Stateful"}
+)
+
+// TestStatefulPCECapability_DecodeFromBytes tests the DecodeFromBytes method for StatefulPCECapability.
+func TestStatefulPCECapability_DecodeFromBytes(t *testing.T) {
+	cases := map[string]TLVTestCase{
+		"SingleCapability": {testStatefulLSPUpdateBytes, testStatefulLSPUpdate, false},
+		"AllCapabilities":  {testStatefulAllBytes, testStatefulAll, false},
+		"MissingTLVBody":   {testStatefulMissingTLVBody, nil, true},
+	}
+	runTLVDecodeTests(t, cases, func() TLVInterface { return &StatefulPCECapability{} })
 }
 
 // TestStatefulPCECapability_Serialize tests the Serialize method for StatefulPCECapability.
 func TestStatefulPCECapability_Serialize(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    *StatefulPCECapability
+	cases := map[string]struct {
+		input    TLVInterface
 		expected []byte
 	}{
-		{
-			name:     "Serialize: LSP Update Capability enabled",
-			input:    NewStatefulPCECapability(0x01),
-			expected: []byte{byte(TLVStatefulPCECapability >> 8), byte(TLVStatefulPCECapability & 0xFF), 0x00, 0x04, 0x00, 0x00, 0x00, 0x01},
-		},
-		{
-			name:     "Serialize: All capabilities enabled",
-			input:    NewStatefulPCECapability(0x3F),
-			expected: []byte{byte(TLVStatefulPCECapability >> 8), byte(TLVStatefulPCECapability & 0xFF), 0x00, 0x04, 0x00, 0x00, 0x00, 0x3F},
-		},
-		{
-			name:     "Serialize: No capabilities enabled",
-			input:    NewStatefulPCECapability(0x00),
-			expected: []byte{byte(TLVStatefulPCECapability >> 8), byte(TLVStatefulPCECapability & 0xFF), 0x00, 0x04, 0x00, 0x00, 0x00, 0x00},
-		},
+		"LSPUpdate":       {testStatefulLSPUpdate, testStatefulLSPUpdateBytes},
+		"AllCapabilities": {testStatefulAll, testStatefulAllBytes},
+		"NoCapabilities":  {testStatefulNone, testStatefulNoneBytes},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			actual := tt.input.Serialize()
-			assert.Equal(t, tt.expected, actual, "Serialized output mismatch in test case: %s", tt.name)
-		})
-	}
+	runTLVSerializeTests(t, cases)
 }
 
 // TestStatefulPCECapability_MarshalLogObject tests the MarshalLogObject method for StatefulPCECapability.
 func TestStatefulPCECapability_MarshalLogObject(t *testing.T) {
-	tests := []struct {
-		name     string
-		tlv      *StatefulPCECapability
+	cases := map[string]struct {
+		input    *StatefulPCECapability
 		expected bool
 	}{
-		{
-			name: "LSP Update Capability enabled",
-			tlv: &StatefulPCECapability{
-				LSPUpdateCapability: true,
-			},
-			expected: true,
-		},
-		{
-			name: "LSP Update Capability disabled",
-			tlv: &StatefulPCECapability{
-				LSPUpdateCapability: false,
-			},
-			expected: false,
-		},
+		"LSPUpdateEnabled":  {testStatefulLSPUpdate, true},
+		"LSPUpdateDisabled": {testStatefulNone, false},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
 			enc := zapcore.NewMapObjectEncoder()
-			err := tt.tlv.MarshalLogObject(enc)
+			err := tt.input.MarshalLogObject(enc)
 
-			assert.NoError(t, err, "Expected no error while marshaling log object")
-			assert.Equal(t, tt.expected, enc.Fields["lspUpdateCapability"], "Field 'lspUpdateCapability' mismatch")
+			assert.NoError(t, err, "unexpected error for '%s'", name)
+			assert.Equal(t, tt.expected, enc.Fields["lspUpdateCapability"], "unexpected value for '%s'", name)
 		})
 	}
+}
+
+// TestStatefulPCECapability_Len tests the Len method for StatefulPCECapability.
+func TestStatefulPCECapability_Len(t *testing.T) {
+	cases := map[string]struct {
+		input    TLVInterface
+		expected uint16
+	}{
+		"LSPUpdate": {testStatefulLSPUpdate, TLVHeaderLength + 4},
+	}
+	runTLVLenTests(t, cases)
 }
 
 // TestStatefulPCECapability_CapStrings tests the CapStrings method for StatefulPCECapability.
 func TestStatefulPCECapability_CapStrings(t *testing.T) {
-	tests := []struct {
-		name     string
-		bits     uint32
+	cases := map[string]struct {
+		input    CapStringsInterface
 		expected []string
 	}{
-		{
-			name:     "All capabilities enabled",
-			bits:     uint32(0x0000083F),
-			expected: []string{"Stateful", "Update", "Include-DB-Ver", "Instantiation", "Triggered-Resync", "Delta-LSP-Sync", "Triggered-Initial-Sync", "Color"},
-		},
-		{
-			name:     "No capabilities enabled",
-			bits:     0x00,
-			expected: []string{"Stateful"},
-		},
+		"AllCapabilities": {testStatefulAll, testCapsAllStrings},
+		"NoCapabilities":  {testStatefulNone, testCapsNoneStrings},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			input := NewStatefulPCECapability(tt.bits)
-			assert.ElementsMatch(t, tt.expected, input.CapStrings(), "Capabilities mismatch")
-		})
-	}
+	runCapStringsTests(t, cases)
 }
+
+// Test data for SymbolicPathName tests.
+var (
+	testSymbolicPathName            = NewSymbolicPathName("Test")
+	testSymbolicPathNameWithPadding = NewSymbolicPathName("ABC") // with 1 padding byte
+	testSymbolicPathNameEmptyString = NewSymbolicPathName("")
+
+	// Serialized TLV bytes for SymbolicPathName "Test".
+	testSymbolicPathNameBytes = []byte{
+		byte(TLVSymbolicPathName >> 8), byte(TLVSymbolicPathName & 0xff),
+		0x00, 0x04, 'T', 'e', 's', 't',
+	}
+	// Serialized TLV bytes for an empty SymbolicPathName.
+	testSymbolicPathNameEmptyBytes = []byte{
+		byte(TLVSymbolicPathName >> 8), byte(TLVSymbolicPathName & 0xff),
+		0x00, 0x00,
+	}
+	// Serialized TLV bytes with an invalid UTF-8 sequence.
+	testSymbolicPathNameInvalidUTF8Bytes = []byte{
+		byte(TLVSymbolicPathName >> 8), byte(TLVSymbolicPathName & 0xff),
+		0x00, 0x01, 0xff,
+	}
+	// Declared TLV length is 2, but only 1 byte is provided.
+	testSymbolicPathNameTooShort = []byte{
+		byte(TLVSymbolicPathName >> 8), byte(TLVSymbolicPathName & 0xff),
+		0x00, 0x02, 'T',
+	}
+	// Declared TLV length is 1, but 2 bytes are provided.
+	testSymbolicPathNameTooLong = []byte{
+		byte(TLVSymbolicPathName >> 8), byte(TLVSymbolicPathName & 0xff),
+		0x00, 0x01, 'T', 'e',
+	}
+	// Incomplete TLV header (only 3 bytes).
+	testSymbolicPathNameTruncatedHeader = []byte{
+		byte(TLVSymbolicPathName >> 8), byte(TLVSymbolicPathName & 0xff), 0x00,
+	}
+)
 
 // TestSymbolicPathName_DecodeFromBytes tests the DecodeFromBytes method for SymbolicPathName.
 func TestSymbolicPathName_DecodeFromBytes(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    []byte
-		expected *SymbolicPathName
-		err      bool
-	}{
-		{
-			name:     "DecodeFromBytes: Valid Symbolic Path Name",
-			input:    NewSymbolicPathName("Test").Serialize(),
-			expected: NewSymbolicPathName("Test"),
-			err:      false,
-		},
-		{
-			name:     "DecodeFromBytes: Input too short to contain TLV header",
-			input:    []byte{byte(TLVSymbolicPathName >> 8), byte(TLVSymbolicPathName & 0xFF), 0x00}, // Less than TLVHeaderLength (4 bytes)
-			expected: NewSymbolicPathName(""),
-			err:      true,
-		},
-		{
-			name:     "DecodeFromBytes: Declared name length longer than actual data",
-			input:    []byte{byte(TLVSymbolicPathName >> 8), byte(TLVSymbolicPathName & 0xFF), 0x00, 0x02, 'T'}, // Declared 2 bytes, only 1 provided
-			expected: NewSymbolicPathName(""),
-			err:      true,
-		},
-		{
-			name:     "DecodeFromBytes: Declared name length shorter than actual data",
-			input:    []byte{byte(TLVSymbolicPathName >> 8), byte(TLVSymbolicPathName & 0xFF), 0x00, 0x01, 'T', 'e'}, // Declared 1 byte, but extra provided
-			expected: NewSymbolicPathName(""),
-			err:      true,
-		},
-		{
-			name: "DecodeFromBytes: Invalid UTF-8 sequence in name",
-			input: func() []byte {
-				invalidName := []byte{0xff} // 0xff is invalid as standalone UTF-8
-				length := Uint16ToByteSlice(uint16(len(invalidName)))
-				return AppendByteSlices(
-					Uint16ToByteSlice(uint16(TLVSymbolicPathName)),
-					length,
-					invalidName,
-				)
-			}(),
-			expected: NewSymbolicPathName(""),
-			err:      true,
-		},
+	cases := map[string]TLVTestCase{
+		"ValidSymbolicPathName":  {testSymbolicPathNameBytes, testSymbolicPathName, false},
+		"EmptySymbolicPathName":  {testSymbolicPathNameEmptyBytes, testSymbolicPathNameEmptyString, false},
+		"InvalidUTF8Sequence":    {testSymbolicPathNameInvalidUTF8Bytes, nil, true},
+		"InputTooShort":          {testSymbolicPathNameTruncatedHeader, nil, true},
+		"DeclaredLengthTooShort": {testSymbolicPathNameTooShort, nil, true},
+		"DeclaredLengthTooLong":  {testSymbolicPathNameTooLong, nil, true},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var tlv SymbolicPathName
-			err := tlv.DecodeFromBytes(tt.input)
-			if tt.err {
-				assert.Error(t, err, "DecodeFromBytes failed for input: %v", tt.input)
-			} else {
-				assert.NoError(t, err, "DecodeFromBytes returned unexpected error for input: %v", tt.input)
-				assert.Equal(t, tt.expected, &tlv, "Decoded value mismatch")
-			}
-		})
-	}
+	runTLVDecodeTests(t, cases, func() TLVInterface { return &SymbolicPathName{} })
 }
 
 // TestSymbolicPathName_Serialize tests the Serialize method for SymbolicPathName.
 func TestSymbolicPathName_Serialize(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    *SymbolicPathName
+	cases := map[string]struct {
+		input    TLVInterface
 		expected []byte
 	}{
-		{
-			name:     "Serialize: Valid Symbolic Path Name",
-			input:    NewSymbolicPathName("Test"),
-			expected: []byte{byte(TLVSymbolicPathName >> 8), byte(TLVSymbolicPathName & 0xFF), 0x00, 0x04, 'T', 'e', 's', 't'},
-		},
+		"ValidSymbolicPathName": {testSymbolicPathName, testSymbolicPathNameBytes},
+		"EmptySymbolicPathName": {testSymbolicPathNameEmptyString, testSymbolicPathNameEmptyBytes},
+	}
+	runTLVSerializeTests(t, cases)
+}
+
+// TestSymbolicPathName_MarshalLogObject tests the MarshalLogObject method for SymbolicPathName.
+func TestSymbolicPathName_MarshalLogObject(t *testing.T) {
+	cases := map[string]struct {
+		input    *SymbolicPathName
+		expected string
+	}{
+		"ValidSymbolicPathName": {testSymbolicPathName, "Test"},
+		"EmptySymbolicPathName": {testSymbolicPathNameEmptyString, ""},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			actual := tt.input.Serialize()
-			assert.Equal(t, tt.expected, actual, "Serialized output mismatch in test case: %s", tt.name)
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			enc := zapcore.NewMapObjectEncoder()
+			err := tt.input.MarshalLogObject(enc)
+
+			assert.NoError(t, err, "unexpected error for '%s'", name)
+			assert.Equal(t, tt.expected, enc.Fields["symbolicPathName"], "unexpected value for '%s'", name)
 		})
 	}
 }
 
 // TestSymbolicPathName_Len tests the Len method for SymbolicPathName.
 func TestSymbolicPathName_Len(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    *SymbolicPathName
+	cases := map[string]struct {
+		input    TLVInterface
 		expected uint16
 	}{
-		{
-			name:     "Len: Symbolic Path Name length",
-			input:    NewSymbolicPathName("Test"),
-			expected: TLVHeaderLength + 4,
-		},
-		{
-			name:     "Len: Symbolic Path Name with padding",
-			input:    NewSymbolicPathName("ABC"), // 3 bytes + 1 byte padding
-			expected: TLVHeaderLength + 3 + 1,
-		},
+		"ValidSymbolicPathNameLength":       {testSymbolicPathName, TLVHeaderLength + 4},
+		"SymbolicPathNameWithPaddingLength": {testSymbolicPathNameWithPadding, TLVHeaderLength + 4}, // "ABC" + 1 padding
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, tt.input.Len(), "Length mismatch")
-		})
-	}
+	runTLVLenTests(t, cases)
 }
 
-// TestSymbolicPathName_MarshalLogObject tests the MarshalLogObject method for SymbolicPathName.
-func TestSymbolicPathName_MarshalLogObject(t *testing.T) {
-	tests := []struct {
-		name     string
-		tlv      *SymbolicPathName
-		expected string
-	}{
-		{
-			name:     "MarshalLogObject: Valid symbolic path name",
-			tlv:      &SymbolicPathName{Name: "pathA"},
-			expected: "pathA",
-		},
-		{
-			name:     "MarshalLogObject: Empty symbolic path name",
-			tlv:      &SymbolicPathName{Name: ""},
-			expected: "",
-		},
+// Test data for IPv4LSPIdentifiers tests.
+var (
+	// IPv4LSPIdentifiers with valid values.
+	testIPv4LSPIdentifiers = NewIPv4LSPIdentifiers(netip.MustParseAddr("192.0.2.1"), netip.MustParseAddr("192.0.2.2"), 1, 2, 1234)
+	// Serialized TLV bytes for testIPv4LSPIdentifiers.
+	testIPv4LSPIdentifiersBytes = []byte{
+		byte(TLVIPv4LSPIdentifiers >> 8), byte(TLVIPv4LSPIdentifiers & 0xff), 0x00, 0x10,
+		0xc0, 0x00, 0x02, 0x01, // Sender Address
+		0x00, 0x01, // LSP ID
+		0x00, 0x02, // Tunnel ID
+		0x00, 0x00, 0x04, 0xd2, // Extended Tunnel ID
+		0xc0, 0x00, 0x02, 0x02, // Endpoint Address
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			enc := zapcore.NewMapObjectEncoder()
-			err := tt.tlv.MarshalLogObject(enc)
-
-			assert.NoError(t, err, "MarshalLogObject returned unexpected error")
-			assert.Equal(t, tt.expected, enc.Fields["symbolicPathName"], "Field 'symbolicPathName' mismatch")
-		})
+	// Serialized TLV bytes for a truncated IPv4LSPIdentifiers (length mismatch).
+	testIPv4LSPIdentifiersTruncated = []byte{
+		byte(TLVIPv4LSPIdentifiers >> 8), byte(TLVIPv4LSPIdentifiers & 0xff), 0x00, 0x03,
+		0xc0, 0x00, 0x02, // Missing one byte
 	}
-}
+	// Serialized TLV bytes for IPv4LSPIdentifiers with extra bytes.
+	testIPv4LSPIdentifiersExtra = []byte{
+		byte(TLVIPv4LSPIdentifiers >> 8), byte(TLVIPv4LSPIdentifiers & 0xff), 0x00, 0x14,
+		0xc0, 0x00, 0x02, 0x01, // Sender Address
+		0x00, 0x01, // LSP ID
+		0x00, 0x02, // Tunnel ID
+		0x00, 0x00, 0x04, 0xd2, // Extended Tunnel ID
+		0xc0, 0x00, 0x02, 0x02, // Endpoint Address
+		0xde, 0xad, 0xbe, 0xef, // Extra bytes
+	}
+)
 
 // TestIPv4LSPIdentifiers_DecodeFromBytes tests the DecodeFromBytes method for IPv4LSPIdentifiers.
 func TestIPv4LSPIdentifiers_DecodeFromBytes(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    []byte
-		expected *IPv4LSPIdentifiers
-		err      bool
-	}{
-		{
-			name:     "DecodeFromBytes: Valid IPv4 LSP Identifiers",
-			input:    NewIPv4LSPIdentifiers(netip.MustParseAddr("192.0.2.1"), netip.MustParseAddr("192.0.2.2"), 1, 2, 1234).Serialize(),
-			expected: NewIPv4LSPIdentifiers(netip.MustParseAddr("192.0.2.1"), netip.MustParseAddr("192.0.2.2"), 1, 2, 1234),
-			err:      false,
-		},
-		{
-			name: "DecodeFromBytes: Invalid IPv4 LSP Identifiers (truncated '192.0.2.1')",
-			input: []byte{
-				byte(TLVIPv4LSPIdentifiers >> 8), byte(TLVIPv4LSPIdentifiers & 0xFF), 0x00, 0x03, // Type (0x12), truncated length (0x03)
-				0xC0, 0x00, 0x02, // Incomplete address: missing last byte (0x01)
-			},
-			expected: NewIPv4LSPIdentifiers(netip.Addr{}, netip.Addr{}, 0, 0, 0),
-			err:      true,
-		},
-		{
-			name: "DecodeFromBytes: Invalid IPv4 LSP Identifiers (extra bytes after '192.0.2.1')",
-			input: []byte{
-				byte(TLVIPv4LSPIdentifiers >> 8), byte(TLVIPv4LSPIdentifiers & 0xFF), 0x00, 0x14, // Type IPV4-LSP-IDENTIFIERS (0x12), extra length (0x14)
-				0xC0, 0x00, 0x02, 0x01, // IPv4 Tunnel Sender Address (192.0.2.1)
-				0x00, 0x01, // LSP ID (0x0001)
-				0x00, 0x02, // Tunnel ID (0x0002)
-				0x00, 0x00, 0x04, 0xD2, // Extended Tunnel ID (1234)
-				0xC0, 0x00, 0x02, 0x02, // IPv4 Tunnel Endpoint Address (192.0.2.2)
-				0xDE, 0xAD, 0xBE, 0xEF, // Extra unexpected bytes
-			},
-			expected: NewIPv4LSPIdentifiers(netip.Addr{}, netip.Addr{}, 0, 0, 0),
-			err:      true,
-		},
+	cases := map[string]TLVTestCase{
+		"ValidIPv4LSPIdentifiers":        {testIPv4LSPIdentifiersBytes, testIPv4LSPIdentifiers, false},
+		"TruncatedIPv4LSPIdentifiers":    {testIPv4LSPIdentifiersTruncated, nil, true},
+		"ExtraBytesInIPv4LSPIdentifiers": {testIPv4LSPIdentifiersExtra, nil, true},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var tlv IPv4LSPIdentifiers
-			err := tlv.DecodeFromBytes(tt.input)
-			if tt.err {
-				assert.Error(t, err, "DecodeFromBytes failed for input: %v", tt.input)
-			} else {
-				assert.NoError(t, err, "DecodeFromBytes returned unexpected error for input: %v", tt.input)
-				assert.Equal(t, tt.expected, &tlv, "Decoded value mismatch")
-			}
-		})
-	}
+	runTLVDecodeTests(t, cases, func() TLVInterface { return &IPv4LSPIdentifiers{} })
 }
 
 // TestIPv4LSPIdentifiers_Serialize tests the Serialize method for IPv4LSPIdentifiers.
 func TestIPv4LSPIdentifiers_Serialize(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    *IPv4LSPIdentifiers
+	cases := map[string]struct {
+		input    TLVInterface
 		expected []byte
 	}{
-		{
-			name:  "Serialize: Valid IPv4 LSP Identifiers",
-			input: NewIPv4LSPIdentifiers(netip.MustParseAddr("192.0.2.1"), netip.MustParseAddr("192.0.2.2"), 1, 2, 1234),
-			expected: []byte{
-				byte(TLVIPv4LSPIdentifiers >> 8), byte(TLVIPv4LSPIdentifiers & 0xFF), 0x00, 0x10, // Type IPV4-LSP-IDENTIFIERS (0x12), Length 16 (0x10)
-				0xC0, 0x00, 0x02, 0x01, // IPv4 Tunnel Sender Address (192.0.2.1)
-				0x00, 0x01, // LSP ID (0x0001)
-				0x00, 0x02, // Tunnel ID (0x0002)
-				0x00, 0x00, 0x04, 0xD2, // Extended Tunnel ID (1234)
-				0xC0, 0x00, 0x02, 0x02, // IPv4 Tunnel Endpoint Address (192.0.2.2)
-			},
-		},
+		"ValidIPv4LSPIdentifiers": {testIPv4LSPIdentifiers, testIPv4LSPIdentifiersBytes},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			actual := tt.input.Serialize()
-			assert.Equal(t, tt.expected, actual, "Serialized output mismatch in test case: %s", tt.name)
-		})
-	}
+	runTLVSerializeTests(t, cases)
 }
 
 // TestIPv4LSPIdentifiers_MarshalLogObject tests the MarshalLogObject method for IPv4LSPIdentifiers.
@@ -487,111 +383,69 @@ func TestIPv4LSPIdentifiers_MarshalLogObject(t *testing.T) {
 	enc := zapcore.NewMapObjectEncoder()
 
 	err := tlv.MarshalLogObject(enc)
-
-	assert.NoError(t, err, "expected no error while marshaling IPv4LSPIdentifiers")
+	assert.NoError(t, err, "unexpected error during MarshalLogObject")
 }
 
 // TestIPv4LSPIdentifiers_Len tests the Len method for IPv4LSPIdentifiers.
 func TestIPv4LSPIdentifiers_Len(t *testing.T) {
-	tests := []struct {
-		name     string
-		tlv      *IPv4LSPIdentifiers
+	cases := map[string]struct {
+		input    TLVInterface
 		expected uint16
 	}{
-		{
-			name:     "Len: IPv4LSPIdentifiers length",
-			tlv:      &IPv4LSPIdentifiers{},
-			expected: TLVHeaderLength + TLVIPv4LSPIdentifiersValueLength,
-		},
+		"ValidIPv4LSPIdentifiersLength": {testIPv4LSPIdentifiers, TLVHeaderLength + TLVIPv4LSPIdentifiersValueLength},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, tt.tlv.Len(), "Length mismatch")
-		})
-	}
+	runTLVLenTests(t, cases)
 }
+
+// Test data for IPv6LSPIdentifiers tests
+var (
+	// IPv6LSPIdentifiers with valid values.
+	testIPv6LSPIdentifiers = NewIPv6LSPIdentifiers(netip.MustParseAddr("2001:db8::1"), netip.MustParseAddr("2001:db8::2"), 1, 2, [16]byte{})
+	// Serialized TLV bytes for testIPv6LSPIdentifiers.
+	testIPv6LSPIdentifiersBytes = []byte{
+		byte(TLVIPv6LSPIdentifiers >> 8), byte(TLVIPv6LSPIdentifiers & 0xff), 0x00, 0x34,
+		0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, // Sender Address
+		0x00, 0x01, // LSP ID
+		0x00, 0x02, // Tunnel ID
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Extended Tunnel ID
+		0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, // Endpoint Address
+	}
+	// Serialized TLV bytes for a truncated IPv6LSPIdentifiers (length mismatch).
+	testIPv6LSPIdentifiersTruncated = []byte{
+		byte(TLVIPv6LSPIdentifiers >> 8), byte(TLVIPv6LSPIdentifiers & 0xff), 0x00, 0x1f, // Truncated length
+		0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Incomplete
+	}
+	// Serialized TLV bytes for IPv6LSPIdentifiers with extra bytes.
+	testIPv6LSPIdentifiersExtra = []byte{
+		byte(TLVIPv6LSPIdentifiers >> 8), byte(TLVIPv6LSPIdentifiers & 0xff), 0x00, 0x38, // Extra length
+		0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, // Sender Address
+		0x00, 0x01, // LSP ID
+		0x00, 0x02, // Tunnel ID
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Extended Tunnel ID
+		0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, // Endpoint Address
+		0xca, 0xfe, 0xba, 0xbe, // Extra bytes
+	}
+)
 
 // TestIPv6LSPIdentifiers_DecodeFromBytes tests the DecodeFromBytes method for IPv6LSPIdentifiers.
 func TestIPv6LSPIdentifiers_DecodeFromBytes(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    []byte
-		expected *IPv6LSPIdentifiers
-		err      bool
-	}{
-		{
-			name:     "DecodeFromBytes: Valid IPv6 LSP Identifiers",
-			input:    NewIPv6LSPIdentifiers(netip.MustParseAddr("2001:db8::1"), netip.MustParseAddr("2001:db8::2"), 1, 2, [16]byte{}).Serialize(),
-			expected: NewIPv6LSPIdentifiers(netip.MustParseAddr("2001:db8::1"), netip.MustParseAddr("2001:db8::2"), 1, 2, [16]byte{}),
-			err:      false,
-		},
-		{
-			name: "DecodeFromBytes: Invalid IPv6 LSP Identifiers (truncated '2001:db8::1')",
-			input: []byte{
-				byte(TLVIPv6LSPIdentifiers >> 8), byte(TLVIPv6LSPIdentifiers & 0xFF), 0x00, 0x07, // Type IPV6-LSP-IDENTIFIERS (0x13), truncated length (0x07)
-				0x20, 0x01, 0x0D, 0xB8, 0x00, 0x00, 0x00, // Incomplete
-			},
-			expected: NewIPv6LSPIdentifiers(netip.Addr{}, netip.Addr{}, 0, 0, [16]byte{}),
-			err:      true,
-		},
-		{
-			name: "DecodeFromBytes: Invalid IPv6 LSP Identifiers (extra bytes)",
-			input: []byte{
-				byte(TLVIPv6LSPIdentifiers >> 8), byte(TLVIPv6LSPIdentifiers & 0xFF), 0x00, 0x38, // Type IPV6-LSP-IDENTIFIERS (0x13), extra length (0x38)
-				0x20, 0x01, 0x0D, 0xB8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, // IPv6 Tunnel Sender Address (2001:db8::1)
-				0x00, 0x01, // LSP ID (0x0001)
-				0x00, 0x02, // Tunnel ID (0x0002)
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Extended Tunnel ID  (0x0000000000000000)
-				0x20, 0x01, 0x0D, 0xB8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, // IPv6 Tunnel Endpoint Address (2001:db8::2)
-				0xCA, 0xFE, 0xBA, 0xBE, // Extra unexpected bytes
-			},
-			expected: NewIPv6LSPIdentifiers(netip.Addr{}, netip.Addr{}, 0, 0, [16]byte{}),
-			err:      true,
-		},
+	cases := map[string]TLVTestCase{
+		"ValidIPv6LSPIdentifiers":        {testIPv6LSPIdentifiersBytes, testIPv6LSPIdentifiers, false},
+		"TruncatedIPv6LSPIdentifiers":    {testIPv6LSPIdentifiersTruncated, nil, true},
+		"ExtraBytesInIPv6LSPIdentifiers": {testIPv6LSPIdentifiersExtra, nil, true},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var tlv IPv6LSPIdentifiers
-			err := tlv.DecodeFromBytes(tt.input)
-			if tt.err {
-				assert.Error(t, err, "DecodeFromBytes failed for input: %v", tt.input)
-			} else {
-				assert.NoError(t, err, "DecodeFromBytes returned unexpected error for input: %v", tt.input)
-				assert.Equal(t, tt.expected, &tlv, "Decoded value mismatch")
-			}
-		})
-	}
+	runTLVDecodeTests(t, cases, func() TLVInterface { return &IPv6LSPIdentifiers{} })
 }
 
 // TestIPv6LSPIdentifiers_Serialize tests the Serialize method for IPv6LSPIdentifiers.
 func TestIPv6LSPIdentifiers_Serialize(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    *IPv6LSPIdentifiers
+	cases := map[string]struct {
+		input    TLVInterface
 		expected []byte
 	}{
-		{
-			name:  "Serialize: Valid IPv6 LSP Identifiers",
-			input: NewIPv6LSPIdentifiers(netip.MustParseAddr("2001:db8::1"), netip.MustParseAddr("2001:db8::2"), 1, 2, [16]byte{}),
-			expected: []byte{
-				byte(TLVIPv6LSPIdentifiers >> 8), byte(TLVIPv6LSPIdentifiers & 0xFF), 0x00, 0x34, // Type IPV6-LSP-IDENTIFIERS (0x13), Length 52 (0x34)
-				0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, // IPv6 Tunnel Sender Address (2001:db8::1)
-				0x00, 0x01, // LSP ID (0x0001)
-				0x00, 0x02, // Tunnel ID (0x0002)
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Extended Tunnel ID  (0x0000000000000000)
-				0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, // IPv6 Tunnel Endpoint Address (2001:db8::2)
-			},
-		},
+		"ValidIPv6LSPIdentifiers": {testIPv6LSPIdentifiers, testIPv6LSPIdentifiersBytes},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			actual := tt.input.Serialize()
-			assert.Equal(t, tt.expected, actual, "Serialized output mismatch in test case: %s", tt.name)
-		})
-	}
+	runTLVSerializeTests(t, cases)
 }
 
 // TestIPv6LSPIdentifiers_MarshalLogObject tests the MarshalLogObject method for IPv6LSPIdentifiers.
@@ -600,96 +454,51 @@ func TestIPv6LSPIdentifiers_MarshalLogObject(t *testing.T) {
 	enc := zapcore.NewMapObjectEncoder()
 
 	err := tlv.MarshalLogObject(enc)
-
-	assert.NoError(t, err, "expected no error while marshaling IPv6LSPIdentifiers")
+	assert.NoError(t, err, "unexpected error during MarshalLogObject")
 }
 
 // TestIPv6LSPIdentifiers_Len tests the Len method for IPv6LSPIdentifiers.
 func TestIPv6LSPIdentifiers_Len(t *testing.T) {
-	tests := []struct {
-		name     string
-		tlv      *IPv6LSPIdentifiers
+	cases := map[string]struct {
+		input    TLVInterface
 		expected uint16
 	}{
-		{
-			name:     "Len: IPv6LSPIdentifiers length",
-			tlv:      &IPv6LSPIdentifiers{},
-			expected: TLVHeaderLength + TLVIPv6LSPIdentifiersValueLength,
-		},
+		"ValidIPv6LSPIdentifiersLength": {testIPv6LSPIdentifiers, TLVHeaderLength + TLVIPv6LSPIdentifiersValueLength},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, tt.tlv.Len(), "Length mismatch")
-		})
-	}
+	runTLVLenTests(t, cases)
 }
+
+// Test data for LSPDBVersion tests
+var (
+	// LSPDBVersion with a valid version number.
+	testLSPDBVersion = NewLSPDBVersion(12345)
+	// Serialized TLV bytes for testLSPDBVersion.
+	testLSPDBVersionBytes = append(tlvHeader(TLVLSPDBVersion, 8), 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x30, 0x39)
+	// Serialized TLV bytes for a truncated LSPDBVersion.
+	testLSPDBVersionTruncated = append(tlvHeader(TLVLSPDBVersion, 4), 0x00, 0x00, 0x00, 0x00)
+	// Serialized TLV bytes for LSPDBVersion with extra bytes.
+	testLSPDBVersionExtra = append(tlvHeader(TLVLSPDBVersion, 16), 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x30, 0x39, 0xde, 0xad, 0xbe, 0xef)
+)
 
 // TestLSPDBVersion_DecodeFromBytes tests the DecodeFromBytes method for LSPDBVersion.
 func TestLSPDBVersion_DecodeFromBytes(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    []byte
-		expected *LSPDBVersion
-		err      bool
-	}{
-		{
-			name:     "DecodeFromBytes: Valid LSPDB Version",
-			input:    NewLSPDBVersion(12345).Serialize(),
-			expected: NewLSPDBVersion(12345),
-			err:      false,
-		},
-		{
-			name:     "DecodeFromBytes: Input too short",
-			input:    []byte{byte(TLVLSPDBVersion >> 8), byte(TLVLSPDBVersion & 0xFF), 0x00, 0x02},
-			expected: NewLSPDBVersion(0),
-			err:      true,
-		},
-		{
-			name: "DecodeFromBytes: Input too long",
-			input: []byte{
-				byte(TLVLSPDBVersion >> 8), byte(TLVLSPDBVersion & 0xFF), 0x00, 0x09,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x30, 0x39, 0x00,
-			},
-			expected: NewLSPDBVersion(0),
-			err:      true,
-		},
+	cases := map[string]TLVTestCase{
+		"ValidLSPDBVersion":        {testLSPDBVersionBytes, testLSPDBVersion, false},
+		"TruncatedLSPDBVersion":    {testLSPDBVersionTruncated, nil, true},
+		"ExtraBytesInLSPDBVersion": {testLSPDBVersionExtra, nil, true},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var tlv LSPDBVersion
-			err := tlv.DecodeFromBytes(tt.input)
-			if tt.err {
-				assert.Error(t, err, "DecodeFromBytes failed for input: %v", tt.input)
-			} else {
-				assert.NoError(t, err, "DecodeFromBytes returned unexpected error for input: %v", tt.input)
-				assert.Equal(t, tt.expected, &tlv, "Decoded value mismatch")
-			}
-		})
-	}
+	runTLVDecodeTests(t, cases, func() TLVInterface { return &LSPDBVersion{} })
 }
 
 // TestLSPDBVersion_Serialize tests the Serialize method for LSPDBVersion.
 func TestLSPDBVersion_Serialize(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    *LSPDBVersion
+	cases := map[string]struct {
+		input    TLVInterface
 		expected []byte
 	}{
-		{
-			name:     "Serialize: Valid LSPDB Version",
-			input:    NewLSPDBVersion(12345),
-			expected: []byte{byte(TLVLSPDBVersion >> 8), byte(TLVLSPDBVersion & 0xFF), 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x30, 0x39},
-		},
+		"ValidLSPDBVersion": {testLSPDBVersion, testLSPDBVersionBytes},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			actual := tt.input.Serialize()
-			assert.Equal(t, tt.expected, actual, "Serialized output mismatch in test case: %s", tt.name)
-		})
-	}
+	runTLVSerializeTests(t, cases)
 }
 
 // TestLSPDBVersion_MarshalLogObject tests the MarshalLogObject method for LSPDBVersion.
@@ -698,353 +507,215 @@ func TestLSPDBVersion_MarshalLogObject(t *testing.T) {
 	enc := zapcore.NewMapObjectEncoder()
 
 	err := tlv.MarshalLogObject(enc)
-
-	assert.NoError(t, err, "expected no error while marshaling LSPDBVersion")
+	assert.NoError(t, err, "unexpected error during MarshalLogObject")
 }
 
 // TestLSPDBVersion_Len tests the Len method for LSPDBVersion.
 func TestLSPDBVersion_Len(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    *LSPDBVersion
+	cases := map[string]struct {
+		input    TLVInterface
 		expected uint16
 	}{
-		{
-			name:     "Len: LSPDB Version length",
-			input:    NewLSPDBVersion(12345),
-			expected: TLVHeaderLength + TLVLSPDBVersionValueLength,
-		},
+		"ValidLSPDBVersionLength": {testLSPDBVersion, TLVHeaderLength + TLVLSPDBVersionValueLength},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, tt.input.Len(), "Length mismatch")
-		})
-	}
+	runTLVLenTests(t, cases)
 }
 
 // TestLSPDBVersion_CapStrings tests the CapStrings method for LSPDBVersion.
 func TestLSPDBVersion_CapStrings(t *testing.T) {
 	tlv := &LSPDBVersion{}
-
 	expected := []string{"LSP-DB-VERSION"}
 	actual := tlv.CapStrings()
 
 	assert.Equal(t, expected, actual, "CapStrings() did not return expected value")
 }
 
-// TestSRPCECapability_DecodeFromBytes tests the DecodeFromBytes method for SRPCECapability.
-func TestSRPCECapability_DecodeFromBytes(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    []byte
-		expected *SRPCECapability
-		err      bool
-	}{
-		{
-			name:     "DecodeFromBytes: Valid SRPCE Capability",
-			input:    NewSRPCECapability(true, true, 42).Serialize(),
-			expected: NewSRPCECapability(true, true, 42),
-			err:      false,
-		},
-		{
-			name:     "DecodeFromBytes: Input too short",
-			input:    []byte{byte(TLVSRPCECapability >> 8), byte(TLVSRPCECapability & 0xFF), 0x00, 0x02},
-			expected: NewSRPCECapability(false, false, 0),
-			err:      true,
-		},
-		{
-			name:     "DecodeFromBytes: Input too long",
-			input:    []byte{byte(TLVSRPCECapability >> 8), byte(TLVSRPCECapability & 0xFF), 0x00, 0x02, 0x00, 0x00, 0x03, 0x05, 0x01},
-			expected: NewSRPCECapability(false, false, 0),
-			err:      true,
-		},
+// Test data for SRPCECapability tests
+var (
+	// testSRPCECapability represents a valid SRPCECapability with true values and a maximum SID depth of 10.
+	testSRPCECapability = NewSRPCECapability(true, true, 10)
+	// testSRPCECapabilityBytes represents the serialized form of testSRPCECapability.
+	testSRPCECapabilityBytes = append(tlvHeader(TLVSRPCECapability, 4), 0x03, 0x0a, 0x00, 0x00)
+	// testSRPCECapabilityTruncated represents a truncated version of SRPCECapability data.
+	testSRPCECapabilityTruncated = append(tlvHeader(TLVSRPCECapability, 4), 0x00, 0x02)
+	// testSRPCECapabilityExtra represents an SRPCECapability with extra bytes.
+	testSRPCECapabilityExtra = append(tlvHeader(TLVSRPCECapability, 8), 0x03, 0x05, 0x00, 0x00, 0xde, 0xad, 0xbe, 0xef)
+
+	// testSRPCECapabilityValid is a valid SRPCECapability instance with proper values.
+	testSRPCECapabilityValid = &SRPCECapability{
+		HasUnlimitedMaxSIDDepth: true,
+		IsNAISupported:          true,
+		MaximumSidDepth:         10,
+	}
+	// testSRPCECapabilityDefault is an SRPCECapability instance with default values (false, false, 0).
+	testSRPCECapabilityDefault = &SRPCECapability{
+		HasUnlimitedMaxSIDDepth: false,
+		IsNAISupported:          false,
+		MaximumSidDepth:         0,
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var tlv SRPCECapability
-			err := tlv.DecodeFromBytes(tt.input)
-			if tt.err {
-				assert.Error(t, err, "DecodeFromBytes failed for input: %v", tt.input)
-			} else {
-				assert.NoError(t, err, "DecodeFromBytes returned unexpected error for input: %v", tt.input)
-				assert.Equal(t, tt.expected, &tlv, "Decoded value mismatch")
-			}
-		})
+	// validSRPCECapabilityValues represents the expected values for a valid SRPCECapability.
+	validSRPCECapabilityValues = map[string]interface{}{
+		"unlimited_max_sid_depth": true,
+		"nai_is_supported":        true,
+		"maximum_sid_depth":       uint8(10),
 	}
+	// defaultSRPCECapabilityValues represents the default values for SRPCECapability.
+	defaultSRPCECapabilityValues = map[string]interface{}{
+		"unlimited_max_sid_depth": false,
+		"nai_is_supported":        false,
+		"maximum_sid_depth":       uint8(0),
+	}
+
+	testSRPCECapabilityAllEnabledInput       = &SRPCECapability{HasUnlimitedMaxSIDDepth: true, IsNAISupported: true}
+	testSRPCECapabilityUnlimitedOnlyInput    = &SRPCECapability{HasUnlimitedMaxSIDDepth: true}
+	testSRPCECapabilityNAIOnlyInput          = &SRPCECapability{IsNAISupported: true}
+	testSRPCECapabilityNoneEnabledInput      = &SRPCECapability{}
+	testSRPCECapabilityAllEnabledExpected    = []string{"Unlimited-SID-Depth", "NAI-Supported"}
+	testSRPCECapabilityUnlimitedOnlyExpected = []string{"Unlimited-SID-Depth"}
+	testSRPCECapabilityNAIOnlyExpected       = []string{"NAI-Supported"}
+	testSRPCECapabilityNoneEnabledExpected   = []string(nil)
+)
+
+// TestSRPCECapability_DecodeFromBytes tests the DecodeFromBytes method for SRPCECapability.
+func TestSRPCECapability_DecodeFromBytes(t *testing.T) {
+	cases := map[string]TLVTestCase{
+		"ValidSRPCECapability":        {testSRPCECapabilityBytes, testSRPCECapability, false},
+		"TruncatedSRPCECapability":    {testSRPCECapabilityTruncated, nil, true},
+		"ExtraBytesInSRPCECapability": {testSRPCECapabilityExtra, nil, true},
+	}
+	runTLVDecodeTests(t, cases, func() TLVInterface { return &SRPCECapability{} })
 }
 
 // TestSRPCECapability_Serialize tests the Serialize method for SRPCECapability.
 func TestSRPCECapability_Serialize(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    *SRPCECapability
+	cases := map[string]struct {
+		input    TLVInterface
 		expected []byte
 	}{
-		{
-			name:     "Serialize: Valid SRPCE Capability",
-			input:    NewSRPCECapability(true, true, 5),
-			expected: []byte{byte(TLVSRPCECapability >> 8), byte(TLVSRPCECapability & 0xFF), 0x00, 0x04, 0x03, 0x05, 0x00, 0x00},
-		},
+		"ValidSRPCECapability": {testSRPCECapability, testSRPCECapabilityBytes},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			actual := tt.input.Serialize()
-			assert.Equal(t, tt.expected, actual, "Serialized output mismatch in test case: %s", tt.name)
-		})
-	}
+	runTLVSerializeTests(t, cases)
 }
 
 // TestSRPCECapability_MarshalLogObject tests the MarshalLogObject method for SRPCECapability.
 func TestSRPCECapability_MarshalLogObject(t *testing.T) {
-	tests := []struct {
-		name     string
-		tlv      *SRPCECapability
-		expected map[string]interface{}
-	}{
-		{
-			name: "MarshalLogObject: All fields set",
-			tlv: &SRPCECapability{
-				HasUnlimitedMaxSIDDepth: true,
-				IsNAISupported:          true,
-				MaximumSidDepth:         255,
-			},
-			expected: map[string]interface{}{
-				"unlimited_max_sid_depth": true,
-				"nai_is_supported":        true,
-				"maximum_sid_depth":       byte(255),
-			},
-		},
-		{
-			name: "MarshalLogObject: No capability set",
-			tlv: &SRPCECapability{
-				HasUnlimitedMaxSIDDepth: false,
-				IsNAISupported:          false,
-				MaximumSidDepth:         0,
-			},
-			expected: map[string]interface{}{
-				"unlimited_max_sid_depth": false,
-				"nai_is_supported":        false,
-				"maximum_sid_depth":       byte(0),
-			},
-		},
-	}
+	tlv := &SRPCECapability{}
+	enc := zapcore.NewMapObjectEncoder()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			enc := zapcore.NewMapObjectEncoder()
-			err := tt.tlv.MarshalLogObject(enc)
-
-			assert.NoError(t, err, "MarshalLogObject returned unexpected error")
-			for k, v := range tt.expected {
-				assert.Equal(t, v, enc.Fields[k], "Field %q mismatch", k)
-			}
-		})
-	}
+	err := tlv.MarshalLogObject(enc)
+	assert.NoError(t, err, "unexpected error during MarshalLogObject")
 }
 
 // TestSRPCECapability_Len tests the Len method for SRPCECapability.
 func TestSRPCECapability_Len(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    *SRPCECapability
+	cases := map[string]struct {
+		input    TLVInterface
 		expected uint16
 	}{
-		{
-			name:     "Len: SRPCE Capability length",
-			input:    NewSRPCECapability(true, true, 5),
-			expected: TLVHeaderLength + TLVSRPCECapabilityValueLength,
-		},
+		"ValidSRPCECapabilityLength": {testSRPCECapability, TLVHeaderLength + TLVSRPCECapabilityValueLength},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, tt.input.Len(), "Length mismatch")
-		})
-	}
+	runTLVLenTests(t, cases)
 }
 
 // TestSRPCECapability_CapStrings tests the CapStrings method for SRPCECapability.
 func TestSRPCECapability_CapStrings(t *testing.T) {
-	tests := []struct {
-		name     string
-		tlv      *SRPCECapability
+	cases := map[string]struct {
+		input    CapStringsInterface
 		expected []string
 	}{
-		{
-			name: "CapStrings: All capabilities enabled (Unlimited-SID-Depth, NAI-Supported)",
-			tlv: &SRPCECapability{
-				HasUnlimitedMaxSIDDepth: true,
-				IsNAISupported:          true,
-			},
-			expected: []string{"Unlimited-SID-Depth", "NAI-Supported"},
-		},
-		{
-			name: "CapStrings: Only UnlimitedMaxSIDDepth enabled",
-			tlv: &SRPCECapability{
-				HasUnlimitedMaxSIDDepth: true,
-			},
-			expected: []string{"Unlimited-SID-Depth"},
-		},
-		{
-			name: "CapStrings: Only NAISupported enabled",
-			tlv: &SRPCECapability{
-				IsNAISupported: true,
-			},
-			expected: []string{"NAI-Supported"},
-		},
-		{
-			name:     "CapStrings: No capabilities enabled",
-			tlv:      &SRPCECapability{},
-			expected: nil, // No capabilities should result in nil
-		},
+		"AllCapabilitiesEnabled":          {testSRPCECapabilityAllEnabledInput, testSRPCECapabilityAllEnabledExpected},
+		"OnlyUnlimitedMaxSIDDepthEnabled": {testSRPCECapabilityUnlimitedOnlyInput, testSRPCECapabilityUnlimitedOnlyExpected},
+		"OnlyNAISupportedEnabled":         {testSRPCECapabilityNAIOnlyInput, testSRPCECapabilityNAIOnlyExpected},
+		"NoCapabilitiesEnabled":           {testSRPCECapabilityNoneEnabledInput, testSRPCECapabilityNoneEnabledExpected},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			actual := tt.tlv.CapStrings()
-			assert.Equal(t, tt.expected, actual, "Capabilities mismatch in test case: %s", tt.name)
-		})
-	}
+	runCapStringsTests(t, cases)
 }
 
+// TestPst_String tests the String method for Pst.
 func TestPst_String(t *testing.T) {
-	tests := []struct {
-		name     string
+	cases := map[string]struct {
 		input    Pst
 		expected string
 	}{
-		{
-			name:     "Known PathSetupType",
-			input:    Pst(0x01),
-			expected: "Traffic engineering path is set up using Segment Routing (RFC8664)", // Corrected expected value
-		},
-		{
-			name:     "Unknown PathSetupType",
-			input:    Pst(0xFF), // Unknown value
-			expected: "Unknown PathSetupType (0xff)",
-		},
+		"Known PathSetupType":   {Pst(0x01), "Traffic engineering path is set up using Segment Routing (RFC8664)"},
+		"Unknown PathSetupType": {Pst(0xff), "Unknown PathSetupType (0xff)"},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, tt.input.String())
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			actual := tt.input.String()
+			assert.Equal(t, tt.expected, actual, "unexpected Pst.String() result for %s", name)
 		})
 	}
 }
 
 // TestPsts_MarshalJSON tests the MarshalJSON method for Psts.
 func TestPsts_MarshalJSON(t *testing.T) {
-	tests := []struct {
-		name     string
+	cases := map[string]struct {
 		input    Psts
 		expected string
 	}{
-		{
-			name:     "Nil Psts",
-			input:    nil,
-			expected: "null",
-		},
-		{
-			name:     "Empty Psts",
-			input:    Psts{},
-			expected: "",
-		},
-		{
-			name:     "Single Pst",
-			input:    Psts{Pst(0x01)},
-			expected: "1",
-		},
-		{
-			name:     "Multiple Psts",
-			input:    Psts{Pst(0x01), Pst(0x02)},
-			expected: "1,2",
-		},
+		"Nil Psts":      {nil, "null"},
+		"Empty Psts":    {Psts{}, ""},
+		"Single Pst":    {Psts{Pst(0x01)}, "1"},
+		"Multiple Psts": {Psts{Pst(0x01), Pst(0x02)}, "1,2"},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
 			actual, err := tt.input.MarshalJSON()
-			assert.NoError(t, err, "MarshalJSON returned unexpected error")
-			assert.Equal(t, tt.expected, string(actual), "MarshalJSON output mismatch")
+			assert.NoError(t, err, "MarshalJSON returned unexpected error for %s", name)
+			assert.Equal(t, tt.expected, string(actual), "MarshalJSON output mismatch for %s", name)
 		})
 	}
 }
 
+// Test data for PathSetupType tests
+var (
+	testPathSetupTypeSRTE   = NewPathSetupType(PathSetupTypeSRTE)
+	testPathSetupTypeRSVPTE = NewPathSetupType(PathSetupTypeRSVPTE)
+	testPathSetupTypeSRv6TE = NewPathSetupType(PathSetupTypeSRv6TE)
+
+	// Serialized bytes for PathSetupType SRTE.
+	testPathSetupTypeSRTEBytes = []byte{
+		byte(TLVPathSetupType >> 8), byte(TLVPathSetupType & 0xff), 0x00, 0x04, 0x00, 0x00, 0x00, byte(PathSetupTypeSRTE),
+	}
+	// Serialized bytes for PathSetupType RSVPTE.
+	testPathSetupTypeRSVPTEBytes = []byte{
+		byte(TLVPathSetupType >> 8), byte(TLVPathSetupType & 0xff), 0x00, 0x04, 0x00, 0x00, 0x00, byte(PathSetupTypeRSVPTE),
+	}
+	// Serialized bytes for PathSetupType SRv6TE.
+	testPathSetupTypeSRv6TEBytes = []byte{
+		byte(TLVPathSetupType >> 8), byte(TLVPathSetupType & 0xff), 0x00, 0x04, 0x00, 0x00, 0x00, byte(PathSetupTypeSRv6TE),
+	}
+	// Invalid input for PathSetupType (too short).
+	testPathSetupTypeTooShort = []byte{
+		0x00, 0x15, 0x00, 0x04,
+	}
+	// Invalid input for PathSetupType (too long).
+	testPathSetupTypeTooLong = append(NewPathSetupType(PathSetupTypeSRTE).Serialize(), 0x00, 0x00)
+)
+
 // TestPathSetupType_DecodeFromBytes tests the DecodeFromBytes method for PathSetupType.
 func TestPathSetupType_DecodeFromBytes(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    []byte
-		expected *PathSetupType
-		err      bool
-	}{
-		{
-			name:     "Valid PathSetupType SRv6TE",
-			input:    NewPathSetupType(PathSetupTypeSRv6TE).Serialize(),
-			expected: NewPathSetupType(PathSetupTypeSRv6TE),
-			err:      false,
-		},
-		{
-			name:     "Invalid input (too short data)",
-			input:    []byte{0x00, 0x15, 0x00, 0x04},
-			expected: NewPathSetupType(0),
-			err:      true,
-		},
-		{
-			name:     "Invalid input (too long data)",
-			input:    append(NewPathSetupType(PathSetupTypeSRTE).Serialize(), 0x00, 0x00),
-			expected: NewPathSetupType(0),
-			err:      true,
-		},
+	cases := map[string]TLVTestCase{
+		"Valid PathSetupType SRv6TE": {testPathSetupTypeSRv6TEBytes, testPathSetupTypeSRv6TE, false},
+		"Invalid input (too short)":  {testPathSetupTypeTooShort, nil, true},
+		"Invalid input (too long)":   {testPathSetupTypeTooLong, nil, true},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var tlv PathSetupType
-			err := tlv.DecodeFromBytes(tt.input)
-			if tt.err {
-				assert.Error(t, err, "DecodeFromBytes failed for input: %v", tt.input)
-			} else {
-				assert.NoError(t, err, "DecodeFromBytes returned unexpected error for input: %v", tt.input)
-				assert.Equal(t, tt.expected, &tlv, "Decoded value mismatch")
-			}
-		})
-	}
+	runTLVDecodeTests(t, cases, func() TLVInterface { return &PathSetupType{} })
 }
 
 // TestPathSetupType_Serialize tests the Serialize method for PathSetupType.
 func TestPathSetupType_Serialize(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    *PathSetupType
+	cases := map[string]struct {
+		input    TLVInterface
 		expected []byte
 	}{
-		{
-			name:     "Serialize: PathSetupType SRTE",
-			input:    NewPathSetupType(PathSetupTypeSRTE),
-			expected: []byte{byte(TLVPathSetupType >> 8), byte(TLVPathSetupType & 0xFF), 0x00, 0x04, 0x00, 0x00, 0x00, byte(PathSetupTypeSRTE)},
-		},
-		{
-			name:     "Serialize: PathSetupType RSVP-TE",
-			input:    NewPathSetupType(PathSetupTypeRSVPTE),
-			expected: []byte{byte(TLVPathSetupType >> 8), byte(TLVPathSetupType & 0xFF), 0x00, 0x04, 0x00, 0x00, 0x00, byte(PathSetupTypeRSVPTE)},
-		},
-		{
-			name:     "Serialize: PathSetupType SRv6-TE",
-			input:    NewPathSetupType(PathSetupTypeSRv6TE),
-			expected: []byte{byte(TLVPathSetupType >> 8), byte(TLVPathSetupType & 0xFF), 0x00, 0x04, 0x00, 0x00, 0x00, byte(PathSetupTypeSRv6TE)},
-		},
+		"SRTE":   {testPathSetupTypeSRTE, testPathSetupTypeSRTEBytes},
+		"RSVPTE": {testPathSetupTypeRSVPTE, testPathSetupTypeRSVPTEBytes},
+		"SRv6TE": {testPathSetupTypeSRv6TE, testPathSetupTypeSRv6TEBytes},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			actual := tt.input.Serialize()
-			assert.Equal(t, tt.expected, actual, "Serialized output mismatch in test case: %s", tt.name)
-		})
-	}
+	runTLVSerializeTests(t, cases)
 }
 
 // TestPathSetupType_MarshalLogObject tests the MarshalLogObject method for PathSetupType.
@@ -1053,162 +724,93 @@ func TestPathSetupType_MarshalLogObject(t *testing.T) {
 	enc := zapcore.NewMapObjectEncoder()
 
 	err := tlv.MarshalLogObject(enc)
-
-	assert.NoError(t, err, "MarshalLogObject returned unexpected error")
-	assert.Empty(t, enc.Fields, "Expected no fields to be marshaled for PathSetupType")
+	assert.NoError(t, err, "unexpected error during MarshalLogObject")
 }
 
 // TestPathSetupType_Len tests the Len method for PathSetupType.
 func TestPathSetupType_Len(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    *PathSetupType
+	cases := map[string]struct {
+		input    TLVInterface
 		expected uint16
 	}{
-		{
-			name:     "Length should be header + value length",
-			input:    NewPathSetupType(PathSetupTypeRSVPTE),
-			expected: TLVHeaderLength + TLVPathSetupTypeValueLength,
-		},
+		"Valid PathSetupType Length": {testPathSetupTypeRSVPTE, TLVHeaderLength + TLVPathSetupTypeValueLength},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, tt.input.Len(), "Length mismatch")
-		})
-	}
+	runTLVLenTests(t, cases)
 }
+
+// Test data for ExtendedAssociationID tests
+var (
+	testIPv4ExtendedAssociationID = NewExtendedAssociationID(1, netip.MustParseAddr("127.0.0.1"))
+	testIPv6ExtendedAssociationID = NewExtendedAssociationID(1, netip.MustParseAddr("2001:db8::1"))
+
+	testIPv4ExtendedAssociationIDBytes = []byte{
+		byte(TLVExtendedAssociationID >> 8), byte(TLVExtendedAssociationID & 0xff), 0x00, 0x08,
+		0x00, 0x00, 0x00, 0x01, 0x7f, 0x00, 0x00, 0x01,
+	}
+	testIPv6ExtendedAssociationIDBytes = []byte{
+		byte(TLVExtendedAssociationID >> 8), byte(TLVExtendedAssociationID & 0xff), 0x00, 0x14,
+		0x00, 0x00, 0x00, 0x01,
+		0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+	}
+	testExtendedAssociationIDTooShort = []byte{
+		byte(TLVExtendedAssociationID >> 8), byte(TLVExtendedAssociationID & 0xff), 0x00,
+	}
+	testExtendedAssociationIDInvalidLen = []byte{
+		byte(TLVExtendedAssociationID >> 8), byte(TLVExtendedAssociationID & 0xff), 0x00, 0x10,
+		0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+	}
+	testExtendedAssociationIDUnsupportedLen = []byte{
+		byte(TLVExtendedAssociationID >> 8), byte(TLVExtendedAssociationID & 0xff), 0x00, 0x0f,
+		0x00, 0x00, 0x00, 0x01,
+		0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x01,
+	}
+)
 
 // TestExtendedAssociationID_DecodeFromBytes tests the DecodeFromBytes method for ExtendedAssociationID.
 func TestExtendedAssociationID_DecodeFromBytes(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    []byte
-		expected *ExtendedAssociationID
-		err      bool
-	}{
-		{
-			name:     "DecodeFromBytes: Valid IPv4 ExtendedAssociationID with Color 1",
-			input:    NewExtendedAssociationID(uint32(1), netip.MustParseAddr("127.0.0.1")).Serialize(),
-			expected: &ExtendedAssociationID{Color: 1, Endpoint: netip.MustParseAddr("127.0.0.1")},
-			err:      false,
-		},
-		{
-			name:     "DecodeFromBytes: Valid IPv6 ExtendedAssociationID with Color 1",
-			input:    NewExtendedAssociationID(uint32(1), netip.MustParseAddr("2001:db8::1")).Serialize(),
-			expected: &ExtendedAssociationID{Color: 1, Endpoint: netip.MustParseAddr("2001:db8::1")},
-			err:      false,
-		},
-		{
-			name:     "DecodeFromBytes: Input too short (less than TLVHeaderLength)",
-			input:    []byte{byte(TLVExtendedAssociationID >> 8), byte(TLVExtendedAssociationID & 0xFF), 0x00},
-			expected: &ExtendedAssociationID{},
-			err:      true, // Expecting an error because the input is shorter than the minimum TLV header length
-		},
-		{
-			name: "DecodeFromBytes: Invalid length",
-			input: []byte{
-				byte(TLVExtendedAssociationID >> 8), byte(TLVExtendedAssociationID & 0xFF),
-				0x00, 0x10, // IPv6 address length = 16 bytes
-				0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, // Too long address data (should be 16 bytes)
-			},
-			expected: &ExtendedAssociationID{},
-			err:      true,
-		},
-		{
-			name: "DecodeFromBytes: Unsupported value length (not IPv4 or IPv6)",
-			input: []byte{
-				byte(TLVExtendedAssociationID >> 8), byte(TLVExtendedAssociationID & 0xFF),
-				0x00, 0x0f, // Invalid address length = 15 bytes
-				0x00, 0x00, 0x00, 0x01, // Color
-				0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, // 11 bytes dummy address data (15 - 4 = 11)
-			},
-			expected: &ExtendedAssociationID{},
-			err:      true,
-		},
+	cases := map[string]TLVTestCase{
+		"ValidIPv4":         {testIPv4ExtendedAssociationIDBytes, testIPv4ExtendedAssociationID, false},
+		"ValidIPv6":         {testIPv6ExtendedAssociationIDBytes, testIPv6ExtendedAssociationID, false},
+		"TooShort":          {testExtendedAssociationIDTooShort, nil, true},
+		"InvalidLength":     {testExtendedAssociationIDInvalidLen, nil, true},
+		"UnsupportedLength": {testExtendedAssociationIDUnsupportedLen, nil, true},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tlv := &ExtendedAssociationID{}
-			err := tlv.DecodeFromBytes(tt.input)
-			if tt.err {
-				assert.Error(t, err, "DecodeFromBytes failed for test case: %s", tt.name)
-			} else {
-				assert.NoError(t, err, "DecodeFromBytes returned unexpected error for test case: %s", tt.name)
-				assert.Equal(t, tt.expected, tlv, "Decoded value mismatch in test case: %s", tt.name)
-			}
-		})
-	}
+	runTLVDecodeTests(t, cases, func() TLVInterface { return &ExtendedAssociationID{} })
 }
 
 // TestExtendedAssociationID_Serialize tests the Serialize method for ExtendedAssociationID.
 func TestExtendedAssociationID_Serialize(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    *ExtendedAssociationID
+	cases := map[string]struct {
+		input    TLVInterface
 		expected []byte
 	}{
-		{
-			name:     "Serialize: IPv4 ExtendedAssociationID",
-			input:    &ExtendedAssociationID{Color: 1, Endpoint: netip.MustParseAddr("127.0.0.1")},
-			expected: []byte{byte(TLVExtendedAssociationID >> 8), byte(TLVExtendedAssociationID & 0xFF), 0x00, 0x08, 0x00, 0x00, 0x00, 0x01, 0x7F, 0x00, 0x00, 0x01},
-		},
-		{
-			name:     "Serialize: IPv6 ExtendedAssociationID",
-			input:    &ExtendedAssociationID{Color: 1, Endpoint: netip.MustParseAddr("2001:db8::1")},
-			expected: []byte{byte(TLVExtendedAssociationID >> 8), byte(TLVExtendedAssociationID & 0xFF), 0x00, 0x14, 0x00, 0x00, 0x00, 0x01, 0x20, 0x01, 0x0D, 0xB8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01},
-		},
+		"SerializeIPv4": {testIPv4ExtendedAssociationID, testIPv4ExtendedAssociationIDBytes},
+		"SerializeIPv6": {testIPv6ExtendedAssociationID, testIPv6ExtendedAssociationIDBytes},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			actual := tt.input.Serialize()
-			assert.Equal(t, tt.expected, actual, "Serialized output mismatch in test case: %s", tt.name)
-		})
-	}
+	runTLVSerializeTests(t, cases)
 }
 
 // TestExtendedAssociationID_MarshalLogObject tests the MarshalLogObject method for ExtendedAssociationID.
 func TestExtendedAssociationID_MarshalLogObject(t *testing.T) {
-	tlv := &ExtendedAssociationID{Color: 1, Endpoint: netip.MustParseAddr("127.0.0.1")}
+	tlv := &ExtendedAssociationID{}
 	enc := zapcore.NewMapObjectEncoder()
 
 	err := tlv.MarshalLogObject(enc)
-
-	assert.NoError(t, err, "MarshalLogObject returned unexpected error")
+	assert.NoError(t, err, "unexpected error during MarshalLogObject")
 }
 
 // TestExtendedAssociationID_Len tests the Len method for ExtendedAssociationID.
 func TestExtendedAssociationID_Len(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    *ExtendedAssociationID
+	cases := map[string]struct {
+		input    TLVInterface
 		expected uint16
 	}{
-		{
-			name:     "Len: IPv4 ExtendedAssociationID",
-			input:    &ExtendedAssociationID{Color: 1, Endpoint: netip.MustParseAddr("127.0.0.1")},
-			expected: TLVHeaderLength + TLVExtendedAssociationIDIPv4ValueLength,
-		},
-		{
-			name:     "Len: IPv6 ExtendedAssociationID",
-			input:    &ExtendedAssociationID{Color: 1, Endpoint: netip.MustParseAddr("2001:db8::1")},
-			expected: TLVHeaderLength + TLVExtendedAssociationIDIPv6ValueLength,
-		},
-		{
-			name: "Len: Unsupported value length (not IPv4 or IPv6)",
-			input: &ExtendedAssociationID{
-				Color:    1,
-				Endpoint: netip.Addr{}, // Invalid address
-			},
-			expected: 0,
-		},
+		"IPv4Length":        {testIPv4ExtendedAssociationID, TLVHeaderLength + TLVExtendedAssociationIDIPv4ValueLength},
+		"IPv6Length":        {testIPv6ExtendedAssociationID, TLVHeaderLength + TLVExtendedAssociationIDIPv6ValueLength},
+		"UnsupportedLength": {&ExtendedAssociationID{Color: 1}, 0},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, tt.input.Len(), "Length mismatch")
-		})
-	}
+	runTLVLenTests(t, cases)
 }
