@@ -235,6 +235,8 @@ var tlvMap = map[TLVType]func() TLVInterface{
 	TLVExtendedAssociationID:   func() TLVInterface { return &ExtendedAssociationID{} },
 	TLVPathSetupTypeCapability: func() TLVInterface { return &PathSetupTypeCapability{} },
 	TLVAssocTypeList:           func() TLVInterface { return &AssocTypeList{} },
+	TLVSRPolicyCPathID:         func() TLVInterface { return &SRPolicyCandidatePathIdentifier{} },
+	TLVSRPolicyCPathPreference: func() TLVInterface { return &SRPolicyCandidatePathPreference{} },
 	TLVColor:                   func() TLVInterface { return &Color{} },
 }
 
@@ -257,12 +259,13 @@ type StatefulPCECapability struct {
 }
 
 const (
-	LSPUpdateCapabilityBit        uint32 = 0x01
-	IncludeDBVersionCapabilityBit uint32 = 0x02
-	LSPInstantiationCapabilityBit uint32 = 0x04
-	TriggeredResyncCapabilityBit  uint32 = 0x08
-	DeltaLSPSyncCapabilityBit     uint32 = 0x10
-	TriggeredInitialSyncBit       uint32 = 0x20
+	LSPUpdateCapabilityBit        uint32 = 0x00000001
+	IncludeDBVersionCapabilityBit uint32 = 0x00000002
+	LSPInstantiationCapabilityBit uint32 = 0x00000004
+	TriggeredResyncCapabilityBit  uint32 = 0x00000008
+	DeltaLSPSyncCapabilityBit     uint32 = 0x00000010
+	TriggeredInitialSyncBit       uint32 = 0x00000020
+	ColorCapabilityBit            uint32 = 0x00000800
 )
 
 const (
@@ -274,7 +277,7 @@ func (tlv *StatefulPCECapability) DecodeFromBytes(data []byte) error {
 		return fmt.Errorf("data is too short: expected at least %d bytes, but got %d bytes for StatefulPCECapability", tlv.Len(), len(data))
 	}
 
-	flags := uint32(data[TLVHeaderLength+StatefulPCECapabilityFlagsIndex])
+	flags := binary.BigEndian.Uint32(data[TLVHeaderLength:])
 	tlv.ExtractCapabilities(flags)
 
 	return nil
@@ -295,6 +298,7 @@ func (tlv *StatefulPCECapability) MarshalLogObject(enc zapcore.ObjectEncoder) er
 	enc.AddBool("triggeredResync", tlv.TriggeredResync)
 	enc.AddBool("deltaLSPSyncCapability", tlv.DeltaLSPSyncCapability)
 	enc.AddBool("triggeredInitialSync", tlv.TriggeredInitialSync)
+	enc.AddBool("colorCapability", tlv.ColorCapability)
 	return nil
 }
 
@@ -313,6 +317,7 @@ func (tlv *StatefulPCECapability) ExtractCapabilities(flags uint32) {
 	tlv.TriggeredResync = flags&TriggeredResyncCapabilityBit != 0
 	tlv.DeltaLSPSyncCapability = flags&DeltaLSPSyncCapabilityBit != 0
 	tlv.TriggeredInitialSync = flags&TriggeredInitialSyncBit != 0
+	tlv.ColorCapability = flags&ColorCapabilityBit != 0
 }
 
 func (tlv *StatefulPCECapability) SetFlags() uint32 {
@@ -323,6 +328,7 @@ func (tlv *StatefulPCECapability) SetFlags() uint32 {
 	flags = SetBit(flags, TriggeredResyncCapabilityBit, tlv.TriggeredResync)
 	flags = SetBit(flags, DeltaLSPSyncCapabilityBit, tlv.DeltaLSPSyncCapability)
 	flags = SetBit(flags, TriggeredInitialSyncBit, tlv.TriggeredInitialSync)
+	flags = SetBit(flags, ColorCapabilityBit, tlv.ColorCapability)
 	return flags
 }
 
@@ -403,13 +409,13 @@ func (tlv *SymbolicPathName) Type() TLVType {
 }
 
 func (tlv *SymbolicPathName) Len() uint16 {
-	length := uint16(len(tlv.Name))
+	nameLen := uint16(len(tlv.Name))
 	padding := uint16(0)
-	if mod := length % 4; mod != 0 {
+	if mod := nameLen % 4; mod != 0 {
 		padding = 4 - mod
 	}
 
-	return TLVHeaderLength + length + padding
+	return TLVHeaderLength + nameLen + padding
 }
 
 func (tlv *SymbolicPathName) MarshalLogObject(enc zapcore.ObjectEncoder) error {
@@ -430,10 +436,10 @@ type IPv4LSPIdentifiers struct {
 }
 
 const (
-	IPv4LSPIdentifiersTunnelSenderAddressIndex = 4
-	IPv4LSPIdentifiersLSPIDIndex               = 6
-	IPv4LSPIdentifiersTunnelIDIndex            = 8
-	IPv4LSPIdentifiersExtendedTunnelIDIndex    = 12
+	IPv4LSPIdentifiersLSPIDOffset                 = 4
+	IPv4LSPIdentifiersTunnelIDOffset              = 6
+	IPv4LSPIdentifiersExtendedTunnelIDOffset      = 8
+	IPv4LSPIdentifiersTunnelEndpointAddressOffset = 12
 )
 
 func (tlv *IPv4LSPIdentifiers) DecodeFromBytes(data []byte) error {
@@ -442,18 +448,14 @@ func (tlv *IPv4LSPIdentifiers) DecodeFromBytes(data []byte) error {
 		return fmt.Errorf("data length mismatch: expected %d bytes, but got %d bytes for IPv4LSPIdentifiers", expectedLength, len(data))
 	}
 
-	var ok bool
-	if tlv.IPv4TunnelSenderAddress, ok = netip.AddrFromSlice(data[TLVHeaderLength : TLVHeaderLength+IPv4LSPIdentifiersTunnelSenderAddressIndex]); !ok {
-		return fmt.Errorf("failed to parse IPv4TunnelSenderAddress")
-	}
+	// Remove TLV header
+	data = data[TLVHeaderLength:]
 
-	tlv.LSPID = binary.BigEndian.Uint16(data[TLVHeaderLength+IPv4LSPIdentifiersTunnelSenderAddressIndex : TLVHeaderLength+IPv4LSPIdentifiersLSPIDIndex])
-	tlv.TunnelID = binary.BigEndian.Uint16(data[TLVHeaderLength+IPv4LSPIdentifiersLSPIDIndex : TLVHeaderLength+IPv4LSPIdentifiersTunnelIDIndex])
-	tlv.ExtendedTunnelID = binary.BigEndian.Uint32(data[TLVHeaderLength+IPv4LSPIdentifiersTunnelIDIndex : TLVHeaderLength+IPv4LSPIdentifiersExtendedTunnelIDIndex])
-
-	if tlv.IPv4TunnelEndpointAddress, ok = netip.AddrFromSlice(data[TLVHeaderLength+IPv4LSPIdentifiersExtendedTunnelIDIndex : TLVHeaderLength+TLVIPv4LSPIdentifiersValueLength]); !ok {
-		return fmt.Errorf("failed to parse IPv4TunnelEndpointAddress")
-	}
+	tlv.IPv4TunnelSenderAddress, _ = netip.AddrFromSlice(data[:IPv4LSPIdentifiersLSPIDOffset])
+	tlv.LSPID = binary.BigEndian.Uint16(data[IPv4LSPIdentifiersLSPIDOffset:IPv4LSPIdentifiersTunnelIDOffset])
+	tlv.TunnelID = binary.BigEndian.Uint16(data[IPv4LSPIdentifiersTunnelIDOffset:IPv4LSPIdentifiersExtendedTunnelIDOffset])
+	tlv.ExtendedTunnelID = binary.BigEndian.Uint32(data[IPv4LSPIdentifiersExtendedTunnelIDOffset:IPv4LSPIdentifiersTunnelEndpointAddressOffset])
+	tlv.IPv4TunnelEndpointAddress, _ = netip.AddrFromSlice(data[IPv4LSPIdentifiersTunnelEndpointAddressOffset:TLVIPv4LSPIdentifiersValueLength])
 
 	return nil
 }
@@ -461,11 +463,11 @@ func (tlv *IPv4LSPIdentifiers) DecodeFromBytes(data []byte) error {
 func (tlv *IPv4LSPIdentifiers) Serialize() []byte {
 	value := make([]byte, TLVIPv4LSPIdentifiersValueLength)
 
-	copy(value[0:4], tlv.IPv4TunnelSenderAddress.AsSlice())
-	binary.BigEndian.PutUint16(value[4:6], tlv.LSPID)
-	binary.BigEndian.PutUint16(value[6:8], tlv.TunnelID)
-	binary.BigEndian.PutUint32(value[8:12], tlv.ExtendedTunnelID)
-	copy(value[12:16], tlv.IPv4TunnelEndpointAddress.AsSlice())
+	copy(value[:IPv4LSPIdentifiersLSPIDOffset], tlv.IPv4TunnelSenderAddress.AsSlice())
+	binary.BigEndian.PutUint16(value[IPv4LSPIdentifiersLSPIDOffset:IPv4LSPIdentifiersTunnelIDOffset], tlv.LSPID)
+	binary.BigEndian.PutUint16(value[IPv4LSPIdentifiersTunnelIDOffset:IPv4LSPIdentifiersExtendedTunnelIDOffset], tlv.TunnelID)
+	binary.BigEndian.PutUint32(value[IPv4LSPIdentifiersExtendedTunnelIDOffset:IPv4LSPIdentifiersTunnelEndpointAddressOffset], tlv.ExtendedTunnelID)
+	copy(value[IPv4LSPIdentifiersTunnelEndpointAddressOffset:], tlv.IPv4TunnelEndpointAddress.AsSlice())
 
 	return AppendByteSlices(
 		Uint16ToByteSlice(tlv.Type()),
@@ -504,40 +506,45 @@ type IPv6LSPIdentifiers struct {
 	ExtendedTunnelID          [16]byte
 }
 
+const (
+	IPv6LSPIdentifiersLSPIDOffset                 = 16
+	IPv6LSPIdentifiersTunnelIDOffset              = 18
+	IPv6LSPIdentifiersExtendedTunnelIDOffset      = 20
+	IPv6LSPIdentifiersTunnelEndpointAddressOffset = 36
+)
+
 func (tlv *IPv6LSPIdentifiers) DecodeFromBytes(data []byte) error {
 	expectedLength := TLVHeaderLength + int(TLVIPv6LSPIdentifiersValueLength)
 	if len(data) != expectedLength {
 		return fmt.Errorf("data length mismatch: expected %d bytes, but got %d bytes for IPv6LSPIdentifiers", expectedLength, len(data))
 	}
 
-	var ok bool
-	if tlv.IPv6TunnelSenderAddress, ok = netip.AddrFromSlice(data[4:20]); !ok {
-		return fmt.Errorf("failed to parse IPv6TunnelSenderAddress")
-	}
+	// Remove TLV header
+	data = data[TLVHeaderLength:]
 
-	tlv.LSPID = binary.BigEndian.Uint16(data[20:22])
-	tlv.TunnelID = binary.BigEndian.Uint16(data[22:24])
-	copy(tlv.ExtendedTunnelID[:], data[24:40])
-
-	if tlv.IPv6TunnelEndpointAddress, ok = netip.AddrFromSlice(data[40:56]); !ok {
-		return fmt.Errorf("failed to parse IPv6TunnelEndpointAddress")
-	}
+	tlv.IPv6TunnelSenderAddress, _ = netip.AddrFromSlice(data[:IPv6LSPIdentifiersLSPIDOffset])
+	tlv.LSPID = binary.BigEndian.Uint16(data[IPv6LSPIdentifiersLSPIDOffset:IPv6LSPIdentifiersTunnelIDOffset])
+	tlv.TunnelID = binary.BigEndian.Uint16(data[IPv6LSPIdentifiersTunnelIDOffset:IPv6LSPIdentifiersExtendedTunnelIDOffset])
+	copy(tlv.ExtendedTunnelID[:], data[IPv6LSPIdentifiersExtendedTunnelIDOffset:IPv6LSPIdentifiersTunnelEndpointAddressOffset])
+	tlv.IPv6TunnelEndpointAddress, _ = netip.AddrFromSlice(data[IPv6LSPIdentifiersTunnelEndpointAddressOffset:TLVIPv6LSPIdentifiersValueLength])
 
 	return nil
 }
 
 func (tlv *IPv6LSPIdentifiers) Serialize() []byte {
-	buf := make([]byte, tlv.Len())
+	value := make([]byte, TLVIPv6LSPIdentifiersValueLength)
 
-	binary.BigEndian.PutUint16(buf[0:2], uint16(tlv.Type()))
-	binary.BigEndian.PutUint16(buf[2:4], TLVIPv6LSPIdentifiersValueLength)
-	copy(buf[4:20], tlv.IPv6TunnelSenderAddress.AsSlice())
-	binary.BigEndian.PutUint16(buf[20:22], tlv.LSPID)
-	binary.BigEndian.PutUint16(buf[22:24], tlv.TunnelID)
-	copy(buf[24:40], tlv.ExtendedTunnelID[:])
-	copy(buf[40:56], tlv.IPv6TunnelEndpointAddress.AsSlice())
+	copy(value[:IPv6LSPIdentifiersLSPIDOffset], tlv.IPv6TunnelSenderAddress.AsSlice())
+	binary.BigEndian.PutUint16(value[IPv6LSPIdentifiersLSPIDOffset:IPv6LSPIdentifiersTunnelIDOffset], tlv.LSPID)
+	binary.BigEndian.PutUint16(value[IPv6LSPIdentifiersTunnelIDOffset:IPv6LSPIdentifiersExtendedTunnelIDOffset], tlv.TunnelID)
+	copy(value[IPv6LSPIdentifiersExtendedTunnelIDOffset:IPv6LSPIdentifiersTunnelEndpointAddressOffset], tlv.ExtendedTunnelID[:])
+	copy(value[IPv6LSPIdentifiersTunnelEndpointAddressOffset:], tlv.IPv6TunnelEndpointAddress.AsSlice())
 
-	return buf
+	return AppendByteSlices(
+		Uint16ToByteSlice(tlv.Type()),
+		Uint16ToByteSlice(TLVIPv6LSPIdentifiersValueLength),
+		value,
+	)
 }
 
 func (tlv *IPv6LSPIdentifiers) MarshalLogObject(enc zapcore.ObjectEncoder) error {
@@ -577,21 +584,11 @@ func (tlv *LSPDBVersion) DecodeFromBytes(data []byte) error {
 }
 
 func (tlv *LSPDBVersion) Serialize() []byte {
-	buf := []byte{}
-
-	typ := make([]byte, 2)
-	binary.BigEndian.PutUint16(typ, uint16(tlv.Type()))
-	buf = append(buf, typ...)
-
-	length := make([]byte, 2)
-	binary.BigEndian.PutUint16(length, TLVLSPDBVersionValueLength)
-	buf = append(buf, length...)
-
-	val := make([]byte, TLVLSPDBVersionValueLength)
-	binary.BigEndian.PutUint64(val, tlv.VersionNumber)
-
-	buf = append(buf, val...)
-	return buf
+	return AppendByteSlices(
+		Uint16ToByteSlice(tlv.Type()),
+		Uint16ToByteSlice(TLVLSPDBVersionValueLength),
+		Uint64ToByteSlice(tlv.VersionNumber),
+	)
 }
 
 func (tlv *LSPDBVersion) MarshalLogObject(enc zapcore.ObjectEncoder) error {
@@ -628,8 +625,8 @@ const (
 )
 
 const (
-	SRPCECapabilityFlagsIndex = 2
-	SRPCECapabilityMSDIndex   = 3
+	SRPCECapabilityFlagsOffset = 0
+	SRPCECapabilityMSDOffset   = 1
 )
 
 func (tlv *SRPCECapability) DecodeFromBytes(data []byte) error {
@@ -638,39 +635,29 @@ func (tlv *SRPCECapability) DecodeFromBytes(data []byte) error {
 		return fmt.Errorf("data length mismatch: expected %d bytes, but got %d bytes for SRPCECapability", expectedLength, len(data))
 	}
 
-	// Extract TLV value field (after 4-byte TLV header)
-	val := data[TLVHeaderLength:]
+	// Remove TLV header
+	data = data[TLVHeaderLength:]
 
-	if len(val) != int(TLVSRPCECapabilityValueLength) {
-		return fmt.Errorf("invalid value length for SRPCECapability: expected %d bytes, but got %d bytes", TLVSRPCECapabilityValueLength, len(val))
-	}
-
-	flags := val[SRPCECapabilityFlagsIndex]
+	flags := data[SRPCECapabilityFlagsOffset]
 	tlv.HasUnlimitedMaxSIDDepth = IsBitSet(flags, UnlimitedMaximumSIDDepthFlag)
 	tlv.IsNAISupported = IsBitSet(flags, NAISupportedFlag)
-	tlv.MaximumSidDepth = val[SRPCECapabilityMSDIndex]
+	tlv.MaximumSidDepth = data[SRPCECapabilityMSDOffset]
 
 	return nil
 }
 
 func (tlv *SRPCECapability) Serialize() []byte {
-	buf := make([]byte, 0, TLVHeaderLength+TLVSRPCECapabilityValueLength)
+	value := make([]byte, TLVSRPCECapabilityValueLength)
 
-	typ := make([]byte, 2)
-	binary.BigEndian.PutUint16(typ, uint16(tlv.Type()))
-	buf = append(buf, typ...)
+	value[SRPCECapabilityFlagsOffset] = SetBit(value[SRPCECapabilityFlagsOffset], UnlimitedMaximumSIDDepthFlag, tlv.HasUnlimitedMaxSIDDepth)
+	value[SRPCECapabilityFlagsOffset] = SetBit(value[SRPCECapabilityFlagsOffset], NAISupportedFlag, tlv.IsNAISupported)
+	value[SRPCECapabilityMSDOffset] = tlv.MaximumSidDepth
 
-	length := make([]byte, 2)
-	binary.BigEndian.PutUint16(length, TLVSRPCECapabilityValueLength)
-	buf = append(buf, length...)
-
-	val := make([]byte, TLVSRPCECapabilityValueLength)
-	val[SRPCECapabilityFlagsIndex] = SetBit(val[SRPCECapabilityFlagsIndex], UnlimitedMaximumSIDDepthFlag, tlv.HasUnlimitedMaxSIDDepth)
-	val[SRPCECapabilityFlagsIndex] = SetBit(val[SRPCECapabilityFlagsIndex], NAISupportedFlag, tlv.IsNAISupported)
-	val[SRPCECapabilityMSDIndex] = tlv.MaximumSidDepth
-
-	buf = append(buf, val...)
-	return buf
+	return AppendByteSlices(
+		Uint16ToByteSlice(tlv.Type()),
+		Uint16ToByteSlice(TLVSRPCECapabilityValueLength),
+		value,
+	)
 }
 
 func (tlv *SRPCECapability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
@@ -760,9 +747,8 @@ const (
 )
 
 func (tlv *PathSetupType) DecodeFromBytes(data []byte) error {
-	expectedLength := TLVHeaderLength + int(TLVPathSetupTypeValueLength)
-	if len(data) != expectedLength {
-		return fmt.Errorf("data length mismatch: expected %d bytes, but got %d bytes for PathSetupType", expectedLength, len(data))
+	if len(data) != int(tlv.Len()) {
+		return fmt.Errorf("data length mismatch: expected %d bytes, but got %d bytes for PathSetupType", tlv.Len(), len(data))
 	}
 
 	tlv.PathSetupType = Pst(data[TLVHeaderLength+PathSetupTypePathSetupTypeIndex])
@@ -770,21 +756,14 @@ func (tlv *PathSetupType) DecodeFromBytes(data []byte) error {
 }
 
 func (tlv *PathSetupType) Serialize() []byte {
-	buf := []byte{}
+	value := make([]byte, TLVPathSetupTypeValueLength)
+	value[PathSetupTypePathSetupTypeIndex] = byte(tlv.PathSetupType)
 
-	typ := make([]byte, 2)
-	binary.BigEndian.PutUint16(typ, uint16(tlv.Type()))
-	buf = append(buf, typ...)
-
-	length := make([]byte, 2)
-	binary.BigEndian.PutUint16(length, TLVPathSetupTypeValueLength)
-	buf = append(buf, length...)
-
-	val := make([]byte, TLVPathSetupTypeValueLength)
-	val[PathSetupTypePathSetupTypeIndex] = byte(tlv.PathSetupType)
-
-	buf = append(buf, val...)
-	return buf
+	return AppendByteSlices(
+		Uint16ToByteSlice(tlv.Type()),
+		Uint16ToByteSlice(TLVPathSetupTypeValueLength),
+		value,
+	)
 }
 
 func (tlv *PathSetupType) MarshalLogObject(enc zapcore.ObjectEncoder) error {
@@ -811,16 +790,28 @@ type ExtendedAssociationID struct {
 }
 
 func (tlv *ExtendedAssociationID) DecodeFromBytes(data []byte) error {
-	length := binary.BigEndian.Uint16(data[2:4])
+	if len(data) < TLVHeaderLength {
+		return fmt.Errorf("extended association ID: too short (got %d bytes, want at least %d)", len(data), TLVHeaderLength)
+	}
+
+	length := int(binary.BigEndian.Uint16(data[2:4]))
+	if len(data) != TLVHeaderLength+length {
+		return fmt.Errorf("extended association ID: invalid length (expected %d bytes, got %d)", TLVHeaderLength+length, len(data))
+	}
 
 	tlv.Color = binary.BigEndian.Uint32(data[4:8])
 
+	var addrBytes []byte
 	switch length {
-	case TLVExtendedAssociationIDIPv4ValueLength:
-		tlv.Endpoint, _ = netip.AddrFromSlice(data[8:12])
-	case TLVExtendedAssociationIDIPv6ValueLength:
-		tlv.Endpoint, _ = netip.AddrFromSlice(data[8:24])
+	case int(TLVExtendedAssociationIDIPv4ValueLength):
+		addrBytes = data[8:12]
+	case int(TLVExtendedAssociationIDIPv6ValueLength):
+		addrBytes = data[8:24]
+	default:
+		return fmt.Errorf("extended association ID: unsupported value length %d", length)
 	}
+
+	tlv.Endpoint, _ = netip.AddrFromSlice(addrBytes)
 
 	return nil
 }
@@ -864,6 +855,13 @@ func (tlv *ExtendedAssociationID) Len() uint16 {
 	}
 	return 0
 
+}
+
+func NewExtendedAssociationID(color uint32, endpoint netip.Addr) *ExtendedAssociationID {
+	return &ExtendedAssociationID{
+		Color:    color,
+		Endpoint: endpoint,
+	}
 }
 
 type PathSetupTypeCapability struct {
