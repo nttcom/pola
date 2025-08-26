@@ -2,6 +2,8 @@ module github.com/nttcom/pola
 
 go 1.24.5
 
+replace github.com/osrg/gobgp/v3 => ../pola-verification/gobgp
+
 require (
 	github.com/osrg/gobgp/v3 v3.37.0
 	github.com/spf13/cobra v1.9.1
