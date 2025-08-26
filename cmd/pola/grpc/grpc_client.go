@@ -209,11 +209,11 @@ func createLsLink(localNode, remoteNode *table.LsNode, link *pb.LsLink) (*table.
 		AdjSid:     link.GetAdjSid(),
 	}
 	var err error
-	lsLink.LocalIP, err = netip.ParseAddr(link.GetLocalIp())
+	err = lsLink.LocalIP.UnmarshalText([]byte(link.GetLocalIp()))
 	if err != nil {
 		return nil, err
 	}
-	lsLink.RemoteIP, err = netip.ParseAddr(link.GetRemoteIp())
+	err = lsLink.RemoteIP.UnmarshalText([]byte(link.GetRemoteIp()))
 	if err != nil {
 		return nil, err
 	}
