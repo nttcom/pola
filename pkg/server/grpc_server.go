@@ -53,9 +53,9 @@ func (s *APIServer) Serve(address string, port string) error {
 
 func validateCreateSRPolicy(req *pb.CreateSRPolicyRequest, disablePathCompute bool) error {
 	if disablePathCompute {
-		return validate(req.GetSrPolicy(), req.GetAsn(), ValidationAdd)
+		return validate(req.GetSrPolicy(), req.GetAsn(), ValidationAddDisablePathCompute)
 	}
-	return validate(req.GetSrPolicy(), req.GetAsn(), ValidationAddDisablePathCompute)
+	return validate(req.GetSrPolicy(), req.GetAsn(), ValidationAdd)
 }
 
 func buildSegmentList(s *APIServer, input *pb.CreateSRPolicyRequest, disablePathCompute bool) ([]table.Segment, netip.Addr, netip.Addr, error) {
@@ -215,8 +215,12 @@ func validate(inputSRPolicy *pb.SRPolicy, asn uint32, validationKind ValidationK
 	if asn == 0 {
 		return errors.New("validate error, ASN is nil")
 	}
-	if !validator[validationKind](inputSRPolicy, asn) {
-		return errors.New("validate error, invalid input")
+	if validateFunc, ok := validator[validationKind]; ok {
+		if err := validateFunc(inputSRPolicy, asn); err != nil {
+			return fmt.Errorf("validate error: %w", err)
+		}
+	} else {
+		return fmt.Errorf("validate error: unknown validation kind %q", validationKind)
 	}
 
 	return nil
@@ -230,25 +234,56 @@ const (
 	ValidationDelete                ValidationKind = "Delete"
 )
 
-var validator = map[ValidationKind]func(policy *pb.SRPolicy, asn uint32) bool{
-	ValidationKind("Add"): func(policy *pb.SRPolicy, asn uint32) bool {
-		return asn != 0 &&
-			policy.PcepSessionAddr != nil &&
-			policy.Color != 0 &&
-			policy.SrcRouterId != "" &&
-			policy.DstRouterId != ""
+var validator = map[ValidationKind]func(policy *pb.SRPolicy, asn uint32) error{
+	ValidationAdd: func(policy *pb.SRPolicy, asn uint32) error {
+		if asn == 0 {
+			return errors.New("ASN must not be zero")
+		}
+		if policy.PcepSessionAddr == nil {
+			return errors.New("PCEP session address must not be nil")
+		}
+		if policy.Color == 0 {
+			return errors.New("Color must not be zero")
+		}
+		if policy.SrcRouterId == "" {
+			return errors.New("SrcRouterId must not be empty")
+		}
+		if policy.DstRouterId == "" {
+			return errors.New("DstRouterId must not be empty")
+		}
+		return nil
 	},
-	ValidationKind("AddDisablePathCompute"): func(policy *pb.SRPolicy, asn uint32) bool {
-		return policy.PcepSessionAddr != nil &&
-			len(policy.SrcAddr) > 0 &&
-			len(policy.DstAddr) > 0 &&
-			len(policy.SegmentList) > 0
+
+	ValidationAddDisablePathCompute: func(policy *pb.SRPolicy, asn uint32) error {
+		if policy.PcepSessionAddr == nil {
+			return errors.New("PCEP session address must not be nil")
+		}
+		if len(policy.SrcAddr) == 0 {
+			return errors.New("SrcAddr must not be empty")
+		}
+		if len(policy.DstAddr) == 0 {
+			return errors.New("DstAddr must not be empty")
+		}
+		if len(policy.SegmentList) == 0 {
+			return errors.New("SegmentList must not be empty")
+		}
+		return nil
 	},
-	ValidationKind("Delete"): func(policy *pb.SRPolicy, asn uint32) bool {
-		return policy.PcepSessionAddr != nil &&
-			policy.Color != 0 &&
-			len(policy.DstAddr) > 0 &&
-			policy.PolicyName != ""
+
+	ValidationDelete: func(policy *pb.SRPolicy, asn uint32) error {
+		if policy.PcepSessionAddr == nil {
+			return errors.New("PCEP session address must not be nil")
+		}
+		if policy.Color == 0 {
+			return errors.New("Color must not be zero")
+		}
+		if len(policy.DstAddr) == 0 {
+			return errors.New("DstAddr must not be empty")
+		}
+		if policy.PolicyName == "" {
+			return errors.New("PolicyName must not be empty")
+		}
+		return nil
 	},
 }
 
@@ -400,13 +435,22 @@ func (s *APIServer) GetTED(ctx context.Context, req *pb.GetTEDRequest) (*pb.GetT
 			}
 
 			for _, lsLink := range lsNode.Links {
+				localIp, err := lsLink.LocalIP.MarshalText()
+				if err != nil {
+					return nil, fmt.Errorf("failed to marshal local IP: %v", err)
+				}
+				remoteIp, err := lsLink.RemoteIP.MarshalText()
+				if err != nil {
+					return nil, fmt.Errorf("failed to marshal remote IP: %v", err)
+				}
+
 				link := &pb.LsLink{
 					LocalRouterId:  lsLink.LocalNode.RouterID,
 					LocalAsn:       lsLink.LocalNode.ASN,
-					LocalIp:        lsLink.LocalIP.String(),
+					LocalIp:        string(localIp),
 					RemoteRouterId: lsLink.RemoteNode.RouterID,
 					RemoteAsn:      lsLink.RemoteNode.ASN,
-					RemoteIp:       lsLink.RemoteIP.String(),
+					RemoteIp:       string(remoteIp),
 					Metrics:        make([]*pb.Metric, 0, len(lsLink.Metrics)),
 					AdjSid:         lsLink.AdjSid,
 				}
