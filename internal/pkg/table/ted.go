@@ -41,7 +41,19 @@ func (ted *LsTED) Print() {
 			}
 			fmt.Printf("  Links:\n")
 			for _, link := range node.Links {
-				fmt.Printf("    Local: %s Remote: %s\n", link.LocalIP.String(), link.RemoteIP.String())
+				var localIp string
+				var remoteIp string
+				if link.LocalIP.IsValid() {
+					localIp = link.LocalIP.String()
+				} else {
+					localIp = "None"
+				}
+				if link.RemoteIP.IsValid() {
+					remoteIp = link.RemoteIP.String()
+				} else {
+					remoteIp = "None"
+				}
+				fmt.Printf("    Local: %s Remote: %s\n", localIp, remoteIp)
 				fmt.Printf("      RemoteNode: %s\n", link.RemoteNode.RouterID)
 				fmt.Printf("      Metrics:\n")
 				for _, metric := range link.Metrics {
