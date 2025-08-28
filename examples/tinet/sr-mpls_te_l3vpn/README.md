@@ -72,7 +72,7 @@ srPolicy:
 Apply and check SR Policy
 
 ```bash
-# pola sr-policy add -f policy1.yaml --no-link-state
+# pola sr-policy add -f policy1.yaml --no-sid-validate
 success!
 
 # pola sr-policy list

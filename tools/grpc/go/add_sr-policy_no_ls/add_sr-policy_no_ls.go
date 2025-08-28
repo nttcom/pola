@@ -15,7 +15,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	pb "github.com/nttcom/pola/api/grpc"
+	pb "github.com/nttcom/pola/api/pola/v1"
 )
 
 func main() {
@@ -43,9 +43,9 @@ func main() {
 	srcAddr := netip.MustParseAddr("192.0.2.1")
 	dstAddr := netip.MustParseAddr("192.0.2.2")
 
-	r, err := c.CreateSRPolicyWithoutLinkState(ctx, &pb.CreateSRPolicyInput{
-		SRPolicy: &pb.SRPolicy{
-			PCEPSessionAddr: ssAddr.AsSlice(),
+	r, err := c.CreateSRPolicy(ctx, &pb.CreateSRPolicyRequest{
+		SrPolicy: &pb.SRPolicy{
+			PcepSessionAddr: ssAddr.AsSlice(),
 			SrcAddr:         srcAddr.AsSlice(),
 			DstAddr:         dstAddr.AsSlice(),
 			Color:           uint32(100),
@@ -56,9 +56,10 @@ func main() {
 				{Sid: "16004"},
 			},
 		},
+		SidValidate: false,
 	})
 	if err != nil {
-		log.Fatalf("c.CreateSRPolicyWithoutLinkState error: %v", err)
+		log.Fatalf("c.CreateSRPolicy error: %v", err)
 	}
 
 	log.Printf("Success: %#v", r)
