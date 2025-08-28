@@ -209,7 +209,7 @@ JSON formatted response
 }
 ```
 
-### pola sr-policy add -f _filepath_ --no-link-state
+### pola sr-policy add -f `filepath` --no-sid-validate
 
 Create a new SR Policy **without using TED**
 

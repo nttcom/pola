@@ -72,9 +72,9 @@ no SR Policies
 
 Apply and check SR Policy
 ```bash
-# pola sr-policy add -f pe01-policy1.yaml --no-link-state
+# pola sr-policy add -f pe01-policy1.yaml --no-sid-validate
 success!
-# pola sr-policy add -f pe02-policy1.yaml --no-link-state
+# pola sr-policy add -f pe02-policy1.yaml --no-sid-validate
 success!
 
 # pola sr-policy list
