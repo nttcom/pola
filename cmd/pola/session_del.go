@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"net/netip"
 
-	pb "github.com/nttcom/pola/api/grpc"
+	pb "github.com/nttcom/pola/api/pola/v1"
 	"github.com/nttcom/pola/cmd/pola/grpc"
 	"github.com/spf13/cobra"
 )
@@ -35,10 +35,10 @@ func newSessionDelCmd() *cobra.Command {
 }
 
 func delSession(session netip.Addr, jsonFlag bool) error {
-	ss := &pb.Session{
+	request := &pb.DeleteSessionRequest{
 		Addr: session.AsSlice(),
 	}
-	err := grpc.DeleteSession(client, ss)
+	err := grpc.DeleteSession(client, request)
 	if err != nil {
 		return err
 	}

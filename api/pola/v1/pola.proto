@@ -1,0 +1,161 @@
+// Copyright (c) 2022 NTT Communications Corporation
+//
+// This software is released under the MIT License.
+// see https://github.com/nttcom/pola/blob/main/LICENSE
+
+syntax = "proto3";
+
+package api.pola.v1;
+
+option go_package = "github.com/nttcom/pola/api/pola/v1";
+
+service PCEService {
+  rpc CreateSRPolicy (CreateSRPolicyRequest) returns (CreateSRPolicyResponse);
+  rpc DeleteSRPolicy (DeleteSRPolicyRequest) returns (DeleteSRPolicyResponse);
+  rpc GetSessionList (GetSessionListRequest) returns (GetSessionListResponse);
+  rpc GetSRPolicyList (GetSRPolicyListRequest) returns (GetSRPolicyListResponse);
+  rpc GetTED (GetTEDRequest) returns (GetTEDResponse);
+  rpc DeleteSession (DeleteSessionRequest) returns (DeleteSessionResponse);
+}
+
+message Segment {
+  string sid = 1;
+  string sid_structure = 2;
+  string local_addr = 3;
+  string remote_addr = 4;
+}
+
+enum SRPolicyType {
+  SR_POLICY_TYPE_UNSPECIFIED = 0;
+  SR_POLICY_TYPE_EXPLICIT = 1;
+  SR_POLICY_TYPE_DYNAMIC = 2;
+}
+
+message SRPolicy {
+  bytes pcep_session_addr = 1;
+  bytes src_addr = 2;
+  bytes dst_addr = 3;
+  string src_router_id = 4;
+  string dst_router_id = 5;
+  uint32 color = 6;
+  uint32 preference = 7;
+  string policy_name = 8;
+  SRPolicyType type = 9;
+  repeated Segment segment_list = 10;
+  MetricType metric = 11;
+}
+
+message CreateSRPolicyRequest {
+  SRPolicy sr_policy = 1;
+  uint32 asn = 2;
+  bool sid_validate = 3;
+}
+
+message CreateSRPolicyResponse {
+  bool is_success = 1;
+}
+
+message DeleteSRPolicyRequest {
+  SRPolicy sr_policy = 1;
+  uint32 asn = 2;
+}
+
+message DeleteSRPolicyResponse {
+  bool is_success = 1;
+}
+
+enum SessionState {
+  SESSION_STATE_UNSPECIFIED = 0;
+  SESSION_STATE_DOWN = 1;
+  SESSION_STATE_UP = 2;
+}
+
+message Session {
+  bytes addr = 1;
+  SessionState state = 2;
+  repeated string caps = 3;
+  bool is_synced = 4;
+}
+
+message SessionList {
+  repeated Session sessions = 1;
+}
+
+message SRPolicyList {
+  repeated SRPolicy sr_policies = 1;
+}
+
+message LsPrefix {
+  string prefix = 1;
+  uint32 sid_index = 2;
+}
+
+enum MetricType {
+  METRIC_TYPE_UNSPECIFIED = 0;
+  METRIC_TYPE_IGP = 1;
+  METRIC_TYPE_TE = 2;
+  METRIC_TYPE_DELAY = 3;
+  METRIC_TYPE_HOPCOUNT = 4;
+}
+
+message Metric {
+  MetricType type = 1;
+  uint32 value = 2;
+}
+
+message LsLink {
+  string local_router_id = 1;
+  uint32 local_asn = 2;
+  string local_ip = 3;
+  string remote_router_id = 4;
+  uint32 remote_asn = 5;
+  string remote_ip = 6;
+  repeated Metric metrics = 7;
+  uint32 adj_sid = 8;
+}
+
+message LsNode {
+  uint32 asn = 1;
+  string router_id = 2;
+  string isis_area_id = 3;
+  string hostname = 4;
+  uint32 srgb_begin = 5;
+  uint32 srgb_end = 6;
+  repeated LsLink ls_links = 7;
+  repeated LsPrefix ls_prefixes = 8;
+}
+
+message TED {
+  bool enable = 1;
+  repeated LsNode ls_nodes = 2;
+}
+
+message GetSessionListRequest {
+}
+
+message GetSessionListResponse {
+  repeated Session sessions = 1;
+}
+
+message GetSRPolicyListRequest {
+}
+
+message GetSRPolicyListResponse {
+  repeated SRPolicy sr_policies = 1;
+}
+
+message GetTEDRequest {
+}
+
+message GetTEDResponse {
+  bool enable = 1;
+  repeated LsNode ls_nodes = 2;
+}
+
+message DeleteSessionRequest {
+  bytes addr = 1;
+}
+
+message DeleteSessionResponse {
+  bool is_success = 1;
+}
