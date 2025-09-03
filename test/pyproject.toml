@@ -1,0 +1,10 @@
+[project]
+name = "test"
+version = "0.1.0"
+description = "Scenario test for Pola PCE's daemon and command line interface"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "deepdiff>=8.6.0",
+    "pytest>=8.4.1",
+]

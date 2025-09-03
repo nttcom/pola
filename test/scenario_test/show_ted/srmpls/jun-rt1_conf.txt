@@ -1,0 +1,91 @@
+interfaces {
+    ge-0/0/0 {
+        description to:rt2;
+        unit 0 {
+            family inet {
+                address 10.0.0.1/24;
+            }
+            family iso;
+            family mpls;
+        }
+    }
+    ge-0/0/1 {
+        description to:gobgp;
+        unit 0 {
+            family inet {
+                address 10.100.0.1/24;
+            }
+            family iso;
+            family mpls;
+        }
+    }
+    lo0 {
+        unit 0 {
+            family inet {
+                address 10.255.0.1/32;
+            }
+            family iso {
+                address 49.0000.0000.0aff.0001.00;
+            }
+        }
+    }
+}
+policy-options {
+    policy-statement IGP-REDISTRIBUTE {
+        term 1 {
+            from protocol direct;
+            then accept;
+        }
+    }
+    policy-statement TE {
+        term 1 {
+            from family traffic-engineering;
+            then accept;
+        }
+    }
+}
+routing-options {
+    router-id 10.255.0.1;
+    autonomous-system 65000;
+}
+protocols {
+    bgp {
+        group GOBGP {
+            type internal;
+            local-address 10.100.0.1;
+            family traffic-engineering {
+                unicast;
+            }
+            export TE;
+            neighbor 10.100.0.2;
+        }
+    }
+    isis {
+        interface ge-0/0/0.0 {
+            point-to-point;
+        }
+        interface lo0.0 {
+            passive;
+        }
+        source-packet-routing {
+            node-segment ipv4-index 1;
+        }
+        level 1 disable;
+        level 2 wide-metrics-only;
+        export IGP-REDISTRIBUTE;
+    }
+    mpls {
+        traffic-engineering {
+            database {
+                import {
+                    policy TE;
+                }
+            }
+        }
+        interface ge-0/0/0.0;
+    }
+    rsvp {
+        interface ge-0/0/0.0;
+    }
+}
+
