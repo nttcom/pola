@@ -1,0 +1,41 @@
+name: test1_show_ted_srmpls
+topology:
+  kinds:
+    juniper_vjunosrouter:
+      image: vrnetlab/juniper_vjunos-router:24.2R1-S2.5
+  nodes:
+    pola:
+      kind: linux
+      image: golang:1.24.2
+      binds:
+        - ../../../bin/polad:/bin/polad
+        - ../../../bin/pola:/bin/pola
+        - input/polad.cfg.yaml:/polad.cfg.yaml
+      exec:
+        - apt update
+        - apt install -y iproute2
+        - ip a add dev eth1 10.200.0.2/24
+      cmd: /bin/polad -f /polad.cfg.yaml &
+    gobgp:
+      kind: linux
+      image: golang:1.24.2
+      binds:
+        - ../../../bin/gobgpd:/bin/gobgpd
+        - ../../../bin/gobgp:/bin/gobgp
+        - input/gobgpd.cfg.yaml:/gobgpd.cfg.yaml
+      exec:
+        - apt update
+        - apt install -y iproute2 iputils-ping
+        - ip a add dev eth1 10.100.0.2/24
+        - ip a add dev eth2 10.200.0.1/24
+      cmd: /bin/gobgpd -f /gobgpd.cfg.yaml &
+    jun-rt1:
+      kind: juniper_vjunosrouter
+      startup-config: jun-rt1_conf.txt
+    jun-rt2:
+      kind: juniper_vjunosrouter
+      startup-config: jun-rt2_conf.txt
+  links:
+    - endpoints: ["jun-rt1:ge-0/0/0", "jun-rt2:ge-0/0/0"]
+    - endpoints: ["gobgp:eth1", "jun-rt1:ge-0/0/1"]
+    - endpoints: ["gobgp:eth2", "pola:eth1"]
