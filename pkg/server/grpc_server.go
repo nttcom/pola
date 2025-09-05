@@ -413,7 +413,7 @@ func (s *APIServer) GetTED(ctx context.Context, req *pb.GetTEDRequest) (*pb.GetT
 		Enable: true,
 	}
 
-	if s.pce.ted == nil {
+	if s.pce == nil || s.pce.ted == nil {
 		ret.Enable = false
 		return ret, nil
 	}
@@ -422,6 +422,10 @@ func (s *APIServer) GetTED(ctx context.Context, req *pb.GetTEDRequest) (*pb.GetT
 
 	for _, lsNodes := range s.pce.ted.Nodes {
 		for _, lsNode := range lsNodes {
+			if lsNode == nil {
+				continue
+			}
+
 			node := &pb.LsNode{
 				Asn:        lsNode.ASN,
 				RouterId:   lsNode.RouterID,
@@ -435,79 +439,89 @@ func (s *APIServer) GetTED(ctx context.Context, req *pb.GetTEDRequest) (*pb.GetT
 			}
 
 			for _, lsLink := range lsNode.Links {
-				localIp, err := lsLink.LocalIP.MarshalText()
-				if err != nil {
-					return nil, fmt.Errorf("failed to marshal local IP: %v", err)
+				if lsLink == nil || lsLink.LocalNode == nil || lsLink.RemoteNode == nil {
+					s.logger.Debug("skip link with nil node", zap.Any("link", lsLink))
+					continue
 				}
-				remoteIp, err := lsLink.RemoteIP.MarshalText()
-				if err != nil {
-					return nil, fmt.Errorf("failed to marshal remote IP: %v", err)
-				}
+
+				localIP, _ := lsLink.LocalIP.MarshalText()
+				remoteIP, _ := lsLink.RemoteIP.MarshalText()
 
 				link := &pb.LsLink{
 					LocalRouterId:  lsLink.LocalNode.RouterID,
 					LocalAsn:       lsLink.LocalNode.ASN,
-					LocalIp:        string(localIp),
+					LocalIp:        string(localIP),
 					RemoteRouterId: lsLink.RemoteNode.RouterID,
 					RemoteAsn:      lsLink.RemoteNode.ASN,
-					RemoteIp:       string(remoteIp),
+					RemoteIp:       string(remoteIP),
 					Metrics:        make([]*pb.Metric, 0, len(lsLink.Metrics)),
 					AdjSid:         lsLink.AdjSid,
 				}
 
 				for _, lsMetric := range lsLink.Metrics {
+					if lsMetric == nil {
+						continue
+					}
 					metricType, ok := pb.MetricType_value[lsMetric.Type.String()]
 					if !ok {
-						return nil, fmt.Errorf("invalid metric type: %s", lsMetric.Type.String())
+						s.logger.Debug("invalid metric type", zap.String("type", lsMetric.Type.String()))
+						continue
 					}
-
-					metric := &pb.Metric{
+					link.Metrics = append(link.Metrics, &pb.Metric{
 						Type:  pb.MetricType(metricType),
 						Value: lsMetric.Value,
+					})
+				}
+
+				if lsLink.Srv6EndXSID != nil {
+					srv6 := &pb.Srv6EndXSID{
+						EndpointBehavior: uint32(lsLink.Srv6EndXSID.EndpointBehavior),
+						Sids:             make([]*pb.SID, 0, len(lsLink.Srv6EndXSID.Sids)),
+						SidStructure: &pb.SidStructure{
+							LocalBlock: uint32(lsLink.Srv6EndXSID.Srv6SIDStructure.LocalBlock),
+							LocalNode:  uint32(lsLink.Srv6EndXSID.Srv6SIDStructure.LocalNode),
+							LocalFunc:  uint32(lsLink.Srv6EndXSID.Srv6SIDStructure.LocalFunc),
+							LocalArg:   uint32(lsLink.Srv6EndXSID.Srv6SIDStructure.LocalArg),
+						},
 					}
 
-					link.Metrics = append(link.Metrics, metric)
-				}
+					for _, sid := range lsLink.Srv6EndXSID.Sids {
+						if sid == "" {
+							continue
+						}
+						srv6.Sids = append(srv6.Sids, &pb.SID{Sid: sid})
+					}
 
-				link.Srv6EndXSid = &pb.Srv6EndXSID{
-					EndpointBehavior: uint32(lsLink.Srv6EndXSID.EndpointBehavior),
-					Sids:             make([]*pb.SID, 0, len(lsLink.Srv6EndXSID.Sids)),
-					SidStructure: &pb.SidStructure{
-						LocalBlock: uint32(lsLink.Srv6EndXSID.Srv6SIDStructure.LocalBlock),
-						LocalNode:  uint32(lsLink.Srv6EndXSID.Srv6SIDStructure.LocalNode),
-						LocalFunc:  uint32(lsLink.Srv6EndXSID.Srv6SIDStructure.LocalFunc),
-						LocalArg:   uint32(lsLink.Srv6EndXSID.Srv6SIDStructure.LocalArg),
-					},
-				}
-
-				for _, sid := range lsLink.Srv6EndXSID.Sids {
-					link.Srv6EndXSid.Sids = append(link.Srv6EndXSid.Sids, &pb.SID{
-						Sid: sid,
-					})
+					link.Srv6EndXSid = srv6
 				}
 
 				node.LsLinks = append(node.LsLinks, link)
 			}
 
 			for _, lsPrefix := range lsNode.Prefixes {
-				prefix := &pb.LsPrefix{
+				if lsPrefix == nil {
+					continue
+				}
+				node.LsPrefixes = append(node.LsPrefixes, &pb.LsPrefix{
 					Prefix:   lsPrefix.Prefix.String(),
 					SidIndex: lsPrefix.SidIndex,
-				}
-
-				node.LsPrefixes = append(node.LsPrefixes, prefix)
+				})
 			}
 
 			for _, lsSrv6SID := range lsNode.SRv6SIDs {
+				if lsSrv6SID == nil {
+					continue
+				}
 				srv6SID := &pb.LsSrv6SID{
 					Sids:         make([]*pb.SID, 0, len(lsSrv6SID.Sids)),
 					MultiTopoIds: make([]*pb.MultiTopoID, 0, len(lsSrv6SID.MultiTopoIDs)),
 				}
 
 				for _, sid := range lsSrv6SID.Sids {
-					srv6SID.Sids = append(srv6SID.Sids, &pb.SID{
-						Sid: sid,
-					})
+					if sid == "" {
+						continue
+					}
+					srv6SID.Sids = append(srv6SID.Sids, &pb.SID{Sid: sid})
 				}
 
 				for _, topoID := range lsSrv6SID.MultiTopoIDs {
@@ -516,10 +530,12 @@ func (s *APIServer) GetTED(ctx context.Context, req *pb.GetTEDRequest) (*pb.GetT
 					})
 				}
 
-				srv6SID.EndpointBehavior = &pb.EndpointBehavior{
-					Behavior:  uint32(lsSrv6SID.EndpointBehavior.Behavior),
-					Flags:     uint32(lsSrv6SID.EndpointBehavior.Flags),
-					Algorithm: uint32(lsSrv6SID.EndpointBehavior.Algorithm),
+				if lsSrv6SID.EndpointBehavior != (table.EndpointBehavior{}) {
+					srv6SID.EndpointBehavior = &pb.EndpointBehavior{
+						Behavior:  uint32(lsSrv6SID.EndpointBehavior.Behavior),
+						Flags:     uint32(lsSrv6SID.EndpointBehavior.Flags),
+						Algorithm: uint32(lsSrv6SID.EndpointBehavior.Algorithm),
+					}
 				}
 
 				srv6SID.SidStructure = &pb.SidStructure{
