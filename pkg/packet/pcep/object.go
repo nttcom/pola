@@ -1235,7 +1235,7 @@ func (o *EndpointsObject) Len() (uint16, error) {
 		// CommonObjectHeader(4byte) + srcIPv4 (16byte) + dstIPv4 (16byte)
 		length = commonObjectHeaderLength + 16 + 16
 	} else {
-		return uint16(0), errors.New("invalid endpoints address")
+		return uint16(0), fmt.Errorf("invalid endpoints address (Len()): src=%v dst=%v", o.SrcAddr, o.DstAddr)
 	}
 	return length, nil
 }
@@ -1247,7 +1247,7 @@ func NewEndpointsObject(dstAddr netip.Addr, srcAddr netip.Addr) (*EndpointsObjec
 	} else if dstAddr.Is6() && srcAddr.Is6() {
 		objectType = ObjectTypeEndpointIPv6
 	} else {
-		return nil, errors.New("invalid endpoints address")
+		return nil, fmt.Errorf("invalid endpoints address (NewEndpointsObject): dst=%v src=%v", dstAddr, srcAddr)
 	}
 
 	o := &EndpointsObject{
@@ -1306,7 +1306,7 @@ func (o *AssociationObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) 
 			}
 		}
 	default:
-		return errors.New("invalid association source address")
+		return errors.New("invalid association source address (DecodeFromBytes)")
 	}
 
 	return nil
@@ -1354,7 +1354,7 @@ func (o AssociationObject) Len() (uint16, error) {
 		// Reserved(2byte) + Flags(2byte) + Assoc Type(2byte) + Assoc ID(2byte) + IPv6 Assoc Src(16byte)
 		associationObjectBodyLength = uint16(24) + tlvsByteLength
 	} else {
-		return uint16(0), errors.New("invalid association source address")
+		return uint16(0), errors.New("invalid association source address (Len())")
 	}
 	return (commonObjectHeaderLength + associationObjectBodyLength), nil
 }
@@ -1373,7 +1373,7 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 	} else if dstAddr.Is6() && srcAddr.Is6() {
 		objectType = ObjectTypeEndpointIPv6
 	} else {
-		return nil, errors.New("invalid endpoints address")
+		return nil, fmt.Errorf("invalid endpoints address (NewAssociationObject): src=%v dst=%v", srcAddr, dstAddr)
 	}
 	o := &AssociationObject{
 		ObjectType: objectType,
