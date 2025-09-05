@@ -1226,7 +1226,7 @@ func (o *EndpointsObject) Serialize() ([]uint8, error) {
 	return byteEndpointsObject, nil
 }
 
-func (o EndpointsObject) Len() (uint16, error) {
+func (o *EndpointsObject) Len() (uint16, error) {
 	var length uint16
 	if o.SrcAddr.Is4() && o.DstAddr.Is4() {
 		// CommonObjectHeader(4byte) + srcIPv4 (4byte) + dstIPv4 (4byte)
