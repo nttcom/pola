@@ -1258,21 +1258,29 @@ func DecodeTLV(data []byte) (TLVInterface, error) {
 
 func DecodeTLVs(data []byte) ([]TLVInterface, error) {
 	var tlvs []TLVInterface
+	offset := 0
 
-	for len(data) > 0 {
-		tlv, err := DecodeTLV(data)
+	for offset < len(data) {
+		if len(data[offset:]) < 4 {
+			return nil, fmt.Errorf("truncated TLV header at offset %d", offset)
+		}
+
+		tlvType := binary.BigEndian.Uint16(data[offset : offset+2])
+		valueLen := int(binary.BigEndian.Uint16(data[offset+2 : offset+4]))
+		totalLen := 4 + valueLen
+
+		if len(data[offset:]) < totalLen {
+			return nil, fmt.Errorf("truncated TLV value for type 0x%x at offset %d", tlvType, offset)
+		}
+
+		tlv, err := DecodeTLV(data[offset : offset+totalLen])
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("error decoding TLV type 0x%x: %w", tlvType, err)
 		}
 
 		tlvs = append(tlvs, tlv)
-
-		tlvLen := int(tlv.Len())
-		if len(data) < tlvLen {
-			return nil, fmt.Errorf("expected TLV length %d but found %d bytes remaining", tlvLen, len(data))
-		}
-
-		data = data[tlvLen:]
+		paddedLen := (totalLen + 3) & ^3
+		offset += paddedLen
 	}
 
 	return tlvs, nil
