@@ -237,51 +237,51 @@ const (
 var validator = map[ValidationKind]func(policy *pb.SRPolicy, asn uint32) error{
 	ValidationAdd: func(policy *pb.SRPolicy, asn uint32) error {
 		if asn == 0 {
-			return errors.New("ASN must not be zero")
+			return errors.New("policy.ASN must not be zero")
 		}
 		if policy.PcepSessionAddr == nil {
-			return errors.New("PCEP session address must not be nil")
+			return errors.New("policy.PCEP session address must not be nil")
 		}
 		if policy.Color == 0 {
-			return errors.New("Color must not be zero")
+			return errors.New("policy.Color must not be zero")
 		}
 		if policy.SrcRouterId == "" {
-			return errors.New("SrcRouterId must not be empty")
+			return errors.New("policy.SrcRouterId must not be empty")
 		}
 		if policy.DstRouterId == "" {
-			return errors.New("DstRouterId must not be empty")
+			return errors.New("policy.DstRouterId must not be empty")
 		}
 		return nil
 	},
 
 	ValidationAddDisablePathCompute: func(policy *pb.SRPolicy, asn uint32) error {
 		if policy.PcepSessionAddr == nil {
-			return errors.New("PCEP session address must not be nil")
+			return errors.New("policy.PCEP session address must not be nil")
 		}
 		if len(policy.SrcAddr) == 0 {
-			return errors.New("SrcAddr must not be empty")
+			return errors.New("policy.SrcAddr must not be empty")
 		}
 		if len(policy.DstAddr) == 0 {
-			return errors.New("DstAddr must not be empty")
+			return errors.New("policy.DstAddr must not be empty")
 		}
 		if len(policy.SegmentList) == 0 {
-			return errors.New("SegmentList must not be empty")
+			return errors.New("policy.SegmentList must not be empty")
 		}
 		return nil
 	},
 
 	ValidationDelete: func(policy *pb.SRPolicy, asn uint32) error {
 		if policy.PcepSessionAddr == nil {
-			return errors.New("PCEP session address must not be nil")
+			return errors.New("policy.PCEP session address must not be nil")
 		}
 		if policy.Color == 0 {
-			return errors.New("Color must not be zero")
+			return errors.New("policy.Color must not be zero")
 		}
 		if len(policy.DstAddr) == 0 {
-			return errors.New("DstAddr must not be empty")
+			return errors.New("policy.DstAddr must not be empty")
 		}
 		if policy.PolicyName == "" {
-			return errors.New("PolicyName must not be empty")
+			return errors.New("policy.PolicyName must not be empty")
 		}
 		return nil
 	},
