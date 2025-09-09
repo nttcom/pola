@@ -2,7 +2,7 @@ name: srmpls
 topology:
   kinds:
     juniper_vjunosrouter:
-      image: vrnetlab/juniper_vjunos-router:24.2R1-S2.5
+      image: vrnetlab/juniper_vjunos-router:25.2R1.9
   nodes:
     pola:
       kind: linux
