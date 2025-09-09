@@ -32,8 +32,9 @@ class TestShowTed:
 
     print("Wait for pola's TED to finish syncing...")
     time.sleep(60)
-
+    
     output = json.loads(subprocess.run("docker exec -it clab-srmpls-pola /bin/pola -p 50052 ted -j", shell=True, capture_output=True, text=True).stdout)
+    print("output is", output)
     with open(TEST_SRMPLS_DIR+"/expected/srmpls.json") as f:
         expected_output = json.load(f)
 
