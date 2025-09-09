@@ -40,8 +40,8 @@ uv 0.8.13
 ### vjunos-router
 
 ```
-$ docker images | grep vrnetlab/juniper_vjunos-router | grep 24.2R1-S2.5
-vrnetlab/juniper_vjunos-router           24.2R1-S2.5       27c5af1efc9c   2 months ago    4.17GB
+$ docker images | grep vrnetlab/juniper_vjunos-router | grep 25.2R1.9
+vrnetlab/juniper_vjunos-router   25.2R1.9          6e9b1472b46b   37 minutes ago   4.18GB
 ```
 
 #### how to install image
