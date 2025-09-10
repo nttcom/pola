@@ -1,0 +1,9 @@
+asn: 65000
+sr_policy:
+  pcep_session_addr: "fd00::2"
+  src_router_id: "0000.0001.0002"
+  dst_router_id: "0000.0001.0001"
+  name: "DYNAMIC-POLICY"
+  color: 100
+  type: dynamic
+  metric: igp
