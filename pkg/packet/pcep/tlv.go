@@ -1153,7 +1153,7 @@ func (tlv *Color) Serialize() []byte {
 	buf = append(buf, typ...)
 
 	length := make([]byte, 2)
-	binary.BigEndian.PutUint16(length, uint16(TLVColor))
+	binary.BigEndian.PutUint16(length, TLVColorValueLength)
 	buf = append(buf, length...)
 
 	color := make([]byte, 4)
