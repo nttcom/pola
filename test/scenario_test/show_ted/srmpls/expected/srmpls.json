@@ -1,0 +1,68 @@
+{
+    "ted": [
+        {
+            "asn": 65000,
+            "hostname": "jun-rt1",
+            "isisAreaID": "49.0000",
+            "links": [
+                {
+                    "adjSid": 299776,
+                    "localIP": "10.0.0.1",
+                    "metrics": [
+                        {
+                            "type": "IGP",
+                            "value": 10
+                        },
+                        {
+                            "type": "TE",
+                            "value": 10
+                        }
+                    ],
+                    "remoteIP": "10.0.0.2",
+                    "remoteNode": "0000.0aff.0002"
+                }
+            ],
+            "prefixes": [
+                {
+                    "prefix": "10.255.0.1/32",
+                    "sidIndex": 1
+                }
+            ],
+            "routerID": "0000.0aff.0001",
+            "srgbBegin": 800000,
+            "srgbEnd": 804096
+        },
+        {
+            "asn": 65000,
+            "hostname": "jun-rt2",
+            "isisAreaID": "49.0000",
+            "links": [
+                {
+                    "adjSid": 299776,
+                    "localIP": "10.0.0.2",
+                    "metrics": [
+                        {
+                            "type": "IGP",
+                            "value": 10
+                        },
+                        {
+                            "type": "TE",
+                            "value": 10
+                        }
+                    ],
+                    "remoteIP": "10.0.0.1",
+                    "remoteNode": "0000.0aff.0001"
+                }
+            ],
+            "prefixes": [
+                {
+                    "prefix": "10.255.0.2/32",
+                    "sidIndex": 2
+                }
+            ],
+            "routerID": "0000.0aff.0002",
+            "srgbBegin": 800000,
+            "srgbEnd": 804096
+        }
+    ]
+}
