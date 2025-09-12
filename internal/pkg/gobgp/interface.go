@@ -103,8 +103,9 @@ func ConvertToTEDElem(dst *api.Destination) ([]table.TEDElem, error) {
 		}
 	}
 	if lsAttr == nil {
-		return nil, errors.New("BGP-LS Attribute is nil")
+		return nil, nil
 	}
+
 	switch lsAddrPrefix.GetType() {
 	case api.LsNLRIType_LS_NLRI_TYPE_NODE:
 		lsAttrNode := lsAttr.Ls.GetNode()
@@ -116,7 +117,6 @@ func ConvertToTEDElem(dst *api.Destination) ([]table.TEDElem, error) {
 			return nil, fmt.Errorf("failed to process LS Node NLRI: %w", err)
 		}
 		return []table.TEDElem{lsNode}, nil
-
 	case api.LsNLRIType_LS_NLRI_TYPE_LINK:
 		lsAttrLink := lsAttr.Ls.GetLink()
 		if lsAttrLink == nil {
@@ -172,7 +172,6 @@ func ConvertToTEDElem(dst *api.Destination) ([]table.TEDElem, error) {
 			return nil, fmt.Errorf("failed to process LS SRv6 SID NLRI: %w", err)
 		}
 		return lsSrv6SIDList, nil
-
 	default:
 		return nil, fmt.Errorf("invalid LS Link State NLRI type: %s", lsAddrPrefix.GetType().String())
 	}
