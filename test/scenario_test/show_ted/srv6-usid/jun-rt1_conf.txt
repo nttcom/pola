@@ -1,0 +1,133 @@
+interfaces {
+    ge-0/0/0 {
+        description to:rt2;
+        unit 0 {
+            family iso;
+            family inet6;
+        }
+    }
+    ge-0/0/1 {
+        description to:gobgp;
+        unit 0 {
+            family inet {
+                address 10.100.0.1/24;
+            }
+            family inet6 {
+                address fd00::1/64;
+            }
+        }
+    }
+    lo0 {
+        unit 0 {
+            family iso {
+                address 49.0000.0000.0aff.0001.00;
+            }
+            family inet6 {
+                address fd00:ffff::1/128;
+            }
+        }
+    }
+}
+policy-options {
+    policy-statement IGP-REDISTRIBUTE {
+        term 1 {
+            from protocol direct;
+            then accept;
+        }
+    }
+    policy-statement TE {
+        term 1 {
+            from family traffic-engineering;
+            then accept;
+        }
+    }
+}
+routing-options {
+    source-packet-routing {
+        srv6 {
+            block usid-block {
+                fcbb:bb00:1001::/32;
+                local-micro-sid {
+                    maximum-static-sids 1791;
+                }
+            }
+            locator loc-rt1 {
+                fcbb:bb00:1001::/48;
+                micro-sid {
+                    block-name usid-block;
+                    flavor {
+                        psp;
+                        usd;
+                    }
+                }
+            }
+            no-reduced-srh;
+        }
+    }
+    router-id 10.255.0.1;
+    autonomous-system 65000;
+    forwarding-table {
+        srv6-chain-merge;
+    }
+}
+protocols {
+    bgp {
+        group GOBGP {
+            type internal;
+            local-address 10.100.0.1;
+            family traffic-engineering {
+                unicast;
+            }
+            export TE;
+            neighbor 10.100.0.2;
+        }
+    }
+    isis {
+        interface ge-0/0/0.0 {
+            level 2 {
+                srv6-adjacency-segment {
+                    unprotected {
+                        locator loc-rt1 {
+                            micro-adjacency-sid;
+                        }
+                    }
+                }
+            }
+            point-to-point;
+        }
+        interface lo0.0 {
+            passive;
+        }
+        source-packet-routing {
+            srv6 {
+                locator loc-rt1 micro-node-sid;
+            }
+        }
+        level 1 disable;
+        level 2 wide-metrics-only;
+        traffic-engineering {
+            l3-unicast-topology;
+            ipv6;
+            advertisement always;
+        }
+        no-ipv4-routing;
+        topologies ipv6-unicast;
+        export IGP-REDISTRIBUTE;
+    }
+    mpls {
+        traffic-engineering {
+            database {
+                import {
+                    l3-unicast-topology {
+                        bgp-link-state;
+                    }
+                    policy TE;
+                }
+            }
+        }
+    }
+    source-packet-routing {
+        srv6;
+        preserve-nexthop-hierarchy;
+    }
+}
