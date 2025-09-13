@@ -40,3 +40,25 @@ class TestShowTed:
 
     # Run "pola ted" cmd and ensure it returns the expected result.
     assert DeepDiff(output, expected_output, ignore_order=True) == {}
+    
+
+  def test__srv6_usid(self, clab_deploy):
+    TEST_SRV6_USID_DIR = self.TEST_SHOW_TED_DIR + "/srv6-usid"
+    # deploy test environment by containerlab
+    clab_deploy(TEST_SRV6_USID_DIR)
+
+    # wait for vJunosRouter booting
+    while subprocess.run("docker exec -it clab-srv6-usid-gobgp ping fd00:ffff::2 -c 1", shell=True).returncode != 0:
+      print("Wait for deploy vJunosRouter ...")
+      time.sleep(10)
+
+    print("Wait for pola's TED to finish syncing...")
+    time.sleep(60)
+    
+    output = json.loads(subprocess.run("docker exec -it clab-srv6-usid-pola /bin/pola -p 50052 ted -j", shell=True, capture_output=True, text=True).stdout)
+    print("output is", output)
+    with open(TEST_SRV6_USID_DIR+"/expected/srv6-usid.json") as f:
+        expected_output = json.load(f)
+
+    # Run "pola ted" cmd and ensure it returns the expected result.
+    assert DeepDiff(output, expected_output, ignore_order=True) == {}

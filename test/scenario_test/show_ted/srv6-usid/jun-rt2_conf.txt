@@ -1,0 +1,89 @@
+interfaces {
+    ge-0/0/0 {
+        description to:rt1;
+        unit 0 {
+            family iso;
+            family inet6;
+        }
+    }
+    fxp0 {
+        unit 0 {
+            family inet {
+                address 10.0.0.15/24;
+            }
+            family inet6 {
+                address 2001:db8::2/64;
+            }
+        }
+    }
+    lo0 {
+        unit 0 {
+            family iso {
+                address 49.0000.0000.0aff.0002.00;
+            }
+            family inet6 {
+                address fd00:ffff::2/128;
+            }
+        }
+    }
+}
+routing-options {
+    source-packet-routing {
+        srv6 {
+            block usid-block {
+                fcbb:bb00:1002::/32;
+                local-micro-sid {
+                    maximum-static-sids 1791;
+                }
+            }
+            locator loc-rt2 {
+                fcbb:bb00:1002::/48;
+                micro-sid {
+                    block-name usid-block;
+                    flavor {
+                        psp;
+                        usd;
+                    }
+                }
+            }
+            no-reduced-srh;
+        }
+    }
+    router-id 10.255.0.2;
+    autonomous-system 65000;
+    forwarding-table {
+        srv6-chain-merge;
+    }
+}
+protocols {
+    isis {
+        interface ge-0/0/0.0 {
+            level 2 {
+                srv6-adjacency-segment {
+                    unprotected {
+                        locator loc-rt2 {
+                            micro-adjacency-sid;
+                        }
+                    }
+                }
+            }
+            point-to-point;
+        }
+        interface lo0.0 {
+            passive;
+        }
+        source-packet-routing {
+            srv6 {
+                locator loc-rt2 micro-node-sid;
+            }
+        }
+        level 1 disable;
+        level 2 wide-metrics-only;
+        no-ipv4-routing;
+        topologies ipv6-unicast;
+    }
+    source-packet-routing {
+        srv6;
+        preserve-nexthop-hierarchy;
+    }
+}
