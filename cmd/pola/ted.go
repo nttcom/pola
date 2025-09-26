@@ -63,22 +63,22 @@ func printTED(jsonFlag bool) error {
 						metrics = append(metrics, metricMap)
 					}
 
-					var localIp string
-					var remoteIp string
+					var localIP string
+					var remoteIP string
 					if link.LocalIP.IsValid() {
-						localIp = link.LocalIP.String()
+						localIP = link.LocalIP.String()
 					} else {
-						localIp = "None"
+						localIP = "None"
 					}
 					if link.RemoteIP.IsValid() {
-						remoteIp = link.RemoteIP.String()
+						remoteIP = link.RemoteIP.String()
 					} else {
-						remoteIp = "None"
+						remoteIP = "None"
 					}
 
 					linkMap := map[string]any{
-						"localIP":    localIp,
-						"remoteIP":   remoteIp,
+						"localIP":    localIP,
+						"remoteIP":   remoteIP,
 						"remoteNode": link.RemoteNode.RouterID,
 						"metrics":    metrics,
 						"adjSid":     link.AdjSid,

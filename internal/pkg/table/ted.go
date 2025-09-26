@@ -64,15 +64,15 @@ func (ted *LsTED) Print() {
 						continue
 					}
 
-					localIp := "None"
-					remoteIp := "None"
+					localIP := "None"
+					remoteIP := "None"
 					if link.LocalIP.IsValid() {
-						localIp = link.LocalIP.String()
+						localIP = link.LocalIP.String()
 					}
 					if link.RemoteIP.IsValid() {
-						remoteIp = link.RemoteIP.String()
+						remoteIP = link.RemoteIP.String()
 					}
-					fmt.Printf("    Local: %s Remote: %s\n", localIp, remoteIp)
+					fmt.Printf("    Local: %s Remote: %s\n", localIP, remoteIP)
 
 					remoteNodeID := "None"
 					if link.RemoteNode != nil {
