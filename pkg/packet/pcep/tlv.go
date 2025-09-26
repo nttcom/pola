@@ -1225,8 +1225,8 @@ func (tlv *UndefinedTLV) Len() uint16 {
 }
 
 func (tlv *UndefinedTLV) CapStrings() []string {
-	cap := "unknown_type_" + strconv.FormatInt(int64(tlv.Typ), 10)
-	return []string{cap}
+	capStr := "unknown_type_" + strconv.FormatInt(int64(tlv.Typ), 10)
+	return []string{capStr}
 }
 
 func (tlv *UndefinedTLV) SetLength() {
