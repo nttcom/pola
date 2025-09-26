@@ -17,7 +17,7 @@ func newTEDCmd() *cobra.Command {
 	return &cobra.Command{
 		Use: "ted",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := print(jsonFmt); err != nil {
+			if err := printTED(jsonFmt); err != nil {
 				return err
 			}
 			return nil
@@ -25,7 +25,7 @@ func newTEDCmd() *cobra.Command {
 	}
 }
 
-func print(jsonFlag bool) error {
+func printTED(jsonFlag bool) error {
 	ted, err := grpc.GetTED(client)
 	if err != nil {
 		return err
