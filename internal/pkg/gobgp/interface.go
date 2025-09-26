@@ -191,23 +191,19 @@ func formatIsisAreaID(isisArea []byte) string {
 }
 
 func getLsNode(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrNode *api.LsAttributeNode) (*table.LsNode, error) {
-	lsNodeNLRI := typedLinkStateNLRI.Nlri.GetNode()
-	asn := lsNodeNLRI.GetLocalNode().GetAsn()
-	routerID := lsNodeNLRI.GetLocalNode().GetIgpRouterId()
+	localNode := typedLinkStateNLRI.Nlri.GetNode().GetLocalNode()
+	lsNode := table.NewLsNode(localNode.GetAsn(), localNode.GetIgpRouterId())
 
-	lsNode := table.NewLsNode(asn, routerID)
-
-	isisArea := lsAttrNode.GetIsisArea()
-	lsNode.IsisAreaID = formatIsisAreaID(isisArea)
+	lsNode.IsisAreaID = formatIsisAreaID(lsAttrNode.GetIsisArea())
 	lsNode.Hostname = lsAttrNode.GetName()
+
 	if lsAttrNode.GetSrCapabilities() != nil {
 		srCapabilities := lsAttrNode.GetSrCapabilities().GetRanges()
 		if len(srCapabilities) != 1 {
 			return nil, fmt.Errorf("expected 1 SR Capability TLV, got: %d", len(srCapabilities))
-		} else {
-			lsNode.SrgbBegin = srCapabilities[0].GetBegin()
-			lsNode.SrgbEnd = srCapabilities[0].GetEnd()
 		}
+		lsNode.SrgbBegin = srCapabilities[0].GetBegin()
+		lsNode.SrgbEnd = srCapabilities[0].GetEnd()
 	}
 	return lsNode, nil
 }
