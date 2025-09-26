@@ -486,8 +486,10 @@ func (ss *Session) SendPCUpdate(srPolicy table.SRPolicy) error {
 }
 
 func (ss *Session) RegisterSRPolicy(sr pcep.StateReport) {
-	var color uint32 = 0      // Default color value (RFC does not specify a default)
-	var preference uint32 = 0 // Default preference value (RFC does not specify a default)
+	var (
+		color      uint32 // initialized to zero (RFC does not specify a default)
+		preference uint32 // initialized to zero (RFC does not specify a default)
+	)
 
 	if ss.pccType == pcep.CiscoLegacy {
 		// In Cisco legacy mode, get color and preference from Vendor Information Object
