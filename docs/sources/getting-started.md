@@ -46,7 +46,7 @@ global:
   pcep:
     address: "2001:0db8::254"
     port: 4189
-  grpc-server:
+  grpcServer:
     address: "127.0.0.1"
     port: 50051
   log:
@@ -54,7 +54,7 @@ global:
     name: "polad.log"
   ted:
     enable: false
-  usid-mode: false
+  usidMode: false
 ```
 
 ### case: TED enable
@@ -72,7 +72,7 @@ global:
   pcep:
     address: "192.0.2.254"
     port: 4189
-  grpc-server:
+  grpcServer:
     address: "127.0.0.1"
     port: 50052
   log:
@@ -82,7 +82,7 @@ global:
     enable: true
     source: "gobgp"
   gobgp:
-    grpc-client:
+    grpcClient:
       address: "127.0.0.1"
       port: 50051
 ```

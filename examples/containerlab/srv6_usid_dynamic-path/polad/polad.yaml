@@ -2,7 +2,7 @@ global:
   pcep:
     address: "fd00::3"
     port: 4189
-  grpc_server:
+  grpcServer:
     address: "127.0.0.1"
     port: 50052
   log:
@@ -13,6 +13,6 @@ global:
     enable: true
     source: "gobgp"
   gobgp:
-    grpc_client:
+    grpcClient:
       address: "10.0.0.4"
       port: 50051
