@@ -28,7 +28,7 @@
                         "port"
                     ]
                 },
-                "grpc-server": {
+                "grpcServer": {
                     "type": "object",
                     "properties": {
                         "address": {
@@ -89,7 +89,7 @@
                 "gobgp": {
                     "type": "object",
                     "properties": {
-                        "grpc-client": {
+                        "grpcClient": {
                             "type": "object",
                             "properties": {
                                 "address": {
@@ -114,17 +114,17 @@
                         }
                     },
                     "required": [
-                        "grpc-client"
+                        "grpcClient"
                     ]
                 },
-                "usid-mode": {
+                "usidMode": {
                     "type": "boolean",
                     "default": false
                 }
             },
             "required": [
                 "pcep",
-                "grpc-server",
+                "grpcServer",
                 "log",
                 "ted"
             ]
