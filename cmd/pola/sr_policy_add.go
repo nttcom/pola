@@ -65,26 +65,26 @@ func newSRPolicyAddCmd() *cobra.Command {
 
 type Segment struct {
 	SID          string `yaml:"sid"`
-	LocalAddr    string `yaml:"local_addr"`
-	RemoteAddr   string `yaml:"remote_addr"`
-	SIDStructure string `yaml:"sid_structure"`
+	LocalAddr    string `yaml:"localAddr"`
+	RemoteAddr   string `yaml:"remoteAddr"`
+	SIDStructure string `yaml:"sidStructure"`
 }
 
 type SRPolicy struct {
-	PCEPSessionAddr netip.Addr `yaml:"pcep_session_addr"`
-	SrcAddr         netip.Addr `yaml:"src_addr"`
-	DstAddr         netip.Addr `yaml:"dst_addr"`
-	SrcRouterID     string     `yaml:"src_router_id"`
-	DstRouterID     string     `yaml:"dst_router_id"`
+	PCEPSessionAddr netip.Addr `yaml:"pcepSessionAddr"`
+	SrcAddr         netip.Addr `yaml:"srcAddr"`
+	DstAddr         netip.Addr `yaml:"dstAddr"`
+	SrcRouterID     string     `yaml:"srcRouterID"`
+	DstRouterID     string     `yaml:"dstRouterID"`
 	Name            string     `yaml:"name"`
-	SegmentList     []Segment  `yaml:"segment_list"`
+	SegmentList     []Segment  `yaml:"segmentList"`
 	Color           uint32     `yaml:"color"`
 	Type            string     `yaml:"type"`
 	Metric          string     `yaml:"metric"`
 }
 
 type InputFormat struct {
-	SRPolicy SRPolicy `yaml:"sr_policy"`
+	SRPolicy SRPolicy `yaml:"srPolicy"`
 	ASN      uint32   `yaml:"asn"`
 }
 
