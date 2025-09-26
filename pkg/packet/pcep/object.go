@@ -870,9 +870,8 @@ func NewEroSubobject(seg table.Segment) (EroSubobject, error) {
 			return nil, err
 		}
 		return subo, nil
-	} else {
-		return nil, errors.New("invalid Segment type")
 	}
+	return nil, errors.New("invalid Segment type")
 }
 
 // SR-ERO Subobject (RFC8664 4.3.1)
