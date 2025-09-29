@@ -1,0 +1,47 @@
+interfaces {
+    ge-0/0/0 {
+        description to:rt1;
+        unit 0 {
+            family inet {
+                address 10.0.0.2/24;
+            }
+            family iso;
+            family mpls;
+        }
+    }
+    lo0 {
+        unit 0 {
+            family inet {
+                address 10.255.0.2/32;
+            }
+            family iso {
+                address 49.0000.0000.0aff.0002.00;
+            }
+        }
+    }
+}
+routing-options {
+    router-id 10.255.0.2;
+    autonomous-system 65000;
+}
+protocols {
+    isis {
+        interface ge-0/0/0.0 {
+            point-to-point;
+        }
+        interface lo0.0 {
+            passive;
+        }
+        source-packet-routing {
+            node-segment ipv4-index 2;
+        }
+        level 1 disable;
+        level 2 wide-metrics-only;
+    }
+    mpls {
+        interface ge-0/0/0.0;
+    }
+    rsvp {
+        interface ge-0/0/0.0;
+    }
+}
