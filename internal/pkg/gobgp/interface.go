@@ -12,8 +12,10 @@ import (
 	"fmt"
 	"io"
 	"net/netip"
-	"os"
 	"strings"
+	"time"
+
+	"go.uber.org/zap"
 
 	"github.com/nttcom/pola/internal/pkg/table"
 	api "github.com/osrg/gobgp/v4/api"
@@ -21,7 +23,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-func GetBGPlsNLRIs(serverAddr string, serverPort string) ([]table.TEDElem, error) {
+func MonitorBGPLsEvents(serverAddr string, serverPort string, tedChan chan []table.TEDElem, logger *zap.Logger) {
 	gobgpAddress := fmt.Sprintf("%s:%s", serverAddr, serverPort)
 
 	// Establish gRPC connection
@@ -30,16 +32,73 @@ func GetBGPlsNLRIs(serverAddr string, serverPort string) ([]table.TEDElem, error
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create gRPC client (address: %s): %w", gobgpAddress, err)
+		logger.Error("failed to create gRPC client (address: %s): %v", zap.String("address", gobgpAddress), zap.Error(err))
+		return
 	}
 	defer func() {
 		if err := cc.Close(); err != nil {
-			fmt.Fprintf(os.Stderr, "failed to close gRPC client connection: %v\n", err)
+			logger.Error("failed to close gRPC connection: %v", zap.Error(err))
 		}
 	}()
 
 	// Create gRPC client
 	client := api.NewGoBgpServiceClient(cc)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	req := &api.WatchEventRequest{
+		Table: &api.WatchEventRequest_Table{
+			Filters: []*api.WatchEventRequest_Table_Filter{
+				{
+					Type: api.WatchEventRequest_Table_Filter_TYPE_ADJIN,
+					Init: false,
+				},
+			},
+		},
+	}
+
+	var stream grpc.ServerStreamingClient[api.WatchEventResponse]
+	for {
+		stream, err = client.WatchEvent(ctx, req)
+		if err != nil {
+			logger.Error("failed to monitor BGP-LS events from gRPC server", zap.Error(err))
+			time.Sleep(10 * time.Second)
+			continue
+		}
+		break
+	}
+
+	var lastHandled time.Time
+	cooldown := 5 * time.Second
+
+	for {
+		res, err := stream.Recv()
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			logger.Error("error receiving BGP-LS event: %v", zap.Error(err))
+			time.Sleep(10 * time.Second)
+			continue
+		}
+
+		if t := res.GetTable(); t != nil {
+			now := time.Now()
+			if now.Sub(lastHandled) >= cooldown {
+				lastHandled = now
+
+				tedElems, err := GetBGPlsNLRIs(client)
+				if err != nil {
+					logger.Error("failed to get TED info: %v", zap.Error(err))
+					continue
+				}
+				tedChan <- tedElems
+			}
+		}
+	}
+}
+
+func GetBGPlsNLRIs(client api.GoBgpServiceClient) ([]table.TEDElem, error) {
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
