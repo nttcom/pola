@@ -17,30 +17,6 @@ import (
 
 type PccType int
 
-const (
-	CiscoLegacy PccType = iota
-	JuniperLegacy
-	RFCCompliant
-)
-
-// Determine PCC type from capability
-func DeterminePccType(caps []CapabilityInterface) (pccType PccType) {
-	pccType = RFCCompliant
-	for _, cap := range caps {
-		if t, ok := cap.(*AssocTypeList); ok {
-			for _, v := range t.AssocTypes {
-				if v == AssociationTypeSRPolicyAssociationCisco {
-					pccType = CiscoLegacy
-				} else if v == AssociationTypeSRPolicyAssociationJuniper {
-					pccType = JuniperLegacy
-					break
-				}
-			}
-		}
-	}
-	return
-}
-
 const commonObjectHeaderLength uint16 = 4
 
 // PCEP Object-Class (1 byte) Ref: https://www.iana.org/assignments/pcep/pcep.xhtml#pcep-objects
@@ -1268,6 +1244,30 @@ const (
 	AssociationTypeSRPolicyAssociationCisco   AssocType = 0x14
 	AssociationTypeSRPolicyAssociationJuniper AssocType = 0xffe1 // Juniper specific TLV (deprecated)
 )
+
+const (
+	CiscoLegacy PccType = iota
+	JuniperLegacy
+	RFCCompliant
+)
+
+// Determine PCC type from capability
+func DeterminePccType(caps []CapabilityInterface) (pccType PccType) {
+	pccType = RFCCompliant
+	for _, cap := range caps {
+		if t, ok := cap.(*AssocTypeList); ok {
+			for _, v := range t.AssocTypes {
+				if v == AssociationTypeSRPolicyAssociationCisco {
+					pccType = CiscoLegacy
+				} else if v == AssociationTypeSRPolicyAssociationJuniper {
+					pccType = JuniperLegacy
+					break
+				}
+			}
+		}
+	}
+	return
+}
 
 type AssociationObject struct {
 	ObjectType ObjectType
