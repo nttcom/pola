@@ -5,10 +5,6 @@
 
 package pcep
 
-import (
-	"golang.org/x/exp/constraints"
-)
-
 // AppendByteSlices concatenates multiple byte slices into a single slice.
 func AppendByteSlices(slices ...[]byte) []byte {
 	totalLen := 0
@@ -43,7 +39,6 @@ func Uint32ToByteSlice(v uint32) []byte {
 
 // Bitwise is a type constraint for unsigned integer types (uint8, uint16, uint32).
 type Bitwise interface {
-	constraints.Unsigned
 	~uint8 | ~uint16 | ~uint32
 }
 
