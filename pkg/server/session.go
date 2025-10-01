@@ -259,48 +259,73 @@ func (ss *Session) handlePCRpt(length uint16) error {
 	}
 
 	for _, sr := range message.StateReports {
-		// synchronization
+		// Synchronization
 		if sr.LSPObject.SFlag {
 			ss.logger.Debug("Synchronize SR Policy information", zap.Any("Message", message))
-			ss.RegisterSRPolicy(*sr)
-		} else if !sr.LSPObject.SFlag {
-			switch {
-			// finish synchronization
-			case sr.LSPObject.PlspID == 0:
-				ss.logger.Debug("Finish PCRpt state synchronization")
-				ss.isSynced = true
-			// response to request from PCE
-			case sr.SrpObject.SrpID != 0:
-				ss.logger.Debug("Finish Stateful PCE request", zap.Uint32("srpID", sr.SrpObject.SrpID))
-				if sr.LSPObject.RFlag {
-					ss.DeleteSRPolicy(*sr)
-				} else {
-					ss.RegisterSRPolicy(*sr)
-				}
-			// receive SR Policy with PLSP-ID
-			case sr.LSPObject.PlspID != 0:
-				ss.logger.Debug("Received SR Policy", zap.Uint32("plspID", sr.LSPObject.PlspID))
-				computedSegmentList, err := ss.computePathFromTED(*sr)
-				if err != nil {
-					ss.logger.Error("Failed to compute path from TED", zap.Error(err))
+			if err := ss.RegisterSRPolicy(*sr); err != nil {
+				ss.logger.Error("Failed to register SR Policy during synchronization", zap.Error(err), zap.Uint32("plspID", sr.LSPObject.PlspID))
+				return err
+			}
+			continue
+		}
+
+		switch {
+		// Finish synchronization
+		case sr.LSPObject.PlspID == 0:
+			ss.logger.Debug("Finish PCRpt state synchronization")
+			ss.isSynced = true
+
+		// Response to request from PCE
+		case sr.SrpObject.SrpID != 0:
+			ss.logger.Debug("Finish Stateful PCE request", zap.Uint32("srpID", sr.SrpObject.SrpID))
+			if sr.LSPObject.RFlag {
+				ss.DeleteSRPolicy(*sr)
+			} else {
+				if err := ss.RegisterSRPolicy(*sr); err != nil {
+					ss.logger.Error("Failed to register SR Policy for Stateful PCE request", zap.Error(err), zap.Uint32("plspID", sr.LSPObject.PlspID))
 					return err
 				}
-				sr.EroObject = createEroFromSegmentList(computedSegmentList)
+			}
 
-				ss.RegisterSRPolicy(*sr)
+		// Receive SR Policy with PLSP-ID
+		case sr.LSPObject.PlspID != 0:
+			ss.logger.Debug("Received SR Policy", zap.Uint32("plspID", sr.LSPObject.PlspID))
 
-				if policy, found := ss.SearchSRPolicy(sr.LSPObject.PlspID); found {
-					ss.SendPCUpdate(*policy)
-				}
-			default:
-				if sr.LSPObject.RFlag {
-					ss.DeleteSRPolicy(*sr)
-				} else {
-					ss.RegisterSRPolicy(*sr)
+			computedSegmentList, err := ss.computePathFromTED(*sr)
+			if err != nil {
+				ss.logger.Error("Failed to compute path from TED", zap.Error(err))
+				return err
+			}
+			sr.EroObject = createEroFromSegmentList(computedSegmentList)
+
+			if err := ss.RegisterSRPolicy(*sr); err != nil {
+				ss.logger.Error("Failed to register SR Policy", zap.Error(err), zap.Uint32("plspID", sr.LSPObject.PlspID))
+				return err
+			}
+
+			policy, found := ss.SearchSRPolicy(sr.LSPObject.PlspID)
+			if !found {
+				ss.logger.Warn("SR Policy not found after registration", zap.Uint32("plspID", sr.LSPObject.PlspID))
+				return fmt.Errorf("SR Policy %d not found after registration", sr.LSPObject.PlspID)
+			}
+
+			if err := ss.SendPCUpdate(*policy); err != nil {
+				ss.logger.Error("Failed to send PC update", zap.Uint32("plspID", sr.LSPObject.PlspID), zap.Error(err))
+				return err
+			}
+
+		default:
+			if sr.LSPObject.RFlag {
+				ss.DeleteSRPolicy(*sr)
+			} else {
+				if err := ss.RegisterSRPolicy(*sr); err != nil {
+					ss.logger.Error("Failed to register SR Policy (default case)", zap.Error(err), zap.Uint32("plspID", sr.LSPObject.PlspID))
+					return err
 				}
 			}
 		}
 	}
+
 	return nil
 }
 
@@ -485,14 +510,14 @@ func (ss *Session) SendPCUpdate(srPolicy table.SRPolicy) error {
 	return err
 }
 
-func (ss *Session) RegisterSRPolicy(sr pcep.StateReport) {
+func (ss *Session) RegisterSRPolicy(sr pcep.StateReport) error {
 	var (
 		color      uint32 // initialized to zero (RFC does not specify a default)
 		preference uint32 // initialized to zero (RFC does not specify a default)
 	)
 
 	if ss.pccType == pcep.CiscoLegacy {
-		// In Cisco legacy mode, get color and preference from Vendor Information Object
+		// Cisco legacy mode: get color and preference from Vendor Information Object
 		color = sr.VendorInformationObject.Color()
 		preference = sr.VendorInformationObject.Preference()
 	} else {
@@ -532,34 +557,50 @@ func (ss *Session) RegisterSRPolicy(sr pcep.StateReport) {
 		state = table.PolicyUnknown
 	}
 
+	// Validate Segment List
+	if sr.EroObject == nil {
+		return fmt.Errorf("EroObject is nil for PlspID %d", sr.LSPObject.PlspID)
+	}
+	segmentList := sr.EroObject.ToSegmentList()
+	if segmentList == nil {
+		return fmt.Errorf("SegmentList is nil for PlspID %d", sr.LSPObject.PlspID)
+	}
+
 	if p, ok := ss.SearchSRPolicy(sr.LSPObject.PlspID); ok {
-		// update
-		// If the LSP ID is old, it is not the latest data update.
+		// Update existing policy if LSPID is new or equal
 		if p.LSPID <= lspID {
 			p.Update(
 				table.PolicyDiff{
 					Name:        &sr.LSPObject.Name,
 					Color:       &color,
 					Preference:  &preference,
-					SegmentList: sr.EroObject.ToSegmentList(),
+					SegmentList: segmentList,
 					LSPID:       lspID,
 					State:       state,
 				},
 			)
 		}
 	} else {
-		// create
+		// Create a new SR policy
 		var src, dst netip.Addr
 		if src = sr.LSPObject.SrcAddr; !src.IsValid() {
 			src = sr.AssociationObject.AssocSrc
 		}
+		if !src.IsValid() {
+			return fmt.Errorf("invalid source address for PlspID %d", sr.LSPObject.PlspID)
+		}
+
 		if dst = sr.LSPObject.DstAddr; !dst.IsValid() {
 			dst = sr.AssociationObject.Endpoint()
 		}
+		if !dst.IsValid() {
+			return fmt.Errorf("invalid destination address for PlspID %d", sr.LSPObject.PlspID)
+		}
+
 		p := table.NewSRPolicy(
 			sr.LSPObject.PlspID,
 			sr.LSPObject.Name,
-			sr.EroObject.ToSegmentList(),
+			segmentList,
 			src,
 			dst,
 			color,
@@ -569,6 +610,8 @@ func (ss *Session) RegisterSRPolicy(sr pcep.StateReport) {
 		)
 		ss.srPolicies = append(ss.srPolicies, p)
 	}
+
+	return nil
 }
 
 func (ss *Session) DeleteSRPolicy(sr pcep.StateReport) {
