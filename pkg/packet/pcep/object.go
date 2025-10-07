@@ -154,6 +154,11 @@ const (
 )
 
 func (h *CommonObjectHeader) DecodeFromBytes(objectHeader []uint8) error {
+	if len(objectHeader) < int(commonObjectHeaderLength) {
+		return fmt.Errorf("object header too short: got %d bytes, need at least %d", len(objectHeader), commonObjectHeaderLength)
+
+	}
+
 	h.ObjectClass = ObjectClass(objectHeader[0])
 	h.ObjectType = ObjectType((objectHeader[1] & 0xf0) >> 4)
 	h.ResFlags = uint8((objectHeader[1] & 0x0c) >> 2)
