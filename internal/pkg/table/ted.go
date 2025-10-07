@@ -157,7 +157,7 @@ func NewLsNode(asn uint32, nodeID string) *LsNode {
 func (n *LsNode) NodeSegment() (Segment, error) {
 	// for SR-MPLS Segment
 	for _, prefix := range n.Prefixes {
-		if prefix.SidIndex != 0 {
+		if prefix.SidIndex > FirstSIDIndex {
 			sid := strconv.Itoa(int(n.SrgbBegin + prefix.SidIndex))
 			seg, err := NewSegment(sid)
 			if err != nil {
@@ -168,7 +168,7 @@ func (n *LsNode) NodeSegment() (Segment, error) {
 	}
 	// for SRv6 Segment
 	for _, srv6SID := range n.SRv6SIDs {
-		if len(srv6SID.Sids) > 0 {
+		if len(srv6SID.Sids) > FirstSIDIndex {
 			addr, err := netip.ParseAddr(srv6SID.Sids[FirstSIDIndex])
 			if err != nil {
 				return nil, err
