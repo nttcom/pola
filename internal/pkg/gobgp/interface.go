@@ -46,6 +46,14 @@ func MonitorBGPLsEvents(serverAddr string, serverPort string, tedChan chan []tab
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Get initial TED info
+	tedElems, err := GetBGPlsNLRIs(client)
+	if err != nil {
+		logger.Error("failed to get initial TED info: %v", zap.Error(err))
+	} else {
+		tedChan <- tedElems
+	}
+
 	req := &api.WatchEventRequest{
 		Table: &api.WatchEventRequest_Table{
 			Filters: []*api.WatchEventRequest_Table_Filter{
@@ -71,6 +79,7 @@ func MonitorBGPLsEvents(serverAddr string, serverPort string, tedChan chan []tab
 	var lastHandled time.Time
 	cooldown := 5 * time.Second
 
+	// Listen for BGP-LS events
 	for {
 		res, err := stream.Recv()
 		if err == io.EOF {
