@@ -131,10 +131,7 @@ func BehaviorToString(behavior uint16) string {
 	}
 }
 
-const (
-	FirstSRv6SIDIndex = 0 // Index for first SRv6 SID in array
-	FirstSIDIndex     = 0 // Index for first SID in Sids array
-)
+const FirstSIDIndex = 0 // Index for first SID in Sids array
 
 type SegmentSRv6 struct {
 	Sid        netip.Addr
@@ -175,35 +172,33 @@ func NewSegmentSRv6WithNodeInfo(sid netip.Addr, n *LsNode) (SegmentSRv6, error) 
 		Sid: sid,
 	}
 
-	if len(n.SRv6SIDs) == 0 || len(n.SRv6SIDs[FirstSRv6SIDIndex].Sids) == 0 {
-		return seg, errors.New("no SRv6 SIDs available")
-	}
-
-	addr, err := netip.ParseAddr(n.SRv6SIDs[FirstSRv6SIDIndex].Sids[FirstSIDIndex])
-	if err != nil {
-		return seg, err
-	}
-	seg.LocalAddr = addr
-
+	var found bool
 	for _, srv6SID := range n.SRv6SIDs {
 		if len(srv6SID.Sids) > 0 {
+			addr, err := netip.ParseAddr(srv6SID.Sids[FirstSIDIndex])
+			if err != nil {
+				return seg, err
+			}
+			seg.LocalAddr = addr
 			seg.Structure = []uint8{
 				srv6SID.SIDStructure.LocalBlock,
 				srv6SID.SIDStructure.LocalNode,
 				srv6SID.SIDStructure.LocalFunc,
 				srv6SID.SIDStructure.LocalArg,
 			}
-
 			switch srv6SID.EndpointBehavior.Behavior {
 			case BehaviorUN, BehaviorUA:
 				seg.USid = true
 			default:
 				seg.USid = false
 			}
+			found = true
 			break
 		}
 	}
-
+	if !found {
+		return seg, errors.New("no SRv6 SIDs available")
+	}
 	return seg, nil
 }
 
