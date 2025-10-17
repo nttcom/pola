@@ -390,13 +390,14 @@ func (ss *Session) extractSrcDstRouterIDs(sr pcep.StateReport) (string, string, 
 func (ss *Session) findRouterIDFromAddress(addr netip.Addr) (string, error) {
 	for _, nodes := range ss.ted.Nodes {
 		for routerID, node := range nodes {
-			for _, prefix := range node.Prefixes {
-				if prefix.Prefix.Contains(addr) {
-					return routerID, nil
-				}
-			}
 			if node.RouterID == addr.String() {
 				return routerID, nil
+			}
+
+			for _, prefix := range node.Prefixes {
+				if prefix.Prefix.Addr() == addr {
+					return routerID, nil
+				}
 			}
 		}
 	}
