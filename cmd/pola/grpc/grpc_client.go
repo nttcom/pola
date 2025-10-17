@@ -11,8 +11,7 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/golang/protobuf/ptypes/empty"
-	pb "github.com/nttcom/pola/api/grpc"
+	pb "github.com/nttcom/pola/api/pola/v1"
 	"github.com/nttcom/pola/internal/pkg/table"
 )
 
@@ -27,11 +26,11 @@ type Session struct {
 	IsSynced bool
 }
 
-func GetSessions(client pb.PceServiceClient) ([]Session, error) {
+func GetSessions(client pb.PCEServiceClient) ([]Session, error) {
 	ctx, cancel := withTimeout()
 	defer cancel()
 
-	ret, err := client.GetSessionList(ctx, &empty.Empty{})
+	ret, err := client.GetSessionList(ctx, &pb.GetSessionListRequest{})
 	if err != nil {
 		return nil, err
 	}
@@ -52,28 +51,29 @@ func GetSessions(client pb.PceServiceClient) ([]Session, error) {
 	return sessions, nil
 }
 
-func DeleteSession(client pb.PceServiceClient, session *pb.Session) error {
+func DeleteSession(client pb.PCEServiceClient, req *pb.DeleteSessionRequest) error {
 	ctx, cancel := withTimeout()
 	defer cancel()
-	_, err := client.DeleteSession(ctx, session)
+
+	_, err := client.DeleteSession(ctx, req)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func GetSRPolicyList(client pb.PceServiceClient) (map[netip.Addr][]table.SRPolicy, error) {
+func GetSRPolicyList(client pb.PCEServiceClient) (map[netip.Addr][]table.SRPolicy, error) {
 	ctx, cancel := withTimeout()
 	defer cancel()
 
-	ret, err := client.GetSRPolicyList(ctx, &empty.Empty{})
+	ret, err := client.GetSRPolicyList(ctx, &pb.GetSRPolicyListRequest{})
 	if err != nil {
 		return nil, err
 	}
 
-	policies := make(map[netip.Addr][]table.SRPolicy, len(ret.GetSRPolicies()))
+	policies := make(map[netip.Addr][]table.SRPolicy, len(ret.GetSrPolicies()))
 
-	for _, p := range ret.GetSRPolicies() {
+	for _, p := range ret.GetSrPolicies() {
 		peerAddr, _ := netip.AddrFromSlice(p.PcepSessionAddr)
 		srcAddr, _ := netip.AddrFromSlice(p.SrcAddr)
 		dstAddr, _ := netip.AddrFromSlice(p.DstAddr)
@@ -99,35 +99,27 @@ func GetSRPolicyList(client pb.PceServiceClient) (map[netip.Addr][]table.SRPolic
 	return policies, nil
 }
 
-func CreateSRPolicy(client pb.PceServiceClient, input *pb.CreateSRPolicyInput) error {
+func CreateSRPolicy(client pb.PCEServiceClient, req *pb.CreateSRPolicyRequest) error {
 	ctx, cancel := withTimeout()
 	defer cancel()
 
-	_, err := client.CreateSRPolicy(ctx, input)
+	_, err := client.CreateSRPolicy(ctx, req)
 	return err
 }
 
-func CreateSRPolicyWithoutLinkState(client pb.PceServiceClient, input *pb.CreateSRPolicyInput) error {
+func DeleteSRPolicy(client pb.PCEServiceClient, req *pb.DeleteSRPolicyRequest) error {
 	ctx, cancel := withTimeout()
 	defer cancel()
 
-	_, err := client.CreateSRPolicyWithoutLinkState(ctx, input)
+	_, err := client.DeleteSRPolicy(ctx, req)
 	return err
 }
 
-func DeleteSRPolicy(client pb.PceServiceClient, input *pb.DeleteSRPolicyInput) error {
+func GetTED(client pb.PCEServiceClient) (*table.LsTED, error) {
 	ctx, cancel := withTimeout()
 	defer cancel()
 
-	_, err := client.DeleteSRPolicy(ctx, input)
-	return err
-}
-
-func GetTed(client pb.PceServiceClient) (*table.LsTed, error) {
-	ctx, cancel := withTimeout()
-	defer cancel()
-
-	ret, err := client.GetTed(ctx, &empty.Empty{})
+	ret, err := client.GetTED(ctx, &pb.GetTEDRequest{})
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +128,7 @@ func GetTed(client pb.PceServiceClient) (*table.LsTed, error) {
 		return nil, errors.New("ted is disabled")
 	}
 
-	ted := &table.LsTed{
+	ted := &table.LsTED{
 		ID:    1,
 		Nodes: make(map[uint32]map[string]*table.LsNode),
 	}
@@ -152,46 +144,54 @@ func GetTed(client pb.PceServiceClient) (*table.LsTed, error) {
 	return ted, nil
 }
 
-// initializeLsNodes initializes LsNodes in the LsTed table using the given array of nodes
-func initializeLsNodes(ted *table.LsTed, nodes []*pb.LsNode) {
+// initializeLsNodes initializes LsNodes in the LsTED table using the given array of nodes
+func initializeLsNodes(ted *table.LsTED, nodes []*pb.LsNode) {
 	for _, node := range nodes {
-		lsNode := table.NewLsNode(node.GetAsn(), node.GetRouterID())
+		lsNode := table.NewLsNode(node.GetAsn(), node.GetRouterId())
 		lsNode.Hostname = node.GetHostname()
-		lsNode.IsisAreaID = node.GetIsisAreaID()
+		lsNode.IsisAreaID = node.GetIsisAreaId()
 		lsNode.SrgbBegin = node.GetSrgbBegin()
 		lsNode.SrgbEnd = node.GetSrgbEnd()
 
-		if _, ok := ted.Nodes[lsNode.Asn]; !ok {
-			ted.Nodes[lsNode.Asn] = map[string]*table.LsNode{}
+		if _, ok := ted.Nodes[lsNode.ASN]; !ok {
+			ted.Nodes[lsNode.ASN] = map[string]*table.LsNode{}
 		}
-		ted.Nodes[lsNode.Asn][lsNode.RouterID] = lsNode
+		ted.Nodes[lsNode.ASN][lsNode.RouterID] = lsNode
 	}
 }
 
-func addLsNode(ted *table.LsTed, node *pb.LsNode) error {
+func addLsNode(ted *table.LsTED, node *pb.LsNode) error {
 	for _, link := range node.GetLsLinks() {
-		localNode := ted.Nodes[link.LocalAsn][link.LocalRouterID]
-		remoteNode := ted.Nodes[link.RemoteAsn][link.RemoteRouterID]
+		localNode := ted.Nodes[link.LocalAsn][link.LocalRouterId]
+		remoteNode := ted.Nodes[link.RemoteAsn][link.RemoteRouterId]
 		lsLink, err := createLsLink(localNode, remoteNode, link)
 		if err != nil {
 			return err
 		}
-		ted.Nodes[node.GetAsn()][node.GetRouterID()].Links = append(ted.Nodes[node.GetAsn()][node.GetRouterID()].Links, lsLink)
+		ted.Nodes[node.GetAsn()][node.GetRouterId()].Links = append(ted.Nodes[node.GetAsn()][node.GetRouterId()].Links, lsLink)
 	}
 
 	for _, prefix := range node.LsPrefixes {
-		lsPrefix, err := createLsPrefix(ted.Nodes[node.GetAsn()][node.GetRouterID()], prefix)
+		lsPrefix, err := createLsPrefix(ted.Nodes[node.GetAsn()][node.GetRouterId()], prefix)
 		if err != nil {
 			return err
 		}
-		ted.Nodes[node.GetAsn()][node.GetRouterID()].Prefixes = append(ted.Nodes[node.GetAsn()][node.GetRouterID()].Prefixes, lsPrefix)
+		ted.Nodes[node.GetAsn()][node.GetRouterId()].Prefixes = append(ted.Nodes[node.GetAsn()][node.GetRouterId()].Prefixes, lsPrefix)
+	}
+
+	for _, srv6SID := range node.LsSrv6Sids {
+		lsSrv6SID, err := createSrv6SID(ted.Nodes[node.GetAsn()][node.GetRouterId()], srv6SID)
+		if err != nil {
+			return err
+		}
+		ted.Nodes[node.GetAsn()][node.GetRouterId()].SRv6SIDs = append(ted.Nodes[node.GetAsn()][node.GetRouterId()].SRv6SIDs, lsSrv6SID)
 	}
 
 	return nil
 }
 
-func createLsPrefix(lsNode *table.LsNode, prefix *pb.LsPrefix) (*table.LsPrefixV4, error) {
-	lsPrefix := table.NewLsPrefixV4(lsNode)
+func createLsPrefix(lsNode *table.LsNode, prefix *pb.LsPrefix) (*table.LsPrefix, error) {
+	lsPrefix := table.NewLsPrefix(lsNode)
 	var err error
 	lsPrefix.Prefix, err = netip.ParsePrefix(prefix.GetPrefix())
 	if err != nil {
@@ -209,11 +209,11 @@ func createLsLink(localNode, remoteNode *table.LsNode, link *pb.LsLink) (*table.
 		AdjSid:     link.GetAdjSid(),
 	}
 	var err error
-	lsLink.LocalIP, err = netip.ParseAddr(link.GetLocalIP())
+	err = lsLink.LocalIP.UnmarshalText([]byte(link.GetLocalIp()))
 	if err != nil {
 		return nil, err
 	}
-	lsLink.RemoteIP, err = netip.ParseAddr(link.GetRemoteIP())
+	err = lsLink.RemoteIP.UnmarshalText([]byte(link.GetRemoteIp()))
 	if err != nil {
 		return nil, err
 	}
@@ -224,20 +224,68 @@ func createLsLink(localNode, remoteNode *table.LsNode, link *pb.LsLink) (*table.
 		}
 		lsLink.Metrics = append(lsLink.Metrics, metric)
 	}
+	if link.GetSrv6EndXSid() != nil {
+		srv6EndXSID, err := createSrv6EndXSID(link.GetSrv6EndXSid())
+		if err != nil {
+			return nil, err
+		}
+		lsLink.Srv6EndXSID = srv6EndXSID
+	}
 	return lsLink, nil
 }
 
 func createMetric(metricInfo *pb.Metric) (*table.Metric, error) {
 	switch metricInfo.GetType() {
-	case pb.MetricType_IGP:
-		return table.NewMetric(table.IGP_METRIC, metricInfo.GetValue()), nil
-	case pb.MetricType_TE:
-		return table.NewMetric(table.TE_METRIC, metricInfo.GetValue()), nil
-	case pb.MetricType_DELAY:
-		return table.NewMetric(table.DELAY_METRIC, metricInfo.GetValue()), nil
-	case pb.MetricType_HOPCOUNT:
-		return table.NewMetric(table.HOPCOUNT_METRIC, metricInfo.GetValue()), nil
+	case pb.MetricType_METRIC_TYPE_IGP:
+		return table.NewMetric(table.IGPMetric, metricInfo.GetValue()), nil
+	case pb.MetricType_METRIC_TYPE_TE:
+		return table.NewMetric(table.TEMetric, metricInfo.GetValue()), nil
+	case pb.MetricType_METRIC_TYPE_DELAY:
+		return table.NewMetric(table.DelayMetric, metricInfo.GetValue()), nil
+	case pb.MetricType_METRIC_TYPE_HOPCOUNT:
+		return table.NewMetric(table.HopcountMetric, metricInfo.GetValue()), nil
 	default:
 		return nil, errors.New("unknown metric type")
 	}
+}
+
+func createSrv6EndXSID(srv6EndXSID *pb.Srv6EndXSID) (*table.Srv6EndXSID, error) {
+	lsSrv6EndXSID := &table.Srv6EndXSID{
+		EndpointBehavior: uint16(srv6EndXSID.EndpointBehavior),
+		Sids:             []string{},
+		Srv6SIDStructure: table.SIDStructure{
+			LocalBlock: uint8(srv6EndXSID.GetSidStructure().GetLocalBlock()),
+			LocalNode:  uint8(srv6EndXSID.GetSidStructure().GetLocalNode()),
+			LocalFunc:  uint8(srv6EndXSID.GetSidStructure().GetLocalFunc()),
+			LocalArg:   uint8(srv6EndXSID.GetSidStructure().GetLocalArg()),
+		},
+	}
+
+	for _, sid := range srv6EndXSID.GetSids() {
+		lsSrv6EndXSID.Sids = append(lsSrv6EndXSID.Sids, sid.GetSid())
+	}
+
+	return lsSrv6EndXSID, nil
+}
+
+func createSrv6SID(lsNode *table.LsNode, srv6SID *pb.LsSrv6SID) (*table.LsSrv6SID, error) {
+	lsSrv6SID := table.NewLsSrv6SID(lsNode)
+
+	for _, sid := range srv6SID.GetSids() {
+		lsSrv6SID.Sids = append(lsSrv6SID.Sids, sid.GetSid())
+	}
+	for _, topoID := range srv6SID.GetMultiTopoIds() {
+		lsSrv6SID.MultiTopoIDs = append(lsSrv6SID.MultiTopoIDs, topoID.GetMultiTopoId())
+	}
+
+	lsSrv6SID.EndpointBehavior.Behavior = uint16(srv6SID.GetEndpointBehavior().GetBehavior())
+	lsSrv6SID.EndpointBehavior.Flags = uint8(srv6SID.GetEndpointBehavior().GetFlags())
+	lsSrv6SID.EndpointBehavior.Algorithm = uint8(srv6SID.GetEndpointBehavior().GetAlgorithm())
+
+	lsSrv6SID.SIDStructure.LocalBlock = uint8(srv6SID.GetSidStructure().GetLocalBlock())
+	lsSrv6SID.SIDStructure.LocalNode = uint8(srv6SID.GetSidStructure().GetLocalNode())
+	lsSrv6SID.SIDStructure.LocalFunc = uint8(srv6SID.GetSidStructure().GetLocalFunc())
+	lsSrv6SID.SIDStructure.LocalArg = uint8(srv6SID.GetSidStructure().GetLocalArg())
+
+	return lsSrv6SID, nil
 }
