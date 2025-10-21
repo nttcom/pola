@@ -23,6 +23,7 @@ func (ted *LsTED) Update(tedElems []TEDElem) {
 	}
 }
 
+// Print outputs the TED in a structured way with low cyclomatic complexity.
 func (ted *LsTED) Print() {
 	if ted == nil || ted.Nodes == nil {
 		fmt.Println("TED is empty")
@@ -33,101 +34,129 @@ func (ted *LsTED) Print() {
 		if nodes == nil {
 			continue
 		}
-		nodeCnt := 1
-		for nodeID, node := range nodes {
-			if node == nil {
+		printNodes(nodes)
+	}
+}
+
+// printNodes iterates over each node in the map and prints its details.
+func printNodes(nodes map[string]*LsNode) {
+	nodeCnt := 1
+	for nodeID, node := range nodes {
+		if node == nil {
+			continue
+		}
+		fmt.Printf("Node: %d\n", nodeCnt)
+		printNodeBasic(nodeID, node)
+		printNodePrefixes(node)
+		printNodeLinks(node)
+		printNodeSRv6SIDs(node)
+		fmt.Println()
+		nodeCnt++
+	}
+}
+
+// printNodeBasic prints the basic information of a node.
+func printNodeBasic(nodeID string, node *LsNode) {
+	fmt.Printf("  %s\n", nodeID)
+	fmt.Printf("  Hostname: %s\n", node.Hostname)
+	fmt.Printf("  ISIS Area ID: %s\n", node.IsisAreaID)
+	fmt.Printf("  SRGB: %d - %d\n", node.SrgbBegin, node.SrgbEnd)
+}
+
+// printNodePrefixes prints the prefixes associated with a node.
+func printNodePrefixes(node *LsNode) {
+	fmt.Println("  Prefixes:")
+	if node.Prefixes == nil {
+		return
+	}
+	for _, prefix := range node.Prefixes {
+		if prefix == nil {
+			continue
+		}
+		fmt.Printf("    %s\n", prefix.Prefix.String())
+		if prefix.SidIndex != 0 {
+			fmt.Printf("      index: %d\n", prefix.SidIndex)
+		}
+	}
+}
+
+// printNodeLinks prints the links associated with a node.
+func printNodeLinks(node *LsNode) {
+	fmt.Println("  Links:")
+	if node.Links == nil {
+		return
+	}
+	for _, link := range node.Links {
+		if link == nil {
+			continue
+		}
+		printLink(link)
+	}
+}
+
+// printLink prints the details of a single link.
+func printLink(link *LsLink) {
+	localIP := "None"
+	remoteIP := "None"
+	if link.LocalIP.IsValid() {
+		localIP = link.LocalIP.String()
+	}
+	if link.RemoteIP.IsValid() {
+		remoteIP = link.RemoteIP.String()
+	}
+	fmt.Printf("    Local: %s Remote: %s\n", localIP, remoteIP)
+
+	remoteNodeID := "None"
+	if link.RemoteNode != nil {
+		remoteNodeID = link.RemoteNode.RouterID
+	}
+	fmt.Printf("      RemoteNode: %s\n", remoteNodeID)
+
+	fmt.Println("      Metrics:")
+	if link.Metrics != nil {
+		for _, metric := range link.Metrics {
+			if metric == nil {
 				continue
 			}
-			fmt.Printf("Node: %d\n", nodeCnt)
-			fmt.Printf("  %s\n", nodeID)
-			fmt.Printf("  Hostname: %s\n", node.Hostname)
-			fmt.Printf("  ISIS Area ID: %s\n", node.IsisAreaID)
-			fmt.Printf("  SRGB: %d - %d\n", node.SrgbBegin, node.SrgbEnd)
-
-			fmt.Printf("  Prefixes:\n")
-			if node.Prefixes != nil {
-				for _, prefix := range node.Prefixes {
-					if prefix == nil {
-						continue
-					}
-					fmt.Printf("    %s\n", prefix.Prefix.String())
-					if prefix.SidIndex != 0 {
-						fmt.Printf("      index: %d\n", prefix.SidIndex)
-					}
-				}
-			}
-
-			fmt.Printf("  Links:\n")
-			if node.Links != nil {
-				for _, link := range node.Links {
-					if link == nil {
-						continue
-					}
-
-					localIP := "None"
-					remoteIP := "None"
-					if link.LocalIP.IsValid() {
-						localIP = link.LocalIP.String()
-					}
-					if link.RemoteIP.IsValid() {
-						remoteIP = link.RemoteIP.String()
-					}
-					fmt.Printf("    Local: %s Remote: %s\n", localIP, remoteIP)
-
-					remoteNodeID := "None"
-					if link.RemoteNode != nil {
-						remoteNodeID = link.RemoteNode.RouterID
-					}
-					fmt.Printf("      RemoteNode: %s\n", remoteNodeID)
-
-					fmt.Printf("      Metrics:\n")
-					if link.Metrics != nil {
-						for _, metric := range link.Metrics {
-							if metric == nil {
-								continue
-							}
-							fmt.Printf("        %s: %d\n", metric.Type.String(), metric.Value)
-						}
-					}
-
-					fmt.Printf("      Adj-SID: %d\n", link.AdjSid)
-
-					if link.Srv6EndXSID != nil {
-						fmt.Printf("      SRv6 End.X SID:\n")
-						fmt.Printf("        EndpointBehavior: %s\n", BehaviorToString(link.Srv6EndXSID.EndpointBehavior))
-						fmt.Printf("        SIDs: %v\n", link.Srv6EndXSID.Sids)
-						fmt.Printf("        SID Structure: Block: %d, Node: %d, Func: %d, Arg: %d\n",
-							link.Srv6EndXSID.Srv6SIDStructure.LocalBlock,
-							link.Srv6EndXSID.Srv6SIDStructure.LocalNode,
-							link.Srv6EndXSID.Srv6SIDStructure.LocalFunc,
-							link.Srv6EndXSID.Srv6SIDStructure.LocalArg)
-					}
-				}
-			}
-
-			fmt.Printf("  SRv6 SIDs:\n")
-			if node.SRv6SIDs != nil {
-				for _, srv6SID := range node.SRv6SIDs {
-					if srv6SID == nil {
-						continue
-					}
-					fmt.Printf("    SIDs: %v\n", srv6SID.Sids)
-					fmt.Printf("    Block: %d, Node: %d, Func: %d, Arg: %d\n",
-						srv6SID.SIDStructure.LocalBlock,
-						srv6SID.SIDStructure.LocalNode,
-						srv6SID.SIDStructure.LocalFunc,
-						srv6SID.SIDStructure.LocalArg)
-					fmt.Printf("    EndpointBehavior: %s, Flags: %d, Algorithm: %d\n",
-						BehaviorToString(srv6SID.EndpointBehavior.Behavior),
-						srv6SID.EndpointBehavior.Flags,
-						srv6SID.EndpointBehavior.Algorithm)
-					fmt.Printf("    MultiTopoIDs: %v\n", srv6SID.MultiTopoIDs)
-				}
-			}
-
-			nodeCnt++
-			fmt.Printf("\n")
+			fmt.Printf("        %s: %d\n", metric.Type.String(), metric.Value)
 		}
+	}
+
+	fmt.Printf("      Adj-SID: %d\n", link.AdjSid)
+
+	if link.Srv6EndXSID != nil {
+		fmt.Println("      SRv6 End.X SID:")
+		fmt.Printf("        EndpointBehavior: %s\n", BehaviorToString(link.Srv6EndXSID.EndpointBehavior))
+		fmt.Printf("        SIDs: %v\n", link.Srv6EndXSID.Sids)
+		fmt.Printf("        SID Structure: Block: %d, Node: %d, Func: %d, Arg: %d\n",
+			link.Srv6EndXSID.Srv6SIDStructure.LocalBlock,
+			link.Srv6EndXSID.Srv6SIDStructure.LocalNode,
+			link.Srv6EndXSID.Srv6SIDStructure.LocalFunc,
+			link.Srv6EndXSID.Srv6SIDStructure.LocalArg)
+	}
+}
+
+// printNodeSRv6SIDs prints the SRv6 SIDs associated with a node.
+func printNodeSRv6SIDs(node *LsNode) {
+	fmt.Println("  SRv6 SIDs:")
+	if node.SRv6SIDs == nil {
+		return
+	}
+	for _, srv6SID := range node.SRv6SIDs {
+		if srv6SID == nil {
+			continue
+		}
+		fmt.Printf("    SIDs: %v\n", srv6SID.Sids)
+		fmt.Printf("    Block: %d, Node: %d, Func: %d, Arg: %d\n",
+			srv6SID.SIDStructure.LocalBlock,
+			srv6SID.SIDStructure.LocalNode,
+			srv6SID.SIDStructure.LocalFunc,
+			srv6SID.SIDStructure.LocalArg)
+		fmt.Printf("    EndpointBehavior: %s, Flags: %d, Algorithm: %d\n",
+			BehaviorToString(srv6SID.EndpointBehavior.Behavior),
+			srv6SID.EndpointBehavior.Flags,
+			srv6SID.EndpointBehavior.Algorithm)
+		fmt.Printf("    MultiTopoIDs: %v\n", srv6SID.MultiTopoIDs)
 	}
 }
 
