@@ -79,6 +79,7 @@ func GetBGPlsNLRIs(serverAddr string, serverPort string) ([]table.TEDElem, error
 	return tedElems, nil
 }
 
+// ConvertToTEDElem converts a single api.Destination to TEDElem(s) with low cyclomatic complexity.
 func ConvertToTEDElem(dst *api.Destination) ([]table.TEDElem, error) {
 	if len(dst.GetPaths()) != 1 {
 		return nil, errors.New("invalid path length: expected 1 path")
@@ -89,92 +90,121 @@ func ConvertToTEDElem(dst *api.Destination) ([]table.TEDElem, error) {
 	if nlri == nil {
 		return nil, errors.New("NLRI is nil")
 	}
+
 	lsAddrPrefix := nlri.GetLsAddrPrefix()
 	if lsAddrPrefix == nil {
 		return nil, errors.New("LSAddrPrefix is nil")
 	}
-	// Get BGP-LS Attribute
-	var lsAttr *api.Attribute_Ls
-	var ok bool
-	for _, pathAttr := range path.GetPattrs() {
-		if lsAttr, ok = pathAttr.Attr.(*api.Attribute_Ls); ok {
-			// Found BGP-LS Attribute
-			break
-		}
-	}
+
+	lsAttr := findLsAttribute(path)
 	if lsAttr == nil {
+		// BGP-LS Attribute not found, return empty
 		return nil, nil
 	}
 
-	switch lsAddrPrefix.GetType() {
-	case api.LsNLRIType_LS_NLRI_TYPE_NODE:
-		lsAttrNode := lsAttr.Ls.GetNode()
-		if lsAttrNode == nil {
-			return nil, fmt.Errorf("LS Node Attribute is nil")
+	return convertByNlriType(lsAddrPrefix, lsAttr, path)
+}
+
+// findLsAttribute extracts the BGP-LS attribute from a path.
+func findLsAttribute(path *api.Path) *api.Attribute_Ls {
+	for _, pathAttr := range path.GetPattrs() {
+		if lsAttr, ok := pathAttr.Attr.(*api.Attribute_Ls); ok {
+			return lsAttr
 		}
-		lsNode, err := getLsNode(lsAddrPrefix, lsAttrNode)
-		if err != nil {
-			return nil, fmt.Errorf("failed to process LS Node NLRI: %w", err)
-		}
-		return []table.TEDElem{lsNode}, nil
-	case api.LsNLRIType_LS_NLRI_TYPE_LINK:
-		lsAttrLink := lsAttr.Ls.GetLink()
-		if lsAttrLink == nil {
-			return nil, fmt.Errorf("LS Link Attribute is nil")
-		}
-		lsLink, err := getLsLink(lsAddrPrefix, lsAttrLink)
-		if err != nil {
-			return nil, fmt.Errorf("failed to process LS Link NLRI: %w", err)
-		}
-		return []table.TEDElem{lsLink}, nil
-	case api.LsNLRIType_LS_NLRI_TYPE_PREFIX_V4, api.LsNLRIType_LS_NLRI_TYPE_PREFIX_V6:
-		lsAttrPrefix := lsAttr.Ls.GetPrefix()
-		if lsAttrPrefix == nil {
-			return nil, fmt.Errorf("LS Prefix Attribute is nil")
-		}
-		// Link-State Prefix NLRI may contain one or more entries within the MP-REACH NLRI.
-		// Since path.GetNLRI() only includes one of them, you need to retrieve all of them from path.GetPattrs().
-		var mpReachAttr *api.MpReachNLRIAttribute
-		for _, pathAttr := range path.GetPattrs() {
-			mpReachAttr = pathAttr.GetMpReach()
-			if mpReachAttr != nil {
-				// Found MP-REACH NLRI Attribute
-				break
-			}
-		}
-		if mpReachAttr == nil {
-			return nil, errors.New("MP-REACH NLRI Attribute is nil")
-		}
-		lsPrefixList, err := getLsPrefixList(mpReachAttr.GetNlris(), lsAttrPrefix)
-		if err != nil {
-			return nil, fmt.Errorf("failed to process LS Prefix V4 NLRI: %w", err)
-		}
-		return lsPrefixList, nil
-	case api.LsNLRIType_LS_NLRI_TYPE_SRV6_SID:
-		lsAttrSrv6SID := lsAttr.Ls.GetSrv6Sid()
-		if lsAttrSrv6SID == nil {
-			return nil, fmt.Errorf("LS SRv6 SID Attribute is nil")
-		}
-		// Link-State Prefix NLRI may contain one or more entries within the MP-REACH NLRI.
-		// Since path.GetNLRI() only includes one of them, you need to retrieve the others from path.GetPattrs() instead of using path.GetNLRI().
-		var mpReachAttr *api.MpReachNLRIAttribute
-		for _, pathAttr := range path.GetPattrs() {
-			mpReachAttr = pathAttr.GetMpReach()
-			if mpReachAttr != nil {
-				break
-			}
-		}
-		if mpReachAttr == nil {
-			return nil, errors.New("MP-REACH NLRI Attribute is nil")
-		}
-		lsSrv6SIDList, err := getLsSrv6SIDList(mpReachAttr.GetNlris(), lsAttrSrv6SID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to process LS SRv6 SID NLRI: %w", err)
-		}
-		return lsSrv6SIDList, nil
-	default:
-		return nil, fmt.Errorf("invalid LS Link State NLRI type: %s", lsAddrPrefix.GetType().String())
 	}
+	return nil
+}
+
+// convertByNlriType dispatches NLRI processing based on its type.
+func convertByNlriType(nlri *api.LsAddrPrefix, lsAttr *api.Attribute_Ls, path *api.Path) ([]table.TEDElem, error) {
+	switch nlri.GetType() {
+	case api.LsNLRIType_LS_NLRI_TYPE_NODE:
+		return convertNode(nlri, lsAttr)
+	case api.LsNLRIType_LS_NLRI_TYPE_LINK:
+		return convertLink(nlri, lsAttr)
+	case api.LsNLRIType_LS_NLRI_TYPE_PREFIX_V4, api.LsNLRIType_LS_NLRI_TYPE_PREFIX_V6:
+		return convertPrefix(nlri, lsAttr, path)
+	case api.LsNLRIType_LS_NLRI_TYPE_SRV6_SID:
+		return convertSrv6SID(nlri, lsAttr, path)
+	default:
+		return nil, fmt.Errorf("invalid LS NLRI type: %s", nlri.GetType().String())
+	}
+}
+
+// convertNode handles LS Node NLRI.
+func convertNode(nlri *api.LsAddrPrefix, lsAttr *api.Attribute_Ls) ([]table.TEDElem, error) {
+	nodeAttr := lsAttr.Ls.GetNode()
+	if nodeAttr == nil {
+		return nil, fmt.Errorf("LS Node Attribute is nil")
+	}
+	lsNode, err := getLsNode(nlri, nodeAttr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to process LS Node NLRI: %w", err)
+	}
+	return []table.TEDElem{lsNode}, nil
+}
+
+// convertLink handles LS Link NLRI.
+func convertLink(nlri *api.LsAddrPrefix, lsAttr *api.Attribute_Ls) ([]table.TEDElem, error) {
+	linkAttr := lsAttr.Ls.GetLink()
+	if linkAttr == nil {
+		return nil, fmt.Errorf("LS Link Attribute is nil")
+	}
+	lsLink, err := getLsLink(nlri, linkAttr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to process LS Link NLRI: %w", err)
+	}
+	return []table.TEDElem{lsLink}, nil
+}
+
+// convertPrefix handles LS Prefix V4/V6 NLRI.
+func convertPrefix(nlri *api.LsAddrPrefix, lsAttr *api.Attribute_Ls, path *api.Path) ([]table.TEDElem, error) {
+	prefixAttr := lsAttr.Ls.GetPrefix()
+	if prefixAttr == nil {
+		return nil, fmt.Errorf("LS Prefix Attribute is nil")
+	}
+
+	mpReach := findMpReach(path)
+	if mpReach == nil {
+		return nil, errors.New("MP-REACH NLRI Attribute is nil")
+	}
+
+	lsPrefixList, err := getLsPrefixList(mpReach.GetNlris(), prefixAttr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to process LS Prefix NLRI: %w", err)
+	}
+
+	return lsPrefixList, nil
+}
+
+// convertSrv6SID handles LS SRv6 SID NLRI.
+func convertSrv6SID(nlri *api.LsAddrPrefix, lsAttr *api.Attribute_Ls, path *api.Path) ([]table.TEDElem, error) {
+	srv6Attr := lsAttr.Ls.GetSrv6Sid()
+	if srv6Attr == nil {
+		return nil, fmt.Errorf("LS SRv6 SID Attribute is nil")
+	}
+
+	mpReach := findMpReach(path)
+	if mpReach == nil {
+		return nil, errors.New("MP-REACH NLRI Attribute is nil")
+	}
+
+	lsSrv6List, err := getLsSrv6SIDList(mpReach.GetNlris(), srv6Attr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to process LS SRv6 SID NLRI: %w", err)
+	}
+
+	return lsSrv6List, nil
+}
+
+// findMpReach searches for MP-REACH NLRI attribute in path.
+func findMpReach(path *api.Path) *api.MpReachNLRIAttribute {
+	for _, attr := range path.GetPattrs() {
+		if mp := attr.GetMpReach(); mp != nil {
+			return mp
+		}
+	}
+	return nil
 }
 
 // formatIsisAreaID formats the ISIS Area ID into a human-readable string.
