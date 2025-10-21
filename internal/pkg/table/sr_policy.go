@@ -145,20 +145,20 @@ func (seg SegmentSRv6) SidString() string {
 	return seg.Sid.String()
 }
 
-func (seg SegmentSRv6) Behavior() uint16 {
+func (seg SegmentSRv6) Behavior() (uint16, error) {
 	if !seg.LocalAddr.IsValid() {
-		return BehaviorReserved
+		return 0, errors.New("SegmentSRv6: LocalAddr is invalid")
 	}
 	if seg.USid {
 		if seg.RemoteAddr.IsValid() {
-			return BehaviorUA
+			return BehaviorUA, nil
 		}
-		return BehaviorUN
+		return BehaviorUN, nil
 	}
 	if seg.RemoteAddr.IsValid() {
-		return BehaviorENDX
+		return BehaviorENDX, nil
 	}
-	return BehaviorEND
+	return BehaviorEND, nil
 }
 
 func NewSegmentSRv6(sid netip.Addr) SegmentSRv6 {

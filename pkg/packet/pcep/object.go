@@ -778,7 +778,10 @@ func (o EroObject) Serialize() ([]uint8, error) {
 
 	byteEroObject := byteEroObjectHeader
 	for _, eroSubobject := range o.EroSubobjects {
-		buf := eroSubobject.Serialize()
+		buf, err := eroSubobject.Serialize()
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize subobject: %w", err)
+		}
 		byteEroObject = append(byteEroObject, buf...)
 	}
 	return byteEroObject, nil
@@ -834,7 +837,7 @@ func (o *EroObject) ToSegmentList() []table.Segment {
 type EroSubobject interface {
 	DecodeFromBytes([]uint8) error
 	Len() (uint16, error)
-	Serialize() []uint8
+	Serialize() ([]uint8, error)
 	ToSegment() table.Segment
 }
 
@@ -930,31 +933,33 @@ func (o *SREroSubobject) DecodeFromBytes(subObject []uint8) error {
 	return nil
 }
 
-func (o *SREroSubobject) Serialize() []uint8 {
+func (o *SREroSubobject) Serialize() ([]uint8, error) {
 	buf := make([]uint8, 4)
 	buf[0] = uint8(o.SubobjectType)
 	if o.LFlag {
-		buf[0] = buf[0] | 0x80
+		buf[0] |= 0x80
 	}
 	buf[1] = o.Length
 	buf[2] = uint8(o.NAIType) * 16
 	if o.FFlag {
-		buf[3] = buf[3] | 0x08
+		buf[3] |= 0x08
 	}
 	if o.SFlag {
-		buf[3] = buf[3] | 0x04
+		buf[3] |= 0x04
 	}
 	if o.CFlag {
-		buf[3] = buf[3] | 0x02
+		buf[3] |= 0x02
 	}
 	if o.MFlag {
-		buf[3] = buf[3] | 0x01
+		buf[3] |= 0x01
 	}
+
 	byteSid := make([]uint8, 4)
 	binary.BigEndian.PutUint32(byteSid, o.Segment.Sid<<12)
 
 	byteSREroSubobject := AppendByteSlices(buf, byteSid)
-	return byteSREroSubobject
+
+	return byteSREroSubobject, nil
 }
 
 func (o *SREroSubobject) Len() (uint16, error) {
@@ -1068,36 +1073,40 @@ func (o *SRv6EroSubobject) DecodeFromBytes(subObject []uint8) error {
 	return nil
 }
 
-func (o *SRv6EroSubobject) Serialize() []uint8 {
+func (o *SRv6EroSubobject) Serialize() ([]uint8, error) {
 	buf := make([]uint8, 4)
 	buf[0] = uint8(o.SubobjectType)
 	if o.LFlag {
-		buf[0] = buf[0] | 0x80
+		buf[0] |= 0x80
 	}
 	buf[1] = o.Length
 	buf[2] = uint8(o.NAIType) * 16
 	if o.VFlag {
-		buf[3] = buf[3] | 0x08
+		buf[3] |= 0x08
 	}
 	if o.TFlag {
-		buf[3] = buf[3] | 0x04
+		buf[3] |= 0x04
 	}
 	if o.FFlag {
-		buf[3] = buf[3] | 0x02
+		buf[3] |= 0x02
 	}
 	if o.SFlag {
-		buf[3] = buf[3] | 0x01
+		buf[3] |= 0x01
 	}
+
 	reserved := make([]uint8, 2)
-	behavior := Uint16ToByteSlice(o.Segment.Behavior())
+
+	behavior, err := o.Segment.Behavior()
+	if err != nil {
+		return nil, err
+	}
+	behaviorBytes := Uint16ToByteSlice(behavior)
+
 	byteSid := o.Segment.Sid.AsSlice()
 
-	byteNAI := []uint8{}
-	if o.Segment.LocalAddr.IsValid() {
-		byteNAI = append(byteNAI, o.Segment.LocalAddr.AsSlice()...)
-		if o.Segment.RemoteAddr.IsValid() {
-			byteNAI = append(byteNAI, o.Segment.RemoteAddr.AsSlice()...)
-		}
+	byteNAI := o.Segment.LocalAddr.AsSlice()
+	if o.Segment.RemoteAddr.IsValid() {
+		byteNAI = append(byteNAI, o.Segment.RemoteAddr.AsSlice()...)
 	}
 
 	byteSidStructure := []uint8{}
@@ -1106,8 +1115,8 @@ func (o *SRv6EroSubobject) Serialize() []uint8 {
 		byteSidStructure = append(byteSidStructure, make([]uint8, 4)...)
 	}
 
-	byteSRv6EroSubobject := AppendByteSlices(buf, reserved, behavior, byteSid, byteNAI, byteSidStructure)
-	return byteSRv6EroSubobject
+	byteSRv6EroSubobject := AppendByteSlices(buf, reserved, behaviorBytes, byteSid, byteNAI, byteSidStructure)
+	return byteSRv6EroSubobject, nil
 }
 
 func (o *SRv6EroSubobject) Len() (uint16, error) {
