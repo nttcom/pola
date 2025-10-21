@@ -61,6 +61,7 @@ $ sudo docker exec -it clab-dynamic-path-pola bash
 ```
 
 ### Show TED
+
 ```bash
 $ sudo docker exec -it clab-dynamic-path-pola bash
 # pola -p 50052 ted 
