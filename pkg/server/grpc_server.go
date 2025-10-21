@@ -177,7 +177,7 @@ func (s *APIServer) DeleteSRPolicy(ctx context.Context, input *pb.DeleteSRPolicy
 		return nil, err
 	}
 	s.logger.Info("Received DeleteSRPolicy API request")
-	s.logger.Debug("Received paramater", zap.String("input", string(inputJSON)))
+	s.logger.Debug("Received parameter", zap.String("input", string(inputJSON)))
 
 	pcepSession, err := getSyncedPCEPSession(s.pce, inputSRPolicy.GetPcepSessionAddr())
 	if err != nil {
