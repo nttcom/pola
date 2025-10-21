@@ -265,6 +265,13 @@ const (
 	TriggeredInitialSyncBit       uint32 = 0x20
 )
 
+const definedStatefulPCEFlagsMask uint32 = LSPUpdateCapabilityBit |
+	IncludeDBVersionCapabilityBit |
+	LSPInstantiationCapabilityBit |
+	TriggeredResyncCapabilityBit |
+	DeltaLSPSyncCapabilityBit |
+	TriggeredInitialSyncBit
+
 const (
 	StatefulPCECapabilityFlagsIndex = 3
 )
@@ -281,10 +288,11 @@ func (tlv *StatefulPCECapability) DecodeFromBytes(data []byte) error {
 }
 
 func (tlv *StatefulPCECapability) Serialize() []byte {
+	flags := tlv.SetFlags() & definedStatefulPCEFlagsMask
 	return AppendByteSlices(
 		Uint16ToByteSlice(tlv.Type()),
 		Uint16ToByteSlice(TLVStatefulPCECapabilityValueLength),
-		Uint32ToByteSlice(tlv.SetFlags()),
+		Uint32ToByteSlice(flags),
 	)
 }
 
