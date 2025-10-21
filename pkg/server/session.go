@@ -259,73 +259,99 @@ func (ss *Session) handlePCRpt(length uint16) error {
 	}
 
 	for _, sr := range message.StateReports {
-		// Synchronization
 		if sr.LSPObject.SFlag {
-			ss.logger.Debug("Synchronize SR Policy information", zap.Any("Message", message))
-			if err := ss.RegisterSRPolicy(*sr); err != nil {
-				ss.logger.Error("Failed to register SR Policy during synchronization", zap.Error(err), zap.Uint32("plspID", sr.LSPObject.PlspID))
+			if err := ss.handleSynchronization(sr, message); err != nil {
 				return err
 			}
 			continue
 		}
 
 		switch {
-		// Finish synchronization
 		case sr.LSPObject.PlspID == 0:
-			ss.logger.Debug("Finish PCRpt state synchronization")
-			ss.isSynced = true
-
-		// Response to request from PCE
+			ss.handleFinishSynchronization()
 		case sr.SrpObject.SrpID != 0:
-			ss.logger.Debug("Finish Stateful PCE request", zap.Uint32("srpID", sr.SrpObject.SrpID))
-			if sr.LSPObject.RFlag {
-				ss.DeleteSRPolicy(*sr)
-			} else {
-				if err := ss.RegisterSRPolicy(*sr); err != nil {
-					ss.logger.Error("Failed to register SR Policy for Stateful PCE request", zap.Error(err), zap.Uint32("plspID", sr.LSPObject.PlspID))
-					return err
-				}
+			if err := ss.handleStatefulPCERequest(sr); err != nil {
+				return err
 			}
-
-		// Receive SR Policy with PLSP-ID
 		case sr.LSPObject.PlspID != 0:
-			ss.logger.Debug("Received SR Policy", zap.Uint32("plspID", sr.LSPObject.PlspID))
-
-			computedSegmentList, err := ss.computePathFromTED(*sr)
-			if err != nil {
-				ss.logger.Error("Failed to compute path from TED", zap.Error(err))
+			if err := ss.handleSRPolicyWithPLSPID(sr); err != nil {
 				return err
 			}
-			sr.EroObject = createEroFromSegmentList(computedSegmentList)
-
-			if err := ss.RegisterSRPolicy(*sr); err != nil {
-				ss.logger.Error("Failed to register SR Policy", zap.Error(err), zap.Uint32("plspID", sr.LSPObject.PlspID))
-				return err
-			}
-
-			policy, found := ss.SearchSRPolicy(sr.LSPObject.PlspID)
-			if !found {
-				ss.logger.Warn("SR Policy not found after registration", zap.Uint32("plspID", sr.LSPObject.PlspID))
-				return fmt.Errorf("SR Policy %d not found after registration", sr.LSPObject.PlspID)
-			}
-
-			if err := ss.SendPCUpdate(*policy); err != nil {
-				ss.logger.Error("Failed to send PC update", zap.Uint32("plspID", sr.LSPObject.PlspID), zap.Error(err))
-				return err
-			}
-
 		default:
-			if sr.LSPObject.RFlag {
-				ss.DeleteSRPolicy(*sr)
-			} else {
-				if err := ss.RegisterSRPolicy(*sr); err != nil {
-					ss.logger.Error("Failed to register SR Policy (default case)", zap.Error(err), zap.Uint32("plspID", sr.LSPObject.PlspID))
-					return err
-				}
+			if err := ss.handleDefaultSRPolicy(sr); err != nil {
+				return err
 			}
 		}
 	}
 
+	return nil
+}
+
+// Synchronization (S-Flag)
+func (ss *Session) handleSynchronization(sr *pcep.StateReport, message *pcep.PCRptMessage) error {
+	ss.logger.Debug("Synchronize SR Policy information", zap.Any("Message", message))
+	if err := ss.RegisterSRPolicy(*sr); err != nil {
+		ss.logger.Error("Failed to register SR Policy during synchronization", zap.Error(err), zap.Uint32("plspID", sr.LSPObject.PlspID))
+		return err
+	}
+	return nil
+}
+
+// Finish synchronization (PlspID == 0)
+func (ss *Session) handleFinishSynchronization() {
+	ss.logger.Debug("Finish PCRpt state synchronization")
+	ss.isSynced = true
+}
+
+// Response to request from PCE (SrpID != 0)
+func (ss *Session) handleStatefulPCERequest(sr *pcep.StateReport) error {
+	ss.logger.Debug("Finish Stateful PCE request", zap.Uint32("srpID", sr.SrpObject.SrpID))
+	if sr.LSPObject.RFlag {
+		ss.DeleteSRPolicy(*sr)
+	} else if err := ss.RegisterSRPolicy(*sr); err != nil {
+		ss.logger.Error("Failed to register SR Policy for Stateful PCE request", zap.Error(err), zap.Uint32("plspID", sr.LSPObject.PlspID))
+		return err
+	}
+	return nil
+}
+
+// Receive SR Policy with PLSP-ID
+func (ss *Session) handleSRPolicyWithPLSPID(sr *pcep.StateReport) error {
+	ss.logger.Debug("Received SR Policy", zap.Uint32("plspID", sr.LSPObject.PlspID))
+
+	computedSegmentList, err := ss.computePathFromTED(*sr)
+	if err != nil {
+		ss.logger.Error("Failed to compute path from TED", zap.Error(err))
+		return err
+	}
+	sr.EroObject = createEroFromSegmentList(computedSegmentList)
+
+	if err := ss.RegisterSRPolicy(*sr); err != nil {
+		ss.logger.Error("Failed to register SR Policy", zap.Error(err), zap.Uint32("plspID", sr.LSPObject.PlspID))
+		return err
+	}
+
+	policy, found := ss.SearchSRPolicy(sr.LSPObject.PlspID)
+	if !found {
+		ss.logger.Warn("SR Policy not found after registration", zap.Uint32("plspID", sr.LSPObject.PlspID))
+		return fmt.Errorf("SR Policy %d not found after registration", sr.LSPObject.PlspID)
+	}
+
+	if err := ss.SendPCUpdate(*policy); err != nil {
+		ss.logger.Error("Failed to send PC update", zap.Uint32("plspID", sr.LSPObject.PlspID), zap.Error(err))
+		return err
+	}
+	return nil
+}
+
+// Default case
+func (ss *Session) handleDefaultSRPolicy(sr *pcep.StateReport) error {
+	if sr.LSPObject.RFlag {
+		ss.DeleteSRPolicy(*sr)
+	} else if err := ss.RegisterSRPolicy(*sr); err != nil {
+		ss.logger.Error("Failed to register SR Policy (default case)", zap.Error(err), zap.Uint32("plspID", sr.LSPObject.PlspID))
+		return err
+	}
 	return nil
 }
 
