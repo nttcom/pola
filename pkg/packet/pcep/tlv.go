@@ -369,8 +369,8 @@ func (tlv *SymbolicPathName) DecodeFromBytes(data []byte) error {
 
 	nameLen := binary.BigEndian.Uint16(data[2:4])
 	totalLength := TLVHeaderLength + int(nameLen)
-	if len(data) != totalLength {
-		return fmt.Errorf("data length mismatch: expected %d bytes, but got %d bytes for SymbolicPathName", totalLength, len(data))
+	if len(data) < totalLength {
+		return fmt.Errorf("data is too short: expected at least %d bytes, but got %d bytes for SymbolicPathName", totalLength, len(data))
 	}
 
 	tlv.Name = string(data[TLVHeaderLength:totalLength])
