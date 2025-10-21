@@ -563,8 +563,8 @@ func (ss *Session) RegisterSRPolicy(sr pcep.StateReport) error {
 		return fmt.Errorf("EroObject is nil for PlspID %d", sr.LSPObject.PlspID)
 	}
 	segmentList := sr.EroObject.ToSegmentList()
-	if segmentList == nil {
-		return fmt.Errorf("SegmentList is nil for PlspID %d", sr.LSPObject.PlspID)
+	if len(segmentList) == 0 {
+		return fmt.Errorf("SegmentList is empty for PlspID %d", sr.LSPObject.PlspID)
 	}
 
 	if p, ok := ss.SearchSRPolicy(sr.LSPObject.PlspID); ok {
