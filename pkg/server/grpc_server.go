@@ -406,154 +406,183 @@ func (s *APIServer) GetSRPolicyList(ctx context.Context, _ *pb.GetSRPolicyListRe
 	}, nil
 }
 
+// GetTED returns the TED information in a structured way.
 func (s *APIServer) GetTED(ctx context.Context, req *pb.GetTEDRequest) (*pb.GetTEDResponse, error) {
 	s.logger.Info("Received GetTED API request")
 
-	ret := &pb.GetTEDResponse{
-		Enable: true,
-	}
-
+	ret := &pb.GetTEDResponse{Enable: true}
 	if s.pce == nil || s.pce.ted == nil {
 		ret.Enable = false
 		return ret, nil
 	}
 
-	ret.LsNodes = make([]*pb.LsNode, 0, len(s.pce.ted.Nodes))
-
-	for _, lsNodes := range s.pce.ted.Nodes {
-		for _, lsNode := range lsNodes {
-			if lsNode == nil {
-				continue
+	for _, nodes := range s.pce.ted.Nodes {
+		for _, node := range nodes {
+			if n := convertLsNode(node, s.logger); n != nil {
+				ret.LsNodes = append(ret.LsNodes, n)
 			}
-
-			node := &pb.LsNode{
-				Asn:        lsNode.ASN,
-				RouterId:   lsNode.RouterID,
-				IsisAreaId: lsNode.IsisAreaID,
-				Hostname:   lsNode.Hostname,
-				SrgbBegin:  lsNode.SrgbBegin,
-				SrgbEnd:    lsNode.SrgbEnd,
-				LsLinks:    make([]*pb.LsLink, 0, len(lsNode.Links)),
-				LsPrefixes: make([]*pb.LsPrefix, 0, len(lsNode.Prefixes)),
-				LsSrv6Sids: make([]*pb.LsSrv6SID, 0, len(lsNode.SRv6SIDs)),
-			}
-
-			for _, lsLink := range lsNode.Links {
-				if lsLink == nil || lsLink.LocalNode == nil || lsLink.RemoteNode == nil {
-					s.logger.Debug("skip link with nil node", zap.Any("link", lsLink))
-					continue
-				}
-
-				localIP, _ := lsLink.LocalIP.MarshalText()
-				remoteIP, _ := lsLink.RemoteIP.MarshalText()
-
-				link := &pb.LsLink{
-					LocalRouterId:  lsLink.LocalNode.RouterID,
-					LocalAsn:       lsLink.LocalNode.ASN,
-					LocalIp:        string(localIP),
-					RemoteRouterId: lsLink.RemoteNode.RouterID,
-					RemoteAsn:      lsLink.RemoteNode.ASN,
-					RemoteIp:       string(remoteIP),
-					Metrics:        make([]*pb.Metric, 0, len(lsLink.Metrics)),
-					AdjSid:         lsLink.AdjSid,
-				}
-
-				for _, lsMetric := range lsLink.Metrics {
-					if lsMetric == nil {
-						continue
-					}
-					metricType, ok := pb.MetricType_value[lsMetric.Type.String()]
-					if !ok {
-						s.logger.Debug("invalid metric type", zap.String("type", lsMetric.Type.String()))
-						continue
-					}
-					link.Metrics = append(link.Metrics, &pb.Metric{
-						Type:  pb.MetricType(metricType),
-						Value: lsMetric.Value,
-					})
-				}
-
-				if lsLink.Srv6EndXSID != nil {
-					srv6 := &pb.Srv6EndXSID{
-						EndpointBehavior: uint32(lsLink.Srv6EndXSID.EndpointBehavior),
-						Sids:             make([]*pb.SID, 0, len(lsLink.Srv6EndXSID.Sids)),
-						SidStructure: &pb.SidStructure{
-							LocalBlock: uint32(lsLink.Srv6EndXSID.Srv6SIDStructure.LocalBlock),
-							LocalNode:  uint32(lsLink.Srv6EndXSID.Srv6SIDStructure.LocalNode),
-							LocalFunc:  uint32(lsLink.Srv6EndXSID.Srv6SIDStructure.LocalFunc),
-							LocalArg:   uint32(lsLink.Srv6EndXSID.Srv6SIDStructure.LocalArg),
-						},
-					}
-
-					for _, sid := range lsLink.Srv6EndXSID.Sids {
-						if sid == "" {
-							continue
-						}
-						srv6.Sids = append(srv6.Sids, &pb.SID{Sid: sid})
-					}
-
-					link.Srv6EndXSid = srv6
-				}
-
-				node.LsLinks = append(node.LsLinks, link)
-			}
-
-			for _, lsPrefix := range lsNode.Prefixes {
-				if lsPrefix == nil {
-					continue
-				}
-				node.LsPrefixes = append(node.LsPrefixes, &pb.LsPrefix{
-					Prefix:   lsPrefix.Prefix.String(),
-					SidIndex: lsPrefix.SidIndex,
-				})
-			}
-
-			for _, lsSrv6SID := range lsNode.SRv6SIDs {
-				if lsSrv6SID == nil {
-					continue
-				}
-				srv6SID := &pb.LsSrv6SID{
-					Sids:         make([]*pb.SID, 0, len(lsSrv6SID.Sids)),
-					MultiTopoIds: make([]*pb.MultiTopoID, 0, len(lsSrv6SID.MultiTopoIDs)),
-				}
-
-				for _, sid := range lsSrv6SID.Sids {
-					if sid == "" {
-						continue
-					}
-					srv6SID.Sids = append(srv6SID.Sids, &pb.SID{Sid: sid})
-				}
-
-				for _, topoID := range lsSrv6SID.MultiTopoIDs {
-					srv6SID.MultiTopoIds = append(srv6SID.MultiTopoIds, &pb.MultiTopoID{
-						MultiTopoId: topoID,
-					})
-				}
-
-				if lsSrv6SID.EndpointBehavior != (table.EndpointBehavior{}) {
-					srv6SID.EndpointBehavior = &pb.EndpointBehavior{
-						Behavior:  uint32(lsSrv6SID.EndpointBehavior.Behavior),
-						Flags:     uint32(lsSrv6SID.EndpointBehavior.Flags),
-						Algorithm: uint32(lsSrv6SID.EndpointBehavior.Algorithm),
-					}
-				}
-
-				srv6SID.SidStructure = &pb.SidStructure{
-					LocalBlock: uint32(lsSrv6SID.SIDStructure.LocalBlock),
-					LocalNode:  uint32(lsSrv6SID.SIDStructure.LocalNode),
-					LocalFunc:  uint32(lsSrv6SID.SIDStructure.LocalFunc),
-					LocalArg:   uint32(lsSrv6SID.SIDStructure.LocalArg),
-				}
-
-				node.LsSrv6Sids = append(node.LsSrv6Sids, srv6SID)
-			}
-
-			ret.LsNodes = append(ret.LsNodes, node)
 		}
 	}
 
 	s.logger.Debug("Send GetTED API reply")
 	return ret, nil
+}
+
+// convertLsNode converts a table.LsNode to a protobuf LsNode.
+func convertLsNode(lsNode *table.LsNode, logger *zap.Logger) *pb.LsNode {
+	if lsNode == nil {
+		return nil
+	}
+
+	return &pb.LsNode{
+		Asn:        lsNode.ASN,
+		RouterId:   lsNode.RouterID,
+		IsisAreaId: lsNode.IsisAreaID,
+		Hostname:   lsNode.Hostname,
+		SrgbBegin:  lsNode.SrgbBegin,
+		SrgbEnd:    lsNode.SrgbEnd,
+		LsLinks:    convertLsLinks(lsNode.Links, logger),
+		LsPrefixes: convertLsPrefixes(lsNode.Prefixes),
+		LsSrv6Sids: convertLsSrv6SIDs(lsNode.SRv6SIDs),
+	}
+}
+
+// convertLsLinks converts a slice of table.LsLink to protobuf LsLink.
+func convertLsLinks(links []*table.LsLink, logger *zap.Logger) []*pb.LsLink {
+	if links == nil {
+		return nil
+	}
+	result := make([]*pb.LsLink, 0, len(links))
+	for _, link := range links {
+		if link == nil || link.LocalNode == nil || link.RemoteNode == nil {
+			logger.Debug("skip link with nil node", zap.Any("link", link))
+			continue
+		}
+		result = append(result, buildLsLink(link))
+	}
+	return result
+}
+
+// buildLsLink converts a single table.LsLink to protobuf LsLink.
+func buildLsLink(link *table.LsLink) *pb.LsLink {
+	localIP, _ := link.LocalIP.MarshalText()
+	remoteIP, _ := link.RemoteIP.MarshalText()
+
+	pbLink := &pb.LsLink{
+		LocalRouterId:  link.LocalNode.RouterID,
+		LocalAsn:       link.LocalNode.ASN,
+		LocalIp:        string(localIP),
+		RemoteRouterId: link.RemoteNode.RouterID,
+		RemoteAsn:      link.RemoteNode.ASN,
+		RemoteIp:       string(remoteIP),
+		Metrics:        convertMetrics(link.Metrics),
+		AdjSid:         link.AdjSid,
+	}
+
+	if link.Srv6EndXSID != nil {
+		pbLink.Srv6EndXSid = convertSrv6EndXSID(link.Srv6EndXSID)
+	}
+	return pbLink
+}
+
+// convertMetrics converts a slice of table.Metric to protobuf Metric.
+func convertMetrics(metrics []*table.Metric) []*pb.Metric {
+	if metrics == nil {
+		return nil
+	}
+	result := make([]*pb.Metric, 0, len(metrics))
+	for _, m := range metrics {
+		if m != nil {
+			if mt, ok := pb.MetricType_value[m.Type.String()]; ok {
+				result = append(result, &pb.Metric{Type: pb.MetricType(mt), Value: m.Value})
+			}
+		}
+	}
+	return result
+}
+
+// convertLsPrefixes converts a slice of table.LsPrefix to protobuf LsPrefix.
+func convertLsPrefixes(prefixes []*table.LsPrefix) []*pb.LsPrefix {
+	if prefixes == nil {
+		return nil
+	}
+	result := make([]*pb.LsPrefix, 0, len(prefixes))
+	for _, p := range prefixes {
+		if p != nil {
+			result = append(result, &pb.LsPrefix{Prefix: p.Prefix.String(), SidIndex: p.SidIndex})
+		}
+	}
+	return result
+}
+
+// convertLsSrv6SIDs converts a slice of table.LsSrv6SID to protobuf LsSrv6SID.
+func convertLsSrv6SIDs(sids []*table.LsSrv6SID) []*pb.LsSrv6SID {
+	if sids == nil {
+		return nil
+	}
+	result := make([]*pb.LsSrv6SID, 0, len(sids))
+	for _, s := range sids {
+		if s != nil {
+			result = append(result, buildLsSrv6SID(s))
+		}
+	}
+	return result
+}
+
+// buildLsSrv6SID converts a single table.LsSrv6SID to protobuf LsSrv6SID.
+func buildLsSrv6SID(s *table.LsSrv6SID) *pb.LsSrv6SID {
+	pbSID := &pb.LsSrv6SID{
+		Sids:         make([]*pb.SID, 0, len(s.Sids)),
+		MultiTopoIds: make([]*pb.MultiTopoID, 0, len(s.MultiTopoIDs)),
+		SidStructure: &pb.SidStructure{
+			LocalBlock: uint32(s.SIDStructure.LocalBlock),
+			LocalNode:  uint32(s.SIDStructure.LocalNode),
+			LocalFunc:  uint32(s.SIDStructure.LocalFunc),
+			LocalArg:   uint32(s.SIDStructure.LocalArg),
+		},
+	}
+
+	for _, sid := range s.Sids {
+		if sid != "" {
+			pbSID.Sids = append(pbSID.Sids, &pb.SID{Sid: sid})
+		}
+	}
+
+	for _, topoID := range s.MultiTopoIDs {
+		pbSID.MultiTopoIds = append(pbSID.MultiTopoIds, &pb.MultiTopoID{MultiTopoId: topoID})
+	}
+
+	if s.EndpointBehavior != (table.EndpointBehavior{}) {
+		pbSID.EndpointBehavior = &pb.EndpointBehavior{
+			Behavior:  uint32(s.EndpointBehavior.Behavior),
+			Flags:     uint32(s.EndpointBehavior.Flags),
+			Algorithm: uint32(s.EndpointBehavior.Algorithm),
+		}
+	}
+
+	return pbSID
+}
+
+// convertSrv6EndXSID converts table.Srv6EndXSID to protobuf Srv6EndXSID.
+func convertSrv6EndXSID(sid *table.Srv6EndXSID) *pb.Srv6EndXSID {
+	pbSID := &pb.Srv6EndXSID{
+		EndpointBehavior: uint32(sid.EndpointBehavior),
+		Sids:             make([]*pb.SID, 0, len(sid.Sids)),
+		SidStructure: &pb.SidStructure{
+			LocalBlock: uint32(sid.Srv6SIDStructure.LocalBlock),
+			LocalNode:  uint32(sid.Srv6SIDStructure.LocalNode),
+			LocalFunc:  uint32(sid.Srv6SIDStructure.LocalFunc),
+			LocalArg:   uint32(sid.Srv6SIDStructure.LocalArg),
+		},
+	}
+
+	for _, s := range sid.Sids {
+		if s != "" {
+			pbSID.Sids = append(pbSID.Sids, &pb.SID{Sid: s})
+		}
+	}
+
+	return pbSID
 }
 
 func (s *APIServer) DeleteSession(ctx context.Context, req *pb.DeleteSessionRequest) (*pb.DeleteSessionResponse, error) {
