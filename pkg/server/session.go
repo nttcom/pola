@@ -538,106 +538,117 @@ func (ss *Session) SendPCUpdate(srPolicy table.SRPolicy) error {
 }
 
 func (ss *Session) RegisterSRPolicy(sr pcep.StateReport) error {
-	var (
-		color      uint32 // initialized to zero (RFC does not specify a default)
-		preference uint32 // initialized to zero (RFC does not specify a default)
-	)
+	// Resolve color and preference for this SR Policy
+	color, preference := ss.resolveColorPreference(&sr)
+
+	// Determine the policy state based on O-Flag
+	state := resolvePolicyState(sr.LSPObject.OFlag)
+
+	// Validate Segment List
+	segmentList, err := validateSegmentList(sr)
+	if err != nil {
+		return err
+	}
+
+	// Update existing policy or create a new one
+	return ss.updateOrCreatePolicy(sr, segmentList, color, preference, state)
+}
+
+// resolveColorPreference returns the color and preference for the SR Policy
+func (ss *Session) resolveColorPreference(sr *pcep.StateReport) (uint32, uint32) {
+	var color, preference uint32
 
 	if ss.pccType == pcep.CiscoLegacy {
 		// Cisco legacy mode: get color and preference from Vendor Information Object
 		color = sr.VendorInformationObject.Color()
 		preference = sr.VendorInformationObject.Preference()
 	} else {
-		// TODO: Move hasColorCapability to Session struct
-		hasColorCapability := false
+		// Check if PCC supports color capability
+		hasColor := false
 		for _, cap := range ss.pccCapabilities {
-			if statefulCap, ok := cap.(*pcep.StatefulPCECapability); ok {
-				if statefulCap.ColorCapability {
-					hasColorCapability = true
-					break
-				}
+			if c, ok := cap.(*pcep.StatefulPCECapability); ok && c.ColorCapability {
+				hasColor = true
+				break
 			}
 		}
 
-		// SR Policy Association color takes precedence over LSP Object Color TLV
-		// Ref: https://datatracker.ietf.org/doc/draft-ietf-pce-pcep-color/12/ Section 2
-		if sr.AssociationObject.Color() != 0 {
-			color = sr.AssociationObject.Color()
-		} else if hasColorCapability {
+		// SR Policy Association color takes precedence
+		if c := sr.AssociationObject.Color(); c != 0 {
+			color = c
+		} else if hasColor {
 			color = sr.LSPObject.Color()
 		}
 
 		preference = sr.AssociationObject.Preference()
 	}
 
-	lspID := sr.LSPObject.LSPID
+	return color, preference
+}
 
-	var state table.PolicyState
-	switch sr.LSPObject.OFlag {
-	case uint8(0x00):
-		state = table.PolicyDown
-	case uint8(0x01):
-		state = table.PolicyUp
-	case uint8(0x02):
-		state = table.PolicyActive
+// resolvePolicyState converts O-Flag to internal PolicyState
+func resolvePolicyState(oflag uint8) table.PolicyState {
+	switch oflag {
+	case 0x00:
+		return table.PolicyDown
+	case 0x01:
+		return table.PolicyUp
+	case 0x02:
+		return table.PolicyActive
 	default:
-		state = table.PolicyUnknown
+		return table.PolicyUnknown
 	}
+}
 
-	// Validate Segment List
+// validateSegmentList checks if the Segment List exists and is non-empty
+func validateSegmentList(sr pcep.StateReport) ([]table.Segment, error) {
 	if sr.EroObject == nil {
-		return fmt.Errorf("EroObject is nil for PlspID %d", sr.LSPObject.PlspID)
+		return nil, fmt.Errorf("EroObject is nil for PlspID %d", sr.LSPObject.PlspID)
 	}
-	segmentList := sr.EroObject.ToSegmentList()
-	if len(segmentList) == 0 {
-		return fmt.Errorf("SegmentList is empty for PlspID %d", sr.LSPObject.PlspID)
+	list := sr.EroObject.ToSegmentList()
+	if len(list) == 0 {
+		return nil, fmt.Errorf("SegmentList is empty for PlspID %d", sr.LSPObject.PlspID)
 	}
+	return list, nil
+}
+
+// updateOrCreatePolicy updates an existing SR Policy or creates a new one
+func (ss *Session) updateOrCreatePolicy(sr pcep.StateReport, segmentList []table.Segment, color, preference uint32, state table.PolicyState) error {
+	lspID := sr.LSPObject.LSPID
 
 	if p, ok := ss.SearchSRPolicy(sr.LSPObject.PlspID); ok {
 		// Update existing policy if LSPID is new or equal
 		if p.LSPID <= lspID {
-			p.Update(
-				table.PolicyDiff{
-					Name:        &sr.LSPObject.Name,
-					Color:       &color,
-					Preference:  &preference,
-					SegmentList: segmentList,
-					LSPID:       lspID,
-					State:       state,
-				},
-			)
+			p.Update(table.PolicyDiff{
+				Name:        &sr.LSPObject.Name,
+				Color:       &color,
+				Preference:  &preference,
+				SegmentList: segmentList,
+				LSPID:       lspID,
+				State:       state,
+			})
 		}
-	} else {
-		// Create a new SR policy
-		var src, dst netip.Addr
-		if src = sr.LSPObject.SrcAddr; !src.IsValid() {
-			src = sr.AssociationObject.AssocSrc
-		}
-		if !src.IsValid() {
-			return fmt.Errorf("invalid source address for PlspID %d", sr.LSPObject.PlspID)
-		}
-
-		if dst = sr.LSPObject.DstAddr; !dst.IsValid() {
-			dst = sr.AssociationObject.Endpoint()
-		}
-		if !dst.IsValid() {
-			return fmt.Errorf("invalid destination address for PlspID %d", sr.LSPObject.PlspID)
-		}
-
-		p := table.NewSRPolicy(
-			sr.LSPObject.PlspID,
-			sr.LSPObject.Name,
-			segmentList,
-			src,
-			dst,
-			color,
-			preference,
-			lspID,
-			state,
-		)
-		ss.srPolicies = append(ss.srPolicies, p)
+		return nil
 	}
 
+	// Create a new SR Policy
+	src := sr.LSPObject.SrcAddr
+	if !src.IsValid() {
+		src = sr.AssociationObject.AssocSrc
+	}
+	if !src.IsValid() {
+		return fmt.Errorf("invalid source address for PlspID %d", sr.LSPObject.PlspID)
+	}
+
+	dst := sr.LSPObject.DstAddr
+	if !dst.IsValid() {
+		dst = sr.AssociationObject.Endpoint()
+	}
+	if !dst.IsValid() {
+		return fmt.Errorf("invalid destination address for PlspID %d", sr.LSPObject.PlspID)
+	}
+
+	p := table.NewSRPolicy(sr.LSPObject.PlspID, sr.LSPObject.Name, segmentList, src, dst, color, preference, lspID, state)
+	ss.srPolicies = append(ss.srPolicies, p)
 	return nil
 }
 
