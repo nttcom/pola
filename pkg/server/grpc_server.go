@@ -198,7 +198,7 @@ func (s *APIServer) DeleteSRPolicy(ctx context.Context, input *pb.DeleteSRPolicy
 		srPolicy.PlspID = id
 
 		if err := pcepSession.RequestSRPolicyDeleted(srPolicy); err != nil {
-			return &pb.DeleteSRPolicyResponse{IsSuccess: false}, nil
+			return &pb.DeleteSRPolicyResponse{IsSuccess: false}, err
 		}
 	} else {
 		// Invalid SR Policy
