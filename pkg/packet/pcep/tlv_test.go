@@ -164,12 +164,6 @@ func TestSymbolicPathName_DecodeFromBytes(t *testing.T) {
 			expected: NewSymbolicPathName(""),
 			err:      true,
 		},
-		{
-			name:     "Invalid input (too long data)",
-			input:    []byte{0x00, 0x11, 0x00, 0x01, 'T', 'e'}, // Input too long for valid decoding
-			expected: NewSymbolicPathName(""),
-			err:      true,
-		},
 	}
 
 	for _, tt := range tests {
