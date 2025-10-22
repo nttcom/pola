@@ -277,8 +277,9 @@ const (
 )
 
 func (tlv *StatefulPCECapability) DecodeFromBytes(data []byte) error {
-	if len(data) < TLVHeaderLength+int(TLVStatefulPCECapabilityValueLength) {
-		return fmt.Errorf("data is too short: expected at least %d bytes, but got %d bytes for StatefulPCECapability", TLVHeaderLength+TLVStatefulPCECapabilityValueLength, len(data))
+	expectedLength := TLVHeaderLength + int(TLVStatefulPCECapabilityValueLength)
+	if len(data) < expectedLength {
+		return fmt.Errorf("data is too short: expected at least %d bytes, but got %d bytes for StatefulPCECapability", expectedLength, len(data))
 	}
 
 	flags := uint32(data[TLVHeaderLength+StatefulPCECapabilityFlagsIndex])
