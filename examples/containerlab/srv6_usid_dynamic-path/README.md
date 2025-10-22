@@ -32,12 +32,8 @@ sudo ip link set dev switch up
 
 Copy Pola PCE & GoBGP to bin
 
-* GoBGP: Use [this version](https://github.com/k1yoto/gobgp/tree/feature/bgp-ls-srv6)
-* Pola PCE: Replace the GoBGP module in go.mod with your local GoBGP version, e.g.:
-
-```text
-replace github.com/osrg/gobgp/v4 => ../gobgp
-```
+* GoBGP: v4.0.0 or later
+* Pola PCE: [commit 7a72c02](https://github.com/nttcom/pola/commit/7a72c02085d72d9b6a0dc1a887745fd9ec25fe60) or later
 
 Start Containerlab network
 
