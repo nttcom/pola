@@ -1224,7 +1224,7 @@ func (o *EndpointsObject) Len() (uint16, error) {
 		// CommonObjectHeader(4byte) + srcIPv4 (16byte) + dstIPv4 (16byte)
 		length = commonObjectHeaderLength + 16 + 16
 	} else {
-		return uint16(0), fmt.Errorf("invalid endpoints address (Len()): src=%v dst=%v", o.SrcAddr, o.DstAddr)
+		return uint16(0), fmt.Errorf("invalid endpoint addresses (Len()): source and destination must be both IPv4 or both IPv6: src=%v dst=%v", o.SrcAddr, o.DstAddr)
 	}
 	return length, nil
 }
@@ -1236,7 +1236,7 @@ func NewEndpointsObject(dstAddr netip.Addr, srcAddr netip.Addr) (*EndpointsObjec
 	} else if dstAddr.Is6() && srcAddr.Is6() {
 		objectType = ObjectTypeEndpointIPv6
 	} else {
-		return nil, fmt.Errorf("invalid endpoints address (NewEndpointsObject): dst=%v src=%v", dstAddr, srcAddr)
+		return nil, fmt.Errorf("invalid endpoint addresses (NewEndpointsObject): source and destination must be both IPv4 or both IPv6 (dst=%v src=%v)", dstAddr, srcAddr)
 	}
 
 	o := &EndpointsObject{
