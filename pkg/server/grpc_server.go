@@ -213,7 +213,7 @@ func validate(inputSRPolicy *pb.SRPolicy, asn uint32, validationKind ValidationK
 		return errors.New("validate error, input is nil")
 	}
 	if asn == 0 {
-		return errors.New("validate error, ASN is nil")
+		return errors.New("validate error, ASN must not be zero")
 	}
 	if validateFunc, ok := validator[validationKind]; ok {
 		if err := validateFunc(inputSRPolicy, asn); err != nil {
