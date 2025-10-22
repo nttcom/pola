@@ -15,7 +15,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	pb "github.com/nttcom/pola/api/grpc"
+	pb "github.com/nttcom/pola/api/pola/v1"
 )
 
 func main() {
@@ -34,12 +34,12 @@ func main() {
 		}
 	}()
 
-	c := pb.NewPceServiceClient(conn)
+	c := pb.NewPCEServiceClient(conn)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	ss := &pb.Session{
+	ss := &pb.DeleteSessionRequest{
 		Addr: netip.MustParseAddr("192.0.2.1").AsSlice(),
 	}
 

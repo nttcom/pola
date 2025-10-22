@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"os"
 
-	pb "github.com/nttcom/pola/api/grpc"
+	pb "github.com/nttcom/pola/api/pola/v1"
 	"github.com/spf13/cobra"
 	yaml "gopkg.in/yaml.v2"
 
@@ -57,7 +57,7 @@ func newSRPolicyDeleteCmd() *cobra.Command {
 }
 
 func deleteSRPolicy(input InputFormat, jsonFlag bool) error {
-	if !input.SRPolicy.PcepSessionAddr.IsValid() || input.SRPolicy.Color == 0 || !input.SRPolicy.DstAddr.IsValid() || input.SRPolicy.Name == "" {
+	if !input.SRPolicy.PCEPSessionAddr.IsValid() || input.SRPolicy.Color == 0 || !input.SRPolicy.DstAddr.IsValid() || input.SRPolicy.Name == "" {
 		sampleInput := "srPolicy:\n" +
 			"  pcepSessionAddr: 192.0.2.1\n" +
 			"  dstAddr: 192.0.2.2\n" +
@@ -70,14 +70,14 @@ func deleteSRPolicy(input InputFormat, jsonFlag bool) error {
 	}
 
 	srPolicy := &pb.SRPolicy{
-		PcepSessionAddr: input.SRPolicy.PcepSessionAddr.AsSlice(),
+		PcepSessionAddr: input.SRPolicy.PCEPSessionAddr.AsSlice(),
 		DstAddr:         input.SRPolicy.DstAddr.AsSlice(),
 		Color:           input.SRPolicy.Color,
 		PolicyName:      input.SRPolicy.Name,
 	}
-	inputData := &pb.DeleteSRPolicyInput{
-		SRPolicy: srPolicy,
-		Asn:      input.Asn,
+	inputData := &pb.DeleteSRPolicyRequest{
+		SrPolicy: srPolicy,
+		Asn:      input.ASN,
 	}
 	if err := grpc.DeleteSRPolicy(client, inputData); err != nil {
 		return fmt.Errorf("gRPC Server Error: %s", err.Error())

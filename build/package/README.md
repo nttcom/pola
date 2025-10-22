@@ -25,7 +25,6 @@ docker run -itd --network host \
     /bin/bash -c "source ~/.bashrc;polad"
 ```
 
-
 ## Use bridge network mode
 
 ```bash
@@ -49,7 +48,9 @@ docker pull ghcr.io/nttcom/pola:latest
 # Container up and detach
 CURRENTDIR=`pwd`
 docker run -itd --network pcep_net --ip <PCE Address> \
-    -v $CURRENTDIR/$MOUNTDIR:/$MOUNTDIR -v $LOGDIR:$LOGDIR -w /$MOUNTDIR ghcr.io/nttcom/pola:latest \
+    -v $CURRENTDIR/$MOUNTDIR:/$MOUNTDIR \
+    -v $LOGDIR:$LOGDIR \
+    -w /$MOUNTDIR ghcr.io/nttcom/pola:latest \
     /bin/bash -c "source ~/.bashrc;polad"
 
 # Connect the container's PCC to the network

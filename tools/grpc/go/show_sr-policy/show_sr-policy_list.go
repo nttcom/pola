@@ -16,8 +16,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	empty "github.com/golang/protobuf/ptypes/empty"
-	pb "github.com/nttcom/pola/api/grpc"
+	pb "github.com/nttcom/pola/api/pola/v1"
 )
 
 func main() {
@@ -37,18 +36,17 @@ func main() {
 		}
 	}()
 
-	c := pb.NewPceServiceClient(conn)
+	c := pb.NewPCEServiceClient(conn)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	var empty empty.Empty
-	ret, err := c.GetSRPolicyList(ctx, &empty)
+	ret, err := c.GetSRPolicyList(ctx, &pb.GetSRPolicyListRequest{})
 	if err != nil {
 		log.Fatalf("unable to get SR policy list from server: %v", err)
 	}
 
-	for i, srPolicy := range ret.GetSRPolicies() {
+	for i, srPolicy := range ret.GetSrPolicies() {
 		fmt.Printf("srPolicy(%d): \n", i)
 		sessionAddr := net.IP(srPolicy.GetPcepSessionAddr())
 		fmt.Printf("  sessionAddr: %s\n", sessionAddr.String())
