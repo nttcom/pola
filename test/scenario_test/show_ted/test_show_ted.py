@@ -30,7 +30,7 @@ class TestShowTed:
       time.sleep(10)
 
     print("Wait for pola's TED to finish syncing...")
-    time.sleep(60)
+    time.sleep(10)
 
     output = json.loads(subprocess.run("docker exec -it clab-srmpls-pola /bin/pola -p 50052 ted -j", shell=True, capture_output=True, text=True).stdout)
     print("output is", output)
@@ -52,7 +52,7 @@ class TestShowTed:
       time.sleep(10)
 
     print("Wait for pola's TED to finish syncing...")
-    time.sleep(60)
+    time.sleep(10)
     
     output = json.loads(subprocess.run("docker exec -it clab-srv6-usid-pola /bin/pola -p 50052 ted -j", shell=True, capture_output=True, text=True).stdout)
     print("output is", output)
