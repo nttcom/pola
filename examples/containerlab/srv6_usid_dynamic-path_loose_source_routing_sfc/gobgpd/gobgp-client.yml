@@ -1,0 +1,14 @@
+global:
+  config:
+    as: 65000
+    router-id: "10.255.0.255"
+neighbors:
+  - config:
+      peer-as: 65000
+      neighbor-address: "fd00::4"
+    afi-safis:
+      - config:
+          afi-safi-name: ls
+    transport:
+      config:
+        local-address: "fd00::5"
