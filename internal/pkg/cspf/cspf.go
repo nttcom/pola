@@ -27,7 +27,7 @@ func newNode(id string, cost uint32, nodeSeg table.Segment) *node {
 	}
 }
 
-func Cspf(srcRouterID string, dstRouterID string, as uint32, metric table.MetricType, ted *table.LsTED) ([]table.Segment, error) {
+func CSPF(srcRouterID string, dstRouterID string, as uint32, metric table.MetricType, ted *table.LsTED) ([]table.Segment, error) {
 	network := ted.Nodes[as]
 	// TODO: update network information according to constraints
 	segmentList, err := spf(srcRouterID, dstRouterID, metric, network)
