@@ -55,7 +55,7 @@ func CSPFWithLooseSourceRouting(
 	allWaypoints := append(waypoints, table.Waypoint{RouterID: dst})
 
 	for _, wp := range allWaypoints {
-		sectionSegs, seg, err := buildSectionSegments(prev, wp, as, metric, ted)
+		sectionSegs, seg, err := buildSectionSegments(prev, wp, as, metric, ted, fullList)
 		if err != nil {
 			return nil, err
 		}
@@ -68,13 +68,15 @@ func CSPFWithLooseSourceRouting(
 }
 
 // buildSectionSegments calculates CSPF to waypoint and builds the waypoint segment.
-func buildSectionSegments(prev string, wp table.Waypoint, as uint32, metric table.MetricType, ted *table.LsTED) ([]table.Segment, table.Segment, error) {
+func buildSectionSegments(prev string, wp table.Waypoint, as uint32, metric table.MetricType, ted *table.LsTED, fullList []table.Segment) ([]table.Segment, table.Segment, error) {
 	// Compute CSPF from prev → waypoint
 	sectionSegs, err := CSPF(prev, wp.RouterID, as, metric, ted)
 	if err != nil {
 		return nil, nil, fmt.Errorf("CSPF failed between %s and %s: %w", prev, wp.RouterID, err)
 	}
-	sectionSegs = removeDuplicateFirst(nil, sectionSegs)
+
+	// Remove first segment if it duplicates the last segment of the previous sections
+	sectionSegs = removeDuplicateFirst(fullList, sectionSegs)
 
 	// Lookup the node from TED
 	node, ok := ted.Nodes[as][wp.RouterID]
@@ -120,18 +122,13 @@ func appendIfNotDuplicate(list []table.Segment, seg table.Segment) []table.Segme
 }
 
 func spf(srcRouterID string, dstRouterID string, metricType table.MetricType, network map[string]*table.LsNode) ([]table.Segment, error) {
-	// Create a new starting node with cost 0 and add it to the calculating nodes
-	startNodeSeg, err := network[srcRouterID].NodeSegment()
+	calculatingNodes, err := initNodeMap(srcRouterID, network)
 	if err != nil {
 		return nil, err
 	}
-	startNode := newNode(srcRouterID, 0, startNodeSeg)
-	startNode.calculated = false
-	calculatingNodes := map[string]*node{srcRouterID: startNode}
 
-	// Keep calculating the shortest path until the destination node is reached
+	// Keep calculating the shortest path until the destination node is reached.
 	for {
-		// Select the next node to calculate
 		calcNodeID, err := nextNode(calculatingNodes)
 		if err != nil {
 			return nil, err
@@ -140,47 +137,66 @@ func spf(srcRouterID string, dstRouterID string, metricType table.MetricType, ne
 			break
 		}
 
-		// Calculate the cost of each link from the selected node
-		for _, link := range network[calcNodeID].Links {
-			metric, err := link.Metric(metricType)
-			if err != nil {
-				return nil, err
-			}
-
-			// If the remote node is already being calculated, update its cost if necessary
-			if remoteNode, exists := calculatingNodes[link.RemoteNode.RouterID]; exists {
-				if calculatingNodes[calcNodeID].cost+metric < remoteNode.cost {
-					remoteNode.cost = calculatingNodes[calcNodeID].cost + metric
-					remoteNode.prevNode = calcNodeID
-				}
-			} else {
-				// If the remote node has not been calculated yet, create a new node for it and add it to the calculating nodes
-				remoteNodeSeg, err := link.RemoteNode.NodeSegment()
-				if err != nil {
-					return nil, err
-				}
-				remoteNode := newNode(link.RemoteNode.RouterID, calculatingNodes[calcNodeID].cost+metric, remoteNodeSeg)
-				remoteNode.prevNode = calcNodeID
-				calculatingNodes[link.RemoteNode.RouterID] = remoteNode
-			}
+		if err := updateNeighborCosts(calcNodeID, calculatingNodes, network, metricType); err != nil {
+			return nil, err
 		}
 
-		// Mark the selected node as calculated
 		calculatingNodes[calcNodeID].calculated = true
 	}
 
-	// Generate the segment list from the shortest path calculation results
+	return buildSegmentListFromPath(srcRouterID, dstRouterID, calculatingNodes), nil
+}
+
+// initNodeMap initializes the map of nodes used for SPF calculation.
+func initNodeMap(srcRouterID string, network map[string]*table.LsNode) (map[string]*node, error) {
+	startNodeSeg, err := network[srcRouterID].NodeSegment()
+	if err != nil {
+		return nil, err
+	}
+	startNode := newNode(srcRouterID, 0, startNodeSeg)
+	startNode.calculated = false
+	return map[string]*node{srcRouterID: startNode}, nil
+}
+
+// updateNeighborCosts updates costs for neighbors of the given node in SPF calculation.
+func updateNeighborCosts(calcNodeID string, calculatingNodes map[string]*node, network map[string]*table.LsNode, metricType table.MetricType) error {
+	for _, link := range network[calcNodeID].Links {
+		metric, err := link.Metric(metricType)
+		if err != nil {
+			return err
+		}
+
+		if remoteNode, exists := calculatingNodes[link.RemoteNode.RouterID]; exists {
+			if calculatingNodes[calcNodeID].cost+metric < remoteNode.cost {
+				remoteNode.cost = calculatingNodes[calcNodeID].cost + metric
+				remoteNode.prevNode = calcNodeID
+			}
+		} else {
+			remoteNodeSeg, err := link.RemoteNode.NodeSegment()
+			if err != nil {
+				return err
+			}
+			remoteNode := newNode(link.RemoteNode.RouterID, calculatingNodes[calcNodeID].cost+metric, remoteNodeSeg)
+			remoteNode.prevNode = calcNodeID
+			calculatingNodes[link.RemoteNode.RouterID] = remoteNode
+		}
+	}
+	return nil
+}
+
+// buildSegmentListFromPath builds the segment list from SPF results.
+func buildSegmentListFromPath(srcRouterID, dstRouterID string, calculatingNodes map[string]*node) []table.Segment {
 	segmentList := []table.Segment{}
 	for pathNode := calculatingNodes[dstRouterID]; pathNode.id != srcRouterID; pathNode = calculatingNodes[pathNode.prevNode] {
 		segmentList = append(segmentList, pathNode.nodeSegment)
 	}
 
-	// Reverse the order of the segment list
+	// Reverse the segment list to get correct order from src → dst
 	for i, j := 0, len(segmentList)-1; i < j; i, j = i+1, j-1 {
 		segmentList[i], segmentList[j] = segmentList[j], segmentList[i]
 	}
 
-	return segmentList, nil
+	return segmentList
 }
 
 // nextNode returns the ID of the next node to calculate.
