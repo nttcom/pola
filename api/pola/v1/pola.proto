@@ -31,6 +31,11 @@ enum SRPolicyType {
   SR_POLICY_TYPE_DYNAMIC = 2;
 }
 
+message Waypoint {
+  string router_id = 1;
+  string sid = 2; // optional: explicit SID override
+}
+
 message SRPolicy {
   bytes pcep_session_addr = 1;
   bytes src_addr = 2;
@@ -43,6 +48,7 @@ message SRPolicy {
   SRPolicyType type = 9;
   repeated Segment segment_list = 10;
   MetricType metric = 11;
+  repeated Waypoint waypoints = 12;
 }
 
 message CreateSRPolicyRequest {
