@@ -7,6 +7,8 @@ package cspf
 
 import (
 	"errors"
+	"fmt"
+	"net/netip"
 
 	"github.com/nttcom/pola/internal/pkg/table"
 )
@@ -36,6 +38,85 @@ func CSPF(srcRouterID string, dstRouterID string, as uint32, metric table.Metric
 	}
 
 	return segmentList, nil
+}
+
+// CSPFWithLooseSourceRouting computes a path with optional waypoints using loose source routing.
+func CSPFWithLooseSourceRouting(
+	src, dst string,
+	waypoints []table.Waypoint,
+	as uint32,
+	metric table.MetricType,
+	ted *table.LsTED,
+) ([]table.Segment, error) {
+	fullList := []table.Segment{}
+	prev := src
+
+	// Append destination as a pseudo-waypoint
+	allWaypoints := append(waypoints, table.Waypoint{RouterID: dst})
+
+	for _, wp := range allWaypoints {
+		sectionSegs, seg, err := buildSectionSegments(prev, wp, as, metric, ted)
+		if err != nil {
+			return nil, err
+		}
+		fullList = append(fullList, sectionSegs...)
+		fullList = appendIfNotDuplicate(fullList, seg)
+		prev = wp.RouterID
+	}
+
+	return fullList, nil
+}
+
+// buildSectionSegments calculates CSPF to waypoint and builds the waypoint segment.
+func buildSectionSegments(prev string, wp table.Waypoint, as uint32, metric table.MetricType, ted *table.LsTED) ([]table.Segment, table.Segment, error) {
+	// Compute CSPF from prev → waypoint
+	sectionSegs, err := CSPF(prev, wp.RouterID, as, metric, ted)
+	if err != nil {
+		return nil, nil, fmt.Errorf("CSPF failed between %s and %s: %w", prev, wp.RouterID, err)
+	}
+	sectionSegs = removeDuplicateFirst(nil, sectionSegs)
+
+	// Lookup the node from TED
+	node, ok := ted.Nodes[as][wp.RouterID]
+	if !ok {
+		return nil, nil, fmt.Errorf("waypoint router %s not found in TED", wp.RouterID)
+	}
+
+	// Build the segment (SRv6 or SR-MPLS)
+	seg, err := buildWaypointSegment(node, wp.SID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to build segment for waypoint %s: %w", wp.RouterID, err)
+	}
+
+	return sectionSegs, seg, nil
+}
+
+// buildWaypointSegment builds a Segment for a waypoint using the node and optional explicit SID.
+func buildWaypointSegment(node *table.LsNode, explicitSID string) (table.Segment, error) {
+	if explicitSID != "" {
+		addr, err := netip.ParseAddr(explicitSID)
+		if err != nil {
+			return nil, fmt.Errorf("invalid explicit SID %q: %w", explicitSID, err)
+		}
+		return table.NewSegmentSRv6WithNodeInfo(addr, node)
+	}
+	return node.NodeSegment()
+}
+
+// removeDuplicateFirst removes the first segment of section if it equals the last of fullList.
+func removeDuplicateFirst(fullList []table.Segment, section []table.Segment) []table.Segment {
+	if len(fullList) > 0 && len(section) > 0 && table.SegmentsEqual(fullList[len(fullList)-1], section[0]) {
+		return section[1:]
+	}
+	return section
+}
+
+// appendIfNotDuplicate appends a segment to the list if it is not equal to the last segment.
+func appendIfNotDuplicate(list []table.Segment, seg table.Segment) []table.Segment {
+	if len(list) == 0 || !table.SegmentsEqual(list[len(list)-1], seg) {
+		list = append(list, seg)
+	}
+	return list
 }
 
 func spf(srcRouterID string, dstRouterID string, metricType table.MetricType, network map[string]*table.LsNode) ([]table.Segment, error) {
