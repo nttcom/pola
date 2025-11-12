@@ -14,7 +14,7 @@ import (
 	"github.com/spf13/cobra"
 	yaml "gopkg.in/yaml.v2"
 
-	pb "github.com/nttcom/pola/api/grpc"
+	pb "github.com/nttcom/pola/api/pola/v1"
 	"github.com/nttcom/pola/cmd/pola/grpc"
 )
 
@@ -22,9 +22,9 @@ func newSRPolicyAddCmd() *cobra.Command {
 	srPolicyAddCmd := &cobra.Command{
 		Use: "add",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			noLinkStateFlag, err := cmd.Flags().GetBool("no-link-state")
+			noSIDValidateFlag, err := cmd.Flags().GetBool("no-sid-validate")
 			if err != nil {
-				return fmt.Errorf("failed to retrieve 'no-link-state' flag: %v", err)
+				return fmt.Errorf("failed to retrieve 'no-sid-validate' flag: %v", err)
 			}
 
 			filepath, err := cmd.Flags().GetString("file")
@@ -50,30 +50,28 @@ func newSRPolicyAddCmd() *cobra.Command {
 				return fmt.Errorf("YAML syntax error in file \"%s\": %v", filepath, err)
 			}
 
-			if err := addSRPolicy(inputData, jsonFmt, noLinkStateFlag); err != nil {
+			if err := addSRPolicy(inputData, jsonFmt, noSIDValidateFlag); err != nil {
 				return fmt.Errorf("failed to add SR policy: %v", err)
 			}
 			return nil
 		},
 	}
 
-	srPolicyAddCmd.Flags().BoolP("no-link-state", "l", false, "add SR Policy without Link State")
+	srPolicyAddCmd.Flags().BoolP("no-sid-validate", "s", false, "disable SR policy SID validation")
 	srPolicyAddCmd.Flags().StringP("file", "f", "", "[mandatory] path to YAML formatted LSP information file")
 
 	return srPolicyAddCmd
 }
 
-// Unify with table.Segment
 type Segment struct {
-	Sid          string `yaml:"sid"`
+	SID          string `yaml:"sid"`
 	LocalAddr    string `yaml:"localAddr"`
 	RemoteAddr   string `yaml:"remoteAddr"`
-	SidStructure string `yaml:"sidStructure"`
+	SIDStructure string `yaml:"sidStructure"`
 }
 
-// Unify with table.SRPolciy
 type SRPolicy struct {
-	PcepSessionAddr netip.Addr `yaml:"pcepSessionAddr"`
+	PCEPSessionAddr netip.Addr `yaml:"pcepSessionAddr"`
 	SrcAddr         netip.Addr `yaml:"srcAddr"`
 	DstAddr         netip.Addr `yaml:"dstAddr"`
 	SrcRouterID     string     `yaml:"srcRouterID"`
@@ -87,16 +85,16 @@ type SRPolicy struct {
 
 type InputFormat struct {
 	SRPolicy SRPolicy `yaml:"srPolicy"`
-	Asn      uint32   `yaml:"asn"`
+	ASN      uint32   `yaml:"asn"`
 }
 
-func addSRPolicy(input InputFormat, jsonFlag bool, noLinkStateFlag bool) error {
-	if noLinkStateFlag {
-		if err := addSRPolicyNoLinkState(input); err != nil {
+func addSRPolicy(input InputFormat, jsonFlag bool, explicitPathFlag bool) error {
+	if explicitPathFlag {
+		if err := addSRPolicyWithoutSIDValidation(input); err != nil {
 			return err
 		}
 	} else {
-		if err := addSRPolicyLinkState(input); err != nil {
+		if err := addSRPolicyWithSIDValidation(input); err != nil {
 			return err
 		}
 	}
@@ -109,8 +107,8 @@ func addSRPolicy(input InputFormat, jsonFlag bool, noLinkStateFlag bool) error {
 	return nil
 }
 
-func addSRPolicyNoLinkState(input InputFormat) error {
-	if !input.SRPolicy.PcepSessionAddr.IsValid() || input.SRPolicy.Color == 0 || !input.SRPolicy.SrcAddr.IsValid() || !input.SRPolicy.DstAddr.IsValid() || len(input.SRPolicy.SegmentList) == 0 {
+func addSRPolicyWithoutSIDValidation(input InputFormat) error {
+	if !input.SRPolicy.PCEPSessionAddr.IsValid() || input.SRPolicy.Color == 0 || !input.SRPolicy.SrcAddr.IsValid() || !input.SRPolicy.DstAddr.IsValid() || len(input.SRPolicy.SegmentList) == 0 {
 		sampleInput := "srPolicy:\n" +
 			"  pcepSessionAddr: 192.0.2.1\n" +
 			"  srcAddr: 192.0.2.1\n" +
@@ -130,15 +128,15 @@ func addSRPolicyNoLinkState(input InputFormat) error {
 	segmentList := []*pb.Segment{}
 	for _, segment := range input.SRPolicy.SegmentList {
 		pbSeg := &pb.Segment{
-			Sid:          segment.Sid,
+			Sid:          segment.SID,
 			LocalAddr:    segment.LocalAddr,
 			RemoteAddr:   segment.RemoteAddr,
-			SidStructure: segment.SidStructure,
+			SidStructure: segment.SIDStructure,
 		}
 		segmentList = append(segmentList, pbSeg)
 	}
 	srPolicy := &pb.SRPolicy{
-		PcepSessionAddr: input.SRPolicy.PcepSessionAddr.AsSlice(),
+		PcepSessionAddr: input.SRPolicy.PCEPSessionAddr.AsSlice(),
 		SrcAddr:         input.SRPolicy.SrcAddr.AsSlice(),
 		DstAddr:         input.SRPolicy.DstAddr.AsSlice(),
 		SegmentList:     segmentList,
@@ -146,17 +144,17 @@ func addSRPolicyNoLinkState(input InputFormat) error {
 		PolicyName:      input.SRPolicy.Name,
 	}
 
-	inputData := &pb.CreateSRPolicyInput{
-		SRPolicy: srPolicy,
+	request := &pb.CreateSRPolicyRequest{
+		SrPolicy: srPolicy,
 	}
-	if err := grpc.CreateSRPolicyWithoutLinkState(client, inputData); err != nil {
+	if err := grpc.CreateSRPolicy(client, request); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func addSRPolicyLinkState(input InputFormat) error {
+func addSRPolicyWithSIDValidation(input InputFormat) error {
 	sampleInputDynamic := "#case: dynamic path\n" +
 		"asn: 65000\n" +
 		"srPolicy:\n" +
@@ -179,12 +177,12 @@ func addSRPolicyLinkState(input InputFormat) error {
 		"  segmentList:\n" +
 		"    - sid: 16003\n" +
 		"    - sid: 16002\n"
-	if input.Asn == 0 || !input.SRPolicy.PcepSessionAddr.IsValid() || input.SRPolicy.Color == 0 || input.SRPolicy.SrcRouterID == "" || input.SRPolicy.DstRouterID == "" {
+	if input.ASN == 0 || !input.SRPolicy.PCEPSessionAddr.IsValid() || input.SRPolicy.Color == 0 || input.SRPolicy.SrcRouterID == "" || input.SRPolicy.DstRouterID == "" {
 		errMsg := "invalid input\n" +
 			"input example is below\n\n" +
 			sampleInputDynamic +
 			sampleInputExplicit +
-			"or, if create SR Policy without TED, then use `--no-link-state` flag\n"
+			"or, if create SR Policy without TED, then use `--no-sid-validate` flag\n"
 
 		return errors.New(errMsg)
 	}
@@ -200,9 +198,9 @@ func addSRPolicyLinkState(input InputFormat) error {
 
 			return errors.New(errMsg)
 		}
-		srPolicyType = pb.SRPolicyType_EXPLICIT
+		srPolicyType = pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT
 		for _, segment := range input.SRPolicy.SegmentList {
-			segmentList = append(segmentList, &pb.Segment{Sid: segment.Sid})
+			segmentList = append(segmentList, &pb.Segment{Sid: segment.SID})
 		}
 	case "dynamic":
 		if input.SRPolicy.Metric == "" {
@@ -211,14 +209,14 @@ func addSRPolicyLinkState(input InputFormat) error {
 				sampleInputDynamic
 			return errors.New(errMsg)
 		}
-		srPolicyType = pb.SRPolicyType_DYNAMIC
+		srPolicyType = pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC
 		switch input.SRPolicy.Metric {
 		case "igp":
-			metric = pb.MetricType_IGP
+			metric = pb.MetricType_METRIC_TYPE_IGP
 		case "delay":
-			metric = pb.MetricType_DELAY
+			metric = pb.MetricType_METRIC_TYPE_DELAY
 		case "te":
-			metric = pb.MetricType_TE
+			metric = pb.MetricType_METRIC_TYPE_TE
 		default:
 			return fmt.Errorf("invalid input `metric`")
 		}
@@ -228,18 +226,18 @@ func addSRPolicyLinkState(input InputFormat) error {
 	}
 
 	srPolicy := &pb.SRPolicy{
-		PcepSessionAddr: input.SRPolicy.PcepSessionAddr.AsSlice(),
-		SrcRouterID:     input.SRPolicy.SrcRouterID,
-		DstRouterID:     input.SRPolicy.DstRouterID,
+		PcepSessionAddr: input.SRPolicy.PCEPSessionAddr.AsSlice(),
+		SrcRouterId:     input.SRPolicy.SrcRouterID,
+		DstRouterId:     input.SRPolicy.DstRouterID,
 		Color:           input.SRPolicy.Color,
 		PolicyName:      input.SRPolicy.Name,
 		Type:            srPolicyType,
 		SegmentList:     segmentList,
 		Metric:          metric,
 	}
-	inputData := &pb.CreateSRPolicyInput{
-		SRPolicy: srPolicy,
-		Asn:      input.Asn,
+	inputData := &pb.CreateSRPolicyRequest{
+		SrPolicy: srPolicy,
+		Asn:      input.ASN,
 	}
 	if err := grpc.CreateSRPolicy(client, inputData); err != nil {
 		return fmt.Errorf("gRPC Server Error: %s", err.Error())

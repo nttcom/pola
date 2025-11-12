@@ -1,6 +1,5 @@
 # Scenario Test
 
-
 ## 1. Install Required Tools and Container Images
 
 Make sure the following tools and container images are installed:
@@ -8,14 +7,15 @@ Make sure the following tools and container images are installed:
 ### Docker
 
 \* Note: Please make it executable without using sudo
-```
+
+```bash
 $ docker --version
 Docker version 28.3.3, build 980b856
 ```
 
 ### containerlab
 
-```
+```bash
 $ containerlab version
   ____ ___  _   _ _____  _    ___ _   _ _____ ____  _       _
  / ___/ _ \| \ | |_   _|/ \  |_ _| \ | | ____|  _ \| | __ _| |__
@@ -32,29 +32,27 @@ $ containerlab version
 
 ### uv
 
-```
+```bash
 $ uv -V
 uv 0.8.13
 ```
 
 ### vjunos-router
 
-```
-$ docker images | grep vrnetlab/juniper_vjunos-router | grep 24.2R1-S2.5
-vrnetlab/juniper_vjunos-router           24.2R1-S2.5       27c5af1efc9c   2 months ago    4.17GB
+```bash
+$ docker images | grep vrnetlab/juniper_vjunos-router | grep 25.2R1.9
+vrnetlab/juniper_vjunos-router   25.2R1.9          6e9b1472b46b   X hours/days ago   4.18GB
 ```
 
 #### how to install image
 
-1. Get VM image from [here](https://support.juniper.net/support/downloads/)
+1. Get VM image from [Juniper support downloads page](https://support.juniper.net/support/downloads/)
 2. Clone the vrnetlab repository from [GitHub](https://github.com/srl-labs/vrnetlab/tree/master)
-3. Create vjunos-router image 
-
+3. Create vjunos-router image
 
 ## 2. Synchronize Dependencies with uv
 
-```
-
+```bash
 cd <repository-root>/test
 uv sync
 ```
@@ -64,7 +62,8 @@ uv sync
 Place the binary you want to test in the appropriate location.
 
 ex:
-```
+
+```bash
 $ ls -la <repository-root>/test/bin
 drwxrwxr-x 2 --- ---     4096 Sep  3 06:06 .
 drwxrwxr-x 9 --- ---     4096 Aug 28 01:23 ..
@@ -76,10 +75,11 @@ drwxrwxr-x 9 --- ---     4096 Aug 28 01:23 ..
 ```
 
 ## 4. Run the Test
+
 Execute the test using the appropriate command or script.
 
 \* Note: Make sure to run `uv run pytest` with the `-s` option. Otherwise, the test fail.
 
-```
-$ uv run pytest -s
+```bash
+uv run pytest -s
 ```

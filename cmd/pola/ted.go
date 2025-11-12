@@ -13,11 +13,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newTedCmd() *cobra.Command {
+func newTEDCmd() *cobra.Command {
 	return &cobra.Command{
 		Use: "ted",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := print(jsonFmt); err != nil {
+			if err := printTED(jsonFmt); err != nil {
 				return err
 			}
 			return nil
@@ -25,8 +25,8 @@ func newTedCmd() *cobra.Command {
 	}
 }
 
-func print(jsonFlag bool) error {
-	ted, err := grpc.GetTed(client)
+func printTED(jsonFlag bool) error {
+	ted, err := grpc.GetTED(client)
 	if err != nil {
 		return err
 	}
@@ -38,59 +38,83 @@ func print(jsonFlag bool) error {
 
 	if jsonFlag {
 		// Output JSON format
-		nodes := []map[string]interface{}{}
+		nodes := []map[string]any{}
 		for _, as := range ted.Nodes {
 			for _, node := range as {
-				tmpNode := map[string]interface{}{ // TODO: Fix format according to readme
-					"asn":        node.Asn,
+				nodeMap := map[string]any{ // TODO: Fix format according to readme
+					"asn":        node.ASN,
 					"routerID":   node.RouterID,
 					"isisAreaID": node.IsisAreaID,
 					"hostname":   node.Hostname,
 					"srgbBegin":  node.SrgbBegin,
 					"srgbEnd":    node.SrgbEnd,
-					"prefixes":   []map[string]interface{}{},
-					"links":      []map[string]interface{}{},
+					"prefixes":   []map[string]any{},
+					"links":      []map[string]any{},
 				}
 
-				links := []map[string]interface{}{}
+				links := []map[string]any{}
 				for _, link := range node.Links {
-					metrics := []map[string]interface{}{}
+					metrics := []map[string]any{}
 					for _, metric := range link.Metrics {
-						tmpMetric := map[string]interface{}{
+						metricMap := map[string]any{
 							"type":  metric.Type.String(),
 							"value": metric.Value,
 						}
-						metrics = append(metrics, tmpMetric)
+						metrics = append(metrics, metricMap)
 					}
 
-					tmpLink := map[string]interface{}{
-						"localIP":    link.LocalIP.String(),
-						"remoteIP":   link.RemoteIP.String(),
+					var localIP string
+					var remoteIP string
+					if link.LocalIP.IsValid() {
+						localIP = link.LocalIP.String()
+					} else {
+						localIP = "None"
+					}
+					if link.RemoteIP.IsValid() {
+						remoteIP = link.RemoteIP.String()
+					} else {
+						remoteIP = "None"
+					}
+
+					linkMap := map[string]any{
+						"localIP":    localIP,
+						"remoteIP":   remoteIP,
 						"remoteNode": link.RemoteNode.RouterID,
 						"metrics":    metrics,
 						"adjSid":     link.AdjSid,
 					}
-					links = append(links, tmpLink)
+					links = append(links, linkMap)
 				}
-				tmpNode["links"] = links
+				nodeMap["links"] = links
 
-				prefixes := []map[string]interface{}{}
+				prefixes := []map[string]any{}
 				for _, prefix := range node.Prefixes {
-					tmpPrefix := map[string]interface{}{
+					prefixMap := map[string]any{
 						"prefix": prefix.Prefix.String(),
 					}
 					if prefix.SidIndex != 0 {
-						tmpPrefix["sidIndex"] = prefix.SidIndex
+						prefixMap["sidIndex"] = prefix.SidIndex
 					}
-					prefixes = append(prefixes, tmpPrefix)
+					prefixes = append(prefixes, prefixMap)
 				}
-				tmpNode["prefixes"] = prefixes
+				nodeMap["prefixes"] = prefixes
 
-				nodes = append(nodes, tmpNode)
+				srv6SIDs := []map[string]any{}
+				for _, srv6SID := range node.SRv6SIDs {
+					srv6SIDMap := map[string]any{
+						"sids":             srv6SID.Sids,
+						"endpointBehavior": srv6SID.EndpointBehavior,
+						"multiTopoIDs":     srv6SID.MultiTopoIDs,
+					}
+					srv6SIDs = append(srv6SIDs, srv6SIDMap)
+				}
+				nodeMap["srv6SIDs"] = srv6SIDs
+
+				nodes = append(nodes, nodeMap)
 			}
 		}
 
-		outputMap := map[string]interface{}{
+		outputMap := map[string]any{
 			"ted": nodes,
 		}
 
