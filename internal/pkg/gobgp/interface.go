@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/netip"
 	"strings"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -32,12 +33,12 @@ func MonitorBGPLsEvents(serverAddr string, serverPort string, tedChan chan []tab
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
-		logger.Error("failed to create gRPC client (address: %s): %v", zap.String("address", gobgpAddress), zap.Error(err))
+		logger.Error("failed to create gRPC client", zap.String("address", gobgpAddress), zap.Error(err))
 		return
 	}
 	defer func() {
 		if err := cc.Close(); err != nil {
-			logger.Error("failed to close gRPC connection: %v", zap.Error(err))
+			logger.Error("failed to close gRPC connection", zap.Error(err))
 		}
 	}()
 
@@ -46,10 +47,9 @@ func MonitorBGPLsEvents(serverAddr string, serverPort string, tedChan chan []tab
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Get initial TED info
-	tedElems, err := GetBGPlsNLRIs(client)
-	if err != nil {
-		logger.Error("failed to get initial TED info: %v", zap.Error(err))
+	// Initial TED sync
+	if tedElems, err := GetBGPlsNLRIs(client); err != nil {
+		logger.Error("failed to get initial TED info", zap.Error(err))
 	} else {
 		tedChan <- tedElems
 	}
@@ -65,6 +65,7 @@ func MonitorBGPLsEvents(serverAddr string, serverPort string, tedChan chan []tab
 		},
 	}
 
+	// Establish watch stream with retry
 	var stream grpc.ServerStreamingClient[api.WatchEventResponse]
 	for {
 		stream, err = client.WatchEvent(ctx, req)
@@ -76,32 +77,102 @@ func MonitorBGPLsEvents(serverAddr string, serverPort string, tedChan chan []tab
 		break
 	}
 
-	var lastHandled time.Time
-	cooldown := 5 * time.Second
+	// Debounce state
+	var (
+		mu         sync.Mutex
+		debouncing bool
+		lastEvent  time.Time
+	)
+	cooldown := 5 * time.Second // If no additional triggers occur within this time from the trigger, TED is retrieved once
 
-	// Listen for BGP-LS events
+	// Debounce start function: starts a goroutine on the first event.
+	// Subsequent events update lastEvent, and the goroutine waits for the cooldown to elapse before retrieving TED once.
+	startDebounce := func() {
+		mu.Lock()
+		if debouncing {
+			mu.Unlock()
+			return
+		}
+		debouncing = true
+		mu.Unlock()
+
+		go func() {
+			for {
+				// Calculate remaining wait time from the most recent event
+				mu.Lock()
+				remaining := cooldown - time.Since(lastEvent)
+				mu.Unlock()
+
+				if remaining <= 0 {
+					break // If no additional triggers occur within the cooldown, retrieve TED once
+				}
+
+				// Wait with context cancellation support
+				timer := time.NewTimer(remaining)
+				select {
+				case <-timer.C:
+					// Loop again to recalculate remaining
+				case <-ctx.Done():
+					if !timer.Stop() {
+						<-timer.C
+					}
+					mu.Lock()
+					debouncing = false
+					mu.Unlock()
+					return
+				}
+			}
+
+			// Retrieve TED info
+			tedElems, err := GetBGPlsNLRIs(client)
+			if err != nil {
+				logger.Error("failed to get TED info", zap.Error(err))
+				// Even if it fails, release so that debounce can be started again on the next event
+				mu.Lock()
+				debouncing = false
+				mu.Unlock()
+				return
+			}
+
+			select {
+			case tedChan <- tedElems:
+			case <-ctx.Done():
+			}
+
+			mu.Lock()
+			debouncing = false
+			mu.Unlock()
+		}()
+	}
+
+	// Event receive loop: update lastEvent on each receive, start debounce only on the first event
 	for {
 		res, err := stream.Recv()
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			logger.Error("error receiving BGP-LS event: %v", zap.Error(err))
+			logger.Error("error receiving BGP-LS event", zap.Error(err))
 			time.Sleep(10 * time.Second)
+			for {
+				stream, err = client.WatchEvent(ctx, req)
+				if err != nil {
+					logger.Error("failed to re-establish watch stream", zap.Error(err))
+					time.Sleep(10 * time.Second)
+					continue
+				}
+				break
+			}
 			continue
 		}
 
 		if t := res.GetTable(); t != nil {
-			now := time.Now()
-			if now.Sub(lastHandled) >= cooldown {
-				lastHandled = now
+			// Trigger fired: update lastEvent timestamp
+			mu.Lock()
+			lastEvent = time.Now()
+			mu.Unlock()
 
-				tedElems, err := GetBGPlsNLRIs(client)
-				if err != nil {
-					logger.Error("failed to get TED info: %v", zap.Error(err))
-					continue
-				}
-				tedChan <- tedElems
-			}
+			// Start debounce goroutine only on the first trigger (subsequent triggers only update the timestamp)
+			startDebounce()
 		}
 	}
 }
