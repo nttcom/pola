@@ -6,11 +6,13 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/netip"
 	"time"
 
+	"github.com/nttcom/pola/internal/pkg/cspf"
 	"github.com/nttcom/pola/internal/pkg/table"
 	"github.com/nttcom/pola/pkg/packet/pcep"
 
@@ -28,17 +30,19 @@ type Session struct {
 	keepAlive       uint8
 	pccType         pcep.PccType
 	pccCapabilities []pcep.CapabilityInterface
+	ted             *table.LsTED
 }
 
-func NewSession(sessionID uint8, peerAddr netip.Addr, tcpConn *net.TCPConn, logger *zap.Logger) *Session {
+func NewSession(sessionID uint8, peerAddr netip.Addr, tcpConn *net.TCPConn, logger *zap.Logger, ted *table.LsTED) *Session {
 	return &Session{
 		sessionID: sessionID,
 		isSynced:  false,
 		srpIDHead: uint32(1),
 		logger:    logger.With(zap.String("server", "pcep"), zap.String("session", peerAddr.String())),
-		pccType:   pcep.RFC_COMPLIANT,
+		pccType:   pcep.RFCCompliant,
 		peerAddr:  peerAddr,
 		tcpConn:   tcpConn,
+		ted:       ted,
 	}
 }
 
@@ -60,7 +64,7 @@ func (ss *Session) Established() {
 
 	// Receive PCEP messages in a separate goroutine
 	go func() {
-		if err := ss.ReceivePcepMessage(); err != nil {
+		if err := ss.ReceivePCEPMessage(); err != nil {
 			ss.logger.Debug("ERROR! Receive PCEP Message", zap.Error(err))
 		}
 		done <- struct{}{}
@@ -82,7 +86,7 @@ func (ss *Session) Established() {
 	}
 }
 
-func (ss *Session) sendPcepMessage(message pcep.Message) error {
+func (ss *Session) sendPCEPMessage(message pcep.Message) error {
 	byteMessage, err := message.Serialize()
 	if err != nil {
 		return err
@@ -102,7 +106,7 @@ func (ss *Session) Open() error {
 }
 
 func (ss *Session) parseOpenMessage() (*pcep.OpenMessage, error) {
-	byteOpenHeader := make([]uint8, pcep.COMMON_HEADER_LENGTH)
+	byteOpenHeader := make([]uint8, pcep.CommonHeaderLength)
 	if _, err := ss.tcpConn.Read(byteOpenHeader); err != nil {
 		return nil, err
 	}
@@ -115,11 +119,11 @@ func (ss *Session) parseOpenMessage() (*pcep.OpenMessage, error) {
 	if openHeader.Version != 1 {
 		return nil, fmt.Errorf("PCEP version mismatch (receive version: %d)", openHeader.Version)
 	}
-	if openHeader.MessageType != pcep.MT_OPEN {
-		return nil, fmt.Errorf("this peer has not been opened (messageType: %d)", openHeader.MessageType)
+	if openHeader.MessageType != pcep.MessageTypeOpen {
+		return nil, fmt.Errorf("this peer has not been opened (messageType: %s)", openHeader.MessageType.String())
 	}
 
-	byteOpenObject := make([]uint8, openHeader.MessageLength-pcep.COMMON_HEADER_LENGTH)
+	byteOpenObject := make([]uint8, openHeader.MessageLength-pcep.CommonHeaderLength)
 	if _, err := ss.tcpConn.Read(byteOpenObject); err != nil {
 		return nil, err
 	}
@@ -156,10 +160,10 @@ func (ss *Session) SendKeepalive() error {
 		return err
 	}
 	ss.logger.Debug("Send Keepalive Message")
-	return ss.sendPcepMessage(keepaliveMessage)
+	return ss.sendPCEPMessage(keepaliveMessage)
 }
 
-func (ss *Session) SendClose(reason uint8) error {
+func (ss *Session) SendClose(reason pcep.CloseReason) error {
 	closeMessage, err := pcep.NewCloseMessage(reason)
 	if err != nil {
 		return err
@@ -167,7 +171,7 @@ func (ss *Session) SendClose(reason uint8) error {
 	byteCloseMessage := closeMessage.Serialize()
 
 	ss.logger.Debug("Send Close Message",
-		zap.Uint8("reason", closeMessage.CloseObject.Reason),
+		zap.Uint8("reason", uint8(closeMessage.CloseObject.Reason)),
 		zap.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#close-object-reason-field"))
 	if _, err := ss.tcpConn.Write(byteCloseMessage); err != nil {
 		return err
@@ -175,7 +179,7 @@ func (ss *Session) SendClose(reason uint8) error {
 	return nil
 }
 
-func (ss *Session) ReceivePcepMessage() error {
+func (ss *Session) ReceivePCEPMessage() error {
 	for {
 		commonHeader, err := ss.readCommonHeader()
 		if err != nil {
@@ -185,15 +189,15 @@ func (ss *Session) ReceivePcepMessage() error {
 		time.Sleep(10 * time.Millisecond)
 
 		switch commonHeader.MessageType {
-		case pcep.MT_KEEPALIVE:
+		case pcep.MessageTypeKeepalive:
 			ss.logger.Debug("Received Keepalive")
-		case pcep.MT_REPORT:
+		case pcep.MessageTypeReport:
 			err = ss.handlePCRpt(commonHeader.MessageLength)
 			if err != nil {
 				return err
 			}
-		case pcep.MT_ERROR:
-			bytePCErrMessageBody := make([]uint8, commonHeader.MessageLength-pcep.COMMON_HEADER_LENGTH)
+		case pcep.MessageTypeError:
+			bytePCErrMessageBody := make([]uint8, commonHeader.MessageLength-pcep.CommonHeaderLength)
 			if _, err := ss.tcpConn.Read(bytePCErrMessageBody); err != nil {
 				return err
 			}
@@ -203,11 +207,11 @@ func (ss *Session) ReceivePcepMessage() error {
 			}
 
 			ss.logger.Debug("Received PCErr",
-				zap.Uint8("error-Type", pcerrMessage.PcepErrorObject.ErrorType),
-				zap.Uint8("error-value", pcerrMessage.PcepErrorObject.ErrorValue),
+				zap.Uint8("error-Type", pcerrMessage.PCEPErrorObject.ErrorType),
+				zap.Uint8("error-value", pcerrMessage.PCEPErrorObject.ErrorValue),
 				zap.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#pcep-error-object"))
-		case pcep.MT_CLOSE:
-			byteCloseMessageBody := make([]uint8, commonHeader.MessageLength-pcep.COMMON_HEADER_LENGTH)
+		case pcep.MessageTypeClose:
+			byteCloseMessageBody := make([]uint8, commonHeader.MessageLength-pcep.CommonHeaderLength)
 			if _, err := ss.tcpConn.Read(byteCloseMessageBody); err != nil {
 				return err
 			}
@@ -216,19 +220,19 @@ func (ss *Session) ReceivePcepMessage() error {
 				return err
 			}
 			ss.logger.Debug("Received Close",
-				zap.Uint8("reason", closeMessage.CloseObject.Reason),
+				zap.String("reason", closeMessage.CloseObject.Reason.String()),
 				zap.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#close-object-reason-field"))
 			// Close session if get Close Message
 			return nil
 		default:
 			ss.logger.Debug("Received unsupported MessageType",
-				zap.Uint8("MessageType", commonHeader.MessageType))
+				zap.String("MessageType", commonHeader.MessageType.String()))
 		}
 	}
 }
 
 func (ss *Session) readCommonHeader() (*pcep.CommonHeader, error) {
-	commonHeaderBytes := make([]uint8, pcep.COMMON_HEADER_LENGTH)
+	commonHeaderBytes := make([]uint8, pcep.CommonHeaderLength)
 	if _, err := ss.tcpConn.Read(commonHeaderBytes); err != nil {
 		return nil, err
 	}
@@ -244,7 +248,7 @@ func (ss *Session) readCommonHeader() (*pcep.CommonHeader, error) {
 func (ss *Session) handlePCRpt(length uint16) error {
 	ss.logger.Debug("Received PCRpt Message")
 
-	messageBodyBytes := make([]uint8, length-pcep.COMMON_HEADER_LENGTH)
+	messageBodyBytes := make([]uint8, length-pcep.CommonHeaderLength)
 	if _, err := ss.tcpConn.Read(messageBodyBytes); err != nil {
 		return err
 	}
@@ -255,35 +259,234 @@ func (ss *Session) handlePCRpt(length uint16) error {
 	}
 
 	for _, sr := range message.StateReports {
-		// synchronization
-		if sr.LspObject.SFlag {
-			ss.logger.Debug("Synchronize SR Policy information", zap.Any("Message", message))
-			ss.RegisterSRPolicy(*sr)
-		} else if !sr.LspObject.SFlag {
-			switch {
-			// finish synchronization
-			case sr.LspObject.PlspID == 0:
-				ss.logger.Debug("Finish PCRpt state synchronization")
-				ss.isSynced = true
-			// response to request from PCE
-			case sr.SrpObject.SrpID != 0:
-				ss.logger.Debug("Finish Stateful PCE request", zap.Uint32("srpID", sr.SrpObject.SrpID))
-				if sr.LspObject.RFlag {
-					ss.DeleteSRPolicy(*sr)
-				} else {
-					ss.RegisterSRPolicy(*sr)
-				}
+		if sr.LSPObject.SFlag {
+			if err := ss.handleSynchronization(sr, message); err != nil {
+				return err
+			}
+			continue
+		}
 
-			default:
-				if sr.LspObject.RFlag {
-					ss.DeleteSRPolicy(*sr)
-				} else {
-					ss.RegisterSRPolicy(*sr)
+		switch {
+		case sr.LSPObject.PlspID == 0:
+			ss.handleFinishSynchronization()
+		case sr.SrpObject.SrpID != 0:
+			if err := ss.handleStatefulPCERequest(sr); err != nil {
+				return err
+			}
+		case sr.LSPObject.PlspID != 0:
+			if err := ss.handleSRPolicyWithPLSPID(sr); err != nil {
+				return err
+			}
+		default:
+			if err := ss.handleDefaultSRPolicy(sr); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// Synchronization (S-Flag)
+func (ss *Session) handleSynchronization(sr *pcep.StateReport, message *pcep.PCRptMessage) error {
+	ss.logger.Debug("Synchronize SR Policy information", zap.Any("Message", message))
+	if err := ss.RegisterSRPolicy(*sr); err != nil {
+		ss.logger.Error("Failed to register SR Policy during synchronization", zap.Error(err), zap.Uint32("plspID", sr.LSPObject.PlspID))
+		return err
+	}
+	return nil
+}
+
+// Finish synchronization (PlspID == 0)
+func (ss *Session) handleFinishSynchronization() {
+	ss.logger.Debug("Finish PCRpt state synchronization")
+	ss.isSynced = true
+}
+
+// Response to request from PCE (SrpID != 0)
+func (ss *Session) handleStatefulPCERequest(sr *pcep.StateReport) error {
+	ss.logger.Debug("Finish Stateful PCE request", zap.Uint32("srpID", sr.SrpObject.SrpID))
+	if sr.LSPObject.RFlag {
+		ss.DeleteSRPolicy(*sr)
+	} else if err := ss.RegisterSRPolicy(*sr); err != nil {
+		ss.logger.Error("Failed to register SR Policy for Stateful PCE request", zap.Error(err), zap.Uint32("plspID", sr.LSPObject.PlspID))
+		return err
+	}
+	return nil
+}
+
+// Receive SR Policy with PLSP-ID
+func (ss *Session) handleSRPolicyWithPLSPID(sr *pcep.StateReport) error {
+	ss.logger.Debug("Received SR Policy", zap.Uint32("plspID", sr.LSPObject.PlspID))
+
+	computedSegmentList, err := ss.computePathFromTED(*sr)
+	if err != nil {
+		ss.logger.Error("Failed to compute path from TED", zap.Error(err))
+		return err
+	}
+	sr.EroObject = createEroFromSegmentList(computedSegmentList)
+
+	if err := ss.RegisterSRPolicy(*sr); err != nil {
+		ss.logger.Error("Failed to register SR Policy", zap.Error(err), zap.Uint32("plspID", sr.LSPObject.PlspID))
+		return err
+	}
+
+	policy, found := ss.SearchSRPolicy(sr.LSPObject.PlspID)
+	if !found {
+		ss.logger.Warn("SR Policy not found after registration", zap.Uint32("plspID", sr.LSPObject.PlspID))
+		return fmt.Errorf("SR Policy %d not found after registration", sr.LSPObject.PlspID)
+	}
+
+	if err := ss.SendPCUpdate(*policy); err != nil {
+		ss.logger.Error("Failed to send PC update", zap.Uint32("plspID", sr.LSPObject.PlspID), zap.Error(err))
+		return err
+	}
+	return nil
+}
+
+// Default case
+func (ss *Session) handleDefaultSRPolicy(sr *pcep.StateReport) error {
+	if sr.LSPObject.RFlag {
+		ss.DeleteSRPolicy(*sr)
+	} else if err := ss.RegisterSRPolicy(*sr); err != nil {
+		ss.logger.Error("Failed to register SR Policy (default case)", zap.Error(err), zap.Uint32("plspID", sr.LSPObject.PlspID))
+		return err
+	}
+	return nil
+}
+
+func (ss *Session) computePathFromTED(sr pcep.StateReport) ([]table.Segment, error) {
+	if ss.ted == nil {
+		return nil, errors.New("TED not available")
+	}
+
+	srcRouterID, dstRouterID, err := ss.extractSrcDstRouterIDs(sr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract router IDs: %w", err)
+	}
+
+	asn, err := ss.extractASN(srcRouterID)
+	if err != nil {
+		ss.logger.Error("Could not determine ASN", zap.Error(err))
+	}
+
+	metricType := ss.selectMetricType(sr)
+
+	ss.logger.Debug("Computed CSPF parameters",
+		zap.String("srcRouterID", srcRouterID),
+		zap.String("dstRouterID", dstRouterID),
+		zap.Uint32("asn", asn),
+		zap.String("metricType", metricType.String()))
+
+	segmentList, err := cspf.Cspf(srcRouterID, dstRouterID, asn, metricType, ss.ted)
+	if err != nil {
+		return nil, fmt.Errorf("CSPF computation failed: %w", err)
+	}
+
+	return segmentList, nil
+}
+
+func (ss *Session) extractSrcDstRouterIDs(sr pcep.StateReport) (string, string, error) {
+	var srcAddr, dstAddr netip.Addr
+
+	if sr.LSPObject.SrcAddr.IsValid() {
+		srcAddr = sr.LSPObject.SrcAddr
+	}
+	if sr.LSPObject.DstAddr.IsValid() {
+		dstAddr = sr.LSPObject.DstAddr
+	}
+
+	if !srcAddr.IsValid() || !dstAddr.IsValid() {
+		return "", "", errors.New("could not extract valid source and destination addresses")
+	}
+
+	srcRouterID, err := ss.findRouterIDFromAddress(srcAddr)
+	if err != nil {
+		return "", "", fmt.Errorf("cannot find source router ID for %s: %w", srcAddr, err)
+	}
+
+	dstRouterID, err := ss.findRouterIDFromAddress(dstAddr)
+	if err != nil {
+		return "", "", fmt.Errorf("cannot find destination router ID for %s: %w", dstAddr, err)
+	}
+
+	return srcRouterID, dstRouterID, nil
+}
+
+func (ss *Session) findRouterIDFromAddress(addr netip.Addr) (string, error) {
+	for _, nodes := range ss.ted.Nodes {
+		for routerID, node := range nodes {
+			if node.RouterID == addr.String() {
+				return routerID, nil
+			}
+
+			for _, prefix := range node.Prefixes {
+				if prefix.Prefix.Addr() == addr {
+					return routerID, nil
 				}
 			}
 		}
 	}
-	return nil
+	return "", fmt.Errorf("address %s not found in TED", addr)
+}
+
+func (ss *Session) extractASN(srcRouterID string) (uint32, error) {
+	for asn, nodes := range ss.ted.Nodes {
+		if _, exists := nodes[srcRouterID]; exists {
+			return asn, nil
+		}
+	}
+	return 0, fmt.Errorf("ASN not found for router %s", srcRouterID)
+}
+
+func (ss *Session) selectMetricType(sr pcep.StateReport) table.MetricType {
+	if len(sr.MetricObjects) > 0 {
+		switch sr.MetricObjects[0].MetricType {
+		case 1:
+			return table.IGPMetric
+		case 2:
+			return table.TEMetric
+		case 3:
+			return table.DelayMetric
+		case 4:
+			return table.HopcountMetric
+		default:
+			return table.TEMetric
+		}
+	}
+
+	switch ss.pccType {
+	case pcep.CiscoLegacy:
+		return table.TEMetric
+	case pcep.JuniperLegacy:
+		return table.IGPMetric
+	default:
+		return table.TEMetric
+	}
+}
+
+func createEroFromSegmentList(segmentList []table.Segment) *pcep.EroObject {
+	eroObject := &pcep.EroObject{
+		ObjectType:    pcep.ObjectTypeEROExplicitRoute,
+		EroSubobjects: make([]pcep.EroSubobject, 0),
+	}
+
+	for _, segment := range segmentList {
+		switch seg := segment.(type) {
+		case table.SegmentSRMPLS:
+			subobj, err := pcep.NewSREroSubObject(seg)
+			if err == nil {
+				eroObject.EroSubobjects = append(eroObject.EroSubobjects, subobj)
+			}
+		case table.SegmentSRv6:
+			subobj, err := pcep.NewSRv6EroSubObject(seg)
+			if err == nil {
+				eroObject.EroSubobjects = append(eroObject.EroSubobjects, subobj)
+			}
+		}
+	}
+
+	return eroObject
 }
 
 func (ss *Session) RequestAllSRPolicyDeleted() error {
@@ -305,7 +508,7 @@ func (ss *Session) SendOpen() error {
 		return err
 	}
 	ss.logger.Debug("Send Open Message")
-	return ss.sendPcepMessage(openMessage)
+	return ss.sendPCEPMessage(openMessage)
 }
 
 func (ss *Session) SendPCInitiate(srPolicy table.SRPolicy, lspDelete bool) error {
@@ -314,7 +517,7 @@ func (ss *Session) SendPCInitiate(srPolicy table.SRPolicy, lspDelete bool) error
 		return err
 	}
 	ss.logger.Debug("Send PCInitiate Message")
-	err = ss.sendPcepMessage(pcinitiateMessage)
+	err = ss.sendPCEPMessage(pcinitiateMessage)
 	if err == nil {
 		ss.srpIDHead++
 	}
@@ -327,102 +530,133 @@ func (ss *Session) SendPCUpdate(srPolicy table.SRPolicy) error {
 		return err
 	}
 	ss.logger.Debug("Send Update Message")
-	err = ss.sendPcepMessage(pcupdateMessage)
+	err = ss.sendPCEPMessage(pcupdateMessage)
 	if err == nil {
 		ss.srpIDHead++
 	}
 	return err
 }
 
-func (ss *Session) RegisterSRPolicy(sr pcep.StateReport) {
-	var color uint32 = 0      // Default color value (RFC does not specify a default)
-	var preference uint32 = 0 // Default preference value (RFC does not specify a default)
+func (ss *Session) RegisterSRPolicy(sr pcep.StateReport) error {
+	// Resolve color and preference for this SR Policy
+	color, preference := ss.resolveColorPreference(&sr)
 
-	if ss.pccType == pcep.CISCO_LEGACY {
-		// In Cisco legacy mode, get color and preference from Vendor Information Object
+	// Determine the policy state based on O-Flag
+	state := resolvePolicyState(sr.LSPObject.OFlag)
+
+	// Validate Segment List
+	segmentList, err := validateSegmentList(sr)
+	if err != nil {
+		return err
+	}
+
+	// Update existing policy or create a new one
+	return ss.updateOrCreatePolicy(sr, segmentList, color, preference, state)
+}
+
+// resolveColorPreference returns the color and preference for the SR Policy
+func (ss *Session) resolveColorPreference(sr *pcep.StateReport) (uint32, uint32) {
+	var color, preference uint32
+
+	if ss.pccType == pcep.CiscoLegacy {
+		// Cisco legacy mode: get color and preference from Vendor Information Object
 		color = sr.VendorInformationObject.Color()
 		preference = sr.VendorInformationObject.Preference()
 	} else {
-		// TODO: Move hasColorCapability to Session struct
-		hasColorCapability := false
+		// Check if PCC supports color capability
+		hasColor := false
 		for _, cap := range ss.pccCapabilities {
-			if statefulCap, ok := cap.(*pcep.StatefulPceCapability); ok {
-				if statefulCap.ColorCapability {
-					hasColorCapability = true
-					break
-				}
+			if c, ok := cap.(*pcep.StatefulPCECapability); ok && c.ColorCapability {
+				hasColor = true
+				break
 			}
 		}
 
-		// SR Policy Association color takes precedence over LSP Object Color TLV
-		// Ref: https://datatracker.ietf.org/doc/draft-ietf-pce-pcep-color/12/ Section 2
-		if sr.AssociationObject.Color() != 0 {
-			color = sr.AssociationObject.Color()
-		} else if hasColorCapability {
-			color = sr.LspObject.Color()
+		// SR Policy Association color takes precedence
+		if c := sr.AssociationObject.Color(); c != 0 {
+			color = c
+		} else if hasColor {
+			color = sr.LSPObject.Color()
 		}
 
 		preference = sr.AssociationObject.Preference()
 	}
 
-	lspID := sr.LspObject.LspID
+	return color, preference
+}
 
-	var state table.PolicyState
-	switch sr.LspObject.OFlag {
-	case uint8(0x00):
-		state = table.POLICY_DOWN
-	case uint8(0x01):
-		state = table.POLICY_UP
-	case uint8(0x02):
-		state = table.POLICY_ACTIVE
+// resolvePolicyState converts O-Flag to internal PolicyState
+func resolvePolicyState(oflag uint8) table.PolicyState {
+	switch oflag {
+	case 0x00:
+		return table.PolicyDown
+	case 0x01:
+		return table.PolicyUp
+	case 0x02:
+		return table.PolicyActive
 	default:
-		state = table.POLICY_UNKNOWN
-	}
-
-	if p, ok := ss.SearchSRPolicy(sr.LspObject.PlspID); ok {
-		// update
-		// If the LSP ID is old, it is not the latest data update.
-		if p.LspID <= lspID {
-			p.Update(
-				table.PolicyDiff{
-					Name:        &sr.LspObject.Name,
-					Color:       &color,
-					Preference:  &preference,
-					SegmentList: sr.EroObject.ToSegmentList(),
-					LspID:       lspID,
-					State:       state,
-				},
-			)
-		}
-	} else {
-		// create
-		var src, dst netip.Addr
-		if src = sr.LspObject.SrcAddr; !src.IsValid() {
-			src = sr.AssociationObject.AssocSrc
-		}
-		if dst = sr.LspObject.DstAddr; !dst.IsValid() {
-			dst = sr.AssociationObject.Endpoint()
-		}
-		p := table.NewSRPolicy(
-			sr.LspObject.PlspID,
-			sr.LspObject.Name,
-			sr.EroObject.ToSegmentList(),
-			src,
-			dst,
-			color,
-			preference,
-			lspID,
-			state,
-		)
-		ss.srPolicies = append(ss.srPolicies, p)
+		return table.PolicyUnknown
 	}
 }
 
+// validateSegmentList checks if the Segment List exists and is non-empty
+func validateSegmentList(sr pcep.StateReport) ([]table.Segment, error) {
+	if sr.EroObject == nil {
+		return nil, fmt.Errorf("EroObject is nil for PlspID %d", sr.LSPObject.PlspID)
+	}
+	list := sr.EroObject.ToSegmentList()
+	if len(list) == 0 {
+		return nil, fmt.Errorf("SegmentList is empty for PlspID %d", sr.LSPObject.PlspID)
+	}
+	return list, nil
+}
+
+// updateOrCreatePolicy updates an existing SR Policy or creates a new one
+func (ss *Session) updateOrCreatePolicy(sr pcep.StateReport, segmentList []table.Segment, color, preference uint32, state table.PolicyState) error {
+	lspID := sr.LSPObject.LSPID
+
+	if p, ok := ss.SearchSRPolicy(sr.LSPObject.PlspID); ok {
+		// Update existing policy if LSPID is new or equal
+		if p.LSPID <= lspID {
+			p.Update(table.PolicyDiff{
+				Name:        &sr.LSPObject.Name,
+				Color:       &color,
+				Preference:  &preference,
+				SegmentList: segmentList,
+				LSPID:       lspID,
+				State:       state,
+			})
+		}
+		return nil
+	}
+
+	// Create a new SR Policy
+	src := sr.LSPObject.SrcAddr
+	if !src.IsValid() {
+		src = sr.AssociationObject.AssocSrc
+	}
+	if !src.IsValid() {
+		return fmt.Errorf("invalid source address for PlspID %d", sr.LSPObject.PlspID)
+	}
+
+	dst := sr.LSPObject.DstAddr
+	if !dst.IsValid() {
+		dst = sr.AssociationObject.Endpoint()
+	}
+	if !dst.IsValid() {
+		return fmt.Errorf("invalid destination address for PlspID %d", sr.LSPObject.PlspID)
+	}
+
+	p := table.NewSRPolicy(sr.LSPObject.PlspID, sr.LSPObject.Name, segmentList, src, dst, color, preference, lspID, state)
+	ss.srPolicies = append(ss.srPolicies, p)
+	return nil
+}
+
 func (ss *Session) DeleteSRPolicy(sr pcep.StateReport) {
-	lspID := sr.LspObject.LspID
+	lspID := sr.LSPObject.LSPID
 	for i, v := range ss.srPolicies {
 		// If the LSP ID is old, it is not the latest data update.
-		if v.PlspID == sr.LspObject.PlspID && v.LspID <= lspID {
+		if v.PlspID == sr.LSPObject.PlspID && v.LSPID <= lspID {
 			ss.srPolicies[i] = ss.srPolicies[len(ss.srPolicies)-1]
 			ss.srPolicies = ss.srPolicies[:len(ss.srPolicies)-1]
 			break

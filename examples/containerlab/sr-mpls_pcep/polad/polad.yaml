@@ -2,7 +2,7 @@ global:
   pcep:
     address: "10.0.255.254"
     port: 4189
-  grpc-server:
+  grpcServer:
     address: "127.0.0.1"
     port: 50051
   log:

@@ -12,17 +12,17 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type Pcep struct {
+type PCEP struct {
 	Address string `yaml:"address"`
 	Port    string `yaml:"port"`
 }
 
-type GrpcServer struct {
+type GRPCServer struct {
 	Address string `yaml:"address"`
 	Port    string `yaml:"port"`
 }
 
-type GrpcClient struct {
+type GRPCClient struct {
 	Address string `yaml:"address"`
 	Port    string `yaml:"port"`
 }
@@ -33,22 +33,22 @@ type Log struct {
 	Debug bool   `yaml:"debug"`
 }
 
-type Gobgp struct {
-	GrpcClient GrpcClient `yaml:"grpc-client"`
+type GoBGP struct {
+	GRPCClient GRPCClient `yaml:"grpcClient"`
 }
 
-type Ted struct {
+type TED struct {
 	Enable bool   `yaml:"enable"`
 	Source string `yaml:"source"`
 }
 
 type Global struct {
-	Pcep       Pcep       `yaml:"pcep"`
-	GrpcServer GrpcServer `yaml:"grpc-server"`
+	PCEP       PCEP       `yaml:"pcep"`
+	GRPCServer GRPCServer `yaml:"grpcServer"`
 	Log        Log        `yaml:"log"`
-	Ted        *Ted       `yaml:"ted"`
-	Gobgp      Gobgp      `yaml:"gobgp"`
-	USidMode   bool       `yaml:"usid-mode"`
+	TED        *TED       `yaml:"ted"`
+	GoBGP      GoBGP      `yaml:"gobgp"`
+	USidMode   bool       `yaml:"usidMode"`
 }
 
 type Config struct {

@@ -12,68 +12,173 @@ import (
 	"strconv"
 )
 
-type LsTed struct {
+type LsTED struct {
 	ID    int
 	Nodes map[uint32]map[string]*LsNode // { ASN1: {"NodeID1": node1, "NodeID2": node2}, ASN2: {"NodeID3": node3, "NodeID4": node4}}
 }
 
-func (ted *LsTed) Update(tedElems []TedElem) {
+func (ted *LsTED) Update(tedElems []TEDElem) {
 	for _, tedElem := range tedElems {
-		tedElem.UpdateTed(ted)
+		tedElem.UpdateTED(ted)
 	}
 }
 
-func (ted *LsTed) Print() {
-	for _, nodes := range ted.Nodes {
-		nodeCnt := 1
-		for nodeID, node := range nodes {
-			fmt.Printf("Node: %d\n", nodeCnt)
-			fmt.Printf("  %s\n", nodeID)
-			fmt.Printf("  Hostname: %s\n", node.Hostname)
-			fmt.Printf("  ISIS Area ID: %s\n", node.IsisAreaID)
-			fmt.Printf("  SRGB: %d - %d\n", node.SrgbBegin, node.SrgbEnd)
-			fmt.Printf("  Prefixes:\n")
-			for _, prefix := range node.Prefixes {
-				fmt.Printf("    %s\n", prefix.Prefix.String())
-				if prefix.SidIndex != 0 {
-					fmt.Printf("      index: %d\n", prefix.SidIndex)
-				}
-			}
+// Print outputs the TED in a structured way with low cyclomatic complexity.
+func (ted *LsTED) Print() {
+	if ted == nil || ted.Nodes == nil {
+		fmt.Println("TED is empty")
+		return
+	}
 
-			fmt.Printf("  Links:\n")
-			for _, link := range node.Links {
-				fmt.Printf("    Local: %s Remote: %s\n", link.LocalIP.String(), link.RemoteIP.String())
-				fmt.Printf("      RemoteNode: %s\n", link.RemoteNode.RouterID)
-				fmt.Printf("      Metrics:\n")
-				for _, metric := range link.Metrics {
-					fmt.Printf("        %s: %d\n", metric.Type.String(), metric.Value)
-				}
-				fmt.Printf("      Adj-SID: %d\n", link.AdjSid)
-			}
-			nodeCnt++
-			fmt.Printf("\n")
+	for _, nodes := range ted.Nodes {
+		if nodes == nil {
+			continue
+		}
+		printNodes(nodes)
+	}
+}
+
+// printNodes iterates over each node in the map and prints its details.
+func printNodes(nodes map[string]*LsNode) {
+	nodeCnt := 1
+	for nodeID, node := range nodes {
+		if node == nil {
+			continue
+		}
+		fmt.Printf("Node: %d\n", nodeCnt)
+		printNodeBasic(nodeID, node)
+		printNodePrefixes(node)
+		printNodeLinks(node)
+		printNodeSRv6SIDs(node)
+		fmt.Println()
+		nodeCnt++
+	}
+}
+
+// printNodeBasic prints the basic information of a node.
+func printNodeBasic(nodeID string, node *LsNode) {
+	fmt.Printf("  %s\n", nodeID)
+	fmt.Printf("  Hostname: %s\n", node.Hostname)
+	fmt.Printf("  ISIS Area ID: %s\n", node.IsisAreaID)
+	fmt.Printf("  SRGB: %d - %d\n", node.SrgbBegin, node.SrgbEnd)
+}
+
+// printNodePrefixes prints the prefixes associated with a node.
+func printNodePrefixes(node *LsNode) {
+	fmt.Println("  Prefixes:")
+	if node.Prefixes == nil {
+		return
+	}
+	for _, prefix := range node.Prefixes {
+		if prefix == nil {
+			continue
+		}
+		fmt.Printf("    %s\n", prefix.Prefix.String())
+		if prefix.SidIndex != 0 {
+			fmt.Printf("      index: %d\n", prefix.SidIndex)
 		}
 	}
 }
 
-type TedElem interface {
-	UpdateTed(ted *LsTed)
+// printNodeLinks prints the links associated with a node.
+func printNodeLinks(node *LsNode) {
+	fmt.Println("  Links:")
+	if node.Links == nil {
+		return
+	}
+	for _, link := range node.Links {
+		if link == nil {
+			continue
+		}
+		printLink(link)
+	}
+}
+
+// printLink prints the details of a single link.
+func printLink(link *LsLink) {
+	localIP := "None"
+	remoteIP := "None"
+	if link.LocalIP.IsValid() {
+		localIP = link.LocalIP.String()
+	}
+	if link.RemoteIP.IsValid() {
+		remoteIP = link.RemoteIP.String()
+	}
+	fmt.Printf("    Local: %s Remote: %s\n", localIP, remoteIP)
+
+	remoteNodeID := "None"
+	if link.RemoteNode != nil {
+		remoteNodeID = link.RemoteNode.RouterID
+	}
+	fmt.Printf("      RemoteNode: %s\n", remoteNodeID)
+
+	fmt.Println("      Metrics:")
+	if link.Metrics != nil {
+		for _, metric := range link.Metrics {
+			if metric == nil {
+				continue
+			}
+			fmt.Printf("        %s: %d\n", metric.Type.String(), metric.Value)
+		}
+	}
+
+	fmt.Printf("      Adj-SID: %d\n", link.AdjSid)
+
+	if link.Srv6EndXSID != nil {
+		fmt.Println("      SRv6 End.X SID:")
+		fmt.Printf("        EndpointBehavior: %s\n", BehaviorToString(link.Srv6EndXSID.EndpointBehavior))
+		fmt.Printf("        SIDs: %v\n", link.Srv6EndXSID.Sids)
+		fmt.Printf("        SID Structure: Block: %d, Node: %d, Func: %d, Arg: %d\n",
+			link.Srv6EndXSID.Srv6SIDStructure.LocalBlock,
+			link.Srv6EndXSID.Srv6SIDStructure.LocalNode,
+			link.Srv6EndXSID.Srv6SIDStructure.LocalFunc,
+			link.Srv6EndXSID.Srv6SIDStructure.LocalArg)
+	}
+}
+
+// printNodeSRv6SIDs prints the SRv6 SIDs associated with a node.
+func printNodeSRv6SIDs(node *LsNode) {
+	fmt.Println("  SRv6 SIDs:")
+	if node.SRv6SIDs == nil {
+		return
+	}
+	for _, srv6SID := range node.SRv6SIDs {
+		if srv6SID == nil {
+			continue
+		}
+		fmt.Printf("    SIDs: %v\n", srv6SID.Sids)
+		fmt.Printf("    Block: %d, Node: %d, Func: %d, Arg: %d\n",
+			srv6SID.SIDStructure.LocalBlock,
+			srv6SID.SIDStructure.LocalNode,
+			srv6SID.SIDStructure.LocalFunc,
+			srv6SID.SIDStructure.LocalArg)
+		fmt.Printf("    EndpointBehavior: %s, Flags: %d, Algorithm: %d\n",
+			BehaviorToString(srv6SID.EndpointBehavior.Behavior),
+			srv6SID.EndpointBehavior.Flags,
+			srv6SID.EndpointBehavior.Algorithm)
+		fmt.Printf("    MultiTopoIDs: %v\n", srv6SID.MultiTopoIDs)
+	}
+}
+
+type TEDElem interface {
+	UpdateTED(ted *LsTED)
 }
 
 type LsNode struct {
-	Asn        uint32 // primary key, in MP_REACH_NLRI Attr
+	ASN        uint32 // primary key, in MP_REACH_NLRI Attr
 	RouterID   string // primary key, in MP_REACH_NLRI Attr
 	IsisAreaID string // in BGP-LS Attr
 	Hostname   string // in BGP-LS Attr
 	SrgbBegin  uint32 // in BGP-LS Attr
 	SrgbEnd    uint32 // in BGP-LS Attr
 	Links      []*LsLink
-	Prefixes   []*LsPrefixV4
+	Prefixes   []*LsPrefix
+	SRv6SIDs   []*LsSrv6SID
 }
 
 func NewLsNode(asn uint32, nodeID string) *LsNode {
 	return &LsNode{
-		Asn:      asn,
+		ASN:      asn,
 		RouterID: nodeID,
 	}
 }
@@ -81,7 +186,7 @@ func NewLsNode(asn uint32, nodeID string) *LsNode {
 func (n *LsNode) NodeSegment() (Segment, error) {
 	// for SR-MPLS Segment
 	for _, prefix := range n.Prefixes {
-		if prefix.SidIndex != 0 {
+		if prefix.SidIndex > FirstSIDIndex {
 			sid := strconv.Itoa(int(n.SrgbBegin + prefix.SidIndex))
 			seg, err := NewSegment(sid)
 			if err != nil {
@@ -90,23 +195,42 @@ func (n *LsNode) NodeSegment() (Segment, error) {
 			return seg, nil
 		}
 	}
-	// TODO: for SRv6 Segment
+	// for SRv6 Segment
+	for _, srv6SID := range n.SRv6SIDs {
+		if len(srv6SID.Sids) > FirstSIDIndex {
+			addr, err := netip.ParseAddr(srv6SID.Sids[FirstSIDIndex])
+			if err != nil {
+				return nil, err
+			}
+			seg, err := NewSegmentSRv6WithNodeInfo(addr, n)
+			if err != nil {
+				return nil, err
+			}
+			return seg, nil
+		}
+	}
 
 	return nil, errors.New("node doesn't have a Node SID")
 }
 
 func (n *LsNode) LoopbackAddr() (netip.Addr, error) {
 	for _, prefix := range n.Prefixes {
-		if prefix.SidIndex != 0 {
-			return prefix.Prefix.Addr(), nil
+		if prefix.Prefix.Addr().Is4() {
+			if prefix.Prefix.Bits() == 32 {
+				return prefix.Prefix.Addr(), nil
+			}
+		} else if prefix.Prefix.Addr().Is6() {
+			if prefix.Prefix.Bits() == 128 {
+				return prefix.Prefix.Addr(), nil
+			}
 		}
 	}
 
 	return netip.Addr{}, errors.New("node doesn't have a loopback address")
 }
 
-func (n *LsNode) UpdateTed(ted *LsTed) {
-	nodes, asn := ted.Nodes, n.Asn
+func (n *LsNode) UpdateTED(ted *LsTED) {
+	nodes, asn := ted.Nodes, n.ASN
 
 	if _, ok := nodes[asn]; !ok {
 		nodes[asn] = make(map[string]*LsNode)
@@ -127,12 +251,13 @@ func (n *LsNode) AddLink(link *LsLink) {
 }
 
 type LsLink struct {
-	LocalNode  *LsNode    // Primary key, in MP_REACH_NLRI Attr
-	RemoteNode *LsNode    // Primary key, in MP_REACH_NLRI Attr
-	LocalIP    netip.Addr // In MP_REACH_NLRI Attr
-	RemoteIP   netip.Addr // In MP_REACH_NLRI Attr
-	Metrics    []*Metric  // In BGP-LS Attr
-	AdjSid     uint32     // In BGP-LS Attr
+	LocalNode   *LsNode      // Primary key, in MP_REACH_NLRI Attr
+	RemoteNode  *LsNode      // Primary key, in MP_REACH_NLRI Attr
+	LocalIP     netip.Addr   // In MP_REACH_NLRI Attr
+	RemoteIP    netip.Addr   // In MP_REACH_NLRI Attr
+	Metrics     []*Metric    // In BGP-LS Attr
+	AdjSid      uint32       // In BGP-LS Attr
+	Srv6EndXSID *Srv6EndXSID // In BGP-LS Attr
 }
 
 func NewLsLink(localNode *LsNode, remoteNode *LsNode) *LsLink {
@@ -152,47 +277,47 @@ func (l *LsLink) Metric(metricType MetricType) (uint32, error) {
 	return 0, fmt.Errorf("metric %s not defined", metricType)
 }
 
-func (l *LsLink) UpdateTed(ted *LsTed) {
-	nodes, asn := ted.Nodes, l.LocalNode.Asn
+func (l *LsLink) UpdateTED(ted *LsTED) {
+	nodes, asn := ted.Nodes, l.LocalNode.ASN
 
 	if _, ok := nodes[asn]; !ok {
 		nodes[asn] = make(map[string]*LsNode)
 	}
 
 	if _, ok := nodes[asn][l.LocalNode.RouterID]; !ok {
-		nodes[asn][l.LocalNode.RouterID] = NewLsNode(l.LocalNode.Asn, l.LocalNode.RouterID)
+		nodes[asn][l.LocalNode.RouterID] = NewLsNode(l.LocalNode.ASN, l.LocalNode.RouterID)
 	}
 
-	if _, ok := nodes[l.RemoteNode.Asn][l.RemoteNode.RouterID]; !ok {
-		nodes[l.RemoteNode.Asn][l.RemoteNode.RouterID] = NewLsNode(l.RemoteNode.Asn, l.RemoteNode.RouterID)
+	if _, ok := nodes[l.RemoteNode.ASN][l.RemoteNode.RouterID]; !ok {
+		nodes[l.RemoteNode.ASN][l.RemoteNode.RouterID] = NewLsNode(l.RemoteNode.ASN, l.RemoteNode.RouterID)
 	}
 
-	l.LocalNode, l.RemoteNode = nodes[asn][l.LocalNode.RouterID], nodes[l.RemoteNode.Asn][l.RemoteNode.RouterID]
+	l.LocalNode, l.RemoteNode = nodes[asn][l.LocalNode.RouterID], nodes[l.RemoteNode.ASN][l.RemoteNode.RouterID]
 
 	l.LocalNode.AddLink(l)
 }
 
-type LsPrefixV4 struct {
+type LsPrefix struct {
 	LocalNode *LsNode      // primary key, in MP_REACH_NLRI Attr
 	Prefix    netip.Prefix // in MP_REACH_NLRI Attr
 	SidIndex  uint32       // in BGP-LS Attr (only for Lo Address Prefix)
 }
 
-func NewLsPrefixV4(localNode *LsNode) *LsPrefixV4 {
-	return &LsPrefixV4{
+func NewLsPrefix(localNode *LsNode) *LsPrefix {
+	return &LsPrefix{
 		LocalNode: localNode,
 	}
 }
 
-func (lp *LsPrefixV4) UpdateTed(ted *LsTed) {
-	nodes, asn := ted.Nodes, lp.LocalNode.Asn
+func (lp *LsPrefix) UpdateTED(ted *LsTED) {
+	nodes, asn := ted.Nodes, lp.LocalNode.ASN
 
 	if _, ok := nodes[asn]; !ok {
 		nodes[asn] = make(map[string]*LsNode)
 	}
 
 	if _, ok := nodes[asn][lp.LocalNode.RouterID]; !ok {
-		nodes[asn][lp.LocalNode.RouterID] = NewLsNode(lp.LocalNode.Asn, lp.LocalNode.RouterID)
+		nodes[asn][lp.LocalNode.RouterID] = NewLsNode(lp.LocalNode.ASN, lp.LocalNode.RouterID)
 	}
 
 	localNode := nodes[asn][lp.LocalNode.RouterID]
@@ -203,6 +328,53 @@ func (lp *LsPrefixV4) UpdateTed(ted *LsTed) {
 	}
 
 	localNode.Prefixes = append(localNode.Prefixes, lp)
+}
+
+type SIDStructure struct {
+	LocalBlock uint8
+	LocalNode  uint8
+	LocalFunc  uint8
+	LocalArg   uint8
+}
+
+type EndpointBehavior struct {
+	Behavior  uint16
+	Flags     uint8
+	Algorithm uint8
+}
+
+type LsSrv6SID struct {
+	LocalNode        *LsNode          // primary key, in MP_REACH_NLRI Attr
+	Sids             []string         // in LsSrv6SID Attr
+	EndpointBehavior EndpointBehavior // in BGP-LS Attr
+	SIDStructure     SIDStructure     // in BGP-LS Attr
+	MultiTopoIDs     []uint32         // in LsSrv6SID Attr
+}
+
+func NewLsSrv6SID(node *LsNode) *LsSrv6SID {
+	return &LsSrv6SID{
+		LocalNode: node,
+	}
+}
+
+func (s *LsSrv6SID) UpdateTED(ted *LsTED) {
+	nodes, asn := ted.Nodes, s.LocalNode.ASN
+
+	if _, ok := nodes[asn]; !ok {
+		nodes[asn] = make(map[string]*LsNode)
+	}
+
+	if _, ok := nodes[asn][s.LocalNode.RouterID]; !ok {
+		nodes[asn][s.LocalNode.RouterID] = NewLsNode(s.LocalNode.ASN, s.LocalNode.RouterID)
+	}
+
+	s.LocalNode = nodes[asn][s.LocalNode.RouterID]
+
+	s.LocalNode.AddSrv6SID(s)
+}
+
+func (n *LsNode) AddSrv6SID(s *LsSrv6SID) {
+	n.SRv6SIDs = append(n.SRv6SIDs, s)
 }
 
 type Metric struct {
@@ -220,23 +392,29 @@ func NewMetric(metricType MetricType, value uint32) *Metric {
 type MetricType int
 
 const (
-	IGP_METRIC MetricType = iota
-	TE_METRIC
-	DELAY_METRIC
-	HOPCOUNT_METRIC
+	IGPMetric MetricType = iota
+	TEMetric
+	DelayMetric
+	HopcountMetric
 )
 
 func (m MetricType) String() string {
 	switch m {
-	case IGP_METRIC:
-		return "IGP"
-	case TE_METRIC:
-		return "TE"
-	case DELAY_METRIC:
-		return "DELAY"
-	case HOPCOUNT_METRIC:
-		return "HOPCOUNT"
+	case IGPMetric:
+		return "METRIC_TYPE_IGP"
+	case TEMetric:
+		return "METRIC_TYPE_TE"
+	case DelayMetric:
+		return "METRIC_TYPE_DELAY"
+	case HopcountMetric:
+		return "METRIC_TYPE_HOPCOUNT"
 	default:
-		return "Unknown"
+		return "METRIC_TYPE_UNSPECIFIED"
 	}
+}
+
+type Srv6EndXSID struct {
+	EndpointBehavior uint16
+	Sids             []string
+	Srv6SIDStructure SIDStructure
 }

@@ -7,18 +7,18 @@ This page explains how to use Pola PCE.
 ### From Go Package
 
 ```bash
-$ go install github.com/nttcom/pola/cmd/polad@latest
+go install github.com/nttcom/pola/cmd/polad@latest
 ```
 
 ### From Source
 
-**Getting the Source**
+#### Getting the Source
 
 ```bash
-$ git clone https://github.com/nttcom/pola.git
+git clone https://github.com/nttcom/pola.git
 ```
 
-**Build & install**
+#### Build & install
 
 ```bash
 $ cd pola
@@ -46,7 +46,7 @@ global:
   pcep:
     address: "2001:0db8::254"
     port: 4189
-  grpc-server:
+  grpcServer:
     address: "127.0.0.1"
     port: 50051
   log:
@@ -54,7 +54,7 @@ global:
     name: "polad.log"
   ted:
     enable: false
-  usid-mode: false
+  usidMode: false
 ```
 
 ### case: TED enable
@@ -72,7 +72,7 @@ global:
   pcep:
     address: "192.0.2.254"
     port: 4189
-  grpc-server:
+  grpcServer:
     address: "127.0.0.1"
     port: 50052
   log:
@@ -82,7 +82,7 @@ global:
     enable: true
     source: "gobgp"
   gobgp:
-    grpc-client:
+    grpcClient:
       address: "127.0.0.1"
       port: 50051
 ```
@@ -116,4 +116,5 @@ $ sudo polad -f polad.yaml
 2022-06-05T22:57:59.823Z        info    PCEP listen     {"listenInfo": "192.0.2.254:4189"}
 ```
 
-After Polad is running, use [pola cmd](../../cmd/pola/README.md) or the [gRCP client](../../api/grpc/) for daemon operations
+After Polad is running, use [pola cmd](../../cmd/pola/README.md) or the
+[gRCP client](../../api/grpc/) for daemon operations

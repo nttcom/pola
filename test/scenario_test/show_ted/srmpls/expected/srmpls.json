@@ -10,11 +10,11 @@
                     "localIP": "10.0.0.1",
                     "metrics": [
                         {
-                            "type": "IGP",
+                            "type": "METRIC_TYPE_IGP",
                             "value": 10
                         },
                         {
-                            "type": "TE",
+                            "type": "METRIC_TYPE_TE",
                             "value": 10
                         }
                     ],
@@ -30,7 +30,8 @@
             ],
             "routerID": "0000.0aff.0001",
             "srgbBegin": 800000,
-            "srgbEnd": 804096
+            "srgbEnd": 804096,
+            "srv6SIDs": []
         },
         {
             "asn": 65000,
@@ -42,11 +43,11 @@
                     "localIP": "10.0.0.2",
                     "metrics": [
                         {
-                            "type": "IGP",
+                            "type": "METRIC_TYPE_IGP",
                             "value": 10
                         },
                         {
-                            "type": "TE",
+                            "type": "METRIC_TYPE_TE",
                             "value": 10
                         }
                     ],
@@ -62,7 +63,8 @@
             ],
             "routerID": "0000.0aff.0002",
             "srgbBegin": 800000,
-            "srgbEnd": 804096
+            "srgbEnd": 804096,
+            "srv6SIDs": []
         }
     ]
 }
