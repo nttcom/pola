@@ -6,7 +6,7 @@ require (
 	github.com/osrg/gobgp/v4 v4.0.0-20251020140220-f6bf251a9a7f
 	github.com/spf13/cobra v1.10.1
 	github.com/stretchr/testify v1.11.1
-	go.uber.org/zap v1.27.0
+	go.uber.org/zap v1.27.1
 	google.golang.org/grpc v1.76.0
 	google.golang.org/protobuf v1.36.10
 	gopkg.in/yaml.v2 v2.4.0
