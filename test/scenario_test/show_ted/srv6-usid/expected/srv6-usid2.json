@@ -1,0 +1,82 @@
+{
+    "ted": [
+        {
+            "asn": 65000,
+            "hostname": "jun-rt1",
+            "isisAreaID": "49.0000",
+            "links": [],
+            "prefixes": [
+                {
+                    "prefix": "fd00::/64"
+                },
+                {
+                    "prefix": "fcbb:bb00:1001::/48"
+                }
+            ],
+            "routerID": "0000.0aff.0001",
+            "srgbBegin": 0,
+            "srgbEnd": 0,
+            "srv6SIDs": [
+                {
+                    "endpointBehavior": {
+                        "Behavior": 48,
+                        "Flags": 0,
+                        "Algorithm": 0
+                    },
+                    "multiTopoIDs": [
+                        2
+                    ],
+                    "sids": [
+                        "fcbb:bb00:1001::"
+                    ]
+                }
+            ]
+        },
+        {
+            "asn": 65000,
+            "hostname": "jun-rt2",
+            "isisAreaID": "49.0000",
+            "links": [
+                {
+                    "adjSid": 0,
+                    "localIP": "None",
+                    "metrics": [
+                        {
+                            "type": "METRIC_TYPE_IGP",
+                            "value": 10
+                        },
+                        {
+                            "type": "METRIC_TYPE_TE",
+                            "value": 10
+                        }
+                    ],
+                    "remoteIP": "None",
+                    "remoteNode": "0000.0aff.0001"
+                }
+            ],
+            "prefixes": [
+                {
+                    "prefix": "fcbb:bb00:1002::/48"
+                }
+            ],
+            "routerID": "0000.0aff.0002",
+            "srgbBegin": 0,
+            "srgbEnd": 0,
+            "srv6SIDs": [
+                {
+                    "endpointBehavior": {
+                        "Behavior": 48,
+                        "Flags": 0,
+                        "Algorithm": 0
+                    },
+                    "multiTopoIDs": [
+                        2
+                    ],
+                    "sids": [
+                        "fcbb:bb00:1002::"
+                    ]
+                }
+            ]
+        }
+    ]
+}
