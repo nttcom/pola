@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"time"
 
 	"go.uber.org/zap"
 
@@ -109,18 +108,12 @@ func startGoBGPUpdate(c *config.Config, logger *zap.Logger) chan []table.TEDElem
 	}
 	tedElemsChan := make(chan []table.TEDElem)
 
-	go func() {
-		for {
-			tedElems, err := gobgp.GetBGPlsNLRIs(c.Global.GoBGP.GRPCClient.Address, c.Global.GoBGP.GRPCClient.Port)
-			logger.Debug("Request TED update", zap.String("source", "GoBGP"), zap.String("session", c.Global.GoBGP.GRPCClient.Address+":"+c.Global.GoBGP.GRPCClient.Port))
-			if err != nil {
-				logger.Error("Failed session with GoBGP", zap.Error(err))
-			} else {
-				tedElemsChan <- tedElems
-			}
-			time.Sleep(TEDUpdateInterval * time.Minute)
-		}
-	}()
+	go gobgp.MonitorBGPLsEvents(
+		c.Global.GoBGP.GRPCClient.Address,
+		c.Global.GoBGP.GRPCClient.Port,
+		tedElemsChan,
+		logger,
+	)
 
 	return tedElemsChan
 }
