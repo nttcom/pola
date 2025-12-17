@@ -9,7 +9,7 @@ import "fmt"
 
 const Major uint = 1
 const Minor uint = 3
-const Patch uint = 0
+const Patch uint = 1
 
 func Version() string {
 	return fmt.Sprintf("%d.%d.%d", Major, Minor, Patch)
