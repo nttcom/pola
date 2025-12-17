@@ -32,7 +32,6 @@ builds:
 
 archives:
   - id: archive
-    rlcp: true
     files:
       - LICENSE
       - CREDITS
