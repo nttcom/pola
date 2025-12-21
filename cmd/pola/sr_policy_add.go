@@ -70,6 +70,11 @@ type Segment struct {
 	SIDStructure string `yaml:"sidStructure"`
 }
 
+type Waypoint struct {
+	RouterID string `yaml:"routerID"`
+	SID      string `yaml:"sid"` // optional: fixed SID override
+}
+
 type SRPolicy struct {
 	PCEPSessionAddr netip.Addr `yaml:"pcepSessionAddr"`
 	SrcAddr         netip.Addr `yaml:"srcAddr"`
@@ -81,6 +86,7 @@ type SRPolicy struct {
 	Color           uint32     `yaml:"color"`
 	Type            string     `yaml:"type"`
 	Metric          string     `yaml:"metric"`
+	Waypoints       []Waypoint `yaml:"waypoints"`
 }
 
 type InputFormat struct {
@@ -189,6 +195,7 @@ func addSRPolicyWithSIDValidation(input InputFormat) error {
 	var srPolicyType pb.SRPolicyType
 	var metric pb.MetricType
 	var segmentList []*pb.Segment
+	var waypoints []*pb.Waypoint
 	switch input.SRPolicy.Type {
 	case "explicit":
 		if len(input.SRPolicy.SegmentList) == 0 {
@@ -220,7 +227,14 @@ func addSRPolicyWithSIDValidation(input InputFormat) error {
 		default:
 			return fmt.Errorf("invalid input `metric`")
 		}
-
+		if len(input.SRPolicy.Waypoints) != 0 {
+			for _, wp := range input.SRPolicy.Waypoints {
+				waypoints = append(waypoints, &pb.Waypoint{
+					RouterId: wp.RouterID,
+					Sid:      wp.SID, // optional
+				})
+			}
+		}
 	default:
 		return fmt.Errorf("invalid input `type`")
 	}
@@ -234,6 +248,7 @@ func addSRPolicyWithSIDValidation(input InputFormat) error {
 		Type:            srPolicyType,
 		SegmentList:     segmentList,
 		Metric:          metric,
+		Waypoints:       waypoints,
 	}
 	inputData := &pb.CreateSRPolicyRequest{
 		SrPolicy: srPolicy,
