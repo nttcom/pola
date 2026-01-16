@@ -277,5 +277,5 @@ var PCEService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "pola.proto",
+	Metadata: "api/pola/v1/pola.proto",
 }
