@@ -51,8 +51,8 @@ func CSPFWithLooseSourceRouting(
 	fullList := []table.Segment{}
 	prev := src
 
-	// Append destination as a pseudo-waypoint
-	allWaypoints := append(waypoints, table.Waypoint{RouterID: dst})
+	// Append destination as a pseudo-waypoint without mutating the input slice
+	allWaypoints := append(append([]table.Waypoint{}, waypoints...), table.Waypoint{RouterID: dst})
 
 	for _, wp := range allWaypoints {
 		sectionSegs, seg, err := buildSectionSegments(prev, wp, as, metric, ted, fullList)
