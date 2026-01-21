@@ -1,0 +1,66 @@
+name: srv6-usid
+topology:
+  kinds:
+    xrd:
+      image: ios-xr/xrd-control-plane:7.8.1
+    juniper_vjunosrouter:
+      image: vrnetlab/juniper_vjunos-router:25.2R1.9
+    linux:
+      image: golang:1.24.2
+    bridge:
+      image: ghcr.io/containernet/bridge:latest
+  nodes:
+    pe01:
+      kind: xrd
+      startup-config: input/startup-configs/pe01.cfg
+    pe02:
+      kind: juniper_vjunosrouter
+      startup-config: input/startup-configs/pe02.cfg
+    p01:
+      kind: xrd
+      startup-config: input/startup-configs/p01.cfg
+    p02:
+      kind: xrd
+      startup-config: input/startup-configs/p02.cfg
+    gobgp:
+      kind: linux
+      binds:
+        - ../../../bin/gobgpd:/bin/gobgpd
+        - ../../../bin/gobgp:/bin/gobgp
+        - input/gobgpd.cfg.yaml:/gobgpd.cfg.yaml
+      exec:
+        - apt update
+        - apt install -y iproute2 iputils-ping
+        - ip link set eth1 up
+        - ip addr add 10.0.0.4/24 dev eth1
+        - ip -6 addr add fd00::4/64 dev eth1
+      cmd: /bin/gobgpd -f /gobgpd.cfg.yaml &
+    pola:
+      kind: linux
+      startup-delay: 10
+      binds:
+        - ../../../bin/polad:/bin/polad
+        - ../../../bin/pola:/bin/pola
+        - input/polad.cfg.yaml:/polad.cfg.yaml
+        - input/sr-policies/pe02-policy1.yaml:/pe02-policy1.yaml
+      exec:
+        - apt update
+        - apt install -y iproute2 iputils-ping
+        - ip link set eth1 up
+        - ip addr add 10.0.0.3/24 dev eth1
+        - ip -6 addr add fd00::3/64 dev eth1
+      cmd: /bin/polad -f /polad.cfg.yaml &
+    switch:
+      kind: bridge
+  links:
+    # SRv6 domain
+    - endpoints: ["pe01:Gi0-0-0-0", "p01:Gi0-0-0-0"]
+    - endpoints: ["pe01:Gi0-0-0-1", "p02:Gi0-0-0-0"]
+    - endpoints: ["pe02:eth1", "p01:Gi0-0-0-1"]
+    - endpoints: ["pe02:eth2", "p02:Gi0-0-0-1"]
+    - endpoints: ["p01:Gi0-0-0-2", "p02:Gi0-0-0-2"]
+    # Switch
+    - endpoints: ["pe01:Gi0-0-0-2", "switch:eth1"]
+    - endpoints: ["pe02:eth3", "switch:eth2"]
+    - endpoints: ["pola:eth1", "switch:eth3"]
+    - endpoints: ["gobgp:eth1", "switch:eth4"]
