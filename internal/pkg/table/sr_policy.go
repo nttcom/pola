@@ -215,3 +215,38 @@ func NewSegmentSRMPLS(sid uint32) SegmentSRMPLS {
 		Sid: sid,
 	}
 }
+
+// Equal for SegmentSRv6
+func (seg SegmentSRv6) Equal(other SegmentSRv6) bool {
+	// Compare SID, LocalAddr, and RemoteAddr
+	return seg.Sid == other.Sid &&
+		seg.LocalAddr == other.LocalAddr &&
+		seg.RemoteAddr == other.RemoteAddr
+}
+
+// Equal for SegmentSRMPLS
+func (seg SegmentSRMPLS) Equal(other SegmentSRMPLS) bool {
+	// Compare MPLS SID
+	return seg.Sid == other.Sid
+}
+
+// Helper function for Segment interface equality check
+func SegmentsEqual(a, b Segment) bool {
+	switch sa := a.(type) {
+	case SegmentSRv6:
+		sb, ok := b.(SegmentSRv6)
+		return ok && sa.Equal(sb)
+	case SegmentSRMPLS:
+		sb, ok := b.(SegmentSRMPLS)
+		return ok && sa.Equal(sb)
+	default:
+		return false
+	}
+}
+
+// Waypoint represents a loose hop for SR Policy computation.
+// SID is optional: if empty, TED lookup will be used to find End SID for that router.
+type Waypoint struct {
+	RouterID string
+	SID      string // optional: fixed SID override
+}
