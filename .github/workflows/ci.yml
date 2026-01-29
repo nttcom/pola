@@ -16,8 +16,8 @@ on:
       - ready_for_review
 
 jobs:
-  lint:
-    name: Lint
+  golangci-lint:
+    name: Go Lint
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.draft == false)
     steps:
@@ -28,12 +28,21 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+          cache: true
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
           version: latest
           args: --config=.golangci.yml
+
+  buf-lint:
+    name: Protobuf Lint
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.draft == false)
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
 
       - name: Install buf CLI
         uses: bufbuild/buf-setup-action@v1
@@ -42,6 +51,14 @@ jobs:
 
       - name: Run buf lint
         run: buf lint
+
+  markdown-lint:
+    name: Markdown Lint
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.draft == false)
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
