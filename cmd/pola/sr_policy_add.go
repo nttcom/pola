@@ -70,6 +70,11 @@ type Segment struct {
 	SIDStructure string `yaml:"sidStructure"`
 }
 
+type Waypoint struct {
+	RouterID string `yaml:"routerID"`
+	SID      string `yaml:"sid"` // optional: fixed SID override
+}
+
 type SRPolicy struct {
 	PCEPSessionAddr netip.Addr `yaml:"pcepSessionAddr"`
 	SrcAddr         netip.Addr `yaml:"srcAddr"`
@@ -81,6 +86,7 @@ type SRPolicy struct {
 	Color           uint32     `yaml:"color"`
 	Type            string     `yaml:"type"`
 	Metric          string     `yaml:"metric"`
+	Waypoints       []Waypoint `yaml:"waypoints"`
 }
 
 type InputFormat struct {
@@ -155,74 +161,16 @@ func addSRPolicyWithoutSIDValidation(input InputFormat) error {
 }
 
 func addSRPolicyWithSIDValidation(input InputFormat) error {
-	sampleInputDynamic := "#case: dynamic path\n" +
-		"asn: 65000\n" +
-		"srPolicy:\n" +
-		"  pcepSessionAddr: 192.0.2.1\n" +
-		"  srcRouterID: 0000.0aff.0001\n" +
-		"  dstRouterID: 0000.0aff.0004\n" +
-		"  name: name\n" +
-		"  color: 100\n" +
-		"  type: dynamic\n" +
-		"  metric: igp / te / delay\n"
-	sampleInputExplicit := "#case: explicit path\n" +
-		"asn: 65000\n" +
-		"srPolicy:\n" +
-		"  pcepSessionAddr: 192.0.2.1\n" +
-		"  srcRouterID: 0000.0aff.0001\n" +
-		"  dstRouterID: 0000.0aff.0002\n" +
-		"  name: name\n" +
-		"  color: 100\n" +
-		"  type: explicit\n" +
-		"  segmentList:\n" +
-		"    - sid: 16003\n" +
-		"    - sid: 16002\n"
-	if input.ASN == 0 || !input.SRPolicy.PCEPSessionAddr.IsValid() || input.SRPolicy.Color == 0 || input.SRPolicy.SrcRouterID == "" || input.SRPolicy.DstRouterID == "" {
-		errMsg := "invalid input\n" +
-			"input example is below\n\n" +
-			sampleInputDynamic +
-			sampleInputExplicit +
-			"or, if create SR Policy without TED, then use `--no-sid-validate` flag\n"
+	sampleInputDynamic, sampleInputExplicit := sampleInputs()
 
-		return errors.New(errMsg)
+	if err := validateCommonInput(input, sampleInputDynamic, sampleInputExplicit); err != nil {
+		return err
 	}
-	var srPolicyType pb.SRPolicyType
-	var metric pb.MetricType
-	var segmentList []*pb.Segment
-	switch input.SRPolicy.Type {
-	case "explicit":
-		if len(input.SRPolicy.SegmentList) == 0 {
-			errMsg := "invalid input\n" +
-				"input example is below\n\n" +
-				sampleInputExplicit
 
-			return errors.New(errMsg)
-		}
-		srPolicyType = pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT
-		for _, segment := range input.SRPolicy.SegmentList {
-			segmentList = append(segmentList, &pb.Segment{Sid: segment.SID})
-		}
-	case "dynamic":
-		if input.SRPolicy.Metric == "" {
-			errMsg := "invalid input\n" +
-				"input example is below\n\n" +
-				sampleInputDynamic
-			return errors.New(errMsg)
-		}
-		srPolicyType = pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC
-		switch input.SRPolicy.Metric {
-		case "igp":
-			metric = pb.MetricType_METRIC_TYPE_IGP
-		case "delay":
-			metric = pb.MetricType_METRIC_TYPE_DELAY
-		case "te":
-			metric = pb.MetricType_METRIC_TYPE_TE
-		default:
-			return fmt.Errorf("invalid input `metric`")
-		}
-
-	default:
-		return fmt.Errorf("invalid input `type`")
+	srPolicyType, metric, segmentList, waypoints, err :=
+		buildPolicyByType(input, sampleInputDynamic, sampleInputExplicit)
+	if err != nil {
+		return err
 	}
 
 	srPolicy := &pb.SRPolicy{
@@ -234,15 +182,156 @@ func addSRPolicyWithSIDValidation(input InputFormat) error {
 		Type:            srPolicyType,
 		SegmentList:     segmentList,
 		Metric:          metric,
+		Waypoints:       waypoints,
 	}
-	inputData := &pb.CreateSRPolicyRequest{
+
+	req := &pb.CreateSRPolicyRequest{
 		SrPolicy: srPolicy,
 		Asn:      input.ASN,
 	}
-	if err := grpc.CreateSRPolicy(client, inputData); err != nil {
-		return fmt.Errorf("gRPC Server Error: %s", err.Error())
 
+	if err := grpc.CreateSRPolicy(client, req); err != nil {
+		return fmt.Errorf("gRPC Server Error: %w", err)
 	}
 
 	return nil
+}
+
+func sampleInputs() (dynamic, explicit string) {
+	dynamic = "#case: dynamic path\n" +
+		"asn: 65000\n" +
+		"srPolicy:\n" +
+		"  pcepSessionAddr: 192.0.2.1\n" +
+		"  srcRouterID: 0000.0aff.0001\n" +
+		"  dstRouterID: 0000.0aff.0004\n" +
+		"  name: name\n" +
+		"  color: 100\n" +
+		"  type: dynamic\n" +
+		"  metric: igp / te / delay\n"
+
+	explicit = "#case: explicit path\n" +
+		"asn: 65000\n" +
+		"srPolicy:\n" +
+		"  pcepSessionAddr: 192.0.2.1\n" +
+		"  srcRouterID: 0000.0aff.0001\n" +
+		"  dstRouterID: 0000.0aff.0002\n" +
+		"  name: name\n" +
+		"  color: 100\n" +
+		"  type: explicit\n" +
+		"  segmentList:\n" +
+		"    - sid: 16003\n" +
+		"    - sid: 16002\n"
+
+	return
+}
+
+func validateCommonInput(input InputFormat, sampleDynamic, sampleExplicit string) error {
+	if input.ASN == 0 ||
+		!input.SRPolicy.PCEPSessionAddr.IsValid() ||
+		input.SRPolicy.Color == 0 ||
+		input.SRPolicy.SrcRouterID == "" ||
+		input.SRPolicy.DstRouterID == "" {
+
+		return errors.New(
+			"invalid input\n" +
+				"input example is below\n\n" +
+				sampleDynamic +
+				sampleExplicit +
+				"or, if create SR Policy without TED, then use `--no-sid-validate` flag\n",
+		)
+	}
+	return nil
+}
+
+func buildPolicyByType(
+	input InputFormat,
+	sampleDynamic, sampleExplicit string,
+) (
+	pb.SRPolicyType,
+	pb.MetricType,
+	[]*pb.Segment,
+	[]*pb.Waypoint,
+	error,
+) {
+	switch input.SRPolicy.Type {
+	case "explicit":
+		return buildExplicitPolicy(input, sampleExplicit)
+	case "dynamic":
+		return buildDynamicPolicy(input, sampleDynamic)
+	default:
+		return 0, 0, nil, nil, fmt.Errorf("invalid input `type`")
+	}
+}
+
+func buildExplicitPolicy(
+	input InputFormat,
+	sampleExplicit string,
+) (
+	pb.SRPolicyType,
+	pb.MetricType,
+	[]*pb.Segment,
+	[]*pb.Waypoint,
+	error,
+) {
+	if len(input.SRPolicy.SegmentList) == 0 {
+		return 0, 0, nil, nil, errors.New(
+			"invalid input\n" +
+				"input example is below\n\n" +
+				sampleExplicit,
+		)
+	}
+
+	var segments []*pb.Segment
+	for _, s := range input.SRPolicy.SegmentList {
+		segments = append(segments, &pb.Segment{Sid: s.SID})
+	}
+
+	return pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT, 0, segments, nil, nil
+}
+
+func buildDynamicPolicy(
+	input InputFormat,
+	sampleDynamic string,
+) (
+	pb.SRPolicyType,
+	pb.MetricType,
+	[]*pb.Segment,
+	[]*pb.Waypoint,
+	error,
+) {
+	if input.SRPolicy.Metric == "" {
+		return 0, 0, nil, nil, errors.New(
+			"invalid input\n" +
+				"input example is below\n\n" +
+				sampleDynamic,
+		)
+	}
+
+	metric, err := parseMetric(input.SRPolicy.Metric)
+	if err != nil {
+		return 0, 0, nil, nil, err
+	}
+
+	var waypoints []*pb.Waypoint
+	for _, wp := range input.SRPolicy.Waypoints {
+		waypoints = append(waypoints, &pb.Waypoint{
+			RouterId: wp.RouterID,
+			Sid:      wp.SID,
+		})
+	}
+
+	return pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC, metric, nil, waypoints, nil
+}
+
+func parseMetric(metric string) (pb.MetricType, error) {
+	switch metric {
+	case "igp":
+		return pb.MetricType_METRIC_TYPE_IGP, nil
+	case "delay":
+		return pb.MetricType_METRIC_TYPE_DELAY, nil
+	case "te":
+		return pb.MetricType_METRIC_TYPE_TE, nil
+	default:
+		return 0, fmt.Errorf("invalid input `metric`")
+	}
 }
