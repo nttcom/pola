@@ -167,9 +167,9 @@ class TestDynamicPath:
 
         # Verify SR-ERO content and order by comparing the exact SRv6 segment list
         expected_segments = [
-          "fcbb:bb00:1004::",
-          "fcbb:bb00:1003::",
-          "fcbb:bb00:1001::",
+            "fcbb:bb00:1004::",
+            "fcbb:bb00:1003::",
+            "fcbb:bb00:1001::",
         ]
         actual_segments = re.findall(
             r"SID type:\s*Micro SRv6 SID,\s*Value:\s*([0-9a-fA-F:]+)",
