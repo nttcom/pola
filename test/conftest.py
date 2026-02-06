@@ -1,15 +1,26 @@
 import pytest
 import subprocess
-import os
 
-@pytest.fixture(scope='function')
+
+@pytest.fixture(scope="function")
 def clab_deploy():
-    def _clab_deploy(dir="./"):
+    lab_dirs = []
+
+    def deploy(lab_dir="."):
+        lab_dirs.append(lab_dir)
         print("start containerlab")
-        os.chdir(dir)
-        subprocess.run("clab deploy", shell=True)
+        subprocess.run(
+            ["clab", "deploy", "--reconfigure"],
+            check=True,
+            cwd=lab_dir,
+        )
 
-    yield _clab_deploy
+    yield deploy
 
-    print("finish containerlab")
-    subprocess.run("clab destroy", shell=True)
+    for lab_dir in lab_dirs:
+        print("finish containerlab")
+        subprocess.run(
+            ["clab", "destroy", "--cleanup"],
+            check=False,
+            cwd=lab_dir,
+        )
