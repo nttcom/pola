@@ -29,7 +29,7 @@ Get spec.yaml, and start Docker network
 
 ```bash
 git clone https://github.com/nttcom/pola
-cd pola/examples/tinet/sr-mpls_te_l3vpn
+cd pola/examples/tinet/sr-mpls_explicit-path_l3vpn
 
 tinet upconf | sudo sh -x
 docker ps

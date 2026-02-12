@@ -378,7 +378,7 @@ func (ss *Session) computePathFromTED(sr pcep.StateReport) ([]table.Segment, err
 		zap.Uint32("asn", asn),
 		zap.String("metricType", metricType.String()))
 
-	segmentList, err := cspf.Cspf(srcRouterID, dstRouterID, asn, metricType, ss.ted)
+	segmentList, err := cspf.CSPF(srcRouterID, dstRouterID, asn, metricType, ss.ted)
 	if err != nil {
 		return nil, fmt.Errorf("CSPF computation failed: %w", err)
 	}
