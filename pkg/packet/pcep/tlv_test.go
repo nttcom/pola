@@ -1258,6 +1258,20 @@ var (
 
 	testSRPolicyCPathIDTooShort        = []byte{0x00, 0x39, 0x00, 0x0a, 0x0a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00} // Less than 16 bytes for OriginatorAddr
 	testSRPolicyCPathIDTruncatedHeader = []byte{0x00, 0x39, 0x00}                                                                   // Truncated header (less than 4 bytes)
+
+	testSRPolicyCPathIDInvalid = &SRPolicyCandidatePathIdentifier{
+		OriginatorAddr: netip.Addr{}, // zero value, IsValid() == false
+	}
+	testSRPolicyCPathIDInvalidBytes = []byte{
+		0x00, 0x39, 0x00, 0x1c, // type + length
+		0x0a, 0x00, 0x00, 0x00, // protocol + mbz
+		0x00, 0x00, 0x00, 0x00, // ASN
+		0x00, 0x00, 0x00, 0x00, // originator addr (16 bytes)
+		0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x01, // discriminator
+	}
 )
 
 // TestSRPolicyCandidatePathIdentifier_DecodeFromBytes tests SRPolicyCandidatePathIdentifier.DecodeFromBytes.
@@ -1279,6 +1293,16 @@ func TestSRPolicyCandidatePathIdentifier_Serialize(t *testing.T) {
 	}{
 		"SerializeIPv4": {testSRPolicyCPathIDIPv4, testSRPolicyCPathIDIPv4Bytes},
 		"SerializeIPv6": {testSRPolicyCPathIDIPv6, testSRPolicyCPathIDIPv6Bytes},
+	}
+	runTLVSerializeTests(t, cases)
+}
+
+func TestSRPolicyCandidatePathIdentifier_Serialize_Invalid(t *testing.T) {
+	cases := map[string]struct {
+		input    TLVInterface
+		expected []byte
+	}{
+		"ZeroAddr": {testSRPolicyCPathIDInvalid, testSRPolicyCPathIDInvalidBytes},
 	}
 	runTLVSerializeTests(t, cases)
 }

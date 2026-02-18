@@ -1303,13 +1303,18 @@ func (tlv *SRPolicyCandidatePathIdentifier) Serialize() []byte {
 
 	addr := tlv.OriginatorAddr
 
-	if addr.Is4() {
+	switch {
+	case !addr.IsValid():
+		// Invalid or zero-value address: serialize as all zeros to avoid panic.
+		var addr16 [16]byte
+		buf = append(buf, addr16[:]...)
+	case addr.Is4():
 		// IPv4 → IPv4-mapped IPv6
 		ipv4 := addr.As4()
 		var addr16 [16]byte
 		copy(addr16[12:], ipv4[:])
 		buf = append(buf, addr16[:]...)
-	} else {
+	case addr.Is6():
 		addr16 := addr.As16()
 		buf = append(buf, addr16[:]...)
 	}
