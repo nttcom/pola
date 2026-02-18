@@ -432,7 +432,7 @@ func (tlv *SymbolicPathName) Serialize() []byte {
 
 	return AppendByteSlices(
 		Uint16ToByteSlice(tlv.Type()),
-		Uint16ToByteSlice(nameLen),
+		Uint16ToByteSlice(uint16(len(tlv.Name))),
 		value,
 	)
 }
