@@ -1042,7 +1042,7 @@ func (tlv *PathSetupTypeCapability) DecodeFromBytes(data []byte) error {
 	}
 
 	padded := paddedLength(uint16(pstNum), TLVAlignment)
-	subTLVOffset := PathSetupTypeCapabilityFixedPartLength + padded
+	subTLVOffset := PathSetupTypeCapabilityFixedPartLength + int(padded)
 
 	subTLVData := value[subTLVOffset:]
 	tlv.SubTLVs, err = DecodeTLVs(subTLVData)
