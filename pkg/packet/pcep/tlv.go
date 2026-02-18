@@ -1014,15 +1014,30 @@ const (
 )
 
 func (tlv *PathSetupTypeCapability) DecodeFromBytes(data []byte) error {
-	length := binary.BigEndian.Uint16(data[2:4])
-
-	pstNum := int(data[7])
-	for i := 0; i < pstNum; i++ {
-		tlv.PathSetupTypes = append(tlv.PathSetupTypes, Pst(data[8+i]))
+	valueLen, err := decodeTLVLength(data)
+	if err != nil {
+		return fmt.Errorf("PathSetupTypeCapability: %w", err)
 	}
 
-	if pstNum%4 != 0 {
-		pstNum += 4 - (pstNum % 4) // padding byte
+	if tlv.SubTLVs == nil {
+		tlv.SubTLVs = []TLVInterface{}
+	}
+
+	value := data[TLVValueOffset : TLVValueOffset+valueLen]
+
+	if len(value) < PathSetupTypeCapabilityFixedPartLength {
+		return fmt.Errorf("PathSetupTypeCapability: value too short for fixed part")
+	}
+
+	pstNum := int(value[PathSetupTypeCapabilityPSTCountOffset])
+
+	tlv.PathSetupTypes = make([]Pst, 0, pstNum)
+	for i := 0; i < pstNum; i++ {
+		offset := PathSetupTypeCapabilityFixedPartLength + i
+		if offset >= len(value) {
+			return fmt.Errorf("PathSetupTypeCapability: value too short for PathSetupTypes entries")
+		}
+		tlv.PathSetupTypes = append(tlv.PathSetupTypes, Pst(value[offset]))
 	}
 
 	padded := paddedLength(uint16(pstNum), TLVAlignment)
@@ -1160,11 +1175,23 @@ type AssocTypeList struct {
 }
 
 func (tlv *AssocTypeList) DecodeFromBytes(data []byte) error {
-	AssocTypeNum := binary.BigEndian.Uint16(data[2:4]) / 2
-	for i := 0; i < int(AssocTypeNum); i++ {
-		at := binary.BigEndian.Uint16(data[4+2*i : 6+2*i])
-		tlv.AssocTypes = append(tlv.AssocTypes, AssocType(at))
+	valueLen, err := decodeTLVLength(data)
+	if err != nil {
+		return fmt.Errorf("AssocTypeList: %w", err)
 	}
+
+	value := data[TLVValueOffset : TLVValueOffset+valueLen]
+
+	if len(value)%2 != 0 {
+		return fmt.Errorf("AssocTypeList: value length not even, cannot contain 16-bit AssocType entries")
+	}
+
+	assocNum := len(value) / 2
+	tlv.AssocTypes = make([]AssocType, assocNum)
+	for i := 0; i < assocNum; i++ {
+		tlv.AssocTypes[i] = AssocType(binary.BigEndian.Uint16(value[2*i : 2*i+2]))
+	}
+
 	return nil
 }
 
@@ -1225,11 +1252,31 @@ func (tlv *AssocTypeList) CapStrings() []string {
 }
 
 type SRPolicyCandidatePathIdentifier struct {
-	OriginatorAddr netip.Addr // After DecodeFromBytes, even ipv4 addresses are assigned in ipv6 format
+	OriginatorAddr netip.Addr // After DecodeFromBytes, IPv4 addresses are stored as native IPv4 (upper 12 bytes zero), not IPv4-mapped IPv6
 }
 
 func (tlv *SRPolicyCandidatePathIdentifier) DecodeFromBytes(data []byte) error {
-	tlv.OriginatorAddr, _ = netip.AddrFromSlice(data[12:28])
+	valueLen, err := decodeTLVLength(data)
+	if err != nil {
+		return fmt.Errorf("SRPolicyCandidatePathIdentifier: %w", err)
+	}
+
+	value := data[TLVValueOffset : TLVValueOffset+valueLen]
+
+	if len(value) < 8+16 {
+		return fmt.Errorf("SRPolicyCandidatePathIdentifier: value too short for OriginatorAddr")
+	}
+
+	addrBytes := value[8 : 8+16]
+
+	if isIPv4Bytes(addrBytes) {
+		var v4 [4]byte
+		copy(v4[:], addrBytes[12:])
+		tlv.OriginatorAddr = netip.AddrFrom4(v4)
+	} else {
+		tlv.OriginatorAddr = netip.AddrFrom16(*(*[16]byte)(addrBytes))
+	}
+
 	return nil
 }
 
@@ -1281,7 +1328,18 @@ type SRPolicyCandidatePathPreference struct {
 }
 
 func (tlv *SRPolicyCandidatePathPreference) DecodeFromBytes(data []byte) error {
-	tlv.Preference = binary.BigEndian.Uint32(data[4:8])
+	valueLen, err := decodeTLVLength(data)
+	if err != nil {
+		return fmt.Errorf("SRPolicyCandidatePathPreference: %w", err)
+	}
+
+	if valueLen != 4 {
+		return fmt.Errorf("SRPolicyCandidatePathPreference: invalid value length %d", valueLen)
+	}
+
+	value := data[TLVValueOffset : TLVValueOffset+valueLen]
+
+	tlv.Preference = binary.BigEndian.Uint32(value)
 	return nil
 }
 
@@ -1325,7 +1383,18 @@ type Color struct {
 }
 
 func (tlv *Color) DecodeFromBytes(data []byte) error {
-	tlv.Color = binary.BigEndian.Uint32(data[4:8])
+	valueLen, err := decodeTLVLength(data)
+	if err != nil {
+		return fmt.Errorf("Color: %w", err)
+	}
+
+	if valueLen != 4 {
+		return fmt.Errorf("Color: invalid value length %d", valueLen)
+	}
+
+	value := data[TLVValueOffset : TLVValueOffset+valueLen]
+
+	tlv.Color = binary.BigEndian.Uint32(value)
 	return nil
 }
 
@@ -1371,10 +1440,15 @@ type UndefinedTLV struct {
 }
 
 func (tlv *UndefinedTLV) DecodeFromBytes(data []byte) error {
-	tlv.Typ = TLVType(binary.BigEndian.Uint16(data[0:2]))
-	tlv.Length = binary.BigEndian.Uint16(data[2:4])
+	valueLen, err := decodeTLVLength(data)
+	if err != nil {
+		return fmt.Errorf("UndefinedTLV: %w", err)
+	}
 
-	tlv.Value = data[4 : 4+tlv.Length]
+	tlv.Typ = TLVType(binary.BigEndian.Uint16(data[TLVTypeOffset:TLVLengthOffset]))
+	tlv.Length = uint16(valueLen)
+	tlv.Value = data[TLVValueOffset : TLVValueOffset+valueLen]
+
 	return nil
 }
 
