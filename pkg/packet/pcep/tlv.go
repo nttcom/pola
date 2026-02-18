@@ -610,7 +610,11 @@ func (tlv *IPv6LSPIdentifiers) Serialize() []byte {
 	copy(value[IPv6ExtendedTunnelIDOffset:IPv6TunnelEPOffset], tlv.ExtendedTunnelID[:])
 	copy(value[IPv6TunnelEPOffset:IPv6TunnelEPOffset+IPv6AddrLen], tlv.IPv6TunnelEndpointAddress.AsSlice())
 
-	return buf
+	return AppendByteSlices(
+		Uint16ToByteSlice(tlv.Type()),
+		Uint16ToByteSlice(TLVIPv6LSPIdentifiersValueLength),
+		value,
+	)
 }
 
 func (tlv *IPv6LSPIdentifiers) MarshalLogObject(enc zapcore.ObjectEncoder) error {
@@ -758,17 +762,11 @@ func (tlv *SRPCECapability) Serialize() []byte {
 	value[SRPCECapabilityFlagsOffset] = SetBit(value[SRPCECapabilityFlagsOffset], NAISupportedFlag, tlv.IsNAISupported)
 	value[SRPCECapabilityMSDOffset] = tlv.MaximumSidDepth
 
-	length := make([]byte, 2)
-	binary.BigEndian.PutUint16(length, TLVSRPCECapabilityValueLength)
-	buf = append(buf, length...)
-
-	val := make([]byte, TLVSRPCECapabilityValueLength)
-	val[SRPCECapabilityFlagsIndex] = SetBit(val[SRPCECapabilityFlagsIndex], UnlimitedMaximumSIDDepthFlag, tlv.HasUnlimitedMaxSIDDepth)
-	val[SRPCECapabilityFlagsIndex] = SetBit(val[SRPCECapabilityFlagsIndex], NAISupportedFlag, tlv.IsNAISupported)
-	val[SRPCECapabilityMSDIndex] = tlv.MaximumSidDepth
-
-	buf = append(buf, val...)
-	return buf
+	return AppendByteSlices(
+		Uint16ToByteSlice(tlv.Type()),
+		Uint16ToByteSlice(TLVSRPCECapabilityValueLength),
+		value,
+	)
 }
 
 func (tlv *SRPCECapability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
@@ -875,19 +873,11 @@ func (tlv *PathSetupType) Serialize() []byte {
 	value := make([]byte, TLVPathSetupTypeValueLength)
 	value[PathSetupTypeValueOffset] = byte(tlv.PathSetupType)
 
-	typ := make([]byte, 2)
-	binary.BigEndian.PutUint16(typ, uint16(tlv.Type()))
-	buf = append(buf, typ...)
-
-	length := make([]byte, 2)
-	binary.BigEndian.PutUint16(length, TLVPathSetupTypeValueLength)
-	buf = append(buf, length...)
-
-	val := make([]byte, TLVPathSetupTypeValueLength)
-	val[PathSetupTypePathSetupTypeIndex] = byte(tlv.PathSetupType)
-
-	buf = append(buf, val...)
-	return buf
+	return AppendByteSlices(
+		Uint16ToByteSlice(tlv.Type()),
+		Uint16ToByteSlice(TLVPathSetupTypeValueLength),
+		value,
+	)
 }
 
 func (tlv *PathSetupType) MarshalLogObject(enc zapcore.ObjectEncoder) error {
@@ -961,14 +951,16 @@ func (tlv *ExtendedAssociationID) Serialize() []byte {
 	} else if tlv.Endpoint.Is6() {
 		binary.BigEndian.PutUint16(length, TLVExtendedAssociationIDIPv6ValueLength)
 	}
-	buf = append(buf, length...)
 
 	value := make([]byte, length)
 	binary.BigEndian.PutUint32(value[ExtendedAssociationIDColorOffset:ExtendedAssociationIDColorOffset+TLVColorValueLength], tlv.Color)
 	copy(value[ExtendedAssociationIDEndpointOffset:], tlv.Endpoint.AsSlice())
 
-	buf = append(buf, tlv.Endpoint.AsSlice()...)
-	return buf
+	return AppendByteSlices(
+		Uint16ToByteSlice(tlv.Type()),
+		Uint16ToByteSlice(length),
+		value,
+	)
 }
 
 func (tlv *ExtendedAssociationID) MarshalLogObject(enc zapcore.ObjectEncoder) error {
@@ -1455,16 +1447,12 @@ func (tlv *UndefinedTLV) DecodeFromBytes(data []byte) error {
 func (tlv *UndefinedTLV) Serialize() []byte {
 	padding := (TLVAlignment - (tlv.Length % TLVAlignment)) % TLVAlignment
 
-	byteTLVLength := make([]byte, 2)
-	binary.BigEndian.PutUint16(byteTLVLength, tlv.Length)
-	bytePCEPTLV = append(bytePCEPTLV, byteTLVLength...) // Length (2byte)
-
-	bytePCEPTLV = append(bytePCEPTLV, tlv.Value...) // Value (Length byte)
-	if padding := tlv.Length % 4; padding != 0 {
-		bytePadding := make([]byte, 4-padding)
-		bytePCEPTLV = append(bytePCEPTLV, bytePadding...)
-	}
-	return bytePCEPTLV
+	return AppendByteSlices(
+		Uint16ToByteSlice(uint16(tlv.Typ)),
+		Uint16ToByteSlice(tlv.Length),
+		tlv.Value,
+		make([]byte, padding),
+	)
 }
 
 func (tlv *UndefinedTLV) MarshalLogObject(enc zapcore.ObjectEncoder) error {
