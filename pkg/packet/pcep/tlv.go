@@ -1047,8 +1047,12 @@ func (tlv *PathSetupTypeCapability) DecodeFromBytes(data []byte) error {
 	subTLVData := value[subTLVOffset:]
 	tlv.SubTLVs, err = DecodeTLVs(subTLVData)
 	if err != nil {
-		return err
+		return fmt.Errorf("PathSetupTypeCapability: %w", err)
 	}
+	if tlv.SubTLVs == nil {
+		tlv.SubTLVs = []TLVInterface{}
+	}
+
 	return nil
 }
 
@@ -1060,6 +1064,7 @@ func (tlv *PathSetupTypeCapability) Serialize() []byte {
 	buf = append(buf, typ...)
 
 	numOfPst := uint16(len(tlv.PathSetupTypes))
+	paddedPSTLen := tlv.paddedPSTLength()
 
 	length := uint16(PathSetupTypeCapabilityFixedPartLength) + paddedPSTLen
 	for _, subTLV := range tlv.SubTLVs {
@@ -1140,6 +1145,11 @@ func (tlv *PathSetupTypeCapability) CapStrings() []string {
 	}
 
 	return ret
+}
+
+func (tlv *PathSetupTypeCapability) paddedPSTLength() uint16 {
+	numOfPst := uint16(len(tlv.PathSetupTypes))
+	return paddedLength(numOfPst, TLVAlignment)
 }
 
 type AssocType uint16
