@@ -123,3 +123,51 @@ func TestPaddedLength(t *testing.T) {
 		})
 	}
 }
+
+func TestIsIPv4Bytes(t *testing.T) {
+	tests := []struct {
+		name string
+		b    []byte
+		want bool
+	}{
+		{
+			name: "Valid IPv4-mapped IPv6",
+			b:    append(make([]byte, 12), 192, 0, 2, 1),
+			want: true,
+		},
+		{
+			name: "Not IPv4-mapped (first byte non-zero)",
+			b:    append([]byte{1}, append(make([]byte, 11), 192, 0, 2, 1)...),
+			want: false,
+		},
+		{
+			name: "Not IPv4-mapped (random bytes in first 12)",
+			b:    append([]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}, 192, 0, 2, 1),
+			want: false,
+		},
+		{
+			name: "Exactly 16 zero bytes (still IPv4?)",
+			b:    make([]byte, 16),
+			want: true,
+		},
+		{
+			name: "Too short (<16 bytes)",
+			b:    make([]byte, 15),
+			want: false,
+		},
+		{
+			name: "Too long (>16 bytes)",
+			b:    make([]byte, 17),
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isIPv4Bytes(tt.b)
+			if got != tt.want {
+				t.Errorf("isIPv4Bytes(%v) = %v; want %v", tt.b, got, tt.want)
+			}
+		})
+	}
+}

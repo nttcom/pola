@@ -31,3 +31,16 @@ func paddedLength(n uint16, align uint16) uint16 {
 	}
 	return n + (align - (n % align))
 }
+
+// isIPv4Bytes returns true if the given 16-byte slice encodes an IPv4 address (upper 12 bytes zero).
+func isIPv4Bytes(b []byte) bool {
+	if len(b) != 16 {
+		return false
+	}
+	for i := 0; i < 12; i++ {
+		if b[i] != 0 {
+			return false
+		}
+	}
+	return true
+}
