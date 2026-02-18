@@ -253,30 +253,39 @@ var tlvMap = map[TLVType]func() TLVInterface{
 }
 
 type StatefulPCECapability struct {
-	LSPUpdateCapability            bool // 31
-	IncludeDBVersion               bool // 30
-	LSPInstantiationCapability     bool // 29
-	TriggeredResync                bool // 28
-	DeltaLSPSyncCapability         bool // 27
-	TriggeredInitialSync           bool // 26
-	P2mpCapability                 bool // 25
-	P2mpLSPUpdateCapability        bool // 24
-	P2mpLSPInstantiationCapability bool // 23
-	LSPSchedulingCapability        bool // 22
-	PdLSPCapability                bool // 21
-	ColorCapability                bool // 20
-	PathRecomputationCapability    bool // 19
-	StrictPathCapability           bool // 18
-	Relax                          bool // 17
+	LSPUpdateCapability            bool
+	IncludeDBVersion               bool
+	LSPInstantiationCapability     bool
+	TriggeredResync                bool
+	DeltaLSPSyncCapability         bool
+	TriggeredInitialSync           bool
+	P2mpCapability                 bool
+	P2mpLSPUpdateCapability        bool
+	P2mpLSPInstantiationCapability bool
+	LSPSchedulingCapability        bool
+	PdLSPCapability                bool
+	ColorCapability                bool
+	PathRecomputationCapability    bool
+	StrictPathCapability           bool
+	Relax                          bool
 }
 
 const (
-	LSPUpdateCapabilityBit        uint32 = 0x01
-	IncludeDBVersionCapabilityBit uint32 = 0x02
-	LSPInstantiationCapabilityBit uint32 = 0x04
-	TriggeredResyncCapabilityBit  uint32 = 0x08
-	DeltaLSPSyncCapabilityBit     uint32 = 0x10
-	TriggeredInitialSyncBit       uint32 = 0x20
+	LSPUpdateCapabilityBit         uint32 = 1 << 0  // bit 31 (RFC 8231)
+	IncludeDBVersionCapabilityBit  uint32 = 1 << 1  // bit 30 (RFC 8232)
+	LSPInstantiationCapabilityBit  uint32 = 1 << 2  // bit 29 (RFC 8281)
+	TriggeredResyncCapabilityBit   uint32 = 1 << 3  // bit 28 (RFC 8232)
+	DeltaLSPSyncCapabilityBit      uint32 = 1 << 4  // bit 27 (RFC 8232)
+	TriggeredInitialSyncBit        uint32 = 1 << 5  // bit 26 (RFC 8232)
+	P2mpCapabilityBit              uint32 = 1 << 6  // bit 25 (RFC 8623)
+	P2mpLSPUpdateBit               uint32 = 1 << 7  // bit 24 (RFC 8623)
+	P2mpLSPInstantiationBit        uint32 = 1 << 8  // bit 23 (RFC 8623)
+	LSPSchedulingCapabilityBit     uint32 = 1 << 9  // bit 22 (RFC 8934)
+	PdLSPCapabilityBit             uint32 = 1 << 10 // bit 21 (RFC 8934)
+	ColorCapabilityBit             uint32 = 1 << 11 // bit 20 (RFC 9863)
+	PathRecomputationCapabilityBit uint32 = 1 << 12 // bit 19 (draft-ietf-pce-circuit-style-pcep-extensions)
+	StrictPathCapabilityBit        uint32 = 1 << 13 // bit 18 (draft-ietf-pce-circuit-style-pcep-extensions)
+	RelaxBit                       uint32 = 1 << 14 // bit 17 (RFC 9753)
 )
 
 const definedStatefulPCEFlagsMask uint32 = LSPUpdateCapabilityBit |
