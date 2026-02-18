@@ -935,21 +935,23 @@ func (tlv *ExtendedAssociationID) DecodeFromBytes(data []byte) error {
 		return fmt.Errorf("ExtendedAssociationID: unsupported value length %d", valueLen)
 	}
 
+	addr, _ := netip.AddrFromSlice(addrBytes)
+
+	tlv.Endpoint = addr
 	return nil
 }
 
 func (tlv *ExtendedAssociationID) Serialize() []byte {
-	buf := []byte{}
+	if !tlv.Endpoint.IsValid() {
+		return nil
+	}
 
-	typ := make([]byte, 2)
-	binary.BigEndian.PutUint16(typ, uint16(tlv.Type()))
-	buf = append(buf, typ...)
-
-	length := make([]byte, 2)
-	if tlv.Endpoint.Is4() {
-		binary.BigEndian.PutUint16(length, TLVExtendedAssociationIDIPv4ValueLength)
-	} else if tlv.Endpoint.Is6() {
-		binary.BigEndian.PutUint16(length, TLVExtendedAssociationIDIPv6ValueLength)
+	var length uint16
+	switch {
+	case tlv.Endpoint.Is4():
+		length = TLVExtendedAssociationIDIPv4ValueLength
+	case tlv.Endpoint.Is6():
+		length = TLVExtendedAssociationIDIPv6ValueLength
 	}
 
 	value := make([]byte, length)
@@ -993,6 +995,13 @@ func (tlv *ExtendedAssociationID) Len() uint16 {
 	}
 	return 0
 
+}
+
+func NewExtendedAssociationID(color uint32, endpoint netip.Addr) *ExtendedAssociationID {
+	return &ExtendedAssociationID{
+		Color:    color,
+		Endpoint: endpoint,
+	}
 }
 
 type PathSetupTypeCapability struct {
