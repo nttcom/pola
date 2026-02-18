@@ -1294,25 +1294,25 @@ func (tlv *SRPolicyCandidatePathIdentifier) DecodeFromBytes(data []byte) error {
 func (tlv *SRPolicyCandidatePathIdentifier) Serialize() []byte {
 	buf := make([]byte, 0, TLVValueOffset+TLVSRPolicyCPathIDValueLength)
 
-	typ := make([]byte, 2)
-	binary.BigEndian.PutUint16(typ, uint16(tlv.Type()))
-	buf = append(buf, typ...)
+	buf = append(buf, Uint16ToByteSlice(tlv.Type())...)
+	buf = append(buf, Uint16ToByteSlice(TLVSRPolicyCPathIDValueLength)...)
+	buf = append(buf, 0x0a, 0x00, 0x00, 0x00) // protocol origin (1 byte) + reserved (3 bytes)
+	buf = append(buf, 0x00, 0x00, 0x00, 0x00) // originator AS (4 bytes)
 
-	length := make([]byte, 2)
-	binary.BigEndian.PutUint16(length, TLVSRPolicyCPathIDValueLength)
-	buf = append(buf, length...)
+	addr := tlv.OriginatorAddr
 
-	buf = append(buf, 0x0a)                   // protocol origin, PCEP = 10
-	buf = append(buf, 0x00, 0x00, 0x00)       // mbz
-	buf = append(buf, 0x00, 0x00, 0x00, 0x00) // Originator ASN
-	// Originator Address
-	if tlv.OriginatorAddr.Is4() {
-		buf = append(buf, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00)
-		buf = append(buf, tlv.OriginatorAddr.AsSlice()...)
-	} else if tlv.OriginatorAddr.Is6() {
-		buf = append(buf, tlv.OriginatorAddr.AsSlice()...)
+	if addr.Is4() {
+		// IPv4 → IPv4-mapped IPv6
+		ipv4 := addr.As4()
+		var addr16 [16]byte
+		copy(addr16[12:], ipv4[:])
+		buf = append(buf, addr16[:]...)
+	} else {
+		addr16 := addr.As16()
+		buf = append(buf, addr16[:]...)
 	}
-	buf = append(buf, 0x00, 0x00, 0x00, 0x01) // discriminator
+
+	buf = append(buf, Uint32ToByteSlice(1)...) // discriminator (4 bytes)
 
 	return buf
 }
