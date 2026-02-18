@@ -74,3 +74,52 @@ func TestDecodeTLVLength(t *testing.T) {
 		})
 	}
 }
+
+func TestPaddedLength(t *testing.T) {
+	tests := []struct {
+		name     string
+		n        uint16
+		align    uint16
+		expected uint16
+	}{
+		{
+			name:     "Already aligned",
+			n:        8,
+			align:    4,
+			expected: 8,
+		},
+		{
+			name:     "Needs padding",
+			n:        6,
+			align:    4,
+			expected: 8,
+		},
+		{
+			name:     "Zero length",
+			n:        0,
+			align:    4,
+			expected: 0,
+		},
+		{
+			name:     "Length 1",
+			n:        1,
+			align:    4,
+			expected: 4,
+		},
+		{
+			name:     "Non-4 alignment",
+			n:        10,
+			align:    8,
+			expected: 16,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := paddedLength(tt.n, tt.align)
+			if result != tt.expected {
+				t.Errorf("expected %d, got %d", tt.expected, result)
+			}
+		})
+	}
+}
