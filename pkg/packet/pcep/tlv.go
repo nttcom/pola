@@ -449,6 +449,10 @@ func (tlv *SymbolicPathName) Len() uint16 {
 }
 
 func (tlv *SymbolicPathName) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	if tlv == nil {
+		return nil
+	}
+
 	enc.AddString("symbolicPathName", tlv.Name)
 	return nil
 }
@@ -517,6 +521,21 @@ func (tlv *IPv4LSPIdentifiers) Serialize() []byte {
 }
 
 func (tlv *IPv4LSPIdentifiers) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	if tlv == nil {
+		return nil
+	}
+
+	if tlv.IPv4TunnelSenderAddress.IsValid() {
+		enc.AddString("ipv4TunnelSenderAddress", tlv.IPv4TunnelSenderAddress.String())
+	}
+	if tlv.IPv4TunnelEndpointAddress.IsValid() {
+		enc.AddString("ipv4TunnelEndpointAddress", tlv.IPv4TunnelEndpointAddress.String())
+	}
+
+	enc.AddUint16("lspID", tlv.LSPID)
+	enc.AddUint16("tunnelID", tlv.TunnelID)
+	enc.AddUint32("extendedTunnelID", tlv.ExtendedTunnelID)
+
 	return nil
 }
 
@@ -595,6 +614,21 @@ func (tlv *IPv6LSPIdentifiers) Serialize() []byte {
 }
 
 func (tlv *IPv6LSPIdentifiers) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	if tlv == nil {
+		return nil
+	}
+
+	if tlv.IPv6TunnelSenderAddress.IsValid() {
+		enc.AddString("ipv6TunnelSenderAddress", tlv.IPv6TunnelSenderAddress.String())
+	}
+	if tlv.IPv6TunnelEndpointAddress.IsValid() {
+		enc.AddString("ipv6TunnelEndpointAddress", tlv.IPv6TunnelEndpointAddress.String())
+	}
+
+	enc.AddUint16("lspID", tlv.LSPID)
+	enc.AddUint16("tunnelID", tlv.TunnelID)
+	enc.AddString("extendedTunnelID", fmt.Sprintf("%x", tlv.ExtendedTunnelID[:]))
+
 	return nil
 }
 
@@ -655,6 +689,11 @@ func (tlv *LSPDBVersion) Serialize() []byte {
 }
 
 func (tlv *LSPDBVersion) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	if tlv == nil {
+		return nil
+	}
+
+	enc.AddUint64("versionNumber", tlv.VersionNumber)
 	return nil
 }
 
@@ -733,6 +772,10 @@ func (tlv *SRPCECapability) Serialize() []byte {
 }
 
 func (tlv *SRPCECapability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	if tlv == nil {
+		return nil
+	}
+
 	enc.AddBool("unlimited_max_sid_depth", tlv.HasUnlimitedMaxSIDDepth)
 	enc.AddBool("nai_is_supported", tlv.IsNAISupported)
 	enc.AddUint8("maximum_sid_depth", tlv.MaximumSidDepth)
@@ -848,6 +891,11 @@ func (tlv *PathSetupType) Serialize() []byte {
 }
 
 func (tlv *PathSetupType) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	if tlv == nil {
+		return nil
+	}
+
+	enc.AddString("pathSetupType", tlv.PathSetupType.String())
 	return nil
 }
 
@@ -924,6 +972,20 @@ func (tlv *ExtendedAssociationID) Serialize() []byte {
 }
 
 func (tlv *ExtendedAssociationID) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	if tlv == nil {
+		return nil
+	}
+
+	enc.AddUint32("color", tlv.Color)
+
+	if tlv.Endpoint.IsValid() {
+		if tlv.Endpoint.Is4() {
+			enc.AddString("ipv4Addr", tlv.Endpoint.String())
+		} else if tlv.Endpoint.Is6() {
+			enc.AddString("ipv6Addr", tlv.Endpoint.String())
+		}
+	}
+
 	return nil
 }
 
@@ -1007,6 +1069,32 @@ func (tlv *PathSetupTypeCapability) Serialize() []byte {
 }
 
 func (tlv *PathSetupTypeCapability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	if tlv == nil {
+		return nil
+	}
+
+	pstStrings := make([]string, len(tlv.PathSetupTypes))
+	for i, pst := range tlv.PathSetupTypes {
+		pstStrings[i] = pst.String()
+	}
+	_ = enc.AddArray("pathSetupTypes", zapcore.ArrayMarshalerFunc(func(ae zapcore.ArrayEncoder) error {
+		for _, s := range pstStrings {
+			ae.AppendString(s)
+		}
+		return nil
+	}))
+
+	subTLVTypes := make([]string, len(tlv.SubTLVs))
+	for i, stlv := range tlv.SubTLVs {
+		subTLVTypes[i] = fmt.Sprintf("0x%04x", stlv.Type())
+	}
+	_ = enc.AddArray("subTLVs", zapcore.ArrayMarshalerFunc(func(ae zapcore.ArrayEncoder) error {
+		for _, s := range subTLVTypes {
+			ae.AppendString(s)
+		}
+		return nil
+	}))
+
 	return nil
 }
 
@@ -1105,6 +1193,17 @@ func (tlv *AssocTypeList) Serialize() []byte {
 }
 
 func (tlv *AssocTypeList) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	if tlv == nil {
+		return nil
+	}
+
+	_ = enc.AddArray("assocTypes", zapcore.ArrayMarshalerFunc(func(ae zapcore.ArrayEncoder) error {
+		for _, at := range tlv.AssocTypes {
+			ae.AppendString(at.String())
+		}
+		return nil
+	}))
+
 	return nil
 }
 
@@ -1161,6 +1260,11 @@ func (tlv *SRPolicyCandidatePathIdentifier) Serialize() []byte {
 }
 
 func (tlv *SRPolicyCandidatePathIdentifier) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	if tlv == nil {
+		return nil
+	}
+
+	enc.AddString("originatorAddr", tlv.OriginatorAddr.String())
 	return nil
 }
 
@@ -1200,6 +1304,11 @@ func (tlv *SRPolicyCandidatePathPreference) Serialize() []byte {
 }
 
 func (tlv *SRPolicyCandidatePathPreference) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	if tlv == nil {
+		return nil
+	}
+
+	enc.AddUint32("preference", tlv.Preference)
 	return nil
 }
 
@@ -1239,6 +1348,11 @@ func (tlv *Color) Serialize() []byte {
 }
 
 func (tlv *Color) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	if tlv == nil {
+		return nil
+	}
+
+	enc.AddUint32("color", tlv.Color)
 	return nil
 }
 
@@ -1280,6 +1394,12 @@ func (tlv *UndefinedTLV) Serialize() []byte {
 }
 
 func (tlv *UndefinedTLV) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	if tlv == nil {
+		return nil
+	}
+
+	enc.AddString("type", fmt.Sprintf("0x%04x", tlv.Typ))
+	enc.AddUint16("length", tlv.Length)
 	return nil
 }
 
