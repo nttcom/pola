@@ -1285,7 +1285,9 @@ func (tlv *SRPolicyCandidatePathIdentifier) DecodeFromBytes(data []byte) error {
 		copy(v4[:], addrBytes[12:])
 		tlv.OriginatorAddr = netip.AddrFrom4(v4)
 	} else {
-		tlv.OriginatorAddr = netip.AddrFrom16(*(*[16]byte)(addrBytes))
+		var addr16 [16]byte
+		copy(addr16[:], addrBytes)
+		tlv.OriginatorAddr = netip.AddrFrom16(addr16)
 	}
 
 	return nil
