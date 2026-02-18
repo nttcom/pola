@@ -179,8 +179,20 @@ func (t TLVType) String() string {
 	return fmt.Sprintf("Unknown TLV (0x%04x)", uint16(t))
 }
 
-// TLV header length (type + length)
-const TLVHeaderLength = 4
+// IP Length
+const (
+	IPv4AddrLen = 4
+	IPv6AddrLen = 16
+)
+
+const (
+	TLVTypeOffset   = 0
+	TLVLengthOffset = 2
+	TLVValueOffset  = 4
+)
+
+// TLV Alignment (4 bytes)
+const TLVAlignment = 4
 
 // TLV value lengths, excluding the 4-byte TLV header (type + length)
 const (
@@ -290,6 +302,7 @@ func (tlv *StatefulPCECapability) DecodeFromBytes(data []byte) error {
 
 func (tlv *StatefulPCECapability) Serialize() []byte {
 	flags := tlv.SetFlags() & definedStatefulPCEFlagsMask
+
 	return AppendByteSlices(
 		Uint16ToByteSlice(tlv.Type()),
 		Uint16ToByteSlice(TLVStatefulPCECapabilityValueLength),
@@ -312,7 +325,7 @@ func (tlv *StatefulPCECapability) Type() TLVType {
 }
 
 func (tlv *StatefulPCECapability) Len() uint16 {
-	return TLVHeaderLength + TLVStatefulPCECapabilityValueLength
+	return TLVValueOffset + TLVStatefulPCECapabilityValueLength
 }
 
 func (tlv *StatefulPCECapability) ExtractCapabilities(flags uint32) {
@@ -337,6 +350,7 @@ func (tlv *StatefulPCECapability) SetFlags() uint32 {
 
 func (tlv *StatefulPCECapability) CapStrings() []string {
 	ret := []string{"Stateful"}
+
 	if tlv.LSPUpdateCapability {
 		ret = append(ret, "Update")
 	}
@@ -358,6 +372,7 @@ func (tlv *StatefulPCECapability) CapStrings() []string {
 	if tlv.ColorCapability {
 		ret = append(ret, "Color")
 	}
+
 	return ret
 }
 
@@ -391,13 +406,8 @@ func (tlv *SymbolicPathName) DecodeFromBytes(data []byte) error {
 }
 
 func (tlv *SymbolicPathName) Serialize() []byte {
-	const alignment = 4
-
-	nameLen := uint16(len(tlv.Name))
-	padding := (alignment - (nameLen % alignment)) % alignment // Padding for 4-byte alignment
-
-	value := make([]byte, 0, int(nameLen)+int(padding))
-	value = append(value, []byte(tlv.Name)...)
+	value := []byte(tlv.Name)
+	padding := (TLVAlignment - (len(value) % TLVAlignment)) % TLVAlignment
 	value = append(value, make([]byte, padding)...)
 
 	return AppendByteSlices(
@@ -413,12 +423,9 @@ func (tlv *SymbolicPathName) Type() TLVType {
 
 func (tlv *SymbolicPathName) Len() uint16 {
 	length := uint16(len(tlv.Name))
-	padding := uint16(0)
-	if mod := length % 4; mod != 0 {
-		padding = 4 - mod
-	}
+	padding := (TLVAlignment - (length % TLVAlignment)) % TLVAlignment
 
-	return TLVHeaderLength + length + padding
+	return TLVValueOffset + length + padding
 }
 
 func (tlv *SymbolicPathName) MarshalLogObject(enc zapcore.ObjectEncoder) error {
@@ -439,10 +446,11 @@ type IPv4LSPIdentifiers struct {
 }
 
 const (
-	IPv4LSPIdentifiersTunnelSenderAddressIndex = 4
-	IPv4LSPIdentifiersLSPIDIndex               = 6
-	IPv4LSPIdentifiersTunnelIDIndex            = 8
-	IPv4LSPIdentifiersExtendedTunnelIDIndex    = 12
+	IPv4SenderOffset      = 0
+	IPv4LSPIDOffset       = 4
+	IPv4TunnelIDOffset    = 6
+	IPv4ExtTunnelIDOffset = 8
+	IPv4TunnelEPOffset    = 12
 )
 
 func (tlv *IPv4LSPIdentifiers) DecodeFromBytes(data []byte) error {
@@ -470,11 +478,11 @@ func (tlv *IPv4LSPIdentifiers) DecodeFromBytes(data []byte) error {
 func (tlv *IPv4LSPIdentifiers) Serialize() []byte {
 	value := make([]byte, TLVIPv4LSPIdentifiersValueLength)
 
-	copy(value[0:4], tlv.IPv4TunnelSenderAddress.AsSlice())
-	binary.BigEndian.PutUint16(value[4:6], tlv.LSPID)
-	binary.BigEndian.PutUint16(value[6:8], tlv.TunnelID)
-	binary.BigEndian.PutUint32(value[8:12], tlv.ExtendedTunnelID)
-	copy(value[12:16], tlv.IPv4TunnelEndpointAddress.AsSlice())
+	copy(value[IPv4SenderOffset:IPv4LSPIDOffset], tlv.IPv4TunnelSenderAddress.AsSlice())
+	binary.BigEndian.PutUint16(value[IPv4LSPIDOffset:IPv4TunnelIDOffset], tlv.LSPID)
+	binary.BigEndian.PutUint16(value[IPv4TunnelIDOffset:IPv4ExtTunnelIDOffset], tlv.TunnelID)
+	binary.BigEndian.PutUint32(value[IPv4ExtTunnelIDOffset:IPv4TunnelEPOffset], tlv.ExtendedTunnelID)
+	copy(value[IPv4TunnelEPOffset:IPv4TunnelEPOffset+IPv4AddrLen], tlv.IPv4TunnelEndpointAddress.AsSlice())
 
 	return AppendByteSlices(
 		Uint16ToByteSlice(tlv.Type()),
@@ -492,7 +500,7 @@ func (tlv *IPv4LSPIdentifiers) Type() TLVType {
 }
 
 func (tlv *IPv4LSPIdentifiers) Len() uint16 {
-	return TLVHeaderLength + TLVIPv4LSPIdentifiersValueLength
+	return TLVValueOffset + TLVIPv4LSPIdentifiersValueLength
 }
 
 func NewIPv4LSPIdentifiers(senderAddr, endpointAddr netip.Addr, lspID, tunnelID uint16, extendedTunnelID uint32) *IPv4LSPIdentifiers {
@@ -512,6 +520,15 @@ type IPv6LSPIdentifiers struct {
 	TunnelID                  uint16
 	ExtendedTunnelID          [16]byte
 }
+
+const (
+	// IPv6 LSP Identifiers
+	IPv6SenderOffset           = 0
+	IPv6LSPIDOffset            = 16
+	IPv6TunnelIDOffset         = 18
+	IPv6ExtendedTunnelIDOffset = 20
+	IPv6TunnelEPOffset         = 36
+)
 
 func (tlv *IPv6LSPIdentifiers) DecodeFromBytes(data []byte) error {
 	expectedLength := TLVHeaderLength + int(TLVIPv6LSPIdentifiersValueLength)
@@ -538,13 +555,11 @@ func (tlv *IPv6LSPIdentifiers) DecodeFromBytes(data []byte) error {
 func (tlv *IPv6LSPIdentifiers) Serialize() []byte {
 	buf := make([]byte, tlv.Len())
 
-	binary.BigEndian.PutUint16(buf[0:2], uint16(tlv.Type()))
-	binary.BigEndian.PutUint16(buf[2:4], TLVIPv6LSPIdentifiersValueLength)
-	copy(buf[4:20], tlv.IPv6TunnelSenderAddress.AsSlice())
-	binary.BigEndian.PutUint16(buf[20:22], tlv.LSPID)
-	binary.BigEndian.PutUint16(buf[22:24], tlv.TunnelID)
-	copy(buf[24:40], tlv.ExtendedTunnelID[:])
-	copy(buf[40:56], tlv.IPv6TunnelEndpointAddress.AsSlice())
+	copy(value[IPv6SenderOffset:IPv6SenderOffset+IPv6AddrLen], tlv.IPv6TunnelSenderAddress.AsSlice())
+	binary.BigEndian.PutUint16(value[IPv6LSPIDOffset:IPv6TunnelIDOffset], tlv.LSPID)
+	binary.BigEndian.PutUint16(value[IPv6TunnelIDOffset:IPv6ExtendedTunnelIDOffset], tlv.TunnelID)
+	copy(value[IPv6ExtendedTunnelIDOffset:IPv6TunnelEPOffset], tlv.ExtendedTunnelID[:])
+	copy(value[IPv6TunnelEPOffset:IPv6TunnelEPOffset+IPv6AddrLen], tlv.IPv6TunnelEndpointAddress.AsSlice())
 
 	return buf
 }
@@ -558,7 +573,7 @@ func (tlv *IPv6LSPIdentifiers) Type() TLVType {
 }
 
 func (tlv *IPv6LSPIdentifiers) Len() uint16 {
-	return TLVHeaderLength + TLVIPv6LSPIdentifiersValueLength
+	return TLVValueOffset + TLVIPv6LSPIdentifiersValueLength
 }
 
 func NewIPv6LSPIdentifiers(senderAddr, endpointAddr netip.Addr, lspID, tunnelID uint16, extendedTunnelID [16]byte) *IPv6LSPIdentifiers {
@@ -612,7 +627,7 @@ func (tlv *LSPDBVersion) Type() TLVType {
 }
 
 func (tlv *LSPDBVersion) Len() uint16 {
-	return TLVHeaderLength + TLVLSPDBVersionValueLength
+	return TLVValueOffset + TLVLSPDBVersionValueLength
 }
 
 func (tlv *LSPDBVersion) CapStrings() []string {
@@ -637,8 +652,8 @@ const (
 )
 
 const (
-	SRPCECapabilityFlagsIndex = 2
-	SRPCECapabilityMSDIndex   = 3
+	SRPCECapabilityFlagsOffset = 0
+	SRPCECapabilityMSDOffset   = 1
 )
 
 func (tlv *SRPCECapability) DecodeFromBytes(data []byte) error {
@@ -654,20 +669,22 @@ func (tlv *SRPCECapability) DecodeFromBytes(data []byte) error {
 		return fmt.Errorf("invalid value length for SRPCECapability: expected %d bytes, but got %d bytes", TLVSRPCECapabilityValueLength, len(val))
 	}
 
-	flags := val[SRPCECapabilityFlagsIndex]
+	val := data[TLVValueOffset:]
+
+	flags := val[SRPCECapabilityFlagsOffset]
 	tlv.HasUnlimitedMaxSIDDepth = IsBitSet(flags, UnlimitedMaximumSIDDepthFlag)
 	tlv.IsNAISupported = IsBitSet(flags, NAISupportedFlag)
-	tlv.MaximumSidDepth = val[SRPCECapabilityMSDIndex]
+	tlv.MaximumSidDepth = val[SRPCECapabilityMSDOffset]
 
 	return nil
 }
 
 func (tlv *SRPCECapability) Serialize() []byte {
-	buf := make([]byte, 0, TLVHeaderLength+TLVSRPCECapabilityValueLength)
+	value := make([]byte, TLVSRPCECapabilityValueLength)
 
-	typ := make([]byte, 2)
-	binary.BigEndian.PutUint16(typ, uint16(tlv.Type()))
-	buf = append(buf, typ...)
+	value[SRPCECapabilityFlagsOffset] = SetBit(value[SRPCECapabilityFlagsOffset], UnlimitedMaximumSIDDepthFlag, tlv.HasUnlimitedMaxSIDDepth)
+	value[SRPCECapabilityFlagsOffset] = SetBit(value[SRPCECapabilityFlagsOffset], NAISupportedFlag, tlv.IsNAISupported)
+	value[SRPCECapabilityMSDOffset] = tlv.MaximumSidDepth
 
 	length := make([]byte, 2)
 	binary.BigEndian.PutUint16(length, TLVSRPCECapabilityValueLength)
@@ -694,7 +711,7 @@ func (tlv *SRPCECapability) Type() TLVType {
 }
 
 func (tlv *SRPCECapability) Len() uint16 {
-	return TLVHeaderLength + TLVSRPCECapabilityValueLength
+	return TLVValueOffset + TLVSRPCECapabilityValueLength
 }
 
 func (tlv *SRPCECapability) CapStrings() []string {
@@ -764,9 +781,7 @@ type PathSetupType struct {
 	PathSetupType Pst
 }
 
-const (
-	PathSetupTypePathSetupTypeIndex = 3
-)
+const PathSetupTypeValueOffset = 3
 
 func (tlv *PathSetupType) DecodeFromBytes(data []byte) error {
 	expectedLength := TLVHeaderLength + int(TLVPathSetupTypeValueLength)
@@ -774,12 +789,15 @@ func (tlv *PathSetupType) DecodeFromBytes(data []byte) error {
 		return fmt.Errorf("data length mismatch: expected %d bytes, but got %d bytes for PathSetupType", expectedLength, len(data))
 	}
 
-	tlv.PathSetupType = Pst(data[TLVHeaderLength+PathSetupTypePathSetupTypeIndex])
+	value := data[TLVValueOffset:]
+	tlv.PathSetupType = Pst(value[PathSetupTypeValueOffset])
+
 	return nil
 }
 
 func (tlv *PathSetupType) Serialize() []byte {
-	buf := []byte{}
+	value := make([]byte, TLVPathSetupTypeValueLength)
+	value[PathSetupTypeValueOffset] = byte(tlv.PathSetupType)
 
 	typ := make([]byte, 2)
 	binary.BigEndian.PutUint16(typ, uint16(tlv.Type()))
@@ -805,7 +823,7 @@ func (tlv *PathSetupType) Type() TLVType {
 }
 
 func (tlv *PathSetupType) Len() uint16 {
-	return TLVHeaderLength + TLVPathSetupTypeValueLength
+	return TLVValueOffset + TLVPathSetupTypeValueLength
 }
 
 func NewPathSetupType(pst Pst) *PathSetupType {
@@ -819,16 +837,28 @@ type ExtendedAssociationID struct {
 	Endpoint netip.Addr
 }
 
+const (
+	ExtendedAssociationIDColorOffset    = 0
+	ExtendedAssociationIDEndpointOffset = 4
+)
+
 func (tlv *ExtendedAssociationID) DecodeFromBytes(data []byte) error {
 	length := binary.BigEndian.Uint16(data[2:4])
 
 	tlv.Color = binary.BigEndian.Uint32(data[4:8])
 
-	switch length {
-	case TLVExtendedAssociationIDIPv4ValueLength:
-		tlv.Endpoint, _ = netip.AddrFromSlice(data[8:12])
-	case TLVExtendedAssociationIDIPv6ValueLength:
-		tlv.Endpoint, _ = netip.AddrFromSlice(data[8:24])
+	tlv.Color = binary.BigEndian.Uint32(value[ExtendedAssociationIDColorOffset : ExtendedAssociationIDColorOffset+TLVColorValueLength])
+
+	var addrBytes []byte
+	switch valueLen {
+	case int(TLVExtendedAssociationIDIPv4ValueLength):
+		addrBytes = value[ExtendedAssociationIDEndpointOffset : ExtendedAssociationIDEndpointOffset+IPv4AddrLen]
+
+	case int(TLVExtendedAssociationIDIPv6ValueLength):
+		addrBytes = value[ExtendedAssociationIDEndpointOffset : ExtendedAssociationIDEndpointOffset+IPv6AddrLen]
+
+	default:
+		return fmt.Errorf("ExtendedAssociationID: unsupported value length %d", valueLen)
 	}
 
 	return nil
@@ -849,9 +879,9 @@ func (tlv *ExtendedAssociationID) Serialize() []byte {
 	}
 	buf = append(buf, length...)
 
-	color := make([]byte, 4)
-	binary.BigEndian.PutUint32(color, tlv.Color)
-	buf = append(buf, color...)
+	value := make([]byte, length)
+	binary.BigEndian.PutUint32(value[ExtendedAssociationIDColorOffset:ExtendedAssociationIDColorOffset+TLVColorValueLength], tlv.Color)
+	copy(value[ExtendedAssociationIDEndpointOffset:], tlv.Endpoint.AsSlice())
 
 	buf = append(buf, tlv.Endpoint.AsSlice()...)
 	return buf
@@ -867,9 +897,9 @@ func (tlv *ExtendedAssociationID) Type() TLVType {
 
 func (tlv *ExtendedAssociationID) Len() uint16 {
 	if tlv.Endpoint.Is4() {
-		return TLVHeaderLength + TLVExtendedAssociationIDIPv4ValueLength
+		return TLVValueOffset + TLVExtendedAssociationIDIPv4ValueLength
 	} else if tlv.Endpoint.Is6() {
-		return TLVHeaderLength + TLVExtendedAssociationIDIPv6ValueLength
+		return TLVValueOffset + TLVExtendedAssociationIDIPv6ValueLength
 	}
 	return 0
 
@@ -879,6 +909,11 @@ type PathSetupTypeCapability struct {
 	PathSetupTypes Psts
 	SubTLVs        []TLVInterface
 }
+
+const (
+	PathSetupTypeCapabilityFixedPartLength = 4
+	PathSetupTypeCapabilityPSTCountOffset  = 3
+)
 
 func (tlv *PathSetupTypeCapability) DecodeFromBytes(data []byte) error {
 	length := binary.BigEndian.Uint16(data[2:4])
@@ -891,8 +926,12 @@ func (tlv *PathSetupTypeCapability) DecodeFromBytes(data []byte) error {
 	if pstNum%4 != 0 {
 		pstNum += 4 - (pstNum % 4) // padding byte
 	}
-	var err error
-	tlv.SubTLVs, err = DecodeTLVs(data[8+pstNum : TLVHeaderLength+length]) // 8 byte: Type&Length (4 byte) + Reserve&pstNum (4 byte)
+
+	padded := paddedLength(uint16(pstNum), TLVAlignment)
+	subTLVOffset := PathSetupTypeCapabilityFixedPartLength + padded
+
+	subTLVData := value[subTLVOffset:]
+	tlv.SubTLVs, err = DecodeTLVs(subTLVData)
 	if err != nil {
 		return err
 	}
@@ -908,35 +947,26 @@ func (tlv *PathSetupTypeCapability) Serialize() []byte {
 
 	numOfPst := uint16(len(tlv.PathSetupTypes))
 
-	length := uint16(4) // 4 byte: reserve & num of PSTs field
-	length += numOfPst
-	if numOfPst%4 != 0 {
-		length += 4 - (numOfPst % 4)
-	}
+	length := uint16(PathSetupTypeCapabilityFixedPartLength) + paddedPSTLen
 	for _, subTLV := range tlv.SubTLVs {
 		length += subTLV.Len()
 	}
+
 	lengthBytes := make([]byte, 2)
 	binary.BigEndian.PutUint16(lengthBytes, length)
 	buf = append(buf, lengthBytes...)
 
-	var val []byte
-	if numOfPst%4 == 0 {
-		val = make([]byte, 4+numOfPst) // 4 byte: Reserve & Num of PST
-
-	} else {
-		val = make([]byte, 4+numOfPst+(4-(numOfPst%4))) // 4 byte: Reserve & Num of PST
-	}
-
-	val[3] = byte(numOfPst)
+	val := make([]byte, PathSetupTypeCapabilityFixedPartLength+paddedPSTLen)
+	val[PathSetupTypeCapabilityPSTCountOffset] = byte(numOfPst)
 	for i, pst := range tlv.PathSetupTypes {
-		val[4+i] = byte(pst)
+		val[PathSetupTypeCapabilityFixedPartLength+i] = byte(pst)
 	}
 
-	for _, subTLV := range tlv.SubTLVs {
-		val = append(val, subTLV.Serialize()...)
-	}
 	buf = append(buf, val...)
+	for _, subTLV := range tlv.SubTLVs {
+		buf = append(buf, subTLV.Serialize()...)
+	}
+
 	return buf
 }
 
@@ -949,26 +979,26 @@ func (tlv *PathSetupTypeCapability) Type() TLVType {
 }
 
 func (tlv *PathSetupTypeCapability) Len() uint16 {
-	length := uint16(4) // 4 byte: reserve & num of PSTs field
-	numOfPst := uint16(len(tlv.PathSetupTypes))
-	length += numOfPst
-	if numOfPst%4 != 0 {
-		length += 4 - (numOfPst % 4)
-	}
+	length := uint16(PathSetupTypeCapabilityFixedPartLength)
+	length += tlv.paddedPSTLength()
+
 	for _, subTLV := range tlv.SubTLVs {
 		length += subTLV.Len()
 	}
-	return TLVHeaderLength + length
+
+	return TLVValueOffset + length
 }
 
 func (tlv *PathSetupTypeCapability) CapStrings() []string {
 	ret := []string{}
+
 	if slices.Contains(tlv.PathSetupTypes, PathSetupTypeSRTE) {
 		ret = append(ret, "SR-TE")
 	}
 	if slices.Contains(tlv.PathSetupTypes, PathSetupTypeSRv6TE) {
 		ret = append(ret, "SRv6-TE")
 	}
+
 	return ret
 }
 
@@ -1052,7 +1082,7 @@ func (tlv *AssocTypeList) Len() uint16 {
 	if length%4 != 0 {
 		padding = 2
 	}
-	return TLVHeaderLength + length + padding
+	return TLVValueOffset + length + padding
 }
 
 func (tlv *AssocTypeList) CapStrings() []string {
@@ -1069,7 +1099,7 @@ func (tlv *SRPolicyCandidatePathIdentifier) DecodeFromBytes(data []byte) error {
 }
 
 func (tlv *SRPolicyCandidatePathIdentifier) Serialize() []byte {
-	buf := []byte{}
+	buf := make([]byte, 0, TLVValueOffset+TLVSRPolicyCPathIDValueLength)
 
 	typ := make([]byte, 2)
 	binary.BigEndian.PutUint16(typ, uint16(tlv.Type()))
@@ -1103,7 +1133,7 @@ func (tlv *SRPolicyCandidatePathIdentifier) Type() TLVType {
 }
 
 func (tlv *SRPolicyCandidatePathIdentifier) Len() uint16 {
-	return TLVHeaderLength + TLVSRPolicyCPathIDValueLength
+	return TLVValueOffset + TLVSRPolicyCPathIDValueLength
 }
 
 type SRPolicyCandidatePathPreference struct {
@@ -1142,7 +1172,7 @@ func (tlv *SRPolicyCandidatePathPreference) Type() TLVType {
 }
 
 func (tlv *SRPolicyCandidatePathPreference) Len() uint16 {
-	return TLVHeaderLength + TLVSRPolicyCPathPreferenceValueLength
+	return TLVValueOffset + TLVSRPolicyCPathPreferenceValueLength
 }
 
 type Color struct {
@@ -1181,7 +1211,7 @@ func (tlv *Color) Type() TLVType {
 }
 
 func (tlv *Color) Len() uint16 {
-	return TLVHeaderLength + TLVColorValueLength
+	return TLVValueOffset + TLVColorValueLength
 }
 
 type UndefinedTLV struct {
@@ -1199,11 +1229,7 @@ func (tlv *UndefinedTLV) DecodeFromBytes(data []byte) error {
 }
 
 func (tlv *UndefinedTLV) Serialize() []byte {
-	bytePCEPTLV := []byte{}
-
-	byteTLVType := make([]byte, 2)
-	binary.BigEndian.PutUint16(byteTLVType, uint16(tlv.Typ))
-	bytePCEPTLV = append(bytePCEPTLV, byteTLVType...) // Type (2byte)
+	padding := (TLVAlignment - (tlv.Length % TLVAlignment)) % TLVAlignment
 
 	byteTLVLength := make([]byte, 2)
 	binary.BigEndian.PutUint16(byteTLVLength, tlv.Length)
@@ -1230,7 +1256,7 @@ func (tlv *UndefinedTLV) Len() uint16 {
 	if tlv.Length%4 != 0 {
 		padding = (4 - tlv.Length%4)
 	}
-	return TLVHeaderLength + tlv.Length + padding
+	return TLVValueOffset + tlv.Length + padding
 }
 
 func (tlv *UndefinedTLV) CapStrings() []string {
@@ -1267,29 +1293,33 @@ func DecodeTLV(data []byte) (TLVInterface, error) {
 
 func DecodeTLVs(data []byte) ([]TLVInterface, error) {
 	var tlvs []TLVInterface
-	offset := 0
 
-	for offset < len(data) {
-		if len(data[offset:]) < 4 {
-			return nil, fmt.Errorf("truncated TLV header at offset %d", offset)
+	for len(data) > 0 {
+		if len(data) < int(TLVValueOffset) {
+			return nil, fmt.Errorf("truncated TLV header")
 		}
 
-		tlvType := binary.BigEndian.Uint16(data[offset : offset+2])
-		valueLen := int(binary.BigEndian.Uint16(data[offset+2 : offset+4]))
-		totalLen := 4 + valueLen
+		valueLen := int(binary.BigEndian.Uint16(data[TLVLengthOffset:TLVValueOffset]))
+		totalLen := int(TLVValueOffset) + valueLen
 
-		if len(data[offset:]) < totalLen {
-			return nil, fmt.Errorf("truncated TLV value for type 0x%x at offset %d", tlvType, offset)
+		tlvType := binary.BigEndian.Uint16(data[TLVTypeOffset:TLVLengthOffset])
+		if len(data) < totalLen {
+			return nil, fmt.Errorf("truncated TLV value (type=0x%x)", tlvType)
 		}
 
-		tlv, err := DecodeTLV(data[offset : offset+totalLen])
+		tlv, err := DecodeTLV(data[:totalLen])
 		if err != nil {
-			return nil, fmt.Errorf("error decoding TLV type 0x%x: %w", tlvType, err)
+			return nil, err
 		}
 
 		tlvs = append(tlvs, tlv)
-		paddedLen := (totalLen + 3) & ^3
-		offset += paddedLen
+
+		paddedLen := (totalLen + TLVAlignment - 1) & ^(TLVAlignment - 1)
+		if len(data) < paddedLen {
+			return nil, fmt.Errorf("truncated TLV padding (type=0x%x)", tlvType)
+		}
+
+		data = data[paddedLen:]
 	}
 
 	return tlvs, nil
