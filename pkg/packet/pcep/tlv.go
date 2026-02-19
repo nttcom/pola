@@ -1573,6 +1573,12 @@ func DecodeTLVs(data []byte) ([]TLVInterface, error) {
 			return nil, fmt.Errorf("truncated TLV padding (type=0x%x)", tlvType)
 		}
 
+		// Validate that padding bytes between TLVs are zero-filled.
+		for i := totalLen; i < paddedLen; i++ {
+			if data[i] != 0 {
+				return nil, fmt.Errorf("invalid TLV padding (expected zero bytes) (type=0x%x)", tlvType)
+			}
+		}
 		data = data[paddedLen:]
 	}
 
