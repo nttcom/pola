@@ -858,12 +858,17 @@ type PathSetupType struct {
 const PathSetupTypeValueOffset = 3
 
 func (tlv *PathSetupType) DecodeFromBytes(data []byte) error {
-	_, err := decodeTLVLength(data)
+	valueLen, err := decodeTLVLength(data)
 	if err != nil {
 		return fmt.Errorf("PathSetupType: %w", err)
 	}
 
-	value := data[TLVValueOffset:]
+	if valueLen != int(TLVPathSetupTypeValueLength) {
+		return fmt.Errorf("PathSetupType: unexpected value length: expected %d, got %d", TLVPathSetupTypeValueLength, valueLen)
+	}
+
+	value := data[TLVValueOffset : TLVValueOffset+valueLen]
+
 	tlv.PathSetupType = Pst(value[PathSetupTypeValueOffset])
 
 	return nil
