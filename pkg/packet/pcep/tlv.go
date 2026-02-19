@@ -7,12 +7,12 @@ package pcep
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/netip"
 	"slices"
 	"strconv"
-	"strings"
 	"unicode/utf8"
 
 	"go.uber.org/zap/zapcore"
@@ -838,17 +838,19 @@ func (pst Pst) String() string {
 type Psts []Pst
 
 func (ts Psts) MarshalJSON() ([]byte, error) {
-	var result string
 	if ts == nil {
-		result = "null"
-	} else {
-		var values []string
-		for _, pst := range ts {
-			values = append(values, fmt.Sprintf("%d", pst))
-		}
-		result = strings.Join(values, ",")
+		return []byte("null"), nil
 	}
-	return []byte(result), nil
+
+	if len(ts) == 0 {
+		return []byte("[]"), nil
+	}
+
+	values := make([]int, len(ts))
+	for i, pst := range ts {
+		values[i] = int(pst)
+	}
+	return json.Marshal(values)
 }
 
 type PathSetupType struct {

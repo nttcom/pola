@@ -701,10 +701,11 @@ func TestPsts_MarshalJSON(t *testing.T) {
 		expected string
 	}{
 		"Nil Psts":      {nil, "null"},
-		"Empty Psts":    {Psts{}, ""},
-		"Single Pst":    {Psts{Pst(0x01)}, "1"},
-		"Multiple Psts": {Psts{Pst(0x01), Pst(0x02)}, "1,2"},
+		"Empty Psts":    {Psts{}, "[]"},
+		"Single Pst":    {Psts{Pst(1)}, "[1]"},
+		"Multiple Psts": {Psts{Pst(1), Pst(2)}, "[1,2]"},
 	}
+
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
 			actual, err := tt.input.MarshalJSON()
