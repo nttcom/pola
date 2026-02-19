@@ -922,7 +922,7 @@ func TestPathSetupTypeCapability_MarshalLogObject(t *testing.T) {
 				"pathSetupTypes": []interface{}{
 					"Traffic engineering path is set up using Segment Routing (RFC8664)",
 				},
-				"subTLVs": []interface{}{"0x53522d5043452d4341504142494c49545920285246433836363429"}, // ASCII: "SR-PCE-CAPABILITY (RFC8664)"
+				"subTLVs": []interface{}{"0x53522d5043452d4341504142494c49545920285246433836363429 (SR-PCE-CAPABILITY (RFC8664))"},
 			},
 		},
 		"NilTLV": {

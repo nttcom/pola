@@ -1112,7 +1112,7 @@ func (tlv *PathSetupTypeCapability) MarshalLogObject(enc zapcore.ObjectEncoder) 
 
 	subTLVTypes := make([]string, len(tlv.SubTLVs))
 	for i, stlv := range tlv.SubTLVs {
-		subTLVTypes[i] = fmt.Sprintf("0x%04x", stlv.Type())
+		subTLVTypes[i] = fmt.Sprintf("0x%x (%s)", stlv.Type(), stlv.Type().String())
 	}
 	_ = enc.AddArray("subTLVs", zapcore.ArrayMarshalerFunc(func(ae zapcore.ArrayEncoder) error {
 		for _, s := range subTLVTypes {
