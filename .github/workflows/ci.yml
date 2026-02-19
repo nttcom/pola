@@ -48,6 +48,7 @@ jobs:
         uses: bufbuild/buf-setup-action@v1
         with:
           version: latest
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run buf lint
         run: buf lint
