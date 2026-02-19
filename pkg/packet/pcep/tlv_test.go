@@ -851,17 +851,39 @@ var (
 		0x01, 0x00,
 		0xFF, 0xFF, 0x00, 0x04, 0x01, 0x02,
 	}
+
+	testPathSetupTypeCapabilityZeroPSTBytes = []byte{
+		0x00, 0x22, 0x00, 0x04, // TLV header
+		0x00, 0x00, 0x00, 0x00, // PST count = 0
+	}
+	testPathSetupTypeCapabilityZeroPST = &PathSetupTypeCapability{
+		PathSetupTypes: Psts{},
+		SubTLVs:        []TLVInterface{},
+	}
+
+	testPathSetupTypeCapabilityNilPST = &PathSetupTypeCapability{
+		PathSetupTypes: Psts{},
+		SubTLVs:        []TLVInterface{},
+	}
+	testPathSetupTypeCapabilitySubTLVOffsetOverflowBytes = []byte{
+		0x00, 0x22, 0x00, 0x05, // TLV header, length=5
+		0x00, 0x00, 0x00, 0x01, // PST count = 1
+		0x01, // PST entry
+	}
 )
 
 // TestPathSetupTypeCapability_DecodeFromBytes tests PathSetupTypeCapability.DecodeFromBytes.
 func TestPathSetupTypeCapability_DecodeFromBytes(t *testing.T) {
 	cases := map[string]TLVTestCase{
-		"ValidBasic":       {testPathSetupTypeCapabilityBasicBytes, testPathSetupTypeCapabilityBasic, false},
-		"ValidWithSubTLV":  {testPathSetupTypeCapabilityWithSubTLVBytes, testPathSetupTypeCapabilityWithSubTLV, false},
-		"TooShort":         {testPathSetupTypeCapabilityTooShort, nil, true},
-		"PSTCountOverflow": {testPathSetupTypeCapabilityPSTOverflow, nil, true},
-		"InvalidTLVLength": {testPathSetupTypeCapabilityInvalidLength, nil, true},
-		"BadSubTLV":        {testPathSetupTypeCapabilityBadSubTLVBytes, nil, true},
+		"ValidBasic":               {testPathSetupTypeCapabilityBasicBytes, testPathSetupTypeCapabilityBasic, false},
+		"ValidWithSubTLV":          {testPathSetupTypeCapabilityWithSubTLVBytes, testPathSetupTypeCapabilityWithSubTLV, false},
+		"ZeroPST":                  {testPathSetupTypeCapabilityZeroPSTBytes, testPathSetupTypeCapabilityZeroPST, false},
+		"NilPST":                   {testPathSetupTypeCapabilityZeroPSTBytes, testPathSetupTypeCapabilityNilPST, false},
+		"SubTLVOffsetExceedsValue": {testPathSetupTypeCapabilitySubTLVOffsetOverflowBytes, nil, true},
+		"TooShort":                 {testPathSetupTypeCapabilityTooShort, nil, true},
+		"PSTCountOverflow":         {testPathSetupTypeCapabilityPSTOverflow, nil, true},
+		"InvalidTLVLength":         {testPathSetupTypeCapabilityInvalidLength, nil, true},
+		"BadSubTLV":                {testPathSetupTypeCapabilityBadSubTLVBytes, nil, true},
 	}
 	runTLVDecodeTests(t, cases, func() TLVInterface { return &PathSetupTypeCapability{} })
 }

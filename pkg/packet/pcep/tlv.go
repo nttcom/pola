@@ -1026,10 +1026,6 @@ func (tlv *PathSetupTypeCapability) DecodeFromBytes(data []byte) error {
 		return fmt.Errorf("PathSetupTypeCapability: %w", err)
 	}
 
-	if tlv.SubTLVs == nil {
-		tlv.SubTLVs = []TLVInterface{}
-	}
-
 	value := data[TLVValueOffset : TLVValueOffset+valueLen]
 
 	if len(value) < PathSetupTypeCapabilityFixedPartLength {
