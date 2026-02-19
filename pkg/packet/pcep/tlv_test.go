@@ -872,7 +872,6 @@ var (
 	}
 )
 
-// TestPathSetupTypeCapability_DecodeFromBytes tests PathSetupTypeCapability.DecodeFromBytes.
 func TestPathSetupTypeCapability_DecodeFromBytes(t *testing.T) {
 	cases := map[string]TLVTestCase{
 		"ValidBasic":               {testPathSetupTypeCapabilityBasicBytes, testPathSetupTypeCapabilityBasic, false},
@@ -900,7 +899,6 @@ func TestPathSetupTypeCapability_Serialize(t *testing.T) {
 	runTLVSerializeTests(t, cases)
 }
 
-// TestPathSetupTypeCapability_MarshalLogObject tests PathSetupTypeCapability.MarshalLogObject.
 func TestPathSetupTypeCapability_MarshalLogObject(t *testing.T) {
 	cases := map[string]struct {
 		input    *PathSetupTypeCapability
@@ -941,7 +939,6 @@ func TestPathSetupTypeCapability_MarshalLogObject(t *testing.T) {
 	}
 }
 
-// TestPathSetupTypeCapability_Len tests PathSetupTypeCapability.Len.
 func TestPathSetupTypeCapability_Len(t *testing.T) {
 	var subTLVLen uint16
 	for _, s := range testPathSetupTypeCapabilityWithSubTLV.SubTLVs {
@@ -958,7 +955,6 @@ func TestPathSetupTypeCapability_Len(t *testing.T) {
 	runTLVLenTests(t, cases)
 }
 
-// TestPathSetupTypeCapability_CapStrings tests PathSetupTypeCapability.CapStrings.
 func TestPathSetupTypeCapability_CapStrings(t *testing.T) {
 	cases := map[string]struct {
 		input    CapStringsInterface
@@ -972,7 +968,6 @@ func TestPathSetupTypeCapability_CapStrings(t *testing.T) {
 	runCapStringsTests(t, cases)
 }
 
-// TestAssocType_String tests AssocType.String.
 func TestAssocType_String(t *testing.T) {
 	cases := map[string]struct {
 		input    AssocType
@@ -1027,7 +1022,6 @@ var (
 	}
 )
 
-// TestExtendedAssociationID_DecodeFromBytes tests ExtendedAssociationID.DecodeFromBytes.
 func TestExtendedAssociationID_DecodeFromBytes(t *testing.T) {
 	cases := map[string]TLVTestCase{
 		"IPv4":              {testIPv4ExtendedAssociationIDBytes, testIPv4ExtendedAssociationID, false},
@@ -1039,7 +1033,6 @@ func TestExtendedAssociationID_DecodeFromBytes(t *testing.T) {
 	runTLVDecodeTests(t, cases, func() TLVInterface { return &ExtendedAssociationID{} })
 }
 
-// TestExtendedAssociationID_Serialize tests ExtendedAssociationID.Serialize.
 func TestExtendedAssociationID_Serialize(t *testing.T) {
 	cases := map[string]struct {
 		input    TLVInterface
@@ -1058,7 +1051,6 @@ func TestExtendedAssociationID_Serialize(t *testing.T) {
 	}
 }
 
-// TestExtendedAssociationID_MarshalLogObject tests ExtendedAssociationID.MarshalLogObject.
 func TestExtendedAssociationID_MarshalLogObject(t *testing.T) {
 	cases := map[string]struct {
 		input    *ExtendedAssociationID
@@ -1094,7 +1086,6 @@ func TestExtendedAssociationID_MarshalLogObject(t *testing.T) {
 	}
 }
 
-// TestExtendedAssociationID_Len tests ExtendedAssociationID.Len.
 func TestExtendedAssociationID_Len(t *testing.T) {
 	cases := map[string]struct {
 		input    TLVInterface
@@ -1131,8 +1122,8 @@ var (
 
 	// Bytes for testAssocTypeList (2 entries = 4 bytes value, no padding needed).
 	testAssocTypeListBytes = []byte{
-		0x00, 0x23, 0x00, 0x04,
-		0x00, 0x01, 0x00, 0x06,
+		0x00, 0x23, 0x00, 0x04, // Type, Length
+		0x00, 0x01, 0x00, 0x06, // Value
 	}
 	// Bytes for Serialize test: 1 entry + padding to 4-byte alignment.
 	testAssocTypeListSingleBytesWithPadding = []byte{
@@ -1155,7 +1146,6 @@ var (
 	}
 )
 
-// TestAssocTypeList_DecodeFromBytes tests AssocTypeList.DecodeFromBytes.
 func TestAssocTypeList_DecodeFromBytes(t *testing.T) {
 	cases := map[string]TLVTestCase{
 		"ValidTwoEntries":  {testAssocTypeListBytes, testAssocTypeList, false},
@@ -1166,7 +1156,6 @@ func TestAssocTypeList_DecodeFromBytes(t *testing.T) {
 	runTLVDecodeTests(t, cases, func() TLVInterface { return &AssocTypeList{} })
 }
 
-// TestAssocTypeList_Serialize tests AssocTypeList.Serialize.
 func TestAssocTypeList_Serialize(t *testing.T) {
 	cases := map[string]struct {
 		input    TLVInterface
@@ -1178,7 +1167,6 @@ func TestAssocTypeList_Serialize(t *testing.T) {
 	runTLVSerializeTests(t, cases)
 }
 
-// TestAssocTypeList_MarshalLogObject tests AssocTypeList.MarshalLogObject.
 func TestAssocTypeList_MarshalLogObject(t *testing.T) {
 	cases := map[string]struct {
 		input    *AssocTypeList
@@ -1232,7 +1220,6 @@ func TestAssocTypeList_MarshalLogObject(t *testing.T) {
 	}
 }
 
-// TestAssocTypeList_Len tests AssocTypeList.Len.
 func TestAssocTypeList_Len(t *testing.T) {
 	cases := map[string]struct {
 		input    TLVInterface
@@ -1246,7 +1233,6 @@ func TestAssocTypeList_Len(t *testing.T) {
 	runTLVLenTests(t, cases)
 }
 
-// TestAssocTypeList_CapStrings tests AssocTypeList.CapStrings.
 func TestAssocTypeList_CapStrings(t *testing.T) {
 	cases := map[string]struct {
 		input    CapStringsInterface
@@ -1297,7 +1283,6 @@ var (
 	}
 )
 
-// TestSRPolicyCandidatePathIdentifier_DecodeFromBytes tests SRPolicyCandidatePathIdentifier.DecodeFromBytes.
 func TestSRPolicyCandidatePathIdentifier_DecodeFromBytes(t *testing.T) {
 	cases := map[string]TLVTestCase{
 		"ValidIPv4":       {testSRPolicyCPathIDIPv4Bytes, testSRPolicyCPathIDIPv4, false},
@@ -1308,7 +1293,6 @@ func TestSRPolicyCandidatePathIdentifier_DecodeFromBytes(t *testing.T) {
 	runTLVDecodeTests(t, cases, func() TLVInterface { return &SRPolicyCandidatePathIdentifier{} })
 }
 
-// TestSRPolicyCandidatePathIdentifier_Serialize tests SRPolicyCandidatePathIdentifier.Serialize.
 func TestSRPolicyCandidatePathIdentifier_Serialize(t *testing.T) {
 	cases := map[string]struct {
 		input    TLVInterface
@@ -1330,7 +1314,6 @@ func TestSRPolicyCandidatePathIdentifier_Serialize_Invalid(t *testing.T) {
 	runTLVSerializeTests(t, cases)
 }
 
-// TestSRPolicyCandidatePathIdentifier_MarshalLogObject tests SRPolicyCandidatePathIdentifier.MarshalLogObject.
 func TestSRPolicyCandidatePathIdentifier_MarshalLogObject(t *testing.T) {
 	cases := map[string]struct {
 		input    *SRPolicyCandidatePathIdentifier
@@ -1440,7 +1423,6 @@ func TestSRPolicyCandidatePathPreference_MarshalLogObject(t *testing.T) {
 	}
 }
 
-// TestSRPolicyCandidatePathPreference_Len tests SRPolicyCandidatePathPreference.Len.
 func TestSRPolicyCandidatePathPreference_Len(t *testing.T) {
 	cases := map[string]struct {
 		input    TLVInterface
@@ -1471,7 +1453,6 @@ var (
 	}
 )
 
-// TestColor_DecodeFromBytes tests Color.DecodeFromBytes.
 func TestColor_DecodeFromBytes(t *testing.T) {
 	cases := map[string]TLVTestCase{
 		"ValidColor":      {testColorBytes, testColor, false},
@@ -1481,7 +1462,6 @@ func TestColor_DecodeFromBytes(t *testing.T) {
 	runTLVDecodeTests(t, cases, func() TLVInterface { return &Color{} })
 }
 
-// TestColor_Serialize tests Color.Serialize.
 func TestColor_Serialize(t *testing.T) {
 	cases := map[string]struct {
 		input    TLVInterface
@@ -1492,7 +1472,6 @@ func TestColor_Serialize(t *testing.T) {
 	runTLVSerializeTests(t, cases)
 }
 
-// TestColor_MarshalLogObject tests Color.MarshalLogObject.
 func TestColor_MarshalLogObject(t *testing.T) {
 	cases := map[string]struct {
 		input    *Color
@@ -1526,7 +1505,6 @@ func TestColor_MarshalLogObject(t *testing.T) {
 	}
 }
 
-// TestColor_Len tests Color.Len.
 func TestColor_Len(t *testing.T) {
 	cases := map[string]struct {
 		input    TLVInterface
@@ -1559,7 +1537,6 @@ var (
 	testUndefinedTLVTruncatedValue  = []byte{0xff, 0xff, 0x00, 0x08, 0x01, 0x02}
 )
 
-// TestUndefinedTLV_DecodeFromBytes tests UndefinedTLV.DecodeFromBytes.
 func TestUndefinedTLV_DecodeFromBytes(t *testing.T) {
 	cases := map[string]TLVTestCase{
 		"ValidUndefinedTLV": {testUndefinedTLVBytes, testUndefinedTLV, false},
@@ -1569,7 +1546,6 @@ func TestUndefinedTLV_DecodeFromBytes(t *testing.T) {
 	runTLVDecodeTests(t, cases, func() TLVInterface { return &UndefinedTLV{} })
 }
 
-// TestUndefinedTLV_Serialize tests UndefinedTLV.Serialize.
 func TestUndefinedTLV_Serialize(t *testing.T) {
 	cases := map[string]struct {
 		input    TLVInterface
@@ -1581,7 +1557,6 @@ func TestUndefinedTLV_Serialize(t *testing.T) {
 	runTLVSerializeTests(t, cases)
 }
 
-// TestUndefinedTLV_MarshalLogObject tests UndefinedTLV.MarshalLogObject.
 func TestUndefinedTLV_MarshalLogObject(t *testing.T) {
 	cases := map[string]struct {
 		input    *UndefinedTLV
@@ -1617,7 +1592,6 @@ func TestUndefinedTLV_MarshalLogObject(t *testing.T) {
 	}
 }
 
-// TestUndefinedTLV_Len tests UndefinedTLV.Len.
 func TestUndefinedTLV_Len(t *testing.T) {
 	cases := map[string]struct {
 		input    TLVInterface
@@ -1629,7 +1603,6 @@ func TestUndefinedTLV_Len(t *testing.T) {
 	runTLVLenTests(t, cases)
 }
 
-// TestUndefinedTLV_CapStrings tests UndefinedTLV.CapStrings.
 func TestUndefinedTLV_CapStrings(t *testing.T) {
 	cases := map[string]struct {
 		input    CapStringsInterface
@@ -1644,7 +1617,6 @@ func TestUndefinedTLV_CapStrings(t *testing.T) {
 	runCapStringsTests(t, cases)
 }
 
-// TestUndefinedTLV_SetLength tests UndefinedTLV.SetLength.
 func TestUndefinedTLV_SetLength(t *testing.T) {
 	tlv := &UndefinedTLV{Value: []byte{0x01, 0x02, 0x03}}
 	tlv.SetLength()
@@ -1653,28 +1625,19 @@ func TestUndefinedTLV_SetLength(t *testing.T) {
 
 // Test data for DecodeTLV / DecodeTLVs.
 var (
-	// Known TLV: StatefulPCECapability with only LSP Update enabled
 	testDecodeStatefulLSPUpdateBytes = append(tlvHeader(TLVStatefulPCECapability, 4), 0x00, 0x00, 0x00, 0x01)
-	// Unknown TLV type 0xffff with 4-byte value
-	testDecodeUnknownTLVBytes = append(tlvHeader(TLVType(0xffff), 4), 0xde, 0xad, 0xbe, 0xef)
-	// Truncated TLV header (less than 4 bytes)
-	testDecodeTruncatedHeader = []byte{0x00}
-	// StatefulPCECapability with invalid body length (3 instead of 4)
-	testDecodeStatefulInvalidBody = append(tlvHeader(TLVStatefulPCECapability, 3), 0x00, 0x00, 0x00)
-	// Unknown TLV claims 8 bytes, only 2 provided
-	testDecodeUnknownTruncatedValue = []byte{0xff, 0xff, 0x00, 0x08, 0x01, 0x02}
-	// Multiple TLVs: StatefulPCECapability + SymbolicPathName("Test")
-	testDecodeMultipleTLVs = append(
+	testDecodeUnknownTLVBytes        = append(tlvHeader(TLVType(0xffff), 4), 0xde, 0xad, 0xbe, 0xef)
+	testDecodeTruncatedHeader        = []byte{0x00}
+	testDecodeStatefulInvalidBody    = append(tlvHeader(TLVStatefulPCECapability, 3), 0x00, 0x00, 0x00)
+	testDecodeUnknownTruncatedValue  = []byte{0xff, 0xff, 0x00, 0x08, 0x01, 0x02}
+	testDecodeMultipleTLVs           = append(
 		append(tlvHeader(TLVStatefulPCECapability, 4), 0x00, 0x00, 0x00, 0x01),
 		append(tlvHeader(TLVSymbolicPathName, 4), 'T', 'e', 's', 't')...,
 	)
-	// Truncated TLV value (declares length 8 but only 2 bytes)
-	testDecodeTruncatedValue = []byte{0x00, 0x10, 0x00, 0x08, 0x00, 0x00}
-	// Truncated TLV padding (odd length missing pad byte)
+	testDecodeTruncatedValue   = []byte{0x00, 0x10, 0x00, 0x08, 0x00, 0x00}
 	testDecodeTruncatedPadding = []byte{0x00, 0xff, 0x00, 0x03, 0x01, 0x02, 0x03}
 )
 
-// TestDecodeTLV tests DecodeTLV.
 func TestDecodeTLV(t *testing.T) {
 	cases := map[string]struct {
 		input   []byte
@@ -1701,27 +1664,41 @@ func TestDecodeTLV(t *testing.T) {
 	}
 }
 
-// TestDecodeTLVs tests DecodeTLVs.
 func TestDecodeTLVs(t *testing.T) {
+	invalidPaddingBytes := func() []byte {
+		valueLen := 5
+		header := tlvHeader(0xFFFF, uint16(valueLen))
+		body := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
+		tlv := append(header, body...)
+		tlv = append(tlv, 0xFF, 0x00, 0x00) // invalid padding (should be 0x00)
+		return tlv
+	}()
+
 	cases := map[string]struct {
 		input   []byte
 		wantErr bool
 		wantLen int
+		errMsg  string
 	}{
-		"Empty":               {[]byte{}, false, 0},
-		"SingleKnownTLV":      {testDecodeStatefulLSPUpdateBytes, false, 1},
-		"MultipleTLVs":        {testDecodeMultipleTLVs, false, 2},
-		"TruncatedTLVHeader":  {[]byte{0x00, 0x10, 0x00}, true, 0},
-		"TruncatedTLVValue":   {testDecodeTruncatedValue, true, 0},
-		"TruncatedTLVPadding": {testDecodeTruncatedPadding, true, 0},
-		"InvalidKnownTLVBody": {append(tlvHeader(TLVStatefulPCECapability, 4), 0x00, 0x00, 0x00, 0x00), false, 1},
+		"Empty":               {[]byte{}, false, 0, ""},
+		"SingleKnownTLV":      {testDecodeStatefulLSPUpdateBytes, false, 1, ""},
+		"MultipleTLVs":        {testDecodeMultipleTLVs, false, 2, ""},
+		"TruncatedTLVHeader":  {[]byte{0x00, 0x10, 0x00}, true, 0, "truncated TLV header"},
+		"TruncatedTLVValue":   {testDecodeTruncatedValue, true, 0, "truncated TLV value"},
+		"TruncatedTLVPadding": {testDecodeTruncatedPadding, true, 0, "truncated TLV padding"},
+		"InvalidKnownTLVBody": {append(tlvHeader(TLVStatefulPCECapability, 4), 0x00, 0x00, 0x00, 0x00), false, 1, ""},
+		"InvalidPadding":      {invalidPaddingBytes, true, 0, "invalid TLV padding"},
 	}
 
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
 			tlvs, err := DecodeTLVs(tt.input)
 			if tt.wantErr {
-				assert.Error(t, err, "expected error for '%s'", name)
+				require.Error(t, err, "expected error for '%s'", name)
+				if tt.errMsg != "" {
+					assert.Contains(t, err.Error(), tt.errMsg, "error message mismatch for '%s'", name)
+				}
+				assert.Nil(t, tlvs)
 			} else {
 				require.NoError(t, err, "unexpected error for '%s'", name)
 				assert.Len(t, tlvs, tt.wantLen, "TLV count mismatch for '%s'", name)
@@ -1730,19 +1707,31 @@ func TestDecodeTLVs(t *testing.T) {
 	}
 }
 
-// TestDecodeTLVs_SubTLVDecodeError tests that DecodeTLVs returns an error if a sub-TLV fails to decode.
-func TestDecodeTLVs_SubTLVDecodeError(t *testing.T) {
+func TestDecodeTLVs_SubTLV(t *testing.T) {
 	fixedPart := make([]byte, PathSetupTypeCapabilityFixedPartLength)
 	fixedPart[PathSetupTypeCapabilityPSTCountOffset] = 0x01 // Set PST count in fixed part
 	pathSetupType := []byte{0x00}
 	subTLV := append(tlvHeader(TLVStatefulPCECapability, 4), 0x01, 0x02)
-
 	value := append(fixedPart, pathSetupType...)
 	value = append(value, subTLV...)
-
 	header := tlvHeader(TLVPathSetupTypeCapability, uint16(len(value)))
 	data := append(header, value...)
 
-	_, err := DecodeTLVs(data)
-	assert.Error(t, err, "expected DecodeTLV error for invalid subTLV")
+	cases := map[string]struct {
+		input   []byte
+		wantErr bool
+	}{
+		"InvalidSubTLV": {data, true},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := DecodeTLVs(tt.input)
+			if tt.wantErr {
+				assert.Error(t, err, "expected error for '%s'", name)
+			} else {
+				assert.NoError(t, err, "unexpected error for '%s'", name)
+			}
+		})
+	}
 }
