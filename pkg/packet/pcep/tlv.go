@@ -668,7 +668,7 @@ func (tlv *LSPDBVersion) DecodeFromBytes(data []byte) error {
 		return fmt.Errorf("LSPDBVersion: invalid value length %d", valueLen)
 	}
 
-	value := data[TLVValueOffset:]
+	value := data[TLVValueOffset : TLVValueOffset+valueLen]
 	tlv.VersionNumber = binary.BigEndian.Uint64(value)
 
 	return nil
