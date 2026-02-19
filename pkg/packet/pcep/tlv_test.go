@@ -397,7 +397,7 @@ var (
 	testIPv6LSPIdentifiers = NewIPv6LSPIdentifiers(
 		netip.MustParseAddr("2001:db8::1"),
 		netip.MustParseAddr("2001:db8::2"),
-		1, 2, [16]byte{},
+		1, 2, [IPv6AddrLen]byte{},
 	)
 
 	// Serialized TLV bytes for testIPv6LSPIdentifiers.
@@ -457,7 +457,7 @@ func TestIPv6LSPIdentifiers_MarshalLogObject(t *testing.T) {
 			&IPv6LSPIdentifiers{
 				LSPID:            1,
 				TunnelID:         2,
-				ExtendedTunnelID: [16]byte{},
+				ExtendedTunnelID: [IPv6AddrLen]byte{},
 			},
 			map[string]interface{}{
 				"lspID":            uint16(1),

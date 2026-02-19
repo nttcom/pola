@@ -1270,6 +1270,12 @@ type SRPolicyCandidatePathIdentifier struct {
 	OriginatorAddr netip.Addr // After DecodeFromBytes, IPv4 addresses are stored as native IPv4 (upper 12 bytes zero), not IPv4-mapped IPv6
 }
 
+const (
+	SRPolicyCPathIDASNOffset  = 4
+	SRPolicyCPathIDAddrOffset = 8
+	SRPolicyCPathIDIPv4Offset = 12
+)
+
 func (tlv *SRPolicyCandidatePathIdentifier) DecodeFromBytes(data []byte) error {
 	valueLen, err := decodeTLVLength(data, false)
 	if err != nil {
@@ -1277,19 +1283,18 @@ func (tlv *SRPolicyCandidatePathIdentifier) DecodeFromBytes(data []byte) error {
 	}
 
 	value := data[TLVValueOffset : TLVValueOffset+valueLen]
-
-	if len(value) < 8+16 {
-		return fmt.Errorf("SRPolicyCandidatePathIdentifier: value too short for OriginatorAddr")
+	if len(value) != int(TLVSRPolicyCPathIDValueLength) {
+		return fmt.Errorf("SRPolicyCandidatePathIdentifier: invalid value length, expected %d, got %d", TLVSRPolicyCPathIDValueLength, len(value))
 	}
 
-	addrBytes := value[8 : 8+16]
+	addrBytes := value[SRPolicyCPathIDAddrOffset : SRPolicyCPathIDAddrOffset+IPv6AddrLen]
 
 	if isIPv4Bytes(addrBytes) {
-		var v4 [4]byte
-		copy(v4[:], addrBytes[12:])
+		var v4 [IPv4AddrLen]byte
+		copy(v4[:], addrBytes[SRPolicyCPathIDIPv4Offset:])
 		tlv.OriginatorAddr = netip.AddrFrom4(v4)
 	} else {
-		var addr16 [16]byte
+		var addr16 [IPv6AddrLen]byte
 		copy(addr16[:], addrBytes)
 		tlv.OriginatorAddr = netip.AddrFrom16(addr16)
 	}
@@ -1310,13 +1315,13 @@ func (tlv *SRPolicyCandidatePathIdentifier) Serialize() []byte {
 	switch {
 	case !addr.IsValid():
 		// Invalid or zero-value address: serialize as all zeros to avoid panic.
-		var addr16 [16]byte
+		var addr16 [IPv6AddrLen]byte
 		buf = append(buf, addr16[:]...)
 	case addr.Is4():
 		// IPv4 address encoded into last 4 bytes of 16-byte zero-padded field
 		ipv4 := addr.As4()
-		var addr16 [16]byte
-		copy(addr16[12:], ipv4[:])
+		var addr16 [IPv6AddrLen]byte
+		copy(addr16[SRPolicyCPathIDIPv4Offset:], ipv4[:])
 		buf = append(buf, addr16[:]...)
 	case addr.Is6():
 		addr16 := addr.As16()
