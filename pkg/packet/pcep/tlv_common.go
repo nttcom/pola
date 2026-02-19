@@ -18,22 +18,30 @@ func decodeTLVLength(data []byte, allowPadding bool) (int, error) {
 	length := int(binary.BigEndian.Uint16(data[2:4]))
 	expected := TLVValueOffset + length
 
-	// Calculate the maximum allowed length considering optional padding.
-	maxAllowed := expected
-	if allowPadding && TLVAlignment > 0 {
-		maxAllowed = expected + int(TLVAlignment) - 1
+	// Validate length and optional padding strictly.
+	if len(data) < expected {
+		return 0, fmt.Errorf("tlv: invalid length (expected at least %d bytes, got %d)", expected, len(data))
 	}
 
-	if len(data) < expected || len(data) > maxAllowed {
-		return 0, fmt.Errorf("tlv: invalid length (expected between %d and %d bytes, got %d)", expected, maxAllowed, len(data))
+	// No padding case: length must match exactly.
+	if len(data) == expected {
+		return length, nil
+	}
+
+	// Padding is present; ensure it is allowed and correctly aligned.
+	if !allowPadding || TLVAlignment <= 0 {
+		return 0, fmt.Errorf("tlv: invalid length (expected %d bytes, got %d)", expected, len(data))
+	}
+
+	paddedExpected := int(paddedLength(uint16(expected), uint16(TLVAlignment)))
+	if len(data) != paddedExpected {
+		return 0, fmt.Errorf("tlv: invalid length (expected %d or %d bytes with padding, got %d)", expected, paddedExpected, len(data))
 	}
 
 	// If padding bytes exist, ensure they are all zero.
-	if len(data) > expected {
-		for _, b := range data[expected:] {
-			if b != 0 {
-				return 0, fmt.Errorf("tlv: invalid padding (expected zero bytes after offset %d)", expected)
-			}
+	for _, b := range data[expected:] {
+		if b != 0 {
+			return 0, fmt.Errorf("tlv: invalid padding (expected zero bytes after offset %d)", expected)
 		}
 	}
 
