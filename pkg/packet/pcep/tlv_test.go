@@ -1710,11 +1710,11 @@ func TestDecodeTLVs(t *testing.T) {
 // TestDecodeTLVs_SubTLVDecodeError tests that DecodeTLVs returns an error if a sub-TLV fails to decode.
 func TestDecodeTLVs_SubTLVDecodeError(t *testing.T) {
 	fixedPart := make([]byte, PathSetupTypeCapabilityFixedPartLength)
-	pstCount := []byte{0x01}
+	fixedPart[PathSetupTypeCapabilityPSTCountOffset] = 0x01 // Set PST count in fixed part
 	pathSetupType := []byte{0x00}
 	subTLV := append(tlvHeader(TLVStatefulPCECapability, 4), 0x01, 0x02)
 
-	value := append(append(fixedPart, pstCount...), pathSetupType...)
+	value := append(fixedPart, pathSetupType...)
 	value = append(value, subTLV...)
 
 	header := tlvHeader(TLVPathSetupTypeCapability, uint16(len(value)))
