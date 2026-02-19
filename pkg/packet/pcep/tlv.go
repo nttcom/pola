@@ -1050,6 +1050,9 @@ func (tlv *PathSetupTypeCapability) DecodeFromBytes(data []byte) error {
 	padded := paddedLength(uint16(pstNum), TLVAlignment)
 	subTLVOffset := PathSetupTypeCapabilityFixedPartLength + int(padded)
 
+	if subTLVOffset > len(value) {
+		return fmt.Errorf("PathSetupTypeCapability: value too short for subTLVs")
+	}
 	subTLVData := value[subTLVOffset:]
 	tlv.SubTLVs, err = DecodeTLVs(subTLVData)
 	if err != nil {
