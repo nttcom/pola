@@ -1309,7 +1309,7 @@ func (tlv *SRPolicyCandidatePathIdentifier) Serialize() []byte {
 		var addr16 [16]byte
 		buf = append(buf, addr16[:]...)
 	case addr.Is4():
-		// IPv4 → IPv4-mapped IPv6
+		// IPv4 address encoded into last 4 bytes of 16-byte zero-padded field
 		ipv4 := addr.As4()
 		var addr16 [16]byte
 		copy(addr16[12:], ipv4[:])
