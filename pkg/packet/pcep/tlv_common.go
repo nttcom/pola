@@ -10,7 +10,7 @@ import (
 	"fmt"
 )
 
-func decodeTLVLength(data []byte) (int, error) {
+func decodeTLVLength(data []byte, allowPadding bool) (int, error) {
 	if len(data) < TLVValueOffset {
 		return 0, fmt.Errorf("tlv: too short (got %d bytes, want ≥ %d)", len(data), TLVValueOffset)
 	}
@@ -18,8 +18,23 @@ func decodeTLVLength(data []byte) (int, error) {
 	length := int(binary.BigEndian.Uint16(data[2:4]))
 	expected := TLVValueOffset + length
 
-	if len(data) != expected {
-		return 0, fmt.Errorf("tlv: invalid length (expected %d bytes, got %d)", expected, len(data))
+	// Calculate the maximum allowed length considering optional padding.
+	maxAllowed := expected
+	if allowPadding && TLVAlignment > 0 {
+		maxAllowed = expected + int(TLVAlignment) - 1
+	}
+
+	if len(data) < expected || len(data) > maxAllowed {
+		return 0, fmt.Errorf("tlv: invalid length (expected between %d and %d bytes, got %d)", expected, maxAllowed, len(data))
+	}
+
+	// If padding bytes exist, ensure they are all zero.
+	if len(data) > expected {
+		for _, b := range data[expected:] {
+			if b != 0 {
+				return 0, fmt.Errorf("tlv: invalid padding (expected zero bytes after offset %d)", expected)
+			}
+		}
 	}
 
 	return length, nil

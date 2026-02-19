@@ -9,53 +9,68 @@ import "testing"
 
 func TestDecodeTLVLength(t *testing.T) {
 	tests := []struct {
-		name      string
-		data      []byte
-		wantLen   int
-		wantError bool
+		name         string
+		data         []byte
+		allowPadding bool
+		wantLen      int
+		wantError    bool
 	}{
 		{
-			name: "Valid TLV (length=4)",
-			data: []byte{
-				0x00, 0x01, // Type
-				0x00, 0x04, // Length = 4
-				0xAA, 0xBB, 0xCC, 0xDD, // Value (4 bytes)
-			},
-			wantLen:   4,
-			wantError: false,
+			name:         "Valid TLV, length=4, no padding, allowPadding=false",
+			data:         []byte{0x00, 0x01, 0x00, 0x04, 0xDE, 0xAD, 0xBE, 0xEF},
+			allowPadding: false,
+			wantLen:      4,
+			wantError:    false,
 		},
 		{
-			name: "Too short (< TLVValueOffset)",
-			data: []byte{
-				0x00, 0x01,
-				0x00,
-			},
-			wantError: true,
+			name:         "Valid TLV, length=4, no padding, allowPadding=true",
+			data:         []byte{0x00, 0x01, 0x00, 0x04, 0xDE, 0xAD, 0xBE, 0xEF},
+			allowPadding: true,
+			wantLen:      4,
+			wantError:    false,
 		},
 		{
-			name: "Invalid length (data shorter than expected)",
-			data: []byte{
-				0x00, 0x01,
-				0x00, 0x04, // Length = 4
-				0xAA, 0xBB, // Only 2 bytes
-			},
-			wantError: true,
+			name:         "Fixed length TLV, extra zero byte, allowPadding=false",
+			data:         []byte{0x00, 0x01, 0x00, 0x04, 0xDE, 0xAD, 0xBE, 0xEF, 0x00},
+			allowPadding: false,
+			wantError:    true,
 		},
 		{
-			name: "Invalid length (data longer than expected)",
-			data: []byte{
-				0x00, 0x01,
-				0x00, 0x02, // Length = 2
-				0xAA, 0xBB,
-				0xCC, 0xDD, // Extra bytes
-			},
-			wantError: true,
+			name:         "Too short TLV, less than header, allowPadding=false",
+			data:         []byte{0x00, 0x01, 0x00},
+			allowPadding: false,
+			wantError:    true,
+		},
+		{
+			name:         "Invalid length, shorter than value, allowPadding=false",
+			data:         []byte{0x00, 0x01, 0x00, 0x04, 0xDE, 0xAD},
+			allowPadding: false,
+			wantError:    true,
+		},
+		{
+			name:         "Invalid length, longer than value, allowPadding=false",
+			data:         []byte{0x00, 0x01, 0x00, 0x02, 0xDE, 0xAD, 0xBE, 0xEF},
+			allowPadding: false,
+			wantError:    true,
+		},
+		{
+			name:         "Valid TLV, zero padding, allowPadding=true",
+			data:         []byte{0x00, 0x01, 0x00, 0x02, 0xDE, 0xAD, 0x00, 0x00},
+			allowPadding: true,
+			wantLen:      2,
+			wantError:    false,
+		},
+		{
+			name:         "Invalid padding, non-zero bytes, allowPadding=true",
+			data:         []byte{0x00, 0x01, 0x00, 0x02, 0xDE, 0xAD, 0x01, 0x02},
+			allowPadding: true,
+			wantError:    true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotLen, err := decodeTLVLength(tt.data)
+			gotLen, err := decodeTLVLength(tt.data, tt.allowPadding)
 
 			if tt.wantError {
 				if err == nil {

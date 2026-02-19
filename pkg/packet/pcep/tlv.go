@@ -297,7 +297,7 @@ const definedStatefulPCEFlagsMask uint32 = LSPUpdateCapabilityBit |
 	ColorCapabilityBit
 
 func (tlv *StatefulPCECapability) DecodeFromBytes(data []byte) error {
-	valueLen, err := decodeTLVLength(data)
+	valueLen, err := decodeTLVLength(data, false)
 	if err != nil {
 		return fmt.Errorf("StatefulPCECapability: %w", err)
 	}
@@ -410,7 +410,7 @@ type SymbolicPathName struct {
 }
 
 func (tlv *SymbolicPathName) DecodeFromBytes(data []byte) error {
-	valueLen, err := decodeTLVLength(data)
+	valueLen, err := decodeTLVLength(data, true)
 	if err != nil {
 		return fmt.Errorf("SymbolicPathName: %w", err)
 	}
@@ -478,7 +478,7 @@ const (
 )
 
 func (tlv *IPv4LSPIdentifiers) DecodeFromBytes(data []byte) error {
-	valueLen, err := decodeTLVLength(data)
+	valueLen, err := decodeTLVLength(data, false)
 	if err != nil {
 		return fmt.Errorf("IPv4LSPIdentifiers: %w", err)
 	}
@@ -575,7 +575,7 @@ const (
 )
 
 func (tlv *IPv6LSPIdentifiers) DecodeFromBytes(data []byte) error {
-	valueLen, err := decodeTLVLength(data)
+	valueLen, err := decodeTLVLength(data, false)
 	if err != nil {
 		return fmt.Errorf("IPv6LSPIdentifiers: %w", err)
 	}
@@ -659,7 +659,7 @@ type LSPDBVersion struct {
 }
 
 func (tlv *LSPDBVersion) DecodeFromBytes(data []byte) error {
-	valueLen, err := decodeTLVLength(data)
+	valueLen, err := decodeTLVLength(data, false)
 	if err != nil {
 		return fmt.Errorf("LSPDBVersion: %w", err)
 	}
@@ -736,7 +736,7 @@ const (
 )
 
 func (tlv *SRPCECapability) DecodeFromBytes(data []byte) error {
-	valueLen, err := decodeTLVLength(data)
+	valueLen, err := decodeTLVLength(data, false)
 	if err != nil {
 		return fmt.Errorf("SRPCECapability: %w", err)
 	}
@@ -858,7 +858,7 @@ type PathSetupType struct {
 const PathSetupTypeValueOffset = 3
 
 func (tlv *PathSetupType) DecodeFromBytes(data []byte) error {
-	valueLen, err := decodeTLVLength(data)
+	valueLen, err := decodeTLVLength(data, false)
 	if err != nil {
 		return fmt.Errorf("PathSetupType: %w", err)
 	}
@@ -868,7 +868,6 @@ func (tlv *PathSetupType) DecodeFromBytes(data []byte) error {
 	}
 
 	value := data[TLVValueOffset : TLVValueOffset+valueLen]
-
 	tlv.PathSetupType = Pst(value[PathSetupTypeValueOffset])
 
 	return nil
@@ -919,7 +918,7 @@ const (
 )
 
 func (tlv *ExtendedAssociationID) DecodeFromBytes(data []byte) error {
-	valueLen, err := decodeTLVLength(data)
+	valueLen, err := decodeTLVLength(data, false)
 	if err != nil {
 		return fmt.Errorf("ExtendedAssociationID: %w", err)
 	}
@@ -1020,7 +1019,7 @@ const (
 )
 
 func (tlv *PathSetupTypeCapability) DecodeFromBytes(data []byte) error {
-	valueLen, err := decodeTLVLength(data)
+	valueLen, err := decodeTLVLength(data, false)
 	if err != nil {
 		return fmt.Errorf("PathSetupTypeCapability: %w", err)
 	}
@@ -1191,7 +1190,7 @@ type AssocTypeList struct {
 }
 
 func (tlv *AssocTypeList) DecodeFromBytes(data []byte) error {
-	valueLen, err := decodeTLVLength(data)
+	valueLen, err := decodeTLVLength(data, false)
 	if err != nil {
 		return fmt.Errorf("AssocTypeList: %w", err)
 	}
@@ -1272,7 +1271,7 @@ type SRPolicyCandidatePathIdentifier struct {
 }
 
 func (tlv *SRPolicyCandidatePathIdentifier) DecodeFromBytes(data []byte) error {
-	valueLen, err := decodeTLVLength(data)
+	valueLen, err := decodeTLVLength(data, false)
 	if err != nil {
 		return fmt.Errorf("SRPolicyCandidatePathIdentifier: %w", err)
 	}
@@ -1351,7 +1350,7 @@ type SRPolicyCandidatePathPreference struct {
 }
 
 func (tlv *SRPolicyCandidatePathPreference) DecodeFromBytes(data []byte) error {
-	valueLen, err := decodeTLVLength(data)
+	valueLen, err := decodeTLVLength(data, false)
 	if err != nil {
 		return fmt.Errorf("SRPolicyCandidatePathPreference: %w", err)
 	}
@@ -1406,7 +1405,7 @@ type Color struct {
 }
 
 func (tlv *Color) DecodeFromBytes(data []byte) error {
-	valueLen, err := decodeTLVLength(data)
+	valueLen, err := decodeTLVLength(data, false)
 	if err != nil {
 		return fmt.Errorf("Color: %w", err)
 	}
@@ -1463,7 +1462,7 @@ type UndefinedTLV struct {
 }
 
 func (tlv *UndefinedTLV) DecodeFromBytes(data []byte) error {
-	valueLen, err := decodeTLVLength(data)
+	valueLen, err := decodeTLVLength(data, true)
 	if err != nil {
 		return fmt.Errorf("UndefinedTLV: %w", err)
 	}
