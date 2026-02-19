@@ -745,7 +745,7 @@ func (tlv *SRPCECapability) DecodeFromBytes(data []byte) error {
 		return fmt.Errorf("SRPCECapability: invalid value length %d", valueLen)
 	}
 
-	val := data[TLVValueOffset:]
+	val := data[TLVValueOffset : TLVValueOffset+valueLen]
 
 	flags := val[SRPCECapabilityFlagsOffset]
 	tlv.HasUnlimitedMaxSIDDepth = IsBitSet(flags, UnlimitedMaximumSIDDepthFlag)
