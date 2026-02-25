@@ -4,7 +4,7 @@ preinit:
     - cmd: modprobe mpls_gso
     - cmd: modprobe mpls_iptunnel
     # Install Pola Docker Images
-    - cmd: NAME_IMAGE=pola:latest
+    - cmd: NAME_IMAGE=pola:latest-dev
     - cmd: if [ "$(docker image ls -q $NAME_IMAGE)" = "" ]; then docker build -t $NAME_IMAGE -f ../package/pola.Dockerfile ../package;fi
     # Install FRR Docker Images
     - cmd: NAME_IMAGE=frr:latest
@@ -20,7 +20,7 @@ postinit:
 
 nodes:
   - name: pola
-    image: pola:latest
+    image: pola:latest-dev
     interfaces:
     - { name: net0, type: bridge, args: Switch }
   - name: pe01

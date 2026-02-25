@@ -1,4 +1,4 @@
-FROM ghcr.io/nttcom/pola:latest
+FROM ghcr.io/nttcom/pola:latest-dev
 LABEL maintainer "Motoki TAKENAKA <m.takenaka@ntt.com>"
 
 SHELL ["/bin/bash", "-c"]

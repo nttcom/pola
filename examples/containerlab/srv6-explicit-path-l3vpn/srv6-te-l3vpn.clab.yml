@@ -8,7 +8,7 @@ topology:
   nodes:
     pola-pce:
       kind: linux
-      image: ghcr.io/nttcom/pola:latest
+      image: ghcr.io/nttcom/pola:latest-dev
       binds:
         - polad/polad.yaml:/polad.yaml
         - sr-policies/pe01-policy1.yaml:/pe01-policy1.yaml
