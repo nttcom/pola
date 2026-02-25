@@ -84,4 +84,7 @@ jobs:
         run: |
           cosign sign --recursive --yes \
             --annotations env=${{ matrix.name }} \
+            --annotations git.sha=${{ github.sha }} \
+            --annotations git.ref=${{ github.ref }} \
+            --annotations workflow.url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} \
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
