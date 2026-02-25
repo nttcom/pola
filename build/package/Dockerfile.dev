@@ -1,0 +1,34 @@
+FROM golang:1.26.5
+
+LABEL org.opencontainers.image.authors="Motoki TAKENAKA <m.takenaka@ntt.com>, Wataru MISHIMA <w.mishima@ntt.com>"
+
+WORKDIR /pola
+
+# Cache Go dependencies
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+# Install packages
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+    bash-completion curl iproute2 iputils-ping net-tools vim \
+ && rm -rf /var/lib/apt/lists/*
+
+# Install Pola PCE binaries
+RUN go install ./cmd/...
+
+# Enable bash completion for interactive shells
+RUN echo 'if [ -f /etc/bash_completion ] && ! shopt -oq posix; then . /etc/bash_completion; fi' >> /root/.bashrc
+
+SHELL ["/bin/bash", "-c"]
+
+# Add pola completion
+RUN mkdir -p /usr/share/bash-completion/completions \
+ && pola completion bash > /usr/share/bash-completion/completions/pola
+
+# By default, polad uses polad.yaml from the working directory.
+# Users can override the arguments at runtime if needed.
+ENTRYPOINT ["polad"]
+CMD ["-f", "polad.yaml"]
