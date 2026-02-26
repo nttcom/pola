@@ -129,8 +129,7 @@ func GetTED(client pb.PCEServiceClient) (*table.LsTED, error) {
 	}
 
 	ted := &table.LsTED{
-		ID:    1,
-		Nodes: make(map[uint32]map[string]*table.LsNode),
+		Nodes: make(map[string]*table.LsNode),
 	}
 
 	initializeLsNodes(ted, ret.GetLsNodes())
@@ -153,38 +152,38 @@ func initializeLsNodes(ted *table.LsTED, nodes []*pb.LsNode) {
 		lsNode.SrgbBegin = node.GetSrgbBegin()
 		lsNode.SrgbEnd = node.GetSrgbEnd()
 
-		if _, ok := ted.Nodes[lsNode.ASN]; !ok {
-			ted.Nodes[lsNode.ASN] = map[string]*table.LsNode{}
+		if ted.Nodes == nil {
+			ted.Nodes = map[string]*table.LsNode{}
 		}
-		ted.Nodes[lsNode.ASN][lsNode.RouterID] = lsNode
+		ted.Nodes[lsNode.RouterID] = lsNode
 	}
 }
 
 func addLsNode(ted *table.LsTED, node *pb.LsNode) error {
 	for _, link := range node.GetLsLinks() {
-		localNode := ted.Nodes[link.LocalAsn][link.LocalRouterId]
-		remoteNode := ted.Nodes[link.RemoteAsn][link.RemoteRouterId]
+		localNode := ted.Nodes[link.LocalRouterId]
+		remoteNode := ted.Nodes[link.RemoteRouterId]
 		lsLink, err := createLsLink(localNode, remoteNode, link)
 		if err != nil {
 			return err
 		}
-		ted.Nodes[node.GetAsn()][node.GetRouterId()].Links = append(ted.Nodes[node.GetAsn()][node.GetRouterId()].Links, lsLink)
+		ted.Nodes[node.GetRouterId()].Links = append(ted.Nodes[node.GetRouterId()].Links, lsLink)
 	}
 
 	for _, prefix := range node.LsPrefixes {
-		lsPrefix, err := createLsPrefix(ted.Nodes[node.GetAsn()][node.GetRouterId()], prefix)
+		lsPrefix, err := createLsPrefix(ted.Nodes[node.GetRouterId()], prefix)
 		if err != nil {
 			return err
 		}
-		ted.Nodes[node.GetAsn()][node.GetRouterId()].Prefixes = append(ted.Nodes[node.GetAsn()][node.GetRouterId()].Prefixes, lsPrefix)
+		ted.Nodes[node.GetRouterId()].Prefixes = append(ted.Nodes[node.GetRouterId()].Prefixes, lsPrefix)
 	}
 
 	for _, srv6SID := range node.LsSrv6Sids {
-		lsSrv6SID, err := createSrv6SID(ted.Nodes[node.GetAsn()][node.GetRouterId()], srv6SID)
+		lsSrv6SID, err := createSrv6SID(ted.Nodes[node.GetRouterId()], srv6SID)
 		if err != nil {
 			return err
 		}
-		ted.Nodes[node.GetAsn()][node.GetRouterId()].SRv6SIDs = append(ted.Nodes[node.GetAsn()][node.GetRouterId()].SRv6SIDs, lsSrv6SID)
+		ted.Nodes[node.GetRouterId()].SRv6SIDs = append(ted.Nodes[node.GetRouterId()].SRv6SIDs, lsSrv6SID)
 	}
 
 	return nil

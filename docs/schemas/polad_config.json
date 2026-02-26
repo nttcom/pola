@@ -80,6 +80,9 @@
                             "enum": [
                                 "gobgp"
                             ]
+                        },
+                        "asn": {
+                            "type": "string"
                         }
                     },
                     "required": [

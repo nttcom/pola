@@ -32,14 +32,14 @@ type PCEOptions struct {
 	GRPCPort  string
 	TEDEnable bool
 	USidMode  bool
+	ASN       string
 }
 
 func NewPCE(o *PCEOptions, logger *zap.Logger, tedElemsChan chan []table.TEDElem) Error {
 	s := &Server{logger: logger}
 	if o.TEDEnable {
 		s.ted = &table.LsTED{
-			ID:    1,
-			Nodes: map[uint32]map[string]*table.LsNode{},
+			Nodes: map[string]*table.LsNode{},
 		}
 
 		// Update TED
@@ -47,10 +47,9 @@ func NewPCE(o *PCEOptions, logger *zap.Logger, tedElemsChan chan []table.TEDElem
 			for {
 				tedElems := <-tedElemsChan
 				ted := &table.LsTED{
-					ID:    s.ted.ID,
-					Nodes: map[uint32]map[string]*table.LsNode{},
+					Nodes: map[string]*table.LsNode{},
 				}
-				ted.Update(tedElems)
+				ted.Update(tedElems, o.ASN)
 				s.ted = ted
 				logger.Debug("Update TED")
 			}

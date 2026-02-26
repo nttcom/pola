@@ -12,6 +12,7 @@ global:
   ted:
     enable: true
     source: "gobgp"
+    asn: 65000
   gobgp:
     grpcClient:
       address: "10.0.0.4"

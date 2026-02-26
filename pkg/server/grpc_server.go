@@ -80,7 +80,7 @@ func buildSegmentList(s *APIServer, input *pb.CreateSRPolicyRequest, disablePath
 			return nil, netip.Addr{}, netip.Addr{}, err
 		}
 
-		segmentList, err = getSegmentList(inputSRPolicy, input.GetAsn(), s.pce.ted)
+		segmentList, err = getSegmentList(inputSRPolicy, s.pce.ted)
 		if err != nil {
 			return nil, netip.Addr{}, netip.Addr{}, err
 		}
@@ -297,14 +297,14 @@ func getSyncedPCEPSession(pce *Server, addr []byte) (*Session, error) {
 }
 
 func getLoopbackAddr(pce *Server, asn uint32, routerID string) (netip.Addr, error) {
-	node, ok := pce.ted.Nodes[asn][routerID]
+	node, ok := pce.ted.Nodes[routerID]
 	if !ok {
 		return netip.Addr{}, fmt.Errorf("no node with AS %d and router ID %s", asn, routerID)
 	}
 	return node.LoopbackAddr()
 }
 
-func getSegmentList(inputSRPolicy *pb.SRPolicy, asn uint32, ted *table.LsTED) ([]table.Segment, error) {
+func getSegmentList(inputSRPolicy *pb.SRPolicy, ted *table.LsTED) ([]table.Segment, error) {
 	var segmentList []table.Segment
 
 	switch inputSRPolicy.GetType() {
@@ -339,7 +339,6 @@ func getSegmentList(inputSRPolicy *pb.SRPolicy, asn uint32, ted *table.LsTED) ([
 				inputSRPolicy.GetSrcRouterId(),
 				inputSRPolicy.GetDstRouterId(),
 				waypoints,
-				asn,
 				metricType,
 				ted,
 			)
@@ -347,7 +346,6 @@ func getSegmentList(inputSRPolicy *pb.SRPolicy, asn uint32, ted *table.LsTED) ([
 			return cspf.CSPF(
 				inputSRPolicy.GetSrcRouterId(),
 				inputSRPolicy.GetDstRouterId(),
-				asn,
 				metricType,
 				ted,
 			)
@@ -441,10 +439,8 @@ func (s *APIServer) GetTED(ctx context.Context, req *pb.GetTEDRequest) (*pb.GetT
 	}
 
 	for _, nodes := range s.pce.ted.Nodes {
-		for _, node := range nodes {
-			if n := convertLsNode(node, s.logger); n != nil {
-				ret.LsNodes = append(ret.LsNodes, n)
-			}
+		if n := convertLsNode(nodes, s.logger); n != nil {
+			ret.LsNodes = append(ret.LsNodes, n)
 		}
 	}
 

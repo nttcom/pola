@@ -365,20 +365,14 @@ func (ss *Session) computePathFromTED(sr pcep.StateReport) ([]table.Segment, err
 		return nil, fmt.Errorf("failed to extract router IDs: %w", err)
 	}
 
-	asn, err := ss.extractASN(srcRouterID)
-	if err != nil {
-		ss.logger.Error("Could not determine ASN", zap.Error(err))
-	}
-
 	metricType := ss.selectMetricType(sr)
 
 	ss.logger.Debug("Computed CSPF parameters",
 		zap.String("srcRouterID", srcRouterID),
 		zap.String("dstRouterID", dstRouterID),
-		zap.Uint32("asn", asn),
 		zap.String("metricType", metricType.String()))
 
-	segmentList, err := cspf.CSPF(srcRouterID, dstRouterID, asn, metricType, ss.ted)
+	segmentList, err := cspf.CSPF(srcRouterID, dstRouterID, metricType, ss.ted)
 	if err != nil {
 		return nil, fmt.Errorf("CSPF computation failed: %w", err)
 	}
@@ -414,29 +408,18 @@ func (ss *Session) extractSrcDstRouterIDs(sr pcep.StateReport) (string, string, 
 }
 
 func (ss *Session) findRouterIDFromAddress(addr netip.Addr) (string, error) {
-	for _, nodes := range ss.ted.Nodes {
-		for routerID, node := range nodes {
-			if node.RouterID == addr.String() {
-				return routerID, nil
-			}
+	for routerID, node := range ss.ted.Nodes {
+		if node.RouterID == addr.String() {
+			return routerID, nil
+		}
 
-			for _, prefix := range node.Prefixes {
-				if prefix.Prefix.Addr() == addr {
-					return routerID, nil
-				}
+		for _, prefix := range node.Prefixes {
+			if prefix.Prefix.Addr() == addr {
+				return routerID, nil
 			}
 		}
 	}
 	return "", fmt.Errorf("address %s not found in TED", addr)
-}
-
-func (ss *Session) extractASN(srcRouterID string) (uint32, error) {
-	for asn, nodes := range ss.ted.Nodes {
-		if _, exists := nodes[srcRouterID]; exists {
-			return asn, nil
-		}
-	}
-	return 0, fmt.Errorf("ASN not found for router %s", srcRouterID)
 }
 
 func (ss *Session) selectMetricType(sr pcep.StateReport) table.MetricType {

@@ -94,6 +94,7 @@ func main() {
 		GRPCPort:  c.Global.GRPCServer.Port,
 		TEDEnable: c.Global.TED.Enable,
 		USidMode:  c.Global.USidMode,
+		ASN:       c.Global.TED.ASN,
 	}
 	if serverErr := server.NewPCE(o, logger, tedElemsChan); serverErr.Error != nil {
 		logger.Panic("Failed to start new server", zap.String("server", serverErr.Server), zap.Error(serverErr.Error))
