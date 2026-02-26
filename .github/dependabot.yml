@@ -9,10 +9,6 @@ updates:
     directory: "/build/package"
     schedule:
       interval: "weekly"
-  - package-ecosystem: "docker"
-    directory: "/examples/package"
-    schedule:
-      interval: "weekly"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
