@@ -12,7 +12,7 @@ docker pull ghcr.io/nttcom/pola:latest
 
 ### Option 2: Build the Docker Image Locally
 
-To build the Docker image locally, run the following command from the repository root (not from `build/package`):
+To build the Docker image locally, run the following command from the repository root (`pola/`, which contains `build/`):
 
 ```bash
 docker build -t <image-name> -f build/package/Dockerfile .
@@ -74,7 +74,7 @@ docker run -d --network pcep_net --ip <PCE Address> \
     -v "$LOGDIR:$LOGDIR" \
     -w "/$MOUNTDIR" \
     ghcr.io/nttcom/pola:latest \
-    polad -f polad.yaml
+    -f polad.yaml
 
 # Connect the PCC container to the network
 docker network connect pcep_net <PCC container name>
