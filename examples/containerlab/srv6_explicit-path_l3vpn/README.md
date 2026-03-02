@@ -50,7 +50,7 @@ Start Containerlab network
 
 ```bash
 git clone https://github.com/nttcom/pola
-cd pola/examples/containerlab/srv6_te_l3vpn
+cd pola/examples/containerlab/srv6_explicit-path_l3vpn
 
 sudo containerlab deploy
 ```
@@ -58,7 +58,7 @@ sudo containerlab deploy
 Wait for starting vMX after execute `sudo containerlab deploy` (it takes some time).
 
 ```bash
-$ docker logs clab-srv6_te_l3vpn-pe01 -f
+$ docker logs clab-srv6_explicit-path_l3vpn-pe01 -f
 <snip.>
 2023-02-20 15:03:26,233: launch     INFO     Startup complete in: 0:09:06.969773
 ```
@@ -68,7 +68,7 @@ $ docker logs clab-srv6_te_l3vpn-pe01 -f
 Connect to PCEP container, check PCEP session and SR policy
 
 ```bash
-$ sudo docker exec -it clab-srv6_te_l3vpn-pola-pce bash
+$ sudo docker exec -it clab-srv6_explicit-path_l3vpn-pola-pce bash
 
 # polad -f polad.yaml  > /dev/null 2>&1 & 
 
@@ -113,7 +113,7 @@ Enter container pe01 and check SR Policy
 
 ```bash
 # exit
-$ ssh clab-srv6_te_l3vpn-pe01 -l admin
+$ ssh clab-srv6_explicit-path_l3vpn-pe01 -l admin
 
 admin@pe01> show path-computation-client lsp
 
@@ -168,7 +168,7 @@ Enter container host01 and check SRv6-TE
 ```bash
 admin@pe01> exit
 
-$ docker exec -it  clab-srv6_te_l3vpn-host01 /bin/bash
+$ docker exec -it  clab-srv6_explicit-path_l3vpn-host01 /bin/bash
 
 bash-5.1# ping 192.168.2.1
 PING 192.168.2.1 (192.168.2.1) 56(84) bytes of data.
@@ -186,7 +186,7 @@ PING fd00:a2::1(fd00:a2::1) 56 data bytes
 * Capture on containerlab host
 
 ```bash
-$ sudo ip netns exec clab-srv6_te_l3vpn-pe01 tcpdump -nni eth1
+$ sudo ip netns exec clab-srv6_explicit-path_l3vpn-pe01 tcpdump -nni eth1
 tcpdump: verbose output suppressed, use -v or -vv for full protocol decode
 listening on eth1, link-type EN10MB (Ethernet), capture size 262144 bytes
 ^C01:05:32.064070 IP6 fd00:ffff::1 > fd00:ffff:3:0:1::: srcrt (len=4, type=4, segleft=1[|srcrt]
@@ -201,5 +201,5 @@ Also, you can analyze with Wireshark on your Local PC
 ([ref: Packet capture & Wireshark](https://containerlab.dev/manual/wireshark/)).
 
 ```bash
-ssh $clab_host "sudo -S ip netns exec clab-srv6_te_l3vpn-pe01 tcpdump -U -nni eth1 -w -"  | wireshark -k -i -
+ssh $clab_host "sudo -S ip netns exec clab-srv6_explicit-path_l3vpn-pe01 tcpdump -U -nni eth1 -w -"  | wireshark -k -i -
 ```
