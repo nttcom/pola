@@ -60,4 +60,4 @@ Your contributions are highly appreciated.
 Pola PCE is licensed under the
 [MIT license](https://en.wikipedia.org/wiki/MIT_License).  
 For the full license text, see
-[LICENSE](https://github.com/nttcom/pola/blob/master/LICENSE).
+[LICENSE](https://github.com/nttcom/pola/blob/main/LICENSE).
