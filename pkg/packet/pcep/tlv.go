@@ -1361,7 +1361,7 @@ func (tlv *SRPolicyCandidatePathPreference) DecodeFromBytes(data []byte) error {
 		return fmt.Errorf("SRPolicyCandidatePathPreference: %w", err)
 	}
 
-	if valueLen != 4 {
+	if valueLen != int(TLVSRPolicyCPathPreferenceValueLength) {
 		return fmt.Errorf("SRPolicyCandidatePathPreference: invalid value length %d", valueLen)
 	}
 
@@ -1416,7 +1416,7 @@ func (tlv *Color) DecodeFromBytes(data []byte) error {
 		return fmt.Errorf("Color: %w", err)
 	}
 
-	if valueLen != 4 {
+	if valueLen != int(TLVColorValueLength) {
 		return fmt.Errorf("Color: invalid value length %d", valueLen)
 	}
 
