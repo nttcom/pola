@@ -427,6 +427,7 @@ func (tlv *SymbolicPathName) DecodeFromBytes(data []byte) error {
 
 func (tlv *SymbolicPathName) Serialize() []byte {
 	value := []byte(tlv.Name)
+
 	padding := (TLVAlignment - (len(value) % TLVAlignment)) % TLVAlignment
 	value = append(value, make([]byte, padding)...)
 
@@ -675,21 +676,15 @@ func (tlv *LSPDBVersion) DecodeFromBytes(data []byte) error {
 }
 
 func (tlv *LSPDBVersion) Serialize() []byte {
-	buf := []byte{}
+	value := make([]byte, TLVLSPDBVersionValueLength)
 
-	typ := make([]byte, 2)
-	binary.BigEndian.PutUint16(typ, uint16(tlv.Type()))
-	buf = append(buf, typ...)
+	binary.BigEndian.PutUint64(value, tlv.VersionNumber)
 
-	length := make([]byte, 2)
-	binary.BigEndian.PutUint16(length, TLVLSPDBVersionValueLength)
-	buf = append(buf, length...)
-
-	val := make([]byte, TLVLSPDBVersionValueLength)
-	binary.BigEndian.PutUint64(val, tlv.VersionNumber)
-
-	buf = append(buf, val...)
-	return buf
+	return AppendByteSlices(
+		Uint16ToByteSlice(tlv.Type()),
+		Uint16ToByteSlice(TLVLSPDBVersionValueLength),
+		value,
+	)
 }
 
 func (tlv *LSPDBVersion) MarshalLogObject(enc zapcore.ObjectEncoder) error {
@@ -877,6 +872,7 @@ func (tlv *PathSetupType) DecodeFromBytes(data []byte) error {
 
 func (tlv *PathSetupType) Serialize() []byte {
 	value := make([]byte, TLVPathSetupTypeValueLength)
+
 	value[PathSetupTypeValueOffset] = byte(tlv.PathSetupType)
 
 	return AppendByteSlices(
@@ -961,6 +957,7 @@ func (tlv *ExtendedAssociationID) Serialize() []byte {
 	}
 
 	value := make([]byte, length)
+
 	binary.BigEndian.PutUint32(value[ExtendedAssociationIDColorOffset:ExtendedAssociationIDColorOffset+TLVColorValueLength], tlv.Color)
 	copy(value[ExtendedAssociationIDEndpointOffset:], tlv.Endpoint.AsSlice())
 
@@ -1062,36 +1059,36 @@ func (tlv *PathSetupTypeCapability) DecodeFromBytes(data []byte) error {
 }
 
 func (tlv *PathSetupTypeCapability) Serialize() []byte {
-	buf := []byte{}
+	pstCount := uint16(len(tlv.PathSetupTypes))
+	pstPaddedLen := tlv.paddedPSTLength()
 
-	typ := make([]byte, 2)
-	binary.BigEndian.PutUint16(typ, uint16(tlv.Type()))
-	buf = append(buf, typ...)
+	fixedPartLen := uint16(PathSetupTypeCapabilityFixedPartLength) + pstPaddedLen
 
-	numOfPst := uint16(len(tlv.PathSetupTypes))
-	paddedPSTLen := tlv.paddedPSTLength()
-
-	length := uint16(PathSetupTypeCapabilityFixedPartLength) + paddedPSTLen
+	subTLVsLen := uint16(0)
 	for _, subTLV := range tlv.SubTLVs {
-		length += subTLV.Len()
+		subTLVsLen += subTLV.Len()
 	}
 
-	lengthBytes := make([]byte, 2)
-	binary.BigEndian.PutUint16(lengthBytes, length)
-	buf = append(buf, lengthBytes...)
+	totalLen := fixedPartLen + subTLVsLen
 
-	val := make([]byte, PathSetupTypeCapabilityFixedPartLength+paddedPSTLen)
-	val[PathSetupTypeCapabilityPSTCountOffset] = byte(numOfPst)
+	value := make([]byte, fixedPartLen)
+	value[PathSetupTypeCapabilityPSTCountOffset] = byte(pstCount)
+
 	for i, pst := range tlv.PathSetupTypes {
-		val[PathSetupTypeCapabilityFixedPartLength+i] = byte(pst)
+		value[PathSetupTypeCapabilityFixedPartLength+i] = byte(pst)
 	}
 
-	buf = append(buf, val...)
+	subTLVsBytes := []byte{}
 	for _, subTLV := range tlv.SubTLVs {
-		buf = append(buf, subTLV.Serialize()...)
+		subTLVsBytes = append(subTLVsBytes, subTLV.Serialize()...)
 	}
 
-	return buf
+	return AppendByteSlices(
+		Uint16ToByteSlice(tlv.Type()),
+		Uint16ToByteSlice(totalLen),
+		value,
+		subTLVsBytes,
+	)
 }
 
 func (tlv *PathSetupTypeCapability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
@@ -1212,27 +1209,23 @@ func (tlv *AssocTypeList) DecodeFromBytes(data []byte) error {
 }
 
 func (tlv *AssocTypeList) Serialize() []byte {
-	buf := []byte{}
+	valueLen := uint16(len(tlv.AssocTypes)) * 2
 
-	typ := make([]byte, 2)
-	binary.BigEndian.PutUint16(typ, uint16(tlv.Type()))
-	buf = append(buf, typ...)
+	padding := (TLVAlignment - (valueLen % TLVAlignment)) % TLVAlignment
 
-	length := uint16(len(tlv.AssocTypes)) * 2
-	lengthBytes := make([]byte, 2)
-	binary.BigEndian.PutUint16(lengthBytes, length)
-	buf = append(buf, lengthBytes...)
+	value := make([]byte, valueLen+padding)
 
+	offset := 0
 	for _, at := range tlv.AssocTypes {
-		binAt := make([]byte, 2)
-		binary.BigEndian.PutUint16(binAt, uint16(at))
-		buf = append(buf, binAt...)
+		binary.BigEndian.PutUint16(value[offset:offset+2], uint16(at))
+		offset += 2
 	}
-	if length%4 != 0 {
-		pad := make([]byte, 4-(length%4))
-		buf = append(buf, pad...)
-	}
-	return buf
+
+	return AppendByteSlices(
+		Uint16ToByteSlice(tlv.Type()),
+		Uint16ToByteSlice(valueLen),
+		value,
+	)
 }
 
 func (tlv *AssocTypeList) MarshalLogObject(enc zapcore.ObjectEncoder) error {
@@ -1275,6 +1268,8 @@ const (
 	SRPolicyCPathIDASNOffset  = 4
 	SRPolicyCPathIDAddrOffset = 8
 	SRPolicyCPathIDIPv4Offset = 12
+	DiscriminatorLen          = 4
+	ProtocolOriginPCEP        = 0x0a
 )
 
 func (tlv *SRPolicyCandidatePathIdentifier) DecodeFromBytes(data []byte) error {
@@ -1304,34 +1299,44 @@ func (tlv *SRPolicyCandidatePathIdentifier) DecodeFromBytes(data []byte) error {
 }
 
 func (tlv *SRPolicyCandidatePathIdentifier) Serialize() []byte {
-	buf := make([]byte, 0, TLVValueOffset+TLVSRPolicyCPathIDValueLength)
 
-	buf = append(buf, Uint16ToByteSlice(tlv.Type())...)
-	buf = append(buf, Uint16ToByteSlice(TLVSRPolicyCPathIDValueLength)...)
-	buf = append(buf, 0x0a, 0x00, 0x00, 0x00) // protocol origin (1 byte) + reserved (3 bytes)
-	buf = append(buf, 0x00, 0x00, 0x00, 0x00) // originator AS (4 bytes)
+	value := make([]byte, TLVSRPolicyCPathIDValueLength)
+
+	value[0] = ProtocolOriginPCEP
 
 	addr := tlv.OriginatorAddr
 
 	switch {
 	case !addr.IsValid():
-		// Invalid or zero-value address: serialize as all zeros to avoid panic.
-		var addr16 [IPv6AddrLen]byte
-		buf = append(buf, addr16[:]...)
+		// keep zero
+
 	case addr.Is4():
-		// IPv4 address encoded into last 4 bytes of 16-byte zero-padded field
 		ipv4 := addr.As4()
-		var addr16 [IPv6AddrLen]byte
-		copy(addr16[SRPolicyCPathIDIPv4Offset:], ipv4[:])
-		buf = append(buf, addr16[:]...)
+
+		copy(
+			value[SRPolicyCPathIDAddrOffset+SRPolicyCPathIDIPv4Offset:SRPolicyCPathIDAddrOffset+SRPolicyCPathIDIPv4Offset+IPv4AddrLen],
+			ipv4[:],
+		)
+
 	case addr.Is6():
-		addr16 := addr.As16()
-		buf = append(buf, addr16[:]...)
+		ipv6 := addr.As16()
+
+		copy(
+			value[SRPolicyCPathIDAddrOffset:SRPolicyCPathIDAddrOffset+IPv6AddrLen],
+			ipv6[:],
+		)
 	}
 
-	buf = append(buf, Uint32ToByteSlice(1)...) // discriminator (4 bytes)
+	binary.BigEndian.PutUint32(
+		value[SRPolicyCPathIDAddrOffset+IPv6AddrLen:SRPolicyCPathIDAddrOffset+IPv6AddrLen+DiscriminatorLen],
+		1, // TODO: set discriminator properly if needed
+	)
 
-	return buf
+	return AppendByteSlices(
+		Uint16ToByteSlice(tlv.Type()),
+		Uint16ToByteSlice(TLVSRPolicyCPathIDValueLength),
+		value,
+	)
 }
 
 func (tlv *SRPolicyCandidatePathIdentifier) MarshalLogObject(enc zapcore.ObjectEncoder) error {
@@ -1372,21 +1377,18 @@ func (tlv *SRPolicyCandidatePathPreference) DecodeFromBytes(data []byte) error {
 }
 
 func (tlv *SRPolicyCandidatePathPreference) Serialize() []byte {
-	buf := []byte{}
+	value := make([]byte, TLVSRPolicyCPathPreferenceValueLength)
 
-	typ := make([]byte, 2)
-	binary.BigEndian.PutUint16(typ, uint16(tlv.Type()))
-	buf = append(buf, typ...)
+	binary.BigEndian.PutUint32(
+		value,
+		tlv.Preference,
+	)
 
-	length := make([]byte, 2)
-	binary.BigEndian.PutUint16(length, TLVSRPolicyCPathPreferenceValueLength)
-	buf = append(buf, length...)
-
-	preference := make([]byte, 4)
-	binary.BigEndian.PutUint32(preference, tlv.Preference)
-	buf = append(buf, preference...)
-
-	return buf
+	return AppendByteSlices(
+		Uint16ToByteSlice(tlv.Type()),
+		Uint16ToByteSlice(TLVSRPolicyCPathPreferenceValueLength),
+		value,
+	)
 }
 
 func (tlv *SRPolicyCandidatePathPreference) MarshalLogObject(enc zapcore.ObjectEncoder) error {
@@ -1427,21 +1429,18 @@ func (tlv *Color) DecodeFromBytes(data []byte) error {
 }
 
 func (tlv *Color) Serialize() []byte {
-	buf := []byte{}
+	value := make([]byte, TLVColorValueLength)
 
-	typ := make([]byte, 2)
-	binary.BigEndian.PutUint16(typ, uint16(tlv.Type()))
-	buf = append(buf, typ...)
+	binary.BigEndian.PutUint32(
+		value,
+		tlv.Color,
+	)
 
-	length := make([]byte, 2)
-	binary.BigEndian.PutUint16(length, TLVColorValueLength)
-	buf = append(buf, length...)
-
-	color := make([]byte, 4)
-	binary.BigEndian.PutUint32(color, tlv.Color)
-	buf = append(buf, color...)
-
-	return buf
+	return AppendByteSlices(
+		Uint16ToByteSlice(tlv.Type()),
+		Uint16ToByteSlice(TLVColorValueLength),
+		value,
+	)
 }
 
 func (tlv *Color) MarshalLogObject(enc zapcore.ObjectEncoder) error {
