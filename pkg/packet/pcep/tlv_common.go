@@ -15,7 +15,7 @@ func decodeTLVLength(data []byte, allowPadding bool) (int, error) {
 		return 0, fmt.Errorf("tlv: too short (got %d bytes, want ≥ %d)", len(data), TLVValueOffset)
 	}
 
-	length := int(binary.BigEndian.Uint16(data[2:4]))
+	length := int(binary.BigEndian.Uint16(data[TLVLengthOffset:TLVValueOffset]))
 	expected := TLVValueOffset + length
 
 	// Validate length and optional padding strictly.
@@ -55,12 +55,16 @@ func paddedLength(n int, align int) int {
 	return n + (align - (n % align))
 }
 
+const (
+	IPv4InIPv6Offset = 12
+)
+
 // isIPv4Bytes returns true if the given 16-byte slice encodes an IPv4 address (upper 12 bytes zero).
 func isIPv4Bytes(b []byte) bool {
-	if len(b) != 16 {
+	if len(b) != IPv6AddrLen {
 		return false
 	}
-	for i := 0; i < 12; i++ {
+	for i := 0; i < IPv4InIPv6Offset; i++ {
 		if b[i] != 0 {
 			return false
 		}
