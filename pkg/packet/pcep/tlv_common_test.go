@@ -146,7 +146,7 @@ func TestIsIPv4Bytes(t *testing.T) {
 		want bool
 	}{
 		{
-			name: "Valid IPv4-mapped IPv6",
+			name: "Valid IPv4-compatible IPv6 (12 leading zero bytes)",
 			b:    append(make([]byte, 12), 192, 0, 2, 1),
 			want: true,
 		},
