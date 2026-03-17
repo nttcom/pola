@@ -1188,7 +1188,7 @@ type AssocTypeList struct {
 }
 
 func (tlv *AssocTypeList) DecodeFromBytes(data []byte) error {
-	valueLen, err := decodeTLVLength(data, false)
+	valueLen, err := decodeTLVLength(data, true)
 	if err != nil {
 		return fmt.Errorf("AssocTypeList: %w", err)
 	}
