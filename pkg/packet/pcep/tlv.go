@@ -1040,7 +1040,7 @@ func (tlv *PathSetupTypeCapability) DecodeFromBytes(data []byte) error {
 		tlv.PathSetupTypes = append(tlv.PathSetupTypes, Pst(value[offset]))
 	}
 
-	padded := paddedLength(uint16(pstNum), TLVAlignment)
+	padded := paddedLength(int(pstNum), TLVAlignment)
 	subTLVOffset := PathSetupTypeCapabilityFixedPartLength + int(padded)
 
 	if subTLVOffset > len(value) {
@@ -1150,8 +1150,8 @@ func (tlv *PathSetupTypeCapability) CapStrings() []string {
 }
 
 func (tlv *PathSetupTypeCapability) paddedPSTLength() uint16 {
-	numOfPst := uint16(len(tlv.PathSetupTypes))
-	return paddedLength(numOfPst, TLVAlignment)
+	numOfPst := len(tlv.PathSetupTypes)
+	return uint16(paddedLength(numOfPst, TLVAlignment))
 }
 
 type AssocType uint16

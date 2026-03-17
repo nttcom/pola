@@ -93,9 +93,9 @@ func TestDecodeTLVLength(t *testing.T) {
 func TestPaddedLength(t *testing.T) {
 	tests := []struct {
 		name     string
-		n        uint16
-		align    uint16
-		expected uint16
+		n        int
+		align    int
+		expected int
 	}{
 		{
 			name:     "Already aligned",

@@ -33,7 +33,7 @@ func decodeTLVLength(data []byte, allowPadding bool) (int, error) {
 		return 0, fmt.Errorf("tlv: invalid length (expected %d bytes, got %d)", expected, len(data))
 	}
 
-	paddedExpected := int(paddedLength(uint16(expected), uint16(TLVAlignment)))
+	paddedExpected := paddedLength(expected, TLVAlignment)
 	if len(data) != paddedExpected {
 		return 0, fmt.Errorf("tlv: invalid length (expected %d or %d bytes with padding, got %d)", expected, paddedExpected, len(data))
 	}
@@ -48,7 +48,7 @@ func decodeTLVLength(data []byte, allowPadding bool) (int, error) {
 	return length, nil
 }
 
-func paddedLength(n uint16, align uint16) uint16 {
+func paddedLength(n int, align int) int {
 	if n%align == 0 {
 		return n
 	}
