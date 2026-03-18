@@ -872,6 +872,26 @@ var (
 	}
 )
 
+func TestPathSetupTypeCapability_pstCount(t *testing.T) {
+	cases := map[string]struct {
+		numPST   int
+		expected int
+	}{
+		"BelowMax": {numPST: 10, expected: 10},
+		"AtMax":    {numPST: MaxPathSetupTypes, expected: MaxPathSetupTypes},
+		"AboveMax": {numPST: MaxPathSetupTypes + 10, expected: MaxPathSetupTypes},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			tlv := &PathSetupTypeCapability{
+				PathSetupTypes: make(Psts, tt.numPST),
+			}
+			assert.Equal(t, tt.expected, tlv.pstCount())
+		})
+	}
+}
+
 func TestPathSetupTypeCapability_DecodeFromBytes(t *testing.T) {
 	cases := map[string]TLVTestCase{
 		"ValidBasic":               {testPathSetupTypeCapabilityBasicBytes, testPathSetupTypeCapabilityBasic, false},

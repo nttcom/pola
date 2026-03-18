@@ -1015,7 +1015,19 @@ type PathSetupTypeCapability struct {
 const (
 	PathSetupTypeCapabilityFixedPartLength = 4
 	PathSetupTypeCapabilityPSTCountOffset  = 3
+	MaxPathSetupTypes                      = 255
 )
+
+func (tlv *PathSetupTypeCapability) pstCount() int {
+	if len(tlv.PathSetupTypes) > MaxPathSetupTypes {
+		return MaxPathSetupTypes
+	}
+	return len(tlv.PathSetupTypes)
+}
+
+func (tlv *PathSetupTypeCapability) paddedPSTLength() uint16 {
+	return uint16(paddedLength(tlv.pstCount(), TLVAlignment))
+}
 
 func (tlv *PathSetupTypeCapability) DecodeFromBytes(data []byte) error {
 	valueLen, err := decodeTLVLength(data, false)
@@ -1059,10 +1071,11 @@ func (tlv *PathSetupTypeCapability) DecodeFromBytes(data []byte) error {
 }
 
 func (tlv *PathSetupTypeCapability) Serialize() []byte {
-	pstCount := uint16(len(tlv.PathSetupTypes))
-	pstPaddedLen := tlv.paddedPSTLength()
+	pstCount := tlv.pstCount()
 
-	fixedPartLen := uint16(PathSetupTypeCapabilityFixedPartLength) + pstPaddedLen
+	pstPaddedLen := paddedLength(pstCount, TLVAlignment)
+
+	fixedPartLen := uint16(PathSetupTypeCapabilityFixedPartLength) + uint16(pstPaddedLen)
 
 	subTLVsLen := uint16(0)
 	for _, subTLV := range tlv.SubTLVs {
@@ -1074,8 +1087,9 @@ func (tlv *PathSetupTypeCapability) Serialize() []byte {
 	value := make([]byte, fixedPartLen)
 	value[PathSetupTypeCapabilityPSTCountOffset] = byte(pstCount)
 
-	for i, pst := range tlv.PathSetupTypes {
-		value[PathSetupTypeCapabilityFixedPartLength+i] = byte(pst)
+	for i := 0; i < pstCount; i++ {
+		value[PathSetupTypeCapabilityFixedPartLength+i] =
+			byte(tlv.PathSetupTypes[i])
 	}
 
 	subTLVsBytes := []byte{}
@@ -1139,19 +1153,16 @@ func (tlv *PathSetupTypeCapability) Len() uint16 {
 func (tlv *PathSetupTypeCapability) CapStrings() []string {
 	ret := []string{}
 
-	if slices.Contains(tlv.PathSetupTypes, PathSetupTypeSRTE) {
+	psts := tlv.PathSetupTypes[:tlv.pstCount()]
+
+	if slices.Contains(psts, PathSetupTypeSRTE) {
 		ret = append(ret, "SR-TE")
 	}
-	if slices.Contains(tlv.PathSetupTypes, PathSetupTypeSRv6TE) {
+	if slices.Contains(psts, PathSetupTypeSRv6TE) {
 		ret = append(ret, "SRv6-TE")
 	}
 
 	return ret
-}
-
-func (tlv *PathSetupTypeCapability) paddedPSTLength() uint16 {
-	numOfPst := len(tlv.PathSetupTypes)
-	return uint16(paddedLength(numOfPst, TLVAlignment))
 }
 
 type AssocType uint16
