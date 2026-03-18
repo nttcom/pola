@@ -151,17 +151,17 @@ func TestIsIPv4Bytes(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "Not IPv4-mapped (first byte non-zero)",
+			name: "Not IPv4-compatible (first byte non-zero)",
 			b:    append([]byte{1}, append(make([]byte, 11), 192, 0, 2, 1)...),
 			want: false,
 		},
 		{
-			name: "Not IPv4-mapped (random bytes in first 12)",
+			name: "Not IPv4-compatible (random bytes in first 12)",
 			b:    append([]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}, 192, 0, 2, 1),
 			want: false,
 		},
 		{
-			name: "Exactly 16 zero bytes (still IPv4?)",
+			name: "Exactly 16 zero bytes (IPv4-compatible all zeros)",
 			b:    make([]byte, 16),
 			want: true,
 		},
