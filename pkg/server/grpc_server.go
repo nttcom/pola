@@ -70,12 +70,23 @@ func buildSegmentList(s *APIServer, input *pb.CreateSRPolicyRequest, disablePath
 			return nil, netip.Addr{}, netip.Addr{}, errors.New("ted is disabled")
 		}
 
-		srcAddr, err = getLoopbackAddr(s.pce, input.GetAsn(), inputSRPolicy.GetSrcRouterId())
+		// Request ASN check
+		for _, node := range s.pce.ted.Nodes {
+			if node == nil {
+				return nil, netip.Addr{}, netip.Addr{}, errors.New("no node in TED")
+			}
+			if node.ASN != input.GetAsn() {
+				return nil, netip.Addr{}, netip.Addr{}, fmt.Errorf("request ASN %d does not match ted ASN %d", input.GetAsn(), node.ASN)
+			}
+			break
+		}
+
+		srcAddr, err = getLoopbackAddr(s.pce, inputSRPolicy.GetSrcRouterId())
 		if err != nil {
 			return nil, netip.Addr{}, netip.Addr{}, err
 		}
 
-		dstAddr, err = getLoopbackAddr(s.pce, input.GetAsn(), inputSRPolicy.GetDstRouterId())
+		dstAddr, err = getLoopbackAddr(s.pce, inputSRPolicy.GetDstRouterId())
 		if err != nil {
 			return nil, netip.Addr{}, netip.Addr{}, err
 		}
@@ -296,10 +307,10 @@ func getSyncedPCEPSession(pce *Server, addr []byte) (*Session, error) {
 	return pcepSession, nil
 }
 
-func getLoopbackAddr(pce *Server, asn uint32, routerID string) (netip.Addr, error) {
+func getLoopbackAddr(pce *Server, routerID string) (netip.Addr, error) {
 	node, ok := pce.ted.Nodes[routerID]
 	if !ok {
-		return netip.Addr{}, fmt.Errorf("no node with AS %d and router ID %s", asn, routerID)
+		return netip.Addr{}, fmt.Errorf("no node with router ID %s", routerID)
 	}
 	return node.LoopbackAddr()
 }
@@ -438,8 +449,8 @@ func (s *APIServer) GetTED(ctx context.Context, req *pb.GetTEDRequest) (*pb.GetT
 		return ret, nil
 	}
 
-	for _, nodes := range s.pce.ted.Nodes {
-		if n := convertLsNode(nodes, s.logger); n != nil {
+	for _, node := range s.pce.ted.Nodes {
+		if n := convertLsNode(node, s.logger); n != nil {
 			ret.LsNodes = append(ret.LsNodes, n)
 		}
 	}

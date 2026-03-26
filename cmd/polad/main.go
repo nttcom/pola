@@ -70,6 +70,11 @@ func main() {
 		}
 	}()
 
+	if c.Global.TED.Enable && c.Global.TED.ASN == 0 {
+		logger.Panic("TED is enabled but Global.TED.ASN is missing or invalid")
+		log.Panic("TED is enabled but Global.TED.ASN is missing or invalid")
+	}
+
 	// Prepare TED update tools
 	var tedElemsChan chan []table.TEDElem
 	if c.Global.TED.Enable {

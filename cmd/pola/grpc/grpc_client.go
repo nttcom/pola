@@ -152,9 +152,6 @@ func initializeLsNodes(ted *table.LsTED, nodes []*pb.LsNode) {
 		lsNode.SrgbBegin = node.GetSrgbBegin()
 		lsNode.SrgbEnd = node.GetSrgbEnd()
 
-		if ted.Nodes == nil {
-			ted.Nodes = map[string]*table.LsNode{}
-		}
 		ted.Nodes[lsNode.RouterID] = lsNode
 	}
 }

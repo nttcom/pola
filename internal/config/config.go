@@ -39,7 +39,7 @@ type GoBGP struct {
 
 type TED struct {
 	Enable bool   `yaml:"enable"`
-	ASN    string `yaml:"asn"`
+	ASN    uint32 `yaml:"asn"`
 	Source string `yaml:"source"`
 }
 

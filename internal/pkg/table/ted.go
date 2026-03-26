@@ -16,7 +16,7 @@ type LsTED struct {
 	Nodes map[string]*LsNode // {"NodeID1": node1, "NodeID2": node2}
 }
 
-func (ted *LsTED) Update(tedElems []TEDElem, asn string) {
+func (ted *LsTED) Update(tedElems []TEDElem, asn uint32) {
 	for _, tedElem := range tedElems {
 		tedElem.UpdateTED(ted, asn)
 	}
@@ -155,7 +155,7 @@ func printNodeSRv6SIDs(node *LsNode) {
 }
 
 type TEDElem interface {
-	UpdateTED(ted *LsTED, cfg_asn string)
+	UpdateTED(ted *LsTED, cfgASN uint32)
 }
 
 type LsNode struct {
@@ -223,16 +223,11 @@ func (n *LsNode) LoopbackAddr() (netip.Addr, error) {
 	return netip.Addr{}, errors.New("node doesn't have a loopback address")
 }
 
-func (n *LsNode) UpdateTED(ted *LsTED, cfg_asn string) {
+func (n *LsNode) UpdateTED(ted *LsTED, cfgASN uint32) {
 	nodes := ted.Nodes
-	asn, _ := strconv.ParseUint(cfg_asn, 10, 32)
 
-	if n.ASN != uint32(asn) {
+	if n.ASN != cfgASN {
 		return
-	}
-
-	if nodes == nil {
-		nodes = make(map[string]*LsNode)
 	}
 
 	if node, ok := nodes[n.RouterID]; ok {
@@ -276,16 +271,11 @@ func (l *LsLink) Metric(metricType MetricType) (uint32, error) {
 	return 0, fmt.Errorf("metric %s not defined", metricType)
 }
 
-func (l *LsLink) UpdateTED(ted *LsTED, cfg_asn string) {
+func (l *LsLink) UpdateTED(ted *LsTED, cfgASN uint32) {
 	nodes := ted.Nodes
-	asn, _ := strconv.ParseUint(cfg_asn, 10, 32)
 
-	if l.LocalNode.ASN != uint32(asn) {
+	if l.LocalNode.ASN != cfgASN || l.RemoteNode.ASN != cfgASN {
 		return
-	}
-
-	if nodes == nil {
-		nodes = make(map[string]*LsNode)
 	}
 
 	if _, ok := nodes[l.LocalNode.RouterID]; !ok {
@@ -313,16 +303,11 @@ func NewLsPrefix(localNode *LsNode) *LsPrefix {
 	}
 }
 
-func (lp *LsPrefix) UpdateTED(ted *LsTED, cfg_asn string) {
+func (lp *LsPrefix) UpdateTED(ted *LsTED, cfgASN uint32) {
 	nodes := ted.Nodes
-	asn, _ := strconv.ParseUint(cfg_asn, 10, 32)
 
-	if lp.LocalNode.ASN != uint32(asn) {
+	if lp.LocalNode.ASN != cfgASN {
 		return
-	}
-
-	if nodes == nil {
-		nodes = make(map[string]*LsNode)
 	}
 
 	if _, ok := nodes[lp.LocalNode.RouterID]; !ok {
@@ -366,16 +351,11 @@ func NewLsSrv6SID(node *LsNode) *LsSrv6SID {
 	}
 }
 
-func (s *LsSrv6SID) UpdateTED(ted *LsTED, cfg_asn string) {
+func (s *LsSrv6SID) UpdateTED(ted *LsTED, cfgASN uint32) {
 	nodes := ted.Nodes
-	asn, _ := strconv.ParseUint(cfg_asn, 10, 32)
 
-	if s.LocalNode.ASN != uint32(asn) {
+	if s.LocalNode.ASN != cfgASN {
 		return
-	}
-
-	if nodes == nil {
-		nodes = make(map[string]*LsNode)
 	}
 
 	if _, ok := nodes[s.LocalNode.RouterID]; !ok {

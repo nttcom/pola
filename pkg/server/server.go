@@ -32,7 +32,7 @@ type PCEOptions struct {
 	GRPCPort  string
 	TEDEnable bool
 	USidMode  bool
-	ASN       string
+	ASN       uint32
 }
 
 func NewPCE(o *PCEOptions, logger *zap.Logger, tedElemsChan chan []table.TEDElem) Error {

@@ -82,7 +82,9 @@
                             ]
                         },
                         "asn": {
-                            "type": "string"
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 4294967295
                         }
                     },
                     "required": [
