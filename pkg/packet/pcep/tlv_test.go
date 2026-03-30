@@ -499,18 +499,20 @@ func TestIPv6LSPIdentifiers_Len(t *testing.T) {
 
 // Test data for LSPDBVersion.
 var (
-	testLSPDBVersion           = NewLSPDBVersion(12345)
-	testLSPDBVersionBytes      = append(tlvHeader(TLVLSPDBVersion, 8), 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x30, 0x39)
-	testLSPDBVersionTruncated  = append(tlvHeader(TLVLSPDBVersion, 4), 0x00, 0x00, 0x00, 0x00)
-	testLSPDBVersionExtra      = append(tlvHeader(TLVLSPDBVersion, 16), 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x30, 0x39, 0xde, 0xad, 0xbe, 0xef)
-	testLSPDBVersionCapStrings = []string{"LSP-DB-VERSION"}
+	testLSPDBVersion              = NewLSPDBVersion(12345)
+	testLSPDBVersionBytes         = append(tlvHeader(TLVLSPDBVersion, 8), 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x30, 0x39)
+	testLSPDBVersionTruncated     = append(tlvHeader(TLVLSPDBVersion, 4), 0x00, 0x00, 0x00, 0x00)
+	testLSPDBVersionExtra         = append(tlvHeader(TLVLSPDBVersion, 8), 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x30, 0x39, 0xde, 0xad, 0xbe, 0xef)
+	testLSPDBVersionInvalidLength = append(tlvHeader(TLVLSPDBVersion, 16), 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x30, 0x39, 0xde, 0xad, 0xbe, 0xef)
+	testLSPDBVersionCapStrings    = []string{"LSP-DB-VERSION"}
 )
 
 func TestLSPDBVersion_DecodeFromBytes(t *testing.T) {
 	cases := map[string]TLVTestCase{
-		"ValidLSPDBVersion":        {testLSPDBVersionBytes, testLSPDBVersion, false},
-		"TruncatedLSPDBVersion":    {testLSPDBVersionTruncated, nil, true},
-		"ExtraBytesInLSPDBVersion": {testLSPDBVersionExtra, nil, true},
+		"ValidLSPDBVersion":         {testLSPDBVersionBytes, testLSPDBVersion, false},
+		"TruncatedLSPDBVersion":     {testLSPDBVersionTruncated, nil, true},
+		"ExtraBytesInLSPDBVersion":  {testLSPDBVersionExtra, nil, true},
+		"InvalidLengthLSPDBVersion": {testLSPDBVersionInvalidLength, nil, true},
 	}
 	runTLVDecodeTests(t, cases, func() TLVInterface { return &LSPDBVersion{} })
 }
@@ -576,7 +578,8 @@ var (
 	testSRPCECapability               = NewSRPCECapability(true, true, 10)
 	testSRPCECapabilityBytes          = append(tlvHeader(TLVSRPCECapability, 4), 0x03, 0x0a, 0x00, 0x00)
 	testSRPCECapabilityTruncated      = append(tlvHeader(TLVSRPCECapability, 4), 0x00, 0x02)
-	testSRPCECapabilityExtra          = append(tlvHeader(TLVSRPCECapability, 8), 0x03, 0x05, 0x00, 0x00, 0xde, 0xad, 0xbe, 0xef)
+	testSRPCECapabilityExtra          = append(tlvHeader(TLVSRPCECapability, 4), 0x03, 0x05, 0x00, 0x00, 0xde, 0xad, 0xbe, 0xef)
+	testSRPCECapabilityInvalidLength  = append(tlvHeader(TLVSRPCECapability, 8), 0x03, 0x05, 0x00, 0x00, 0xde, 0xad, 0xbe, 0xef)
 	testSRPCECapabilityAllEnabled     = &SRPCECapability{HasUnlimitedMaxSIDDepth: true, IsNAISupported: true}
 	testSRPCECapabilityUnlimitedOnly  = &SRPCECapability{HasUnlimitedMaxSIDDepth: true}
 	testSRPCECapabilityNAIOnly        = &SRPCECapability{IsNAISupported: true}
@@ -589,9 +592,10 @@ var (
 
 func TestSRPCECapability_DecodeFromBytes(t *testing.T) {
 	cases := map[string]TLVTestCase{
-		"ValidSRPCECapability":        {testSRPCECapabilityBytes, testSRPCECapability, false},
-		"TruncatedSRPCECapability":    {testSRPCECapabilityTruncated, nil, true},
-		"ExtraBytesInSRPCECapability": {testSRPCECapabilityExtra, nil, true},
+		"ValidSRPCECapability":         {testSRPCECapabilityBytes, testSRPCECapability, false},
+		"TruncatedSRPCECapability":     {testSRPCECapabilityTruncated, nil, true},
+		"ExtraBytesInSRPCECapability":  {testSRPCECapabilityExtra, nil, true},
+		"InvalidLengthSRPCECapability": {testSRPCECapabilityInvalidLength, nil, true},
 	}
 	runTLVDecodeTests(t, cases, func() TLVInterface { return &SRPCECapability{} })
 }
