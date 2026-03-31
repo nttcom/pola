@@ -456,6 +456,14 @@ func getLsLink(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrLink *api.LsAttribute
 		lsLink.Metrics = append(lsLink.Metrics, table.NewMetric(table.MetricType(table.TEMetric), teMetric))
 	}
 
+	//  UnidirectionalLinkDelay metric support
+	if delay := lsAttrLink.GetUnidirectionalLinkDelay(); delay != 0 {
+		lsLink.Metrics = append(
+			lsLink.Metrics,
+			table.NewMetric(table.MetricType(table.DelayMetric), delay),
+		)
+	}
+
 	lsLink.AdjSid = lsAttrLink.GetSrAdjacencySid()
 
 	// handle SRv6 SID TLV
