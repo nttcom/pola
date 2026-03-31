@@ -588,7 +588,7 @@ func (tlv *IPv6LSPIdentifiers) DecodeFromBytes(data []byte) error {
 	value := data[TLVValueOffset : TLVValueOffset+valueLen]
 
 	// ok (second return value) is ignored because slice length is guaranteed by decodeTLVLength
-	addr, _ := netip.AddrFromSlice(value[IPv6SenderOffset : IPv6SenderOffset+IPv6AddrLen])
+	addr, _ := netip.AddrFromSlice(value[IPv6SenderOffset:IPv6LSPIDOffset])
 	tlv.IPv6TunnelSenderAddress = addr
 
 	tlv.LSPID = binary.BigEndian.Uint16(value[IPv6LSPIDOffset:IPv6TunnelIDOffset])
