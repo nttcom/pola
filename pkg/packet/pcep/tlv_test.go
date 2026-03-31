@@ -1044,15 +1044,20 @@ var (
 		0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x01,
 	}
+	testExtendedAssociationIDValueTooShort = []byte{
+		byte(TLVExtendedAssociationID >> 8), byte(TLVExtendedAssociationID & 0xff), 0x00, 0x03,
+		0x00, 0x00, 0x00,
+	}
 )
 
 func TestExtendedAssociationID_DecodeFromBytes(t *testing.T) {
 	cases := map[string]TLVTestCase{
-		"IPv4":              {testIPv4ExtendedAssociationIDBytes, testIPv4ExtendedAssociationID, false},
-		"IPv6":              {testIPv6ExtendedAssociationIDBytes, testIPv6ExtendedAssociationID, false},
-		"TooShort":          {testExtendedAssociationIDTooShort, nil, true},
-		"InvalidLength":     {testExtendedAssociationIDInvalidLen, nil, true},
-		"UnsupportedLength": {testExtendedAssociationIDUnsupportedLen, nil, true},
+		"IPv4":                  {testIPv4ExtendedAssociationIDBytes, testIPv4ExtendedAssociationID, false},
+		"IPv6":                  {testIPv6ExtendedAssociationIDBytes, testIPv6ExtendedAssociationID, false},
+		"TooShort":              {testExtendedAssociationIDTooShort, nil, true},
+		"ValueTooShortForColor": {testExtendedAssociationIDValueTooShort, nil, true},
+		"InvalidLength":         {testExtendedAssociationIDInvalidLen, nil, true},
+		"UnsupportedLength":     {testExtendedAssociationIDUnsupportedLen, nil, true},
 	}
 	runTLVDecodeTests(t, cases, func() TLVInterface { return &ExtendedAssociationID{} })
 }
