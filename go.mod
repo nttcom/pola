@@ -1,6 +1,6 @@
 module github.com/nttcom/pola
 
-go 1.26.0
+go 1.26.1
 
 require (
 	github.com/osrg/gobgp/v4 v4.3.0
