@@ -922,6 +922,9 @@ func (tlv *ExtendedAssociationID) DecodeFromBytes(data []byte) error {
 	}
 
 	value := data[TLVValueOffset : TLVValueOffset+valueLen]
+	if len(value) < int(TLVColorValueLength) {
+		return fmt.Errorf("ExtendedAssociationID: value too short: got %d, want at least %d", valueLen, TLVColorValueLength)
+	}
 
 	tlv.Color = binary.BigEndian.Uint32(value[ExtendedAssociationIDColorOffset : ExtendedAssociationIDColorOffset+TLVColorValueLength])
 
