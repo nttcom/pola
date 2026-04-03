@@ -70,15 +70,17 @@ func buildSegmentList(s *APIServer, input *pb.CreateSRPolicyRequest, disablePath
 			return nil, netip.Addr{}, netip.Addr{}, errors.New("ted is disabled")
 		}
 
+		if len(s.pce.ted.Nodes) == 0 {
+			return nil, netip.Addr{}, netip.Addr{}, errors.New("no node in TED")
+		}
+
 		// Request ASN check
+		// TODO: Add ASN to LsTED and compare against it directly.
 		for _, node := range s.pce.ted.Nodes {
-			if node == nil {
-				return nil, netip.Addr{}, netip.Addr{}, errors.New("no node in TED")
-			}
 			if node.ASN != input.GetAsn() {
 				return nil, netip.Addr{}, netip.Addr{}, fmt.Errorf("request ASN %d does not match ted ASN %d", input.GetAsn(), node.ASN)
 			}
-			break
+			break // All nodes are expected to share the same ASN; check only the first
 		}
 
 		srcAddr, err = getLoopbackAddr(s.pce, inputSRPolicy.GetSrcRouterId())
