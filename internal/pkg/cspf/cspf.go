@@ -29,8 +29,8 @@ func newNode(id string, cost uint32, nodeSeg table.Segment) *node {
 	}
 }
 
-func CSPF(srcRouterID string, dstRouterID string, as uint32, metric table.MetricType, ted *table.LsTED) ([]table.Segment, error) {
-	network := ted.Nodes[as]
+func CSPF(srcRouterID string, dstRouterID string, metric table.MetricType, ted *table.LsTED) ([]table.Segment, error) {
+	network := ted.Nodes
 	// TODO: update network information according to constraints
 	segmentList, err := spf(srcRouterID, dstRouterID, metric, network)
 	if err != nil {
@@ -44,7 +44,6 @@ func CSPF(srcRouterID string, dstRouterID string, as uint32, metric table.Metric
 func CSPFWithLooseSourceRouting(
 	src, dst string,
 	waypoints []table.Waypoint,
-	as uint32,
 	metric table.MetricType,
 	ted *table.LsTED,
 ) ([]table.Segment, error) {
@@ -55,7 +54,7 @@ func CSPFWithLooseSourceRouting(
 	allWaypoints := append(append([]table.Waypoint{}, waypoints...), table.Waypoint{RouterID: dst})
 
 	for _, wp := range allWaypoints {
-		sectionSegs, seg, err := buildSectionSegments(prev, wp, as, metric, ted, fullList)
+		sectionSegs, seg, err := buildSectionSegments(prev, wp, metric, ted, fullList)
 		if err != nil {
 			return nil, err
 		}
@@ -68,9 +67,9 @@ func CSPFWithLooseSourceRouting(
 }
 
 // buildSectionSegments calculates CSPF to waypoint and builds the waypoint segment.
-func buildSectionSegments(prev string, wp table.Waypoint, as uint32, metric table.MetricType, ted *table.LsTED, fullList []table.Segment) ([]table.Segment, table.Segment, error) {
+func buildSectionSegments(prev string, wp table.Waypoint, metric table.MetricType, ted *table.LsTED, fullList []table.Segment) ([]table.Segment, table.Segment, error) {
 	// Compute CSPF from prev → waypoint
-	sectionSegs, err := CSPF(prev, wp.RouterID, as, metric, ted)
+	sectionSegs, err := CSPF(prev, wp.RouterID, metric, ted)
 	if err != nil {
 		return nil, nil, fmt.Errorf("CSPF failed between %s and %s: %w", prev, wp.RouterID, err)
 	}
@@ -79,7 +78,7 @@ func buildSectionSegments(prev string, wp table.Waypoint, as uint32, metric tabl
 	sectionSegs = removeDuplicateFirst(fullList, sectionSegs)
 
 	// Lookup the node from TED
-	node, ok := ted.Nodes[as][wp.RouterID]
+	node, ok := ted.Nodes[wp.RouterID]
 	if !ok {
 		return nil, nil, fmt.Errorf("waypoint router %s not found in TED", wp.RouterID)
 	}

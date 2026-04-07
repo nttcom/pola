@@ -70,17 +70,30 @@ func buildSegmentList(s *APIServer, input *pb.CreateSRPolicyRequest, disablePath
 			return nil, netip.Addr{}, netip.Addr{}, errors.New("ted is disabled")
 		}
 
-		srcAddr, err = getLoopbackAddr(s.pce, input.GetAsn(), inputSRPolicy.GetSrcRouterId())
+		if len(s.pce.ted.Nodes) == 0 {
+			return nil, netip.Addr{}, netip.Addr{}, errors.New("no node in TED")
+		}
+
+		// Request ASN check
+		// TODO: Add ASN to LsTED and compare against it directly.
+		for _, node := range s.pce.ted.Nodes {
+			if node.ASN != input.GetAsn() {
+				return nil, netip.Addr{}, netip.Addr{}, fmt.Errorf("request ASN %d does not match ted ASN %d", input.GetAsn(), node.ASN)
+			}
+			break // All nodes are expected to share the same ASN; check only the first
+		}
+
+		srcAddr, err = getLoopbackAddr(s.pce, inputSRPolicy.GetSrcRouterId())
 		if err != nil {
 			return nil, netip.Addr{}, netip.Addr{}, err
 		}
 
-		dstAddr, err = getLoopbackAddr(s.pce, input.GetAsn(), inputSRPolicy.GetDstRouterId())
+		dstAddr, err = getLoopbackAddr(s.pce, inputSRPolicy.GetDstRouterId())
 		if err != nil {
 			return nil, netip.Addr{}, netip.Addr{}, err
 		}
 
-		segmentList, err = getSegmentList(inputSRPolicy, input.GetAsn(), s.pce.ted)
+		segmentList, err = getSegmentList(inputSRPolicy, s.pce.ted)
 		if err != nil {
 			return nil, netip.Addr{}, netip.Addr{}, err
 		}
@@ -296,15 +309,15 @@ func getSyncedPCEPSession(pce *Server, addr []byte) (*Session, error) {
 	return pcepSession, nil
 }
 
-func getLoopbackAddr(pce *Server, asn uint32, routerID string) (netip.Addr, error) {
-	node, ok := pce.ted.Nodes[asn][routerID]
+func getLoopbackAddr(pce *Server, routerID string) (netip.Addr, error) {
+	node, ok := pce.ted.Nodes[routerID]
 	if !ok {
-		return netip.Addr{}, fmt.Errorf("no node with AS %d and router ID %s", asn, routerID)
+		return netip.Addr{}, fmt.Errorf("no node with router ID %s", routerID)
 	}
 	return node.LoopbackAddr()
 }
 
-func getSegmentList(inputSRPolicy *pb.SRPolicy, asn uint32, ted *table.LsTED) ([]table.Segment, error) {
+func getSegmentList(inputSRPolicy *pb.SRPolicy, ted *table.LsTED) ([]table.Segment, error) {
 	var segmentList []table.Segment
 
 	switch inputSRPolicy.GetType() {
@@ -339,7 +352,6 @@ func getSegmentList(inputSRPolicy *pb.SRPolicy, asn uint32, ted *table.LsTED) ([
 				inputSRPolicy.GetSrcRouterId(),
 				inputSRPolicy.GetDstRouterId(),
 				waypoints,
-				asn,
 				metricType,
 				ted,
 			)
@@ -347,7 +359,6 @@ func getSegmentList(inputSRPolicy *pb.SRPolicy, asn uint32, ted *table.LsTED) ([
 			return cspf.CSPF(
 				inputSRPolicy.GetSrcRouterId(),
 				inputSRPolicy.GetDstRouterId(),
-				asn,
 				metricType,
 				ted,
 			)
@@ -440,11 +451,9 @@ func (s *APIServer) GetTED(ctx context.Context, req *pb.GetTEDRequest) (*pb.GetT
 		return ret, nil
 	}
 
-	for _, nodes := range s.pce.ted.Nodes {
-		for _, node := range nodes {
-			if n := convertLsNode(node, s.logger); n != nil {
-				ret.LsNodes = append(ret.LsNodes, n)
-			}
+	for _, node := range s.pce.ted.Nodes {
+		if n := convertLsNode(node, s.logger); n != nil {
+			ret.LsNodes = append(ret.LsNodes, n)
 		}
 	}
 
