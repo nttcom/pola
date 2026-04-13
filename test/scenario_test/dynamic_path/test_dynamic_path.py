@@ -232,6 +232,10 @@ class TestDynamicPath:
             hostname="clab-srv6-usid-pe02",
             username="admin",
             password="admin@123",
+            timeout=10,
+            banner_timeout=10,
+            auth_timeout=10,
+            look_for_keys=False,
         )
 
         stdin, stdout, stderr = ssh_client.exec_command(
