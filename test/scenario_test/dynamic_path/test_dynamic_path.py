@@ -238,7 +238,7 @@ class TestDynamicPath:
             look_for_keys=False,
         )
 
-        stdin, stdout, stderr = ssh_client.exec_command(
+        _, stdout, _ = ssh_client.exec_command(
             "show spring-traffic-engineering lsp name DYNAMIC-POLICY detail"
         )
         lsp_output = stdout.read().decode()
