@@ -187,11 +187,8 @@ class TestDynamicPath:
         # Deploy containerlab topology
         clab_deploy(TEST_DIR)
 
-        # Wait for routers to boot
-        print("Waiting for vJunos boot (120s)")
-        time.sleep(120)
-
-        # Wait until PCEP session is up (POLA <-> PE02)
+        # Wait until routers are ready by polling for the PCEP session
+        print("Waiting for PCEP session to become available")
         self._wait_until_pcep_success(
             "docker exec clab-srv6-usid-pola "
             "/bin/pola session -p 50052 | grep 'sessionAddr(0): fd00::2'"
