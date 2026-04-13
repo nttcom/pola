@@ -43,6 +43,7 @@ topology:
         - ../../../bin/pola:/bin/pola
         - input/polad.cfg.yaml:/polad.cfg.yaml
         - input/sr-policies/pe02-policy1.yaml:/pe02-policy1.yaml
+        - input/sr-policies/pe02-policy-loose-source-routing.yaml:/pe02-policy-loose-source-routing.yaml
       exec:
         - apt update
         - apt install -y iproute2 iputils-ping
