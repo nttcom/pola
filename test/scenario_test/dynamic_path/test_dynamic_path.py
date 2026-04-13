@@ -1,3 +1,8 @@
+# Copyright (c) 2022 NTT Communications Corporation
+#
+# This software is released under the MIT License.
+# see https://github.com/nttcom/pola/blob/main/LICENSE
+
 import pytest
 import os
 import time
@@ -8,11 +13,20 @@ import re
 
 
 class TestDynamicPath:
-    TEST_ABS_DIR = os.getcwd()[: os.getcwd().rfind("/test")] + "/test"
-    BIN_ABS_DIR = TEST_ABS_DIR + "/bin"
+    """Test SRv6 uSID dynamic path scenarios.
 
-    TEST_DYNAMIC_PATH_DIR = TEST_ABS_DIR + "/scenario_test/dynamic_path/srv6-usid"
-    EXPECTED_LSP_FILE = TEST_DYNAMIC_PATH_DIR + "/expected/sr-policy_output.txt"
+    This test suite verifies:
+    - PCEP session establishment
+    - TED population (nodes and links)
+    - SR policy installation via Pola
+    - Resulting SRv6 segment list on the router
+    """
+
+    TEST_ABS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    BIN_ABS_DIR = os.path.join(TEST_ABS_DIR, "bin")
+    TEST_DYNAMIC_PATH_DIR = os.path.join(
+        TEST_ABS_DIR, "scenario_test", "dynamic_path", "srv6-usid"
+    )
 
     def _run(self, cmd: str) -> subprocess.CompletedProcess:
         """Run a shell command and return CompletedProcess."""
@@ -34,9 +48,8 @@ class TestDynamicPath:
             time.sleep(interval)
 
     def _wait_until_ted_has_routers(self, router_ids, interval=10, timeout=600):
-        """
-        Wait until pola TED contains all given router_ids.
-        """
+        """Wait until pola TED contains all given router_ids."""
+
         cmd = "docker exec clab-srv6-usid-pola /bin/pola ted -j -p 50052"
         start = time.time()
         router_ids = set(router_ids)
@@ -61,9 +74,8 @@ class TestDynamicPath:
             time.sleep(interval)
 
     def _wait_until_ted_has_all_links(self, expected_links, interval=10, timeout=600):
-        """
-        Wait until pola TED contains all expected links.
-        """
+        """Wait until pola TED contains all expected links."""
+
         cmd = "docker exec clab-srv6-usid-pola /bin/pola ted -j -p 50052"
         start = time.time()
 
@@ -94,107 +106,22 @@ class TestDynamicPath:
             print(f"Waiting for links in TED. Missing: {missing}")
             time.sleep(interval)
 
-    def test__bin_ready(self):
-        """Ensure required binaries exist and are executable."""
-        for binname in ["gobgpd", "polad", "pola"]:
-            path = f"{self.BIN_ABS_DIR}/{binname}"
-            assert os.path.exists(path)
-            assert os.access(path, os.X_OK)
+    def _deploy_and_assert_segments(self, clab_deploy, policy_file, expected_segments):
+        """Deploy topology, wait for readiness, inject SR policy, and verify SRv6 segments."""
 
-    def test__srv6_usid_dynamic_path(self, clab_deploy):
         TEST_DIR = self.TEST_DYNAMIC_PATH_DIR
 
-        # Deploy containerlab topology
+        # Deploy
         clab_deploy(TEST_DIR)
 
-        # Wait for routers to boot
-        print("Waiting for vJunos boot (120s)")
-        time.sleep(120)
-
-        # Wait until PCEP session is up (POLA <-> PE02)
-        self._wait_until_pcep_success(
-            "docker exec clab-srv6-usid-pola "
-            "/bin/pola session -p 50052 | grep 'sessionAddr(0): fd00::2'"
-        )
-
-        # Wait until TED is populated
-        self._wait_until_ted_has_routers(
-            [
-                "0000.0001.0001",
-                "0000.0001.0002",
-                "0000.0001.0003",
-                "0000.0001.0004",
-            ]
-        )
-
-        # Wait until all expected links are present
-        expected_links = {
-            frozenset(("0000.0001.0001", "0000.0001.0003")),
-            frozenset(("0000.0001.0001", "0000.0001.0004")),
-            frozenset(("0000.0001.0002", "0000.0001.0003")),
-            frozenset(("0000.0001.0002", "0000.0001.0004")),
-            frozenset(("0000.0001.0003", "0000.0001.0004")),
-        }
-        self._wait_until_ted_has_all_links(expected_links)
-
-        # Inject SR Policy via Pola CLI (PCEP)
-        result = self._run(
-            "docker exec clab-srv6-usid-pola /bin/pola "
-            "sr-policy add -f /pe02-policy1.yaml -p 50052"
-        )
-        assert "success" in result.stdout.lower()
-        time.sleep(10)  # wait for SR Policy propagation
-
-        # SSH to PE02 and capture LSP detail output
-        ssh_client = paramiko.SSHClient()
-        ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh_client.connect(
-            hostname="clab-srv6-usid-pe02",
-            username="admin",
-            password="admin@123",
-        )
-
-        stdin, stdout, stderr = ssh_client.exec_command(
-            "show spring-traffic-engineering lsp name DYNAMIC-POLICY detail"
-        )
-        lsp_output = stdout.read().decode()
-        ssh_client.close()
-
-        assert "DYNAMIC-POLICY" in lsp_output
-        assert "fd00:ffff::1-100" in lsp_output
-        assert "State: Up" in lsp_output
-        assert "SID type: Micro SRv6 SID" in lsp_output
-
-        # Verify SR-ERO content and order by comparing the exact SRv6 segment list
-        expected_segments = [
-            "fcbb:bb00:1004::",
-            "fcbb:bb00:1003::",
-            "fcbb:bb00:1001::",
-        ]
-        actual_segments = re.findall(
-            r"SID type:\s*Micro SRv6 SID,\s*Value:\s*([0-9a-fA-F:]+)",
-            lsp_output,
-        )
-        assert actual_segments == expected_segments, (
-            f"SR-ERO segment list mismatch.\n"
-            f"Expected: {expected_segments}\n"
-            f"Actual:   {actual_segments}"
-        )
-
-    def test__srv6_usid_loose_source_routing(self, clab_deploy):
-        TEST_DIR = self.TEST_DYNAMIC_PATH_DIR
-
-        # Deploy containerlab topology
-        clab_deploy(TEST_DIR)
-
-        # Wait until routers are ready by polling for the PCEP session
+        # Wait for readiness (replace fixed sleep)
         print("Waiting for PCEP session to become available")
         self._wait_until_pcep_success(
             "docker exec clab-srv6-usid-pola "
             "/bin/pola session -p 50052 | grep 'sessionAddr(0): fd00::2'"
         )
 
-        # Wait until TED is populated
+        # Wait for TED routers
         self._wait_until_ted_has_routers(
             [
                 "0000.0001.0001",
@@ -204,7 +131,7 @@ class TestDynamicPath:
             ]
         )
 
-        # Wait until all expected links are present
+        # Wait for links
         expected_links = {
             frozenset(("0000.0001.0001", "0000.0001.0003")),
             frozenset(("0000.0001.0001", "0000.0001.0004")),
@@ -214,15 +141,16 @@ class TestDynamicPath:
         }
         self._wait_until_ted_has_all_links(expected_links)
 
-        # Inject SR Policy via Pola CLI (PCEP)
+        # Inject SR Policy
         result = self._run(
-            "docker exec clab-srv6-usid-pola /bin/pola "
-            "sr-policy add -f /pe02-policy-loose-source-routing.yaml -p 50052"
+            f"docker exec clab-srv6-usid-pola /bin/pola "
+            f"sr-policy add -f {policy_file} -p 50052"
         )
         assert "success" in result.stdout.lower()
-        time.sleep(10)  # wait for SR Policy propagation
 
-        # SSH to PE02 and capture LSP detail output
+        time.sleep(10)  # TODO: replace with readiness check
+
+        # SSH to PE02
         ssh_client = paramiko.SSHClient()
         ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         ssh_client.connect(
@@ -247,20 +175,50 @@ class TestDynamicPath:
         assert "State: Up" in lsp_output
         assert "SID type: Micro SRv6 SID" in lsp_output
 
-        # Verify SR-ERO content and order by comparing the exact SRv6 segment list
-        expected_segments = [
-            "fcbb:bb00:1004::",
-            "fcbb:bb00:1003::",
-            "fcbb:bb00:1004::",
-            "fcbb:bb00:1003::",
-            "fcbb:bb00:1001::",
-        ]
+        # Extract and verify segments
         actual_segments = re.findall(
             r"SID type:\s*Micro SRv6 SID,\s*Value:\s*([0-9a-fA-F:]+)",
             lsp_output,
         )
+
         assert actual_segments == expected_segments, (
             f"SR-ERO segment list mismatch.\n"
             f"Expected: {expected_segments}\n"
             f"Actual:   {actual_segments}"
+        )
+
+    def test__bin_ready(self):
+        """Ensure required binaries exist and are executable."""
+
+        for binname in ["gobgpd", "polad", "pola"]:
+            path = f"{self.BIN_ABS_DIR}/{binname}"
+            assert os.path.exists(path)
+            assert os.access(path, os.X_OK)
+
+    def test__srv6_usid_dynamic_path(self, clab_deploy):
+        """Verify SRv6 uSID dynamic path produces the expected segment list."""
+
+        self._deploy_and_assert_segments(
+            clab_deploy,
+            "/pe02-policy1.yaml",
+            [
+                "fcbb:bb00:1004::",
+                "fcbb:bb00:1003::",
+                "fcbb:bb00:1001::",
+            ],
+        )
+
+    def test__srv6_usid_loose_source_routing(self, clab_deploy):
+        """Verify SRv6 uSID loose source routing produces the expected segment list with repeated segments."""
+
+        self._deploy_and_assert_segments(
+            clab_deploy,
+            "/pe02-policy-loose-source-routing.yaml",
+            [
+                "fcbb:bb00:1004::",
+                "fcbb:bb00:1003::",
+                "fcbb:bb00:1004::",
+                "fcbb:bb00:1003::",
+                "fcbb:bb00:1001::",
+            ],
         )
