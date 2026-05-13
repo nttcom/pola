@@ -15,9 +15,9 @@ import (
 	"slices"
 
 	pb "github.com/nttcom/pola/api/pola/v1"
-	"github.com/nttcom/pola/internal/pkg/cspf"
-	"github.com/nttcom/pola/internal/pkg/table"
+	"github.com/nttcom/pola/pkg/cspf"
 	"github.com/nttcom/pola/pkg/packet/pcep"
+	"github.com/nttcom/pola/pkg/table"
 	"go.uber.org/zap"
 	grpc "google.golang.org/grpc"
 )

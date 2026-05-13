@@ -12,7 +12,7 @@ import (
 	"time"
 
 	pb "github.com/nttcom/pola/api/pola/v1"
-	"github.com/nttcom/pola/internal/pkg/table"
+	"github.com/nttcom/pola/pkg/table"
 )
 
 func withTimeout() (context.Context, context.CancelFunc) {
