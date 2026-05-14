@@ -13,6 +13,8 @@ import (
 	"net"
 	"net/netip"
 	"slices"
+	"strconv"
+	"strings"
 
 	pb "github.com/nttcom/pola/api/pola/v1"
 	"github.com/nttcom/pola/internal/pkg/cspf"
@@ -56,6 +58,47 @@ func validateCreateSRPolicy(req *pb.CreateSRPolicyRequest, disablePathCompute bo
 		return validate(req.GetSrPolicy(), req.GetAsn(), ValidationAddDisablePathCompute)
 	}
 	return validate(req.GetSrPolicy(), req.GetAsn(), ValidationAdd)
+}
+
+// parseSidStructure parses a comma-separated SID structure string (e.g. "32,16,0,80")
+// into a []uint8 slice suitable for table.SegmentSRv6.Structure.
+// Returns nil if the input is empty or malformed.
+func parseSidStructure(s string) []uint8 {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	if len(parts) != 4 {
+		return nil
+	}
+	result := make([]uint8, 4)
+	for i, p := range parts {
+		v, err := strconv.ParseUint(strings.TrimSpace(p), 10, 8)
+		if err != nil {
+			return nil
+		}
+		result[i] = uint8(v)
+	}
+	return result
+}
+
+// enrichSRv6Segment applies SRv6-specific overrides (uSID flag, SID structure,
+// LocalAddr, RemoteAddr) coming from the gRPC Segment message onto the
+// SRv6 segment that was just created.
+func enrichSRv6Segment(srv6Seg table.SegmentSRv6, segment *pb.Segment, usidMode bool) table.SegmentSRv6 {
+	if usidMode {
+		srv6Seg.USid = true
+	}
+	if structure := parseSidStructure(segment.GetSidStructure()); structure != nil {
+		srv6Seg.Structure = structure
+	}
+	if la, err := netip.ParseAddr(segment.GetLocalAddr()); err == nil {
+		srv6Seg.LocalAddr = la
+	}
+	if ra, err := netip.ParseAddr(segment.GetRemoteAddr()); err == nil {
+		srv6Seg.RemoteAddr = ra
+	}
+	return srv6Seg
 }
 
 func buildSegmentList(s *APIServer, input *pb.CreateSRPolicyRequest, disablePathCompute bool) ([]table.Segment, netip.Addr, netip.Addr, error) {
@@ -105,6 +148,9 @@ func buildSegmentList(s *APIServer, input *pb.CreateSRPolicyRequest, disablePath
 			seg, err := table.NewSegment(segment.GetSid())
 			if err != nil {
 				return nil, netip.Addr{}, netip.Addr{}, err
+			}
+			if srv6Seg, ok := seg.(table.SegmentSRv6); ok {
+				seg = enrichSRv6Segment(srv6Seg, segment, s.usidMode)
 			}
 			segmentList = append(segmentList, seg)
 		}
@@ -181,6 +227,9 @@ func (s *APIServer) DeleteSRPolicy(ctx context.Context, input *pb.DeleteSRPolicy
 		seg, err := table.NewSegment(segment.GetSid())
 		if err != nil {
 			return &pb.DeleteSRPolicyResponse{IsSuccess: false}, err
+		}
+		if srv6Seg, ok := seg.(table.SegmentSRv6); ok {
+			seg = enrichSRv6Segment(srv6Seg, segment, s.usidMode)
 		}
 		segmentList = append(segmentList, seg)
 	}
