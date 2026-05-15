@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"net/netip"
 
-	"github.com/nttcom/pola/internal/pkg/table"
+	"github.com/nttcom/pola/pkg/table"
 )
 
 type node struct {

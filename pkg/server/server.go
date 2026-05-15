@@ -16,7 +16,7 @@ import (
 	"go.uber.org/zap"
 	grpc "google.golang.org/grpc"
 
-	"github.com/nttcom/pola/internal/pkg/table"
+	"github.com/nttcom/pola/pkg/table"
 )
 
 type Server struct {

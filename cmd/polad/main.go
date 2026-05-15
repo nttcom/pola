@@ -15,10 +15,10 @@ import (
 
 	"github.com/nttcom/pola/internal/config"
 	"github.com/nttcom/pola/internal/pkg/gobgp"
-	"github.com/nttcom/pola/internal/pkg/table"
 	"github.com/nttcom/pola/internal/pkg/version"
 	"github.com/nttcom/pola/pkg/logger"
 	"github.com/nttcom/pola/pkg/server"
+	"github.com/nttcom/pola/pkg/table"
 )
 
 const TEDUpdateInterval = 1 // (min)
