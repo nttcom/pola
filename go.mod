@@ -1,13 +1,13 @@
 module github.com/nttcom/pola
 
-go 1.26.1
+go 1.26.3
 
 require (
 	github.com/osrg/gobgp/v4 v4.5.0
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/zap v1.28.0
-	google.golang.org/grpc v1.81.0
+	google.golang.org/grpc v1.81.1
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
