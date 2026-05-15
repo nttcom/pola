@@ -37,11 +37,18 @@ $ uv -V
 uv 0.8.13
 ```
 
+### Cisco XRd
+
+```bash
+$ docker images --format '{{.Repository}}:{{.Tag}}' | grep '^ios-xr/xrd-control-plane:24.4.1$'
+ios-xr/xrd-control-plane:24.4.1
+```
+
 ### vjunos-router
 
 ```bash
-$ docker images | grep vrnetlab/juniper_vjunos-router | grep 25.2R1.9
-vrnetlab/juniper_vjunos-router   25.2R1.9          6e9b1472b46b   X hours/days ago   4.18GB
+$ docker images --format '{{.Repository}}:{{.Tag}}' | grep '^vrnetlab/juniper_vjunos-router:25.2R1.9$'
+vrnetlab/juniper_vjunos-router:25.2R1.9
 ```
 
 #### how to install image
