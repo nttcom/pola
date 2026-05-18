@@ -1,0 +1,14 @@
+asn: 65000
+srPolicy:
+  pcepSessionAddr: "fd00::2"
+  srcRouterID: "0000.0001.0002"
+  dstRouterID: "0000.0001.0001"
+  name: "DYNAMIC-POLICY"
+  color: 100
+  type: dynamic
+  metric: igp
+  waypoints:
+    - routerID: "0000.0001.0003"
+    - routerID: "0000.0001.0004"
+    - routerID: "0000.0001.0003"
+      sid: "fcbb:bb00:1003::"

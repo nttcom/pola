@@ -81,6 +81,7 @@ global:
   ted:
     enable: true
     source: "gobgp"
+    asn: 65000
   gobgp:
     grpcClient:
       address: "127.0.0.1"

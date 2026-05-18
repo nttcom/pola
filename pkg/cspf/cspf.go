@@ -1,0 +1,216 @@
+// Copyright (c) 2022 NTT Communications Corporation
+//
+// This software is released under the MIT License.
+// see https://github.com/nttcom/pola/blob/main/LICENSE
+
+package cspf
+
+import (
+	"errors"
+	"fmt"
+	"net/netip"
+
+	"github.com/nttcom/pola/pkg/table"
+)
+
+type node struct {
+	id          string
+	calculated  bool
+	cost        uint32
+	prevNode    string
+	nodeSegment table.Segment
+}
+
+func newNode(id string, cost uint32, nodeSeg table.Segment) *node {
+	return &node{
+		id:          id,
+		cost:        cost,
+		nodeSegment: nodeSeg,
+	}
+}
+
+func CSPF(srcRouterID string, dstRouterID string, metric table.MetricType, ted *table.LsTED) ([]table.Segment, error) {
+	network := ted.Nodes
+	// TODO: update network information according to constraints
+	segmentList, err := spf(srcRouterID, dstRouterID, metric, network)
+	if err != nil {
+		return nil, err
+	}
+
+	return segmentList, nil
+}
+
+// CSPFWithLooseSourceRouting computes a path with optional waypoints using loose source routing.
+func CSPFWithLooseSourceRouting(
+	src, dst string,
+	waypoints []table.Waypoint,
+	metric table.MetricType,
+	ted *table.LsTED,
+) ([]table.Segment, error) {
+	fullList := []table.Segment{}
+	prev := src
+
+	// Append destination as a pseudo-waypoint without mutating the input slice
+	allWaypoints := append(append([]table.Waypoint{}, waypoints...), table.Waypoint{RouterID: dst})
+
+	for _, wp := range allWaypoints {
+		sectionSegs, seg, err := buildSectionSegments(prev, wp, metric, ted, fullList)
+		if err != nil {
+			return nil, err
+		}
+		fullList = append(fullList, sectionSegs...)
+		fullList = appendIfNotDuplicate(fullList, seg)
+		prev = wp.RouterID
+	}
+
+	return fullList, nil
+}
+
+// buildSectionSegments calculates CSPF to waypoint and builds the waypoint segment.
+func buildSectionSegments(prev string, wp table.Waypoint, metric table.MetricType, ted *table.LsTED, fullList []table.Segment) ([]table.Segment, table.Segment, error) {
+	// Compute CSPF from prev → waypoint
+	sectionSegs, err := CSPF(prev, wp.RouterID, metric, ted)
+	if err != nil {
+		return nil, nil, fmt.Errorf("CSPF failed between %s and %s: %w", prev, wp.RouterID, err)
+	}
+
+	// Remove first segment if it duplicates the last segment of the previous sections
+	sectionSegs = removeDuplicateFirst(fullList, sectionSegs)
+
+	// Lookup the node from TED
+	node, ok := ted.Nodes[wp.RouterID]
+	if !ok {
+		return nil, nil, fmt.Errorf("waypoint router %s not found in TED", wp.RouterID)
+	}
+
+	// Build the segment (SRv6 or SR-MPLS)
+	seg, err := buildWaypointSegment(node, wp.SID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to build segment for waypoint %s: %w", wp.RouterID, err)
+	}
+
+	return sectionSegs, seg, nil
+}
+
+// buildWaypointSegment builds a Segment for a waypoint using the node and optional explicit SID.
+func buildWaypointSegment(node *table.LsNode, explicitSID string) (table.Segment, error) {
+	if explicitSID != "" {
+		addr, err := netip.ParseAddr(explicitSID)
+		if err != nil {
+			return nil, fmt.Errorf("invalid explicit SID %q: %w", explicitSID, err)
+		}
+		return table.NewSegmentSRv6WithNodeInfo(addr, node)
+	}
+	return node.NodeSegment()
+}
+
+// removeDuplicateFirst removes the first segment of section if it equals the last of fullList.
+func removeDuplicateFirst(fullList []table.Segment, section []table.Segment) []table.Segment {
+	if len(fullList) > 0 && len(section) > 0 && table.SegmentsEqual(fullList[len(fullList)-1], section[0]) {
+		return section[1:]
+	}
+	return section
+}
+
+// appendIfNotDuplicate appends a segment to the list if it is not equal to the last segment.
+func appendIfNotDuplicate(list []table.Segment, seg table.Segment) []table.Segment {
+	if len(list) == 0 || !table.SegmentsEqual(list[len(list)-1], seg) {
+		list = append(list, seg)
+	}
+	return list
+}
+
+func spf(srcRouterID string, dstRouterID string, metricType table.MetricType, network map[string]*table.LsNode) ([]table.Segment, error) {
+	calculatingNodes, err := initNodeMap(srcRouterID, network)
+	if err != nil {
+		return nil, err
+	}
+
+	// Keep calculating the shortest path until the destination node is reached.
+	for {
+		calcNodeID, err := nextNode(calculatingNodes)
+		if err != nil {
+			return nil, err
+		}
+		if calcNodeID == dstRouterID {
+			break
+		}
+
+		if err := updateNeighborCosts(calcNodeID, calculatingNodes, network, metricType); err != nil {
+			return nil, err
+		}
+
+		calculatingNodes[calcNodeID].calculated = true
+	}
+
+	return buildSegmentListFromPath(srcRouterID, dstRouterID, calculatingNodes), nil
+}
+
+// initNodeMap initializes the map of nodes used for SPF calculation.
+func initNodeMap(srcRouterID string, network map[string]*table.LsNode) (map[string]*node, error) {
+	startNodeSeg, err := network[srcRouterID].NodeSegment()
+	if err != nil {
+		return nil, err
+	}
+	startNode := newNode(srcRouterID, 0, startNodeSeg)
+	startNode.calculated = false
+	return map[string]*node{srcRouterID: startNode}, nil
+}
+
+// updateNeighborCosts updates costs for neighbors of the given node in SPF calculation.
+func updateNeighborCosts(calcNodeID string, calculatingNodes map[string]*node, network map[string]*table.LsNode, metricType table.MetricType) error {
+	for _, link := range network[calcNodeID].Links {
+		metric, err := link.Metric(metricType)
+		if err != nil {
+			return err
+		}
+
+		if remoteNode, exists := calculatingNodes[link.RemoteNode.RouterID]; exists {
+			if calculatingNodes[calcNodeID].cost+metric < remoteNode.cost {
+				remoteNode.cost = calculatingNodes[calcNodeID].cost + metric
+				remoteNode.prevNode = calcNodeID
+			}
+		} else {
+			remoteNodeSeg, err := link.RemoteNode.NodeSegment()
+			if err != nil {
+				return err
+			}
+			remoteNode := newNode(link.RemoteNode.RouterID, calculatingNodes[calcNodeID].cost+metric, remoteNodeSeg)
+			remoteNode.prevNode = calcNodeID
+			calculatingNodes[link.RemoteNode.RouterID] = remoteNode
+		}
+	}
+	return nil
+}
+
+// buildSegmentListFromPath builds the segment list from SPF results.
+func buildSegmentListFromPath(srcRouterID, dstRouterID string, calculatingNodes map[string]*node) []table.Segment {
+	segmentList := []table.Segment{}
+	for pathNode := calculatingNodes[dstRouterID]; pathNode.id != srcRouterID; pathNode = calculatingNodes[pathNode.prevNode] {
+		segmentList = append(segmentList, pathNode.nodeSegment)
+	}
+
+	// Reverse the segment list to get correct order from src → dst
+	for i, j := 0, len(segmentList)-1; i < j; i, j = i+1, j-1 {
+		segmentList[i], segmentList[j] = segmentList[j], segmentList[i]
+	}
+
+	return segmentList
+}
+
+// nextNode returns the ID of the next node to calculate.
+func nextNode(calculatingNodes map[string]*node) (string, error) {
+	nextNodeID := ""
+	for nodeID, node := range calculatingNodes {
+		if node.calculated {
+			continue
+		}
+		if nextNodeID == "" || calculatingNodes[nextNodeID].cost > node.cost {
+			nextNodeID = nodeID
+		}
+	}
+	if nextNodeID == "" {
+		return "", errors.New("next node not found")
+	}
+	return nextNodeID, nil
+}

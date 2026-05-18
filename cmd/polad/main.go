@@ -15,10 +15,10 @@ import (
 
 	"github.com/nttcom/pola/internal/config"
 	"github.com/nttcom/pola/internal/pkg/gobgp"
-	"github.com/nttcom/pola/internal/pkg/table"
 	"github.com/nttcom/pola/internal/pkg/version"
 	"github.com/nttcom/pola/pkg/logger"
 	"github.com/nttcom/pola/pkg/server"
+	"github.com/nttcom/pola/pkg/table"
 )
 
 const TEDUpdateInterval = 1 // (min)
@@ -70,6 +70,11 @@ func main() {
 		}
 	}()
 
+	if c.Global.TED.Enable && c.Global.TED.ASN == 0 {
+		logger.Panic("TED is enabled but Global.TED.ASN is missing or invalid")
+		log.Panic("TED is enabled but Global.TED.ASN is missing or invalid")
+	}
+
 	// Prepare TED update tools
 	var tedElemsChan chan []table.TEDElem
 	if c.Global.TED.Enable {
@@ -94,6 +99,7 @@ func main() {
 		GRPCPort:  c.Global.GRPCServer.Port,
 		TEDEnable: c.Global.TED.Enable,
 		USidMode:  c.Global.USidMode,
+		ASN:       c.Global.TED.ASN,
 	}
 	if serverErr := server.NewPCE(o, logger, tedElemsChan); serverErr.Error != nil {
 		logger.Panic("Failed to start new server", zap.String("server", serverErr.Server), zap.Error(serverErr.Error))

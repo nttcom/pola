@@ -18,7 +18,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/nttcom/pola/internal/pkg/table"
+	"github.com/nttcom/pola/pkg/table"
 	api "github.com/osrg/gobgp/v4/api"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -454,6 +454,14 @@ func getLsLink(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrLink *api.LsAttribute
 	teMetric := lsAttrLink.GetDefaultTeMetric()
 	if teMetric != 0 {
 		lsLink.Metrics = append(lsLink.Metrics, table.NewMetric(table.MetricType(table.TEMetric), teMetric))
+	}
+
+	//  UnidirectionalLinkDelay metric support
+	if delay := lsAttrLink.GetUnidirectionalLinkDelay(); delay != 0 {
+		lsLink.Metrics = append(
+			lsLink.Metrics,
+			table.NewMetric(table.MetricType(table.DelayMetric), delay),
+		)
 	}
 
 	lsLink.AdjSid = lsAttrLink.GetSrAdjacencySid()
