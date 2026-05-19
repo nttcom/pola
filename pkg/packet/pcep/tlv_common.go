@@ -64,7 +64,7 @@ func isIPv4Bytes(b []byte) bool {
 	if len(b) != IPv6AddrLen {
 		return false
 	}
-	for i := 0; i < IPv4InIPv6Offset; i++ {
+	for i := range IPv4InIPv6Offset {
 		if b[i] != 0 {
 			return false
 		}

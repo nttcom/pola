@@ -344,16 +344,16 @@ func TestIPv4LSPIdentifiers_Serialize(t *testing.T) {
 func TestIPv4LSPIdentifiers_MarshalLogObject(t *testing.T) {
 	cases := map[string]struct {
 		input    *IPv4LSPIdentifiers
-		expected map[string]interface{}
+		expected map[string]any
 	}{
-		"NilTLV": {nil, map[string]interface{}{}},
+		"NilTLV": {nil, map[string]any{}},
 		"EmptyTLV": {
 			&IPv4LSPIdentifiers{
 				LSPID:            1,
 				TunnelID:         2,
 				ExtendedTunnelID: 1234,
 			},
-			map[string]interface{}{
+			map[string]any{
 				"lspID":            uint16(1),
 				"tunnelID":         uint16(2),
 				"extendedTunnelID": uint32(1234),
@@ -361,7 +361,7 @@ func TestIPv4LSPIdentifiers_MarshalLogObject(t *testing.T) {
 		},
 		"FullTLV": {
 			testIPv4LSPIdentifiers,
-			map[string]interface{}{
+			map[string]any{
 				"ipv4TunnelSenderAddress":   "192.0.2.1",
 				"ipv4TunnelEndpointAddress": "192.0.2.2",
 				"lspID":                     uint16(1),
@@ -450,16 +450,16 @@ func TestIPv6LSPIdentifiers_Serialize(t *testing.T) {
 func TestIPv6LSPIdentifiers_MarshalLogObject(t *testing.T) {
 	cases := map[string]struct {
 		input    *IPv6LSPIdentifiers
-		expected map[string]interface{}
+		expected map[string]any
 	}{
-		"NilTLV": {nil, map[string]interface{}{}},
+		"NilTLV": {nil, map[string]any{}},
 		"EmptyTLV": {
 			&IPv6LSPIdentifiers{
 				LSPID:            1,
 				TunnelID:         2,
 				ExtendedTunnelID: [IPv6AddrLen]byte{},
 			},
-			map[string]interface{}{
+			map[string]any{
 				"lspID":            uint16(1),
 				"tunnelID":         uint16(2),
 				"extendedTunnelID": "00000000000000000000000000000000",
@@ -467,7 +467,7 @@ func TestIPv6LSPIdentifiers_MarshalLogObject(t *testing.T) {
 		},
 		"FullTLV": {
 			testIPv6LSPIdentifiers,
-			map[string]interface{}{
+			map[string]any{
 				"ipv6TunnelSenderAddress":   "2001:db8::1",
 				"ipv6TunnelEndpointAddress": "2001:db8::2",
 				"lspID":                     uint16(1),
@@ -530,18 +530,18 @@ func TestLSPDBVersion_Serialize(t *testing.T) {
 func TestLSPDBVersion_MarshalLogObject(t *testing.T) {
 	cases := map[string]struct {
 		input    *LSPDBVersion
-		expected map[string]interface{}
+		expected map[string]any
 	}{
-		"NilTLV": {nil, map[string]interface{}{}},
+		"NilTLV": {nil, map[string]any{}},
 		"EmptyTLV": {
 			&LSPDBVersion{},
-			map[string]interface{}{
+			map[string]any{
 				"versionNumber": uint64(0),
 			},
 		},
 		"FullTLV": {
 			testLSPDBVersion,
-			map[string]interface{}{
+			map[string]any{
 				"versionNumber": uint64(12345),
 			},
 		},
@@ -613,12 +613,12 @@ func TestSRPCECapability_Serialize(t *testing.T) {
 func TestSRPCECapability_MarshalLogObject(t *testing.T) {
 	cases := map[string]struct {
 		input    *SRPCECapability
-		expected map[string]interface{}
+		expected map[string]any
 	}{
-		"NilTLV": {nil, map[string]interface{}{}},
+		"NilTLV": {nil, map[string]any{}},
 		"EmptyTLV": {
 			&SRPCECapability{},
-			map[string]interface{}{
+			map[string]any{
 				"unlimited_max_sid_depth": false,
 				"nai_is_supported":        false,
 				"maximum_sid_depth":       uint8(0),
@@ -626,7 +626,7 @@ func TestSRPCECapability_MarshalLogObject(t *testing.T) {
 		},
 		"FullTLV": {
 			testSRPCECapability,
-			map[string]interface{}{
+			map[string]any{
 				"unlimited_max_sid_depth": true,
 				"nai_is_supported":        true,
 				"maximum_sid_depth":       uint8(10),
@@ -634,7 +634,7 @@ func TestSRPCECapability_MarshalLogObject(t *testing.T) {
 		},
 		"OnlyUnlimited": {
 			testSRPCECapabilityUnlimitedOnly,
-			map[string]interface{}{
+			map[string]any{
 				"unlimited_max_sid_depth": true,
 				"nai_is_supported":        false,
 				"maximum_sid_depth":       uint8(0),
@@ -642,7 +642,7 @@ func TestSRPCECapability_MarshalLogObject(t *testing.T) {
 		},
 		"OnlyNAI": {
 			testSRPCECapabilityNAIOnly,
-			map[string]interface{}{
+			map[string]any{
 				"unlimited_max_sid_depth": false,
 				"nai_is_supported":        true,
 				"maximum_sid_depth":       uint8(0),
@@ -777,24 +777,24 @@ func TestPathSetupType_Serialize(t *testing.T) {
 func TestPathSetupType_MarshalLogObject(t *testing.T) {
 	cases := map[string]struct {
 		input    *PathSetupType
-		expected map[string]interface{}
+		expected map[string]any
 	}{
-		"NilTLV": {nil, map[string]interface{}{}},
+		"NilTLV": {nil, map[string]any{}},
 		"SRTE": {
 			testPathSetupTypeSRTE,
-			map[string]interface{}{
+			map[string]any{
 				"pathSetupType": "Traffic engineering path is set up using Segment Routing (RFC8664)",
 			},
 		},
 		"RSVPTE": {
 			testPathSetupTypeRSVPTE,
-			map[string]interface{}{
+			map[string]any{
 				"pathSetupType": "Path is set up using the RSVP-TE signaling protocol (RFC8408)",
 			},
 		},
 		"SRv6TE": {
 			testPathSetupTypeSRv6TE,
-			map[string]interface{}{
+			map[string]any{
 				"pathSetupType": "Traffic engineering path is set up using SRv6 (RFC9603)",
 			},
 		},
@@ -926,30 +926,30 @@ func TestPathSetupTypeCapability_Serialize(t *testing.T) {
 func TestPathSetupTypeCapability_MarshalLogObject(t *testing.T) {
 	cases := map[string]struct {
 		input    *PathSetupTypeCapability
-		expected map[string]interface{}
+		expected map[string]any
 	}{
 		"Basic": {
 			testPathSetupTypeCapabilityBasic,
-			map[string]interface{}{
-				"pathSetupTypes": []interface{}{
+			map[string]any{
+				"pathSetupTypes": []any{
 					"Path is set up using the RSVP-TE signaling protocol (RFC8408)",
 					"Traffic engineering path is set up using Segment Routing (RFC8664)",
 				},
-				"subTLVs": []interface{}{},
+				"subTLVs": []any{},
 			},
 		},
 		"WithSub": {
 			testPathSetupTypeCapabilityWithSubTLV,
-			map[string]interface{}{
-				"pathSetupTypes": []interface{}{
+			map[string]any{
+				"pathSetupTypes": []any{
 					"Traffic engineering path is set up using Segment Routing (RFC8664)",
 				},
-				"subTLVs": []interface{}{"0x53522d5043452d4341504142494c49545920285246433836363429 (SR-PCE-CAPABILITY (RFC8664))"},
+				"subTLVs": []any{"0x53522d5043452d4341504142494c49545920285246433836363429 (SR-PCE-CAPABILITY (RFC8664))"},
 			},
 		},
 		"NilTLV": {
 			nil,
-			map[string]interface{}{},
+			map[string]any{},
 		},
 	}
 
@@ -1083,25 +1083,25 @@ func TestExtendedAssociationID_Serialize(t *testing.T) {
 func TestExtendedAssociationID_MarshalLogObject(t *testing.T) {
 	cases := map[string]struct {
 		input    *ExtendedAssociationID
-		expected map[string]interface{}
+		expected map[string]any
 	}{
 		"IPv4": {
 			NewExtendedAssociationID(123, netip.MustParseAddr("192.0.2.1")),
-			map[string]interface{}{
+			map[string]any{
 				"color":    uint32(123),
 				"ipv4Addr": "192.0.2.1",
 			},
 		},
 		"IPv6": {
 			NewExtendedAssociationID(456, netip.MustParseAddr("2001:db8::1")),
-			map[string]interface{}{
+			map[string]any{
 				"color":    uint32(456),
 				"ipv6Addr": "2001:db8::1",
 			},
 		},
 		"NilTLV": {
 			nil,
-			map[string]interface{}{},
+			map[string]any{},
 		},
 	}
 
@@ -1199,12 +1199,12 @@ func TestAssocTypeList_Serialize(t *testing.T) {
 func TestAssocTypeList_MarshalLogObject(t *testing.T) {
 	cases := map[string]struct {
 		input    *AssocTypeList
-		expected map[string]interface{}
+		expected map[string]any
 	}{
 		"TwoEntries": {
 			testAssocTypeList,
-			map[string]interface{}{
-				"assocTypes": []interface{}{
+			map[string]any{
+				"assocTypes": []any{
 					"Path Protection Association",
 					"SR Policy Association",
 				},
@@ -1212,14 +1212,14 @@ func TestAssocTypeList_MarshalLogObject(t *testing.T) {
 		},
 		"SingleEntry": {
 			testAssocTypeListSingle,
-			map[string]interface{}{
-				"assocTypes": []interface{}{"Path Protection Association"},
+			map[string]any{
+				"assocTypes": []any{"Path Protection Association"},
 			},
 		},
 		"FourEntries": {
 			testAssocTypeListFour,
-			map[string]interface{}{
-				"assocTypes": []interface{}{
+			map[string]any{
+				"assocTypes": []any{
 					"Path Protection Association",
 					"Disjoint Association",
 					"Policy Association",
@@ -1229,13 +1229,13 @@ func TestAssocTypeList_MarshalLogObject(t *testing.T) {
 		},
 		"EmptyList": {
 			testAssocTypeListEmpty,
-			map[string]interface{}{
-				"assocTypes": []interface{}{},
+			map[string]any{
+				"assocTypes": []any{},
 			},
 		},
 		"NilTLV": {
 			nil,
-			map[string]interface{}{},
+			map[string]any{},
 		},
 	}
 
@@ -1346,23 +1346,23 @@ func TestSRPolicyCandidatePathIdentifier_Serialize_Invalid(t *testing.T) {
 func TestSRPolicyCandidatePathIdentifier_MarshalLogObject(t *testing.T) {
 	cases := map[string]struct {
 		input    *SRPolicyCandidatePathIdentifier
-		expected map[string]interface{}
+		expected map[string]any
 	}{
 		"IPv4": {
 			testSRPolicyCPathIDIPv4,
-			map[string]interface{}{
+			map[string]any{
 				"originatorAddr": testSRPolicyCPathIDIPv4.OriginatorAddr.String(),
 			},
 		},
 		"IPv6": {
 			testSRPolicyCPathIDIPv6,
-			map[string]interface{}{
+			map[string]any{
 				"originatorAddr": testSRPolicyCPathIDIPv6.OriginatorAddr.String(),
 			},
 		},
 		"NilTLV": {
 			nil,
-			map[string]interface{}{},
+			map[string]any{},
 		},
 	}
 
@@ -1428,17 +1428,17 @@ func TestSRPolicyCandidatePathPreference_Serialize(t *testing.T) {
 func TestSRPolicyCandidatePathPreference_MarshalLogObject(t *testing.T) {
 	cases := map[string]struct {
 		input    *SRPolicyCandidatePathPreference
-		expected map[string]interface{}
+		expected map[string]any
 	}{
 		"Preference": {
 			testSRPolicyCPathPreference,
-			map[string]interface{}{
+			map[string]any{
 				"preference": testSRPolicyCPathPreference.Preference,
 			},
 		},
 		"NilTLV": {
 			nil,
-			map[string]interface{}{},
+			map[string]any{},
 		},
 	}
 
@@ -1504,23 +1504,23 @@ func TestColor_Serialize(t *testing.T) {
 func TestColor_MarshalLogObject(t *testing.T) {
 	cases := map[string]struct {
 		input    *Color
-		expected map[string]interface{}
+		expected map[string]any
 	}{
 		"ValidColor": {
 			testColor,
-			map[string]interface{}{
+			map[string]any{
 				"color": testColor.Color,
 			},
 		},
 		"ZeroColor": {
 			&Color{Color: 0},
-			map[string]interface{}{
+			map[string]any{
 				"color": uint32(0),
 			},
 		},
 		"NilTLV": {
 			nil,
-			map[string]interface{}{},
+			map[string]any{},
 		},
 	}
 
@@ -1589,25 +1589,25 @@ func TestUndefinedTLV_Serialize(t *testing.T) {
 func TestUndefinedTLV_MarshalLogObject(t *testing.T) {
 	cases := map[string]struct {
 		input    *UndefinedTLV
-		expected map[string]interface{}
+		expected map[string]any
 	}{
 		"StandardTLV": {
 			testUndefinedTLV,
-			map[string]interface{}{
+			map[string]any{
 				"type":   fmt.Sprintf("0x%04x", testUndefinedTLV.Typ),
 				"length": testUndefinedTLV.Length,
 			},
 		},
 		"OddLength": {
 			testUndefinedTLVOddLength,
-			map[string]interface{}{
+			map[string]any{
 				"type":   fmt.Sprintf("0x%04x", testUndefinedTLVOddLength.Typ),
 				"length": testUndefinedTLVOddLength.Length,
 			},
 		},
 		"NilTLV": {
 			nil,
-			map[string]interface{}{},
+			map[string]any{},
 		},
 	}
 
