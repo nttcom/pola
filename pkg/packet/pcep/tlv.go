@@ -1047,7 +1047,7 @@ func (tlv *PathSetupTypeCapability) DecodeFromBytes(data []byte) error {
 	pstNum := int(value[PathSetupTypeCapabilityPSTCountOffset])
 
 	tlv.PathSetupTypes = make([]Pst, 0, pstNum)
-	for i := 0; i < pstNum; i++ {
+	for i := range pstNum {
 		offset := PathSetupTypeCapabilityFixedPartLength + i
 		if offset >= len(value) {
 			return fmt.Errorf("PathSetupTypeCapability: value too short for PathSetupTypes entries")
@@ -1090,7 +1090,7 @@ func (tlv *PathSetupTypeCapability) Serialize() []byte {
 	value := make([]byte, fixedPartLen)
 	value[PathSetupTypeCapabilityPSTCountOffset] = byte(pstCount)
 
-	for i := 0; i < pstCount; i++ {
+	for i := range pstCount {
 		value[PathSetupTypeCapabilityFixedPartLength+i] =
 			byte(tlv.PathSetupTypes[i])
 	}
@@ -1215,7 +1215,7 @@ func (tlv *AssocTypeList) DecodeFromBytes(data []byte) error {
 
 	assocNum := len(value) / 2
 	tlv.AssocTypes = make([]AssocType, assocNum)
-	for i := 0; i < assocNum; i++ {
+	for i := range assocNum {
 		tlv.AssocTypes[i] = AssocType(binary.BigEndian.Uint16(value[2*i : 2*i+2]))
 	}
 
