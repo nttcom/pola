@@ -44,6 +44,8 @@ func TestTLVMap(t *testing.T) {
 		"IPv6LSPIdentifiers":      {TLVIPv6LSPIdentifiers, &IPv6LSPIdentifiers{}},
 		"LSPDBVersion":            {TLVLSPDBVersion, &LSPDBVersion{}},
 		"SRPCECapability":         {TLVSRPCECapability, &SRPCECapability{}},
+		"SRv6PCECapability":       {TLVSRv6PCECapability, &SRv6PCECapability{}},
+		"MultipathCapability":     {TLVMultipathCap, &MultipathCapability{}},
 		"PathSetupType":           {TLVPathSetupType, &PathSetupType{}},
 		"ExtendedAssociationID":   {TLVExtendedAssociationID, &ExtendedAssociationID{}},
 		"PathSetupTypeCapability": {TLVPathSetupTypeCapability, &PathSetupTypeCapability{}},
@@ -1761,6 +1763,243 @@ func TestDecodeTLVs_SubTLV(t *testing.T) {
 			} else {
 				assert.NoError(t, err, "unexpected error for '%s'", name)
 			}
+		})
+	}
+}
+
+// Test data for SRv6PCECapability.
+var (
+	testSRv6PCECapability              = NewSRv6PCECapability(true)
+	testSRv6PCECapabilityBytes         = append(tlvHeader(TLVSRv6PCECapability, 4), 0x00, 0x00, 0x00, 0x02)
+	testSRv6PCECapabilityNoNAIBytes    = append(tlvHeader(TLVSRv6PCECapability, 4), 0x00, 0x00, 0x00, 0x00)
+	testSRv6PCECapabilityTruncated     = append(tlvHeader(TLVSRv6PCECapability, 4), 0x00, 0x00)
+	testSRv6PCECapabilityInvalidLength = append(tlvHeader(TLVSRv6PCECapability, 8), 0x00, 0x00, 0x00, 0x01, 0xde, 0xad, 0xbe, 0xef)
+	testSRv6PCECapabilityNoNAI         = &SRv6PCECapability{}
+	testSRv6PCECapabilityNAIStrs       = []string{"SRv6", "NAI-Supported"}
+	testSRv6PCECapabilityNoNAIStrs     = []string{"SRv6"}
+)
+
+func TestSRv6PCECapability_DecodeFromBytes(t *testing.T) {
+	cases := map[string]TLVTestCase{
+		"ValidSRv6PCECapability":         {testSRv6PCECapabilityBytes, testSRv6PCECapability, false},
+		"ValidSRv6PCECapabilityNoNAI":    {testSRv6PCECapabilityNoNAIBytes, testSRv6PCECapabilityNoNAI, false},
+		"TruncatedSRv6PCECapability":     {testSRv6PCECapabilityTruncated, nil, true},
+		"InvalidLengthSRv6PCECapability": {testSRv6PCECapabilityInvalidLength, nil, true},
+	}
+	runTLVDecodeTests(t, cases, func() TLVInterface { return &SRv6PCECapability{} })
+}
+
+func TestSRv6PCECapability_Serialize(t *testing.T) {
+	cases := map[string]struct {
+		input    TLVInterface
+		expected []byte
+	}{
+		"ValidSRv6PCECapability":      {testSRv6PCECapability, testSRv6PCECapabilityBytes},
+		"ValidSRv6PCECapabilityNoNAI": {testSRv6PCECapabilityNoNAI, testSRv6PCECapabilityNoNAIBytes},
+	}
+	runTLVSerializeTests(t, cases)
+}
+
+func TestSRv6PCECapability_MarshalLogObject(t *testing.T) {
+	cases := map[string]struct {
+		input    *SRv6PCECapability
+		expected map[string]any
+	}{
+		"NilTLV": {nil, map[string]any{}},
+		"EmptyTLV": {
+			&SRv6PCECapability{},
+			map[string]any{
+				"nai_is_supported": false,
+			},
+		},
+		"FullTLV": {
+			testSRv6PCECapability,
+			map[string]any{
+				"nai_is_supported": true,
+			},
+		},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			enc := zapcore.NewMapObjectEncoder()
+			err := tt.input.MarshalLogObject(enc)
+			assert.NoError(t, err, "unexpected error for '%s'", name)
+			assert.Equal(t, tt.expected, enc.Fields, "unexpected fields for '%s'", name)
+		})
+	}
+}
+
+func TestSRv6PCECapability_Len(t *testing.T) {
+	cases := map[string]struct {
+		input    TLVInterface
+		expected uint16
+	}{
+		"ValidSRv6PCECapabilityLength": {testSRv6PCECapability, TLVValueOffset + TLVSRv6PCECapabilityValueLength},
+	}
+	runTLVLenTests(t, cases)
+}
+
+func TestSRv6PCECapability_CapStrings(t *testing.T) {
+	cases := map[string]struct {
+		input    CapStringsInterface
+		expected []string
+	}{
+		"NAISupported":    {testSRv6PCECapability, testSRv6PCECapabilityNAIStrs},
+		"NAINotSupported": {testSRv6PCECapabilityNoNAI, testSRv6PCECapabilityNoNAIStrs},
+	}
+	runCapStringsTests(t, cases)
+}
+
+func TestSRv6PCECapability_RoundTrip(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]*SRv6PCECapability{
+		"NAISupported":    NewSRv6PCECapability(true),
+		"NAINotSupported": NewSRv6PCECapability(false),
+	}
+
+	for name, original := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			data := original.Serialize()
+			require.Equal(t, int(original.Len()), len(data), "Len() must match serialized size")
+
+			decoded, err := DecodeTLV(data)
+			require.NoError(t, err, "DecodeTLV failed")
+
+			got, ok := decoded.(*SRv6PCECapability)
+			require.Truef(t, ok, "expected *SRv6PCECapability, got %T", decoded)
+			assert.Equal(t, original, got, "round-trip value mismatch")
+
+			// Serialize again and verify bytes are identical (stability check).
+			assert.Equal(t, data, got.Serialize(), "re-serialized bytes differ")
+		})
+	}
+}
+
+// Test data for MultipathCapability.
+var (
+	testMultipathCapability = NewMultipathCapability(8, true, true, true, true)
+	// MaxMultipaths=8 (0x0008), Flags=W|O|F|C = 0x001D
+	testMultipathCapabilityBytes        = append(tlvHeader(TLVMultipathCap, 4), 0x00, 0x08, 0x00, 0x1d)
+	testMultipathCapabilityNoFlags      = NewMultipathCapability(1, false, false, false, false)
+	testMultipathCapabilityNoFlagsBytes = append(tlvHeader(TLVMultipathCap, 4), 0x00, 0x01, 0x00, 0x00)
+	testMultipathCapabilityTruncated    = append(tlvHeader(TLVMultipathCap, 4), 0x00, 0x08)
+	testMultipathCapabilityInvalidLen   = append(tlvHeader(TLVMultipathCap, 8), 0x00, 0x08, 0x00, 0x0f, 0xde, 0xad, 0xbe, 0xef)
+	testMultipathCapabilityCapStrs      = []string{"Multipath"}
+)
+
+func TestMultipathCapability_DecodeFromBytes(t *testing.T) {
+	cases := map[string]TLVTestCase{
+		"ValidMultipathCapabilityAllFlags": {testMultipathCapabilityBytes, testMultipathCapability, false},
+		"ValidMultipathCapabilityNoFlags":  {testMultipathCapabilityNoFlagsBytes, testMultipathCapabilityNoFlags, false},
+		"TruncatedMultipathCapability":     {testMultipathCapabilityTruncated, nil, true},
+		"InvalidLengthMultipathCapability": {testMultipathCapabilityInvalidLen, nil, true},
+	}
+	runTLVDecodeTests(t, cases, func() TLVInterface { return &MultipathCapability{} })
+}
+
+func TestMultipathCapability_Serialize(t *testing.T) {
+	cases := map[string]struct {
+		input    TLVInterface
+		expected []byte
+	}{
+		"ValidMultipathCapabilityAllFlags": {testMultipathCapability, testMultipathCapabilityBytes},
+		"ValidMultipathCapabilityNoFlags":  {testMultipathCapabilityNoFlags, testMultipathCapabilityNoFlagsBytes},
+	}
+	runTLVSerializeTests(t, cases)
+}
+
+func TestMultipathCapability_MarshalLogObject(t *testing.T) {
+	cases := map[string]struct {
+		input    *MultipathCapability
+		expected map[string]any
+	}{
+		"NilTLV": {nil, map[string]any{}},
+		"EmptyTLV": {
+			&MultipathCapability{},
+			map[string]any{
+				"max_multipaths":              uint16(0),
+				"weighted_is_supported":       false,
+				"opposite_dir_is_supported":   false,
+				"forward_class_is_supported":  false,
+				"composite_path_is_supported": false,
+			},
+		},
+		"FullTLV": {
+			testMultipathCapability,
+			map[string]any{
+				"max_multipaths":              uint16(8),
+				"weighted_is_supported":       true,
+				"opposite_dir_is_supported":   true,
+				"forward_class_is_supported":  true,
+				"composite_path_is_supported": true,
+			},
+		},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			enc := zapcore.NewMapObjectEncoder()
+			err := tt.input.MarshalLogObject(enc)
+			assert.NoError(t, err, "unexpected error for '%s'", name)
+			assert.Equal(t, tt.expected, enc.Fields, "unexpected fields for '%s'", name)
+		})
+	}
+}
+
+func TestMultipathCapability_Len(t *testing.T) {
+	cases := map[string]struct {
+		input    TLVInterface
+		expected uint16
+	}{
+		"ValidMultipathCapabilityLength": {testMultipathCapability, TLVValueOffset + TLVMultipathCapValueLength},
+	}
+	runTLVLenTests(t, cases)
+}
+
+func TestMultipathCapability_CapStrings(t *testing.T) {
+	cases := map[string]struct {
+		input    CapStringsInterface
+		expected []string
+	}{
+		"AllFlagsEnabled": {testMultipathCapability, testMultipathCapabilityCapStrs},
+		"NoFlagsEnabled":  {testMultipathCapabilityNoFlags, testMultipathCapabilityCapStrs},
+	}
+	runCapStringsTests(t, cases)
+}
+
+func TestMultipathCapability_RoundTrip(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]*MultipathCapability{
+		"AllFlags":         NewMultipathCapability(8, true, true, true, true),
+		"NoFlags":          NewMultipathCapability(1, false, false, false, false),
+		"OnlyWeighted":     NewMultipathCapability(2, true, false, false, false),
+		"OnlyOpposite":     NewMultipathCapability(3, false, true, false, false),
+		"OnlyForwardClass": NewMultipathCapability(4, false, false, true, false),
+		"OnlyComposite":    NewMultipathCapability(7, false, false, false, true),
+		"MaxUint16":        NewMultipathCapability(0xFFFF, true, true, true, true),
+	}
+
+	for name, original := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			data := original.Serialize()
+			require.Equal(t, int(original.Len()), len(data), "Len() must match serialized size")
+
+			decoded, err := DecodeTLV(data)
+			require.NoError(t, err, "DecodeTLV failed")
+
+			got, ok := decoded.(*MultipathCapability)
+			require.Truef(t, ok, "expected *MultipathCapability, got %T", decoded)
+			assert.Equal(t, original, got, "round-trip value mismatch")
+
+			// Serialize again and verify bytes are identical (stability check).
+			assert.Equal(t, data, got.Serialize(), "re-serialized bytes differ")
 		})
 	}
 }
