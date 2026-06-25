@@ -204,10 +204,17 @@ func NewSegmentSRv6WithNodeInfo(sid netip.Addr, n *LsNode) (SegmentSRv6, error) 
 
 type SegmentSRMPLS struct {
 	Sid uint32
+	TTL uint8
+	TC  uint8
+	S   bool
 }
 
 func (seg SegmentSRMPLS) SidString() string {
 	return strconv.Itoa(int(seg.Sid))
+}
+
+func (seg SegmentSRMPLS) HasMPLSStackEntryAttrs() bool {
+	return seg.TC != 0 || seg.S || seg.TTL != 0
 }
 
 func NewSegmentSRMPLS(sid uint32) SegmentSRMPLS {

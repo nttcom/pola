@@ -536,6 +536,18 @@ func (o *SrpObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
 	o.ObjectType = typ
 	o.RFlag = (objectBody[3] & 0x01) != 0
 	o.SrpID = binary.BigEndian.Uint32(objectBody[4:8])
+
+	if len(objectBody) > 8 {
+		byteTLVs := objectBody[8:]
+
+		tlvs, err := DecodeTLVs(byteTLVs)
+		if err != nil {
+			return err
+		}
+
+		o.TLVs = tlvs
+	}
+
 	return nil
 }
 
@@ -925,8 +937,15 @@ func (o *SREroSubobject) DecodeFromBytes(subObject []uint8) error {
 	o.CFlag = (subObject[3] & 0x02) != 0
 	o.MFlag = (subObject[3] & 0x01) != 0
 
-	sid := binary.BigEndian.Uint32(subObject[4:8]) >> 12
+	sidWord := binary.BigEndian.Uint32(subObject[4:8])
+	sid := sidWord >> 12
 	o.Segment = table.NewSegmentSRMPLS(sid)
+	if o.CFlag {
+		// Per RFC 8664 §4.3.1: when C=1, TC/S/TTL of the MPLS LSE are set by the PCE.
+		o.Segment.TC = uint8((sidWord >> 9) & 0x07)
+		o.Segment.S = (sidWord & (uint32(1) << 8)) != 0
+		o.Segment.TTL = uint8(sidWord & 0xFF)
+	}
 	if o.NAIType == NAITypeSRIPv4Node {
 		o.NAI, _ = netip.AddrFromSlice(subObject[8:12])
 	}
@@ -954,10 +973,27 @@ func (o *SREroSubobject) Serialize() ([]uint8, error) {
 		buf[3] |= 0x01
 	}
 
+	sidWord := (o.Segment.Sid & 0xFFFFF) << 12
+	if o.CFlag {
+		sidWord |= uint32(o.Segment.TC&0x07) << 9
+		if o.Segment.S {
+			sidWord |= uint32(1) << 8
+		}
+		sidWord |= uint32(o.Segment.TTL)
+	}
+
 	byteSid := make([]uint8, 4)
-	binary.BigEndian.PutUint32(byteSid, o.Segment.Sid<<12)
+	binary.BigEndian.PutUint32(byteSid, sidWord)
 
 	byteSREroSubobject := AppendByteSlices(buf, byteSid)
+
+	// Per RFC 8664 §4.3.1, when NAI is present (F=0), the NAI value follows the SID.
+	switch o.NAIType {
+	case NAITypeSRIPv4Node, NAITypeSRIPv6Node:
+		if o.NAI.IsValid() {
+			byteSREroSubobject = append(byteSREroSubobject, o.NAI.AsSlice()...)
+		}
+	}
 
 	return byteSREroSubobject, nil
 }
@@ -985,7 +1021,7 @@ func NewSREroSubObject(seg table.SegmentSRMPLS) (*SREroSubobject, error) {
 		NAIType:       NAITypeSRAbsent,
 		FFlag:         true, // NAI is absent
 		SFlag:         false,
-		CFlag:         false,
+		CFlag:         seg.HasMPLSStackEntryAttrs(),
 		MFlag:         true, // TODO: Determine either MPLS label or index
 		Segment:       seg,
 	}
@@ -1052,6 +1088,10 @@ type SRv6EroSubobject struct {
 }
 
 func (o *SRv6EroSubobject) DecodeFromBytes(subObject []uint8) error {
+	if len(subObject) < 8 {
+		return errors.New("SRv6EroSubobject: subobject too short")
+	}
+
 	o.LFlag = (subObject[0] & 0x80) != 0
 	o.SubobjectType = SubObjectType(subObject[0] & 0x7f)
 	o.Length = subObject[1]
@@ -1061,15 +1101,63 @@ func (o *SRv6EroSubobject) DecodeFromBytes(subObject []uint8) error {
 	o.FFlag = (subObject[3] & 0x02) != 0
 	o.SFlag = (subObject[3] & 0x01) != 0
 
-	sid, _ := netip.AddrFromSlice(subObject[8:24])
-	o.Segment = table.NewSegmentSRv6(sid)
-	if o.NAIType == NAITypeSRv6IPv6Node {
-		o.Segment.LocalAddr, _ = netip.AddrFromSlice(subObject[24:40])
+	behavior := binary.BigEndian.Uint16(subObject[6:8])
+
+	off := 8
+	if !o.SFlag {
+		if len(subObject) < off+16 {
+			return errors.New("SRv6EroSubobject: truncated SID")
+		}
+		sid, _ := netip.AddrFromSlice(subObject[off : off+16])
+		o.Segment = table.NewSegmentSRv6(sid)
+		off += 16
+	} else {
+		o.Segment = table.SegmentSRv6{}
 	}
-	if o.NAIType == NAITypeSRv6IPv6AdjacencyGlobal {
-		o.Segment.LocalAddr, _ = netip.AddrFromSlice(subObject[24:40])
-		o.Segment.RemoteAddr, _ = netip.AddrFromSlice(subObject[40:56])
+
+	if !o.FFlag {
+		switch o.NAIType {
+		case NAITypeSRv6IPv6Node:
+			if len(subObject) < off+16 {
+				return errors.New("SRv6EroSubobject: truncated NAI (Node)")
+			}
+			o.Segment.LocalAddr, _ = netip.AddrFromSlice(subObject[off : off+16])
+			off += 16
+		case NAITypeSRv6IPv6AdjacencyGlobal:
+			if len(subObject) < off+32 {
+				return errors.New("SRv6EroSubobject: truncated NAI (AdjGlobal)")
+			}
+			o.Segment.LocalAddr, _ = netip.AddrFromSlice(subObject[off : off+16])
+			o.Segment.RemoteAddr, _ = netip.AddrFromSlice(subObject[off+16 : off+32])
+			off += 32
+		case NAITypeSRv6IPv6AdjacencyLinkLocal:
+			if len(subObject) < off+40 {
+				return errors.New("SRv6EroSubobject: truncated NAI (AdjLinkLocal)")
+			}
+			o.Segment.LocalAddr, _ = netip.AddrFromSlice(subObject[off : off+16])
+			// subObject[off+16 : off+20] — Local Interface ID (not parsed)
+			o.Segment.RemoteAddr, _ = netip.AddrFromSlice(subObject[off+20 : off+36])
+			// subObject[off+36 : off+40] — Remote Interface ID (not parsed)
+			off += 40
+		}
 	}
+
+	if o.TFlag {
+		if len(subObject) < off+8 {
+			return errors.New("SRv6EroSubobject: truncated SID-Structure")
+		}
+		o.Segment.Structure = []uint8{
+			subObject[off+0],
+			subObject[off+1],
+			subObject[off+2],
+			subObject[off+3],
+		}
+	}
+
+	if behavior == table.BehaviorUN || behavior == table.BehaviorUA {
+		o.Segment.USid = true
+	}
+
 	return nil
 }
 

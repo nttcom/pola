@@ -46,6 +46,7 @@ const (
 	TLVLSPDBVersion                       TLVType = 0x17
 	TLVSpeakerEntityID                    TLVType = 0x18
 	TLVSRPCECapability                    TLVType = 0x1a
+	TLVSRv6PCECapability                  TLVType = 0x1b
 	TLVPathSetupType                      TLVType = 0x1c
 	TLVOperatorConfiguredAssociationRange TLVType = 0x1d
 	TLVGlobalAssociationSource            TLVType = 0x1e
@@ -123,6 +124,7 @@ var tlvDescriptions = map[TLVType]struct {
 	TLVLSPDBVersion:                       {"LSP-DB-VERSION", "RFC8232"},
 	TLVSpeakerEntityID:                    {"SPEAKER-ENTITY-ID", "RFC8232"},
 	TLVSRPCECapability:                    {"SR-PCE-CAPABILITY", "RFC8664"},
+	TLVSRv6PCECapability:                  {"SRv6-PCE-CAPABILITY", "RFC9603"},
 	TLVPathSetupType:                      {"PATH-SETUP-TYPE", "RFC8408"},
 	TLVOperatorConfiguredAssociationRange: {"OPERATOR-CONFIGURED-ASSOCIATION-RANGE", "RFC8697"},
 	TLVGlobalAssociationSource:            {"GLOBAL-ASSOCIATION-SOURCE", "RFC8697"},
@@ -201,6 +203,8 @@ const (
 	TLVIPv6LSPIdentifiersValueLength        uint16 = 52
 	TLVLSPDBVersionValueLength              uint16 = 8
 	TLVSRPCECapabilityValueLength           uint16 = 4
+	TLVSRv6PCECapabilityValueLength         uint16 = 4
+	TLVMultipathCapValueLength              uint16 = 4
 	TLVPathSetupTypeValueLength             uint16 = 4
 	TLVExtendedAssociationIDIPv4ValueLength uint16 = 8
 	TLVExtendedAssociationIDIPv6ValueLength uint16 = 20
@@ -243,6 +247,8 @@ var tlvMap = map[TLVType]func() TLVInterface{
 	TLVIPv6LSPIdentifiers:      func() TLVInterface { return &IPv6LSPIdentifiers{} },
 	TLVLSPDBVersion:            func() TLVInterface { return &LSPDBVersion{} },
 	TLVSRPCECapability:         func() TLVInterface { return &SRPCECapability{} },
+	TLVSRv6PCECapability:       func() TLVInterface { return &SRv6PCECapability{} },
+	TLVMultipathCap:            func() TLVInterface { return &MultipathCapability{} },
 	TLVPathSetupType:           func() TLVInterface { return &PathSetupType{} },
 	TLVExtendedAssociationID:   func() TLVInterface { return &ExtendedAssociationID{} },
 	TLVPathSetupTypeCapability: func() TLVInterface { return &PathSetupTypeCapability{} },
@@ -799,6 +805,187 @@ func NewSRPCECapability(hasUnlimitedMaxSIDDepth bool, isNAISupported bool, maxim
 		HasUnlimitedMaxSIDDepth: hasUnlimitedMaxSIDDepth,
 		IsNAISupported:          isNAISupported,
 		MaximumSidDepth:         maximumSidDepth,
+	}
+}
+
+type SRv6PCECapability struct {
+	IsNAISupported bool
+}
+
+const SRv6NAISupportedFlag uint16 = 0x0002
+
+const (
+	SRv6PCECapabilityReservedOffset = 0
+	SRv6PCECapabilityFlagsOffset    = 2
+)
+
+func (tlv *SRv6PCECapability) DecodeFromBytes(data []byte) error {
+	valueLen, err := decodeTLVLength(data, false)
+	if err != nil {
+		return fmt.Errorf("SRv6PCECapability: %w", err)
+	}
+
+	if valueLen < int(TLVSRv6PCECapabilityValueLength) {
+		return fmt.Errorf("SRv6PCECapability: invalid value length %d", valueLen)
+	}
+
+	value := data[TLVValueOffset : TLVValueOffset+valueLen]
+
+	flags := binary.BigEndian.Uint16(value[SRv6PCECapabilityFlagsOffset : SRv6PCECapabilityFlagsOffset+2])
+	tlv.IsNAISupported = (flags & SRv6NAISupportedFlag) != 0
+
+	return nil
+}
+
+func (tlv *SRv6PCECapability) Serialize() []byte {
+	value := make([]byte, TLVSRv6PCECapabilityValueLength)
+	// value[0:2] reserved, must be zero.
+	var flags uint16
+	if tlv.IsNAISupported {
+		flags |= SRv6NAISupportedFlag
+	}
+	binary.BigEndian.PutUint16(value[SRv6PCECapabilityFlagsOffset:SRv6PCECapabilityFlagsOffset+2], flags)
+
+	return AppendByteSlices(
+		Uint16ToByteSlice(tlv.Type()),
+		Uint16ToByteSlice(TLVSRv6PCECapabilityValueLength),
+		value,
+	)
+}
+
+func (tlv *SRv6PCECapability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	if tlv == nil {
+		return nil
+	}
+
+	enc.AddBool("nai_is_supported", tlv.IsNAISupported)
+	return nil
+}
+
+func (tlv *SRv6PCECapability) Type() TLVType {
+	return TLVSRv6PCECapability
+}
+
+func (tlv *SRv6PCECapability) Len() uint16 {
+	return TLVValueOffset + TLVSRv6PCECapabilityValueLength
+}
+
+func (tlv *SRv6PCECapability) CapStrings() []string {
+	ret := []string{"SRv6"}
+	if tlv.IsNAISupported {
+		ret = append(ret, "NAI-Supported")
+	}
+	return ret
+}
+
+func NewSRv6PCECapability(isNAISupported bool) *SRv6PCECapability {
+	return &SRv6PCECapability{
+		IsNAISupported: isNAISupported,
+	}
+}
+
+type MultipathCapability struct {
+	MaxMultipaths            uint16
+	IsWeightedSupported      bool
+	IsOppositeDirSupported   bool
+	IsForwardClassSupported  bool
+	IsCompositePathSupported bool
+}
+
+const (
+	MultipathFlagW uint16 = 0x0001
+	// 0x0002: unassigned
+	MultipathFlagO uint16 = 0x0004
+	MultipathFlagF uint16 = 0x0008
+	MultipathFlagC uint16 = 0x0010
+)
+
+const (
+	MultipathCapMaxMultipathsOffset = 0
+	MultipathCapFlagsOffset         = 2
+)
+
+func (tlv *MultipathCapability) DecodeFromBytes(data []byte) error {
+	valueLen, err := decodeTLVLength(data, false)
+	if err != nil {
+		return fmt.Errorf("MultipathCapability: %w", err)
+	}
+
+	if valueLen != int(TLVMultipathCapValueLength) {
+		return fmt.Errorf("MultipathCapability: invalid value length %d", valueLen)
+	}
+
+	value := data[TLVValueOffset : TLVValueOffset+valueLen]
+
+	tlv.MaxMultipaths = binary.BigEndian.Uint16(value[MultipathCapMaxMultipathsOffset : MultipathCapMaxMultipathsOffset+2])
+	flags := binary.BigEndian.Uint16(value[MultipathCapFlagsOffset : MultipathCapFlagsOffset+2])
+	tlv.IsWeightedSupported = (flags & MultipathFlagW) != 0
+	tlv.IsOppositeDirSupported = (flags & MultipathFlagO) != 0
+	tlv.IsForwardClassSupported = (flags & MultipathFlagF) != 0
+	tlv.IsCompositePathSupported = (flags & MultipathFlagC) != 0
+
+	return nil
+}
+
+func (tlv *MultipathCapability) Serialize() []byte {
+	value := make([]byte, TLVMultipathCapValueLength)
+
+	binary.BigEndian.PutUint16(value[MultipathCapMaxMultipathsOffset:MultipathCapMaxMultipathsOffset+2], tlv.MaxMultipaths)
+
+	var flags uint16
+	if tlv.IsWeightedSupported {
+		flags |= MultipathFlagW
+	}
+	if tlv.IsOppositeDirSupported {
+		flags |= MultipathFlagO
+	}
+	if tlv.IsForwardClassSupported {
+		flags |= MultipathFlagF
+	}
+	if tlv.IsCompositePathSupported {
+		flags |= MultipathFlagC
+	}
+	binary.BigEndian.PutUint16(value[MultipathCapFlagsOffset:MultipathCapFlagsOffset+2], flags)
+
+	return AppendByteSlices(
+		Uint16ToByteSlice(tlv.Type()),
+		Uint16ToByteSlice(TLVMultipathCapValueLength),
+		value,
+	)
+}
+
+func (tlv *MultipathCapability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	if tlv == nil {
+		return nil
+	}
+
+	enc.AddUint16("max_multipaths", tlv.MaxMultipaths)
+	enc.AddBool("weighted_is_supported", tlv.IsWeightedSupported)
+	enc.AddBool("opposite_dir_is_supported", tlv.IsOppositeDirSupported)
+	enc.AddBool("forward_class_is_supported", tlv.IsForwardClassSupported)
+	enc.AddBool("composite_path_is_supported", tlv.IsCompositePathSupported)
+	return nil
+}
+
+func (tlv *MultipathCapability) Type() TLVType {
+	return TLVMultipathCap
+}
+
+func (tlv *MultipathCapability) Len() uint16 {
+	return TLVValueOffset + TLVMultipathCapValueLength
+}
+
+func (tlv *MultipathCapability) CapStrings() []string {
+	return []string{"Multipath"}
+}
+
+func NewMultipathCapability(maxMultipaths uint16, isWeightedSupported, isOppositeDirSupported, isForwardClassSupported, isCompositePathSupported bool) *MultipathCapability {
+	return &MultipathCapability{
+		MaxMultipaths:            maxMultipaths,
+		IsWeightedSupported:      isWeightedSupported,
+		IsOppositeDirSupported:   isOppositeDirSupported,
+		IsForwardClassSupported:  isForwardClassSupported,
+		IsCompositePathSupported: isCompositePathSupported,
 	}
 }
 
