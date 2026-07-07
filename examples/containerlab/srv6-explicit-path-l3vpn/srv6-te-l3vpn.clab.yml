@@ -1,4 +1,4 @@
-name: srv6_te_l3vpn
+name: srv6-te-l3vpn
 
 topology:
   kinds:

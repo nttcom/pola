@@ -108,9 +108,9 @@ class TestShowTed:
         self._verify_ted_sync(
             clab_deploy,
             test_dir,
-            "clab-srv6_usid-pola",
-            "clab-srv6_usid-jun-rt1",
-            "docker exec clab-srv6_usid-gobgp ping fd00:ffff::2 -c 1",
+            "clab-srv6-usid-pola",
+            "clab-srv6-usid-jun-rt1",
+            "docker exec clab-srv6-usid-gobgp ping fd00:ffff::2 -c 1",
             os.path.join(
                 test_dir,
                 "expected",

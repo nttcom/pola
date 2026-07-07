@@ -39,7 +39,7 @@ Start Containerlab network
 
 ```bash
 git clone https://github.com/nttcom/pola
-cd pola/examples/containerlab/srv6_usid_dynamic-path
+cd pola/examples/containerlab/srv6-usid-dynamic-path
 
 sudo containerlab deploy
 ```

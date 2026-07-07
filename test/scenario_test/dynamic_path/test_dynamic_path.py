@@ -38,12 +38,12 @@ class TestDynamicPath:
 
         print("Waiting for PCEP session")
         wait_until_command_success(
-            "docker exec clab-srv6_usid-pola /bin/pola session -p 50052 "
+            "docker exec clab-srv6-usid-pola /bin/pola session -p 50052 "
             "| grep 'sessionAddr(0): fd00::2'"
         )
 
         wait_until_ted_has_routers(
-            "clab-srv6_usid-pola",
+            "clab-srv6-usid-pola",
             [
                 "0000.0001.0001",
                 "0000.0001.0002",
@@ -61,19 +61,19 @@ class TestDynamicPath:
         }
 
         wait_until_ted_has_links(
-            "clab-srv6_usid-pola",
+            "clab-srv6-usid-pola",
             expected_links,
         )
 
         result = run_command(
-            f"docker exec clab-srv6_usid-pola "
+            f"docker exec clab-srv6-usid-pola "
             f"/bin/pola sr-policy add -f {policy_file} -p 50052"
         )
         assert "success" in result.stdout.lower()
 
         ssh_client = None
         try:
-            ssh_client = wait_for_ssh("clab-srv6_usid-pe02")
+            ssh_client = wait_for_ssh("clab-srv6-usid-pe02")
             wait_until_lsp_up(ssh_client, "DYNAMIC-POLICY")
 
             _, stdout, _ = ssh_client.exec_command(
