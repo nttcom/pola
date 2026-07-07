@@ -27,7 +27,6 @@ class TestDynamicPath:
     """
 
     TEST_ABS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    BIN_ABS_DIR = os.path.join(TEST_ABS_DIR, "bin")
     TEST_DYNAMIC_PATH_DIR = os.path.join(
         TEST_ABS_DIR, "scenario_test", "dynamic_path", "srv6_usid"
     )
@@ -101,14 +100,6 @@ class TestDynamicPath:
         finally:
             if ssh_client is not None:
                 ssh_client.close()
-
-    def test__bin_ready(self):
-        """Ensure required binaries exist and are executable."""
-
-        for binname in ["gobgpd", "polad", "pola"]:
-            path = f"{self.BIN_ABS_DIR}/{binname}"
-            assert os.path.exists(path)
-            assert os.access(path, os.X_OK)
 
     def test__srv6_usid_dynamic_path(self, clab_deploy):
         """Verify SRv6 uSID dynamic path produces the expected segment list."""

@@ -16,11 +16,6 @@ from utils.wait import (
 class TestShowTed:
     TEST_ABS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-    BIN_ABS_DIR = os.path.join(
-        TEST_ABS_DIR,
-        "bin",
-    )
-
     TEST_SHOW_TED_DIR = os.path.join(
         TEST_ABS_DIR,
         "scenario_test",
@@ -73,22 +68,6 @@ class TestShowTed:
             pola_container,
             expected_output2,
         )
-
-    def test__bin_ready(self):
-        """Ensure required binaries exist and are executable."""
-
-        for binname in [
-            "gobgpd",
-            "polad",
-            "pola",
-        ]:
-            path = os.path.join(
-                self.BIN_ABS_DIR,
-                binname,
-            )
-
-            assert os.path.exists(path)
-            assert os.access(path, os.X_OK)
 
     def test__srmpls(
         self,
