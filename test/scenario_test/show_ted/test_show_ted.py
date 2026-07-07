@@ -87,7 +87,7 @@ class TestShowTed:
         assert DeepDiff(output2, expected_output2, ignore_order=True) == {}
 
     def test__srv6_usid(self, clab_deploy):
-        TEST_SRV6_USID_DIR = self.TEST_SHOW_TED_DIR + "/srv6-usid"
+        TEST_SRV6_USID_DIR = self.TEST_SHOW_TED_DIR + "/srv6_usid"
         # deploy test environment by containerlab
         clab_deploy(TEST_SRV6_USID_DIR)
 
@@ -97,7 +97,7 @@ class TestShowTed:
         # wait for vJunosRouter booting
         while (
             subprocess.run(
-                "docker exec -it clab-srv6-usid-gobgp ping fd00:ffff::2 -c 1",
+                "docker exec -it clab-srv6_usid-gobgp ping fd00:ffff::2 -c 1",
                 shell=True,
             ).returncode
             != 0
@@ -110,26 +110,26 @@ class TestShowTed:
 
         output = json.loads(
             subprocess.run(
-                "docker exec -it clab-srv6-usid-pola /bin/pola -p 50052 ted -j",
+                "docker exec -it clab-srv6_usid-pola /bin/pola -p 50052 ted -j",
                 shell=True,
                 capture_output=True,
                 text=True,
             ).stdout
         )
         print("output is", output)
-        with open(TEST_SRV6_USID_DIR + "/expected/srv6-usid.json") as f:
+        with open(TEST_SRV6_USID_DIR + "/expected/srv6_usid.json") as f:
             expected_output = json.load(f)
 
         # Run "pola ted" cmd and ensure it returns the expected result.
         assert DeepDiff(output, expected_output, ignore_order=True) == {}
 
         print(
-            "Disable interface ge-0/0/0 on clab-srv6-usid-jun-rt1 to test real-time TED sync..."
+            "Disable interface ge-0/0/0 on clab-srv6_usid-jun-rt1 to test real-time TED sync..."
         )
         ssh_client = paramiko.SSHClient()
         ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         ssh_client.connect(
-            hostname="clab-srv6-usid-jun-rt1", username="admin", password="admin@123"
+            hostname="clab-srv6_usid-jun-rt1", username="admin", password="admin@123"
         )
         stdin, stdout, stderr = ssh_client.exec_command(
             "configure; set interfaces ge-0/0/0 disable; commit"
@@ -140,14 +140,14 @@ class TestShowTed:
         time.sleep(30)  # wait for pola to sync
         output2 = json.loads(
             subprocess.run(
-                "docker exec -it clab-srv6-usid-pola /bin/pola -p 50052 ted -j",
+                "docker exec -it clab-srv6_usid-pola /bin/pola -p 50052 ted -j",
                 shell=True,
                 capture_output=True,
                 text=True,
             ).stdout
         )
         print("output is", output2)
-        with open(TEST_SRV6_USID_DIR + "/expected/srv6-usid2.json") as f:
+        with open(TEST_SRV6_USID_DIR + "/expected/srv6_usid2.json") as f:
             expected_output2 = json.load(f)
 
         # Run "pola ted" cmd and ensure it returns the expected result.

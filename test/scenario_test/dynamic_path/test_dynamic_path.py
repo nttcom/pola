@@ -25,7 +25,7 @@ class TestDynamicPath:
     TEST_ABS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     BIN_ABS_DIR = os.path.join(TEST_ABS_DIR, "bin")
     TEST_DYNAMIC_PATH_DIR = os.path.join(
-        TEST_ABS_DIR, "scenario_test", "dynamic_path", "srv6-usid"
+        TEST_ABS_DIR, "scenario_test", "dynamic_path", "srv6_usid"
     )
 
     def _run(self, cmd: str) -> subprocess.CompletedProcess:
@@ -42,7 +42,7 @@ class TestDynamicPath:
 
         start = time.time()
         last_error = None
-        hostname = "clab-srv6-usid-pe02"
+        hostname = "clab-srv6_usid-pe02"
 
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -91,7 +91,7 @@ class TestDynamicPath:
     def _wait_until_ted_has_routers(self, router_ids, interval=10, timeout=600):
         """Wait until pola TED contains all given router_ids."""
 
-        cmd = "docker exec clab-srv6-usid-pola /bin/pola ted -j -p 50052"
+        cmd = "docker exec clab-srv6_usid-pola /bin/pola ted -j -p 50052"
         start = time.time()
         router_ids = set(router_ids)
 
@@ -121,7 +121,7 @@ class TestDynamicPath:
     def _wait_until_ted_has_all_links(self, expected_links, interval=10, timeout=600):
         """Wait until pola TED contains all expected links."""
 
-        cmd = "docker exec clab-srv6-usid-pola /bin/pola ted -j -p 50052"
+        cmd = "docker exec clab-srv6_usid-pola /bin/pola ted -j -p 50052"
         start = time.time()
         found = set()
 
@@ -184,7 +184,7 @@ class TestDynamicPath:
 
         print("Waiting for PCEP session")
         self._wait_until_pcep_success(
-            "docker exec clab-srv6-usid-pola /bin/pola session -p 50052 "
+            "docker exec clab-srv6_usid-pola /bin/pola session -p 50052 "
             "| grep 'sessionAddr(0): fd00::2'"
         )
 
@@ -208,7 +208,7 @@ class TestDynamicPath:
         self._wait_until_ted_has_all_links(expected_links)
 
         result = self._run(
-            f"docker exec clab-srv6-usid-pola /bin/pola "
+            f"docker exec clab-srv6_usid-pola /bin/pola "
             f"sr-policy add -f {policy_file} -p 50052"
         )
         assert "success" in result.stdout.lower()

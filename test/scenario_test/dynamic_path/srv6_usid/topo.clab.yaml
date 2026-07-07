@@ -1,4 +1,4 @@
-name: srv6-usid
+name: srv6_usid
 topology:
   kinds:
     xrd:
