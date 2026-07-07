@@ -1769,14 +1769,15 @@ func TestDecodeTLVs_SubTLV(t *testing.T) {
 
 // Test data for SRv6PCECapability.
 var (
-	testSRv6PCECapability           = NewSRv6PCECapability(true)
-	testSRv6PCECapabilityBytes      = append(tlvHeader(TLVSRv6PCECapability, 4), 0x00, 0x00, 0x00, 0x02)
-	testSRv6PCECapabilityNoNAIBytes = append(tlvHeader(TLVSRv6PCECapability, 4), 0x00, 0x00, 0x00, 0x00)
-	testSRv6PCECapabilityExtended   = append(tlvHeader(TLVSRv6PCECapability, 8), 0x00, 0x00, 0x00, 0x02, 0xde, 0xad, 0xbe, 0xef)
-	testSRv6PCECapabilityTruncated  = append(tlvHeader(TLVSRv6PCECapability, 4), 0x00, 0x00)
-	testSRv6PCECapabilityNoNAI      = &SRv6PCECapability{}
-	testSRv6PCECapabilityNAIStrs    = []string{"SRv6", "NAI-Supported"}
-	testSRv6PCECapabilityNoNAIStrs  = []string{"SRv6"}
+	testSRv6PCECapability            = NewSRv6PCECapability(true)
+	testSRv6PCECapabilityBytes       = append(tlvHeader(TLVSRv6PCECapability, 4), 0x00, 0x00, 0x00, 0x02)
+	testSRv6PCECapabilityNoNAIBytes  = append(tlvHeader(TLVSRv6PCECapability, 4), 0x00, 0x00, 0x00, 0x00)
+	testSRv6PCECapabilityExtended    = append(tlvHeader(TLVSRv6PCECapability, 8), 0x00, 0x00, 0x00, 0x02, 0xde, 0xad, 0xbe, 0xef)
+	testSRv6PCECapabilityShortLength = append(tlvHeader(TLVSRv6PCECapability, 3), 0x00, 0x00, 0x00)
+	testSRv6PCECapabilityTruncated   = append(tlvHeader(TLVSRv6PCECapability, 4), 0x00, 0x00)
+	testSRv6PCECapabilityNoNAI       = &SRv6PCECapability{}
+	testSRv6PCECapabilityNAIStrs     = []string{"SRv6", "NAI-Supported"}
+	testSRv6PCECapabilityNoNAIStrs   = []string{"SRv6"}
 )
 
 func TestSRv6PCECapability_DecodeFromBytes(t *testing.T) {
@@ -1784,6 +1785,7 @@ func TestSRv6PCECapability_DecodeFromBytes(t *testing.T) {
 		"ValidSRv6PCECapability":          {testSRv6PCECapabilityBytes, testSRv6PCECapability, false},
 		"ValidSRv6PCECapabilityNoNAI":     {testSRv6PCECapabilityNoNAIBytes, testSRv6PCECapabilityNoNAI, false},
 		"ExtendedLengthSRv6PCECapability": {testSRv6PCECapabilityExtended, testSRv6PCECapability, false},
+		"ShortLengthSRv6PCECapability":    {testSRv6PCECapabilityShortLength, nil, true},
 		"TruncatedSRv6PCECapability":      {testSRv6PCECapabilityTruncated, nil, true},
 	}
 	runTLVDecodeTests(t, cases, func() TLVInterface { return &SRv6PCECapability{} })
