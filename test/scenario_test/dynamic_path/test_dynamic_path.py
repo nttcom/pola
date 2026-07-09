@@ -6,7 +6,7 @@
 import os
 import re
 
-from utils.wait import (
+from helpers.wait import (
     run_command,
     wait_for_ssh,
     wait_until_command_success,

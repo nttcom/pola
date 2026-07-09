@@ -6,7 +6,7 @@
 import json
 import os
 
-from utils.wait import (
+from helpers.wait import (
     wait_for_ssh,
     wait_until_command_success,
     wait_until_ted_matches,
