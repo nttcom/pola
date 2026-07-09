@@ -48,6 +48,7 @@ def wait_for_ssh(
                 banner_timeout=10,
                 auth_timeout=10,
                 look_for_keys=False,
+                allow_agent=False,
             )
             return ssh
 
