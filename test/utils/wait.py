@@ -11,6 +11,7 @@ from collections.abc import Callable
 import paramiko
 from deepdiff import DeepDiff
 
+
 def run_command(cmd: str) -> subprocess.CompletedProcess:
     """Run shell command."""
 
@@ -48,15 +49,12 @@ def wait_for_ssh(
                 auth_timeout=10,
                 look_for_keys=False,
             )
-
             return ssh
 
         except (paramiko.SSHException, OSError) as e:
             last_error = e
             ssh.close()
 
-            ssh = paramiko.SSHClient()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             if time.time() - start > timeout:
                 raise TimeoutError(
                     f"Timeout waiting for SSH to {hostname}\n"
@@ -64,7 +62,6 @@ def wait_for_ssh(
                 )
 
             print(f"Waiting for SSH to {hostname}... last error: {repr(last_error)}")
-
             time.sleep(interval)
 
 
