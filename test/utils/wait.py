@@ -6,10 +6,10 @@
 import json
 import subprocess
 import time
+from collections.abc import Callable
 
 import paramiko
 from deepdiff import DeepDiff
-
 
 def run_command(cmd: str) -> subprocess.CompletedProcess:
     """Run shell command."""
@@ -24,20 +24,20 @@ def run_command(cmd: str) -> subprocess.CompletedProcess:
 
 def wait_for_ssh(
     hostname: str,
-    username="admin",
-    password="admin@123",
-    timeout=180,
-    interval=5,
-):
+    username: str = "admin",
+    password: str = "admin@123",
+    timeout: int = 180,
+    interval: int = 5,
+) -> paramiko.SSHClient:
     """Wait until SSH is available."""
 
     start = time.time()
-    last_error = None
-
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    last_error: Exception | None = None
 
     while True:
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
         try:
             ssh.connect(
                 hostname=hostname,
@@ -72,7 +72,7 @@ def wait_until_command_success(
     cmd: str,
     timeout: int = 600,
     interval: int = 5,
-):
+) -> subprocess.CompletedProcess:
     """Wait until command exits successfully."""
 
     start = time.time()
@@ -103,7 +103,7 @@ def get_ted(pola_container: str) -> dict:
 
 def wait_until_ted(
     pola_container: str,
-    predicate,
+    predicate: Callable[[dict], bool],
     timeout: int = 600,
     interval: int = 5,
 ) -> dict:
@@ -129,10 +129,10 @@ def wait_until_ted(
 
 def wait_until_ted_has_routers(
     pola_container: str,
-    router_ids,
-    timeout=600,
-    interval=5,
-):
+    router_ids: list[str],
+    timeout: int = 600,
+    interval: int = 5,
+) -> dict:
     """Wait until TED contains all router IDs."""
 
     router_ids = set(router_ids)
@@ -158,10 +158,10 @@ def wait_until_ted_has_routers(
 
 def wait_until_ted_has_links(
     pola_container: str,
-    expected_links,
+    expected_links: set[frozenset[str]],
     timeout: int = 600,
     interval: int = 5,
-):
+) -> dict:
     """Wait until TED contains all expected links."""
 
     def predicate(ted):
@@ -191,10 +191,10 @@ def wait_until_ted_has_links(
 
 def wait_until_ted_matches(
     pola_container: str,
-    expected,
-    timeout=600,
-    interval=5,
-):
+    expected: dict,
+    timeout: int = 600,
+    interval: int = 5,
+) -> dict:
     """
     Wait until TED JSON matches expected.
     """
@@ -221,11 +221,11 @@ def wait_until_ted_matches(
 
 
 def wait_until_lsp_up(
-    ssh_client,
+    ssh_client: paramiko.SSHClient,
     lsp_name: str,
     timeout: int = 300,
     interval: int = 5,
-):
+) -> str:
     """Wait until the named LSP becomes Up."""
 
     start = time.time()
