@@ -2,9 +2,9 @@ name: sr-mpls_pcep
 topology:
   kinds:
     xrd:
-      image: ios-xr/xrd-control-plane:7.8.1
-    vr-vmx:
-      image: vrnetlab/vr-vmx:22.4R1.10
+      image: ios-xr/xrd-control-plane:24.4.1
+    juniper_vjunosrouter:
+      image: vrnetlab/juniper_vjunos-router:25.2R1.9
   nodes:
     pola-pce:
       kind: linux
@@ -20,7 +20,7 @@ topology:
       kind: xrd
       startup-config: startup-configs/pe01.cfg
     pe02:
-      kind: vr-vmx
+      kind: juniper_vjunosrouter
       startup-config: startup-configs/pe02.cfg
     pe03:
       kind: linux

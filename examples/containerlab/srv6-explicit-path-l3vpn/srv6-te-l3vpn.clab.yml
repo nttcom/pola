@@ -2,8 +2,8 @@ name: srv6-te-l3vpn
 
 topology:
   kinds:
-    vr-vmx:
-      image: vrnetlab/vr-vmx:22.4R1.10
+    juniper_vjunosrouter:
+      image: vrnetlab/juniper_vjunos-router:25.2R1.9
 
   nodes:
     pola-pce:
@@ -16,16 +16,16 @@ topology:
       exec:
         - ip -6 addr add fd00::ffff/64 dev eth1
     pe01:
-      kind: vr-vmx
+      kind: juniper_vjunosrouter
       startup-config: startup-configs/pe01.cfg
     pe02:
-      kind: vr-vmx
+      kind: juniper_vjunosrouter
       startup-config: startup-configs/pe02.cfg
     p01:
-      kind: vr-vmx
+      kind: juniper_vjunosrouter
       startup-config: startup-configs/p01.cfg
     p02:
-      kind: vr-vmx
+      kind: juniper_vjunosrouter
       startup-config: startup-configs/p02.cfg
     host01:
       kind: linux

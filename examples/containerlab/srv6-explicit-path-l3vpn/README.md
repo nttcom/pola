@@ -7,11 +7,11 @@ Example topology powered by [Containerlab](https://containerlab.dev/)
 ## Requirements
 
 * container host (Linux)
-* Juniper vMX image
+* Juniper vJunos-router image (`vrnetlab/juniper_vjunos-router:25.2R1.9`)
 
 ## Usage
 
-### Install Containerlab & Juniper vMX
+### Install Containerlab & Juniper vJunos-router
 
 [Install Containerlab](https://containerlab.dev/install/)
 
@@ -19,19 +19,19 @@ Example topology powered by [Containerlab](https://containerlab.dev/)
 sudo bash -c "$(curl -sL https://get.containerlab.dev)"
 ```
 
-Install Juniper vMX on [Vrnetlab](https://containerlab.dev/manual/vrnetlab/)
+Install Juniper vJunos-router using [Vrnetlab](https://containerlab.dev/manual/vrnetlab/)
 
 ```bash
 $ sudo apt install make
-$ git clone https://github.com/hellt/vrnetlab && cd vrnetlab/vmx
-$ cp ~/vmx-bundle-22.4R1.10.tgz .
+$ git clone https://github.com/hellt/vrnetlab && cd vrnetlab/vjunos-router
+$ cp ~/vjunos-router-25.2R1.9.qcow2 .
 $ sudo make
 ^Cmake[1]: *** [../makefile-install.include:39: docker-build] Interrupt
 make: *** [../makefile.include:9: docker-image] Interrupt
 
 $ sudo docker images                                       
 REPOSITORY            TAG         IMAGE ID       CREATED         SIZE
-vrnetlab/vr-vmx       22.4R1.10   6d2704750cd7   3 minutes ago   10.8GB
+vrnetlab/juniper_vjunos-router  25.2R1.9  <IMAGE_ID>  <CREATED>  <SIZE>
 
 $ sudo rm -rf vrnetlab
 $ sudo docker builder prune -a
@@ -55,7 +55,7 @@ cd pola/examples/containerlab/srv6-explicit-path-l3vpn
 sudo containerlab deploy
 ```
 
-Wait for starting vMX after execute `sudo containerlab deploy` (it takes some time).
+Wait for vJunos-router startup after `sudo containerlab deploy` (it takes several minutes).
 
 ```bash
 $ docker logs clab-srv6-explicit-path-l3vpn-pe01 -f

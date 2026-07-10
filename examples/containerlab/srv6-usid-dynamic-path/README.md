@@ -7,7 +7,8 @@ Example topology powered by [Containerlab](https://containerlab.dev/)
 ## Requirements
 
 * container host (Linux)
-* vJunos image
+* vJunos image (`vrnetlab/juniper_vjunos-router:25.2R1.9`)
+* XRd image (`ios-xr/xrd-control-plane:24.4.1`)
 
 ## Usage
 

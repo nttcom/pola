@@ -2,9 +2,9 @@ name: dynamic-path
 topology:
   kinds:
     xrd:
-      image: ios-xr/xrd-control-plane:7.8.1
+      image: ios-xr/xrd-control-plane:24.4.1
     juniper_vjunosrouter:
-      image: vrnetlab/juniper_vjunos-router:24.2R1-S2.5
+      image: vrnetlab/juniper_vjunos-router:25.2R1.9
   nodes:
     pe01:
       kind: xrd
