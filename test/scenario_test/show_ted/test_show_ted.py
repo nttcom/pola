@@ -14,6 +14,13 @@ from helpers.wait import (
 
 
 class TestShowTed:
+    """Test TED (Traffic Engineering Database) synchronization scenarios.
+
+    This test suite verifies:
+    - TED population matches expected topology (nodes and links)
+    - TED updates correctly when a link goes down
+    """
+
     TEST_SHOW_TED_DIR = os.path.abspath(os.path.dirname(__file__))
 
     def _verify_ted_sync(
@@ -63,10 +70,9 @@ class TestShowTed:
             expected_output2,
         )
 
-    def test__srmpls(
-        self,
-        clab_deploy,
-    ):
+    def test__srmpls(self, clab_deploy):
+        """Verify TED sync for SR-MPLS topology, including update after link-down."""
+
         test_dir = os.path.join(
             self.TEST_SHOW_TED_DIR,
             "srmpls",
@@ -78,22 +84,13 @@ class TestShowTed:
             "clab-srmpls-pola",
             "clab-srmpls-jun-rt1",
             "docker exec clab-srmpls-gobgp ping 10.255.0.2 -c 1",
-            os.path.join(
-                test_dir,
-                "expected",
-                "srmpls.json",
-            ),
-            os.path.join(
-                test_dir,
-                "expected",
-                "srmpls2.json",
-            ),
+            os.path.join(test_dir, "expected", "srmpls.json"),
+            os.path.join(test_dir, "expected", "srmpls2.json"),
         )
 
-    def test__srv6_usid(
-        self,
-        clab_deploy,
-    ):
+    def test__srv6_usid(self, clab_deploy):
+        """Verify TED sync for SRv6 uSID topology, including update after link-down."""
+
         test_dir = os.path.join(
             self.TEST_SHOW_TED_DIR,
             "srv6_usid",
@@ -105,14 +102,6 @@ class TestShowTed:
             "clab-srv6-usid-pola",
             "clab-srv6-usid-jun-rt1",
             "docker exec clab-srv6-usid-gobgp ping fd00:ffff::2 -c 1",
-            os.path.join(
-                test_dir,
-                "expected",
-                "srv6_usid.json",
-            ),
-            os.path.join(
-                test_dir,
-                "expected",
-                "srv6_usid2.json",
-            ),
+            os.path.join(test_dir, "expected", "srv6_usid.json"),
+            os.path.join(test_dir, "expected", "srv6_usid2.json"),
         )
