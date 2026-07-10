@@ -26,9 +26,9 @@ class TestDynamicPath:
     - Resulting SRv6 segment list on the router
     """
 
-    TEST_ABS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     TEST_DYNAMIC_PATH_DIR = os.path.join(
-        TEST_ABS_DIR, "scenario_test", "dynamic_path", "srv6_usid"
+        os.path.abspath(os.path.dirname(__file__)),
+        "srv6_usid",
     )
 
     def _deploy_and_assert_segments(self, clab_deploy, policy_file, expected_segments):

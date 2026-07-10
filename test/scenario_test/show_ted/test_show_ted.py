@@ -14,13 +14,7 @@ from helpers.wait import (
 
 
 class TestShowTed:
-    TEST_ABS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-
-    TEST_SHOW_TED_DIR = os.path.join(
-        TEST_ABS_DIR,
-        "scenario_test",
-        "show_ted",
-    )
+    TEST_SHOW_TED_DIR = os.path.abspath(os.path.dirname(__file__))
 
     def _verify_ted_sync(
         self,
