@@ -71,9 +71,8 @@ class TestDynamicPath:
         )
         assert "success" in result.stdout.lower()
 
-        ssh_client = None
+        ssh_client = wait_for_ssh("clab-srv6-usid-pe02")
         try:
-            ssh_client = wait_for_ssh("clab-srv6-usid-pe02")
             wait_until_lsp_up(ssh_client, "DYNAMIC-POLICY")
 
             _, stdout, _ = ssh_client.exec_command(
@@ -96,10 +95,8 @@ class TestDynamicPath:
                 f"Expected: {expected_segments}\n"
                 f"Actual:   {actual_segments}"
             )
-
         finally:
-            if ssh_client is not None:
-                ssh_client.close()
+            ssh_client.close()
 
     def test__srv6_usid_dynamic_path(self, clab_deploy):
         """Verify SRv6 uSID dynamic path produces the expected segment list."""
