@@ -136,11 +136,8 @@ def wait_until_ted_has_routers(
     router_ids = set(router_ids)
 
     def predicate(ted):
-
         present = {node.get("routerID") for node in ted.get("ted", [])}
-
         missing = router_ids - present
-
         if missing:
             print(f"Waiting for routers: {missing}")
 
@@ -173,7 +170,6 @@ def wait_until_ted_has_links(
                     found.add(frozenset((local, remote)))
 
         missing = expected_links - found
-
         if missing:
             print(f"Waiting for TED links: {missing}")
 
@@ -193,12 +189,9 @@ def wait_until_ted_matches(
     timeout: int = 600,
     interval: int = 5,
 ) -> dict:
-    """
-    Wait until TED JSON matches expected.
-    """
+    """Wait until TED JSON matches expected."""
 
     def predicate(ted):
-
         diff = DeepDiff(
             ted,
             expected,
