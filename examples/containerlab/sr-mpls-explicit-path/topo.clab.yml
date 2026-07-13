@@ -1,4 +1,4 @@
-name: sr-mpls_pcep
+name: sr-mpls-pcep
 topology:
   kinds:
     xrd:

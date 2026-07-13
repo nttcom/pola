@@ -83,14 +83,14 @@ Start Containerlab network
 
 ```bash
 git clone https://github.com/nttcom/pola
-cd pola/examples/containerlab/sr-mpls_explicit-path
+cd pola/examples/containerlab/sr-mpls-explicit-path
 sudo containerlab deploy
 ```
 
 Wait for vJunos-router startup after `sudo containerlab deploy` (it takes several minutes).
 
 ```bash
-$ docker logs clab-sr-mpls_pcep-pe02 -f
+$ docker logs clab-sr-mpls-pcep-pe02 -f
 <snip.>
 2023-02-20 15:03:26,233: launch     INFO     Startup complete in: 0:09:06.969773
 ```
@@ -100,7 +100,7 @@ $ docker logs clab-sr-mpls_pcep-pe02 -f
 Connect to PCEP container, check PCEP session and SR policy
 
 ```bash
-$ sudo docker exec -it clab-sr-mpls_pcep-pola bash
+$ sudo docker exec -it clab-sr-mpls-pcep-pola bash
 # pola session
 sessionAddr(0): 10.0.255.1
 sessionAddr(1): 10.0.255.3

@@ -30,7 +30,7 @@ The `switch` bridge node is created automatically by Containerlab.
 
 ```bash
 git clone https://github.com/nttcom/pola
-cd pola/examples/containerlab/sr-mpls_explicit-path_l3vpn
+cd pola/examples/containerlab/sr-mpls-explicit-path-l3vpn
 
 sudo containerlab deploy
 docker ps
