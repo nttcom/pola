@@ -10,9 +10,9 @@ topology:
       kind: linux
       image: ghcr.io/nttcom/pola:latest-dev
       binds:
-        - polad/polad.yaml:/polad.yaml
-        - sr-policies/pe01-policy1.yaml:/pe01-policy1.yaml
-        - sr-policies/pe02-policy1.yaml:/pe02-policy1.yaml
+        - pola/polad.yaml:/pola/polad.yaml
+        - sr-policies/pe01-policy1.yaml:/pola/pe01-policy1.yaml
+        - sr-policies/pe02-policy1.yaml:/pola/pe02-policy1.yaml
       exec:
         - ip -6 addr add fd00::ffff/64 dev eth1
     pe01:

@@ -6,7 +6,7 @@ topology:
       kind: linux
       image: ghcr.io/nttcom/pola:latest-dev
       binds:
-        - polad/polad.yaml:/polad.yaml
+        - pola/polad.yaml:/pola/polad.yaml
       exec:
         - ip addr add 10.0.255.254/24 dev eth1
 
