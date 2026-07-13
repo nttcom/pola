@@ -1,3 +1,4 @@
+asn: 65000
 srPolicy:
   pcepSessionAddr: "fd00::2"
   srcAddr: "fd00:ffff::2"
