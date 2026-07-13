@@ -6,7 +6,7 @@ topology:
     juniper_vjunosrouter:
       image: vrnetlab/juniper_vjunos-router:25.2R1.9
   nodes:
-    pola-pce:
+    pola:
       kind: linux
       image: ghcr.io/nttcom/pola:latest-dev
       binds:
@@ -40,7 +40,7 @@ topology:
     - endpoints: ["pe01:Gi0-0-0-1", "pe03:eth1"]
     - endpoints: ["pe02:eth2", "pe03:eth2"]
     # Switch
-    - endpoints: ["pola-pce:eth1", "switch:eth1"]
+    - endpoints: ["pola:eth1", "switch:eth1"]
     - endpoints: ["pe01:Gi0-0-0-2", "switch:eth2"]
     - endpoints: ["pe02:eth3", "switch:eth3"]
     - endpoints: ["pe03:eth3", "switch:eth4"] 

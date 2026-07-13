@@ -8,6 +8,7 @@ Example topology powered by [Containerlab](https://containerlab.dev/)
 * container host (Linux)
 * Cisco XRd image (`ios-xr/xrd-control-plane:24.4.1`)
 * Juniper vJunos-router image (`vrnetlab/juniper_vjunos-router:25.2R1.9`)
+* Pola helper image (`ghcr.io/nttcom/pola:latest-dev`)
 
 ## Usage
 
@@ -68,12 +69,7 @@ $ sudo docker builder prune -a
 
 ### Building a Lab Network
 
-Create bridge
-
-```bash
-sudo ip link add switch type bridge
-sudo ip link set dev switch up
-```
+The `switch` bridge node is created automatically by Containerlab.
 
 Enable MPLS kernel module
 
@@ -104,8 +100,7 @@ $ docker logs clab-sr-mpls_pcep-pe02 -f
 Connect to PCEP container, check PCEP session and SR policy
 
 ```bash
-$ sudo docker exec -it clab-sr-mpls_pcep-pola-pce bash
-# polad -f polad.yaml  > /dev/null 2>&1 & 
+$ sudo docker exec -it clab-sr-mpls_pcep-pola bash
 # pola session
 sessionAddr(0): 10.0.255.1
 sessionAddr(1): 10.0.255.3

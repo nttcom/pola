@@ -9,6 +9,8 @@ Example topology powered by [Containerlab](https://containerlab.dev/)
 * container host (Linux)
 * vJunos image (`vrnetlab/juniper_vjunos-router:25.2R1.9`)
 * XRd image (`ios-xr/xrd-control-plane:24.4.1`)
+* Pola helper image (`ghcr.io/nttcom/pola:latest-dev`)
+* GoBGP binaries in `bin/` (`gobgpd`, `gobgp`, v4.0.0 or later)
 
 ## Usage
 
@@ -24,19 +26,16 @@ Install vJunos on [Vrnetlab](https://containerlab.dev/manual/vrnetlab/)
 
 ### Building a Lab Network
 
-Create bridge
+The `switch` bridge node is created automatically by Containerlab.
+
+Copy GoBGP binaries to `bin`:
 
 ```bash
-sudo ip link add switch type bridge
-sudo ip link set dev switch up
+cp /path/to/gobgpd bin/gobgpd
+cp /path/to/gobgp bin/gobgp
 ```
 
-Copy Pola PCE & GoBGP binaries to `bin`
-
-* GoBGP: v4.0.0 or later
-* Pola PCE: [commit 7a72c02](https://github.com/nttcom/pola/commit/7a72c02085d72d9b6a0dc1a887745fd9ec25fe60) or later
-
-The helper containers are runtime-only. A Go toolchain inside the lab is not required.
+Pola and GoBGP start automatically when the lab is deployed.
 
 Start Containerlab network
 
@@ -45,23 +44,6 @@ git clone https://github.com/nttcom/pola
 cd pola/examples/containerlab/srv6-usid-dynamic-path-loose-source-routing-sfc
 
 sudo containerlab deploy
-```
-
-### Starting Daemons
-
-```bash
-$ sudo docker exec -it clab-dynamic-path-loose-source-routing-sfc-gobgp-server bash
-# gobgpd -f /gobgpd.yml
-```
-
-```bash
-$ sudo docker exec -it clab-dynamic-path-loose-source-routing-sfc-gobgp-client bash
-# gobgpd -f /gobgpd.yml
-```
-
-```bash
-$ sudo docker exec -it clab-dynamic-path-loose-source-routing-sfc-pola bash
-# polad -f /polad.yaml
 ```
 
 ### Show TED
@@ -95,7 +77,6 @@ Apply and check SR Policy
 success!
 
 # pola sr-policy list -p 50052
-root@pola:/# ./pola -p 50052 sr-policy list
 Session: fd00::2
   PolicyName: DYNAMIC-POLICY
     SrcAddr: fd00:ffff::2

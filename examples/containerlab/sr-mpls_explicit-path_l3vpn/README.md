@@ -12,6 +12,8 @@ Example topology powered by [Containerlab](https://containerlab.dev/)
 * Docker image `frrouting/frr:v8.4.1`
 * Docker image `wbitt/network-multitool:latest`
 
+Image policy: the Pola helper tracks `latest-dev`, while generic utility hosts use `wbitt/network-multitool:latest`.
+
 ## Usage
 
 ### Install Containerlab
@@ -23,6 +25,8 @@ sudo bash -c "$(curl -sL https://get.containerlab.dev)"
 ### Building a Lab Network
 
 Get topology file and start Containerlab network
+
+The `switch` bridge node is created automatically by Containerlab.
 
 ```bash
 git clone https://github.com/nttcom/pola

@@ -8,6 +8,8 @@ Example topology powered by [Containerlab](https://containerlab.dev/)
 
 * container host (Linux)
 * Juniper vJunos-router image (`vrnetlab/juniper_vjunos-router:25.2R1.9`)
+* Pola helper image (`ghcr.io/nttcom/pola:latest-dev`)
+* Host utility image (`wbitt/network-multitool:latest`)
 
 ## Usage
 
@@ -39,12 +41,7 @@ $ sudo docker builder prune -a
 
 ### Building a Lab Network
 
-Create bridge
-
-```bash
-sudo ip link add switch type bridge
-sudo ip link set dev switch up
-```
+The `switch` bridge node is created automatically by Containerlab.
 
 Start Containerlab network
 
@@ -118,7 +115,7 @@ $ ssh clab-srv6-explicit-path-l3vpn-pe01 -l admin
 admin@pe01> show path-computation-client lsp
 
   Name                                Status            PLSP-Id  LSP-Type       Controller       Path-Setup-Type       Template
-  pe01-policy1                        (Act)             1        ext-provised   POLA-PCE         srv6-te
+  pe01-policy1                        (Act)             1        ext-provised   POLA             srv6-te
 
 admin@pe01> show spring-traffic-engineering lsp detail
 Name: pe01-policy1

@@ -9,7 +9,6 @@ topology:
         - polad/polad.yaml:/polad.yaml
       exec:
         - ip addr add 10.0.255.254/24 dev eth1
-        - polad -f /polad.yaml > /dev/null 2>&1 &
 
     pe01:
       kind: linux

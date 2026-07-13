@@ -44,6 +44,7 @@ and a PCEP Library in Go.
 * [Getting Started](docs/sources/getting-started.md)
 * [Docker Image Usage](build/package/README.md)
 * Examples (powered by [Containerlab](https://containerlab.dev/))
+  * [Containerlab Conventions](examples/containerlab)
   * [SR-MPLS Explicit Path](examples/containerlab/sr-mpls_explicit-path)
   * [SR-MPLS L3VPN](examples/containerlab/sr-mpls_explicit-path_l3vpn)
   * [SRv6 Explicit Path L3VPN](examples/containerlab/srv6-explicit-path-l3vpn)
