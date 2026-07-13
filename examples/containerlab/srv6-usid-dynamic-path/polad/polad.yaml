@@ -1,6 +1,6 @@
 global:
   pcep:
-    address: "fd00::3"
+    address: "::"
     port: 4189
   grpcServer:
     address: "127.0.0.1"
