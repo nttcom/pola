@@ -4,6 +4,14 @@ Example topology powered by [Containerlab](https://containerlab.dev/)
 
 ![Topology](./topo.png)
 
+## Requirements
+
+* container host (Linux)
+* Containerlab
+* Docker image `ghcr.io/nttcom/pola:latest-dev`
+* Docker image `frrouting/frr:v8.4.1`
+* Docker image `wbitt/network-multitool:latest`
+
 ## Usage
 
 ### Install Containerlab

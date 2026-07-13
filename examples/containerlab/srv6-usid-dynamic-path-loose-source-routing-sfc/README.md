@@ -1,4 +1,4 @@
-# SRv6 uSID Dynamic Path
+# SRv6 uSID Dynamic Path with Loose Source Routing SFC
 
 Example topology powered by [Containerlab](https://containerlab.dev/)
 
@@ -48,24 +48,24 @@ sudo containerlab deploy
 ### Starting Daemons
 
 ```bash
-$ sudo docker exec -it clab-dynamic-path-gobgp-server bash
+$ sudo docker exec -it clab-dynamic-path-loose-source-routing-sfc-gobgp-server bash
 # gobgpd -f /gobgpd.yml
 ```
 
 ```bash
-$ sudo docker exec -it clab-dynamic-path-gobgp-client bash
+$ sudo docker exec -it clab-dynamic-path-loose-source-routing-sfc-gobgp-client bash
 # gobgpd -f /gobgpd.yml
 ```
 
 ```bash
-$ sudo docker exec -it clab-dynamic-path-pola bash
+$ sudo docker exec -it clab-dynamic-path-loose-source-routing-sfc-pola bash
 # polad -f /polad.yaml
 ```
 
 ### Show TED
 
 ```bash
-$ sudo docker exec -it clab-dynamic-path-pola bash
+$ sudo docker exec -it clab-dynamic-path-loose-source-routing-sfc-pola bash
 # pola -p 50052 ted 
 ```
 
@@ -74,7 +74,7 @@ $ sudo docker exec -it clab-dynamic-path-pola bash
 Connect to PCEP container, check PCEP session and SR policy
 
 ```bash
-$ sudo docker exec -it clab-dynamic-path-pola bash
+$ sudo docker exec -it clab-dynamic-path-loose-source-routing-sfc-pola bash
 
 # pola session -p 50052
 sessionAddr(0): fd00::2
@@ -109,7 +109,7 @@ Enter container pe02 and check SR Policy
 * pass: admin@123
 
 ```text
-$ ssh clab-dynamic-path-pe02 -l admin
+$ ssh clab-dynamic-path-loose-source-routing-sfc-pe02 -l admin
 
 admin@pe02> show spring-traffic-engineering lsp brief
 To                        State        LSPname
