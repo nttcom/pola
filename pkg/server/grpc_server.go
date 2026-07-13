@@ -274,7 +274,7 @@ func validate(inputSRPolicy *pb.SRPolicy, asn uint32, validationKind ValidationK
 	if inputSRPolicy == nil {
 		return errors.New("validate error, input is nil")
 	}
-	if asn == 0 {
+	if validationKind != ValidationAddDisablePathCompute && validationKind != ValidationDelete && asn == 0 {
 		return errors.New("validate error, ASN must not be zero")
 	}
 	if validateFunc, ok := validator[validationKind]; ok {
@@ -298,9 +298,6 @@ const (
 
 var validator = map[ValidationKind]func(policy *pb.SRPolicy, asn uint32) error{
 	ValidationAdd: func(policy *pb.SRPolicy, asn uint32) error {
-		if asn == 0 {
-			return errors.New("policy.ASN must not be zero")
-		}
 		if policy.PcepSessionAddr == nil {
 			return errors.New("policy.PCEP session address must not be nil")
 		}
