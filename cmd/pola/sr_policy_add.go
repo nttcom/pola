@@ -151,7 +151,9 @@ func addSRPolicyWithoutSIDValidation(input InputFormat) error {
 	}
 
 	request := &pb.CreateSRPolicyRequest{
-		SrPolicy: srPolicy,
+		SrPolicy:    srPolicy,
+		Asn:         input.ASN,
+		SidValidate: true, // Current server behavior uses SidValidate=true for the manual/TED-less path.
 	}
 	if err := grpc.CreateSRPolicy(client, request); err != nil {
 		return err
