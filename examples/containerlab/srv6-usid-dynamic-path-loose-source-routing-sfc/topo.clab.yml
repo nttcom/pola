@@ -20,39 +20,33 @@ topology:
       startup-config: startup-configs/p02.cfg
     pola:
       kind: linux
-      image: golang:1.24.1
+      image: wbitt/network-multitool:latest
       binds:
         - bin/polad:/bin/polad
         - bin/pola:/bin/pola
         - polad/polad.yaml:/polad.yaml
         - sr-policies/pe02-policy1.yaml:/pe02-policy1.yaml
       exec:
-        - apt update
-        - apt install iproute2 -y
         - ip addr add 10.0.0.3/24 dev eth1
         - ip -6 addr add fd00::3/64 dev eth1
     gobgp-server:
       kind: linux
-      image: golang:1.24.1
+      image: wbitt/network-multitool:latest
       binds:
         - bin/gobgpd:/bin/gobgpd
         - bin/gobgp:/bin/gobgp
         - gobgpd/gobgp-server.yml:/gobgpd.yml
       exec:
-        - apt update
-        - apt install iproute2 -y
         - ip addr add 10.0.0.4/24 dev eth1
         - ip -6 addr add fd00::4/64 dev eth1
     gobgp-client:
       kind: linux
-      image: golang:1.24.1
+      image: wbitt/network-multitool:latest
       binds:
         - bin/gobgpd:/bin/gobgpd
         - bin/gobgp:/bin/gobgp
         - gobgpd/gobgp-client.yml:/gobgpd.yml
       exec:
-        - apt update
-        - apt install iproute2 -y
         - ip addr add 10.0.0.5/24 dev eth1
         - ip -6 addr add fd00::5/64 dev eth1
     switch:

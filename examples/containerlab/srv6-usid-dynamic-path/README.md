@@ -31,10 +31,12 @@ sudo ip link add switch type bridge
 sudo ip link set dev switch up
 ```
 
-Copy Pola PCE & GoBGP to bin
+Copy Pola PCE & GoBGP binaries to `bin`
 
 * GoBGP: v4.0.0 or later
 * Pola PCE: [commit 7a72c02](https://github.com/nttcom/pola/commit/7a72c02085d72d9b6a0dc1a887745fd9ec25fe60) or later
+
+The helper containers are runtime-only. A Go toolchain inside the lab is not required.
 
 Start Containerlab network
 
