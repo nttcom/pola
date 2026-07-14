@@ -234,7 +234,7 @@ func (o *OpenObject) Serialize() []uint8 {
 	openObjectHeader := NewCommonObjectHeader(ObjectClassOpen, o.ObjectType, o.Len())
 	byteOpenObjectHeader := openObjectHeader.Serialize()
 	buf := make([]uint8, 4)
-	buf[0] = o.Version << 5
+	buf[0] = (o.Version << 5) | (o.Flag & 0x1f)
 	buf[1] = o.Keepalive
 	buf[2] = o.Deadtime
 	buf[3] = o.Sid
@@ -422,7 +422,13 @@ func (o *PCEPErrorObject) Serialize() []uint8 {
 
 	buf[2] = o.ErrorType
 	buf[3] = o.ErrorValue
-	bytePCEPErrorObject := AppendByteSlices(bytePCEPErrorObjectHeader, buf)
+
+	byteTlvs := []uint8{}
+	for _, tlv := range o.Tlvs {
+		byteTlvs = append(byteTlvs, tlv.Serialize()...)
+	}
+
+	bytePCEPErrorObject := AppendByteSlices(bytePCEPErrorObjectHeader, buf, byteTlvs)
 	return bytePCEPErrorObject
 }
 
@@ -623,6 +629,7 @@ type LSPObject struct {
 func (o *LSPObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
 	o.ObjectType = typ
 	o.PlspID = uint32(binary.BigEndian.Uint32(objectBody[0:4]) >> 12) // 20 bits from top
+	o.CFlag = (objectBody[3] & 0x80) != 0
 	o.OFlag = uint8(objectBody[3] & 0x0070 >> 4)
 	o.AFlag = (objectBody[3] & 0x08) != 0
 	o.RFlag = (objectBody[3] & 0x04) != 0
@@ -1425,7 +1432,7 @@ func (o *AssociationObject) Serialize() ([]uint8, error) {
 	buf := make([]uint8, 4)
 
 	if o.RFlag {
-		buf[4] = buf[4] | 0x01
+		buf[3] = buf[3] | 0x01
 	}
 
 	assocType := Uint16ToByteSlice(o.AssocType)
@@ -1617,9 +1624,12 @@ func (o *VendorInformationObject) Serialize() []uint8 {
 }
 
 func (o VendorInformationObject) Len() uint16 {
-	// TODO: Expantion for IPv6 Endpoint
-	// CommonObjectHeader(4byte) + Enterprise Number (4byte) + colorTLV (8byte) + preferenceTLV (8byte)
-	return uint16(commonObjectHeaderLength + 4 + 8 + 8)
+	tlvsByteLength := uint16(0)
+	for _, tlv := range o.TLVs {
+		tlvsByteLength += tlv.Len()
+	}
+	// CommonObjectHeader(4byte) + Enterprise Number (4byte) + TLVs (variable)
+	return commonObjectHeaderLength + 4 + tlvsByteLength
 }
 
 func NewVendorInformationObject(vendor PccType, color uint32, preference uint32) (*VendorInformationObject, error) {
