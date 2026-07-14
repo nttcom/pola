@@ -1,4 +1,4 @@
-name: dynamic-path-loose-source-routing-sfc
+name: srv6-usid-dynamic-path-loose-source-routing-sfc
 topology:
   kinds:
     xrd:

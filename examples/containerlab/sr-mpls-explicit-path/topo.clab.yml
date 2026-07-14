@@ -1,4 +1,4 @@
-name: sr-mpls-pcep
+name: sr-mpls-explicit-path
 topology:
   kinds:
     xrd:

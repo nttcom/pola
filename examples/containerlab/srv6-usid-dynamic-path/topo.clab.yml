@@ -1,4 +1,4 @@
-name: dynamic-path
+name: srv6-usid-dynamic-path
 topology:
   kinds:
     xrd:

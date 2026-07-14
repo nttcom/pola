@@ -1,4 +1,4 @@
-name: sr-mpls-l3vpn
+name: sr-mpls-explicit-path-l3vpn
 
 topology:
   nodes:
