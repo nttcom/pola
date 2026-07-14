@@ -1,5 +1,4 @@
 name: sr-mpls-explicit-path-l3vpn
-
 topology:
   nodes:
     pola:
@@ -9,7 +8,6 @@ topology:
         - pola/polad.yaml:/pola/polad.yaml
       exec:
         - ip addr add 10.0.255.254/24 dev eth1
-
     pe01:
       kind: linux
       image: frrouting/frr:v8.4.1
@@ -25,7 +23,6 @@ topology:
         - ip link add cust-a type vrf table 10
         - ip link set cust-a up
         - ip link set eth3 master cust-a
-
     pe02:
       kind: linux
       image: frrouting/frr:v8.4.1
@@ -41,7 +38,6 @@ topology:
         - ip link add cust-a type vrf table 10
         - ip link set cust-a up
         - ip link set eth3 master cust-a
-
     p01:
       kind: linux
       image: frrouting/frr:v8.4.1
@@ -55,7 +51,6 @@ topology:
         - sysctl -w net.mpls.conf.eth2.input=1
         - sysctl -w net.mpls.conf.eth3.input=1
         - sysctl -w net.mpls.platform_labels=1048575
-
     p02:
       kind: linux
       image: frrouting/frr:v8.4.1
@@ -69,34 +64,31 @@ topology:
         - sysctl -w net.mpls.conf.eth2.input=1
         - sysctl -w net.mpls.conf.eth3.input=1
         - sysctl -w net.mpls.platform_labels=1048575
-
     host01:
       kind: linux
       image: wbitt/network-multitool:latest
       exec:
         - ip addr add 192.168.0.2/24 dev eth1
         - ip route add default via 192.168.0.1
-
     host02:
       kind: linux
       image: wbitt/network-multitool:latest
       exec:
         - ip addr add 192.168.1.2/24 dev eth1
         - ip route add default via 192.168.1.1
-
     switch:
       kind: bridge
-
   links:
+    # SR-MPLS domain
     - endpoints: ["pe01:eth1", "p01:eth1"]
     - endpoints: ["pe01:eth2", "p02:eth1"]
     - endpoints: ["pe02:eth1", "p01:eth2"]
     - endpoints: ["pe02:eth2", "p02:eth2"]
     - endpoints: ["p01:eth3", "p02:eth3"]
-
+    # hosts
     - endpoints: ["pe01:eth3", "host01:eth1"]
     - endpoints: ["pe02:eth3", "host02:eth1"]
-
+    # switch
     - endpoints: ["pola:eth1", "switch:eth1"]
     - endpoints: ["pe01:eth4", "switch:eth2"]
     - endpoints: ["pe02:eth4", "switch:eth3"]

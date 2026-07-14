@@ -58,7 +58,7 @@ topology:
     - endpoints: ["pe02:eth1", "p01:Gi0-0-0-1"]
     - endpoints: ["pe02:eth2", "p02:Gi0-0-0-1"]
     - endpoints: ["p01:Gi0-0-0-2", "p02:Gi0-0-0-2"]
-    # Switch
+    # switch
     - endpoints: ["pe01:Gi0-0-0-2", "switch:eth1"]
     - endpoints: ["pe02:eth3", "switch:eth2"]
     - endpoints: ["pola:eth1", "switch:eth3"]

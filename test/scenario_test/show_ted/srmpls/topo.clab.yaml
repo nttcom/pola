@@ -6,7 +6,7 @@ topology:
   nodes:
     pola:
       kind: linux
-      image: golang:1.24.2
+      image: golang:1.26.5
       network-mode: container:gobgp
       startup-delay: 10
       binds:
@@ -16,7 +16,7 @@ topology:
       cmd: /bin/polad -f /polad.cfg.yaml &
     gobgp:
       kind: linux
-      image: golang:1.24.2
+      image: golang:1.26.5
       binds:
         - ../../../bin/gobgpd:/bin/gobgpd
         - ../../../bin/gobgp:/bin/gobgp

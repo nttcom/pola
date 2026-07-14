@@ -1,10 +1,8 @@
 name: srv6-explicit-path-l3vpn
-
 topology:
   kinds:
     juniper_vjunosrouter:
       image: vrnetlab/juniper_vjunos-router:25.2R1.9
-
   nodes:
     pola:
       kind: linux
@@ -45,7 +43,6 @@ topology:
         - ip -6 route add fd00:a1::/64 via fd00:a2::ffff
     switch:
       kind: bridge
-
   links:
     # SRv6 domain
     - endpoints: ["pe01:eth1", "p01:eth1"]
@@ -53,10 +50,10 @@ topology:
     - endpoints: ["pe02:eth1", "p01:eth2"]
     - endpoints: ["pe02:eth2", "p02:eth2"]
     - endpoints: ["p01:eth3", "p02:eth3"]
-    # cust-A hosts
+    # hosts
     - endpoints: ["pe01:eth3", "host01:eth1"]
     - endpoints: ["pe02:eth3", "host02:eth1"]
-    # Switch
+    # switch
     - endpoints: ["pola:eth1", "switch:eth1"]
     - endpoints: ["pe01:eth4", "switch:eth2"]
     - endpoints: ["pe02:eth4", "switch:eth3"]

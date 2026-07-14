@@ -31,7 +31,6 @@ topology:
         - startup-configs/pe03/vtysh.sh:/vtysh.sh
       exec:
         - bash /vtysh.sh
-
     switch:
       kind: bridge
   links:
@@ -39,7 +38,7 @@ topology:
     - endpoints: ["pe01:Gi0-0-0-0", "pe02:eth1"]
     - endpoints: ["pe01:Gi0-0-0-1", "pe03:eth1"]
     - endpoints: ["pe02:eth2", "pe03:eth2"]
-    # Switch
+    # switch
     - endpoints: ["pola:eth1", "switch:eth1"]
     - endpoints: ["pe01:Gi0-0-0-2", "switch:eth2"]
     - endpoints: ["pe02:eth3", "switch:eth3"]
