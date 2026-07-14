@@ -225,10 +225,10 @@ JSON formatted response
 
 Create a new SR Policy **without using TED**
 
-For each SID, write the `localAddress` (and `remoteAddr` if it's an Adj-SID)
+For each SID, write the `localAddr` (and `remoteAddr` if it's an Adj-SID)
 to construct the NAI.
 
-See [JSON shema](schemas/polad_config.json) for input details.
+See [JSON schema](docs/schemas/policy.json) for input details.
 
 YAML input format
 

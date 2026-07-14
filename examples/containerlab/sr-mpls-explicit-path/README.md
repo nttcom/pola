@@ -1,6 +1,7 @@
 # SR-MPLS + PCEP (IOS-XR/Junos/FRRouting)
 
 Example topology powered by [Containerlab](https://containerlab.dev/)
+
 ![Topology](./topo.png)
 
 ## Requirements
@@ -8,76 +9,18 @@ Example topology powered by [Containerlab](https://containerlab.dev/)
 * container host (Linux)
 * Cisco XRd image (`ios-xr/xrd-control-plane:24.4.1`)
 * Juniper vJunos-router image (`vrnetlab/juniper_vjunos-router:25.2R1.9`)
+* FRRouting image (`frrouting/frr:v8.4.1`)
+* MPLS kernel modules on the container host (`mpls_router`, `mpls_gso`, `mpls_iptunnel`)
 * Pola helper image (`ghcr.io/nttcom/pola:latest-dev`)
 
+See [Prerequisites](../README.md#prerequisites) for how to install Containerlab and
+prepare these images.
+
 ## Usage
-
-### Install Containerlab & XRd/vJunos-router
-
-**[Install Containerlab](https://containerlab.dev/install/)**
-
-```bash
-sudo bash -c "$(curl -sL https://get.containerlab.dev)"
-```
-
-**Install Cisco XRd**
-Configure sysctl on host
-
-```bash
-$ vi /etc/sysctl.conf
-fs.inotify.max_user_instances=64000
-fs.inotify.max_user_watches=64000
-net.core.netdev_max_backlog=300000
-net.core.optmem_max=67108864
-net.core.rmem_default=67108864
-net.core.rmem_max=67108864
-net.core.wmem_default=67108864
-net.core.wmem_max=67108864
-net.ipv4.udp_mem=1124736 10000000 67108864
-$ sysctl -p
-```
-
-host-check (see: [Setting up the Host Environment to run XRd](https://xrdocs.io/virtual-routing/tutorials/2022-08-22-setting-up-host-environment-to-run-xrd/))
-
-```bash
-git clone https://github.com/ios-xr/xrd-tools
-cd xrd-tools/scripts
-./host-check --platform xrd-control-plane
-```
-
-Load XRd container image
-
-```bash
-docker load -i <xrd>.tar.gz
-```
-
-Install Juniper vJunos-router using [Vrnetlab](https://containerlab.dev/manual/vrnetlab/)
-
-```bash
-$ sudo apt install make
-$ git clone https://github.com/hellt/vrnetlab && cd vrnetlab/vjunos-router
-$ cp ~/vjunos-router-25.2R1.9.qcow2 .
-$ sudo make
-^Cmake[1]: *** [../makefile-install.include:39: docker-build] Interrupt
-make: *** [../makefile.include:9: docker-image] Interrupt
-$ sudo docker images                                       
-REPOSITORY            TAG         IMAGE ID       CREATED         SIZE
-vrnetlab/juniper_vjunos-router  25.2R1.9  <IMAGE_ID>  <CREATED>  <SIZE>
-$ sudo rm -rf vrnetlab
-$ sudo docker builder prune -a
-```
 
 ### Building a Lab Network
 
 The `switch` bridge node is created automatically by Containerlab.
-
-Enable MPLS kernel module
-
-```bash
-sudo modprobe mpls_router
-sudo modprobe mpls_gso
-sudo modprobe mpls_iptunnel
-```
 
 Start Containerlab network
 
@@ -90,23 +33,174 @@ sudo containerlab deploy
 Wait for vJunos-router startup after `sudo containerlab deploy` (it takes several minutes).
 
 ```bash
-$ docker logs clab-sr-mpls-pcep-pe02 -f
+$ docker logs clab-sr-mpls-explicit-path-pe02 -f
 <snip.>
-2023-02-20 15:03:26,233: launch     INFO     Startup complete in: 0:09:06.969773
+2026-07-30 09:58:26,934: launch      INFO Startup complete in: 0:01:44.162598
 ```
 
-### Check PCEP Session
+### Apply SR Policy
 
 Connect to PCEP container, check PCEP session and SR policy
 
 ```bash
-$ sudo docker exec -it clab-sr-mpls-pcep-pola bash
-# pola session
-sessionAddr(0): 10.0.255.1
-sessionAddr(1): 10.0.255.3
+$ docker exec -it clab-sr-mpls-explicit-path-pola bash
+
+root@pola:/pola# pola session
+sessionAddr(0): 10.0.255.3
+  State: SESSION_STATE_UP
+  Capabilities: [Stateful Update Instantiation Color SR-TE]
+  IsSynced: true
+sessionAddr(1): 10.0.255.1
+  State: SESSION_STATE_UP
+  Capabilities: [Stateful Update Instantiation Color SRv6 SR-TE SRv6-TE SR-P2MP-POLICY-CAPABILITY]
+  IsSynced: true
 sessionAddr(2): 10.0.255.2
-# pola sr-policy list
-no SR Policies
+  State: SESSION_STATE_UP
+  Capabilities: [Stateful Update Instantiation Color SR-TE Multipath Vendor-Info(Juniper)]
+  IsSynced: true
+
+root@pola:/pola# pola sr-policy list
+No SR Policies found.
 ```
 
-Now the environment for PCEP verification is ready!
+Apply and check SR Policy
+
+One explicit-path policy per PCC is mounted in the Pola container.
+
+| File | PCC | Endpoint | Segment List |
+| --- | --- | --- | --- |
+| `pe01-policy1.yaml` | pe01 (XRd) | 10.255.0.2 | 16002 -> 16003 |
+| `pe02-policy1.yaml` | pe02 (vJunos-router) | 10.255.0.1 | 16001 -> 16003 |
+| `pe03-policy1.yaml` | pe03 (FRRouting) | 10.255.0.1 | 16001 -> 16002 |
+
+Prefix-SID labels are 16001 (pe01), 16002 (pe02) and 16003 (pe03).
+
+```bash
+root@pola:/pola# pola sr-policy add -f pe01-policy1.yaml --no-sid-validate
+success!
+root@pola:/pola# pola sr-policy add -f pe02-policy1.yaml --no-sid-validate
+success!
+root@pola:/pola# pola sr-policy add -f pe03-policy1.yaml --no-sid-validate
+success!
+
+root@pola:/pola# pola sr-policy list
+Session: 10.0.255.1
+  PolicyName: pe01-policy1
+    SrcAddr: 10.255.0.1
+    DstAddr: 10.255.0.2
+    Color: 1
+    Preference: 100
+    SegmentList: 16002 -> 16003
+
+Session: 10.0.255.2
+  PolicyName: pe02-policy1
+    SrcAddr: 10.255.0.2
+    DstAddr: 10.255.0.1
+    Color: 1
+    Preference: 100
+    SegmentList: 16001 -> 16003
+
+Session: 10.0.255.3
+  PolicyName: pe03-policy1
+    SrcAddr: 10.0.255.3
+    DstAddr: 10.255.0.1
+    Color: 0
+    Preference: 0
+    SegmentList: 16001 -> 16002
+```
+
+FRRouting does not report the color, the preference and the source address of an SR Policy back to
+the PCE, so those fields of `pe03-policy1` differ from the applied policy. The applied color is
+visible on pe03 itself with `show sr-te policy detail`.
+
+Enter each PCC and check the installed SR Policy
+
+* user: admin
+* pass: admin@123
+
+```bash
+root@pola:/pola# exit
+
+$ ssh clab-sr-mpls-explicit-path-pe01 -l admin
+RP/0/RP0/CPU0:pe01# show segment-routing traffic-eng policy
+Thu Jul 30 10:00:36.288 UTC
+
+SR-TE policy database
+---------------------
+
+Color: 1, End-point: 10.255.0.2
+  Name: srte_c_1_ep_10.255.0.2
+  Status:
+    Admin: up  Operational: up for 00:00:36 (since Jul 30 09:59:59.913)
+  Candidate-paths:
+    Preference: 100 (PCEP) (active)
+      Name: pe01-policy1
+      Requested BSID: dynamic
+      PCC info:
+        Symbolic name: pe01-policy1
+        PLSP-ID: 1
+      Constraints:
+        Protection Type: unprotected-preferred
+        Maximum SID Depth: 10
+      Dynamic (pce 10.0.255.254) (valid)
+        Metric Type: TE,   Path Accumulated Metric: 0
+          SID[0]: 16002
+          SID[1]: 16003
+  Attributes:
+    Binding SID: 24003
+    Forward Class: Not Configured
+    Steering labeled-services disabled: no
+    Steering BGP disabled: no
+    IPv6 caps enable: yes
+    Invalidation drop enabled: no
+    Max Install Standby Candidate Paths: 0
+    Path Type: SRMPLSv4
+```
+
+```bash
+$ ssh clab-sr-mpls-explicit-path-pe02 -l admin
+admin@pe02> show spring-traffic-engineering lsp detail
+E = Entropy-label Capability
+
+Name: pe02-policy1
+  Tunnel-source: Path computation element protocol(PCEP)
+  Tunnel Forward Type: SRMPLS
+  To: 10.255.0.1-1<c>
+  State: Up
+    Path Status: NA
+    Outgoing interface: NA
+    Delegation compute constraints info:
+      Actual-Bandwidth from PCUpdate: 0
+      Bandwidth-Requested from PCUpdate: 0
+      Setup-Priority: 0
+      Reservation-Priority: 0
+    Auto-translate status: Disabled Auto-translate result: N/A
+    BFD status: N/A BFD name: N/A
+    BFD remote-discriminator: N/A
+    Segment ID : 128
+    ERO Valid: true
+      SR-ERO hop count: 2
+        Hop 1 (Strict):
+          NAI: None
+          SID type: 20-bit label, Value: 16001
+        Hop 2 (Strict):
+          NAI: None
+          SID type: 20-bit label, Value: 16003
+
+
+Total displayed LSPs: 1 (Up: 1, Down: 0, Initializing: 0)
+```
+
+```bash
+$ docker exec -it clab-sr-mpls-explicit-path-pe03 vtysh
+pe03# show sr-te policy detail
+
+Endpoint: 10.255.0.1  Color: 1  Name: pe03-policy1  BSID: -  Status: Active
+  * Preference: 255  Name: pe03-policy1  Type: dynamic  Segment-List: (created by PCE)  Protocol-Origin: PCEP
+```
+
+### Cleanup
+
+```bash
+sudo containerlab destroy
+```
