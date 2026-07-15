@@ -34,10 +34,11 @@ docker buildx build \
 
 ## Run with Host Network Mode
 
+`polad` reads `polad.yaml` from its working directory, which is `/pola` inside the container. Mount your config directory there as shown below.
+
 ```bash
 # Prepare polad config directory for volume mount
-MOUNTDIR=cfg
-mkdir -p "$MOUNTDIR"
+mkdir -p pola-config
 
 # Prepare polad log directory for volume mount
 LOGDIR="$(pwd)/logs"
@@ -46,25 +47,25 @@ mkdir -p "$LOGDIR"
 # Create a polad configuration file
 # Reference:
 # https://github.com/nttcom/pola/blob/main/docs/sources/getting-started.md#configuration
-vi "$MOUNTDIR/polad.yaml"
+vi "pola-config/polad.yaml"
 
 # Start the container
 docker run -d --network host \
-    -v "$(pwd)/$MOUNTDIR:/$MOUNTDIR" \
-    -v "$LOGDIR:$LOGDIR" \
-    -w "/$MOUNTDIR" \
+    -v "$(pwd)/pola-config:/pola" \
+    -v "$LOGDIR:/var/log/pola" \
     ghcr.io/nttcom/pola:latest
 ```
 
 ## Run with Bridge Network Mode
+
+`polad` reads `polad.yaml` from its working directory, which is `/pola` inside the container. Mount your config directory there as shown below.
 
 ```bash
 # Create a dedicated network for PCEP communication
 docker network create --subnet <PCEP network subnet> pcep_net
 
 # Prepare polad config directory for volume mount
-MOUNTDIR=cfg
-mkdir -p "$MOUNTDIR"
+mkdir -p pola-config
 
 # Prepare polad log directory for volume mount
 LOGDIR="$(pwd)/logs"
@@ -73,13 +74,12 @@ mkdir -p "$LOGDIR"
 # Create a polad configuration file
 # Reference:
 # https://github.com/nttcom/pola/blob/main/docs/sources/getting-started.md#configuration
-vi "$MOUNTDIR/polad.yaml"
+vi "pola-config/polad.yaml"
 
 # Start the container
 docker run -d --network pcep_net --ip <PCE Address> \
-    -v "$(pwd)/$MOUNTDIR:/$MOUNTDIR" \
-    -v "$LOGDIR:$LOGDIR" \
-    -w "/$MOUNTDIR" \
+    -v "$(pwd)/pola-config:/pola" \
+    -v "$LOGDIR:/var/log/pola" \
     ghcr.io/nttcom/pola:latest
 
 # Connect the PCC container to the network

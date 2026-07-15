@@ -3,7 +3,7 @@ FROM golang:1.26.5
 
 LABEL org.opencontainers.image.authors="Motoki TAKENAKA <m.takenaka@ntt.com>, Wataru MISHIMA <w.mishima@ntt.com>"
 
-WORKDIR /pola
+WORKDIR /build
 
 # Install packages
 RUN apt-get update \
@@ -32,7 +32,9 @@ SHELL ["/bin/bash", "-c"]
 RUN mkdir -p /usr/share/bash-completion/completions \
  && pola completion bash > /usr/share/bash-completion/completions/pola
 
-# By default, polad uses polad.yaml from the working directory.
-# Users can override the arguments at runtime if needed.
+# polad reads polad.yaml from the working directory (mounted at runtime).
+WORKDIR /pola
+
+# Override the arguments at runtime if a different config path is needed.
 ENTRYPOINT ["polad"]
 CMD ["-f", "polad.yaml"]
