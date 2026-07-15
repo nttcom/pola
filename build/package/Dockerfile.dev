@@ -5,18 +5,18 @@ LABEL org.opencontainers.image.authors="Motoki TAKENAKA <m.takenaka@ntt.com>, Wa
 
 WORKDIR /pola
 
+# Install packages
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+    bash-completion curl iproute2 iputils-ping net-tools vim \
+ && rm -rf /var/lib/apt/lists/*
+
 # Cache Go dependencies
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/root/go/pkg/mod \
     go mod download
 
 COPY . .
-
-# Install packages
-RUN apt-get update \
- && apt-get install -y --no-install-recommends \
-    bash-completion curl iproute2 iputils-ping net-tools vim \
- && rm -rf /var/lib/apt/lists/*
 
 # Install Pola PCE binaries
 RUN --mount=type=cache,target=/root/go/pkg/mod \
