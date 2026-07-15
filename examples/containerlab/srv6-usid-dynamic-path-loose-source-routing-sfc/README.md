@@ -39,7 +39,7 @@ Start Containerlab network
 
 ```bash
 git clone https://github.com/nttcom/pola
-cd pola/examples/containerlab/srv6_usid_dynamic-path_loose_source_routing_sfc
+cd pola/examples/containerlab/srv6-usid-dynamic-path-loose-source-routing-sfc
 
 sudo containerlab deploy
 ```

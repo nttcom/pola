@@ -44,8 +44,8 @@ and a PCEP Library in Go.
 
 * [Getting Started](docs/sources/getting-started.md)
 * Examples (powered by [Containerlab](https://containerlab.dev/)/[Tinet](https://github.com/tinynetwork/tinet))
-  * [SR-MPLS Example](examples/tinet/sr-mpls_explicit-path_l3vpn)
-  * [SRv6 Example](examples/containerlab/srv6_explicit-path_l3vpn)
+  * [SR-MPLS Example](examples/tinet/sr-mpls-explicit-path-l3vpn)
+  * [SRv6 Example](examples/containerlab/srv6-explicit-path-l3vpn)
 
 ## Contributing
 
