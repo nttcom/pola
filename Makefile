@@ -9,6 +9,7 @@ GOBGP_VERSION          = $(shell go list -m -f '{{.Version}}' $(GOBGP_MODULE))
 GO_VERSION             = $(shell go list -m -f '{{.GoVersion}}')
 GOLANGCI_LINT_VERSION ?= latest
 BUF_VERSION           ?= latest
+PINACT_VERSION        ?= latest
 PYTEST_ARGS           ?= -s
 
 .PHONY: \
@@ -40,6 +41,7 @@ help: ## Show available targets
 setup: ## Install development tools required by this Makefile
 	GOTOOLCHAIN=go$(GO_VERSION) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 	GOTOOLCHAIN=go$(GO_VERSION) go install github.com/bufbuild/buf/cmd/buf@$(BUF_VERSION)
+	GOTOOLCHAIN=go$(GO_VERSION) go install github.com/suzuki-shunsuke/pinact/cmd/pinact@$(PINACT_VERSION)
 	npm install -g markdownlint-cli
 	uv tool install ruff
 	@echo ""
@@ -70,6 +72,7 @@ fmt: ## Format Go and Python source code
 fix: fmt ## Apply automatic fixes
 	golangci-lint run --fix --config=.golangci.yml
 	ruff check --fix $(PYTHON_DIRS)
+	pinact run -u
 
 lint: ## Run linters
 	test -z "$$(gofmt -l .)"
@@ -78,6 +81,7 @@ lint: ## Run linters
 	ruff check $(PYTHON_DIRS)
 	ruff format --check $(PYTHON_DIRS)
 	markdownlint '**/*.md' --ignore node_modules
+	pinact run
 
 test: ## Run Go unit tests
 	go test ./...
