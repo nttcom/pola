@@ -15,13 +15,21 @@ docker pull ghcr.io/nttcom/pola:latest
 To build the Docker image locally, run the following command from the repository root (`pola/`, which contains `build/`):
 
 ```bash
-docker build -t <image-name> -f build/package/Dockerfile .
+docker buildx build \
+    -t <image-name> \
+    -f build/package/Dockerfile \
+    --load \
+    .
 ```
 
 Note: To build the development image, use `Dockerfile.dev` instead:
 
 ```bash
-docker build -t <image-name> -f build/package/Dockerfile.dev .
+docker buildx build \
+    -t <image-name> \
+    -f build/package/Dockerfile.dev \
+    --load \
+    .
 ```
 
 ## Run with Host Network Mode
@@ -45,8 +53,7 @@ docker run -d --network host \
     -v "$(pwd)/$MOUNTDIR:/$MOUNTDIR" \
     -v "$LOGDIR:$LOGDIR" \
     -w "/$MOUNTDIR" \
-    ghcr.io/nttcom/pola:latest \
-    polad -f polad.yaml
+    ghcr.io/nttcom/pola:latest
 ```
 
 ## Run with Bridge Network Mode
@@ -73,8 +80,7 @@ docker run -d --network pcep_net --ip <PCE Address> \
     -v "$(pwd)/$MOUNTDIR:/$MOUNTDIR" \
     -v "$LOGDIR:$LOGDIR" \
     -w "/$MOUNTDIR" \
-    ghcr.io/nttcom/pola:latest \
-    -f polad.yaml
+    ghcr.io/nttcom/pola:latest
 
 # Connect the PCC container to the network
 docker network connect pcep_net <PCC container name>
