@@ -1,14 +1,18 @@
+# syntax=docker/dockerfile:1
 # ---- builder stage ----
 FROM golang:1.26.5 AS builder
 
 WORKDIR /pola
 
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/root/go/pkg/mod \
+    go mod download
 
 COPY . .
 
-RUN go install ./cmd/...
+RUN --mount=type=cache,target=/root/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go install ./cmd/...
 
 # ---- runtime stage ----
 FROM debian:bookworm-slim

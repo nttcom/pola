@@ -96,15 +96,17 @@ check-proto: proto ## Verify generated protobuf code is up to date
 	git diff --exit-code -- '*.pb.go' '*_grpc.pb.go'
 
 image: ## Build production Docker image
-	docker build \
+	docker buildx build \
 		-t $(IMAGE):$(TAG) \
 		-f build/package/Dockerfile \
+		--load \
 		.
 
 image-dev: ## Build development Docker image
-	docker build \
+	docker buildx build \
 		-t $(IMAGE):$(TAG)-dev \
 		-f build/package/Dockerfile.dev \
+		--load \
 		.
 
 fetch-gobgp: ## Fetch gobgp/gobgpd binaries into test/bin

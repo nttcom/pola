@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM golang:1.26.5
 
 LABEL org.opencontainers.image.authors="Motoki TAKENAKA <m.takenaka@ntt.com>, Wataru MISHIMA <w.mishima@ntt.com>"
@@ -6,7 +7,8 @@ WORKDIR /pola
 
 # Cache Go dependencies
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/root/go/pkg/mod \
+    go mod download
 
 COPY . .
 
@@ -17,7 +19,9 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 # Install Pola PCE binaries
-RUN go install ./cmd/...
+RUN --mount=type=cache,target=/root/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go install ./cmd/...
 
 # Enable bash completion for interactive shells
 RUN echo 'if [ -f /etc/bash_completion ] && ! shopt -oq posix; then . /etc/bash_completion; fi' >> /root/.bashrc
