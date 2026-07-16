@@ -134,6 +134,51 @@ func TestSRv6EroSubobject_RoundTrip(t *testing.T) {
 	}
 }
 
+func TestRSVPIPv4PrefixEroSubobject_RoundTrip(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]RSVPIPv4PrefixEroSubobject{
+		"HostPrefix": {
+			SubobjectType: SubObjectTypeEROIPv4Prefix,
+			Address:       netip.MustParseAddr("10.0.0.1"),
+			PrefixLen:     32,
+		},
+		"NetworkPrefix": {
+			SubobjectType: SubObjectTypeEROIPv4Prefix,
+			Address:       netip.MustParseAddr("192.0.2.0"),
+			PrefixLen:     24,
+		},
+		"LFlag": {
+			LFlag:         true,
+			SubobjectType: SubObjectTypeEROIPv4Prefix,
+			Address:       netip.MustParseAddr("172.16.0.1"),
+			PrefixLen:     32,
+		},
+	}
+
+	for name, want := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			l, err := want.Len()
+			require.NoError(t, err, "Len failed")
+			want.Length = uint8(l)
+
+			raw, err := want.Serialize()
+			require.NoError(t, err, "Serialize failed")
+			require.Equal(t, int(l), len(raw), "Len() must match serialized size")
+
+			var got RSVPIPv4PrefixEroSubobject
+			require.NoError(t, got.DecodeFromBytes(raw), "DecodeFromBytes failed")
+			assert.Equal(t, want, got, "round-trip value mismatch")
+
+			raw2, err := got.Serialize()
+			require.NoError(t, err, "re-Serialize failed")
+			assert.Equal(t, raw, raw2, "re-serialized bytes differ")
+		})
+	}
+}
+
 func TestSrpObject_RoundTrip(t *testing.T) {
 	t.Parallel()
 
@@ -503,6 +548,11 @@ func TestEroObject_RoundTrip(t *testing.T) {
 		require.NoError(t, err)
 		return subo
 	}
+	mkRSVPIPv4PrefixEro := func(addrStr string, prefixLen uint8) *RSVPIPv4PrefixEroSubobject {
+		subo, err := NewRSVPIPv4PrefixEroSubObject(netip.MustParseAddr(addrStr), prefixLen)
+		require.NoError(t, err)
+		return subo
+	}
 
 	cases := map[string]EroObject{
 		"Empty": {
@@ -527,6 +577,12 @@ func TestEroObject_RoundTrip(t *testing.T) {
 			ObjectType: ObjectTypeEROExplicitRoute,
 			EroSubobjects: []EroSubobject{
 				mkSRv6Ero("fc00:0:1::", "2001:db8::1"),
+			},
+		},
+		"SingleRSVPIPv4Prefix": {
+			ObjectType: ObjectTypeEROExplicitRoute,
+			EroSubobjects: []EroSubobject{
+				mkRSVPIPv4PrefixEro("10.0.0.1", 32),
 			},
 		},
 	}
