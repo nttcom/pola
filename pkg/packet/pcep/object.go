@@ -401,6 +401,9 @@ type PCEPErrorObject struct {
 }
 
 func (o *PCEPErrorObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
+	if len(objectBody) < 4 {
+		return fmt.Errorf("PCEP-ERROR object body too short: got %d bytes, need at least 4", len(objectBody))
+	}
 	o.ObjectType = typ
 	o.ErrorType = objectBody[2]
 	o.ErrorValue = objectBody[3]
@@ -539,6 +542,10 @@ type SrpObject struct {
 }
 
 func (o *SrpObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
+	if len(objectBody) < 8 {
+		return fmt.Errorf("SRP object body too short: got %d bytes, need at least 8", len(objectBody))
+	}
+
 	o.ObjectType = typ
 	o.RFlag = (objectBody[3] & 0x01) != 0
 	o.SrpID = binary.BigEndian.Uint32(objectBody[4:8])

@@ -173,29 +173,88 @@ func NewKeepaliveMessage() (*KeepaliveMessage, error) {
 
 // PCErr Message
 type PCErrMessage struct {
-	PCEPErrorObject *PCEPErrorObject
+	Errors []*PCEPErrorObject
+
+	// SRPs are present when a stateful PCC (RFC 8231) correlates the error
+	// with the PCInitiate/PCUpd request that triggered it.
+	SRPs []*SrpObject
 }
 
+// DecodeFromBytes walks the message body object-by-object, framing each one by
+// the Common Object Header ObjectLength (RFC 5440 §7.2). A PCErr may carry an
+// SRP list followed by several PCEP-ERROR objects, so the whole body is
+// traversed rather than decoding only the first object.
 func (m *PCErrMessage) DecodeFromBytes(messageBody []uint8) error {
-	var commonObjectHeader CommonObjectHeader
-	if err := commonObjectHeader.DecodeFromBytes(messageBody); err != nil {
-		return err
+	for offset := 0; offset < len(messageBody); {
+		if len(messageBody)-offset < int(commonObjectHeaderLength) {
+			return fmt.Errorf("PCErr: truncated object header at offset %d", offset)
+		}
+		var commonObjectHeader CommonObjectHeader
+		if err := commonObjectHeader.DecodeFromBytes(messageBody[offset : offset+int(commonObjectHeaderLength)]); err != nil {
+			return err
+		}
+		if commonObjectHeader.ObjectLength < commonObjectHeaderLength || commonObjectHeader.ObjectLength%4 != 0 {
+			return fmt.Errorf("PCErr: invalid object length %d at offset %d", commonObjectHeader.ObjectLength, offset)
+		}
+		end := offset + int(commonObjectHeader.ObjectLength)
+		if end > len(messageBody) {
+			return fmt.Errorf("PCErr: object body extends past message (offset=%d, len=%d, total=%d)",
+				offset, commonObjectHeader.ObjectLength, len(messageBody))
+		}
+		objectBody := messageBody[offset+int(commonObjectHeaderLength) : end]
+
+		switch commonObjectHeader.ObjectClass {
+		case ObjectClassPCEPError:
+			errObj := &PCEPErrorObject{}
+			if err := errObj.DecodeFromBytes(commonObjectHeader.ObjectType, objectBody); err != nil {
+				return err
+			}
+			m.Errors = append(m.Errors, errObj)
+		case ObjectClassSRP:
+			srp := &SrpObject{}
+			if err := srp.DecodeFromBytes(commonObjectHeader.ObjectType, objectBody); err != nil {
+				return err
+			}
+			m.SRPs = append(m.SRPs, srp)
+		}
+		offset = end
 	}
-	pcepErrorObject := &PCEPErrorObject{}
-	if err := pcepErrorObject.DecodeFromBytes(commonObjectHeader.ObjectType, messageBody[commonObjectHeaderLength:commonObjectHeader.ObjectLength]); err != nil {
-		return err
+	// RFC 5440 §6.7 requires at least one PCEP-ERROR object per PCErr message.
+	if len(m.Errors) == 0 {
+		return errors.New("PCErr: message carries no PCEP-ERROR object")
 	}
-	m.PCEPErrorObject = pcepErrorObject
 	return nil
 }
 
 func (m *PCErrMessage) Serialize() []uint8 {
-	pcerrMessageLength := CommonHeaderLength + m.PCEPErrorObject.Len()
-	pcerrHeader := NewCommonHeader(MessageTypeError, pcerrMessageLength)
-	bytePCErrHeader := pcerrHeader.Serialize()
-	bytePCEPErrorObject := m.PCEPErrorObject.Serialize()
-	bytePCErrMessage := AppendByteSlices(bytePCErrHeader, bytePCEPErrorObject)
-	return bytePCErrMessage
+	length := CommonHeaderLength
+	for _, srp := range m.SRPs {
+		length += srp.Len()
+	}
+	for _, errObj := range m.Errors {
+		length += errObj.Len()
+	}
+	buf := NewCommonHeader(MessageTypeError, length).Serialize()
+	for _, srp := range m.SRPs {
+		buf = AppendByteSlices(buf, srp.Serialize())
+	}
+	for _, errObj := range m.Errors {
+		buf = AppendByteSlices(buf, errObj.Serialize())
+	}
+	return buf
+}
+
+// SRPIDs returns the SRP-ID of every SRP object in wire order, letting a
+// controller correlate the reported errors with its outstanding requests.
+func (m *PCErrMessage) SRPIDs() []uint32 {
+	if len(m.SRPs) == 0 {
+		return nil
+	}
+	ids := make([]uint32, 0, len(m.SRPs))
+	for _, srp := range m.SRPs {
+		ids = append(ids, srp.SrpID)
+	}
+	return ids
 }
 
 func NewPCErrMessage(errorType uint8, errorValue uint8, tlvs []TLVInterface) (*PCErrMessage, error) {
@@ -204,7 +263,7 @@ func NewPCErrMessage(errorType uint8, errorValue uint8, tlvs []TLVInterface) (*P
 		return nil, err
 	}
 	m := &PCErrMessage{
-		PCEPErrorObject: o,
+		Errors: []*PCEPErrorObject{o},
 	}
 	return m, nil
 }
