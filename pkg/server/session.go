@@ -457,12 +457,12 @@ func createEroFromSegmentList(segmentList []table.Segment) *pcep.EroObject {
 	for _, segment := range segmentList {
 		switch seg := segment.(type) {
 		case table.SegmentSRMPLS:
-			subobj, err := pcep.NewSREroSubObject(seg)
+			subobj, err := pcep.NewSREroSubobject(seg)
 			if err == nil {
 				eroObject.EroSubobjects = append(eroObject.EroSubobjects, subobj)
 			}
 		case table.SegmentSRv6:
-			subobj, err := pcep.NewSRv6EroSubObject(seg)
+			subobj, err := pcep.NewSRv6EroSubobject(seg)
 			if err == nil {
 				eroObject.EroSubobjects = append(eroObject.EroSubobjects, subobj)
 			}

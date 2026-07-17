@@ -26,26 +26,26 @@ func TestSREroSubobject_RoundTrip(t *testing.T) {
 
 	cases := map[string]SREroSubobject{
 		"NAIAbsent_LabelOnly": {
-			SubobjectType: SubObjectTypeEROSR,
+			SubobjectType: SubobjectTypeEROSR,
 			NAIType:       NAITypeSRAbsent,
 			FFlag:         true, MFlag: true,
 			Segment: table.NewSegmentSRMPLS(16000),
 		},
 		"NAIAbsent_LFlag": {
 			LFlag:         true,
-			SubobjectType: SubObjectTypeEROSR,
+			SubobjectType: SubobjectTypeEROSR,
 			NAIType:       NAITypeSRAbsent,
 			FFlag:         true, MFlag: true,
 			Segment: table.NewSegmentSRMPLS(24),
 		},
 		"NAIAbsent_CFlag_MPLSStackAttrs": {
-			SubobjectType: SubObjectTypeEROSR,
+			SubobjectType: SubobjectTypeEROSR,
 			NAIType:       NAITypeSRAbsent,
 			FFlag:         true, CFlag: true, MFlag: true,
 			Segment: mkSRMPLS(100500, 5, true, 64),
 		},
 		"IPv4Node": {
-			SubobjectType: SubObjectTypeEROSR,
+			SubobjectType: SubobjectTypeEROSR,
 			NAIType:       NAITypeSRIPv4Node,
 			MFlag:         true,
 			Segment:       table.NewSegmentSRMPLS(16001),
@@ -85,17 +85,17 @@ func TestSRv6EroSubobject_RoundTrip(t *testing.T) {
 
 	cases := map[string]SRv6EroSubobject{
 		"IPv6Node_END": {
-			SubobjectType: SubObjectTypeEROSRv6,
+			SubobjectType: SubobjectTypeEROSRv6,
 			NAIType:       NAITypeSRv6IPv6Node,
 			Segment:       table.SegmentSRv6{Sid: sid, LocalAddr: local},
 		},
 		"IPv6AdjGlobal_ENDX": {
-			SubobjectType: SubObjectTypeEROSRv6,
+			SubobjectType: SubobjectTypeEROSRv6,
 			NAIType:       NAITypeSRv6IPv6AdjacencyGlobal,
 			Segment:       table.SegmentSRv6{Sid: sid, LocalAddr: local, RemoteAddr: remote},
 		},
 		"IPv6Node_USid_WithStructure": {
-			SubobjectType: SubObjectTypeEROSRv6,
+			SubobjectType: SubobjectTypeEROSRv6,
 			NAIType:       NAITypeSRv6IPv6Node,
 			TFlag:         true,
 			Segment: table.SegmentSRv6{
@@ -105,7 +105,7 @@ func TestSRv6EroSubobject_RoundTrip(t *testing.T) {
 		},
 		"LFlag_IPv6Node": {
 			LFlag:         true,
-			SubobjectType: SubObjectTypeEROSRv6,
+			SubobjectType: SubobjectTypeEROSRv6,
 			NAIType:       NAITypeSRv6IPv6Node,
 			Segment:       table.SegmentSRv6{Sid: sid, LocalAddr: local},
 		},
@@ -139,18 +139,18 @@ func TestRSVPIPv4PrefixEroSubobject_RoundTrip(t *testing.T) {
 
 	cases := map[string]RSVPIPv4PrefixEroSubobject{
 		"HostPrefix": {
-			SubobjectType: SubObjectTypeEROIPv4Prefix,
+			SubobjectType: SubobjectTypeEROIPv4Prefix,
 			Address:       netip.MustParseAddr("10.0.0.1"),
 			PrefixLen:     32,
 		},
 		"NetworkPrefix": {
-			SubobjectType: SubObjectTypeEROIPv4Prefix,
+			SubobjectType: SubobjectTypeEROIPv4Prefix,
 			Address:       netip.MustParseAddr("192.0.2.0"),
 			PrefixLen:     24,
 		},
 		"LFlag": {
 			LFlag:         true,
-			SubobjectType: SubObjectTypeEROIPv4Prefix,
+			SubobjectType: SubobjectTypeEROIPv4Prefix,
 			Address:       netip.MustParseAddr("172.16.0.1"),
 			PrefixLen:     32,
 		},
@@ -537,19 +537,19 @@ func TestEroObject_RoundTrip(t *testing.T) {
 	t.Parallel()
 
 	mkSREro := func(sid uint32) *SREroSubobject {
-		subo, err := NewSREroSubObject(table.NewSegmentSRMPLS(sid))
+		subo, err := NewSREroSubobject(table.NewSegmentSRMPLS(sid))
 		require.NoError(t, err)
 		return subo
 	}
 	mkSRv6Ero := func(sidStr, localStr string) *SRv6EroSubobject {
 		seg := table.NewSegmentSRv6(netip.MustParseAddr(sidStr))
 		seg.LocalAddr = netip.MustParseAddr(localStr)
-		subo, err := NewSRv6EroSubObject(seg)
+		subo, err := NewSRv6EroSubobject(seg)
 		require.NoError(t, err)
 		return subo
 	}
 	mkRSVPIPv4PrefixEro := func(addrStr string, prefixLen uint8) *RSVPIPv4PrefixEroSubobject {
-		subo, err := NewRSVPIPv4PrefixEroSubObject(netip.MustParseAddr(addrStr), prefixLen)
+		subo, err := NewRSVPIPv4PrefixEroSubobject(netip.MustParseAddr(addrStr), prefixLen)
 		require.NoError(t, err)
 		return subo
 	}
