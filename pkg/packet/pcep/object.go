@@ -767,6 +767,8 @@ func (o *EroObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
 			eroSubobj = &SREroSubobject{}
 		case SubObjectTypeEROSRv6:
 			eroSubobj = &SRv6EroSubobject{}
+		case SubObjectTypeEROIPv4Prefix:
+			eroSubobj = &RSVPIPv4PrefixEroSubobject{}
 		default:
 			return errors.New("invalid Subobject type")
 		}
@@ -848,7 +850,12 @@ func (o *EroObject) AddEroSubobjects(SegmentList []table.Segment) error {
 func (o *EroObject) ToSegmentList() []table.Segment {
 	sl := []table.Segment{}
 	for _, so := range o.EroSubobjects {
-		sl = append(sl, so.ToSegment())
+		// Subobjects that do not map to an SR segment (e.g. RSVP IPv4 prefix
+		// hops) return nil and must be skipped rather than injected as a
+		// zero-value segment.
+		if seg := so.ToSegment(); seg != nil {
+			sl = append(sl, seg)
+		}
 	}
 	return sl
 }
@@ -1284,6 +1291,106 @@ func NewSRv6EroSubObject(seg table.SegmentSRv6) (*SRv6EroSubobject, error) {
 
 func (o *SRv6EroSubobject) ToSegment() table.Segment {
 	return o.Segment
+}
+
+const (
+	// RSVP IPv4 Prefix ERO Subobject (RFC3209 4.3.3.1)
+	SubObjectTypeEROIPv4Prefix SubObjectType = 0x01
+
+	// rsvpIPv4PrefixEroSubobjectLength is the fixed on-wire length of the
+	// subobject: L|Type(1) + Length(1) + IPv4(4) + Prefix(1) + Reserved(1).
+	rsvpIPv4PrefixEroSubobjectLength uint8 = 8
+
+	// maxIPv4PrefixLen is the maximum valid IPv4 prefix length in bits.
+	maxIPv4PrefixLen uint8 = 32
+)
+
+type RSVPIPv4PrefixEroSubobject struct {
+	LFlag         bool
+	SubobjectType SubObjectType
+	Length        uint8
+	Address       netip.Addr
+	PrefixLen     uint8
+}
+
+func (o *RSVPIPv4PrefixEroSubobject) DecodeFromBytes(subObject []uint8) error {
+	if len(subObject) < int(rsvpIPv4PrefixEroSubobjectLength) {
+		return fmt.Errorf("RSVPIPv4PrefixEroSubobject: subobject too short: %d", len(subObject))
+	}
+
+	// Per RFC3209 4.3.3.1 the Length field carries the total length of the
+	// subobject in bytes; for an IPv4 prefix hop it is fixed at 8. Validate it
+	// so a malformed subobject does not desync the enclosing ERO decode loop.
+	if subObject[1] != rsvpIPv4PrefixEroSubobjectLength {
+		return fmt.Errorf("RSVPIPv4PrefixEroSubobject: invalid length field: %d", subObject[1])
+	}
+
+	o.LFlag = (subObject[0] & 0x80) != 0
+	o.SubobjectType = SubObjectType(subObject[0] & 0x7f)
+	o.Length = subObject[1]
+
+	var addr [4]byte
+	copy(addr[:], subObject[2:6])
+	o.Address = netip.AddrFrom4(addr)
+
+	o.PrefixLen = subObject[6]
+	if o.PrefixLen > maxIPv4PrefixLen {
+		return fmt.Errorf("RSVPIPv4PrefixEroSubobject: invalid prefix length: %d", o.PrefixLen)
+	}
+
+	return nil
+}
+
+func (o *RSVPIPv4PrefixEroSubobject) Serialize() ([]uint8, error) {
+	if !o.Address.Is4() {
+		return nil, fmt.Errorf("RSVPIPv4PrefixEroSubobject: address is not IPv4: %v", o.Address)
+	}
+	if o.PrefixLen > maxIPv4PrefixLen {
+		return nil, fmt.Errorf("RSVPIPv4PrefixEroSubobject: invalid prefix length: %d", o.PrefixLen)
+	}
+
+	buf := make([]uint8, rsvpIPv4PrefixEroSubobjectLength)
+	buf[0] = uint8(o.SubobjectType)
+
+	if o.LFlag {
+		buf[0] |= 0x80
+	}
+
+	buf[1] = rsvpIPv4PrefixEroSubobjectLength
+
+	a := o.Address.As4()
+	copy(buf[2:6], a[:])
+
+	buf[6] = o.PrefixLen
+	buf[7] = 0 // Reserved: MUST be sent as zero (RFC3209 4.3.3.1).
+
+	return buf, nil
+}
+
+func (o *RSVPIPv4PrefixEroSubobject) Len() (uint16, error) {
+	return uint16(rsvpIPv4PrefixEroSubobjectLength), nil
+}
+
+func NewRSVPIPv4PrefixEroSubObject(address netip.Addr, prefixLen uint8) (*RSVPIPv4PrefixEroSubobject, error) {
+	if !address.Is4() {
+		return nil, fmt.Errorf("RSVPIPv4PrefixEroSubobject: address is not IPv4: %v", address)
+	}
+	if prefixLen > maxIPv4PrefixLen {
+		return nil, fmt.Errorf("RSVPIPv4PrefixEroSubobject: invalid prefix length: %d", prefixLen)
+	}
+
+	return &RSVPIPv4PrefixEroSubobject{
+		SubobjectType: SubObjectTypeEROIPv4Prefix,
+		Length:        rsvpIPv4PrefixEroSubobjectLength,
+		Address:       address,
+		PrefixLen:     prefixLen,
+	}, nil
+}
+
+// ToSegment returns nil because an RSVP IPv4 prefix hop does not map to an SR
+// segment. Callers (e.g. EroObject.ToSegmentList) must skip nil results.
+func (o *RSVPIPv4PrefixEroSubobject) ToSegment() table.Segment {
+	return nil
 }
 
 // END-POINTS Object (RFC5440 7.6)
