@@ -10,6 +10,8 @@ GO_VERSION            := $(shell go list -m -f '{{.GoVersion}}')
 GOLANGCI_LINT_VERSION ?= latest
 BUF_VERSION           ?= latest
 PINACT_VERSION        ?= latest
+MARKDOWNLINT_VERSION  ?= latest
+RUFF_VERSION          ?= latest
 PYTEST_ARGS           ?= -s
 
 .PHONY: \
@@ -39,18 +41,20 @@ help: ## Show available targets
 	awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
 setup: ## Install development tools required by this Makefile
+	@command -v go >/dev/null || (echo "Go is required: https://go.dev/dl/"; exit 1)
+	@command -v npm >/dev/null || (echo "npm is required (tested with npm 11.17.0): https://nodejs.org/"; exit 1)
+	@command -v uv >/dev/null || (echo "uv is required (tested with uv 0.12.0): https://docs.astral.sh/uv/getting-started/installation/"; exit 1)
 	GOTOOLCHAIN=go$(GO_VERSION) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 	GOTOOLCHAIN=go$(GO_VERSION) go install github.com/bufbuild/buf/cmd/buf@$(BUF_VERSION)
 	GOTOOLCHAIN=go$(GO_VERSION) go install github.com/suzuki-shunsuke/pinact/cmd/pinact@$(PINACT_VERSION)
-	npm install -g markdownlint-cli
-	uv tool install ruff
+	npm install -g markdownlint-cli@$(MARKDOWNLINT_VERSION)
+	uv tool install ruff@$(RUFF_VERSION)
 	@echo ""
-	@echo "Tools installed. Make sure the following are in your PATH:"
+	@echo "Setup complete. Make sure these are in your PATH:"
 	@echo "  $$(go env GOPATH)/bin"
+	@echo "  $$(npm config get prefix)/bin"
 	@echo ""
 	@echo "Also required but not installed by this target:"
-	@echo "  - Go toolchain (https://go.dev/dl/)"
-	@echo "  - uv (https://docs.astral.sh/uv/getting-started/installation/)"
 	@echo "  - Docker (for 'image', 'image-dev', and 'test-scenario')"
 	@echo "  - containerlab (https://containerlab.dev/install/, for 'test-scenario')"
 
@@ -95,6 +99,7 @@ proto: ## Generate protobuf code
 check-proto: proto ## Verify generated protobuf code is up to date
 	git diff --exit-code -- '*.pb.go' '*_grpc.pb.go'
 	test -z "$$(git ls-files --others --exclude-standard -- '*.pb.go' '*_grpc.pb.go')"
+
 image: ## Build production Docker image
 	docker buildx build \
 		-t $(IMAGE):$(TAG) \
