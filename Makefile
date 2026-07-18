@@ -94,7 +94,7 @@ proto: ## Generate protobuf code
 
 check-proto: proto ## Verify generated protobuf code is up to date
 	git diff --exit-code -- '*.pb.go' '*_grpc.pb.go'
-
+	test -z "$$(git ls-files --others --exclude-standard -- '*.pb.go' '*_grpc.pb.go')"
 image: ## Build production Docker image
 	docker buildx build \
 		-t $(IMAGE):$(TAG) \
