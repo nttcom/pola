@@ -22,7 +22,7 @@ const commonObjectHeaderLength uint16 = 4
 // PCEP Object-Class (1 byte) Ref: https://www.iana.org/assignments/pcep/pcep.xhtml#pcep-objects
 type ObjectClass uint8
 type ObjectType uint8
-type SubObjectType uint8
+type SubobjectType uint8
 
 const (
 	ObjectClassOpen                              ObjectClass = 0x01
@@ -769,12 +769,12 @@ func (o *EroObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
 	}
 	for {
 		var eroSubobj EroSubobject
-		switch SubObjectType(objectBody[0] & 0x7f) {
-		case SubObjectTypeEROSR:
+		switch SubobjectType(objectBody[0] & 0x7f) {
+		case SubobjectTypeEROSR:
 			eroSubobj = &SREroSubobject{}
-		case SubObjectTypeEROSRv6:
+		case SubobjectTypeEROSRv6:
 			eroSubobj = &SRv6EroSubobject{}
-		case SubObjectTypeEROIPv4Prefix:
+		case SubobjectTypeEROIPv4Prefix:
 			eroSubobj = &RSVPIPv4PrefixEroSubobject{}
 		default:
 			return errors.New("invalid Subobject type")
@@ -876,13 +876,13 @@ type EroSubobject interface {
 
 func NewEroSubobject(seg table.Segment) (EroSubobject, error) {
 	if v, ok := seg.(table.SegmentSRMPLS); ok {
-		subo, err := NewSREroSubObject(v)
+		subo, err := NewSREroSubobject(v)
 		if err != nil {
 			return nil, err
 		}
 		return subo, nil
 	} else if v, ok := seg.(table.SegmentSRv6); ok {
-		subo, err := NewSRv6EroSubObject(v)
+		subo, err := NewSRv6EroSubobject(v)
 		if err != nil {
 			return nil, err
 		}
@@ -893,7 +893,7 @@ func NewEroSubobject(seg table.Segment) (EroSubobject, error) {
 
 // SR-ERO Subobject (RFC8664 4.3.1)
 const (
-	SubObjectTypeEROSR SubObjectType = 0x24
+	SubobjectTypeEROSR SubobjectType = 0x24
 )
 
 type NAITypeSR uint8
@@ -937,7 +937,7 @@ func (nt NAITypeSR) StringWithReference() string {
 
 type SREroSubobject struct {
 	LFlag         bool
-	SubobjectType SubObjectType
+	SubobjectType SubobjectType
 	Length        uint8
 	NAIType       NAITypeSR
 	FFlag         bool
@@ -948,17 +948,17 @@ type SREroSubobject struct {
 	NAI           netip.Addr
 }
 
-func (o *SREroSubobject) DecodeFromBytes(subObject []uint8) error {
-	o.LFlag = (subObject[0] & 0x80) != 0
-	o.SubobjectType = SubObjectType(subObject[0] & 0x7f)
-	o.Length = subObject[1]
-	o.NAIType = NAITypeSR(subObject[2] >> 4)
-	o.FFlag = (subObject[3] & 0x08) != 0
-	o.SFlag = (subObject[3] & 0x04) != 0
-	o.CFlag = (subObject[3] & 0x02) != 0
-	o.MFlag = (subObject[3] & 0x01) != 0
+func (o *SREroSubobject) DecodeFromBytes(subobject []uint8) error {
+	o.LFlag = (subobject[0] & 0x80) != 0
+	o.SubobjectType = SubobjectType(subobject[0] & 0x7f)
+	o.Length = subobject[1]
+	o.NAIType = NAITypeSR(subobject[2] >> 4)
+	o.FFlag = (subobject[3] & 0x08) != 0
+	o.SFlag = (subobject[3] & 0x04) != 0
+	o.CFlag = (subobject[3] & 0x02) != 0
+	o.MFlag = (subobject[3] & 0x01) != 0
 
-	sidWord := binary.BigEndian.Uint32(subObject[4:8])
+	sidWord := binary.BigEndian.Uint32(subobject[4:8])
 	sid := sidWord >> 12
 	o.Segment = table.NewSegmentSRMPLS(sid)
 	if o.CFlag {
@@ -968,7 +968,7 @@ func (o *SREroSubobject) DecodeFromBytes(subObject []uint8) error {
 		o.Segment.TTL = uint8(sidWord & 0xFF)
 	}
 	if o.NAIType == NAITypeSRIPv4Node {
-		o.NAI, _ = netip.AddrFromSlice(subObject[8:12])
+		o.NAI, _ = netip.AddrFromSlice(subobject[8:12])
 	}
 	return nil
 }
@@ -1035,10 +1035,10 @@ func (o *SREroSubobject) Len() (uint16, error) {
 	}
 }
 
-func NewSREroSubObject(seg table.SegmentSRMPLS) (*SREroSubobject, error) {
+func NewSREroSubobject(seg table.SegmentSRMPLS) (*SREroSubobject, error) {
 	subo := &SREroSubobject{
 		LFlag:         false,
-		SubobjectType: SubObjectTypeEROSR,
+		SubobjectType: SubobjectTypeEROSR,
 		NAIType:       NAITypeSRAbsent,
 		FFlag:         true, // NAI is absent
 		SFlag:         false,
@@ -1060,7 +1060,7 @@ func (o *SREroSubobject) ToSegment() table.Segment {
 
 // SRv6-ERO Subobject (RFC9603 4.3.1)
 const (
-	SubObjectTypeEROSRv6 SubObjectType = 0x28
+	SubobjectTypeEROSRv6 SubobjectType = 0x28
 )
 
 type NAITypeSRv6 uint8
@@ -1098,7 +1098,7 @@ func (nt NAITypeSRv6) StringWithReference() string {
 
 type SRv6EroSubobject struct {
 	LFlag         bool
-	SubobjectType SubObjectType
+	SubobjectType SubobjectType
 	Length        uint8
 	NAIType       NAITypeSRv6
 	VFlag         bool
@@ -1108,28 +1108,28 @@ type SRv6EroSubobject struct {
 	Segment       table.SegmentSRv6
 }
 
-func (o *SRv6EroSubobject) DecodeFromBytes(subObject []uint8) error {
-	if len(subObject) < 8 {
+func (o *SRv6EroSubobject) DecodeFromBytes(subobject []uint8) error {
+	if len(subobject) < 8 {
 		return errors.New("SRv6EroSubobject: subobject too short")
 	}
 
-	o.LFlag = (subObject[0] & 0x80) != 0
-	o.SubobjectType = SubObjectType(subObject[0] & 0x7f)
-	o.Length = subObject[1]
-	o.NAIType = NAITypeSRv6(subObject[2] >> 4)
-	o.VFlag = (subObject[3] & 0x08) != 0
-	o.TFlag = (subObject[3] & 0x04) != 0
-	o.FFlag = (subObject[3] & 0x02) != 0
-	o.SFlag = (subObject[3] & 0x01) != 0
+	o.LFlag = (subobject[0] & 0x80) != 0
+	o.SubobjectType = SubobjectType(subobject[0] & 0x7f)
+	o.Length = subobject[1]
+	o.NAIType = NAITypeSRv6(subobject[2] >> 4)
+	o.VFlag = (subobject[3] & 0x08) != 0
+	o.TFlag = (subobject[3] & 0x04) != 0
+	o.FFlag = (subobject[3] & 0x02) != 0
+	o.SFlag = (subobject[3] & 0x01) != 0
 
-	behavior := binary.BigEndian.Uint16(subObject[6:8])
+	behavior := binary.BigEndian.Uint16(subobject[6:8])
 
 	off := 8
 	if !o.SFlag {
-		if len(subObject) < off+16 {
+		if len(subobject) < off+16 {
 			return errors.New("SRv6EroSubobject: truncated SID")
 		}
-		sid, _ := netip.AddrFromSlice(subObject[off : off+16])
+		sid, _ := netip.AddrFromSlice(subobject[off : off+16])
 		o.Segment = table.NewSegmentSRv6(sid)
 		off += 16
 	} else {
@@ -1139,39 +1139,39 @@ func (o *SRv6EroSubobject) DecodeFromBytes(subObject []uint8) error {
 	if !o.FFlag {
 		switch o.NAIType {
 		case NAITypeSRv6IPv6Node:
-			if len(subObject) < off+16 {
+			if len(subobject) < off+16 {
 				return errors.New("SRv6EroSubobject: truncated NAI (Node)")
 			}
-			o.Segment.LocalAddr, _ = netip.AddrFromSlice(subObject[off : off+16])
+			o.Segment.LocalAddr, _ = netip.AddrFromSlice(subobject[off : off+16])
 			off += 16
 		case NAITypeSRv6IPv6AdjacencyGlobal:
-			if len(subObject) < off+32 {
+			if len(subobject) < off+32 {
 				return errors.New("SRv6EroSubobject: truncated NAI (AdjGlobal)")
 			}
-			o.Segment.LocalAddr, _ = netip.AddrFromSlice(subObject[off : off+16])
-			o.Segment.RemoteAddr, _ = netip.AddrFromSlice(subObject[off+16 : off+32])
+			o.Segment.LocalAddr, _ = netip.AddrFromSlice(subobject[off : off+16])
+			o.Segment.RemoteAddr, _ = netip.AddrFromSlice(subobject[off+16 : off+32])
 			off += 32
 		case NAITypeSRv6IPv6AdjacencyLinkLocal:
-			if len(subObject) < off+40 {
+			if len(subobject) < off+40 {
 				return errors.New("SRv6EroSubobject: truncated NAI (AdjLinkLocal)")
 			}
-			o.Segment.LocalAddr, _ = netip.AddrFromSlice(subObject[off : off+16])
-			// subObject[off+16 : off+20] — Local Interface ID (not parsed)
-			o.Segment.RemoteAddr, _ = netip.AddrFromSlice(subObject[off+20 : off+36])
-			// subObject[off+36 : off+40] — Remote Interface ID (not parsed)
+			o.Segment.LocalAddr, _ = netip.AddrFromSlice(subobject[off : off+16])
+			// subobject[off+16 : off+20] — Local Interface ID (not parsed)
+			o.Segment.RemoteAddr, _ = netip.AddrFromSlice(subobject[off+20 : off+36])
+			// subobject[off+36 : off+40] — Remote Interface ID (not parsed)
 			off += 40
 		}
 	}
 
 	if o.TFlag {
-		if len(subObject) < off+8 {
+		if len(subobject) < off+8 {
 			return errors.New("SRv6EroSubobject: truncated SID-Structure")
 		}
 		o.Segment.Structure = []uint8{
-			subObject[off+0],
-			subObject[off+1],
-			subObject[off+2],
-			subObject[off+3],
+			subobject[off+0],
+			subobject[off+1],
+			subobject[off+2],
+			subobject[off+3],
 		}
 	}
 
@@ -1259,10 +1259,10 @@ func (o *SRv6EroSubobject) Len() (uint16, error) {
 	return length, nil
 }
 
-func NewSRv6EroSubObject(seg table.SegmentSRv6) (*SRv6EroSubobject, error) {
+func NewSRv6EroSubobject(seg table.SegmentSRv6) (*SRv6EroSubobject, error) {
 	subo := &SRv6EroSubobject{
 		LFlag:         false,
-		SubobjectType: SubObjectTypeEROSRv6,
+		SubobjectType: SubobjectTypeEROSRv6,
 		VFlag:         false,
 		SFlag:         false, // SID is absent
 		Segment:       seg,
@@ -1302,7 +1302,7 @@ func (o *SRv6EroSubobject) ToSegment() table.Segment {
 
 const (
 	// RSVP IPv4 Prefix ERO Subobject (RFC3209 4.3.3.1)
-	SubObjectTypeEROIPv4Prefix SubObjectType = 0x01
+	SubobjectTypeEROIPv4Prefix SubobjectType = 0x01
 
 	// rsvpIPv4PrefixEroSubobjectLength is the fixed on-wire length of the
 	// subobject: L|Type(1) + Length(1) + IPv4(4) + Prefix(1) + Reserved(1).
@@ -1314,33 +1314,33 @@ const (
 
 type RSVPIPv4PrefixEroSubobject struct {
 	LFlag         bool
-	SubobjectType SubObjectType
+	SubobjectType SubobjectType
 	Length        uint8
 	Address       netip.Addr
 	PrefixLen     uint8
 }
 
-func (o *RSVPIPv4PrefixEroSubobject) DecodeFromBytes(subObject []uint8) error {
-	if len(subObject) < int(rsvpIPv4PrefixEroSubobjectLength) {
-		return fmt.Errorf("RSVPIPv4PrefixEroSubobject: subobject too short: %d", len(subObject))
+func (o *RSVPIPv4PrefixEroSubobject) DecodeFromBytes(subobject []uint8) error {
+	if len(subobject) < int(rsvpIPv4PrefixEroSubobjectLength) {
+		return fmt.Errorf("RSVPIPv4PrefixEroSubobject: subobject too short: %d", len(subobject))
 	}
 
 	// Per RFC3209 4.3.3.1 the Length field carries the total length of the
 	// subobject in bytes; for an IPv4 prefix hop it is fixed at 8. Validate it
 	// so a malformed subobject does not desync the enclosing ERO decode loop.
-	if subObject[1] != rsvpIPv4PrefixEroSubobjectLength {
-		return fmt.Errorf("RSVPIPv4PrefixEroSubobject: invalid length field: %d", subObject[1])
+	if subobject[1] != rsvpIPv4PrefixEroSubobjectLength {
+		return fmt.Errorf("RSVPIPv4PrefixEroSubobject: invalid length field: %d", subobject[1])
 	}
 
-	o.LFlag = (subObject[0] & 0x80) != 0
-	o.SubobjectType = SubObjectType(subObject[0] & 0x7f)
-	o.Length = subObject[1]
+	o.LFlag = (subobject[0] & 0x80) != 0
+	o.SubobjectType = SubobjectType(subobject[0] & 0x7f)
+	o.Length = subobject[1]
 
 	var addr [4]byte
-	copy(addr[:], subObject[2:6])
+	copy(addr[:], subobject[2:6])
 	o.Address = netip.AddrFrom4(addr)
 
-	o.PrefixLen = subObject[6]
+	o.PrefixLen = subobject[6]
 	if o.PrefixLen > maxIPv4PrefixLen {
 		return fmt.Errorf("RSVPIPv4PrefixEroSubobject: invalid prefix length: %d", o.PrefixLen)
 	}
@@ -1378,7 +1378,7 @@ func (o *RSVPIPv4PrefixEroSubobject) Len() (uint16, error) {
 	return uint16(rsvpIPv4PrefixEroSubobjectLength), nil
 }
 
-func NewRSVPIPv4PrefixEroSubObject(address netip.Addr, prefixLen uint8) (*RSVPIPv4PrefixEroSubobject, error) {
+func NewRSVPIPv4PrefixEroSubobject(address netip.Addr, prefixLen uint8) (*RSVPIPv4PrefixEroSubobject, error) {
 	if !address.Is4() {
 		return nil, fmt.Errorf("RSVPIPv4PrefixEroSubobject: address is not IPv4: %v", address)
 	}
@@ -1387,7 +1387,7 @@ func NewRSVPIPv4PrefixEroSubObject(address netip.Addr, prefixLen uint8) (*RSVPIP
 	}
 
 	return &RSVPIPv4PrefixEroSubobject{
-		SubobjectType: SubObjectTypeEROIPv4Prefix,
+		SubobjectType: SubobjectTypeEROIPv4Prefix,
 		Length:        rsvpIPv4PrefixEroSubobjectLength,
 		Address:       address,
 		PrefixLen:     prefixLen,
