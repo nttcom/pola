@@ -206,10 +206,14 @@ func (ss *Session) ReceivePCEPMessage() error {
 				return err
 			}
 
-			ss.logger.Debug("Received PCErr",
-				zap.Uint8("error-Type", pcerrMessage.PCEPErrorObject.ErrorType),
-				zap.Uint8("error-value", pcerrMessage.PCEPErrorObject.ErrorValue),
-				zap.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#pcep-error-object"))
+			srpIDs := pcerrMessage.SRPIDs()
+			for _, errObj := range pcerrMessage.Errors {
+				ss.logger.Debug("Received PCErr",
+					zap.Uint8("error-Type", errObj.ErrorType),
+					zap.Uint8("error-value", errObj.ErrorValue),
+					zap.Uint32s("srp-ids", srpIDs),
+					zap.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#pcep-error-object"))
+			}
 		case pcep.MessageTypeClose:
 			byteCloseMessageBody := make([]uint8, commonHeader.MessageLength-pcep.CommonHeaderLength)
 			if _, err := ss.tcpConn.Read(byteCloseMessageBody); err != nil {
