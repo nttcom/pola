@@ -51,7 +51,8 @@ func TestPCErrMessage_RoundTrip(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			raw := want.Serialize()
+			raw, err := want.Serialize()
+			require.NoError(t, err, "Serialize failed")
 
 			var commonHeader CommonHeader
 			require.NoError(t, commonHeader.DecodeFromBytes(raw[:CommonHeaderLength]), "common header decode failed")
@@ -62,7 +63,8 @@ func TestPCErrMessage_RoundTrip(t *testing.T) {
 			require.NoError(t, got.DecodeFromBytes(raw[CommonHeaderLength:]), "DecodeFromBytes failed")
 			assert.Equal(t, want, &got, "round-trip value mismatch")
 
-			raw2 := got.Serialize()
+			raw2, err := got.Serialize()
+			require.NoError(t, err, "re-Serialize failed")
 			assert.Equal(t, raw, raw2, "re-serialized bytes differ")
 		})
 	}
