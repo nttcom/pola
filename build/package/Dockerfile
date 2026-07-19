@@ -5,12 +5,12 @@ FROM golang:1.26.5@sha256:ae5a2316d12f3e78fd99177dad452e6ad4f240af2d71d57b480c34
 WORKDIR /build
 
 COPY go.mod go.sum ./
-RUN --mount=type=cache,target=/root/go/pkg/mod \
+RUN --mount=type=cache,target=/go/pkg/mod \
     go mod download
 
 COPY . .
 
-RUN --mount=type=cache,target=/root/go/pkg/mod \
+RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go install ./cmd/...
 
