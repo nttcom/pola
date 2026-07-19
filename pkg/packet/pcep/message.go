@@ -107,6 +107,16 @@ type Message interface {
 	Serialize() ([]uint8, error)
 }
 
+// Compile-time checks that all message types satisfy the Message interface.
+var (
+	_ Message = (*OpenMessage)(nil)
+	_ Message = (*KeepaliveMessage)(nil)
+	_ Message = (*PCErrMessage)(nil)
+	_ Message = (*CloseMessage)(nil)
+	_ Message = (*PCInitiateMessage)(nil)
+	_ Message = (*PCUpdMessage)(nil)
+)
+
 // Open Message
 type OpenMessage struct {
 	OpenObject *OpenObject
@@ -226,7 +236,7 @@ func (m *PCErrMessage) DecodeFromBytes(messageBody []uint8) error {
 	return nil
 }
 
-func (m *PCErrMessage) Serialize() []uint8 {
+func (m *PCErrMessage) Serialize() ([]uint8, error) {
 	length := CommonHeaderLength
 	for _, srp := range m.SRPs {
 		length += srp.Len()
@@ -241,7 +251,7 @@ func (m *PCErrMessage) Serialize() []uint8 {
 	for _, errObj := range m.Errors {
 		buf = AppendByteSlices(buf, errObj.Serialize())
 	}
-	return buf
+	return buf, nil
 }
 
 // SRPIDs returns the SRP-ID of every SRP object in wire order, letting a
@@ -286,13 +296,13 @@ func (m *CloseMessage) DecodeFromBytes(messageBody []uint8) error {
 	return nil
 }
 
-func (m *CloseMessage) Serialize() []uint8 {
+func (m *CloseMessage) Serialize() ([]uint8, error) {
 	closeMessageLength := CommonHeaderLength + m.CloseObject.Len()
 	closeHeader := NewCommonHeader(MessageTypeClose, closeMessageLength)
 	byteCloseHeader := closeHeader.Serialize()
 	byteCloseObject := m.CloseObject.Serialize()
 	byteCloseMessage := AppendByteSlices(byteCloseHeader, byteCloseObject)
-	return byteCloseMessage
+	return byteCloseMessage, nil
 }
 
 func NewCloseMessage(reason CloseReason) (*CloseMessage, error) {

@@ -168,7 +168,10 @@ func (ss *Session) SendClose(reason pcep.CloseReason) error {
 	if err != nil {
 		return err
 	}
-	byteCloseMessage := closeMessage.Serialize()
+	byteCloseMessage, err := closeMessage.Serialize()
+	if err != nil {
+		return err
+	}
 
 	ss.logger.Debug("Send Close Message",
 		zap.Uint8("reason", uint8(closeMessage.CloseObject.Reason)),
