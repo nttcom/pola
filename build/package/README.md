@@ -32,6 +32,25 @@ docker buildx build \
     .
 ```
 
+### Option 3: Build with Make Targets
+
+From the repository root, you can build images using Makefile targets:
+
+```bash
+# Build production image as pola:latest
+make image
+
+# Build development image as pola:latest-dev
+make image-dev
+```
+
+You can override image name and tag:
+
+```bash
+make image IMAGE=<image-name> TAG=<tag>
+make image-dev IMAGE=<image-name> TAG=<tag>
+```
+
 ## Run with Host Network Mode
 
 `polad` reads `polad.yaml` from its working directory, which is `/pola` inside the container. Mount your config directory there as shown below.
