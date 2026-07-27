@@ -20,6 +20,7 @@ def run_command(cmd: str) -> subprocess.CompletedProcess:
         shell=True,
         capture_output=True,
         text=True,
+        check=False,
     )
 
 
@@ -58,11 +59,10 @@ def wait_for_ssh(
 
             if time.time() - start > timeout:
                 raise TimeoutError(
-                    f"Timeout waiting for SSH to {hostname}\n"
-                    f"Last error: {repr(last_error)}"
+                    f"Timeout waiting for SSH to {hostname}\nLast error: {last_error!r}"
                 )
 
-            print(f"Waiting for SSH to {hostname}... last error: {repr(last_error)}")
+            print(f"Waiting for SSH to {hostname}... last error: {last_error!r}")
             time.sleep(interval)
 
 
