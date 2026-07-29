@@ -6,6 +6,7 @@ topology:
       image: ghcr.io/nttcom/pola:latest-dev
       binds:
         - pola/polad.yaml:/pola/polad.yaml
+        - sr-policies/policy1.yaml:/pola/policy1.yaml
       exec:
         - ip addr add 10.0.255.254/24 dev eth1
     pe01:
@@ -13,7 +14,9 @@ topology:
       image: frrouting/frr:v8.4.1
       binds:
         - startup-configs/common/daemons:/etc/frr/daemons
+        - startup-configs/common/vtysh.conf:/etc/frr/vtysh.conf
         - startup-configs/pe01/frr.conf:/etc/frr/frr.conf
+        - startup-configs/pe01/vtysh.sh:/vtysh.sh
       exec:
         - sysctl -w net.ipv4.ip_forward=1
         - sysctl -w net.mpls.conf.lo.input=1
@@ -23,12 +26,16 @@ topology:
         - ip link add cust-a type vrf table 10
         - ip link set cust-a up
         - ip link set eth3 master cust-a
+        # Configure PCEP and reapply the RD/RT once the daemons are running.
+        - bash /vtysh.sh
     pe02:
       kind: linux
       image: frrouting/frr:v8.4.1
       binds:
         - startup-configs/common/daemons:/etc/frr/daemons
+        - startup-configs/common/vtysh.conf:/etc/frr/vtysh.conf
         - startup-configs/pe02/frr.conf:/etc/frr/frr.conf
+        - startup-configs/pe02/vtysh.sh:/vtysh.sh
       exec:
         - sysctl -w net.ipv4.ip_forward=1
         - sysctl -w net.mpls.conf.lo.input=1
@@ -38,11 +45,14 @@ topology:
         - ip link add cust-a type vrf table 10
         - ip link set cust-a up
         - ip link set eth3 master cust-a
+        # Configure PCEP and reapply the RD/RT once the daemons are running.
+        - bash /vtysh.sh
     p01:
       kind: linux
       image: frrouting/frr:v8.4.1
       binds:
         - startup-configs/common/daemons:/etc/frr/daemons
+        - startup-configs/common/vtysh.conf:/etc/frr/vtysh.conf
         - startup-configs/p01/frr.conf:/etc/frr/frr.conf
       exec:
         - sysctl -w net.ipv4.ip_forward=1
@@ -56,6 +66,7 @@ topology:
       image: frrouting/frr:v8.4.1
       binds:
         - startup-configs/common/daemons:/etc/frr/daemons
+        - startup-configs/common/vtysh.conf:/etc/frr/vtysh.conf
         - startup-configs/p02/frr.conf:/etc/frr/frr.conf
       exec:
         - sysctl -w net.ipv4.ip_forward=1
@@ -69,13 +80,13 @@ topology:
       image: wbitt/network-multitool:latest
       exec:
         - ip addr add 192.168.0.2/24 dev eth1
-        - ip route add default via 192.168.0.1
+        - ip route replace default via 192.168.0.1
     host02:
       kind: linux
       image: wbitt/network-multitool:latest
       exec:
         - ip addr add 192.168.1.2/24 dev eth1
-        - ip route add default via 192.168.1.1
+        - ip route replace default via 192.168.1.1
     switch:
       kind: bridge
   links:

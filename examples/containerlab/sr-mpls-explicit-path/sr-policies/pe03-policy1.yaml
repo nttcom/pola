@@ -7,6 +7,6 @@ srPolicy:
   color: 1
   segmentList:
     - sid: "16001"
-      nai: "10.255.0.1"
+      localAddr: "10.255.0.1"
     - sid: "16002"
-      nai: "10.255.0.2"
+      localAddr: "10.255.0.2"

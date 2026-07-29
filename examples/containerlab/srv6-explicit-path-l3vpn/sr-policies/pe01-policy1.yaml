@@ -7,6 +7,8 @@ srPolicy:
   color: 1
   segmentList:
     - sid: "fd00:ffff:3:0:1::"
-      nai: "fd00:ffff::3"
+      localAddr: "fd00:ffff::3"
     - sid: "fd00:ffff:4:0:1::"
-      nai: "fd00:ffff::4"
+      localAddr: "fd00:ffff::4"
+    - sid: "fd00:ffff:2:0:1::"
+      localAddr: "fd00:ffff::2"

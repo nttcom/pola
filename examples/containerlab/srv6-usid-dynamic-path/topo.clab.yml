@@ -37,7 +37,7 @@ topology:
       exec:
         - ip addr add 10.0.0.4/24 dev eth1
         - ip -6 addr add fd00::4/64 dev eth1
-        - gobgpd -f /gobgpd.yml > /dev/null 2>&1 &
+        - sh -c 'gobgpd -f /gobgpd.yml > /tmp/gobgpd.log 2>&1 &'
     switch:
       kind: bridge
   links:
