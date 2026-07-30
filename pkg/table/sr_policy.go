@@ -207,6 +207,9 @@ type SegmentSRMPLS struct {
 	TTL uint8
 	TC  uint8
 	S   bool
+	// Optional NAI for SR-ERO encoding (RFC8664 4.3.1).
+	LocalAddr  netip.Addr
+	RemoteAddr netip.Addr
 }
 
 func (seg SegmentSRMPLS) SidString() string {
@@ -233,7 +236,7 @@ func (seg SegmentSRv6) Equal(other SegmentSRv6) bool {
 
 // Equal for SegmentSRMPLS
 func (seg SegmentSRMPLS) Equal(other SegmentSRMPLS) bool {
-	// Compare MPLS SID
+	// Compare MPLS SID only: the NAI does not change which hop the label is.
 	return seg.Sid == other.Sid
 }
 

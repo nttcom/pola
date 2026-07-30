@@ -196,6 +196,10 @@ JSON formatted response
 
 #### Case: Explicit Path
 
+Each SID may include address information for the NAI.
+See [`--no-sid-validate`](#pola-sr-policy-add--f-filepath---no-sid-validate)
+for details.
+
 YAML input format
 
 ```yaml
@@ -225,8 +229,8 @@ JSON formatted response
 
 Create a new SR Policy **without using TED**
 
-For each SID, write the `localAddr` (and `remoteAddr` if it's an Adj-SID)
-to construct the NAI.
+For each SID, specify the address information required to construct the NAI.
+`localAddr` is required for SRv6 SIDs but optional for SR-MPLS labels.
 
 See [JSON schema](docs/schemas/policy.json) for input details.
 

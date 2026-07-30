@@ -23,6 +23,14 @@ func TestSREroSubobject_RoundTrip(t *testing.T) {
 		seg.TC, seg.S, seg.TTL = tc, s, ttl
 		return seg
 	}
+	mkSRMPLSWithNAI := func(sid uint32, local, remote string) table.SegmentSRMPLS {
+		seg := table.NewSegmentSRMPLS(sid)
+		seg.LocalAddr = netip.MustParseAddr(local)
+		if remote != "" {
+			seg.RemoteAddr = netip.MustParseAddr(remote)
+		}
+		return seg
+	}
 
 	cases := map[string]SREroSubobject{
 		"NAIAbsent_LabelOnly": {
@@ -48,8 +56,35 @@ func TestSREroSubobject_RoundTrip(t *testing.T) {
 			SubobjectType: SubobjectTypeEROSR,
 			NAIType:       NAITypeSRIPv4Node,
 			MFlag:         true,
-			Segment:       table.NewSegmentSRMPLS(16001),
-			NAI:           netip.MustParseAddr("10.0.0.1"),
+			Segment:       mkSRMPLSWithNAI(16001, "10.0.0.1", ""),
+		},
+		"IPv6Node": {
+			SubobjectType: SubobjectTypeEROSR,
+			NAIType:       NAITypeSRIPv6Node,
+			MFlag:         true,
+			Segment:       mkSRMPLSWithNAI(16002, "2001:db8::1", ""),
+		},
+		"IPv4Adjacency": {
+			SubobjectType: SubobjectTypeEROSR,
+			NAIType:       NAITypeSRIPv4Adjacency,
+			MFlag:         true,
+			Segment:       mkSRMPLSWithNAI(24001, "10.0.0.1", "10.0.0.2"),
+		},
+		"IPv6AdjacencyGlobal": {
+			SubobjectType: SubobjectTypeEROSR,
+			NAIType:       NAITypeSRIPv6AdjacencyGlobal,
+			MFlag:         true,
+			Segment:       mkSRMPLSWithNAI(24002, "2001:db8::1", "2001:db8::2"),
+		},
+		"IPv4Node_CFlag_MPLSStackAttrs": {
+			SubobjectType: SubobjectTypeEROSR,
+			NAIType:       NAITypeSRIPv4Node,
+			CFlag:         true, MFlag: true,
+			Segment: func() table.SegmentSRMPLS {
+				seg := mkSRMPLSWithNAI(16003, "10.0.0.3", "")
+				seg.TC, seg.S, seg.TTL = 3, true, 10
+				return seg
+			}(),
 		},
 	}
 
@@ -74,6 +109,137 @@ func TestSREroSubobject_RoundTrip(t *testing.T) {
 			assert.Equal(t, raw, raw2, "re-serialized bytes differ")
 		})
 	}
+}
+
+func TestNewSREroSubobject_NAIFromSegment(t *testing.T) {
+	t.Parallel()
+
+	mk := func(local, remote string) table.SegmentSRMPLS {
+		seg := table.NewSegmentSRMPLS(16001)
+		if local != "" {
+			seg.LocalAddr = netip.MustParseAddr(local)
+		}
+		if remote != "" {
+			seg.RemoteAddr = netip.MustParseAddr(remote)
+		}
+		return seg
+	}
+
+	cases := map[string]struct {
+		seg         table.SegmentSRMPLS
+		wantNAIType NAITypeSR
+		wantFFlag   bool
+		wantLength  uint8
+		wantErr     bool
+	}{
+		"NoAddr": {
+			seg: mk("", ""), wantNAIType: NAITypeSRAbsent, wantFFlag: true, wantLength: 8,
+		},
+		"IPv4Local": {
+			seg: mk("10.0.0.1", ""), wantNAIType: NAITypeSRIPv4Node, wantLength: 12,
+		},
+		"IPv6Local": {
+			seg: mk("2001:db8::1", ""), wantNAIType: NAITypeSRIPv6Node, wantLength: 24,
+		},
+		"IPv4LocalRemote": {
+			seg: mk("10.0.0.1", "10.0.0.2"), wantNAIType: NAITypeSRIPv4Adjacency, wantLength: 16,
+		},
+		"IPv6LocalRemote": {
+			seg: mk("2001:db8::1", "2001:db8::2"), wantNAIType: NAITypeSRIPv6AdjacencyGlobal, wantLength: 40,
+		},
+		"RemoteWithoutLocal": {
+			seg: mk("", "10.0.0.2"), wantErr: true,
+		},
+		"MixedAddressFamily": {
+			seg: mk("10.0.0.1", "2001:db8::2"), wantErr: true,
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			subo, err := NewSREroSubobject(tc.seg)
+			if tc.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantNAIType, subo.NAIType, "NAI type")
+			assert.Equal(t, tc.wantFFlag, subo.FFlag, "F flag")
+			assert.Equal(t, tc.wantLength, subo.Length, "length")
+
+			raw, err := subo.Serialize()
+			require.NoError(t, err, "Serialize failed")
+			assert.Equal(t, int(tc.wantLength), len(raw), "serialized size")
+		})
+	}
+}
+
+func TestSREroSubobject_DecodeErrors(t *testing.T) {
+	t.Parallel()
+
+	// Type, Length, NT/Flags (4byte) + SID (4byte) [+ NAI]
+	cases := map[string][]uint8{
+		"ShorterThanHeaderAndSID": {0x24, 0x08, 0x00, 0x08, 0x00, 0x00},
+		"TruncatedIPv4NodeNAI":    {0x24, 0x0c, 0x10, 0x01, 0x03, 0xe8, 0x10, 0x00, 0x0a, 0x00},
+		"UnsupportedNAIType":      {0x24, 0x08, 0x50, 0x01, 0x03, 0xe8, 0x10, 0x00},
+	}
+
+	for name, raw := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var subo SREroSubobject
+			assert.Error(t, subo.DecodeFromBytes(raw))
+		})
+	}
+}
+
+// The NAI must never be silently dropped: emitting a body that is shorter than
+// the advertised Length would corrupt every following ERO subobject.
+func TestSREroSubobject_SerializeRejectsNAIMismatch(t *testing.T) {
+	t.Parallel()
+
+	mkSubo := func(naiType NAITypeSR, local, remote string) *SREroSubobject {
+		seg := table.NewSegmentSRMPLS(16001)
+		if local != "" {
+			seg.LocalAddr = netip.MustParseAddr(local)
+		}
+		if remote != "" {
+			seg.RemoteAddr = netip.MustParseAddr(remote)
+		}
+		return &SREroSubobject{
+			SubobjectType: SubobjectTypeEROSR,
+			NAIType:       naiType,
+			MFlag:         true,
+			Segment:       seg,
+		}
+	}
+
+	cases := map[string]*SREroSubobject{
+		"IPv4NodeWithoutLocalAddr":   mkSubo(NAITypeSRIPv4Node, "", ""),
+		"IPv4NodeWithIPv6LocalAddr":  mkSubo(NAITypeSRIPv4Node, "2001:db8::1", ""),
+		"IPv6NodeWithIPv4LocalAddr":  mkSubo(NAITypeSRIPv6Node, "10.0.0.1", ""),
+		"AdjacencyWithoutRemoteAddr": mkSubo(NAITypeSRIPv4Adjacency, "10.0.0.1", ""),
+		"IPv6AdjacencyWithIPv4Addrs": mkSubo(
+			NAITypeSRIPv6AdjacencyGlobal, "10.0.0.1", "10.0.0.2",
+		),
+		"UnsupportedNAIType": mkSubo(NAITypeSRUnnumberedAdjacency, "10.0.0.1", "10.0.0.2"),
+	}
+
+	for name, subo := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := subo.Serialize()
+			assert.Error(t, err)
+		})
+	}
+
+	// An NAI type this implementation cannot encode must not yield a length either.
+	_, err := cases["UnsupportedNAIType"].Len()
+	assert.Error(t, err)
 }
 
 func TestSRv6EroSubobject_RoundTrip(t *testing.T) {

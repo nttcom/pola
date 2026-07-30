@@ -285,7 +285,12 @@ func buildExplicitPolicy(
 
 	var segments []*pb.Segment
 	for _, s := range input.SRPolicy.SegmentList {
-		segments = append(segments, &pb.Segment{Sid: s.SID})
+		segments = append(segments, &pb.Segment{
+			Sid:          s.SID,
+			LocalAddr:    s.LocalAddr,
+			RemoteAddr:   s.RemoteAddr,
+			SidStructure: s.SIDStructure,
+		})
 	}
 
 	return pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT, 0, segments, nil, nil
