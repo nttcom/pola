@@ -1,0 +1,53 @@
+// Copyright (c) 2022 NTT Communications Corporation
+//
+// This software is released under the MIT License.
+// see https://github.com/nttcom/pola/blob/main/LICENSE
+
+package pcep
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
+
+func TestEnterpriseNumber_String(t *testing.T) {
+	cases := map[string]struct {
+		enterpriseNumber EnterpriseNumber
+		expected         string
+	}{
+		"Cisco":       {EnterpriseNumberCisco, "Cisco (9)"},
+		"Huawei":      {EnterpriseNumberHuawei, "Huawei (2011)"},
+		"Juniper":     {EnterpriseNumberJuniper, "Juniper (2636)"},
+		"UnknownEN":   {12345, "Unknown Enterprise (12345)"},
+		"ZeroEN":      {0, "Unknown Enterprise (0)"},
+		"MaxUint32EN": {EnterpriseNumber(^uint32(0)), "Unknown Enterprise (4294967295)"},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			actual := tt.enterpriseNumber.String()
+			assert.Equal(t, tt.expected, actual, "unexpected EnterpriseNumber.String() result")
+		})
+	}
+}
+
+func TestEnterpriseNumber_capLabel(t *testing.T) {
+	cases := map[string]struct {
+		enterpriseNumber EnterpriseNumber
+		expected         string
+	}{
+		"Cisco":     {EnterpriseNumberCisco, "Cisco"},
+		"Huawei":    {EnterpriseNumberHuawei, "Huawei"},
+		"Juniper":   {EnterpriseNumberJuniper, "Juniper"},
+		"UnknownEN": {12345, "EN-12345"},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			actual := tt.enterpriseNumber.capLabel()
+			assert.Equal(t, tt.expected, actual, "unexpected enterpriseNumberCapLabel() result")
+			assert.NotContains(t, actual, " ", "capability labels must not contain spaces")
+		})
+	}
+}

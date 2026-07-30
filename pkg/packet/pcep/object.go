@@ -1696,23 +1696,23 @@ const (
 	ObjectTypeVendorSpecificConstraints ObjectType = 0x01
 )
 
-const (
-	EnterpriseNumberCisco uint32 = 9
-)
-
 type VendorInformationObject struct {
 	ObjectType       ObjectType // vendor specific constraints: 1
-	EnterpriseNumber uint32
+	EnterpriseNumber EnterpriseNumber
 	TLVs             []TLVInterface
 }
 
 func (o *VendorInformationObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
+	if len(objectBody) < int(EnterpriseNumberLength) {
+		return fmt.Errorf("vendor information object: too short (got %d bytes, want ≥ %d)", len(objectBody), EnterpriseNumberLength)
+	}
+
 	o.ObjectType = typ
-	o.EnterpriseNumber = binary.BigEndian.Uint32(objectBody[0:4])
-	if len(objectBody) > 4 {
-		byteTLVs := objectBody[4:]
+	o.EnterpriseNumber = EnterpriseNumber(binary.BigEndian.Uint32(objectBody[:EnterpriseNumberLength]))
+	if len(objectBody) > int(EnterpriseNumberLength) {
+		byteTLVs := objectBody[EnterpriseNumberLength:]
 		var err error
-		if o.TLVs, err = DecodeTLVs(byteTLVs); err != nil {
+		if o.TLVs, err = DecodeVendorTLVs(byteTLVs); err != nil {
 			return err
 		}
 
@@ -1724,7 +1724,7 @@ func (o *VendorInformationObject) Serialize() []uint8 {
 	vendorInformationObjectHeader := NewCommonObjectHeader(ObjectClassVendorInformation, o.ObjectType, o.Len())
 	byteVendorInformationObjectHeader := vendorInformationObjectHeader.Serialize()
 
-	enterpriseNumber := Uint32ToByteSlice(o.EnterpriseNumber)
+	enterpriseNumber := Uint32ToByteSlice(uint32(o.EnterpriseNumber))
 
 	byteTLVs := []uint8{}
 	for _, tlv := range o.TLVs {
@@ -1737,13 +1737,13 @@ func (o *VendorInformationObject) Serialize() []uint8 {
 	return byteVendorInformationObject
 }
 
-func (o VendorInformationObject) Len() uint16 {
+func (o *VendorInformationObject) Len() uint16 {
 	tlvsByteLength := uint16(0)
 	for _, tlv := range o.TLVs {
 		tlvsByteLength += tlv.Len()
 	}
 	// CommonObjectHeader(4byte) + Enterprise Number (4byte) + TLVs (variable)
-	return commonObjectHeaderLength + 4 + tlvsByteLength
+	return commonObjectHeaderLength + EnterpriseNumberLength + tlvsByteLength
 }
 
 func NewVendorInformationObject(vendor PccType, color uint32, preference uint32) (*VendorInformationObject, error) {
@@ -1757,9 +1757,7 @@ func NewVendorInformationObject(vendor PccType, color uint32, preference uint32)
 			&UndefinedTLV{
 				Typ:    SubTLVColorCisco,
 				Length: SubTLVColorCiscoValueLength, // TODO: 20 if ipv6 endpoint
-				Value: AppendByteSlices(
-					Uint32ToByteSlice(color),
-				),
+				Value:  Uint32ToByteSlice(color),
 			},
 			&UndefinedTLV{
 				Typ:    SubTLVPreferenceCisco,
@@ -1769,29 +1767,31 @@ func NewVendorInformationObject(vendor PccType, color uint32, preference uint32)
 		}
 		o.TLVs = append(o.TLVs, vendorInformationObjectTLVs...)
 	} else {
-		return nil, errors.New("unknown vender information object type")
+		return nil, errors.New("unknown vendor information object type")
 	}
 	return o, nil
 }
 
 func (o *VendorInformationObject) Color() uint32 {
-	for _, tlv := range o.TLVs {
-		if t, ok := tlv.(*UndefinedTLV); ok {
-			if t.Type() == SubTLVColorCisco {
-				return uint32(binary.BigEndian.Uint32(t.Value))
-			}
-		}
-	}
-	return 0
+	return o.subTLVUint32(SubTLVColorCisco)
 }
 
 func (o *VendorInformationObject) Preference() uint32 {
+	return o.subTLVUint32(SubTLVPreferenceCisco)
+}
+
+// subTLVUint32 returns the leading uint32 of the first sub-TLV of the given type,
+// or 0 if it is absent or too short to hold one.
+func (o *VendorInformationObject) subTLVUint32(typ TLVType) uint32 {
 	for _, tlv := range o.TLVs {
-		if t, ok := tlv.(*UndefinedTLV); ok {
-			if t.Type() == SubTLVPreferenceCisco {
-				return uint32(binary.BigEndian.Uint32(t.Value))
-			}
+		t, ok := tlv.(*UndefinedTLV)
+		if !ok || t.Type() != typ {
+			continue
 		}
+		if len(t.Value) < 4 {
+			return 0
+		}
+		return binary.BigEndian.Uint32(t.Value[:4])
 	}
 	return 0
 }
