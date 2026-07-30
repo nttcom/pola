@@ -9,7 +9,7 @@ Example topology powered by [Containerlab](https://containerlab.dev/)
 * container host (Linux)
 * Cisco XRd image (`ios-xr/xrd-control-plane:24.4.1`)
 * Juniper vJunos-router image (`vrnetlab/juniper_vjunos-router:25.2R1.9`)
-* Pola helper image (`ghcr.io/nttcom/pola:latest-dev`)
+* Pola helper image (`ghcr.io/nttcom/pola:latest-debug`)
 * Host utility image (`wbitt/network-multitool:latest`)
 * Statically linked GoBGP binaries in `bin/` (`gobgpd`, `gobgp`, v4.0.0 or later)
 

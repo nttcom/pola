@@ -3,7 +3,7 @@ topology:
   nodes:
     pola:
       kind: linux
-      image: ghcr.io/nttcom/pola:latest-dev
+      image: ghcr.io/nttcom/pola:latest-debug
       binds:
         - pola/polad.yaml:/pola/polad.yaml
         - sr-policies/policy1.yaml:/pola/policy1.yaml

@@ -8,7 +8,7 @@ Example topology powered by [Containerlab](https://containerlab.dev/)
 
 * container host (Linux)
 * Juniper vJunos-router image (`vrnetlab/juniper_vjunos-router:25.2R1.9`)
-* Pola helper image (`ghcr.io/nttcom/pola:latest-dev`)
+* Pola helper image (`ghcr.io/nttcom/pola:latest-debug`)
 * Host utility image (`wbitt/network-multitool:latest`)
 
 See [Prerequisites](../README.md#prerequisites) for how to install Containerlab and

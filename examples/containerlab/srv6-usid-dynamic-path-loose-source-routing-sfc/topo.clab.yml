@@ -20,7 +20,7 @@ topology:
       startup-config: startup-configs/p02.cfg
     pola:
       kind: linux
-      image: ghcr.io/nttcom/pola:latest-dev
+      image: ghcr.io/nttcom/pola:latest-debug
       binds:
         - pola/polad.yaml:/pola/polad.yaml
         - sr-policies/pe02-policy1.yaml:/pola/pe02-policy1.yaml

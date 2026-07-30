@@ -91,6 +91,6 @@ sudo modprobe mpls_iptunnel
 ## Image Tag Policy
 
 * Router and network OS images are pinned to tested versions.
-* The Pola helper uses `ghcr.io/nttcom/pola:latest-dev` so examples can follow current development builds.
+* The Pola helper uses `ghcr.io/nttcom/pola:latest-debug` because the topologies run `ip` in `exec` blocks and expect a shell for troubleshooting, which the slim `latest` image does not provide.
 * Generic utility nodes may use upstream convenience images such as `wbitt/network-multitool:latest` when no project-maintained runtime image exists.
 * The SRv6 dynamic-path examples rely on mounted GoBGP binaries inside `wbitt/network-multitool:latest` helper nodes.

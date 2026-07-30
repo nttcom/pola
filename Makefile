@@ -27,7 +27,7 @@ PYTEST_ARGS           ?= -s
 	proto \
 	check-proto \
 	image \
-	image-dev \
+	image-debug \
 	fetch-gobgp \
 	test-deps \
 	test-scenario \
@@ -55,7 +55,7 @@ setup: ## Install development tools required by this Makefile
 	@echo "  $$(npm config get prefix)/bin"
 	@echo ""
 	@echo "Also required but not installed by this target:"
-	@echo "  - Docker (for 'image', 'image-dev', and 'test-scenario')"
+	@echo "  - Docker (for 'image', 'image-debug', and 'test-scenario')"
 	@echo "  - containerlab (https://containerlab.dev/install/, for 'test-scenario')"
 
 build: ## Build Go binaries
@@ -107,10 +107,10 @@ image: ## Build production Docker image
 		--load \
 		.
 
-image-dev: ## Build development Docker image
+image-debug: ## Build debug Docker image (adds a shell and network tools)
 	docker buildx build \
-		-t $(IMAGE):$(TAG)-dev \
-		-f build/package/Dockerfile.dev \
+		-t $(IMAGE):$(TAG)-debug \
+		-f build/package/Dockerfile.debug \
 		--load \
 		.
 
