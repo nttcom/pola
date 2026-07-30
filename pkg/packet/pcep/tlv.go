@@ -198,6 +198,7 @@ const TLVAlignment = 4
 
 // TLV value lengths, excluding the 4-byte TLV header (type + length)
 const (
+	TLVVendorInformationMinValueLength      uint16 = 4 // Enterprise Number only, without Enterprise-Specific Information
 	TLVStatefulPCECapabilityValueLength     uint16 = 4
 	TLVIPv4LSPIdentifiersValueLength        uint16 = 16
 	TLVIPv6LSPIdentifiersValueLength        uint16 = 52
@@ -241,6 +242,7 @@ type TLVInterface interface {
 }
 
 var tlvMap = map[TLVType]func() TLVInterface{
+	TLVVendorInformation:       func() TLVInterface { return &VendorInformation{} },
 	TLVStatefulPCECapability:   func() TLVInterface { return &StatefulPCECapability{} },
 	TLVSymbolicPathName:        func() TLVInterface { return &SymbolicPathName{} },
 	TLVIPv4LSPIdentifiers:      func() TLVInterface { return &IPv4LSPIdentifiers{} },
@@ -256,6 +258,90 @@ var tlvMap = map[TLVType]func() TLVInterface{
 	TLVSRPolicyCPathID:         func() TLVInterface { return &SRPolicyCandidatePathIdentifier{} },
 	TLVSRPolicyCPathPreference: func() TLVInterface { return &SRPolicyCandidatePathPreference{} },
 	TLVColor:                   func() TLVInterface { return &Color{} },
+}
+
+// VendorInformation represents the VENDOR-INFORMATION TLV (RFC7470 4).
+// The Enterprise-Specific Information is opaque, so it is kept as raw bytes.
+type VendorInformation struct {
+	EnterpriseNumber              EnterpriseNumber
+	EnterpriseSpecificInformation []byte
+}
+
+func (tlv *VendorInformation) DecodeFromBytes(data []byte) error {
+	valueLen, err := decodeTLVLength(data, true)
+	if err != nil {
+		return fmt.Errorf("VendorInformation: %w", err)
+	}
+
+	if valueLen < int(TLVVendorInformationMinValueLength) {
+		return fmt.Errorf("VendorInformation: invalid value length %d", valueLen)
+	}
+
+	value := data[TLVValueOffset : TLVValueOffset+valueLen]
+
+	tlv.EnterpriseNumber = EnterpriseNumber(binary.BigEndian.Uint32(value[:TLVVendorInformationMinValueLength]))
+
+	if info := value[TLVVendorInformationMinValueLength:]; len(info) > 0 {
+		tlv.EnterpriseSpecificInformation = slices.Clone(info)
+	} else {
+		tlv.EnterpriseSpecificInformation = nil
+	}
+
+	return nil
+}
+
+func (tlv *VendorInformation) Serialize() []byte {
+	value := make([]byte, tlv.paddedValueLength())
+	binary.BigEndian.PutUint32(value[:TLVVendorInformationMinValueLength], uint32(tlv.EnterpriseNumber))
+	copy(value[TLVVendorInformationMinValueLength:], tlv.EnterpriseSpecificInformation)
+
+	return AppendByteSlices(
+		Uint16ToByteSlice(tlv.Type()),
+		Uint16ToByteSlice(tlv.valueLength()),
+		value,
+	)
+}
+
+func (tlv *VendorInformation) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	if tlv == nil {
+		return nil
+	}
+
+	enc.AddUint32("enterpriseNumber", uint32(tlv.EnterpriseNumber))
+	enc.AddString("enterprise", tlv.EnterpriseNumber.String())
+
+	if len(tlv.EnterpriseSpecificInformation) > 0 {
+		enc.AddString("enterpriseSpecificInformation", fmt.Sprintf("%x", tlv.EnterpriseSpecificInformation))
+	}
+
+	return nil
+}
+
+func (tlv *VendorInformation) Type() TLVType {
+	return TLVVendorInformation
+}
+
+func (tlv *VendorInformation) Len() uint16 {
+	return TLVValueOffset + tlv.paddedValueLength()
+}
+
+func (tlv *VendorInformation) CapStrings() []string {
+	return []string{"Vendor-Info(" + tlv.EnterpriseNumber.capLabel() + ")"}
+}
+
+func (tlv *VendorInformation) valueLength() uint16 {
+	return TLVVendorInformationMinValueLength + uint16(len(tlv.EnterpriseSpecificInformation))
+}
+
+func (tlv *VendorInformation) paddedValueLength() uint16 {
+	return uint16(paddedLength(int(tlv.valueLength()), TLVAlignment))
+}
+
+func NewVendorInformation(enterpriseNumber EnterpriseNumber, enterpriseSpecificInformation []byte) *VendorInformation {
+	return &VendorInformation{
+		EnterpriseNumber:              enterpriseNumber,
+		EnterpriseSpecificInformation: enterpriseSpecificInformation,
+	}
 }
 
 type StatefulPCECapability struct {
@@ -1727,25 +1813,47 @@ func DecodeTLV(data []byte) (TLVInterface, error) {
 		return nil, errors.New("insufficient data to read TLV type")
 	}
 
-	tlvType := binary.BigEndian.Uint16(data[0:2])
+	return decodeTLV(data, TLVType(binary.BigEndian.Uint16(data[0:2])))
+}
 
-	if createTLV, found := tlvMap[TLVType(tlvType)]; found {
-		tlv := createTLV()
-		if err := tlv.DecodeFromBytes(data); err != nil {
-			return nil, fmt.Errorf("error decoding TLV type %x: %w", tlvType, err)
-		}
-		return tlv, nil
+// decodeTLV decodes a single TLV of an already known type from the standard PCEP TLV type space.
+func decodeTLV(data []byte, tlvType TLVType) (TLVInterface, error) {
+	createTLV, found := tlvMap[tlvType]
+	if !found {
+		return decodeUndefinedTLV(data, tlvType)
 	}
 
-	tlv := &UndefinedTLV{}
+	tlv := createTLV()
 	if err := tlv.DecodeFromBytes(data); err != nil {
-		return nil, fmt.Errorf("error decoding undefined TLV type %x: %w", tlvType, err)
+		return nil, fmt.Errorf("error decoding TLV type %x: %w", uint16(tlvType), err)
 	}
 
 	return tlv, nil
 }
 
+// decodeUndefinedTLV decodes a single TLV without consulting tlvMap, keeping its value as raw bytes.
+func decodeUndefinedTLV(data []byte, tlvType TLVType) (TLVInterface, error) {
+	tlv := &UndefinedTLV{}
+	if err := tlv.DecodeFromBytes(data); err != nil {
+		return nil, fmt.Errorf("error decoding undefined TLV type %x: %w", uint16(tlvType), err)
+	}
+
+	return tlv, nil
+}
+
+// DecodeTLVs decodes a sequence of TLVs using the standard PCEP TLV type space.
 func DecodeTLVs(data []byte) ([]TLVInterface, error) {
+	return decodeTLVSequence(data, decodeTLV)
+}
+
+// DecodeVendorTLVs decodes a sequence of TLVs carried in a VENDOR-INFORMATION Object (RFC7470 4).
+// Their type space is enterprise-specific and may collide with the standard one, so every TLV is
+// kept as an UndefinedTLV instead of being matched against tlvMap.
+func DecodeVendorTLVs(data []byte) ([]TLVInterface, error) {
+	return decodeTLVSequence(data, decodeUndefinedTLV)
+}
+
+func decodeTLVSequence(data []byte, decode func([]byte, TLVType) (TLVInterface, error)) ([]TLVInterface, error) {
 	var tlvs []TLVInterface
 
 	for len(data) > 0 {
@@ -1761,7 +1869,7 @@ func DecodeTLVs(data []byte) ([]TLVInterface, error) {
 			return nil, fmt.Errorf("truncated TLV value (type=0x%x)", tlvType)
 		}
 
-		tlv, err := DecodeTLV(data[:totalLen])
+		tlv, err := decode(data[:totalLen], TLVType(tlvType))
 		if err != nil {
 			return nil, err
 		}

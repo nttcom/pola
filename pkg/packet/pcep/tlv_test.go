@@ -38,6 +38,7 @@ func TestTLVMap(t *testing.T) {
 		tlvType  TLVType
 		expected TLVInterface
 	}{
+		"VendorInformation":       {TLVVendorInformation, &VendorInformation{}},
 		"StatefulPCECapability":   {TLVStatefulPCECapability, &StatefulPCECapability{}},
 		"SymbolicPathName":        {TLVSymbolicPathName, &SymbolicPathName{}},
 		"IPv4LSPIdentifiers":      {TLVIPv4LSPIdentifiers, &IPv4LSPIdentifiers{}},
@@ -128,6 +129,149 @@ func runTLVLenTests(t *testing.T, cases map[string]struct {
 
 func tlvHeader(tlvType TLVType, length uint16) []byte {
 	return []byte{byte(tlvType >> 8), byte(tlvType & 0xff), byte(length >> 8), byte(length & 0xff)}
+}
+
+// Test data for VendorInformation.
+var (
+	// Enterprise Number only, no Enterprise-Specific Information (Juniper sends this in Open)
+	testVendorInformationJuniper      = NewVendorInformation(EnterpriseNumberJuniper, nil)
+	testVendorInformationJuniperBytes = append(tlvHeader(TLVVendorInformation, 4), 0x00, 0x00, 0x0a, 0x4c)
+	// Enterprise-Specific Information already 4-byte aligned
+	testVendorInformationWithInfo      = NewVendorInformation(EnterpriseNumberJuniper, []byte{0xde, 0xad, 0xbe, 0xef})
+	testVendorInformationWithInfoBytes = append(tlvHeader(TLVVendorInformation, 8), 0x00, 0x00, 0x0a, 0x4c, 0xde, 0xad, 0xbe, 0xef)
+	// 2-byte Enterprise-Specific Information (value length 6 → 2 bytes padding)
+	testVendorInformationUnaligned      = NewVendorInformation(EnterpriseNumberCisco, []byte{0x01, 0x02})
+	testVendorInformationUnalignedBytes = append(tlvHeader(TLVVendorInformation, 6), 0x00, 0x00, 0x00, 0x09, 0x01, 0x02, 0x00, 0x00)
+	// Enterprise Number not present in enterpriseNumberNames
+	testVendorInformationUnknownEnterprise = NewVendorInformation(12345, nil)
+	// Value shorter than the mandatory Enterprise Number
+	testVendorInformationTooShort        = append(tlvHeader(TLVVendorInformation, 2), 0x00, 0x00)
+	testVendorInformationTruncatedValue  = append(tlvHeader(TLVVendorInformation, 8), 0x00, 0x00, 0x0a, 0x4c)
+	testVendorInformationTruncatedHeader = []byte{0x00, 0x07, 0x00}
+)
+
+func TestVendorInformation_DecodeFromBytes(t *testing.T) {
+	cases := map[string]TLVTestCase{
+		"EnterpriseNumberOnly": {testVendorInformationJuniperBytes, testVendorInformationJuniper, false},
+		"WithEnterpriseSpecificInformation": {
+			testVendorInformationWithInfoBytes, testVendorInformationWithInfo, false,
+		},
+		"UnalignedEnterpriseSpecificInformation": {
+			testVendorInformationUnalignedBytes, testVendorInformationUnaligned, false,
+		},
+		"ValueTooShort":   {testVendorInformationTooShort, nil, true},
+		"TruncatedValue":  {testVendorInformationTruncatedValue, nil, true},
+		"TruncatedHeader": {testVendorInformationTruncatedHeader, nil, true},
+	}
+	runTLVDecodeTests(t, cases, func() TLVInterface { return &VendorInformation{} })
+}
+
+func TestVendorInformation_Serialize(t *testing.T) {
+	cases := map[string]struct {
+		input    TLVInterface
+		expected []byte
+	}{
+		"EnterpriseNumberOnly":                   {testVendorInformationJuniper, testVendorInformationJuniperBytes},
+		"WithEnterpriseSpecificInformation":      {testVendorInformationWithInfo, testVendorInformationWithInfoBytes},
+		"UnalignedEnterpriseSpecificInformation": {testVendorInformationUnaligned, testVendorInformationUnalignedBytes},
+	}
+	runTLVSerializeTests(t, cases)
+}
+
+func TestVendorInformation_MarshalLogObject(t *testing.T) {
+	cases := map[string]struct {
+		input    *VendorInformation
+		expected map[string]any
+	}{
+		"EnterpriseNumberOnly": {
+			testVendorInformationJuniper,
+			map[string]any{
+				"enterpriseNumber": uint32(EnterpriseNumberJuniper),
+				"enterprise":       "Juniper (2636)",
+			},
+		},
+		"WithEnterpriseSpecificInformation": {
+			testVendorInformationWithInfo,
+			map[string]any{
+				"enterpriseNumber":              uint32(EnterpriseNumberJuniper),
+				"enterprise":                    "Juniper (2636)",
+				"enterpriseSpecificInformation": "deadbeef",
+			},
+		},
+		"UnknownEnterprise": {
+			testVendorInformationUnknownEnterprise,
+			map[string]any{
+				"enterpriseNumber": uint32(12345),
+				"enterprise":       "Unknown Enterprise (12345)",
+			},
+		},
+		"NilTLV": {
+			nil,
+			map[string]any{},
+		},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			enc := zapcore.NewMapObjectEncoder()
+			err := tt.input.MarshalLogObject(enc)
+			assert.NoError(t, err, "unexpected error during MarshalLogObject for '%s'", name)
+			assert.Equal(t, tt.expected, enc.Fields, "unexpected fields for '%s'", name)
+		})
+	}
+}
+
+func TestVendorInformation_Len(t *testing.T) {
+	cases := map[string]struct {
+		input    TLVInterface
+		expected uint16
+	}{
+		"EnterpriseNumberOnly":                   {testVendorInformationJuniper, TLVValueOffset + 4},
+		"WithEnterpriseSpecificInformation":      {testVendorInformationWithInfo, TLVValueOffset + 8},
+		"UnalignedEnterpriseSpecificInformation": {testVendorInformationUnaligned, TLVValueOffset + 8}, // 6-byte value + 2 pad
+	}
+	runTLVLenTests(t, cases)
+}
+
+func TestVendorInformation_CapStrings(t *testing.T) {
+	cases := map[string]struct {
+		input    CapStringsInterface
+		expected []string
+	}{
+		"KnownEnterprise":   {testVendorInformationJuniper, []string{"Vendor-Info(Juniper)"}},
+		"UnknownEnterprise": {testVendorInformationUnknownEnterprise, []string{"Vendor-Info(EN-12345)"}},
+	}
+	runCapStringsTests(t, cases)
+}
+
+func TestVendorInformation_RoundTrip(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]*VendorInformation{
+		"EnterpriseNumberOnly":                   testVendorInformationJuniper,
+		"WithEnterpriseSpecificInformation":      testVendorInformationWithInfo,
+		"UnalignedEnterpriseSpecificInformation": testVendorInformationUnaligned,
+		"UnknownEnterprise":                      testVendorInformationUnknownEnterprise,
+	}
+
+	for name, original := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			data := original.Serialize()
+			require.Equal(t, int(original.Len()), len(data), "Len() must match serialized size")
+
+			decoded, err := DecodeTLV(data)
+			require.NoError(t, err, "DecodeTLV failed")
+
+			got, ok := decoded.(*VendorInformation)
+			require.Truef(t, ok, "expected *VendorInformation, got %T", decoded)
+			assert.Equal(t, original, got, "round-trip value mismatch")
+
+			// Serialize again and verify bytes are identical (stability check).
+			assert.Equal(t, data, got.Serialize(), "re-serialized bytes differ")
+		})
+	}
 }
 
 // Test data for StatefulPCECapability.

@@ -701,6 +701,110 @@ func TestAssociationObject_RoundTrip(t *testing.T) {
 	}
 }
 
+func TestVendorInformationObject_DecodeFromBytes(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		objectBody []uint8
+		expected   *VendorInformationObject
+		wantErr    bool
+	}{
+		"EnterpriseNumberOnly": {
+			objectBody: []uint8{0x00, 0x00, 0x00, 0x09},
+			expected: &VendorInformationObject{
+				ObjectType:       ObjectTypeVendorSpecificConstraints,
+				EnterpriseNumber: EnterpriseNumberCisco,
+			},
+		},
+		"CiscoColorSubTLV": {
+			objectBody: []uint8{0x00, 0x00, 0x00, 0x09, 0x00, 0x01, 0x00, 0x04, 0x00, 0x00, 0x00, 0x64},
+			expected: &VendorInformationObject{
+				ObjectType:       ObjectTypeVendorSpecificConstraints,
+				EnterpriseNumber: EnterpriseNumberCisco,
+				TLVs: []TLVInterface{
+					&UndefinedTLV{Typ: SubTLVColorCisco, Length: 4, Value: []uint8{0x00, 0x00, 0x00, 0x64}},
+				},
+			},
+		},
+		// The enterprise-specific type space must not be resolved against tlvMap: type 0x07 is
+		// VENDOR-INFORMATION and type 0x10 is STATEFUL-PCE-CAPABILITY in the standard space.
+		"SubTLVCollidingWithStandardType": {
+			objectBody: []uint8{0x00, 0x00, 0x00, 0x09, 0x00, 0x07, 0x00, 0x02, 0xde, 0xad, 0x00, 0x00},
+			expected: &VendorInformationObject{
+				ObjectType:       ObjectTypeVendorSpecificConstraints,
+				EnterpriseNumber: EnterpriseNumberCisco,
+				TLVs: []TLVInterface{
+					&UndefinedTLV{Typ: TLVVendorInformation, Length: 2, Value: []uint8{0xde, 0xad}},
+				},
+			},
+		},
+		// A body shorter than the mandatory Enterprise Number must be rejected, not panic.
+		"EmptyBody":                 {objectBody: []uint8{}, wantErr: true},
+		"TruncatedEnterpriseNumber": {objectBody: []uint8{0x00, 0x00, 0x09}, wantErr: true},
+		"TruncatedSubTLV":           {objectBody: []uint8{0x00, 0x00, 0x00, 0x09, 0x00, 0x01, 0x00, 0x08, 0x00}, wantErr: true},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			got := &VendorInformationObject{}
+			err := got.DecodeFromBytes(ObjectTypeVendorSpecificConstraints, tt.objectBody)
+			if tt.wantErr {
+				assert.Error(t, err, "expected error for '%s'", name)
+				return
+			}
+			require.NoError(t, err, "unexpected error for '%s'", name)
+			assert.Equal(t, tt.expected, got, "decoded value mismatch for '%s'", name)
+		})
+	}
+}
+
+func TestVendorInformationObject_ColorPreference(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		object         *VendorInformationObject
+		wantColor      uint32
+		wantPreference uint32
+	}{
+		"NoSubTLVs": {
+			object:    &VendorInformationObject{EnterpriseNumber: EnterpriseNumberCisco},
+			wantColor: 0, wantPreference: 0,
+		},
+		"ColorAndPreference": {
+			object: &VendorInformationObject{
+				EnterpriseNumber: EnterpriseNumberCisco,
+				TLVs: []TLVInterface{
+					&UndefinedTLV{Typ: SubTLVColorCisco, Length: 4, Value: Uint32ToByteSlice(100)},
+					&UndefinedTLV{Typ: SubTLVPreferenceCisco, Length: 4, Value: Uint32ToByteSlice(200)},
+				},
+			},
+			wantColor: 100, wantPreference: 200,
+		},
+		// Values too short to hold a uint32 must yield 0 instead of panicking.
+		"ShortSubTLVValues": {
+			object: &VendorInformationObject{
+				EnterpriseNumber: EnterpriseNumberCisco,
+				TLVs: []TLVInterface{
+					&UndefinedTLV{Typ: SubTLVColorCisco, Length: 0, Value: []uint8{}},
+					&UndefinedTLV{Typ: SubTLVPreferenceCisco, Length: 2, Value: []uint8{0x00, 0x01}},
+				},
+			},
+			wantColor: 0, wantPreference: 0,
+		},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tt.wantColor, tt.object.Color(), "color mismatch for '%s'", name)
+			assert.Equal(t, tt.wantPreference, tt.object.Preference(), "preference mismatch for '%s'", name)
+		})
+	}
+}
+
 func TestVendorInformationObject_RoundTrip(t *testing.T) {
 	t.Parallel()
 
