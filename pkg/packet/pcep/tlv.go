@@ -90,7 +90,7 @@ const (
 	TLVExplicitNullLabelPolicy            TLVType = 0x45
 	TLVInvalidation                       TLVType = 0x46
 	TLVSRPolicyCapability                 TLVType = 0x47
-	TLVPathRecomputation                  TLVType = 0x48
+	TLVPathModification                   TLVType = 0x48
 	TLVSRP2MPPolicyCapability             TLVType = 0x49
 	TLVIPv4SrP2MPInstanceID               TLVType = 0x4a
 	TLVIPv6SrP2MPInstanceID               TLVType = 0x4b
@@ -161,17 +161,22 @@ var tlvDescriptions = map[TLVType]struct {
 	TLVMultipathBackup:                    {"MULTIPATH-BACKUP", "draft-ietf-pce-multipath-07"},
 	TLVMultipathOppdirPath:                {"MULTIPATH-OPPDIR-PATH", "draft-ietf-pce-multipath-07"},
 	TLVLSPExtendedFlag:                    {"LSP-EXTENDED-FLAG", "RFC9357"},
-	TLVVirtualNetwork:                     {"VIRTUAL-NETWORK", "RFC9358"},
-	TLVSrAlgorithm:                        {"SR-ALGORITHM", "draft-ietf-pce-sid-algo-12"},
-	TLVColor:                              {"COLOR", "RFC-ietf-pce-pcep-color-12"},
-	TLVComputationPriority:                {"COMPUTATION-PRIORITY", "draft-ietf-pce-segment-routing-policy-cp-14"},
-	TLVExplicitNullLabelPolicy:            {"EXPLICIT-NULL-LABEL-POLICY", "draft-ietf-pce-segment-routing-policy-cp-14"},
-	TLVInvalidation:                       {"INVALIDATION", "draft-ietf-pce-segment-routing-policy-cp-14"},
-	TLVSRPolicyCapability:                 {"SRPOLICY-CAPABILITY", "draft-ietf-pce-segment-routing-policy-cp-14"},
-	TLVPathRecomputation:                  {"PATH-RECOMPUTATION", "draft-ietf-pce-circuit-style-pcep-extensions-03"},
-	TLVSRP2MPPolicyCapability:             {"SRP2MP-POLICY-CAPABILITY", "draft-ietf-pce-sr-p2mp-policy-09"},
-	TLVIPv4SrP2MPInstanceID:               {"IPV4-SR-P2MP-INSTANCE-ID", "draft-ietf-pce-sr-p2mp-policy-09"},
-	TLVIPv6SrP2MPInstanceID:               {"IPV6-SR-P2MP-INSTANCE-ID", "draft-ietf-pce-sr-p2mp-policy-09"},
+	TLVVirtualNetwork:                     {"VIRTUAL-NETWORK-TLV", "RFC9358"},
+	TLVSrAlgorithm:                        {"SR-Algorithm", "RFC9933"},
+	TLVColor:                              {"Color", "RFC9863"},
+	TLVComputationPriority:                {"COMPUTATION-PRIORITY", "RFC9862"},
+	TLVExplicitNullLabelPolicy:            {"EXPLICIT-NULL-LABEL-POLICY", "RFC9862"},
+	TLVInvalidation:                       {"INVALIDATION", "RFC9862"},
+	TLVSRPolicyCapability:                 {"SRPOLICY-CAPABILITY", "RFC9862"},
+	TLVPathModification:                   {"PATH-MODIFICATION", "draft-ietf-pce-circuit-style-pcep-extensions-16"},
+	TLVSRP2MPPolicyCapability:             {"SR-P2MP-POLICY-CAPABILITY", "draft-ietf-pce-sr-p2mp-policy-11"},
+	TLVIPv4SrP2MPInstanceID:               {"IPV4-SR-P2MP-INSTANCE-ID", "draft-ietf-pce-sr-p2mp-policy-11"},
+	TLVIPv6SrP2MPInstanceID:               {"IPV6-SR-P2MP-INSTANCE-ID", "draft-ietf-pce-sr-p2mp-policy-11"},
+
+	// Juniper vendor-specific TLVs used by the JuniperLegacy PCC type.
+	TLVExtendedAssociationIDIPv4Juniper: {"EXTENDED-ASSOCIATION-ID (Juniper)", "vendor-specific"},
+	TLVSRPolicyCPathIDJuniper:           {"SRPOLICY-CPATH-ID (Juniper)", "vendor-specific"},
+	TLVSRPolicyCPathPreferenceJuniper:   {"SRPOLICY-CPATH-PREFERENCE (Juniper)", "vendor-specific"},
 }
 
 func (t TLVType) String() string {
@@ -1713,7 +1718,12 @@ func (tlv *UndefinedTLV) Len() uint16 {
 	return TLVValueOffset + tlv.Length + padding
 }
 
+// CapStrings reports the registered TLV name even when no decoder exists.
+// Unknown TLV types fall back to "unknown_type_<n>".
 func (tlv *UndefinedTLV) CapStrings() []string {
+	if desc, ok := tlvDescriptions[tlv.Typ]; ok {
+		return []string{desc.Description}
+	}
 	capStr := "unknown_type_" + strconv.FormatInt(int64(tlv.Typ), 10)
 	return []string{capStr}
 }

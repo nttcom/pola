@@ -1639,9 +1639,20 @@ func TestUndefinedTLV_CapStrings(t *testing.T) {
 		input    CapStringsInterface
 		expected []string
 	}{
-		"UnknownType42": {
-			input:    &UndefinedTLV{Typ: TLVType(42)},
-			expected: []string{"unknown_type_42"},
+		// Registered in tlvDescriptions but with no dedicated decoder: reported
+		// under its registry name rather than as unknown_type_<n>.
+		"RegisteredWithoutDecoder": {
+			input:    &UndefinedTLV{Typ: TLVSRP2MPPolicyCapability},
+			expected: []string{"SR-P2MP-POLICY-CAPABILITY"},
+		},
+		"RegisteredVendorSpecific": {
+			input:    &UndefinedTLV{Typ: TLVSRPolicyCPathPreferenceJuniper},
+			expected: []string{"SRPOLICY-CPATH-PREFERENCE (Juniper)"},
+		},
+		// Absent from the registry: falls back to the numeric form.
+		"UnregisteredType": {
+			input:    &UndefinedTLV{Typ: TLVType(0x1234)},
+			expected: []string{"unknown_type_4660"},
 		},
 	}
 
