@@ -59,8 +59,7 @@ func (ss *Session) Established() {
 		return
 	}
 
-	done := make(chan struct{})
-	defer close(done)
+	done := make(chan struct{}, 1)
 
 	// Receive PCEP messages in a separate goroutine
 	go func() {
@@ -80,7 +79,7 @@ func (ss *Session) Established() {
 		case <-ticker.C:
 			if err := ss.SendKeepalive(); err != nil {
 				ss.logger.Debug("ERROR! Send Keepalive Message", zap.Error(err))
-				done <- struct{}{}
+				return
 			}
 		}
 	}
@@ -266,32 +265,29 @@ func (ss *Session) handlePCRpt(length uint16) error {
 	}
 
 	for _, sr := range message.StateReports {
-		if sr.LSPObject.SFlag {
-			if err := ss.handleSynchronization(sr, message); err != nil {
-				return err
-			}
-			continue
-		}
-
-		switch {
-		case sr.LSPObject.PlspID == 0:
-			ss.handleFinishSynchronization()
-		case sr.SrpObject.SrpID != 0:
-			if err := ss.handleStatefulPCERequest(sr); err != nil {
-				return err
-			}
-		case sr.LSPObject.PlspID != 0:
-			if err := ss.handleSRPolicyWithPLSPID(sr); err != nil {
-				return err
-			}
-		default:
-			if err := ss.handleDefaultSRPolicy(sr); err != nil {
-				return err
-			}
+		if err := ss.handleStateReport(sr, message); err != nil {
+			ss.logger.Warn("Failed to handle state report",
+				zap.Uint32("plspID", sr.LSPObject.PlspID), zap.Error(err))
 		}
 	}
 
 	return nil
+}
+
+func (ss *Session) handleStateReport(sr *pcep.StateReport, message *pcep.PCRptMessage) error {
+	if sr.LSPObject.SFlag {
+		return ss.handleSynchronization(sr, message)
+	}
+
+	switch {
+	case sr.LSPObject.PlspID == 0:
+		ss.handleFinishSynchronization()
+		return nil
+	case sr.SrpObject.SrpID != 0:
+		return ss.handleStatefulPCERequest(sr)
+	default:
+		return ss.handleSRPolicyWithPLSPID(sr)
+	}
 }
 
 // Synchronization (S-Flag)
@@ -326,6 +322,11 @@ func (ss *Session) handleStatefulPCERequest(sr *pcep.StateReport) error {
 func (ss *Session) handleSRPolicyWithPLSPID(sr *pcep.StateReport) error {
 	ss.logger.Debug("Received SR Policy", zap.Uint32("plspID", sr.LSPObject.PlspID))
 
+	// Skip path computation for removed SR Policies or when no TED is available.
+	if sr.LSPObject.RFlag || ss.ted == nil {
+		return ss.handleReportedSRPolicy(sr)
+	}
+
 	computedSegmentList, err := ss.computePathFromTED(*sr)
 	if err != nil {
 		ss.logger.Error("Failed to compute path from TED", zap.Error(err))
@@ -351,12 +352,12 @@ func (ss *Session) handleSRPolicyWithPLSPID(sr *pcep.StateReport) error {
 	return nil
 }
 
-// Default case
-func (ss *Session) handleDefaultSRPolicy(sr *pcep.StateReport) error {
+// Register (or delete) an SR Policy exactly as reported by the PCC
+func (ss *Session) handleReportedSRPolicy(sr *pcep.StateReport) error {
 	if sr.LSPObject.RFlag {
 		ss.DeleteSRPolicy(*sr)
 	} else if err := ss.RegisterSRPolicy(*sr); err != nil {
-		ss.logger.Error("Failed to register SR Policy (default case)", zap.Error(err), zap.Uint32("plspID", sr.LSPObject.PlspID))
+		ss.logger.Error("Failed to register reported SR Policy", zap.Error(err), zap.Uint32("plspID", sr.LSPObject.PlspID))
 		return err
 	}
 	return nil
