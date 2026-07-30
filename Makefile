@@ -117,7 +117,7 @@ image-dev: ## Build development Docker image
 fetch-gobgp: ## Fetch gobgp/gobgpd binaries into test/bin
 	mkdir -p $(TEST_BIN_DIR)
 	@for cmd in $(GOBGP_CMDS); do \
-		GOBIN=$(abspath $(TEST_BIN_DIR)) go install $(GOBGP_MODULE)/cmd/$$cmd@$(GOBGP_VERSION); \
+		CGO_ENABLED=0 GOBIN=$(abspath $(TEST_BIN_DIR)) go install $(GOBGP_MODULE)/cmd/$$cmd@$(GOBGP_VERSION); \
 	done
 
 test-deps: build fetch-gobgp ## Stage all binaries required for scenario tests
