@@ -235,3 +235,32 @@ def wait_until_lsp_up(
 
         print(f"Waiting for LSP {lsp_name} to become Up...")
         time.sleep(interval)
+
+
+def wait_until_ssh_output_contains(
+    ssh_client: paramiko.SSHClient,
+    command: str,
+    expected: str,
+    timeout: int = 300,
+    interval: int = 5,
+) -> str:
+    """Wait until the output of a command run over SSH contains the expected text."""
+
+    start = time.time()
+    last_output = ""
+
+    while True:
+        _, stdout, _ = ssh_client.exec_command(command)
+        last_output = stdout.read().decode()
+
+        if expected in last_output:
+            return last_output
+
+        if time.time() - start > timeout:
+            raise TimeoutError(
+                f"Timeout waiting for {expected!r} in the output of {command!r}\n"
+                f"Last output:\n{last_output}"
+            )
+
+        print(f"Waiting for {expected!r} in the output of {command!r}...")
+        time.sleep(interval)
