@@ -14,7 +14,7 @@ from helpers.wait import (
     wait_until_ssh_output_contains,
 )
 
-LAB = "clab-srmpls-explicit-path"
+LAB = "clab-explicit-path-srmpls"
 POLA = f"{LAB}-pola"
 GRPC_PORT = 50052
 

@@ -81,9 +81,9 @@ class TestShowTed:
         self._verify_ted_sync(
             clab_deploy,
             test_dir,
-            "clab-srmpls-pola",
-            "clab-srmpls-jun-rt1",
-            "docker exec clab-srmpls-gobgp ping 10.255.0.2 -c 1",
+            "clab-show-ted-srmpls-pola",
+            "clab-show-ted-srmpls-jun-rt1",
+            "docker exec clab-show-ted-srmpls-gobgp ping 10.255.0.2 -c 1",
             os.path.join(test_dir, "expected", "srmpls.json"),
             os.path.join(test_dir, "expected", "srmpls2.json"),
         )
@@ -99,9 +99,9 @@ class TestShowTed:
         self._verify_ted_sync(
             clab_deploy,
             test_dir,
-            "clab-srv6-usid-pola",
-            "clab-srv6-usid-jun-rt1",
-            "docker exec clab-srv6-usid-gobgp ping fd00:ffff::2 -c 1",
+            "clab-show-ted-srv6-usid-pola",
+            "clab-show-ted-srv6-usid-jun-rt1",
+            "docker exec clab-show-ted-srv6-usid-gobgp ping fd00:ffff::2 -c 1",
             os.path.join(test_dir, "expected", "srv6_usid.json"),
             os.path.join(test_dir, "expected", "srv6_usid2.json"),
         )
