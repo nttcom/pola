@@ -1,0 +1,33 @@
+name: Question
+description: Ask about using or configuring Pola PCE
+labels: ["question"]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What would you like to know?
+    validations:
+      required: true
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: What you have tried
+      description: Commands, configuration, and any output you already looked at.
+      render: text
+
+  - type: input
+    id: version
+    attributes:
+      label: Pola version
+      description: Output of `polad --version` or `pola --version`, if relevant.
+      placeholder: polad v1.3.0
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I read the [Getting Started](https://github.com/nttcom/pola/blob/main/docs/sources/getting-started.md) guide and searched the existing issues.
+          required: true

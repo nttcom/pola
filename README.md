@@ -42,6 +42,7 @@ and a PCEP Library in Go.
 ## Installation & Use
 
 * [Getting Started](docs/sources/getting-started.md)
+* [Docker Image Usage](build/package/README.md)
 * Examples (powered by [Containerlab](https://containerlab.dev/)/[Tinet](https://github.com/tinynetwork/tinet))
   * [SR-MPLS Example](examples/tinet/sr-mpls-explicit-path-l3vpn)
   * [SRv6 Example](examples/containerlab/srv6-explicit-path-l3vpn)
@@ -49,8 +50,9 @@ and a PCEP Library in Go.
 ## Contributing
 
 If you are interested in contributing to the project, please refer to the
-[CONTRIBUTING](https://github.com/nttcom/pola/blob/main/CONTRIBUTING.md)
-guidelines.  
+[CONTRIBUTING](CONTRIBUTING.md)
+guidelines. Development commands (including Make targets) are documented there.
+
 Feel free to fork the repository and create a Pull Request.
 Your contributions are highly appreciated.
 
