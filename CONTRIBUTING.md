@@ -80,6 +80,14 @@ You can pass extra pytest arguments:
 make test-scenario PYTEST_ARGS='-k dynamic_path -s'
 ```
 
+Run scenario tests in parallel:
+
+```bash
+make test-scenario-parallel
+```
+
+See [test/README.md](test/README.md) for details.
+
 ### Cleanup
 
 ```bash
