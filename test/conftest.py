@@ -3,12 +3,31 @@
 # This software is released under the MIT License.
 # see https://github.com/nttcom/pola/blob/main/LICENSE
 
+import contextlib
+import fcntl
 import os
 import subprocess
+import tempfile
 
 import pytest
 
 BIN_ABS_DIR = os.path.join(os.path.dirname(__file__), "bin")
+
+CLAB_TIMEOUT = 900
+
+# Serialize containerlab deploy/destroy to avoid Docker races during
+# concurrent container creation ("failed to set IPv6 gateway: file exists").
+CLAB_LOCK_PATH = os.path.join(tempfile.gettempdir(), "pola-clab.lock")
+
+
+@contextlib.contextmanager
+def clab_lock():
+    with open(CLAB_LOCK_PATH, "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -43,21 +62,28 @@ def _clab_deploy():
     def deploy(lab_dir="."):
         lab_dirs.append(lab_dir)
         print("start containerlab")
-        subprocess.run(
-            ["clab", "deploy", "--reconfigure"],
-            check=True,
-            cwd=lab_dir,
-        )
+        with clab_lock():
+            subprocess.run(
+                ["clab", "deploy", "--reconfigure"],
+                check=True,
+                cwd=lab_dir,
+                timeout=CLAB_TIMEOUT,
+            )
 
     yield deploy
 
     for lab_dir in lab_dirs:
         print("finish containerlab")
-        subprocess.run(
-            ["clab", "destroy", "--cleanup"],
-            check=False,
-            cwd=lab_dir,
-        )
+        try:
+            with clab_lock():
+                subprocess.run(
+                    ["clab", "destroy", "--cleanup"],
+                    check=False,
+                    cwd=lab_dir,
+                    timeout=CLAB_TIMEOUT,
+                )
+        except subprocess.TimeoutExpired:
+            print(f"WARNING: clab destroy timed out in {lab_dir}")
 
 
 @pytest.fixture(scope="function")
