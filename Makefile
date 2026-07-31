@@ -31,6 +31,7 @@ PYTEST_ARGS           ?= -s
 	fetch-gobgp \
 	test-deps \
 	test-scenario \
+	test-scenario-parallel \
 	ci \
 	clean
 
@@ -128,6 +129,11 @@ test-deps: build fetch-gobgp ## Stage all binaries required for scenario tests
 
 test-scenario: test-deps ## Run containerlab scenario tests
 	cd test && uv run pytest $(PYTEST_ARGS)
+
+# --dist loadgroup keeps every test that shares a lab on one worker, so the
+# same topology is never deployed by two workers at once.
+test-scenario-parallel: PYTEST_ARGS = -s -n 4 --dist loadgroup
+test-scenario-parallel: test-scenario ## Run containerlab scenario tests, one lab per worker
 
 ci: build check-proto lint test ## Run the same checks as CI
 

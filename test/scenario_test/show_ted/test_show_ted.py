@@ -6,6 +6,8 @@
 import json
 import os
 
+import pytest
+
 from helpers.wait import (
     wait_for_ssh,
     wait_until_command_success,
@@ -70,6 +72,7 @@ class TestShowTed:
             expected_output2,
         )
 
+    @pytest.mark.xdist_group("show-ted-srmpls")
     def test__srmpls(self, clab_deploy):
         """Verify TED sync for SR-MPLS topology, including update after link-down."""
 
@@ -88,6 +91,7 @@ class TestShowTed:
             os.path.join(test_dir, "expected", "srmpls2.json"),
         )
 
+    @pytest.mark.xdist_group("show-ted-srv6-usid")
     def test__srv6_usid(self, clab_deploy):
         """Verify TED sync for SRv6 uSID topology, including update after link-down."""
 

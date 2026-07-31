@@ -69,9 +69,8 @@ def clab_deploy():
 def clab_deploy_module():
     """Deploy a lab once per test module instead of once per test.
 
-    Use this when several tests exercise the same topology, so that the lab is
-    booted once. Every test must then keep its state independent of the others,
-    for example by installing SR Policies with distinct colors.
+    Every test must keep its state independent of the others, for example by
+    installing SR Policies with distinct colors.
     """
 
     yield from _clab_deploy()

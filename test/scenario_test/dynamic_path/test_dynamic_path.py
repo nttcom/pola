@@ -17,13 +17,16 @@ from helpers.wait import (
     wait_until_ted_has_routers,
 )
 
+LAB = "dynamic-path-srv6-usid"
 LAB_DIR = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
     "srv6_usid",
 )
-POLA = "clab-dynamic-path-srv6-usid-pola"
-HEADEND = "clab-dynamic-path-srv6-usid-pe02"
+POLA = f"clab-{LAB}-pola"
+HEADEND = f"clab-{LAB}-pe02"
 GRPC_PORT = 50052
+
+pytestmark = pytest.mark.xdist_group(LAB)
 
 ROUTER_IDS = [
     "0000.0001.0001",
@@ -65,9 +68,6 @@ class TestDynamicPath:
     - TED population (nodes and links)
     - SR policy installation via Pola
     - Resulting SRv6 segment list on the router
-
-    The tests share one deployment of the lab, so every SR Policy uses its own
-    color and name and is installed independently of the others.
     """
 
     def _assert_segments(self, policy_file, lsp_name, color, expected_segments):

@@ -6,6 +6,8 @@
 import os
 import re
 
+import pytest
+
 from helpers.wait import (
     run_command,
     wait_for_ssh,
@@ -14,9 +16,11 @@ from helpers.wait import (
     wait_until_ssh_output_contains,
 )
 
-LAB = "clab-explicit-path-srmpls"
-POLA = f"{LAB}-pola"
+LAB = "explicit-path-srmpls"
+POLA = f"clab-{LAB}-pola"
 GRPC_PORT = 50052
+
+pytestmark = pytest.mark.xdist_group(LAB)
 
 
 def add_sr_policy(policy_file: str) -> None:
@@ -66,8 +70,8 @@ class TestExplicitPathSRMPLS:
         add_sr_policy("/pe02-policy2.yaml")
         add_sr_policy("/pe03-policy1.yaml")
 
-        self._assert_vjunos_ero(f"{LAB}-pe02")
-        self._assert_xrd_policy(f"{LAB}-pe01")
+        self._assert_vjunos_ero(f"clab-{LAB}-pe02")
+        self._assert_xrd_policy(f"clab-{LAB}-pe01")
         self._assert_frr_policy()
 
     def _assert_vjunos_ero(self, hostname):
@@ -127,7 +131,7 @@ class TestExplicitPathSRMPLS:
         """Verify the SR Policy installed on the FRRouting PCC."""
 
         result = wait_until_command_success(
-            f"docker exec {LAB}-pe03 vtysh -c 'show sr-te policy detail' "
+            f"docker exec clab-{LAB}-pe03 vtysh -c 'show sr-te policy detail' "
             f"| grep 'Name: pe03-policy1'"
         )
 

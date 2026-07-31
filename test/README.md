@@ -66,7 +66,8 @@ uv sync
 
 ## 3. Place the Target Binary
 
-Place the binary you want to test in the appropriate location.
+Place the binaries you want to test in the appropriate location, or run
+`make test-deps` from the repository root to build and stage them.
 
 ex:
 
@@ -90,3 +91,36 @@ Execute the test using the appropriate command or script.
 ```bash
 uv run pytest -s
 ```
+
+From the repository root, the same run is available as a Make target:
+
+```bash
+make test-scenario
+```
+
+### Running a Subset
+
+A full run boots every Containerlab topology, so it takes a while. These options
+cut the loop short while iterating:
+
+```bash
+make test-scenario PYTEST_ARGS="-s -x"                           # stop at the first failure
+make test-scenario PYTEST_ARGS="-s --lf"                         # rerun only what failed last time
+make test-scenario PYTEST_ARGS="-s scenario_test/explicit_path"  # one suite
+make test-scenario PYTEST_ARGS="-s -k loose_source_routing"      # one test case
+```
+
+### Running in Parallel
+
+```bash
+make test-scenario-parallel
+```
+
+New tests must declare the topology they use with
+`@pytest.mark.xdist_group("<lab name>")` so tests sharing a topology run on the
+same worker. A parallel run boots every topology at once, so it needs the memory
+of all of them together.
+
+> [!IMPORTANT]
+> When running `pytest -n` directly, always pass `--dist loadgroup`. Without it, two workers
+> can deploy the same topology at the same time and destroy each other's containers.
