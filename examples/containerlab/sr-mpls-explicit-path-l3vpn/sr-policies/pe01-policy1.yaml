@@ -3,7 +3,7 @@ srPolicy:
   pcepSessionAddr: "10.0.255.1"
   srcAddr: "10.255.0.1"
   dstAddr: "10.255.0.3"
-  name: policy1
+  name: pe01-policy1
   color: 1
   segmentList:
     - sid: "16002"

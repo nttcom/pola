@@ -6,7 +6,7 @@ topology:
       image: ghcr.io/nttcom/pola:latest-debug
       binds:
         - pola/polad.yaml:/pola/polad.yaml
-        - sr-policies/policy1.yaml:/pola/policy1.yaml
+        - sr-policies/pe01-policy1.yaml:/pola/pe01-policy1.yaml
       exec:
         - ip addr add 10.0.255.254/24 dev eth1
     pe01:
