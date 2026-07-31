@@ -153,6 +153,12 @@ func TestNewSREroSubobject_NAIFromSegment(t *testing.T) {
 		"MixedAddressFamily": {
 			seg: mk("10.0.0.1", "2001:db8::2"), wantErr: true,
 		},
+		"LinkLocalAdjacency": {
+			seg: mk("fe80::1", "fe80::2"), wantErr: true,
+		},
+		"LinkLocalRemoteOnly": {
+			seg: mk("2001:db8::1", "fe80::2"), wantErr: true,
+		},
 	}
 
 	for name, tc := range cases {

@@ -1120,6 +1120,9 @@ func naiTypeSRFor(seg table.SegmentSRMPLS) (NAITypeSR, error) {
 	if local.Is4() {
 		return NAITypeSRIPv4Adjacency, nil
 	}
+	if local.IsLinkLocalUnicast() || remote.IsLinkLocalUnicast() {
+		return NAITypeSRAbsent, errors.New("SegmentSRMPLS: link-local IPv6 adjacency NAI is unsupported")
+	}
 	return NAITypeSRIPv6AdjacencyGlobal, nil
 }
 
