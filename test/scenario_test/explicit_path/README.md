@@ -40,7 +40,7 @@ The topology consists of:
 - `pola`
   - Pola PCE, with TED disabled
 - `switch`
-  - Bridge that connects the PCE to every PCC
+  - Container running a Linux bridge that connects the PCE to every PCC
 
 Prefix-SID labels are 16001 (pe01), 16002 (pe02) and 16003 (pe03).
 

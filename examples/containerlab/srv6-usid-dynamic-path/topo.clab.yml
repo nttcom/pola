@@ -39,7 +39,19 @@ topology:
         - ip -6 addr add fd00::4/64 dev eth1
         - sh -c 'gobgpd -f /gobgpd.yml > /tmp/gobgpd.log 2>&1 &'
     switch:
-      kind: bridge
+      kind: linux
+      image: wbitt/network-multitool:latest
+      exec:
+        - ip link add name br0 type bridge
+        - ip link set br0 up
+        - ip link set eth1 master br0
+        - ip link set eth1 up
+        - ip link set eth2 master br0
+        - ip link set eth2 up
+        - ip link set eth3 master br0
+        - ip link set eth3 up
+        - ip link set eth4 master br0
+        - ip link set eth4 up
   links:
     # SRv6 domain
     - endpoints: ["pe01:Gi0-0-0-0", "p01:Gi0-0-0-0"]

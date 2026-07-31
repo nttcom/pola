@@ -86,7 +86,7 @@ sudo modprobe mpls_iptunnel
 * Topology files use `topo.clab.yml`.
 * The Pola helper node is named `pola` across all examples.
 * Daemons are expected to start automatically unless a README explicitly says otherwise.
-* The `switch` bridge node is created by Containerlab from the topology; a host-side bridge does not need to be created manually.
+* The `switch` node is a `wbitt/network-multitool:latest` container that runs a Linux bridge, providing a private Layer 2 segment for each topology without using the host network namespace.
 
 ## Image Tag Policy
 
