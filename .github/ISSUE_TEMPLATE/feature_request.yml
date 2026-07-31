@@ -1,0 +1,52 @@
+name: Feature request
+description: Suggest a new feature or improvement for Pola PCE
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What are you trying to do, and what makes it hard or impossible today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What should Pola do instead? Include CLI, config, or API changes if you have them in mind.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - polad (PCE daemon)
+        - pola (CLI)
+        - PCEP library
+        - Documentation / examples
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you have tried, or other designs you rejected and why.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Relevant RFCs or IETF drafts, vendor implementations, or links to related issues.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the existing issues and this is not a duplicate.
+          required: true

@@ -1,17 +1,21 @@
 ## Description
-<!--- Describe your changes in detail. -->
+<!-- What does this PR change, and why is it needed? -->
 
 ## Type of change
-<!--- Select type of change and remove irrelevant options. -->
-* [ ] New features
-* [ ] Bug fixes 
-* [ ] Refactoring
-* [ ] Documentation updates
+<!-- Check all that apply. -->
+- [ ] New feature
+- [ ] Bug fix
+- [ ] Refactoring
+- [ ] Documentation
+- [ ] Build / CI
 
-## Motivation and Context
-<!--- Why is this change required? What problem does it solve? -->
+## How was this tested?
+<!-- Commands run (e.g. `make test`, `make test-scenario`), and/or
+example topologies verified.
+-->
 
-## How is This Tested?
-* examples/containerlab/srv6_te_l3vpn/README.md
+## Checklist
 
-## Other Information
+- [ ] `make ci` passes locally
+- [ ] Tests added or updated if needed
+- [ ] Documentation updated if needed

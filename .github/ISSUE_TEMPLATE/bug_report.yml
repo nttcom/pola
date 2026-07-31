@@ -1,0 +1,91 @@
+name: Bug report
+description: Report a bug or unexpected behavior in Pola PCE
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report.
+        For security vulnerabilities, please follow the [security policy](https://github.com/nttcom/pola/blob/main/SECURITY.md) instead.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: A clear and concise description of the problem.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Commands, configuration, and topology needed to reproduce the problem.
+      placeholder: |
+        1. Start polad with the config below
+        2. Run `pola sr-policy add -f policy.yaml`
+        3. ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - polad (PCE daemon)
+        - pola (CLI)
+        - PCEP library
+        - Documentation / examples
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Pola version
+      description: Output of `polad --version` or `pola --version`. For builds from source, include the commit hash.
+      placeholder: polad v1.3.0
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: PCC and other software involved, plus how Pola was installed.
+      placeholder: |
+        - PCC: IOS-XR 7.11.1 / Junos 23.4R1 / FRRouting 10.0
+        - GoBGP: 3.30.0
+        - OS / arch: Ubuntu 24.04 / amd64
+        - Install method: release binary / Docker image / built from source
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and configuration
+      description: Relevant logs, configuration files, and packet captures if available.
+      render: text
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the existing issues and this is not a duplicate.
+          required: true
