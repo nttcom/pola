@@ -37,8 +37,7 @@ def check_binaries_ready():
         )
 
 
-@pytest.fixture(scope="function")
-def clab_deploy():
+def _clab_deploy():
     lab_dirs = []
 
     def deploy(lab_dir="."):
@@ -59,3 +58,20 @@ def clab_deploy():
             check=False,
             cwd=lab_dir,
         )
+
+
+@pytest.fixture(scope="function")
+def clab_deploy():
+    yield from _clab_deploy()
+
+
+@pytest.fixture(scope="module")
+def clab_deploy_module():
+    """Deploy a lab once per test module instead of once per test.
+
+    Use this when several tests exercise the same topology, so that the lab is
+    booted once. Every test must then keep its state independent of the others,
+    for example by installing SR Policies with distinct colors.
+    """
+
+    yield from _clab_deploy()

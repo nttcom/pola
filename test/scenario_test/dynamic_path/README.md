@@ -29,21 +29,27 @@ The topology consists of:
 
 ## Test Flow
 
-The scenario tests perform the following steps:
+The topology is deployed once for the whole module, then every test case installs
+its own SR Policy on it. Each policy uses a distinct color and name, so the test
+cases stay independent of each other and of their execution order.
 
 1. Deploy the Containerlab topology
 2. Wait for the PCEP session establishment
 3. Wait until all routers appear in the TED
 4. Wait until all expected links appear in the TED
-5. Install an SR Policy via `pola sr-policy add`
-6. Verify that the SR Policy becomes `Up`
-7. Verify the generated SRv6 uSID segment list
+
+Then, per test case:
+
+1. Install an SR Policy via `pola sr-policy add`
+2. Verify that the SR Policy becomes `Up`
+3. Verify the generated SRv6 uSID segment list
 
 ## Test Cases
 
 ### `test__srv6_usid_dynamic_path`
 
 Verifies normal dynamic path computation.
+Installs `DYNAMIC-POLICY` with color 100.
 
 Expected segment list:
 
@@ -71,6 +77,7 @@ srv6_usid/input/sr-policies/pe02-policy1.yaml
 ### `test__srv6_usid_loose_source_routing`
 
 Verifies loose source routing behavior with repeated waypoint traversal.
+Installs `LOOSE-SOURCE-ROUTING-POLICY` with color 200.
 
 Expected segment list:
 

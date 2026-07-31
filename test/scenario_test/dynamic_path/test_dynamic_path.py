@@ -6,6 +6,8 @@
 import os
 import re
 
+import pytest
+
 from helpers.wait import (
     run_command,
     wait_for_ssh,
@@ -14,6 +16,45 @@ from helpers.wait import (
     wait_until_ted_has_links,
     wait_until_ted_has_routers,
 )
+
+LAB_DIR = os.path.join(
+    os.path.abspath(os.path.dirname(__file__)),
+    "srv6_usid",
+)
+POLA = "clab-dynamic-path-srv6-usid-pola"
+HEADEND = "clab-dynamic-path-srv6-usid-pe02"
+GRPC_PORT = 50052
+
+ROUTER_IDS = [
+    "0000.0001.0001",
+    "0000.0001.0002",
+    "0000.0001.0003",
+    "0000.0001.0004",
+]
+
+LINKS = {
+    frozenset(("0000.0001.0001", "0000.0001.0003")),
+    frozenset(("0000.0001.0001", "0000.0001.0004")),
+    frozenset(("0000.0001.0002", "0000.0001.0003")),
+    frozenset(("0000.0001.0002", "0000.0001.0004")),
+    frozenset(("0000.0001.0003", "0000.0001.0004")),
+}
+
+
+@pytest.fixture(scope="module")
+def srv6_usid_lab(clab_deploy_module):
+    """Deploy the SRv6 uSID lab once and wait until the PCE holds the full TED."""
+
+    clab_deploy_module(LAB_DIR)
+
+    print("Waiting for PCEP session")
+    wait_until_command_success(
+        f"docker exec {POLA} /bin/pola session -p {GRPC_PORT} "
+        "| grep 'sessionAddr(0): fd00::2'"
+    )
+
+    wait_until_ted_has_routers(POLA, ROUTER_IDS)
+    wait_until_ted_has_links(POLA, LINKS)
 
 
 class TestDynamicPath:
@@ -24,86 +65,50 @@ class TestDynamicPath:
     - TED population (nodes and links)
     - SR policy installation via Pola
     - Resulting SRv6 segment list on the router
+
+    The tests share one deployment of the lab, so every SR Policy uses its own
+    color and name and is installed independently of the others.
     """
 
-    TEST_DYNAMIC_PATH_DIR = os.path.join(
-        os.path.abspath(os.path.dirname(__file__)),
-        "srv6_usid",
-    )
-
-    def _deploy_and_assert_segments(self, clab_deploy, policy_file, expected_segments):
-        """Deploy topology, wait for readiness, inject SR policy, and verify SRv6 segments."""
-
-        clab_deploy(self.TEST_DYNAMIC_PATH_DIR)
-
-        print("Waiting for PCEP session")
-        wait_until_command_success(
-            "docker exec clab-dynamic-path-srv6-usid-pola /bin/pola session -p 50052 "
-            "| grep 'sessionAddr(0): fd00::2'"
-        )
-
-        wait_until_ted_has_routers(
-            "clab-dynamic-path-srv6-usid-pola",
-            [
-                "0000.0001.0001",
-                "0000.0001.0002",
-                "0000.0001.0003",
-                "0000.0001.0004",
-            ],
-        )
-
-        expected_links = {
-            frozenset(("0000.0001.0001", "0000.0001.0003")),
-            frozenset(("0000.0001.0001", "0000.0001.0004")),
-            frozenset(("0000.0001.0002", "0000.0001.0003")),
-            frozenset(("0000.0001.0002", "0000.0001.0004")),
-            frozenset(("0000.0001.0003", "0000.0001.0004")),
-        }
-
-        wait_until_ted_has_links(
-            "clab-dynamic-path-srv6-usid-pola",
-            expected_links,
-        )
+    def _assert_segments(self, policy_file, lsp_name, color, expected_segments):
+        """Inject an SR policy and verify the SRv6 segment list it produces."""
 
         result = run_command(
-            f"docker exec clab-dynamic-path-srv6-usid-pola "
-            f"/bin/pola sr-policy add -f {policy_file} -p 50052"
+            f"docker exec {POLA} "
+            f"/bin/pola sr-policy add -f {policy_file} -p {GRPC_PORT}"
         )
-        assert "success" in result.stdout.lower()
+        assert "success" in result.stdout.lower(), (
+            f"failed to add {policy_file}\n"
+            f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        )
 
-        ssh_client = wait_for_ssh("clab-dynamic-path-srv6-usid-pe02")
+        ssh_client = wait_for_ssh(HEADEND)
         try:
-            wait_until_lsp_up(ssh_client, "DYNAMIC-POLICY")
-
-            _, stdout, _ = ssh_client.exec_command(
-                "show spring-traffic-engineering lsp name DYNAMIC-POLICY detail"
-            )
-            lsp_output = stdout.read().decode()
-
-            assert "DYNAMIC-POLICY" in lsp_output
-            assert "fd00:ffff::1-100" in lsp_output
-            assert "State: Up" in lsp_output
-            assert "SID type: Micro SRv6 SID" in lsp_output
-
-            actual_segments = re.findall(
-                r"SID type:\s*Micro SRv6 SID,\s*Value:\s*([0-9a-fA-F:]+)",
-                lsp_output,
-            )
-
-            assert actual_segments == expected_segments, (
-                f"SR-ERO segment list mismatch.\n"
-                f"Expected: {expected_segments}\n"
-                f"Actual:   {actual_segments}"
-            )
+            lsp_output = wait_until_lsp_up(ssh_client, lsp_name)
         finally:
             ssh_client.close()
 
-    def test__srv6_usid_dynamic_path(self, clab_deploy):
+        assert f"fd00:ffff::1-{color}" in lsp_output
+        assert "SID type: Micro SRv6 SID" in lsp_output
+
+        actual_segments = re.findall(
+            r"SID type:\s*Micro SRv6 SID,\s*Value:\s*([0-9a-fA-F:]+)",
+            lsp_output,
+        )
+
+        assert actual_segments == expected_segments, (
+            f"SR-ERO segment list mismatch.\n"
+            f"Expected: {expected_segments}\n"
+            f"Actual:   {actual_segments}"
+        )
+
+    def test__srv6_usid_dynamic_path(self, srv6_usid_lab):
         """Verify SRv6 uSID dynamic path produces the expected segment list."""
 
-        self._deploy_and_assert_segments(
-            clab_deploy,
+        self._assert_segments(
             "/pe02-policy1.yaml",
+            "DYNAMIC-POLICY",
+            100,
             [
                 "fcbb:bb00:1004::",
                 "fcbb:bb00:1003::",
@@ -111,12 +116,13 @@ class TestDynamicPath:
             ],
         )
 
-    def test__srv6_usid_loose_source_routing(self, clab_deploy):
+    def test__srv6_usid_loose_source_routing(self, srv6_usid_lab):
         """Verify SRv6 uSID loose source routing produces the expected segment list with repeated segments."""
 
-        self._deploy_and_assert_segments(
-            clab_deploy,
+        self._assert_segments(
             "/pe02-policy-loose-source-routing.yaml",
+            "LOOSE-SOURCE-ROUTING-POLICY",
+            200,
             [
                 "fcbb:bb00:1004::",
                 "fcbb:bb00:1003::",
