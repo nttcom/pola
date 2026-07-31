@@ -106,7 +106,7 @@ cut the loop short while iterating:
 ```bash
 make test-scenario PYTEST_ARGS="-s -x"                           # stop at the first failure
 make test-scenario PYTEST_ARGS="-s --lf"                         # rerun only what failed last time
-make test-scenario PYTEST_ARGS="-s scenario_test/explicit_path"  # one suite
+make test-scenario PYTEST_ARGS="-s scenario-test/explicit-path"  # one suite
 make test-scenario PYTEST_ARGS="-s -k loose_source_routing"      # one test case
 ```
 

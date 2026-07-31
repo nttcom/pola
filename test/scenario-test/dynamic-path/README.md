@@ -62,7 +62,7 @@ fcbb:bb00:1001::
 Policy file:
 
 ```text
-srv6_usid/input/sr-policies/pe02-policy1.yaml
+srv6-usid/input/sr-policies/pe02-policy1.yaml
 ```
 
 > [!NOTE]
@@ -101,5 +101,5 @@ fcbb:bb00:1001::
 Policy file:
 
 ```text
-srv6_usid/input/sr-policies/pe02-policy-loose-source-routing.yaml
+srv6-usid/input/sr-policies/pe02-policy-loose-source-routing.yaml
 ```

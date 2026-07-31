@@ -56,17 +56,17 @@ The scenario tests perform the following steps:
 
 ## Test Cases
 
-### `test__srmpls_explicit_path_with_nai`
+### `test__sr_mpls_explicit_path_with_nai`
 
 Verifies that an explicit path whose SIDs carry a `localAddr` is accepted by every PCC, and that a path without `localAddr` still installs with the NAI absent.
 
 Policy files:
 
 ```text
-srmpls/input/sr-policies/pe01-policy1.yaml
-srmpls/input/sr-policies/pe02-policy1.yaml
-srmpls/input/sr-policies/pe02-policy2.yaml
-srmpls/input/sr-policies/pe03-policy1.yaml
+sr-mpls/input/sr-policies/pe01-policy1.yaml
+sr-mpls/input/sr-policies/pe02-policy1.yaml
+sr-mpls/input/sr-policies/pe02-policy2.yaml
+sr-mpls/input/sr-policies/pe03-policy1.yaml
 ```
 
 | File | PCC | Endpoint | Segment List | NAI |

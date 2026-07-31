@@ -16,7 +16,7 @@ from helpers.wait import (
     wait_until_ssh_output_contains,
 )
 
-LAB = "explicit-path-srmpls"
+LAB = "explicit-path-sr-mpls"
 POLA = f"clab-{LAB}-pola"
 GRPC_PORT = 50052
 
@@ -49,10 +49,10 @@ class TestExplicitPathSRMPLS:
 
     TEST_EXPLICIT_PATH_DIR = os.path.join(
         os.path.abspath(os.path.dirname(__file__)),
-        "srmpls",
+        "sr-mpls",
     )
 
-    def test__srmpls_explicit_path_with_nai(self, clab_deploy):
+    def test__sr_mpls_explicit_path_with_nai(self, clab_deploy):
         """Verify explicit-path policies with a per-SID localAddr install on every PCC."""
 
         clab_deploy(self.TEST_EXPLICIT_PATH_DIR)

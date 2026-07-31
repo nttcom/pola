@@ -1,4 +1,4 @@
-name: show-ted-srmpls
+name: show-ted-sr-mpls
 topology:
   kinds:
     juniper_vjunosrouter:

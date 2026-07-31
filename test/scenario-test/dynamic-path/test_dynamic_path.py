@@ -20,7 +20,7 @@ from helpers.wait import (
 LAB = "dynamic-path-srv6-usid"
 LAB_DIR = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
-    "srv6_usid",
+    "srv6-usid",
 )
 POLA = f"clab-{LAB}-pola"
 HEADEND = f"clab-{LAB}-pe02"

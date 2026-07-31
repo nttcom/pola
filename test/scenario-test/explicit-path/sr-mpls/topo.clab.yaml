@@ -1,4 +1,4 @@
-name: explicit-path-srmpls
+name: explicit-path-sr-mpls
 topology:
   kinds:
     xrd:

@@ -72,21 +72,21 @@ class TestShowTed:
             expected_output2,
         )
 
-    @pytest.mark.xdist_group("show-ted-srmpls")
-    def test__srmpls(self, clab_deploy):
+    @pytest.mark.xdist_group("show-ted-sr-mpls")
+    def test__sr_mpls(self, clab_deploy):
         """Verify TED sync for SR-MPLS topology, including update after link-down."""
 
         test_dir = os.path.join(
             self.TEST_SHOW_TED_DIR,
-            "srmpls",
+            "sr-mpls",
         )
 
         self._verify_ted_sync(
             clab_deploy,
             test_dir,
-            "clab-show-ted-srmpls-pola",
-            "clab-show-ted-srmpls-pe01",
-            "docker exec clab-show-ted-srmpls-gobgp ping 10.255.0.2 -c 1",
+            "clab-show-ted-sr-mpls-pola",
+            "clab-show-ted-sr-mpls-pe01",
+            "docker exec clab-show-ted-sr-mpls-gobgp ping 10.255.0.2 -c 1",
             os.path.join(test_dir, "expected", "ted.json"),
             os.path.join(test_dir, "expected", "ted-after-link-down.json"),
         )
@@ -97,7 +97,7 @@ class TestShowTed:
 
         test_dir = os.path.join(
             self.TEST_SHOW_TED_DIR,
-            "srv6_usid",
+            "srv6-usid",
         )
 
         self._verify_ted_sync(
