@@ -80,8 +80,7 @@ class TestExplicitPathSRMPLS:
         finally:
             ssh_client.close()
 
-        # pe02-policy1 carries localAddr 10.255.0.1 for SID 16001 and 10.255.0.3
-        # for SID 16003, so both hops must report an IPv4 node NAI.
+        # The expected values are the localAddr of each SID in pe02-policy1.yaml.
         assert "SR-ERO hop count: 2" in with_nai, with_nai
 
         labels = re.findall(r"SID type:\s*20-bit label,\s*Value:\s*(\d+)", with_nai)
@@ -91,12 +90,10 @@ class TestExplicitPathSRMPLS:
         )
 
         nais = [nai.strip() for nai in re.findall(r"NAI:\s*(.*)", with_nai)]
-        assert len(nais) == 2, f"expected an NAI per hop, got {nais}\n{with_nai}"
-        assert all(nai != "None" for nai in nais), (
-            f"the PCC reports no NAI even though localAddr is set: {nais}\n{with_nai}"
-        )
-        assert any("10.255.0.1" in nai for nai in nais), f"{nais}\n{with_nai}"
-        assert any("10.255.0.3" in nai for nai in nais), f"{nais}\n{with_nai}"
+        assert nais == [
+            "IPv4 Node ID, Node address: 10.255.0.1",
+            "IPv4 Node ID, Node address: 10.255.0.3",
+        ], f"SR-ERO NAI mismatch.\nActual: {nais}\n{with_nai}"
 
         # pe02-policy2 has the same segment list without localAddr, so the NAI
         # must stay absent.
