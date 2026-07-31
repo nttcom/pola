@@ -2,7 +2,7 @@
     "ted": [
         {
             "asn": 65000,
-            "hostname": "jun-rt1",
+            "hostname": "pe01",
             "isisAreaID": "49.0000",
             "links": [],
             "prefixes": [
@@ -34,7 +34,7 @@
         },
         {
             "asn": 65000,
-            "hostname": "jun-rt2",
+            "hostname": "pe02",
             "isisAreaID": "49.0000",
             "links": [
                 {

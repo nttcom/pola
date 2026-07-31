@@ -85,10 +85,10 @@ class TestShowTed:
             clab_deploy,
             test_dir,
             "clab-show-ted-srmpls-pola",
-            "clab-show-ted-srmpls-jun-rt1",
+            "clab-show-ted-srmpls-pe01",
             "docker exec clab-show-ted-srmpls-gobgp ping 10.255.0.2 -c 1",
-            os.path.join(test_dir, "expected", "srmpls.json"),
-            os.path.join(test_dir, "expected", "srmpls2.json"),
+            os.path.join(test_dir, "expected", "ted.json"),
+            os.path.join(test_dir, "expected", "ted-after-link-down.json"),
         )
 
     @pytest.mark.xdist_group("show-ted-srv6-usid")
@@ -104,8 +104,8 @@ class TestShowTed:
             clab_deploy,
             test_dir,
             "clab-show-ted-srv6-usid-pola",
-            "clab-show-ted-srv6-usid-jun-rt1",
+            "clab-show-ted-srv6-usid-pe01",
             "docker exec clab-show-ted-srv6-usid-gobgp ping fd00:ffff::2 -c 1",
-            os.path.join(test_dir, "expected", "srv6_usid.json"),
-            os.path.join(test_dir, "expected", "srv6_usid2.json"),
+            os.path.join(test_dir, "expected", "ted.json"),
+            os.path.join(test_dir, "expected", "ted-after-link-down.json"),
         )

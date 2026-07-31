@@ -35,7 +35,7 @@ topology:
       binds:
         - ../../../bin/polad:/bin/polad
         - ../../../bin/pola:/bin/pola
-        - input/polad.cfg.yaml:/polad.cfg.yaml
+        - input/polad.yaml:/polad.yaml
         - input/sr-policies/pe01-policy1.yaml:/pe01-policy1.yaml
         - input/sr-policies/pe02-policy1.yaml:/pe02-policy1.yaml
         - input/sr-policies/pe02-policy2.yaml:/pe02-policy2.yaml
@@ -45,7 +45,7 @@ topology:
         - apt install -y iproute2 iputils-ping
         - ip link set eth1 up
         - ip addr add 10.0.255.254/24 dev eth1
-      cmd: /bin/polad -f /polad.cfg.yaml &
+      cmd: /bin/polad -f /polad.yaml &
     switch:
       kind: linux
       image: wbitt/network-multitool:latest
