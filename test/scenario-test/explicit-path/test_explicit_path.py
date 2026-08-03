@@ -7,7 +7,6 @@ import os
 import re
 
 import pytest
-
 from helpers.wait import (
     run_command,
     wait_for_ssh,

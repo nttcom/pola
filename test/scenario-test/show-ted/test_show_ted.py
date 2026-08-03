@@ -7,7 +7,6 @@ import json
 import os
 
 import pytest
-
 from helpers.wait import (
     wait_for_ssh,
     wait_until_command_success,
