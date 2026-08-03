@@ -562,7 +562,7 @@ func NewPCInitiateMessage(srpID uint32, lspName string, lspDelete bool, plspID u
 
 	switch opts.pccType {
 	case JuniperLegacy:
-		if m.AssociationObject, err = NewAssociationObject(srcAddr, dstAddr, color, preference, VendorSpecific(opts.pccType)); err != nil {
+		if m.AssociationObject, err = NewAssociationObject(srcAddr, dstAddr, color, preference, VendorSpecific(opts.pccType), OriginatorASN(opts.originatorASN)); err != nil {
 			return nil, err
 		}
 	case CiscoLegacy:
@@ -570,7 +570,7 @@ func NewPCInitiateMessage(srpID uint32, lspName string, lspDelete bool, plspID u
 			return nil, err
 		}
 	case RFCCompliant:
-		if m.AssociationObject, err = NewAssociationObject(srcAddr, dstAddr, color, preference); err != nil {
+		if m.AssociationObject, err = NewAssociationObject(srcAddr, dstAddr, color, preference, OriginatorASN(opts.originatorASN)); err != nil {
 			return nil, err
 		}
 		// FRRouting is considered RFC compliant

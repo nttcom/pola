@@ -23,6 +23,7 @@ type Server struct {
 	sessionList []*Session
 	ted         *table.LsTED
 	logger      *zap.Logger
+	asn         uint32
 }
 
 type PCEOptions struct {
@@ -36,7 +37,10 @@ type PCEOptions struct {
 }
 
 func NewPCE(o *PCEOptions, logger *zap.Logger, tedElemsChan chan []table.TEDElem) Error {
-	s := &Server{logger: logger}
+	s := &Server{
+		logger: logger,
+		asn:    o.ASN,
+	}
 	if o.TEDEnable {
 		s.ted = &table.LsTED{
 			Nodes: map[string]*table.LsNode{},
@@ -117,7 +121,7 @@ func (s *Server) Serve(address string, port string, usidMode bool) error {
 		if err != nil {
 			return fmt.Errorf("failed to parse remote address %s: %w", tcpConn.RemoteAddr().String(), err)
 		}
-		ss := NewSession(sessionID, peerAddrPort.Addr(), tcpConn, s.logger, s.ted)
+		ss := NewSession(sessionID, peerAddrPort.Addr(), tcpConn, s.logger, s.ted, s.asn)
 		ss.logger.Info("start PCEP session")
 
 		s.sessionList = append(s.sessionList, ss)

@@ -1737,7 +1737,7 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 				Endpoint: dstAddr,
 			},
 			&SRPolicyCandidatePathIdentifier{
-				OriginatorASN:  0, // TODO: set PCE ASN
+				OriginatorASN:  opts.originatorASN,
 				OriginatorAddr: dstAddr,
 				Discriminator:  1, // keep existing wire value
 			},
@@ -1895,7 +1895,8 @@ func (o *VendorInformationObject) subTLVUint32(typ TLVType) uint32 {
 }
 
 type optParams struct {
-	pccType PccType
+	pccType       PccType
+	originatorASN uint32
 }
 
 type Opt func(*optParams)
@@ -1903,5 +1904,11 @@ type Opt func(*optParams)
 func VendorSpecific(pt PccType) Opt {
 	return func(op *optParams) {
 		op.pccType = pt
+	}
+}
+
+func OriginatorASN(asn uint32) Opt {
+	return func(op *optParams) {
+		op.originatorASN = asn
 	}
 }

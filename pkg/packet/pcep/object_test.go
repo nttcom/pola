@@ -876,7 +876,7 @@ func TestAssociationObject_RoundTrip(t *testing.T) {
 }
 
 // Ensures NewAssociationObject preserves the existing wire format.
-func TestNewAssociationObject_WireCompatibility(t *testing.T) {
+func TestNewAssociationObject_DefaultCandidatePathIdentifier(t *testing.T) {
 	t.Parallel()
 
 	srcAddr := netip.MustParseAddr("192.0.2.1")

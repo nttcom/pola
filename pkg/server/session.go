@@ -31,9 +31,10 @@ type Session struct {
 	pccType         pcep.PccType
 	pccCapabilities []pcep.CapabilityInterface
 	ted             *table.LsTED
+	asn             uint32
 }
 
-func NewSession(sessionID uint8, peerAddr netip.Addr, tcpConn *net.TCPConn, logger *zap.Logger, ted *table.LsTED) *Session {
+func NewSession(sessionID uint8, peerAddr netip.Addr, tcpConn *net.TCPConn, logger *zap.Logger, ted *table.LsTED, asn uint32) *Session {
 	return &Session{
 		sessionID: sessionID,
 		isSynced:  false,
@@ -43,6 +44,7 @@ func NewSession(sessionID uint8, peerAddr netip.Addr, tcpConn *net.TCPConn, logg
 		peerAddr:  peerAddr,
 		tcpConn:   tcpConn,
 		ted:       ted,
+		asn:       asn,
 	}
 }
 
@@ -503,7 +505,7 @@ func (ss *Session) SendOpen() error {
 }
 
 func (ss *Session) SendPCInitiate(srPolicy table.SRPolicy, lspDelete bool) error {
-	pcinitiateMessage, err := pcep.NewPCInitiateMessage(ss.srpIDHead, srPolicy.Name, lspDelete, srPolicy.PlspID, srPolicy.SegmentList, srPolicy.Color, srPolicy.Preference, srPolicy.SrcAddr, srPolicy.DstAddr, pcep.VendorSpecific(ss.pccType))
+	pcinitiateMessage, err := pcep.NewPCInitiateMessage(ss.srpIDHead, srPolicy.Name, lspDelete, srPolicy.PlspID, srPolicy.SegmentList, srPolicy.Color, srPolicy.Preference, srPolicy.SrcAddr, srPolicy.DstAddr, pcep.VendorSpecific(ss.pccType), pcep.OriginatorASN(ss.asn))
 	if err != nil {
 		return err
 	}
