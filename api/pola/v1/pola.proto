@@ -54,7 +54,15 @@ message SRPolicy {
 message CreateSRPolicyRequest {
   SRPolicy sr_policy = 1;
   uint32 asn = 2;
-  bool sid_validate = 3;
+  reserved 3;
+  reserved "sid_validate";
+
+  // Use endpoints and segments provided in the request without TED lookup
+  // or path computation (no CSPF or router-ID resolution).
+  bool disable_path_compute = 4;
+
+  // Skip checking that explicit SIDs exist in the TED.
+  bool no_sid_validate = 5;
 }
 
 message CreateSRPolicyResponse {

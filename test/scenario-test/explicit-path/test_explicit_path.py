@@ -34,6 +34,24 @@ def add_sr_policy(policy_file: str) -> None:
     assert "success" in result.stdout.lower(), (
         f"failed to add {policy_file}\nstdout: {result.stdout}\nstderr: {result.stderr}"
     )
+    assert "skipping SID validation" in result.stderr, (
+        f"--no-sid-validate must always warn on stderr\nstderr: {result.stderr}"
+    )
+
+
+def add_sr_policy_expecting_ted_error(policy_file: str) -> None:
+    """Installing without --no-sid-validate must be refused when there is no TED."""
+
+    result = run_command(
+        f"docker exec {POLA} /bin/pola sr-policy add -f {policy_file} -p {GRPC_PORT}"
+    )
+
+    assert result.returncode != 0, (
+        f"expected {policy_file} to be refused\nstdout: {result.stdout}"
+    )
+    combined = result.stdout + result.stderr
+    assert "TED is not enabled" in combined, combined
+    assert "--no-sid-validate" in combined, combined
 
 
 class TestExplicitPathSRMPLS:
@@ -45,6 +63,7 @@ class TestExplicitPathSRMPLS:
     - The Node/Adjacency Identifier (NAI) built from the `localAddr` of each SID
       (RFC8664 4.3.1) is accepted by the PCC and shown in the installed SR-ERO
     - Segment lists without `localAddr` still install with the NAI absent
+    - Installing without --no-sid-validate is refused when there is no TED
     """
 
     TEST_EXPLICIT_PATH_DIR = os.path.join(
@@ -64,6 +83,8 @@ class TestExplicitPathSRMPLS:
                 f"docker exec {POLA} /bin/pola session -p {GRPC_PORT} "
                 f"| grep '{pcc_addr}'"
             )
+
+        add_sr_policy_expecting_ted_error("/pe01-policy1.yaml")
 
         add_sr_policy("/pe01-policy1.yaml")
         add_sr_policy("/pe02-policy1.yaml")

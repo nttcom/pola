@@ -2,55 +2,48 @@
     "type": "object",
     "properties": {
         "sid": {
-            "oneOf": [
+            "anyOf": [
                 {
-                    "type": "string",
-                    "oneOf": [
-                        {
-                            "format": "ipv4"
-                        },
-                        {
-                            "format": "ipv6"
-                        }
-                    ],
-                    "$comment": "SRv6 format"
+                    "title": "SR-MPLS label",
+                    "type": "integer",
+                    "minimum": 0
                 },
                 {
-                    "type": "integer",
-                    "$comment": "SR-MPLS format"
+                    "title": "SR-MPLS label, quoted",
+                    "type": "string",
+                    "pattern": "^[0-9]+$"
+                },
+                {
+                    "title": "SRv6 SID, IPv6 only",
+                    "type": "string",
+                    "format": "ipv6"
                 }
             ]
         },
         "localAddr": {
-            "type": "string",
-            "oneOf": [
-                {
-                    "format": "ipv4"
-                },
-                {
-                    "format": "ipv6"
-                }
-            ]
+            "$ref": "#/$defs/ipAddr"
         },
         "remoteAddr": {
-            "type": "string",
-            "oneOf": [
-                {
-                    "format": "ipv4"
-                },
-                {
-                    "format": "ipv6"
-                }
-            ]
+            "$ref": "#/$defs/ipAddr"
         },
         "sidStructure": {
             "type": "string",
             "pattern": "^[0-9]+,[0-9]+,[0-9]+,[0-9]+$",
-            "$comment": "<locator-block>,<locator-node>,<function>,<argument>"
+            "description": "<locator-block>,<locator-node>,<function>,<argument>"
         }
     },
     "required": [
         "sid"
     ],
-    "additionalProperties": false
+    "additionalProperties": false,
+    "$defs": {
+        "ipAddr": {
+            "$comment": "anyOf, not oneOf: `format` is an annotation by default, so both branches would match and oneOf would always fail",
+            "type": "string",
+            "anyOf": [
+                { "format": "ipv4" },
+                { "format": "ipv6" }
+            ]
+        }
+    }
 }

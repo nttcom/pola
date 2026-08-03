@@ -432,10 +432,14 @@ func (x *SRPolicy) GetWaypoints() []*Waypoint {
 }
 
 type CreateSRPolicyRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SrPolicy      *SRPolicy              `protobuf:"bytes,1,opt,name=sr_policy,json=srPolicy,proto3" json:"sr_policy,omitempty"`
-	Asn           uint32                 `protobuf:"varint,2,opt,name=asn,proto3" json:"asn,omitempty"`
-	SidValidate   bool                   `protobuf:"varint,3,opt,name=sid_validate,json=sidValidate,proto3" json:"sid_validate,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	SrPolicy *SRPolicy              `protobuf:"bytes,1,opt,name=sr_policy,json=srPolicy,proto3" json:"sr_policy,omitempty"`
+	Asn      uint32                 `protobuf:"varint,2,opt,name=asn,proto3" json:"asn,omitempty"`
+	// Use endpoints and segments provided in the request without TED lookup
+	// or path computation (no CSPF or router-ID resolution).
+	DisablePathCompute bool `protobuf:"varint,4,opt,name=disable_path_compute,json=disablePathCompute,proto3" json:"disable_path_compute,omitempty"`
+	// Skip checking that explicit SIDs exist in the TED.
+	NoSidValidate bool `protobuf:"varint,5,opt,name=no_sid_validate,json=noSidValidate,proto3" json:"no_sid_validate,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -484,9 +488,16 @@ func (x *CreateSRPolicyRequest) GetAsn() uint32 {
 	return 0
 }
 
-func (x *CreateSRPolicyRequest) GetSidValidate() bool {
+func (x *CreateSRPolicyRequest) GetDisablePathCompute() bool {
 	if x != nil {
-		return x.SidValidate
+		return x.DisablePathCompute
+	}
+	return false
+}
+
+func (x *CreateSRPolicyRequest) GetNoSidValidate() bool {
+	if x != nil {
+		return x.NoSidValidate
 	}
 	return false
 }
@@ -1870,11 +1881,12 @@ const file_api_pola_v1_pola_proto_rawDesc = "" +
 	"\fsegment_list\x18\n" +
 	" \x03(\v2\x14.api.pola.v1.SegmentR\vsegmentList\x12/\n" +
 	"\x06metric\x18\v \x01(\x0e2\x17.api.pola.v1.MetricTypeR\x06metric\x123\n" +
-	"\twaypoints\x18\f \x03(\v2\x15.api.pola.v1.WaypointR\twaypoints\"\x80\x01\n" +
+	"\twaypoints\x18\f \x03(\v2\x15.api.pola.v1.WaypointR\twaypoints\"\xcb\x01\n" +
 	"\x15CreateSRPolicyRequest\x122\n" +
 	"\tsr_policy\x18\x01 \x01(\v2\x15.api.pola.v1.SRPolicyR\bsrPolicy\x12\x10\n" +
-	"\x03asn\x18\x02 \x01(\rR\x03asn\x12!\n" +
-	"\fsid_validate\x18\x03 \x01(\bR\vsidValidate\"7\n" +
+	"\x03asn\x18\x02 \x01(\rR\x03asn\x120\n" +
+	"\x14disable_path_compute\x18\x04 \x01(\bR\x12disablePathCompute\x12&\n" +
+	"\x0fno_sid_validate\x18\x05 \x01(\bR\rnoSidValidateJ\x04\b\x03\x10\x04R\fsid_validate\"7\n" +
 	"\x16CreateSRPolicyResponse\x12\x1d\n" +
 	"\n" +
 	"is_success\x18\x01 \x01(\bR\tisSuccess\"]\n" +

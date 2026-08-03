@@ -8,8 +8,8 @@ package version
 import "fmt"
 
 const Major uint = 1
-const Minor uint = 3
-const Patch uint = 2
+const Minor uint = 4
+const Patch uint = 0
 
 func Version() string {
 	return fmt.Sprintf("%d.%d.%d", Major, Minor, Patch)

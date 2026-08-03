@@ -12,6 +12,8 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	yaml "gopkg.in/yaml.v2"
 
 	pb "github.com/nttcom/pola/api/pola/v1"
@@ -57,7 +59,7 @@ func newSRPolicyAddCmd() *cobra.Command {
 		},
 	}
 
-	srPolicyAddCmd.Flags().BoolP("no-sid-validate", "s", false, "disable SR policy SID validation")
+	srPolicyAddCmd.Flags().Bool("no-sid-validate", false, "skip the SID existence check against the TED")
 	srPolicyAddCmd.Flags().StringP("file", "f", "", "[mandatory] path to YAML formatted LSP information file")
 
 	return srPolicyAddCmd
@@ -94,16 +96,27 @@ type InputFormat struct {
 	ASN      uint32   `yaml:"asn"`
 }
 
-func addSRPolicy(input InputFormat, jsonFlag bool, explicitPathFlag bool) error {
-	if explicitPathFlag {
-		if err := addSRPolicyWithoutSIDValidation(input); err != nil {
-			return err
+func addSRPolicy(input InputFormat, jsonFlag bool, noSIDValidate bool) error {
+	if noSIDValidate {
+		fmt.Fprintln(os.Stderr, "warning: skipping SID validation (--no-sid-validate)")
+	}
+
+	usesRouterID := input.SRPolicy.SrcRouterID != "" || input.SRPolicy.DstRouterID != ""
+	usesEndpointAddr := input.SRPolicy.SrcAddr.IsValid() || input.SRPolicy.DstAddr.IsValid()
+	if usesRouterID && usesEndpointAddr {
+		return errors.New("srcRouterID / dstRouterID and srcAddr / dstAddr are mutually exclusive, use one form only")
+	}
+
+	if usesRouterID {
+		if err := addSRPolicyWithRouterID(input, noSIDValidate); err != nil {
+			return translateCreateSRPolicyError(err)
 		}
 	} else {
-		if err := addSRPolicyWithSIDValidation(input); err != nil {
-			return err
+		if err := addSRPolicyWithEndpointAddr(input, noSIDValidate); err != nil {
+			return translateCreateSRPolicyError(err)
 		}
 	}
+
 	if jsonFlag {
 		fmt.Printf("{\"status\": \"success\"}\n")
 	} else {
@@ -113,7 +126,26 @@ func addSRPolicy(input InputFormat, jsonFlag bool, explicitPathFlag bool) error 
 	return nil
 }
 
-func addSRPolicyWithoutSIDValidation(input InputFormat) error {
+// translateCreateSRPolicyError converts gRPC errors into CLI-friendly messages.
+func translateCreateSRPolicyError(err error) error {
+	st, ok := status.FromError(err)
+	if !ok {
+		return err
+	}
+	if st.Code() == codes.FailedPrecondition {
+		return fmt.Errorf("%s\n  hint: use --no-sid-validate to provision without validation", st.Message())
+	}
+	return errors.New(st.Message())
+}
+
+func addSRPolicyWithEndpointAddr(input InputFormat, noSIDValidate bool) error {
+	if input.SRPolicy.Type != "" && input.SRPolicy.Type != "explicit" {
+		return fmt.Errorf("the srcAddr / dstAddr form supports `type: explicit` only, got %q", input.SRPolicy.Type)
+	}
+	if input.SRPolicy.Metric != "" || len(input.SRPolicy.Waypoints) > 0 {
+		return errors.New("`metric` and `waypoints` require a dynamic path, which the srcAddr / dstAddr form does not support")
+	}
+
 	if !input.SRPolicy.PCEPSessionAddr.IsValid() || input.SRPolicy.Color == 0 || !input.SRPolicy.SrcAddr.IsValid() || !input.SRPolicy.DstAddr.IsValid() || len(input.SRPolicy.SegmentList) == 0 {
 		sampleInput := "srPolicy:\n" +
 			"  pcepSessionAddr: 192.0.2.1\n" +
@@ -127,7 +159,9 @@ func addSRPolicyWithoutSIDValidation(input InputFormat) error {
 
 		errMsg := "invalid input\n" +
 			"input example is below\n\n" +
-			sampleInput
+			sampleInput +
+			"or, to resolve endpoints from the TED by router ID instead,\n" +
+			"use the srcRouterID / dstRouterID form\n"
 		return errors.New(errMsg)
 	}
 
@@ -148,21 +182,19 @@ func addSRPolicyWithoutSIDValidation(input InputFormat) error {
 		SegmentList:     segmentList,
 		Color:           input.SRPolicy.Color,
 		PolicyName:      input.SRPolicy.Name,
+		Type:            pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT,
 	}
 
 	request := &pb.CreateSRPolicyRequest{
-		SrPolicy:    srPolicy,
-		Asn:         input.ASN,
-		SidValidate: true, // Current server behavior uses SidValidate=true for the manual/TED-less path.
+		SrPolicy:           srPolicy,
+		Asn:                input.ASN,
+		DisablePathCompute: true,
+		NoSidValidate:      noSIDValidate,
 	}
-	if err := grpc.CreateSRPolicy(client, request); err != nil {
-		return err
-	}
-
-	return nil
+	return grpc.CreateSRPolicy(client, request)
 }
 
-func addSRPolicyWithSIDValidation(input InputFormat) error {
+func addSRPolicyWithRouterID(input InputFormat, noSIDValidate bool) error {
 	sampleInputDynamic, sampleInputExplicit := sampleInputs()
 
 	if err := validateCommonInput(input, sampleInputDynamic, sampleInputExplicit); err != nil {
@@ -188,15 +220,12 @@ func addSRPolicyWithSIDValidation(input InputFormat) error {
 	}
 
 	req := &pb.CreateSRPolicyRequest{
-		SrPolicy: srPolicy,
-		Asn:      input.ASN,
+		SrPolicy:      srPolicy,
+		Asn:           input.ASN,
+		NoSidValidate: noSIDValidate,
 	}
 
-	if err := grpc.CreateSRPolicy(client, req); err != nil {
-		return fmt.Errorf("gRPC Server Error: %w", err)
-	}
-
-	return nil
+	return grpc.CreateSRPolicy(client, req)
 }
 
 func sampleInputs() (dynamic, explicit string) {
@@ -239,7 +268,8 @@ func validateCommonInput(input InputFormat, sampleDynamic, sampleExplicit string
 				"input example is below\n\n" +
 				sampleDynamic +
 				sampleExplicit +
-				"or, if create SR Policy without TED, then use `--no-sid-validate` flag\n",
+				"or, to specify endpoints directly instead of resolving router IDs from the TED,\n" +
+				"use the srcAddr / dstAddr form\n",
 		)
 	}
 	return nil

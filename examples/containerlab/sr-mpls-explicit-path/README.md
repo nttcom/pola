@@ -76,10 +76,13 @@ Prefix-SID labels are 16001 (pe01), 16002 (pe02) and 16003 (pe03).
 
 ```bash
 root@pola:/pola# pola sr-policy add -f pe01-policy1.yaml --no-sid-validate
+warning: skipping SID validation (--no-sid-validate)
 success!
 root@pola:/pola# pola sr-policy add -f pe02-policy1.yaml --no-sid-validate
+warning: skipping SID validation (--no-sid-validate)
 success!
 root@pola:/pola# pola sr-policy add -f pe03-policy1.yaml --no-sid-validate
+warning: skipping SID validation (--no-sid-validate)
 success!
 
 root@pola:/pola# pola sr-policy list

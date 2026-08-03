@@ -9,10 +9,14 @@ import (
 	"bytes"
 	"net/netip"
 	"slices"
+	"strings"
 	"testing"
 
 	pb "github.com/nttcom/pola/api/pola/v1"
 	"github.com/nttcom/pola/pkg/table"
+	"go.uber.org/zap"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // localAddr / remoteAddr from the gRPC message must land on the SR-MPLS segment.
@@ -156,5 +160,179 @@ func TestCreateEroFromSegmentListWithNAI(t *testing.T) {
 	}
 	if want := seg.LocalAddr.AsSlice(); !bytes.Equal(raw[8:12], want) {
 		t.Errorf("NAI: got %v, want %v", raw[8:12], want)
+	}
+}
+
+func newTestAPIServer(ted *table.LsTED) *APIServer {
+	return &APIServer{
+		pce:    &Server{ted: ted},
+		logger: zap.NewNop(),
+	}
+}
+
+func explicitPolicyRequest(noSIDValidate bool, sid string) *pb.CreateSRPolicyRequest {
+	return &pb.CreateSRPolicyRequest{
+		SrPolicy: &pb.SRPolicy{
+			Type:        pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT,
+			PolicyName:  "test",
+			Color:       100,
+			SegmentList: []*pb.Segment{{Sid: sid}},
+		},
+		NoSidValidate: noSIDValidate,
+	}
+}
+
+func dynamicPolicyRequest() *pb.CreateSRPolicyRequest {
+	return &pb.CreateSRPolicyRequest{
+		SrPolicy: &pb.SRPolicy{
+			Type:       pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC,
+			PolicyName: "test",
+			Color:      100,
+		},
+	}
+}
+
+func TestValidateSIDs_NoSidValidateSkipsCheck(t *testing.T) {
+	s := newTestAPIServer(nil)
+	req := explicitPolicyRequest(true, "16099")
+	segmentList := []table.Segment{table.NewSegmentSRMPLS(16099)}
+
+	if err := s.validateSIDs(req, segmentList); err != nil {
+		t.Errorf("expected no_sid_validate to skip the check even with no TED, got: %v", err)
+	}
+}
+
+func TestValidateSIDs_DynamicPathSkipsCheck(t *testing.T) {
+	s := newTestAPIServer(nil)
+	req := dynamicPolicyRequest()
+	segmentList := []table.Segment{table.NewSegmentSRMPLS(16099)}
+
+	if err := s.validateSIDs(req, segmentList); err != nil {
+		t.Errorf("expected a dynamic path to skip the check, got: %v", err)
+	}
+}
+
+func TestValidateSIDs_DynamicWithDisablePathComputeIsStillValidated(t *testing.T) {
+	node := &table.LsNode{
+		RouterID:  "0000.0000.0001",
+		SrgbBegin: 16000,
+		Prefixes: []*table.LsPrefix{
+			{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 3},
+		},
+	}
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{node.RouterID: node}}
+	s := newTestAPIServer(ted)
+
+	req := dynamicPolicyRequest()
+	req.DisablePathCompute = true
+	req.SrPolicy.SegmentList = []*pb.Segment{{Sid: "16099"}}
+	req.SrPolicy.SrcAddr = netip.MustParseAddr("10.0.0.1").AsSlice()
+	req.SrPolicy.DstAddr = netip.MustParseAddr("10.0.0.2").AsSlice()
+	segmentList := []table.Segment{table.NewSegmentSRMPLS(16099)}
+
+	err := s.validateSIDs(req, segmentList)
+	st, ok := status.FromError(err)
+	if !ok || st.Code() != codes.InvalidArgument {
+		t.Fatalf("expected codes.InvalidArgument, got: %v", err)
+	}
+}
+
+func TestValidateSIDs_NoTED(t *testing.T) {
+	s := newTestAPIServer(nil)
+	req := explicitPolicyRequest(false, "16003")
+	segmentList := []table.Segment{table.NewSegmentSRMPLS(16003)}
+
+	err := s.validateSIDs(req, segmentList)
+	st, ok := status.FromError(err)
+	if !ok || st.Code() != codes.FailedPrecondition {
+		t.Fatalf("expected codes.FailedPrecondition, got: %v", err)
+	}
+	if !strings.Contains(st.Message(), "TED is not enabled") {
+		t.Errorf("unexpected message: %s", st.Message())
+	}
+}
+
+func TestValidateSIDs_TEDEmpty(t *testing.T) {
+	s := newTestAPIServer(&table.LsTED{Nodes: map[string]*table.LsNode{}})
+	req := explicitPolicyRequest(false, "16003")
+	segmentList := []table.Segment{table.NewSegmentSRMPLS(16003)}
+
+	err := s.validateSIDs(req, segmentList)
+	st, ok := status.FromError(err)
+	if !ok || st.Code() != codes.FailedPrecondition {
+		t.Fatalf("expected codes.FailedPrecondition, got: %v", err)
+	}
+	if !strings.Contains(st.Message(), "not yet synchronized") {
+		t.Errorf("expected a distinct message for an empty-but-enabled TED, got: %s", st.Message())
+	}
+}
+
+func TestValidateSIDs_MissingSID(t *testing.T) {
+	node := &table.LsNode{
+		RouterID:  "0000.0000.0001",
+		SrgbBegin: 16000,
+		Prefixes: []*table.LsPrefix{
+			{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 3},
+		},
+	}
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{node.RouterID: node}}
+	s := newTestAPIServer(ted)
+
+	req := explicitPolicyRequest(false, "16099")
+	segmentList := []table.Segment{table.NewSegmentSRMPLS(16099)}
+
+	err := s.validateSIDs(req, segmentList)
+	st, ok := status.FromError(err)
+	if !ok || st.Code() != codes.InvalidArgument {
+		t.Fatalf("expected codes.InvalidArgument, got: %v", err)
+	}
+	if !strings.Contains(st.Message(), "hop 1") {
+		t.Errorf("expected the missing hop to be listed, got: %s", st.Message())
+	}
+}
+
+func TestValidateSIDs_EndpointFormIsStillValidated(t *testing.T) {
+	node := &table.LsNode{
+		RouterID:  "0000.0000.0001",
+		SrgbBegin: 16000,
+		Prefixes: []*table.LsPrefix{
+			{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 3},
+		},
+	}
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{node.RouterID: node}}
+	s := newTestAPIServer(ted)
+
+	req := explicitPolicyRequest(false, "16099")
+	req.DisablePathCompute = true
+	req.SrPolicy.SrcAddr = netip.MustParseAddr("10.0.0.1").AsSlice()
+	req.SrPolicy.DstAddr = netip.MustParseAddr("10.0.0.2").AsSlice()
+	segmentList := []table.Segment{table.NewSegmentSRMPLS(16099)}
+
+	err := s.validateSIDs(req, segmentList)
+	st, ok := status.FromError(err)
+	if !ok || st.Code() != codes.InvalidArgument {
+		t.Fatalf("expected codes.InvalidArgument, got: %v", err)
+	}
+	if !strings.Contains(st.Message(), "hop 1") {
+		t.Errorf("expected the missing hop to be listed, got: %s", st.Message())
+	}
+}
+
+func TestValidateSIDs_AllKnownSucceeds(t *testing.T) {
+	node := &table.LsNode{
+		RouterID:  "0000.0000.0001",
+		SrgbBegin: 16000,
+		Prefixes: []*table.LsPrefix{
+			{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 3},
+		},
+	}
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{node.RouterID: node}}
+	s := newTestAPIServer(ted)
+
+	req := explicitPolicyRequest(false, "16003")
+	segmentList := []table.Segment{table.NewSegmentSRMPLS(16003)}
+
+	if err := s.validateSIDs(req, segmentList); err != nil {
+		t.Errorf("expected no error, got: %v", err)
 	}
 }
