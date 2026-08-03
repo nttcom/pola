@@ -20,8 +20,6 @@ prepare these images.
 
 ### Building a Lab Network
 
-The `switch` bridge node is created automatically by Containerlab.
-
 Copy the GoBGP binaries to `bin`:
 
 ```bash

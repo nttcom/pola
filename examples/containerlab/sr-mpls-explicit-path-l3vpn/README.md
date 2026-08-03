@@ -19,8 +19,6 @@ prepare these images.
 
 ### Building a Lab Network
 
-The `switch` bridge node is created automatically by Containerlab.
-
 Start Containerlab network
 
 ```bash
@@ -54,16 +52,16 @@ Both PE nodes establish a PCEP session, but this example only applies an SR Poli
 
 Apply and check SR Policy
 
-`policy1.yaml` is mounted in the Pola container. It steers traffic from pe01 to
+`pe01-policy1.yaml` is mounted in the Pola container. It steers traffic from pe01 to
 pe02 (10.255.0.3) along the explicit path p01 -> p02 -> pe02, using the
 Prefix-SID labels 16002 (p01), 16004 (p02) and 16003 (pe02).
 
 ```bash
-root@pola:/pola# pola sr-policy add -f policy1.yaml --no-sid-validate
+root@pola:/pola# pola sr-policy add -f pe01-policy1.yaml --no-sid-validate
 success!
 root@pola:/pola# pola sr-policy list
 Session: 10.0.255.1
-  PolicyName: policy1
+  PolicyName: pe01-policy1
     SrcAddr: 10.0.255.1
     DstAddr: 10.255.0.3
     Color: 0
@@ -72,7 +70,7 @@ Session: 10.0.255.1
 ```
 
 FRRouting does not report the color, the preference and the source address of an SR Policy back
-to the PCE, so those fields of `policy1` differ from the applied policy. The applied color is
+to the PCE, so those fields of `pe01-policy1` differ from the applied policy. The applied color is
 visible on pe01 itself with `show sr-te policy detail`.
 
 Enter container pe01 and check SR Policy
@@ -121,8 +119,8 @@ PCEP Sessions => Configured 1 ; Connected 1
 
 pe01# show sr-te policy detail
 
-Endpoint: 10.255.0.3  Color: 1  Name: policy1  BSID: -  Status: Active
-  * Preference: 255  Name: policy1  Type: dynamic  Segment-List: (created by PCE)  Protocol-Origin: PCEP
+Endpoint: 10.255.0.3  Color: 1  Name: pe01-policy1  BSID: -  Status: Active
+  * Preference: 255  Name: pe01-policy1  Type: dynamic  Segment-List: (created by PCE)  Protocol-Origin: PCEP
 ```
 
 Add Color setting
@@ -135,7 +133,7 @@ bash-5.1# exit
 ```
 
 The VPN route is now resolved through the SR Policy. Its label stack is the segment list of
-`policy1`, without the first SID because p01 is directly connected:
+`pe01-policy1`, without the first SID because p01 is directly connected:
 
 ```bash
 $ docker exec -it clab-sr-mpls-explicit-path-l3vpn-pe01 vtysh
