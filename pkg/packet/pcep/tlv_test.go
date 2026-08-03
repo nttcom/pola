@@ -1588,6 +1588,31 @@ func TestSRPolicyCandidatePathIdentifier_ProtocolOriginRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSRPolicyCandidatePathIdentifierJuniper_Type(t *testing.T) {
+	t.Parallel()
+
+	tlv := &SRPolicyCandidatePathIdentifierJuniper{}
+	assert.Equal(t, TLVSRPolicyCPathIDJuniper, tlv.Type())
+}
+
+func TestSRPolicyCandidatePathIdentifierJuniper_Serialize(t *testing.T) {
+	tlv := &SRPolicyCandidatePathIdentifierJuniper{
+		SRPolicyCandidatePathIdentifier: *testSRPolicyCPathIDIPv4,
+	}
+
+	expected := append([]byte(nil), testSRPolicyCPathIDIPv4Bytes...)
+	expected[0], expected[1] = 0xff, 0xe4 // type=0xffe4, value layout unchanged
+
+	assert.Equal(t, expected, tlv.Serialize())
+}
+
+func TestSRPolicyCandidatePathIdentifierJuniper_Len(t *testing.T) {
+	tlv := &SRPolicyCandidatePathIdentifierJuniper{
+		SRPolicyCandidatePathIdentifier: *testSRPolicyCPathIDIPv4,
+	}
+	assert.Equal(t, testSRPolicyCPathIDIPv4.Len(), tlv.Len())
+}
+
 // Test data for SRPolicyCandidatePathPreference.
 var (
 	testSRPolicyCPathPreference = &SRPolicyCandidatePathPreference{Preference: 100}

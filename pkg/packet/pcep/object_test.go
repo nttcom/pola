@@ -907,19 +907,26 @@ func TestNewAssociationObject_DefaultCandidatePathIdentifier(t *testing.T) {
 	assert.Equal(t, expected, raw, "AssociationObject wire bytes changed")
 }
 
-// Verify OriginatorASN is propagated to the Juniper SRPOLICY-CPATH-ID TLV.
-func TestNewAssociationObject_JuniperLegacyOriginatorASN(t *testing.T) {
+// Verifies Juniper CP-ID TLV serialization, including OriginatorASN propagation and wire format stability.
+func TestNewAssociationObject_JuniperLegacyCandidatePathIdentifier(t *testing.T) {
 	t.Parallel()
 
 	srcAddr := netip.MustParseAddr("192.0.2.1")
 	dstAddr := netip.MustParseAddr("192.0.2.2")
+	originatorAddr := dstAddr.As16()
 
 	cases := map[string]struct {
 		opts        []Opt
 		expectedASN uint32
 	}{
-		"OriginatorASNSet":     {opts: []Opt{VendorSpecific(JuniperLegacy), OriginatorASN(65001)}, expectedASN: 65001},
-		"OriginatorASNOmitted": {opts: []Opt{VendorSpecific(JuniperLegacy)}, expectedASN: 0},
+		"OriginatorASNSet": {
+			opts:        []Opt{VendorSpecific(JuniperLegacy), OriginatorASN(65001)},
+			expectedASN: 65001,
+		},
+		"OriginatorASNOmitted": {
+			opts:        []Opt{VendorSpecific(JuniperLegacy)},
+			expectedASN: 0,
+		},
 	}
 
 	for name, tt := range cases {
@@ -933,15 +940,49 @@ func TestNewAssociationObject_JuniperLegacyOriginatorASN(t *testing.T) {
 			require.NoError(t, err, "Serialize failed")
 
 			expectedTLV := AppendByteSlices(
-				[]byte{0xff, 0xe4, 0x00, 0x1c},                     // SRPOLICY-CPATH-ID TLV (Juniper): type=0xffe4, len=28
-				[]byte{byte(ProtocolOriginPCEP), 0x00, 0x00, 0x00}, // protocol origin + mbz
+				[]byte{0xff, 0xe4, 0x00, 0x1c},
+				[]byte{byte(ProtocolOriginPCEP), 0x00, 0x00, 0x00},
 				Uint32ToByteSlice(tt.expectedASN),
-				make([]byte, 16), // originator address
-				make([]byte, 4),  // discriminator
+				originatorAddr[:],
+				[]byte{0x00, 0x00, 0x00, 0x01},
 			)
-			assert.True(t, bytes.Contains(raw, expectedTLV), "serialized object does not carry ASN %d in the Juniper SRPOLICY-CPATH-ID TLV", tt.expectedASN)
+
+			assert.True(t, bytes.Contains(raw, expectedTLV),
+				"serialized object does not contain expected Juniper SRPOLICY-CPATH-ID TLV with ASN %d",
+				tt.expectedASN,
+			)
 		})
 	}
+
+	// Ensure the Juniper AssociationObject preserves the legacy wire format after typed TLV conversion.
+	o, err := NewAssociationObject(srcAddr, dstAddr, 100, 200, VendorSpecific(JuniperLegacy))
+	require.NoError(t, err, "NewAssociationObject failed")
+
+	expected := AppendByteSlices(
+		[]byte{
+			0x28, 0x10, 0x00, 0x44, // common object header: class=ASSOCIATION, type=1, length=0x44
+			0x00, 0x00, 0x00, 0x00, // reserved + flags
+			0xff, 0xe1, 0x00, 0x00, // assoc type=0xffe1 (SRPolicyAssociationJuniper), assoc id=0
+			0xc0, 0x00, 0x02, 0x01, // assoc source=192.0.2.1
+
+			0xff, 0xe3, 0x00, 0x08, // ExtendedAssociationID TLV (Juniper)
+			0x00, 0x00, 0x00, 0x64, // color=100
+			0xc0, 0x00, 0x02, 0x02, // endpoint=192.0.2.2
+
+			0xff, 0xe4, 0x00, 0x1c, // SRPOLICY-CPATH-ID TLV (Juniper), length=28
+			byte(ProtocolOriginPCEP), 0x00, 0x00, 0x00, // protocol origin + MBZ
+			0x00, 0x00, 0x00, 0x00, // ASN=0
+		},
+		originatorAddr[:], // originator address field (IPv4 represented as IPv4-mapped IPv6)
+		[]byte{
+			0x00, 0x00, 0x00, 0x01, // discriminator=1
+			0xff, 0xe5, 0x00, 0x04, // SRPOLICY-CPATH-PREFERENCE TLV (Juniper)
+			0x00, 0x00, 0x00, 0xc8, // preference=200
+		},
+	)
+	raw, err := o.Serialize()
+	require.NoError(t, err, "Serialize failed")
+	assert.Equal(t, expected, raw, "AssociationObject wire bytes changed")
 }
 
 func TestVendorInformationObject_DecodeFromBytes(t *testing.T) {

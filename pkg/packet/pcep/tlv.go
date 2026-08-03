@@ -1607,6 +1607,10 @@ func (tlv *SRPolicyCandidatePathIdentifier) DecodeFromBytes(data []byte) error {
 }
 
 func (tlv *SRPolicyCandidatePathIdentifier) Serialize() []byte {
+	return tlv.serialize(tlv.Type())
+}
+
+func (tlv *SRPolicyCandidatePathIdentifier) serialize(typ TLVType) []byte {
 
 	value := make([]byte, TLVSRPolicyCPathIDValueLength)
 
@@ -1646,7 +1650,7 @@ func (tlv *SRPolicyCandidatePathIdentifier) Serialize() []byte {
 	)
 
 	return AppendByteSlices(
-		Uint16ToByteSlice(tlv.Type()),
+		Uint16ToByteSlice(typ),
 		Uint16ToByteSlice(TLVSRPolicyCPathIDValueLength),
 		value,
 	)
@@ -1670,6 +1674,20 @@ func (tlv *SRPolicyCandidatePathIdentifier) Type() TLVType {
 
 func (tlv *SRPolicyCandidatePathIdentifier) Len() uint16 {
 	return TLVValueOffset + TLVSRPolicyCPathIDValueLength
+}
+
+// SRPolicyCandidatePathIdentifierJuniper is the Juniper vendor-specific
+// SR Policy candidate path identifier TLV (0xffe4).
+type SRPolicyCandidatePathIdentifierJuniper struct {
+	SRPolicyCandidatePathIdentifier
+}
+
+func (tlv *SRPolicyCandidatePathIdentifierJuniper) Serialize() []byte {
+	return tlv.serialize(tlv.Type())
+}
+
+func (tlv *SRPolicyCandidatePathIdentifierJuniper) Type() TLVType {
+	return TLVSRPolicyCPathIDJuniper
 }
 
 type SRPolicyCandidatePathPreference struct {

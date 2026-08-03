@@ -1710,18 +1710,12 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 					Uint32ToByteSlice(color), dstAddr.AsSlice(),
 				),
 			},
-			&UndefinedTLV{
-				Typ:    TLVSRPolicyCPathIDJuniper,
-				Length: TLVSRPolicyCPathIDValueLength,
-				Value: AppendByteSlices(
-					[]uint8{
-						ProtocolOriginPCEP, // protocol origin
-						0x00, 0x00, 0x00,   // mbz
-					},
-					Uint32ToByteSlice(opts.originatorASN), // Originator ASN
-					make([]uint8, 16),                     // Originator Address
-					make([]uint8, 4),                      // discriminator
-				),
+			&SRPolicyCandidatePathIdentifierJuniper{
+				SRPolicyCandidatePathIdentifier: SRPolicyCandidatePathIdentifier{
+					OriginatorASN:  opts.originatorASN,
+					OriginatorAddr: dstAddr,
+					Discriminator:  1,
+				},
 			},
 			&UndefinedTLV{
 				Typ:    TLVSRPolicyCPathPreferenceJuniper,
