@@ -1737,6 +1737,7 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 				Endpoint: dstAddr,
 			},
 			&SRPolicyCandidatePathIdentifier{
+				ProtocolOrigin: ProtocolOriginPCEP, // this PCE originates the candidate path
 				OriginatorASN:  opts.originatorASN,
 				OriginatorAddr: dstAddr,
 				Discriminator:  1, // keep existing wire value

@@ -1553,19 +1553,21 @@ func (tlv *AssocTypeList) CapStrings() []string {
 }
 
 type SRPolicyCandidatePathIdentifier struct {
+	ProtocolOrigin uint8 // Protocol that originated the candidate path.
 	OriginatorASN  uint32
 	OriginatorAddr netip.Addr // Decoded IPv4 addresses are stored as native IPv4.
 	Discriminator  uint32
 }
 
 const (
-	SRPolicyCPathIDASNOffset           = 4
-	SRPolicyCPathIDAddrOffset          = 8
-	SRPolicyCPathIDIPv4Offset          = 12 // offset within Originator Address field
-	SRPolicyCPathIDDiscriminatorOffset = 24
-	SRPolicyCPathIDASNLen              = 4
-	SRPolicyCPathIDDiscriminatorLen    = 4
-	ProtocolOriginPCEP                 = 0x0a
+	SRPolicyCPathIDProtocolOriginOffset = 0
+	SRPolicyCPathIDASNOffset            = 4
+	SRPolicyCPathIDAddrOffset           = 8
+	SRPolicyCPathIDIPv4Offset           = 12 // offset within Originator Address field
+	SRPolicyCPathIDDiscriminatorOffset  = 24
+	SRPolicyCPathIDASNLen               = 4
+	SRPolicyCPathIDDiscriminatorLen     = 4
+	ProtocolOriginPCEP                  = 0x0a
 )
 
 func (tlv *SRPolicyCandidatePathIdentifier) DecodeFromBytes(data []byte) error {
@@ -1578,6 +1580,8 @@ func (tlv *SRPolicyCandidatePathIdentifier) DecodeFromBytes(data []byte) error {
 	if len(value) != int(TLVSRPolicyCPathIDValueLength) {
 		return fmt.Errorf("SRPolicyCandidatePathIdentifier: invalid value length, expected %d, got %d", TLVSRPolicyCPathIDValueLength, len(value))
 	}
+
+	tlv.ProtocolOrigin = value[SRPolicyCPathIDProtocolOriginOffset]
 
 	tlv.OriginatorASN = binary.BigEndian.Uint32(
 		value[SRPolicyCPathIDASNOffset : SRPolicyCPathIDASNOffset+SRPolicyCPathIDASNLen],
@@ -1606,7 +1610,7 @@ func (tlv *SRPolicyCandidatePathIdentifier) Serialize() []byte {
 
 	value := make([]byte, TLVSRPolicyCPathIDValueLength)
 
-	value[0] = ProtocolOriginPCEP
+	value[SRPolicyCPathIDProtocolOriginOffset] = tlv.ProtocolOrigin
 
 	binary.BigEndian.PutUint32(
 		value[SRPolicyCPathIDASNOffset:SRPolicyCPathIDASNOffset+SRPolicyCPathIDASNLen],
@@ -1653,6 +1657,7 @@ func (tlv *SRPolicyCandidatePathIdentifier) MarshalLogObject(enc zapcore.ObjectE
 		return nil
 	}
 
+	enc.AddUint8("protocolOrigin", tlv.ProtocolOrigin)
 	enc.AddUint32("originatorAsn", tlv.OriginatorASN)
 	enc.AddString("originatorAddr", tlv.OriginatorAddr.String())
 	enc.AddUint32("discriminator", tlv.Discriminator)

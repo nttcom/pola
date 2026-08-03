@@ -821,6 +821,7 @@ func TestAssociationObject_RoundTrip(t *testing.T) {
 					Endpoint: v4Endpoint,
 				},
 				&SRPolicyCandidatePathIdentifier{
+					ProtocolOrigin: ProtocolOriginPCEP,
 					OriginatorASN:  65000,
 					OriginatorAddr: v4Endpoint,
 					Discriminator:  7,
