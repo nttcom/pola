@@ -1420,24 +1420,32 @@ func TestAssocTypeList_CapStrings(t *testing.T) {
 
 // Test data for SRPolicyCandidatePathIdentifier.
 var (
-	testSRPolicyCPathIDIPv4 = &SRPolicyCandidatePathIdentifier{OriginatorAddr: netip.AddrFrom4([4]byte{192, 0, 2, 1})} // IPv4 originator
-	testSRPolicyCPathIDIPv6 = &SRPolicyCandidatePathIdentifier{OriginatorAddr: netip.MustParseAddr("2001:db8::1")}     // IPv6 originator
+	testSRPolicyCPathIDIPv4 = &SRPolicyCandidatePathIdentifier{
+		OriginatorASN:  65000,
+		OriginatorAddr: netip.AddrFrom4([4]byte{192, 0, 2, 1}), // IPv4 originator
+		Discriminator:  1,
+	}
+	testSRPolicyCPathIDIPv6 = &SRPolicyCandidatePathIdentifier{
+		OriginatorASN:  65000,
+		OriginatorAddr: netip.MustParseAddr("2001:db8::1"), // IPv6 originator
+		Discriminator:  2,
+	}
 
 	testSRPolicyCPathIDIPv4Bytes = []byte{
 		0x00, 0x39, 0x00, 0x1c, // type=0x0039, len=28
 		0x0a, 0x00, 0x00, 0x00, // protocol=0x0a + mbz
-		0x00, 0x00, 0x00, 0x00, // ASN=0
+		0x00, 0x00, 0xfd, 0xe8, // ASN=65000
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // originator addr padding
 		0xc0, 0x00, 0x02, 0x01, // IPv4 addr
-		0x00, 0x00, 0x00, 0x01, // discriminator
+		0x00, 0x00, 0x00, 0x01, // discriminator=1
 	}
 
 	testSRPolicyCPathIDIPv6Bytes = []byte{
 		0x00, 0x39, 0x00, 0x1c, // type=0x0039, len=28
 		0x0a, 0x00, 0x00, 0x00, // protocol + mbz
-		0x00, 0x00, 0x00, 0x00, // ASN
+		0x00, 0x00, 0xfd, 0xe8, // ASN=65000
 		0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, // IPv6 addr
-		0x00, 0x00, 0x00, 0x01, // discriminator
+		0x00, 0x00, 0x00, 0x02, // discriminator=2
 	}
 
 	testSRPolicyCPathIDTooShort        = []byte{0x00, 0x39, 0x00, 0x0a, 0x0a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00} // Less than 16 bytes for OriginatorAddr
@@ -1445,6 +1453,7 @@ var (
 
 	testSRPolicyCPathIDInvalid = &SRPolicyCandidatePathIdentifier{
 		OriginatorAddr: netip.Addr{}, // zero value, IsValid() == false
+		Discriminator:  1,
 	}
 	testSRPolicyCPathIDInvalidBytes = []byte{
 		0x00, 0x39, 0x00, 0x1c, // type + length
@@ -1497,13 +1506,17 @@ func TestSRPolicyCandidatePathIdentifier_MarshalLogObject(t *testing.T) {
 		"IPv4": {
 			testSRPolicyCPathIDIPv4,
 			map[string]any{
+				"originatorAsn":  testSRPolicyCPathIDIPv4.OriginatorASN,
 				"originatorAddr": testSRPolicyCPathIDIPv4.OriginatorAddr.String(),
+				"discriminator":  testSRPolicyCPathIDIPv4.Discriminator,
 			},
 		},
 		"IPv6": {
 			testSRPolicyCPathIDIPv6,
 			map[string]any{
+				"originatorAsn":  testSRPolicyCPathIDIPv6.OriginatorASN,
 				"originatorAddr": testSRPolicyCPathIDIPv6.OriginatorAddr.String(),
+				"discriminator":  testSRPolicyCPathIDIPv6.Discriminator,
 			},
 		},
 		"NilTLV": {
