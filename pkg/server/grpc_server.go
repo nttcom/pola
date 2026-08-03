@@ -101,6 +101,42 @@ func enrichSRv6Segment(srv6Seg table.SegmentSRv6, segment *pb.Segment, usidMode 
 	return srv6Seg
 }
 
+// enrichSRMPLSSegment applies NAI information from a gRPC Segment message
+// to an SR-MPLS segment.
+func enrichSRMPLSSegment(mplsSeg table.SegmentSRMPLS, segment *pb.Segment) (table.SegmentSRMPLS, error) {
+	if s := segment.GetLocalAddr(); s != "" {
+		la, err := netip.ParseAddr(s)
+		if err != nil {
+			return mplsSeg, fmt.Errorf("invalid localAddr %q for SID %s: %w", s, segment.GetSid(), err)
+		}
+		mplsSeg.LocalAddr = la
+	}
+	if s := segment.GetRemoteAddr(); s != "" {
+		ra, err := netip.ParseAddr(s)
+		if err != nil {
+			return mplsSeg, fmt.Errorf("invalid remoteAddr %q for SID %s: %w", s, segment.GetSid(), err)
+		}
+		mplsSeg.RemoteAddr = ra
+	}
+	return mplsSeg, nil
+}
+
+// newEnrichedSegment turns a gRPC Segment message into a table.Segment, applying
+// the extras carried alongside the SID (NAI, SID structure, uSID).
+func newEnrichedSegment(segment *pb.Segment, usidMode bool) (table.Segment, error) {
+	seg, err := table.NewSegment(segment.GetSid())
+	if err != nil {
+		return nil, err
+	}
+	switch v := seg.(type) {
+	case table.SegmentSRv6:
+		return enrichSRv6Segment(v, segment, usidMode), nil
+	case table.SegmentSRMPLS:
+		return enrichSRMPLSSegment(v, segment)
+	}
+	return seg, nil
+}
+
 func buildSegmentList(s *APIServer, input *pb.CreateSRPolicyRequest, disablePathCompute bool) ([]table.Segment, netip.Addr, netip.Addr, error) {
 	var srcAddr, dstAddr netip.Addr
 	var segmentList []table.Segment
@@ -136,7 +172,7 @@ func buildSegmentList(s *APIServer, input *pb.CreateSRPolicyRequest, disablePath
 			return nil, netip.Addr{}, netip.Addr{}, err
 		}
 
-		segmentList, err = getSegmentList(inputSRPolicy, s.pce.ted)
+		segmentList, err = getSegmentList(inputSRPolicy, s.pce.ted, s.usidMode)
 		if err != nil {
 			return nil, netip.Addr{}, netip.Addr{}, err
 		}
@@ -145,12 +181,9 @@ func buildSegmentList(s *APIServer, input *pb.CreateSRPolicyRequest, disablePath
 		dstAddr, _ = netip.AddrFromSlice(inputSRPolicy.GetDstAddr())
 
 		for _, segment := range inputSRPolicy.GetSegmentList() {
-			seg, err := table.NewSegment(segment.GetSid())
+			seg, err := newEnrichedSegment(segment, s.usidMode)
 			if err != nil {
 				return nil, netip.Addr{}, netip.Addr{}, err
-			}
-			if srv6Seg, ok := seg.(table.SegmentSRv6); ok {
-				seg = enrichSRv6Segment(srv6Seg, segment, s.usidMode)
 			}
 			segmentList = append(segmentList, seg)
 		}
@@ -224,12 +257,9 @@ func (s *APIServer) DeleteSRPolicy(ctx context.Context, input *pb.DeleteSRPolicy
 	srcAddr, _ = netip.AddrFromSlice(inputSRPolicy.GetSrcAddr())
 	dstAddr, _ = netip.AddrFromSlice(inputSRPolicy.GetDstAddr())
 	for _, segment := range inputSRPolicy.GetSegmentList() {
-		seg, err := table.NewSegment(segment.GetSid())
+		seg, err := newEnrichedSegment(segment, s.usidMode)
 		if err != nil {
 			return &pb.DeleteSRPolicyResponse{IsSuccess: false}, err
-		}
-		if srv6Seg, ok := seg.(table.SegmentSRv6); ok {
-			seg = enrichSRv6Segment(srv6Seg, segment, s.usidMode)
 		}
 		segmentList = append(segmentList, seg)
 	}
@@ -363,7 +393,7 @@ func getLoopbackAddr(pce *Server, routerID string) (netip.Addr, error) {
 	return node.LoopbackAddr()
 }
 
-func getSegmentList(inputSRPolicy *pb.SRPolicy, ted *table.LsTED) ([]table.Segment, error) {
+func getSegmentList(inputSRPolicy *pb.SRPolicy, ted *table.LsTED, usidMode bool) ([]table.Segment, error) {
 	var segmentList []table.Segment
 
 	switch inputSRPolicy.GetType() {
@@ -372,7 +402,7 @@ func getSegmentList(inputSRPolicy *pb.SRPolicy, ted *table.LsTED) ([]table.Segme
 			return nil, errors.New("no segments in SRPolicy input")
 		}
 		for _, segment := range inputSRPolicy.GetSegmentList() {
-			sid, err := table.NewSegment(segment.GetSid())
+			sid, err := newEnrichedSegment(segment, usidMode)
 			if err != nil {
 				return nil, err
 			}

@@ -1,0 +1,12 @@
+# Same segment list as pe02-policy1.yaml but without localAddr, so the SR-ERO
+# subobjects are encoded with the NAI absent (F=1).
+asn: 65000
+srPolicy:
+  pcepSessionAddr: "10.0.255.2"
+  srcAddr: "10.255.0.2"
+  dstAddr: "10.255.0.1"
+  name: pe02-policy2
+  color: 2
+  segmentList:
+    - sid: "16001"
+    - sid: "16003"

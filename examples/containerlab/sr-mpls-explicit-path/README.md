@@ -181,10 +181,10 @@ Name: pe02-policy1
     ERO Valid: true
       SR-ERO hop count: 2
         Hop 1 (Strict):
-          NAI: None
+          NAI: IPv4 Node ID, Node address: 10.255.0.1
           SID type: 20-bit label, Value: 16001
         Hop 2 (Strict):
-          NAI: None
+          NAI: IPv4 Node ID, Node address: 10.255.0.3
           SID type: 20-bit label, Value: 16003
 
 

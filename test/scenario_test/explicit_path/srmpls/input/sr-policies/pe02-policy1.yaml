@@ -1,0 +1,12 @@
+asn: 65000
+srPolicy:
+  pcepSessionAddr: "10.0.255.2"
+  srcAddr: "10.255.0.2"
+  dstAddr: "10.255.0.1"
+  name: pe02-policy1
+  color: 1
+  segmentList:
+    - sid: "16001"
+      localAddr: "10.255.0.1"
+    - sid: "16003"
+      localAddr: "10.255.0.3"

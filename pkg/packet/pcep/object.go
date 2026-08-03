@@ -945,10 +945,13 @@ type SREroSubobject struct {
 	CFlag         bool
 	MFlag         bool
 	Segment       table.SegmentSRMPLS
-	NAI           netip.Addr
 }
 
 func (o *SREroSubobject) DecodeFromBytes(subobject []uint8) error {
+	if len(subobject) < 8 {
+		return errors.New("SREroSubobject: subobject too short")
+	}
+
 	o.LFlag = (subobject[0] & 0x80) != 0
 	o.SubobjectType = SubobjectType(subobject[0] & 0x7f)
 	o.Length = subobject[1]
@@ -967,10 +970,62 @@ func (o *SREroSubobject) DecodeFromBytes(subobject []uint8) error {
 		o.Segment.S = (sidWord & (uint32(1) << 8)) != 0
 		o.Segment.TTL = uint8(sidWord & 0xFF)
 	}
-	if o.NAIType == NAITypeSRIPv4Node {
-		o.NAI, _ = netip.AddrFromSlice(subobject[8:12])
+
+	// The NAI follows the SID and is present only when F=0 (RFC8664 4.3.1).
+	if !o.FFlag {
+		const off = 8
+		naiLength, err := o.NAIType.naiLength()
+		if err != nil {
+			return err
+		}
+		if naiLength > 0 && len(subobject) < off+int(naiLength) {
+			return fmt.Errorf("SREroSubobject: truncated NAI (%s)", o.NAIType)
+		}
+		switch o.NAIType {
+		case NAITypeSRIPv4Node, NAITypeSRIPv6Node:
+			o.Segment.LocalAddr, _ = netip.AddrFromSlice(subobject[off : off+int(naiLength)])
+		case NAITypeSRIPv4Adjacency, NAITypeSRIPv6AdjacencyGlobal:
+			half := off + int(naiLength)/2
+			o.Segment.LocalAddr, _ = netip.AddrFromSlice(subobject[off:half])
+			o.Segment.RemoteAddr, _ = netip.AddrFromSlice(subobject[half : off+int(naiLength)])
+		}
 	}
 	return nil
+}
+
+// serializeNAI encodes the NAI following the SID, or nil when it is absent.
+func (o *SREroSubobject) serializeNAI() ([]uint8, error) {
+	if o.FFlag {
+		return nil, nil
+	}
+
+	local, remote := o.Segment.LocalAddr.Unmap(), o.Segment.RemoteAddr.Unmap()
+	switch o.NAIType {
+	case NAITypeSRAbsent:
+		return nil, nil
+	case NAITypeSRIPv4Node:
+		if !local.Is4() {
+			return nil, errors.New("SREroSubobject: IPv4 node NAI requires an IPv4 LocalAddr")
+		}
+		return local.AsSlice(), nil
+	case NAITypeSRIPv6Node:
+		if !local.Is6() {
+			return nil, errors.New("SREroSubobject: IPv6 node NAI requires an IPv6 LocalAddr")
+		}
+		return local.AsSlice(), nil
+	case NAITypeSRIPv4Adjacency:
+		if !local.Is4() || !remote.Is4() {
+			return nil, errors.New("SREroSubobject: IPv4 adjacency NAI requires IPv4 LocalAddr and RemoteAddr")
+		}
+		return AppendByteSlices(local.AsSlice(), remote.AsSlice()), nil
+	case NAITypeSRIPv6AdjacencyGlobal:
+		if !local.Is6() || !remote.Is6() {
+			return nil, errors.New("SREroSubobject: IPv6 adjacency NAI requires IPv6 LocalAddr and RemoteAddr")
+		}
+		return AppendByteSlices(local.AsSlice(), remote.AsSlice()), nil
+	default:
+		return nil, errors.New("unsupported naitype")
+	}
 }
 
 func (o *SREroSubobject) Serialize() ([]uint8, error) {
@@ -1006,41 +1061,82 @@ func (o *SREroSubobject) Serialize() ([]uint8, error) {
 	byteSid := make([]uint8, 4)
 	binary.BigEndian.PutUint32(byteSid, sidWord)
 
-	byteSREroSubobject := AppendByteSlices(buf, byteSid)
-
-	// Per RFC 8664 §4.3.1, when NAI is present (F=0), the NAI value follows the SID.
-	switch o.NAIType {
-	case NAITypeSRIPv4Node, NAITypeSRIPv6Node:
-		if o.NAI.IsValid() {
-			byteSREroSubobject = append(byteSREroSubobject, o.NAI.AsSlice()...)
-		}
+	byteNAI, err := o.serializeNAI()
+	if err != nil {
+		return nil, err
 	}
 
-	return byteSREroSubobject, nil
+	return AppendByteSlices(buf, byteSid, byteNAI), nil
 }
 
-func (o *SREroSubobject) Len() (uint16, error) {
-	switch o.NAIType {
+func (nt NAITypeSR) naiLength() (uint16, error) {
+	switch nt {
 	case NAITypeSRAbsent:
-		// Type, Length, Flags (4byte) + SID (4byte)
-		return uint16(8), nil
+		return uint16(0), nil
 	case NAITypeSRIPv4Node:
-		// Type, Length, Flags (4byte) + SID (4byte) + NAI (4byte)
-		return uint16(12), nil
+		return uint16(4), nil
 	case NAITypeSRIPv6Node:
-		// Type, Length, Flags (4byte) + SID (4byte) + NAI (16byte)
-		return uint16(24), nil
+		return uint16(16), nil
+	case NAITypeSRIPv4Adjacency:
+		return uint16(8), nil
+	case NAITypeSRIPv6AdjacencyGlobal:
+		return uint16(32), nil
 	default:
 		return uint16(0), errors.New("unsupported naitype")
 	}
 }
 
+func (o *SREroSubobject) Len() (uint16, error) {
+	length := uint16(8)
+	if o.FFlag {
+		return length, nil
+	}
+	naiLength, err := o.NAIType.naiLength()
+	if err != nil {
+		return uint16(0), err
+	}
+	return length + naiLength, nil
+}
+
+// naiTypeSRFor derives the NAI type from LocalAddr and RemoteAddr
+// according to RFC8664 4.3.1.
+func naiTypeSRFor(seg table.SegmentSRMPLS) (NAITypeSR, error) {
+	local, remote := seg.LocalAddr.Unmap(), seg.RemoteAddr.Unmap()
+	if !local.IsValid() {
+		if remote.IsValid() {
+			return NAITypeSRAbsent, errors.New("SegmentSRMPLS: RemoteAddr requires LocalAddr")
+		}
+		return NAITypeSRAbsent, nil
+	}
+	if !remote.IsValid() {
+		if local.Is4() {
+			return NAITypeSRIPv4Node, nil
+		}
+		return NAITypeSRIPv6Node, nil
+	}
+	if local.Is4() != remote.Is4() {
+		return NAITypeSRAbsent, errors.New("SegmentSRMPLS: LocalAddr and RemoteAddr must be of the same address family")
+	}
+	if local.Is4() {
+		return NAITypeSRIPv4Adjacency, nil
+	}
+	if local.IsLinkLocalUnicast() || remote.IsLinkLocalUnicast() {
+		return NAITypeSRAbsent, errors.New("SegmentSRMPLS: link-local IPv6 adjacency NAI is unsupported")
+	}
+	return NAITypeSRIPv6AdjacencyGlobal, nil
+}
+
 func NewSREroSubobject(seg table.SegmentSRMPLS) (*SREroSubobject, error) {
+	naiType, err := naiTypeSRFor(seg)
+	if err != nil {
+		return nil, err
+	}
+
 	subo := &SREroSubobject{
 		LFlag:         false,
 		SubobjectType: SubobjectTypeEROSR,
-		NAIType:       NAITypeSRAbsent,
-		FFlag:         true, // NAI is absent
+		NAIType:       naiType,
+		FFlag:         naiType == NAITypeSRAbsent, // F=1: NAI is absent
 		SFlag:         false,
 		CFlag:         seg.HasMPLSStackEntryAttrs(),
 		MFlag:         true, // TODO: Determine either MPLS label or index
