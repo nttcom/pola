@@ -26,8 +26,8 @@ jobs:
         include:
           - name: prod
             dockerfile: ./build/package/Dockerfile
-          - name: dev
-            dockerfile: ./build/package/Dockerfile.dev
+          - name: debug
+            dockerfile: ./build/package/Dockerfile.debug
 
     steps:
       - name: Checkout repository
@@ -56,8 +56,8 @@ jobs:
             type=ref,event=tag,enable=${{ matrix.name == 'prod' }}
             type=raw,value=latest,enable=${{ matrix.name == 'prod' }}
 
-            type=raw,value=latest-dev,enable=${{ matrix.name == 'dev' }}
-            type=raw,value=${{ github.ref_name }}-dev,enable=${{ matrix.name == 'dev' }}
+            type=raw,value=latest-debug,enable=${{ matrix.name == 'debug' }}
+            type=raw,value=${{ github.ref_name }}-debug,enable=${{ matrix.name == 'debug' }}
 
       - name: Build and push Docker image
         id: build

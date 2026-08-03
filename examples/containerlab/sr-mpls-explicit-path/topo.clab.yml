@@ -1,0 +1,51 @@
+name: sr-mpls-explicit-path
+topology:
+  kinds:
+    xrd:
+      image: ios-xr/xrd-control-plane:24.4.1
+    juniper_vjunosrouter:
+      image: vrnetlab/juniper_vjunos-router:25.2R1.9
+  nodes:
+    pola:
+      kind: linux
+      image: ghcr.io/nttcom/pola:latest-debug
+      binds:
+        - pola/polad.yaml:/pola/polad.yaml
+        - sr-policies/pe01-policy1.yaml:/pola/pe01-policy1.yaml
+        - sr-policies/pe02-policy1.yaml:/pola/pe02-policy1.yaml
+        - sr-policies/pe03-policy1.yaml:/pola/pe03-policy1.yaml
+      exec:
+        - ip addr add 10.0.255.254/24 dev eth1
+    pe01:
+      kind: xrd
+      startup-config: startup-configs/pe01.cfg
+    pe02:
+      kind: juniper_vjunosrouter
+      startup-config: startup-configs/pe02.cfg
+    pe03:
+      kind: linux
+      image: frrouting/frr:v8.4.1
+      binds:
+        - startup-configs/pe03/daemons:/etc/frr/daemons
+        - startup-configs/pe03/vtysh.conf:/etc/frr/vtysh.conf
+        - startup-configs/pe03/frr.conf:/etc/frr/frr.conf
+        - startup-configs/pe03/vtysh.sh:/vtysh.sh
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - sysctl -w net.mpls.conf.lo.input=1
+        - sysctl -w net.mpls.conf.eth1.input=1
+        - sysctl -w net.mpls.conf.eth2.input=1
+        - sysctl -w net.mpls.platform_labels=1048575
+        - bash /vtysh.sh
+    switch:
+      kind: bridge
+  links:
+    # SR-MPLS domain
+    - endpoints: ["pe01:Gi0-0-0-0", "pe02:eth1"]
+    - endpoints: ["pe01:Gi0-0-0-1", "pe03:eth1"]
+    - endpoints: ["pe02:eth2", "pe03:eth2"]
+    # switch
+    - endpoints: ["pola:eth1", "switch:eth1"]
+    - endpoints: ["pe01:Gi0-0-0-2", "switch:eth2"]
+    - endpoints: ["pe02:eth3", "switch:eth3"]
+    - endpoints: ["pe03:eth3", "switch:eth4"] 

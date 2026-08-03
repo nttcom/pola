@@ -60,7 +60,7 @@ make check-proto
 
 # Build Docker images
 make image
-make image-dev
+make image-debug
 
 # Run the same checks as CI
 make ci
