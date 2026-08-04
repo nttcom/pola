@@ -1072,15 +1072,15 @@ func TestAssociationObject_ColorPreferenceFromTLVs(t *testing.T) {
 			},
 			wantColor: 100, wantPreference: 200,
 		},
-		// UndefinedTLV fallback path must still work for vendor TLVs that are not decoded as typed TLVs.
-		"UndefinedTLVDecodePath": {
+		// UnknownTLV fallback path must still work for vendor TLVs that are not decoded as typed TLVs.
+		"UnknownTLVDecodePath": {
 			object: &AssociationObject{
 				TLVs: []TLVInterface{
-					&UndefinedTLV{
+					&UnknownTLV{
 						Typ:   TLVExtendedAssociationIDIPv4Juniper,
 						Value: AppendByteSlices(Uint32ToByteSlice(100), dstAddr.AsSlice()),
 					},
-					&UndefinedTLV{
+					&UnknownTLV{
 						Typ:   TLVSRPolicyCPathPreferenceJuniper,
 						Value: Uint32ToByteSlice(200),
 					},
@@ -1121,7 +1121,7 @@ func TestVendorInformationObject_DecodeFromBytes(t *testing.T) {
 				ObjectType:       ObjectTypeVendorSpecificConstraints,
 				EnterpriseNumber: EnterpriseNumberCisco,
 				TLVs: []TLVInterface{
-					&UndefinedTLV{Typ: SubTLVColorCisco, Length: 4, Value: []uint8{0x00, 0x00, 0x00, 0x64}},
+					&UnknownTLV{Typ: SubTLVColorCisco, Length: 4, Value: []uint8{0x00, 0x00, 0x00, 0x64}},
 				},
 			},
 		},
@@ -1133,7 +1133,7 @@ func TestVendorInformationObject_DecodeFromBytes(t *testing.T) {
 				ObjectType:       ObjectTypeVendorSpecificConstraints,
 				EnterpriseNumber: EnterpriseNumberCisco,
 				TLVs: []TLVInterface{
-					&UndefinedTLV{Typ: TLVVendorInformation, Length: 2, Value: []uint8{0xde, 0xad}},
+					&UnknownTLV{Typ: TLVVendorInformation, Length: 2, Value: []uint8{0xde, 0xad}},
 				},
 			},
 		},
@@ -1175,8 +1175,8 @@ func TestVendorInformationObject_ColorPreference(t *testing.T) {
 			object: &VendorInformationObject{
 				EnterpriseNumber: EnterpriseNumberCisco,
 				TLVs: []TLVInterface{
-					&UndefinedTLV{Typ: SubTLVColorCisco, Length: 4, Value: Uint32ToByteSlice(100)},
-					&UndefinedTLV{Typ: SubTLVPreferenceCisco, Length: 4, Value: Uint32ToByteSlice(200)},
+					&UnknownTLV{Typ: SubTLVColorCisco, Length: 4, Value: Uint32ToByteSlice(100)},
+					&UnknownTLV{Typ: SubTLVPreferenceCisco, Length: 4, Value: Uint32ToByteSlice(200)},
 				},
 			},
 			wantColor: 100, wantPreference: 200,
@@ -1186,8 +1186,8 @@ func TestVendorInformationObject_ColorPreference(t *testing.T) {
 			object: &VendorInformationObject{
 				EnterpriseNumber: EnterpriseNumberCisco,
 				TLVs: []TLVInterface{
-					&UndefinedTLV{Typ: SubTLVColorCisco, Length: 0, Value: []uint8{}},
-					&UndefinedTLV{Typ: SubTLVPreferenceCisco, Length: 2, Value: []uint8{0x00, 0x01}},
+					&UnknownTLV{Typ: SubTLVColorCisco, Length: 0, Value: []uint8{}},
+					&UnknownTLV{Typ: SubTLVPreferenceCisco, Length: 2, Value: []uint8{0x00, 0x01}},
 				},
 			},
 			wantColor: 0, wantPreference: 0,
@@ -1216,7 +1216,7 @@ func TestVendorInformationObject_RoundTrip(t *testing.T) {
 			ObjectType:       ObjectTypeVendorSpecificConstraints,
 			EnterpriseNumber: EnterpriseNumberCisco,
 			TLVs: []TLVInterface{
-				&UndefinedTLV{
+				&UnknownTLV{
 					Typ:    SubTLVColorCisco,
 					Length: SubTLVColorCiscoValueLength,
 					Value:  Uint32ToByteSlice(100),
@@ -1227,12 +1227,12 @@ func TestVendorInformationObject_RoundTrip(t *testing.T) {
 			ObjectType:       ObjectTypeVendorSpecificConstraints,
 			EnterpriseNumber: EnterpriseNumberCisco,
 			TLVs: []TLVInterface{
-				&UndefinedTLV{
+				&UnknownTLV{
 					Typ:    SubTLVColorCisco,
 					Length: SubTLVColorCiscoValueLength,
 					Value:  Uint32ToByteSlice(100),
 				},
-				&UndefinedTLV{
+				&UnknownTLV{
 					Typ:    SubTLVPreferenceCisco,
 					Length: SubTLVPreferenceCiscoValueLength,
 					Value:  Uint32ToByteSlice(200),
@@ -1243,12 +1243,12 @@ func TestVendorInformationObject_RoundTrip(t *testing.T) {
 			ObjectType:       ObjectTypeVendorSpecificConstraints,
 			EnterpriseNumber: EnterpriseNumberCisco,
 			TLVs: []TLVInterface{
-				&UndefinedTLV{
+				&UnknownTLV{
 					Typ:    SubTLVColorCisco,
 					Length: SubTLVColorCiscoValueLength,
 					Value:  Uint32ToByteSlice(0),
 				},
-				&UndefinedTLV{
+				&UnknownTLV{
 					Typ:    SubTLVPreferenceCisco,
 					Length: SubTLVPreferenceCiscoValueLength,
 					Value:  Uint32ToByteSlice(0),

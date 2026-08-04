@@ -1903,65 +1903,65 @@ func TestColor_Len(t *testing.T) {
 	runTLVLenTests(t, cases)
 }
 
-// Test data for UndefinedTLV.
+// Test data for UnknownTLV.
 var (
-	// Standard 4-byte UndefinedTLV
-	testUndefinedTLV = &UndefinedTLV{
+	// Standard 4-byte UnknownTLV
+	testUnknownTLV = &UnknownTLV{
 		Typ:    TLVType(0xffff),
 		Length: 4,
 		Value:  []byte{0xde, 0xad, 0xbe, 0xef},
 	}
 	// 3-byte value (odd → 1 byte padding required)
-	testUndefinedTLVOddLength = &UndefinedTLV{
+	testUnknownTLVOddLength = &UnknownTLV{
 		Typ:    TLVType(0xffff),
 		Length: 3,
 		Value:  []byte{0x01, 0x02, 0x03},
 	}
 
 	// Serialized TLV bytes
-	testUndefinedTLVBytes           = []byte{0xff, 0xff, 0x00, 0x04, 0xde, 0xad, 0xbe, 0xef}
-	testUndefinedTLVOddLengthBytes  = []byte{0xff, 0xff, 0x00, 0x03, 0x01, 0x02, 0x03, 0x00}
-	testUndefinedTLVTruncatedHeader = []byte{0xff, 0xff, 0x00}
-	testUndefinedTLVTruncatedValue  = []byte{0xff, 0xff, 0x00, 0x08, 0x01, 0x02}
+	testUnknownTLVBytes           = []byte{0xff, 0xff, 0x00, 0x04, 0xde, 0xad, 0xbe, 0xef}
+	testUnknownTLVOddLengthBytes  = []byte{0xff, 0xff, 0x00, 0x03, 0x01, 0x02, 0x03, 0x00}
+	testUnknownTLVTruncatedHeader = []byte{0xff, 0xff, 0x00}
+	testUnknownTLVTruncatedValue  = []byte{0xff, 0xff, 0x00, 0x08, 0x01, 0x02}
 )
 
-func TestUndefinedTLV_DecodeFromBytes(t *testing.T) {
+func TestUnknownTLV_DecodeFromBytes(t *testing.T) {
 	cases := map[string]TLVTestCase{
-		"ValidUndefinedTLV": {testUndefinedTLVBytes, testUndefinedTLV, false},
-		"TruncatedHeader":   {testUndefinedTLVTruncatedHeader, nil, true},
-		"TruncatedValue":    {testUndefinedTLVTruncatedValue, nil, true},
+		"ValidUnknownTLV": {testUnknownTLVBytes, testUnknownTLV, false},
+		"TruncatedHeader": {testUnknownTLVTruncatedHeader, nil, true},
+		"TruncatedValue":  {testUnknownTLVTruncatedValue, nil, true},
 	}
-	runTLVDecodeTests(t, cases, func() TLVInterface { return &UndefinedTLV{} })
+	runTLVDecodeTests(t, cases, func() TLVInterface { return &UnknownTLV{} })
 }
 
-func TestUndefinedTLV_Serialize(t *testing.T) {
+func TestUnknownTLV_Serialize(t *testing.T) {
 	cases := map[string]struct {
 		input    TLVInterface
 		expected []byte
 	}{
-		"AlignedValue":   {testUndefinedTLV, testUndefinedTLVBytes},
-		"UnalignedValue": {testUndefinedTLVOddLength, testUndefinedTLVOddLengthBytes},
+		"AlignedValue":   {testUnknownTLV, testUnknownTLVBytes},
+		"UnalignedValue": {testUnknownTLVOddLength, testUnknownTLVOddLengthBytes},
 	}
 	runTLVSerializeTests(t, cases)
 }
 
-func TestUndefinedTLV_MarshalLogObject(t *testing.T) {
+func TestUnknownTLV_MarshalLogObject(t *testing.T) {
 	cases := map[string]struct {
-		input    *UndefinedTLV
+		input    *UnknownTLV
 		expected map[string]any
 	}{
 		"StandardTLV": {
-			testUndefinedTLV,
+			testUnknownTLV,
 			map[string]any{
-				"type":   fmt.Sprintf("0x%04x", testUndefinedTLV.Typ),
-				"length": testUndefinedTLV.Length,
+				"type":   fmt.Sprintf("0x%04x", testUnknownTLV.Typ),
+				"length": testUnknownTLV.Length,
 			},
 		},
 		"OddLength": {
-			testUndefinedTLVOddLength,
+			testUnknownTLVOddLength,
 			map[string]any{
-				"type":   fmt.Sprintf("0x%04x", testUndefinedTLVOddLength.Typ),
-				"length": testUndefinedTLVOddLength.Length,
+				"type":   fmt.Sprintf("0x%04x", testUnknownTLVOddLength.Typ),
+				"length": testUnknownTLVOddLength.Length,
 			},
 		},
 		"NilTLV": {
@@ -1980,18 +1980,18 @@ func TestUndefinedTLV_MarshalLogObject(t *testing.T) {
 	}
 }
 
-func TestUndefinedTLV_Len(t *testing.T) {
+func TestUnknownTLV_Len(t *testing.T) {
 	cases := map[string]struct {
 		input    TLVInterface
 		expected uint16
 	}{
-		"AlignedLen":   {testUndefinedTLV, TLVValueOffset + 4},          // 4-byte value
-		"UnalignedLen": {testUndefinedTLVOddLength, TLVValueOffset + 4}, // 3-byte value + 1 pad = 4
+		"AlignedLen":   {testUnknownTLV, TLVValueOffset + 4},          // 4-byte value
+		"UnalignedLen": {testUnknownTLVOddLength, TLVValueOffset + 4}, // 3-byte value + 1 pad = 4
 	}
 	runTLVLenTests(t, cases)
 }
 
-func TestUndefinedTLV_CapStrings(t *testing.T) {
+func TestUnknownTLV_CapStrings(t *testing.T) {
 	cases := map[string]struct {
 		input    CapStringsInterface
 		expected []string
@@ -1999,16 +1999,16 @@ func TestUndefinedTLV_CapStrings(t *testing.T) {
 		// Registered in tlvDescriptions but with no dedicated decoder: reported
 		// under its registry name rather than as unknown_type_<n>.
 		"RegisteredWithoutDecoder": {
-			input:    &UndefinedTLV{Typ: TLVSRP2MPPolicyCapability},
+			input:    &UnknownTLV{Typ: TLVSRP2MPPolicyCapability},
 			expected: []string{"SR-P2MP-POLICY-CAPABILITY"},
 		},
 		"RegisteredVendorSpecific": {
-			input:    &UndefinedTLV{Typ: TLVSRPolicyCPathPreferenceJuniper},
+			input:    &UnknownTLV{Typ: TLVSRPolicyCPathPreferenceJuniper},
 			expected: []string{"SRPOLICY-CPATH-PREFERENCE (Juniper)"},
 		},
 		// Absent from the registry: falls back to the numeric form.
 		"UnregisteredType": {
-			input:    &UndefinedTLV{Typ: TLVType(0x1234)},
+			input:    &UnknownTLV{Typ: TLVType(0x1234)},
 			expected: []string{"unknown_type_4660"},
 		},
 	}
@@ -2016,8 +2016,8 @@ func TestUndefinedTLV_CapStrings(t *testing.T) {
 	runCapStringsTests(t, cases)
 }
 
-func TestUndefinedTLV_SetLength(t *testing.T) {
-	tlv := &UndefinedTLV{Value: []byte{0x01, 0x02, 0x03}}
+func TestUnknownTLV_SetLength(t *testing.T) {
+	tlv := &UnknownTLV{Value: []byte{0x01, 0x02, 0x03}}
 	tlv.SetLength()
 	assert.Equal(t, uint16(3), tlv.Length, "SetLength() should set Length to len(Value)")
 }

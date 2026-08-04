@@ -1751,7 +1751,7 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 func (o *AssociationObject) Color() uint32 {
 	for _, tlv := range o.TLVs {
 		switch t := tlv.(type) {
-		case *UndefinedTLV:
+		case *UnknownTLV:
 			if t.Type() == TLVExtendedAssociationIDIPv4Juniper {
 				return uint32(binary.BigEndian.Uint32(t.Value[:4]))
 			}
@@ -1768,7 +1768,7 @@ func (o *AssociationObject) Color() uint32 {
 func (o *AssociationObject) Preference() uint32 {
 	for _, tlv := range o.TLVs {
 		switch t := tlv.(type) {
-		case *UndefinedTLV:
+		case *UnknownTLV:
 			if t.Type() == TLVSRPolicyCPathPreferenceJuniper {
 				return uint32(binary.BigEndian.Uint32(t.Value))
 			}
@@ -1856,12 +1856,12 @@ func NewVendorInformationObject(vendor PccType, color uint32, preference uint32)
 	if vendor == CiscoLegacy {
 		o.EnterpriseNumber = EnterpriseNumberCisco
 		vendorInformationObjectTLVs := []TLVInterface{
-			&UndefinedTLV{
+			&UnknownTLV{
 				Typ:    SubTLVColorCisco,
 				Length: SubTLVColorCiscoValueLength, // TODO: 20 if ipv6 endpoint
 				Value:  Uint32ToByteSlice(color),
 			},
-			&UndefinedTLV{
+			&UnknownTLV{
 				Typ:    SubTLVPreferenceCisco,
 				Length: SubTLVPreferenceCiscoValueLength,
 				Value:  Uint32ToByteSlice(preference),
@@ -1886,7 +1886,7 @@ func (o *VendorInformationObject) Preference() uint32 {
 // or 0 if it is absent or too short to hold one.
 func (o *VendorInformationObject) subTLVUint32(typ TLVType) uint32 {
 	for _, tlv := range o.TLVs {
-		t, ok := tlv.(*UndefinedTLV)
+		t, ok := tlv.(*UnknownTLV)
 		if !ok || t.Type() != typ {
 			continue
 		}

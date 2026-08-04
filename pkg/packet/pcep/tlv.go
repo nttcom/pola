@@ -1835,16 +1835,16 @@ func (tlv *Color) Len() uint16 {
 	return TLVValueOffset + TLVColorValueLength
 }
 
-type UndefinedTLV struct {
+type UnknownTLV struct {
 	Typ    TLVType
 	Length uint16
 	Value  []byte
 }
 
-func (tlv *UndefinedTLV) DecodeFromBytes(data []byte) error {
+func (tlv *UnknownTLV) DecodeFromBytes(data []byte) error {
 	valueLen, err := decodeTLVLength(data, true)
 	if err != nil {
-		return fmt.Errorf("UndefinedTLV: %w", err)
+		return fmt.Errorf("UnknownTLV: %w", err)
 	}
 
 	tlv.Typ = TLVType(binary.BigEndian.Uint16(data[TLVTypeOffset:TLVLengthOffset]))
@@ -1854,7 +1854,7 @@ func (tlv *UndefinedTLV) DecodeFromBytes(data []byte) error {
 	return nil
 }
 
-func (tlv *UndefinedTLV) Serialize() []byte {
+func (tlv *UnknownTLV) Serialize() []byte {
 	padding := (TLVAlignment - (tlv.Length % TLVAlignment)) % TLVAlignment
 
 	return AppendByteSlices(
@@ -1865,7 +1865,7 @@ func (tlv *UndefinedTLV) Serialize() []byte {
 	)
 }
 
-func (tlv *UndefinedTLV) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+func (tlv *UnknownTLV) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	if tlv == nil {
 		return nil
 	}
@@ -1875,11 +1875,11 @@ func (tlv *UndefinedTLV) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	return nil
 }
 
-func (tlv *UndefinedTLV) Type() TLVType {
+func (tlv *UnknownTLV) Type() TLVType {
 	return tlv.Typ
 }
 
-func (tlv *UndefinedTLV) Len() uint16 {
+func (tlv *UnknownTLV) Len() uint16 {
 	padding := uint16(0)
 	if tlv.Length%4 != 0 {
 		padding = (4 - tlv.Length%4)
@@ -1889,7 +1889,7 @@ func (tlv *UndefinedTLV) Len() uint16 {
 
 // CapStrings reports the registered TLV name even when no decoder exists.
 // Unknown TLV types fall back to "unknown_type_<n>".
-func (tlv *UndefinedTLV) CapStrings() []string {
+func (tlv *UnknownTLV) CapStrings() []string {
 	if desc, ok := tlvDescriptions[tlv.Typ]; ok {
 		return []string{desc.Description}
 	}
@@ -1897,7 +1897,7 @@ func (tlv *UndefinedTLV) CapStrings() []string {
 	return []string{capStr}
 }
 
-func (tlv *UndefinedTLV) SetLength() {
+func (tlv *UnknownTLV) SetLength() {
 	tlv.Length = uint16(len(tlv.Value))
 }
 
@@ -1913,7 +1913,7 @@ func DecodeTLV(data []byte) (TLVInterface, error) {
 func decodeTLV(data []byte, tlvType TLVType) (TLVInterface, error) {
 	createTLV, found := tlvMap[tlvType]
 	if !found {
-		return decodeUndefinedTLV(data, tlvType)
+		return decodeUnknownTLV(data, tlvType)
 	}
 
 	tlv := createTLV()
@@ -1924,11 +1924,11 @@ func decodeTLV(data []byte, tlvType TLVType) (TLVInterface, error) {
 	return tlv, nil
 }
 
-// decodeUndefinedTLV decodes a single TLV without consulting tlvMap, keeping its value as raw bytes.
-func decodeUndefinedTLV(data []byte, tlvType TLVType) (TLVInterface, error) {
-	tlv := &UndefinedTLV{}
+// decodeUnknownTLV decodes a single TLV without consulting tlvMap, keeping its value as raw bytes.
+func decodeUnknownTLV(data []byte, tlvType TLVType) (TLVInterface, error) {
+	tlv := &UnknownTLV{}
 	if err := tlv.DecodeFromBytes(data); err != nil {
-		return nil, fmt.Errorf("error decoding undefined TLV type %x: %w", uint16(tlvType), err)
+		return nil, fmt.Errorf("error decoding unknown TLV type %x: %w", uint16(tlvType), err)
 	}
 
 	return tlv, nil
@@ -1939,11 +1939,9 @@ func DecodeTLVs(data []byte) ([]TLVInterface, error) {
 	return decodeTLVSequence(data, decodeTLV)
 }
 
-// DecodeVendorTLVs decodes a sequence of TLVs carried in a VENDOR-INFORMATION Object (RFC7470 4).
-// Their type space is enterprise-specific and may collide with the standard one, so every TLV is
-// kept as an UndefinedTLV instead of being matched against tlvMap.
+// DecodeVendorTLVs decodes vendor-specific TLVs as UnknownTLV.
 func DecodeVendorTLVs(data []byte) ([]TLVInterface, error) {
-	return decodeTLVSequence(data, decodeUndefinedTLV)
+	return decodeTLVSequence(data, decodeUnknownTLV)
 }
 
 func decodeTLVSequence(data []byte, decode func([]byte, TLVType) (TLVInterface, error)) ([]TLVInterface, error) {
