@@ -1711,9 +1711,10 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 			},
 			&SRPolicyCandidatePathIdentifierJuniper{
 				SRPolicyCandidatePathIdentifier: SRPolicyCandidatePathIdentifier{
+					ProtocolOrigin: ProtocolOriginPCEP,
 					OriginatorASN:  opts.originatorASN,
-					OriginatorAddr: dstAddr,
-					Discriminator:  1,
+					// Preserve Juniper legacy CPATH-ID TLV wire format with zero-filled Originator Address.
+					Discriminator: 1,
 				},
 			},
 			&SRPolicyCandidatePathPreferenceJuniper{
@@ -1751,14 +1752,16 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 func (o *AssociationObject) Color() uint32 {
 	for _, tlv := range o.TLVs {
 		switch t := tlv.(type) {
-		case *UnknownTLV:
-			if t.Type() == TLVExtendedAssociationIDIPv4Juniper {
-				return uint32(binary.BigEndian.Uint32(t.Value[:4]))
-			}
 		case *ExtendedAssociationIDIPv4Juniper:
 			return t.Color
+
 		case *ExtendedAssociationID:
 			return t.Color
+
+		case *UnknownTLV:
+			if t.Type() == TLVExtendedAssociationIDIPv4Juniper && len(t.Value) >= 4 {
+				return uint32(binary.BigEndian.Uint32(t.Value[:4]))
+			}
 		}
 	}
 	return 0
@@ -1768,14 +1771,16 @@ func (o *AssociationObject) Color() uint32 {
 func (o *AssociationObject) Preference() uint32 {
 	for _, tlv := range o.TLVs {
 		switch t := tlv.(type) {
-		case *UnknownTLV:
-			if t.Type() == TLVSRPolicyCPathPreferenceJuniper {
-				return uint32(binary.BigEndian.Uint32(t.Value))
-			}
 		case *SRPolicyCandidatePathPreferenceJuniper:
 			return t.Preference
+
 		case *SRPolicyCandidatePathPreference:
 			return t.Preference
+
+		case *UnknownTLV:
+			if t.Type() == TLVSRPolicyCPathPreferenceJuniper && len(t.Value) >= 4 {
+				return uint32(binary.BigEndian.Uint32(t.Value))
+			}
 		}
 	}
 	return 0
