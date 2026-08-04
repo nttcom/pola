@@ -54,6 +54,10 @@ func TestTLVMap(t *testing.T) {
 		"SRPolicyCPathID":         {TLVSRPolicyCPathID, &SRPolicyCandidatePathIdentifier{}},
 		"SRPolicyCPathPreference": {TLVSRPolicyCPathPreference, &SRPolicyCandidatePathPreference{}},
 		"Color":                   {TLVColor, &Color{}},
+
+		"ExtendedAssociationIDIPv4Juniper": {TLVExtendedAssociationIDIPv4Juniper, &ExtendedAssociationIDIPv4Juniper{}},
+		"SRPolicyCPathIDJuniper":           {TLVSRPolicyCPathIDJuniper, &SRPolicyCandidatePathIdentifierJuniper{}},
+		"SRPolicyCPathPreferenceJuniper":   {TLVSRPolicyCPathPreferenceJuniper, &SRPolicyCandidatePathPreferenceJuniper{}},
 	}
 
 	for name, tt := range cases {
@@ -1273,6 +1277,62 @@ func TestExtendedAssociationID_Len(t *testing.T) {
 	runTLVLenTests(t, cases)
 }
 
+func TestExtendedAssociationIDIPv4Juniper_Type(t *testing.T) {
+	t.Parallel()
+
+	tlv := &ExtendedAssociationIDIPv4Juniper{}
+	assert.Equal(t, TLVExtendedAssociationIDIPv4Juniper, tlv.Type())
+}
+
+func TestExtendedAssociationIDIPv4Juniper_Serialize(t *testing.T) {
+	tlv := &ExtendedAssociationIDIPv4Juniper{
+		ExtendedAssociationID: *testIPv4ExtendedAssociationID,
+	}
+
+	expected := append([]byte(nil), testIPv4ExtendedAssociationIDBytes...)
+	expected[0], expected[1] = 0xff, 0xe3 // type=0xffe3, value layout unchanged
+
+	assert.Equal(t, expected, tlv.Serialize())
+}
+
+func TestExtendedAssociationIDIPv4Juniper_Len(t *testing.T) {
+	tlv := &ExtendedAssociationIDIPv4Juniper{
+		ExtendedAssociationID: *testIPv4ExtendedAssociationID,
+	}
+	assert.Equal(t, testIPv4ExtendedAssociationID.Len(), tlv.Len())
+}
+
+// Verifies Juniper vendor TLVs preserve structured logging fields.
+func TestExtendedAssociationIDIPv4Juniper_MarshalLogObject(t *testing.T) {
+	t.Parallel()
+
+	tlv := &ExtendedAssociationIDIPv4Juniper{ExtendedAssociationID: *testIPv4ExtendedAssociationID}
+
+	enc := zapcore.NewMapObjectEncoder()
+	err := tlv.MarshalLogObject(enc)
+	assert.NoError(t, err, "unexpected error during MarshalLogObject")
+	assert.Equal(t, map[string]any{
+		"color":    testIPv4ExtendedAssociationID.Color,
+		"ipv4Addr": testIPv4ExtendedAssociationID.Endpoint.String(),
+	}, enc.Fields)
+}
+
+func TestExtendedAssociationIDIPv4Juniper_DecodeFromBytes(t *testing.T) {
+	t.Parallel()
+
+	input := append([]byte(nil), testIPv4ExtendedAssociationIDBytes...)
+	input[0], input[1] = 0xff, 0xe3 // type=0xffe3, value layout unchanged
+
+	cases := map[string]TLVTestCase{
+		"IPv4Juniper": {
+			input,
+			&ExtendedAssociationIDIPv4Juniper{ExtendedAssociationID: *testIPv4ExtendedAssociationID},
+			false,
+		},
+	}
+	runTLVDecodeTests(t, cases, func() TLVInterface { return &ExtendedAssociationIDIPv4Juniper{} })
+}
+
 // Test data for AssocTypeList.
 var (
 	// AssocTypeList with two entries.
@@ -1613,6 +1673,23 @@ func TestSRPolicyCandidatePathIdentifierJuniper_Len(t *testing.T) {
 	assert.Equal(t, testSRPolicyCPathIDIPv4.Len(), tlv.Len())
 }
 
+// Verifies Juniper vendor TLVs preserve structured logging fields.
+func TestSRPolicyCandidatePathIdentifierJuniper_MarshalLogObject(t *testing.T) {
+	t.Parallel()
+
+	tlv := &SRPolicyCandidatePathIdentifierJuniper{SRPolicyCandidatePathIdentifier: *testSRPolicyCPathIDIPv4}
+
+	enc := zapcore.NewMapObjectEncoder()
+	err := tlv.MarshalLogObject(enc)
+	assert.NoError(t, err, "unexpected error during MarshalLogObject")
+	assert.Equal(t, map[string]any{
+		"protocolOrigin": testSRPolicyCPathIDIPv4.ProtocolOrigin,
+		"originatorAsn":  testSRPolicyCPathIDIPv4.OriginatorASN,
+		"originatorAddr": testSRPolicyCPathIDIPv4.OriginatorAddr.String(),
+		"discriminator":  testSRPolicyCPathIDIPv4.Discriminator,
+	}, enc.Fields)
+}
+
 // Test data for SRPolicyCandidatePathPreference.
 var (
 	testSRPolicyCPathPreference = &SRPolicyCandidatePathPreference{Preference: 100}
@@ -1687,6 +1764,61 @@ func TestSRPolicyCandidatePathPreference_Len(t *testing.T) {
 		"ValidLen": {testSRPolicyCPathPreference, TLVValueOffset + TLVSRPolicyCPathPreferenceValueLength},
 	}
 	runTLVLenTests(t, cases)
+}
+
+func TestSRPolicyCandidatePathPreferenceJuniper_Type(t *testing.T) {
+	t.Parallel()
+
+	tlv := &SRPolicyCandidatePathPreferenceJuniper{}
+	assert.Equal(t, TLVSRPolicyCPathPreferenceJuniper, tlv.Type())
+}
+
+func TestSRPolicyCandidatePathPreferenceJuniper_Serialize(t *testing.T) {
+	tlv := &SRPolicyCandidatePathPreferenceJuniper{
+		SRPolicyCandidatePathPreference: *testSRPolicyCPathPreference,
+	}
+
+	expected := append([]byte(nil), testSRPolicyCPathPreferenceBytes...)
+	expected[0], expected[1] = 0xff, 0xe5 // type=0xffe5, value layout unchanged
+
+	assert.Equal(t, expected, tlv.Serialize())
+}
+
+func TestSRPolicyCandidatePathPreferenceJuniper_Len(t *testing.T) {
+	tlv := &SRPolicyCandidatePathPreferenceJuniper{
+		SRPolicyCandidatePathPreference: *testSRPolicyCPathPreference,
+	}
+	assert.Equal(t, testSRPolicyCPathPreference.Len(), tlv.Len())
+}
+
+// Verifies Juniper vendor TLVs preserve structured logging fields.
+func TestSRPolicyCandidatePathPreferenceJuniper_MarshalLogObject(t *testing.T) {
+	t.Parallel()
+
+	tlv := &SRPolicyCandidatePathPreferenceJuniper{SRPolicyCandidatePathPreference: *testSRPolicyCPathPreference}
+
+	enc := zapcore.NewMapObjectEncoder()
+	err := tlv.MarshalLogObject(enc)
+	assert.NoError(t, err, "unexpected error during MarshalLogObject")
+	assert.Equal(t, map[string]any{
+		"preference": testSRPolicyCPathPreference.Preference,
+	}, enc.Fields)
+}
+
+func TestSRPolicyCandidatePathPreferenceJuniper_DecodeFromBytes(t *testing.T) {
+	t.Parallel()
+
+	input := append([]byte(nil), testSRPolicyCPathPreferenceBytes...)
+	input[0], input[1] = 0xff, 0xe5 // type=0xffe5, value layout unchanged
+
+	cases := map[string]TLVTestCase{
+		"PreferenceJuniper": {
+			input,
+			&SRPolicyCandidatePathPreferenceJuniper{SRPolicyCandidatePathPreference: *testSRPolicyCPathPreference},
+			false,
+		},
+	}
+	runTLVDecodeTests(t, cases, func() TLVInterface { return &SRPolicyCandidatePathPreferenceJuniper{} })
 }
 
 // Test data for Color.

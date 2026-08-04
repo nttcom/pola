@@ -907,8 +907,8 @@ func TestNewAssociationObject_DefaultCandidatePathIdentifier(t *testing.T) {
 	assert.Equal(t, expected, raw, "AssociationObject wire bytes changed")
 }
 
-// Verifies Juniper CP-ID TLV serialization, including OriginatorASN propagation and wire format stability.
-func TestNewAssociationObject_JuniperLegacyCandidatePathIdentifier(t *testing.T) {
+// Verifies Juniper legacy AssociationObject serialization and CP-ID TLV handling.
+func TestNewAssociationObject_JuniperLegacy(t *testing.T) {
 	t.Parallel()
 
 	srcAddr := netip.MustParseAddr("192.0.2.1")
@@ -934,10 +934,17 @@ func TestNewAssociationObject_JuniperLegacyCandidatePathIdentifier(t *testing.T)
 			t.Parallel()
 
 			o, err := NewAssociationObject(srcAddr, dstAddr, 100, 200, tt.opts...)
-			require.NoError(t, err, "NewAssociationObject failed")
+			require.NoError(t, err)
+
+			require.Len(t, o.TLVs, 3)
+
+			cpID, ok := o.TLVs[1].(*SRPolicyCandidatePathIdentifierJuniper)
+			require.True(t, ok, "CP-ID TLV must be represented as SRPolicyCandidatePathIdentifierJuniper")
+
+			assert.Equal(t, uint32(tt.expectedASN), cpID.OriginatorASN)
 
 			raw, err := o.Serialize()
-			require.NoError(t, err, "Serialize failed")
+			require.NoError(t, err)
 
 			expectedTLV := AppendByteSlices(
 				[]byte{0xff, 0xe4, 0x00, 0x1c},
@@ -947,16 +954,30 @@ func TestNewAssociationObject_JuniperLegacyCandidatePathIdentifier(t *testing.T)
 				[]byte{0x00, 0x00, 0x00, 0x01},
 			)
 
-			assert.True(t, bytes.Contains(raw, expectedTLV),
+			require.True(t, bytes.Contains(raw, expectedTLV),
 				"serialized object does not contain expected Juniper SRPOLICY-CPATH-ID TLV with ASN %d",
 				tt.expectedASN,
 			)
 		})
 	}
 
-	// Ensure the Juniper AssociationObject preserves the legacy wire format after typed TLV conversion.
+	// Ensure typed TLV conversion preserves the existing Juniper wire format.
 	o, err := NewAssociationObject(srcAddr, dstAddr, 100, 200, VendorSpecific(JuniperLegacy))
 	require.NoError(t, err, "NewAssociationObject failed")
+
+	// Verify vendor-specific TLVs are represented by their typed implementations.
+	require.Len(t, o.TLVs, 3)
+	require.IsType(t, &ExtendedAssociationIDIPv4Juniper{}, o.TLVs[0])
+
+	cpID, ok := o.TLVs[1].(*SRPolicyCandidatePathIdentifierJuniper)
+	require.True(t, ok, "CP-ID TLV must be represented as SRPolicyCandidatePathIdentifierJuniper")
+
+	require.IsType(t, &SRPolicyCandidatePathPreferenceJuniper{}, o.TLVs[2])
+
+	assert.Equal(t, uint8(ProtocolOriginPCEP), cpID.ProtocolOrigin)
+	assert.Equal(t, uint32(0), cpID.OriginatorASN)
+	assert.Equal(t, dstAddr, cpID.OriginatorAddr)
+	assert.Equal(t, uint32(1), cpID.Discriminator)
 
 	expected := AppendByteSlices(
 		[]byte{
@@ -965,24 +986,118 @@ func TestNewAssociationObject_JuniperLegacyCandidatePathIdentifier(t *testing.T)
 			0xff, 0xe1, 0x00, 0x00, // assoc type=0xffe1 (SRPolicyAssociationJuniper), assoc id=0
 			0xc0, 0x00, 0x02, 0x01, // assoc source=192.0.2.1
 
-			0xff, 0xe3, 0x00, 0x08, // ExtendedAssociationID TLV (Juniper)
+			0xff, 0xe3, 0x00, 0x08, // ExtendedAssociationID TLV (Juniper): type=0xffe3, length=8
 			0x00, 0x00, 0x00, 0x64, // color=100
 			0xc0, 0x00, 0x02, 0x02, // endpoint=192.0.2.2
 
-			0xff, 0xe4, 0x00, 0x1c, // SRPOLICY-CPATH-ID TLV (Juniper), length=28
+			0xff, 0xe4, 0x00, 0x1c, // SRPOLICY-CPATH-ID TLV (Juniper): type=0xffe4, length=28
 			byte(ProtocolOriginPCEP), 0x00, 0x00, 0x00, // protocol origin + MBZ
 			0x00, 0x00, 0x00, 0x00, // ASN=0
 		},
-		originatorAddr[:], // originator address field (IPv4 represented as IPv4-mapped IPv6)
+		originatorAddr[:], // originator address: IPv4 represented as IPv4-mapped IPv6 address
 		[]byte{
 			0x00, 0x00, 0x00, 0x01, // discriminator=1
-			0xff, 0xe5, 0x00, 0x04, // SRPOLICY-CPATH-PREFERENCE TLV (Juniper)
+			0xff, 0xe5, 0x00, 0x04, // SRPOLICY-CPATH-PREFERENCE TLV (Juniper): type=0xffe5, length=4
 			0x00, 0x00, 0x00, 0xc8, // preference=200
 		},
 	)
+
 	raw, err := o.Serialize()
 	require.NoError(t, err, "Serialize failed")
 	assert.Equal(t, expected, raw, "AssociationObject wire bytes changed")
+}
+
+// Ensures Juniper legacy AssociationObject round-trips through serialization and decoding with typed TLVs.
+func TestAssociationObject_JuniperLegacyRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	srcAddr := netip.MustParseAddr("192.0.2.1")
+	dstAddr := netip.MustParseAddr("192.0.2.2")
+
+	o, err := NewAssociationObject(srcAddr, dstAddr, 100, 200, VendorSpecific(JuniperLegacy))
+	require.NoError(t, err, "NewAssociationObject failed")
+
+	raw, err := o.Serialize()
+	require.NoError(t, err, "Serialize failed")
+
+	var got AssociationObject
+	err = got.DecodeFromBytes(ObjectTypeAssociationIPv4, raw[commonObjectHeaderLength:])
+	require.NoError(t, err, "DecodeFromBytes failed")
+
+	require.Len(t, got.TLVs, 3)
+
+	// Verify Juniper vendor TLVs survive decoding as typed TLVs.
+	require.IsType(t, &ExtendedAssociationIDIPv4Juniper{}, got.TLVs[0])
+
+	cpID, ok := got.TLVs[1].(*SRPolicyCandidatePathIdentifierJuniper)
+	require.True(t, ok, "CP-ID TLV must be represented as SRPolicyCandidatePathIdentifierJuniper")
+
+	require.IsType(t, &SRPolicyCandidatePathPreferenceJuniper{}, got.TLVs[2])
+
+	assert.Equal(t, uint32(100), got.Color())
+	assert.Equal(t, uint32(200), got.Preference())
+	assert.Equal(t, dstAddr, got.Endpoint())
+
+	assert.Equal(t, uint8(ProtocolOriginPCEP), cpID.ProtocolOrigin)
+	assert.Equal(t, uint32(0), cpID.OriginatorASN)
+	assert.Equal(t, dstAddr, cpID.OriginatorAddr)
+	assert.Equal(t, uint32(1), cpID.Discriminator)
+}
+
+func TestAssociationObject_ColorPreferenceFromTLVs(t *testing.T) {
+	t.Parallel()
+
+	dstAddr := netip.MustParseAddr("192.0.2.2")
+
+	cases := map[string]struct {
+		object         *AssociationObject
+		wantColor      uint32
+		wantPreference uint32
+	}{
+		"RFCTypedTLV": {
+			object: &AssociationObject{
+				TLVs: []TLVInterface{
+					&ExtendedAssociationID{Color: 100, Endpoint: dstAddr},
+					&SRPolicyCandidatePathPreference{Preference: 200},
+				},
+			},
+			wantColor: 100, wantPreference: 200,
+		},
+		"JuniperTypedTLV": {
+			object: &AssociationObject{
+				TLVs: []TLVInterface{
+					&ExtendedAssociationIDIPv4Juniper{ExtendedAssociationID: ExtendedAssociationID{Color: 100, Endpoint: dstAddr}},
+					&SRPolicyCandidatePathPreferenceJuniper{SRPolicyCandidatePathPreference: SRPolicyCandidatePathPreference{Preference: 200}},
+				},
+			},
+			wantColor: 100, wantPreference: 200,
+		},
+		// UndefinedTLV fallback path must still work for vendor TLVs that are not decoded as typed TLVs.
+		"UndefinedTLVDecodePath": {
+			object: &AssociationObject{
+				TLVs: []TLVInterface{
+					&UndefinedTLV{
+						Typ:   TLVExtendedAssociationIDIPv4Juniper,
+						Value: AppendByteSlices(Uint32ToByteSlice(100), dstAddr.AsSlice()),
+					},
+					&UndefinedTLV{
+						Typ:   TLVSRPolicyCPathPreferenceJuniper,
+						Value: Uint32ToByteSlice(200),
+					},
+				},
+			},
+			wantColor: 100, wantPreference: 200,
+		},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tt.wantColor, tt.object.Color(), "color mismatch for '%s'", name)
+			assert.Equal(t, tt.wantPreference, tt.object.Preference(), "preference mismatch for '%s'", name)
+		})
+	}
 }
 
 func TestVendorInformationObject_DecodeFromBytes(t *testing.T) {

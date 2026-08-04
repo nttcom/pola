@@ -263,6 +263,11 @@ var tlvMap = map[TLVType]func() TLVInterface{
 	TLVSRPolicyCPathID:         func() TLVInterface { return &SRPolicyCandidatePathIdentifier{} },
 	TLVSRPolicyCPathPreference: func() TLVInterface { return &SRPolicyCandidatePathPreference{} },
 	TLVColor:                   func() TLVInterface { return &Color{} },
+
+	// Juniper vendor-specific Association TLVs.
+	TLVExtendedAssociationIDIPv4Juniper: func() TLVInterface { return &ExtendedAssociationIDIPv4Juniper{} },
+	TLVSRPolicyCPathIDJuniper:           func() TLVInterface { return &SRPolicyCandidatePathIdentifierJuniper{} },
+	TLVSRPolicyCPathPreferenceJuniper:   func() TLVInterface { return &SRPolicyCandidatePathPreferenceJuniper{} },
 }
 
 // VendorInformation represents the VENDOR-INFORMATION TLV (RFC7470 4).
@@ -1225,6 +1230,10 @@ func (tlv *ExtendedAssociationID) DecodeFromBytes(data []byte) error {
 }
 
 func (tlv *ExtendedAssociationID) Serialize() []byte {
+	return tlv.serialize(tlv.Type())
+}
+
+func (tlv *ExtendedAssociationID) serialize(typ TLVType) []byte {
 	if !tlv.Endpoint.IsValid() {
 		return nil
 	}
@@ -1243,7 +1252,7 @@ func (tlv *ExtendedAssociationID) Serialize() []byte {
 	copy(value[ExtendedAssociationIDEndpointOffset:], tlv.Endpoint.AsSlice())
 
 	return AppendByteSlices(
-		Uint16ToByteSlice(tlv.Type()),
+		Uint16ToByteSlice(typ),
 		Uint16ToByteSlice(length),
 		value,
 	)
@@ -1286,6 +1295,20 @@ func NewExtendedAssociationID(color uint32, endpoint netip.Addr) *ExtendedAssoci
 		Color:    color,
 		Endpoint: endpoint,
 	}
+}
+
+// ExtendedAssociationIDIPv4Juniper is the Juniper vendor-specific
+// Extended Association ID TLV (0xffe3). JuniperLegacy has only an IPv4 implementation.
+type ExtendedAssociationIDIPv4Juniper struct {
+	ExtendedAssociationID
+}
+
+func (tlv *ExtendedAssociationIDIPv4Juniper) Serialize() []byte {
+	return tlv.serialize(tlv.Type())
+}
+
+func (tlv *ExtendedAssociationIDIPv4Juniper) Type() TLVType {
+	return TLVExtendedAssociationIDIPv4Juniper
 }
 
 type PathSetupTypeCapability struct {
@@ -1711,6 +1734,10 @@ func (tlv *SRPolicyCandidatePathPreference) DecodeFromBytes(data []byte) error {
 }
 
 func (tlv *SRPolicyCandidatePathPreference) Serialize() []byte {
+	return tlv.serialize(tlv.Type())
+}
+
+func (tlv *SRPolicyCandidatePathPreference) serialize(typ TLVType) []byte {
 	value := make([]byte, TLVSRPolicyCPathPreferenceValueLength)
 
 	binary.BigEndian.PutUint32(
@@ -1719,7 +1746,7 @@ func (tlv *SRPolicyCandidatePathPreference) Serialize() []byte {
 	)
 
 	return AppendByteSlices(
-		Uint16ToByteSlice(tlv.Type()),
+		Uint16ToByteSlice(typ),
 		Uint16ToByteSlice(TLVSRPolicyCPathPreferenceValueLength),
 		value,
 	)
@@ -1740,6 +1767,20 @@ func (tlv *SRPolicyCandidatePathPreference) Type() TLVType {
 
 func (tlv *SRPolicyCandidatePathPreference) Len() uint16 {
 	return TLVValueOffset + TLVSRPolicyCPathPreferenceValueLength
+}
+
+// SRPolicyCandidatePathPreferenceJuniper is the Juniper vendor-specific
+// SR Policy candidate path preference TLV (0xffe5).
+type SRPolicyCandidatePathPreferenceJuniper struct {
+	SRPolicyCandidatePathPreference
+}
+
+func (tlv *SRPolicyCandidatePathPreferenceJuniper) Serialize() []byte {
+	return tlv.serialize(tlv.Type())
+}
+
+func (tlv *SRPolicyCandidatePathPreferenceJuniper) Type() TLVType {
+	return TLVSRPolicyCPathPreferenceJuniper
 }
 
 type Color struct {

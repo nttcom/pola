@@ -1703,12 +1703,11 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 		o.AssocID = 0
 		o.AssocType = AssociationTypeSRPolicyAssociationJuniper
 		associationObjectTLVs := []TLVInterface{
-			&UndefinedTLV{
-				Typ:    TLVExtendedAssociationIDIPv4Juniper,
-				Length: TLVExtendedAssociationIDIPv4ValueLength, // JuniperLegacy has only IPv4 implementation
-				Value: AppendByteSlices(
-					Uint32ToByteSlice(color), dstAddr.AsSlice(),
-				),
+			&ExtendedAssociationIDIPv4Juniper{
+				ExtendedAssociationID: ExtendedAssociationID{
+					Color:    color,
+					Endpoint: dstAddr, // JuniperLegacy has only IPv4 implementation
+				},
 			},
 			&SRPolicyCandidatePathIdentifierJuniper{
 				SRPolicyCandidatePathIdentifier: SRPolicyCandidatePathIdentifier{
@@ -1717,10 +1716,10 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 					Discriminator:  1,
 				},
 			},
-			&UndefinedTLV{
-				Typ:    TLVSRPolicyCPathPreferenceJuniper,
-				Length: TLVSRPolicyCPathPreferenceValueLength,
-				Value:  Uint32ToByteSlice(preference),
+			&SRPolicyCandidatePathPreferenceJuniper{
+				SRPolicyCandidatePathPreference: SRPolicyCandidatePathPreference{
+					Preference: preference,
+				},
 			},
 		}
 		o.TLVs = append(o.TLVs, associationObjectTLVs...)
@@ -1751,14 +1750,16 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 // (I.D. pce-segment-routing-policy-cp-08 5.1)
 func (o *AssociationObject) Color() uint32 {
 	for _, tlv := range o.TLVs {
-		if t, ok := tlv.(*UndefinedTLV); ok {
+		switch t := tlv.(type) {
+		case *UndefinedTLV:
 			if t.Type() == TLVExtendedAssociationIDIPv4Juniper {
 				return uint32(binary.BigEndian.Uint32(t.Value[:4]))
 			}
-		} else if t, ok := tlv.(*ExtendedAssociationID); ok {
+		case *ExtendedAssociationIDIPv4Juniper:
+			return t.Color
+		case *ExtendedAssociationID:
 			return t.Color
 		}
-
 	}
 	return 0
 }
@@ -1766,11 +1767,14 @@ func (o *AssociationObject) Color() uint32 {
 // (I.D. pce-segment-routing-policy-cp-08 5.1)
 func (o *AssociationObject) Preference() uint32 {
 	for _, tlv := range o.TLVs {
-		if t, ok := tlv.(*UndefinedTLV); ok {
+		switch t := tlv.(type) {
+		case *UndefinedTLV:
 			if t.Type() == TLVSRPolicyCPathPreferenceJuniper {
 				return uint32(binary.BigEndian.Uint32(t.Value))
 			}
-		} else if t, ok := tlv.(*SRPolicyCandidatePathPreference); ok {
+		case *SRPolicyCandidatePathPreferenceJuniper:
+			return t.Preference
+		case *SRPolicyCandidatePathPreference:
 			return t.Preference
 		}
 	}
@@ -1779,7 +1783,10 @@ func (o *AssociationObject) Preference() uint32 {
 
 func (o *AssociationObject) Endpoint() netip.Addr {
 	for _, tlv := range o.TLVs {
-		if t, ok := tlv.(*ExtendedAssociationID); ok {
+		switch t := tlv.(type) {
+		case *ExtendedAssociationIDIPv4Juniper:
+			return t.Endpoint
+		case *ExtendedAssociationID:
 			return t.Endpoint
 		}
 	}
