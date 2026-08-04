@@ -6,6 +6,7 @@
 package pcep
 
 import (
+	"bytes"
 	"net/netip"
 	"testing"
 
@@ -904,6 +905,43 @@ func TestNewAssociationObject_DefaultCandidatePathIdentifier(t *testing.T) {
 	raw, err := o.Serialize()
 	require.NoError(t, err, "Serialize failed")
 	assert.Equal(t, expected, raw, "AssociationObject wire bytes changed")
+}
+
+// Verify OriginatorASN is propagated to the Juniper SRPOLICY-CPATH-ID TLV.
+func TestNewAssociationObject_JuniperLegacyOriginatorASN(t *testing.T) {
+	t.Parallel()
+
+	srcAddr := netip.MustParseAddr("192.0.2.1")
+	dstAddr := netip.MustParseAddr("192.0.2.2")
+
+	cases := map[string]struct {
+		opts        []Opt
+		expectedASN uint32
+	}{
+		"OriginatorASNSet":     {opts: []Opt{VendorSpecific(JuniperLegacy), OriginatorASN(65001)}, expectedASN: 65001},
+		"OriginatorASNOmitted": {opts: []Opt{VendorSpecific(JuniperLegacy)}, expectedASN: 0},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			o, err := NewAssociationObject(srcAddr, dstAddr, 100, 200, tt.opts...)
+			require.NoError(t, err, "NewAssociationObject failed")
+
+			raw, err := o.Serialize()
+			require.NoError(t, err, "Serialize failed")
+
+			expectedTLV := AppendByteSlices(
+				[]byte{0xff, 0xe4, 0x00, 0x1c},                     // SRPOLICY-CPATH-ID TLV (Juniper): type=0xffe4, len=28
+				[]byte{byte(ProtocolOriginPCEP), 0x00, 0x00, 0x00}, // protocol origin + mbz
+				Uint32ToByteSlice(tt.expectedASN),
+				make([]byte, 16), // originator address
+				make([]byte, 4),  // discriminator
+			)
+			assert.True(t, bytes.Contains(raw, expectedTLV), "serialized object does not carry ASN %d in the Juniper SRPOLICY-CPATH-ID TLV", tt.expectedASN)
+		})
+	}
 }
 
 func TestVendorInformationObject_DecodeFromBytes(t *testing.T) {
