@@ -1700,6 +1700,9 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 		AssocSrc:   srcAddr,
 	}
 	if opts.pccType == JuniperLegacy {
+		if !dstAddr.Is4() {
+			return nil, fmt.Errorf("invalid endpoint address for JuniperLegacy (NewAssociationObject): only IPv4 is supported, got dst=%v", dstAddr)
+		}
 		o.AssocID = 0
 		o.AssocType = AssociationTypeSRPolicyAssociationJuniper
 		associationObjectTLVs := []TLVInterface{
@@ -1710,11 +1713,12 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 				},
 			},
 			&SRPolicyCandidatePathIdentifierJuniper{
+				// Juniper legacy CPATH-ID TLV uses a zero-filled IPv4 Originator Address.
 				SRPolicyCandidatePathIdentifier: SRPolicyCandidatePathIdentifier{
 					ProtocolOrigin: ProtocolOriginPCEP,
 					OriginatorASN:  opts.originatorASN,
-					// Preserve Juniper legacy CPATH-ID TLV wire format with zero-filled Originator Address.
-					Discriminator: 1,
+					OriginatorAddr: netip.IPv4Unspecified(),
+					Discriminator:  1,
 				},
 			},
 			&SRPolicyCandidatePathPreferenceJuniper{

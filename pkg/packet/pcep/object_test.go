@@ -944,6 +944,18 @@ func TestNewAssociationObject_JuniperLegacy_OriginatorASN(t *testing.T) {
 	}
 }
 
+// JuniperLegacy uses the IPv4 Extended Association ID TLV format.
+// IPv6 endpoints must be rejected during object construction.
+func TestNewAssociationObject_JuniperLegacy_RejectsIPv6(t *testing.T) {
+	t.Parallel()
+
+	srcAddr := netip.MustParseAddr("2001:db8::1")
+	dstAddr := netip.MustParseAddr("2001:db8::2")
+
+	_, err := NewAssociationObject(srcAddr, dstAddr, 100, 200, VendorSpecific(JuniperLegacy))
+	assert.Error(t, err)
+}
+
 // Verifies Juniper vendor-specific TLVs preserve typed fields and legacy wire format.
 func TestNewAssociationObject_JuniperLegacy_TypedTLV(t *testing.T) {
 	t.Parallel()

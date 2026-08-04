@@ -1298,17 +1298,44 @@ func NewExtendedAssociationID(color uint32, endpoint netip.Addr) *ExtendedAssoci
 }
 
 // ExtendedAssociationIDIPv4Juniper is the Juniper vendor-specific
-// Extended Association ID TLV (0xffe3). JuniperLegacy has only an IPv4 implementation.
+// Extended Association ID TLV (0xffe3). Juniper devices always use the
+// IPv4 zero-padded wire format for this TLV, even on IPv6 PCEP sessions,
+// so the IPv6 wire format (value length 20) is rejected here.
 type ExtendedAssociationIDIPv4Juniper struct {
 	ExtendedAssociationID
 }
 
+func (tlv *ExtendedAssociationIDIPv4Juniper) DecodeFromBytes(data []byte) error {
+	valueLen, err := decodeTLVLength(data, false)
+	if err != nil {
+		return fmt.Errorf("ExtendedAssociationIDIPv4Juniper: %w", err)
+	}
+
+	if valueLen != int(TLVExtendedAssociationIDIPv4ValueLength) {
+		return fmt.Errorf("ExtendedAssociationIDIPv4Juniper: invalid value length %d", valueLen)
+	}
+
+	return tlv.ExtendedAssociationID.DecodeFromBytes(data)
+}
+
 func (tlv *ExtendedAssociationIDIPv4Juniper) Serialize() []byte {
+	if !tlv.Endpoint.Is4() {
+		return nil
+	}
+
 	return tlv.serialize(tlv.Type())
 }
 
 func (tlv *ExtendedAssociationIDIPv4Juniper) Type() TLVType {
 	return TLVExtendedAssociationIDIPv4Juniper
+}
+
+func (tlv *ExtendedAssociationIDIPv4Juniper) Len() uint16 {
+	if !tlv.Endpoint.Is4() {
+		return 0
+	}
+
+	return TLVValueOffset + TLVExtendedAssociationIDIPv4ValueLength
 }
 
 type PathSetupTypeCapability struct {

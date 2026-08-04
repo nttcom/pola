@@ -1285,21 +1285,40 @@ func TestExtendedAssociationIDIPv4Juniper_Type(t *testing.T) {
 }
 
 func TestExtendedAssociationIDIPv4Juniper_Serialize(t *testing.T) {
-	tlv := &ExtendedAssociationIDIPv4Juniper{
-		ExtendedAssociationID: *testIPv4ExtendedAssociationID,
+	expectedIPv4 := append([]byte(nil), testIPv4ExtendedAssociationIDBytes...)
+	expectedIPv4[0], expectedIPv4[1] = 0xff, 0xe3 // type=0xffe3, value layout unchanged
+
+	cases := map[string]struct {
+		input    TLVInterface
+		expected []byte
+	}{
+		"IPv4": {
+			&ExtendedAssociationIDIPv4Juniper{ExtendedAssociationID: *testIPv4ExtendedAssociationID},
+			expectedIPv4,
+		},
+		"IPv6Rejected": {
+			&ExtendedAssociationIDIPv4Juniper{ExtendedAssociationID: *testIPv6ExtendedAssociationID},
+			nil,
+		},
 	}
-
-	expected := append([]byte(nil), testIPv4ExtendedAssociationIDBytes...)
-	expected[0], expected[1] = 0xff, 0xe3 // type=0xffe3, value layout unchanged
-
-	assert.Equal(t, expected, tlv.Serialize())
+	runTLVSerializeTests(t, cases)
 }
 
 func TestExtendedAssociationIDIPv4Juniper_Len(t *testing.T) {
-	tlv := &ExtendedAssociationIDIPv4Juniper{
-		ExtendedAssociationID: *testIPv4ExtendedAssociationID,
+	cases := map[string]struct {
+		input    TLVInterface
+		expected uint16
+	}{
+		"IPv4": {
+			&ExtendedAssociationIDIPv4Juniper{ExtendedAssociationID: *testIPv4ExtendedAssociationID},
+			testIPv4ExtendedAssociationID.Len(),
+		},
+		"IPv6Rejected": {
+			&ExtendedAssociationIDIPv4Juniper{ExtendedAssociationID: *testIPv6ExtendedAssociationID},
+			0,
+		},
 	}
-	assert.Equal(t, testIPv4ExtendedAssociationID.Len(), tlv.Len())
+	runTLVLenTests(t, cases)
 }
 
 // Verifies Juniper vendor TLVs preserve structured logging fields.
@@ -1317,6 +1336,15 @@ func TestExtendedAssociationIDIPv4Juniper_MarshalLogObject(t *testing.T) {
 	}, enc.Fields)
 }
 
+// testExtendedAssociationIDIPv4JuniperIPv6Bytes is the IPv6 wire format (value length 20) with
+// the Juniper TLV type. Juniper devices always send the IPv4 zero-padded format, even over IPv6
+// PCEP sessions, so this layout must be rejected.
+var testExtendedAssociationIDIPv4JuniperIPv6Bytes = func() []byte {
+	b := append([]byte(nil), testIPv6ExtendedAssociationIDBytes...)
+	b[0], b[1] = 0xff, 0xe3 // type=0xffe3, IPv6 value layout (length 20)
+	return b
+}()
+
 func TestExtendedAssociationIDIPv4Juniper_DecodeFromBytes(t *testing.T) {
 	t.Parallel()
 
@@ -1328,6 +1356,11 @@ func TestExtendedAssociationIDIPv4Juniper_DecodeFromBytes(t *testing.T) {
 			input,
 			&ExtendedAssociationIDIPv4Juniper{ExtendedAssociationID: *testIPv4ExtendedAssociationID},
 			false,
+		},
+		"IPv6Rejected": {
+			testExtendedAssociationIDIPv4JuniperIPv6Bytes,
+			nil,
+			true,
 		},
 	}
 	runTLVDecodeTests(t, cases, func() TLVInterface { return &ExtendedAssociationIDIPv4Juniper{} })
@@ -2087,6 +2120,9 @@ func TestDecodeTLVs(t *testing.T) {
 		"TruncatedTLVPadding": {testDecodeTruncatedPadding, true, 0, "truncated TLV padding"},
 		"InvalidKnownTLVBody": {append(tlvHeader(TLVStatefulPCECapability, 4), 0x00, 0x00, 0x00, 0x00), false, 1, ""},
 		"InvalidPadding":      {invalidPaddingBytes, true, 0, "invalid TLV padding"},
+		"JuniperExtendedAssociationIDIPv6Rejected": {
+			testExtendedAssociationIDIPv4JuniperIPv6Bytes, true, 0, "invalid value length",
+		},
 	}
 
 	for name, tt := range cases {
