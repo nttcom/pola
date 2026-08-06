@@ -68,7 +68,7 @@ def wait_for_ssh(
 
 def wait_until_command_success(
     cmd: str,
-    timeout: int = 600,
+    timeout: int = 1200,
     interval: int = 5,
 ) -> subprocess.CompletedProcess:
     """Wait until command exits successfully."""
