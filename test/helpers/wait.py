@@ -87,6 +87,32 @@ def wait_until_command_success(
         time.sleep(interval)
 
 
+def wait_until_command_output_contains(
+    cmd: str,
+    expected: str,
+    timeout: int = 300,
+    interval: int = 5,
+) -> subprocess.CompletedProcess:
+    """Wait until the stdout of a command contains the expected text."""
+
+    start = time.time()
+
+    while True:
+        result = run_command(cmd)
+
+        if expected in result.stdout:
+            return result
+
+        if time.time() - start > timeout:
+            raise TimeoutError(
+                f"Timeout waiting for {expected!r} in the output of {cmd!r}\n"
+                f"Last output:\n{result.stdout}"
+            )
+
+        print(f"Waiting for {expected!r} in the output of {cmd!r}...")
+        time.sleep(interval)
+
+
 def get_ted(pola_container: str) -> dict:
     """Get current TED JSON. Raises RuntimeError/JSONDecodeError on failure."""
 
