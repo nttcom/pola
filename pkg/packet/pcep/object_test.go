@@ -1108,6 +1108,36 @@ func TestAssociationObject_ColorPreferenceFromTLVs(t *testing.T) {
 	}
 }
 
+func TestNewVendorInformationObject(t *testing.T) {
+	t.Parallel()
+
+	t.Run("CiscoLegacy", func(t *testing.T) {
+		t.Parallel()
+
+		got, err := NewVendorInformationObject(CiscoLegacy, 100, 200)
+		require.NoError(t, err, "NewVendorInformationObject failed")
+
+		want := &VendorInformationObject{
+			ObjectType:       ObjectTypeVendorSpecificConstraints,
+			EnterpriseNumber: EnterpriseNumberCisco,
+			TLVs: []TLVInterface{
+				&UnknownTLV{Typ: SubTLVColorCisco, Length: SubTLVColorCiscoValueLength, Value: Uint32ToByteSlice(100)},
+				&UnknownTLV{Typ: SubTLVPreferenceCisco, Length: SubTLVPreferenceCiscoValueLength, Value: Uint32ToByteSlice(200)},
+			},
+		}
+		assert.Equal(t, want, got, "unexpected VendorInformationObject")
+		assert.Equal(t, uint32(100), got.Color(), "Color mismatch")
+		assert.Equal(t, uint32(200), got.Preference(), "Preference mismatch")
+	})
+
+	t.Run("UnknownVendor", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := NewVendorInformationObject(JuniperLegacy, 100, 200)
+		assert.Error(t, err, "expected error for unsupported vendor")
+	})
+}
+
 func TestVendorInformationObject_DecodeFromBytes(t *testing.T) {
 	t.Parallel()
 
