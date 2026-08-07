@@ -6,16 +6,19 @@
 package server
 
 import (
-	"bytes"
 	"net/netip"
-	"slices"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	pb "github.com/nttcom/pola/api/pola/v1"
 	"github.com/nttcom/pola/pkg/table"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
+	grpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -60,25 +63,15 @@ func TestNewEnrichedSegmentSRMPLS(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			seg, err := newEnrichedSegment(tt.segment, false)
 			if tt.wantErr {
-				if err == nil {
-					t.Fatal("expected an error, got none")
-				}
+				require.Error(t, err)
 				return
 			}
-			if err != nil {
-				t.Fatalf("newEnrichedSegment returned an error: %v", err)
-			}
+			require.NoError(t, err)
 
 			mplsSeg, ok := seg.(table.SegmentSRMPLS)
-			if !ok {
-				t.Fatalf("segment type: got %T, want table.SegmentSRMPLS", seg)
-			}
-			if got := addrString(mplsSeg.LocalAddr); got != tt.wantLocal {
-				t.Errorf("LocalAddr: got %q, want %q", got, tt.wantLocal)
-			}
-			if got := addrString(mplsSeg.RemoteAddr); got != tt.wantRemote {
-				t.Errorf("RemoteAddr: got %q, want %q", got, tt.wantRemote)
-			}
+			require.Truef(t, ok, "segment type: got %T, want table.SegmentSRMPLS", seg)
+			assert.Equal(t, tt.wantLocal, addrString(mplsSeg.LocalAddr), "LocalAddr")
+			assert.Equal(t, tt.wantRemote, addrString(mplsSeg.RemoteAddr), "RemoteAddr")
 		})
 	}
 }
@@ -95,36 +88,21 @@ func TestNewEnrichedSegmentSRv6(t *testing.T) {
 
 	for _, usidMode := range []bool{false, true} {
 		seg, err := newEnrichedSegment(segment, usidMode)
-		if err != nil {
-			t.Fatalf("newEnrichedSegment returned an error: %v", err)
-		}
+		require.NoError(t, err)
 
 		srv6Seg, ok := seg.(table.SegmentSRv6)
-		if !ok {
-			t.Fatalf("segment type: got %T, want table.SegmentSRv6", seg)
-		}
-		if got := srv6Seg.Sid.String(); got != "2001:db8:1005::" {
-			t.Errorf("Sid: got %q, want %q", got, "2001:db8:1005::")
-		}
-		if got := addrString(srv6Seg.LocalAddr); got != "2001:db8::5" {
-			t.Errorf("LocalAddr: got %q, want %q", got, "2001:db8::5")
-		}
-		if got := addrString(srv6Seg.RemoteAddr); got != "2001:db8::6" {
-			t.Errorf("RemoteAddr: got %q, want %q", got, "2001:db8::6")
-		}
-		if want := []uint8{32, 16, 0, 80}; !slices.Equal(srv6Seg.Structure, want) {
-			t.Errorf("Structure: got %v, want %v", srv6Seg.Structure, want)
-		}
-		if srv6Seg.USid != usidMode {
-			t.Errorf("USid with usidMode=%v: got %v", usidMode, srv6Seg.USid)
-		}
+		require.Truef(t, ok, "segment type: got %T, want table.SegmentSRv6", seg)
+		assert.Equal(t, "2001:db8:1005::", srv6Seg.Sid.String(), "Sid")
+		assert.Equal(t, "2001:db8::5", addrString(srv6Seg.LocalAddr), "LocalAddr")
+		assert.Equal(t, "2001:db8::6", addrString(srv6Seg.RemoteAddr), "RemoteAddr")
+		assert.Equal(t, []uint8{32, 16, 0, 80}, srv6Seg.Structure, "Structure")
+		assert.Equalf(t, usidMode, srv6Seg.USid, "USid with usidMode=%v", usidMode)
 	}
 }
 
 func TestNewEnrichedSegmentInvalidSID(t *testing.T) {
-	if _, err := newEnrichedSegment(&pb.Segment{Sid: "not-a-sid"}, false); err == nil {
-		t.Error("expected an error for an unparsable SID, got none")
-	}
+	_, err := newEnrichedSegment(&pb.Segment{Sid: "not-a-sid"}, false)
+	assert.Error(t, err, "expected an error for an unparsable SID")
 }
 
 func addrString(addr netip.Addr) string {
@@ -141,27 +119,17 @@ func TestCreateEroFromSegmentListWithNAI(t *testing.T) {
 	seg.LocalAddr = netip.MustParseAddr("10.255.0.2")
 
 	ero := createEroFromSegmentList([]table.Segment{seg})
-	if len(ero.EroSubobjects) != 1 {
-		t.Fatalf("ERO subobject count: got %d, want 1", len(ero.EroSubobjects))
-	}
+	require.Len(t, ero.EroSubobjects, 1)
 
 	raw, err := ero.EroSubobjects[0].Serialize()
-	if err != nil {
-		t.Fatalf("Serialize returned an error: %v", err)
-	}
+	require.NoError(t, err)
 	// Type, Length, NT/Flags (4byte) + SID (4byte) + NAI (4byte)
-	if len(raw) != 12 {
-		t.Fatalf("serialized size: got %d, want 12", len(raw))
-	}
-	if nt := raw[2] >> 4; nt != 0x01 {
-		t.Errorf("NAI type: got 0x%02x, want 0x01 (IPv4 node ID)", nt)
-	}
-	if raw[3]&0x08 != 0 {
-		t.Error("F flag is set even though the NAI is present")
-	}
-	if want := seg.LocalAddr.AsSlice(); !bytes.Equal(raw[8:12], want) {
-		t.Errorf("NAI: got %v, want %v", raw[8:12], want)
-	}
+	require.Len(t, raw, 12)
+
+	nt := raw[2] >> 4
+	assert.Equalf(t, uint8(0x01), nt, "NAI type: got 0x%02x, want 0x01 (IPv4 node ID)", nt)
+	assert.Zero(t, raw[3]&0x08, "F flag is set even though the NAI is present")
+	assert.Equal(t, seg.LocalAddr.AsSlice(), raw[8:12], "NAI")
 }
 
 func newTestAPIServer(ted *table.LsTED) *APIServer {
@@ -198,9 +166,8 @@ func TestValidateSIDs_NoSidValidateSkipsCheck(t *testing.T) {
 	req := explicitPolicyRequest(true, "16099")
 	segmentList := []table.Segment{table.NewSegmentSRMPLS(16099)}
 
-	if err := s.validateSIDs(req, segmentList); err != nil {
-		t.Errorf("expected no_sid_validate to skip the check even with no TED, got: %v", err)
-	}
+	err := s.validateSIDs(req, segmentList)
+	assert.NoError(t, err, "expected no_sid_validate to skip the check even with no TED")
 }
 
 func TestValidateSIDs_DynamicPathSkipsCheck(t *testing.T) {
@@ -208,9 +175,8 @@ func TestValidateSIDs_DynamicPathSkipsCheck(t *testing.T) {
 	req := dynamicPolicyRequest()
 	segmentList := []table.Segment{table.NewSegmentSRMPLS(16099)}
 
-	if err := s.validateSIDs(req, segmentList); err != nil {
-		t.Errorf("expected a dynamic path to skip the check, got: %v", err)
-	}
+	err := s.validateSIDs(req, segmentList)
+	assert.NoError(t, err, "expected a dynamic path to skip the check")
 }
 
 func TestValidateSIDs_DynamicWithDisablePathComputeIsStillValidated(t *testing.T) {
@@ -233,9 +199,8 @@ func TestValidateSIDs_DynamicWithDisablePathComputeIsStillValidated(t *testing.T
 
 	err := s.validateSIDs(req, segmentList)
 	st, ok := status.FromError(err)
-	if !ok || st.Code() != codes.InvalidArgument {
-		t.Fatalf("expected codes.InvalidArgument, got: %v", err)
-	}
+	require.True(t, ok)
+	assert.Equal(t, codes.InvalidArgument, st.Code())
 }
 
 func TestValidateSIDs_NoTED(t *testing.T) {
@@ -245,12 +210,9 @@ func TestValidateSIDs_NoTED(t *testing.T) {
 
 	err := s.validateSIDs(req, segmentList)
 	st, ok := status.FromError(err)
-	if !ok || st.Code() != codes.FailedPrecondition {
-		t.Fatalf("expected codes.FailedPrecondition, got: %v", err)
-	}
-	if !strings.Contains(st.Message(), "TED is not enabled") {
-		t.Errorf("unexpected message: %s", st.Message())
-	}
+	require.True(t, ok)
+	assert.Equal(t, codes.FailedPrecondition, st.Code())
+	assert.Contains(t, st.Message(), "TED is not enabled")
 }
 
 func TestValidateSIDs_TEDEmpty(t *testing.T) {
@@ -260,12 +222,9 @@ func TestValidateSIDs_TEDEmpty(t *testing.T) {
 
 	err := s.validateSIDs(req, segmentList)
 	st, ok := status.FromError(err)
-	if !ok || st.Code() != codes.FailedPrecondition {
-		t.Fatalf("expected codes.FailedPrecondition, got: %v", err)
-	}
-	if !strings.Contains(st.Message(), "not yet synchronized") {
-		t.Errorf("expected a distinct message for an empty-but-enabled TED, got: %s", st.Message())
-	}
+	require.True(t, ok)
+	assert.Equal(t, codes.FailedPrecondition, st.Code())
+	assert.Contains(t, st.Message(), "not yet synchronized", "expected a distinct message for an empty-but-enabled TED")
 }
 
 func TestValidateSIDs_MissingSID(t *testing.T) {
@@ -284,12 +243,9 @@ func TestValidateSIDs_MissingSID(t *testing.T) {
 
 	err := s.validateSIDs(req, segmentList)
 	st, ok := status.FromError(err)
-	if !ok || st.Code() != codes.InvalidArgument {
-		t.Fatalf("expected codes.InvalidArgument, got: %v", err)
-	}
-	if !strings.Contains(st.Message(), "hop 1") {
-		t.Errorf("expected the missing hop to be listed, got: %s", st.Message())
-	}
+	require.True(t, ok)
+	assert.Equal(t, codes.InvalidArgument, st.Code())
+	assert.Contains(t, st.Message(), "hop 1", "expected the missing hop to be listed")
 }
 
 func TestValidateSIDs_EndpointFormIsStillValidated(t *testing.T) {
@@ -311,12 +267,9 @@ func TestValidateSIDs_EndpointFormIsStillValidated(t *testing.T) {
 
 	err := s.validateSIDs(req, segmentList)
 	st, ok := status.FromError(err)
-	if !ok || st.Code() != codes.InvalidArgument {
-		t.Fatalf("expected codes.InvalidArgument, got: %v", err)
-	}
-	if !strings.Contains(st.Message(), "hop 1") {
-		t.Errorf("expected the missing hop to be listed, got: %s", st.Message())
-	}
+	require.True(t, ok)
+	assert.Equal(t, codes.InvalidArgument, st.Code())
+	assert.Contains(t, st.Message(), "hop 1", "expected the missing hop to be listed")
 }
 
 func TestValidateSIDs_LabelOutOfRangeIsRejectedEvenWithNoSidValidate(t *testing.T) {
@@ -361,9 +314,44 @@ func TestValidateSIDs_AllKnownSucceeds(t *testing.T) {
 	req := explicitPolicyRequest(false, "16003")
 	segmentList := []table.Segment{table.NewSegmentSRMPLS(16003)}
 
-	if err := s.validateSIDs(req, segmentList); err != nil {
-		t.Errorf("expected no error, got: %v", err)
-	}
+	err := s.validateSIDs(req, segmentList)
+	assert.NoError(t, err)
+}
+
+func TestServe_InvalidAddress(t *testing.T) {
+	s := &APIServer{grpcServer: grpc.NewServer(), logger: zap.NewNop()}
+	require.Error(t, s.Serve("", "50052"))
+}
+
+func TestServe_InvalidPort(t *testing.T) {
+	s := &APIServer{grpcServer: grpc.NewServer(), logger: zap.NewNop()}
+	require.Error(t, s.Serve("127.0.0.1", "notaport"))
+}
+
+func TestServe_PortOutOfRange(t *testing.T) {
+	s := &APIServer{grpcServer: grpc.NewServer(), logger: zap.NewNop()}
+	require.Error(t, s.Serve("127.0.0.1", "70000"))
+}
+
+func TestServe_ListensAndLogsActualAddr(t *testing.T) {
+	core, logs := observer.New(zap.InfoLevel)
+	s := &APIServer{grpcServer: grpc.NewServer(), logger: zap.New(core)}
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- s.Serve("127.0.0.1", "0") }()
+
+	require.Eventually(t, func() bool {
+		return len(logs.FilterMessage("Start listening on gRPC port").All()) > 0
+	}, 2*time.Second, 10*time.Millisecond, "expected listenInfo to be logged")
+
+	s.grpcServer.GracefulStop()
+	require.NoError(t, <-errCh)
+
+	entries := logs.FilterMessage("Start listening on gRPC port").All()
+	require.Len(t, entries, 1)
+	listenInfo, _ := entries[0].ContextMap()["listenInfo"].(string)
+	require.NotEmpty(t, listenInfo, "expected listenInfo to be logged")
+	assert.False(t, strings.HasSuffix(listenInfo, ":0"), "expected the actual bound port, got %s", listenInfo)
 }
 
 func TestConvertLsPrefixes_SidIndexPresence(t *testing.T) {
