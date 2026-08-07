@@ -6,7 +6,6 @@
 package pcep
 
 import (
-	"bytes"
 	"net/netip"
 	"testing"
 
@@ -907,8 +906,8 @@ func TestNewAssociationObject_DefaultCandidatePathIdentifier(t *testing.T) {
 	assert.Equal(t, expected, raw, "AssociationObject wire bytes changed")
 }
 
-// Verify OriginatorASN is propagated to the Juniper SRPOLICY-CPATH-ID TLV.
-func TestNewAssociationObject_JuniperLegacyOriginatorASN(t *testing.T) {
+// Verifies the Originator ASN option is reflected in the Juniper CP-ID TLV.
+func TestNewAssociationObject_JuniperLegacy_OriginatorASN(t *testing.T) {
 	t.Parallel()
 
 	srcAddr := netip.MustParseAddr("192.0.2.1")
@@ -918,8 +917,14 @@ func TestNewAssociationObject_JuniperLegacyOriginatorASN(t *testing.T) {
 		opts        []Opt
 		expectedASN uint32
 	}{
-		"OriginatorASNSet":     {opts: []Opt{VendorSpecific(JuniperLegacy), OriginatorASN(65001)}, expectedASN: 65001},
-		"OriginatorASNOmitted": {opts: []Opt{VendorSpecific(JuniperLegacy)}, expectedASN: 0},
+		"OriginatorASNSet": {
+			opts:        []Opt{VendorSpecific(JuniperLegacy), OriginatorASN(65001)},
+			expectedASN: 65001,
+		},
+		"OriginatorASNOmitted": {
+			opts:        []Opt{VendorSpecific(JuniperLegacy)},
+			expectedASN: 0,
+		},
 	}
 
 	for name, tt := range cases {
@@ -927,21 +932,210 @@ func TestNewAssociationObject_JuniperLegacyOriginatorASN(t *testing.T) {
 			t.Parallel()
 
 			o, err := NewAssociationObject(srcAddr, dstAddr, 100, 200, tt.opts...)
-			require.NoError(t, err, "NewAssociationObject failed")
+			require.NoError(t, err)
 
-			raw, err := o.Serialize()
-			require.NoError(t, err, "Serialize failed")
+			require.Len(t, o.TLVs, 3)
 
-			expectedTLV := AppendByteSlices(
-				[]byte{0xff, 0xe4, 0x00, 0x1c},                     // SRPOLICY-CPATH-ID TLV (Juniper): type=0xffe4, len=28
-				[]byte{byte(ProtocolOriginPCEP), 0x00, 0x00, 0x00}, // protocol origin + mbz
-				Uint32ToByteSlice(tt.expectedASN),
-				make([]byte, 16), // originator address
-				make([]byte, 4),  // discriminator
-			)
-			assert.True(t, bytes.Contains(raw, expectedTLV), "serialized object does not carry ASN %d in the Juniper SRPOLICY-CPATH-ID TLV", tt.expectedASN)
+			cpID, ok := o.TLVs[1].(*SRPolicyCandidatePathIdentifierJuniper)
+			require.True(t, ok, "CP-ID TLV must be represented as SRPolicyCandidatePathIdentifierJuniper")
+
+			assert.Equal(t, tt.expectedASN, cpID.OriginatorASN)
 		})
 	}
+}
+
+// JuniperLegacy uses the IPv4 Extended Association ID TLV format.
+// IPv6 endpoints must be rejected during object construction.
+func TestNewAssociationObject_JuniperLegacy_RejectsIPv6(t *testing.T) {
+	t.Parallel()
+
+	srcAddr := netip.MustParseAddr("2001:db8::1")
+	dstAddr := netip.MustParseAddr("2001:db8::2")
+
+	_, err := NewAssociationObject(srcAddr, dstAddr, 100, 200, VendorSpecific(JuniperLegacy))
+	assert.Error(t, err)
+}
+
+// Verifies Juniper vendor-specific TLVs preserve typed fields and legacy wire format.
+func TestNewAssociationObject_JuniperLegacy_TypedTLV(t *testing.T) {
+	t.Parallel()
+
+	srcAddr := netip.MustParseAddr("192.0.2.1")
+	dstAddr := netip.MustParseAddr("192.0.2.2")
+
+	o, err := NewAssociationObject(srcAddr, dstAddr, 100, 200, VendorSpecific(JuniperLegacy))
+	require.NoError(t, err, "NewAssociationObject failed")
+
+	require.Len(t, o.TLVs, 3)
+	require.IsType(t, &ExtendedAssociationIDIPv4Juniper{}, o.TLVs[0])
+
+	cpID, ok := o.TLVs[1].(*SRPolicyCandidatePathIdentifierJuniper)
+	require.True(t, ok, "CP-ID TLV must be represented as SRPolicyCandidatePathIdentifierJuniper")
+
+	require.IsType(t, &SRPolicyCandidatePathPreferenceJuniper{}, o.TLVs[2])
+
+	assert.Equal(t, uint8(ProtocolOriginPCEP), cpID.ProtocolOrigin)
+	assert.Equal(t, uint32(0), cpID.OriginatorASN)
+	assert.Equal(t, netip.IPv4Unspecified(), cpID.OriginatorAddr)
+	assert.Equal(t, uint32(1), cpID.Discriminator)
+}
+
+// Ensures typed TLV conversion preserves the existing Juniper wire format byte-for-byte.
+func TestNewAssociationObject_JuniperLegacy_WireFormat(t *testing.T) {
+	t.Parallel()
+
+	srcAddr := netip.MustParseAddr("192.0.2.1")
+	dstAddr := netip.MustParseAddr("192.0.2.2")
+
+	o, err := NewAssociationObject(srcAddr, dstAddr, 100, 200, VendorSpecific(JuniperLegacy))
+	require.NoError(t, err, "NewAssociationObject failed")
+
+	expected := []byte{
+		0x28, 0x10, 0x00, 0x44, // common object header: class=ASSOCIATION, type=1, length=0x44
+		0x00, 0x00, 0x00, 0x00, // reserved + flags
+		0xff, 0xe1, 0x00, 0x00, // assoc type=0xffe1 (SRPolicyAssociationJuniper), assoc id=0
+		0xc0, 0x00, 0x02, 0x01, // assoc source=192.0.2.1
+
+		0xff, 0xe3, 0x00, 0x08, // ExtendedAssociationID TLV (Juniper): type=0xffe3, length=8
+		0x00, 0x00, 0x00, 0x64, // color=100
+		0xc0, 0x00, 0x02, 0x02, // endpoint=192.0.2.2
+
+		0xff, 0xe4, 0x00, 0x1c, // SRPOLICY-CPATH-ID TLV (Juniper): type=0xffe4, length=28
+		byte(ProtocolOriginPCEP), 0x00, 0x00, 0x00, // protocol origin + MBZ
+		0x00, 0x00, 0x00, 0x00, // ASN=0
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // originator address: zero-filled (Juniper wire format)
+		0x00, 0x00, 0x00, 0x01, // discriminator=1
+
+		0xff, 0xe5, 0x00, 0x04, // SRPOLICY-CPATH-PREFERENCE TLV (Juniper): type=0xffe5, length=4
+		0x00, 0x00, 0x00, 0xc8, // preference=200
+	}
+
+	raw, err := o.Serialize()
+	require.NoError(t, err, "Serialize failed")
+	assert.Equal(t, expected, raw, "AssociationObject wire bytes changed")
+}
+
+// Ensures Juniper legacy AssociationObject round-trips through serialization and decoding with typed TLVs.
+func TestAssociationObject_JuniperLegacyRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	srcAddr := netip.MustParseAddr("192.0.2.1")
+	dstAddr := netip.MustParseAddr("192.0.2.2")
+
+	o, err := NewAssociationObject(srcAddr, dstAddr, 100, 200, VendorSpecific(JuniperLegacy))
+	require.NoError(t, err, "NewAssociationObject failed")
+
+	raw, err := o.Serialize()
+	require.NoError(t, err, "Serialize failed")
+
+	var got AssociationObject
+	err = got.DecodeFromBytes(ObjectTypeAssociationIPv4, raw[commonObjectHeaderLength:])
+	require.NoError(t, err, "DecodeFromBytes failed")
+
+	require.Len(t, got.TLVs, 3)
+
+	// Verify Juniper vendor TLVs survive decoding as typed TLVs.
+	require.IsType(t, &ExtendedAssociationIDIPv4Juniper{}, got.TLVs[0])
+
+	cpID, ok := got.TLVs[1].(*SRPolicyCandidatePathIdentifierJuniper)
+	require.True(t, ok, "CP-ID TLV must be represented as SRPolicyCandidatePathIdentifierJuniper")
+
+	require.IsType(t, &SRPolicyCandidatePathPreferenceJuniper{}, got.TLVs[2])
+
+	assert.Equal(t, uint32(100), got.Color())
+	assert.Equal(t, uint32(200), got.Preference())
+	assert.Equal(t, dstAddr, got.Endpoint())
+
+	assert.Equal(t, uint8(ProtocolOriginPCEP), cpID.ProtocolOrigin)
+	assert.Equal(t, uint32(0), cpID.OriginatorASN)
+	assert.Equal(t, netip.IPv4Unspecified(), cpID.OriginatorAddr)
+	assert.Equal(t, uint32(1), cpID.Discriminator)
+}
+
+func TestAssociationObject_ColorPreferenceFromTLVs(t *testing.T) {
+	t.Parallel()
+
+	dstAddr := netip.MustParseAddr("192.0.2.2")
+
+	cases := map[string]struct {
+		object         *AssociationObject
+		wantColor      uint32
+		wantPreference uint32
+	}{
+		"RFCTypedTLV": {
+			object: &AssociationObject{
+				TLVs: []TLVInterface{
+					&ExtendedAssociationID{Color: 100, Endpoint: dstAddr},
+					&SRPolicyCandidatePathPreference{Preference: 200},
+				},
+			},
+			wantColor: 100, wantPreference: 200,
+		},
+		"JuniperTypedTLV": {
+			object: &AssociationObject{
+				TLVs: []TLVInterface{
+					&ExtendedAssociationIDIPv4Juniper{ExtendedAssociationID: ExtendedAssociationID{Color: 100, Endpoint: dstAddr}},
+					&SRPolicyCandidatePathPreferenceJuniper{SRPolicyCandidatePathPreference: SRPolicyCandidatePathPreference{Preference: 200}},
+				},
+			},
+			wantColor: 100, wantPreference: 200,
+		},
+		// UnknownTLV fallback path must still work for vendor TLVs that are not decoded as typed TLVs.
+		"UnknownTLVDecodePath": {
+			object: &AssociationObject{
+				TLVs: []TLVInterface{
+					&UnknownTLV{
+						Typ:   TLVExtendedAssociationIDIPv4Juniper,
+						Value: AppendByteSlices(Uint32ToByteSlice(100), dstAddr.AsSlice()),
+					},
+					&UnknownTLV{
+						Typ:   TLVSRPolicyCPathPreferenceJuniper,
+						Value: Uint32ToByteSlice(200),
+					},
+				},
+			},
+			wantColor: 100, wantPreference: 200,
+		},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tt.wantColor, tt.object.Color(), "color mismatch for '%s'", name)
+			assert.Equal(t, tt.wantPreference, tt.object.Preference(), "preference mismatch for '%s'", name)
+		})
+	}
+}
+
+func TestNewVendorInformationObject(t *testing.T) {
+	t.Parallel()
+
+	t.Run("CiscoLegacy", func(t *testing.T) {
+		t.Parallel()
+
+		got, err := NewVendorInformationObject(CiscoLegacy, 100, 200)
+		require.NoError(t, err, "NewVendorInformationObject failed")
+
+		want := &VendorInformationObject{
+			ObjectType:       ObjectTypeVendorSpecificConstraints,
+			EnterpriseNumber: EnterpriseNumberCisco,
+			TLVs: []TLVInterface{
+				&UnknownTLV{Typ: SubTLVColorCisco, Length: SubTLVColorCiscoValueLength, Value: Uint32ToByteSlice(100)},
+				&UnknownTLV{Typ: SubTLVPreferenceCisco, Length: SubTLVPreferenceCiscoValueLength, Value: Uint32ToByteSlice(200)},
+			},
+		}
+		assert.Equal(t, want, got, "unexpected VendorInformationObject")
+		assert.Equal(t, uint32(100), got.Color(), "Color mismatch")
+		assert.Equal(t, uint32(200), got.Preference(), "Preference mismatch")
+	})
+
+	t.Run("UnknownVendor", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := NewVendorInformationObject(JuniperLegacy, 100, 200)
+		assert.Error(t, err, "expected error for unsupported vendor")
+	})
 }
 
 func TestVendorInformationObject_DecodeFromBytes(t *testing.T) {
@@ -965,7 +1159,7 @@ func TestVendorInformationObject_DecodeFromBytes(t *testing.T) {
 				ObjectType:       ObjectTypeVendorSpecificConstraints,
 				EnterpriseNumber: EnterpriseNumberCisco,
 				TLVs: []TLVInterface{
-					&UndefinedTLV{Typ: SubTLVColorCisco, Length: 4, Value: []uint8{0x00, 0x00, 0x00, 0x64}},
+					&UnknownTLV{Typ: SubTLVColorCisco, Length: 4, Value: []uint8{0x00, 0x00, 0x00, 0x64}},
 				},
 			},
 		},
@@ -977,7 +1171,7 @@ func TestVendorInformationObject_DecodeFromBytes(t *testing.T) {
 				ObjectType:       ObjectTypeVendorSpecificConstraints,
 				EnterpriseNumber: EnterpriseNumberCisco,
 				TLVs: []TLVInterface{
-					&UndefinedTLV{Typ: TLVVendorInformation, Length: 2, Value: []uint8{0xde, 0xad}},
+					&UnknownTLV{Typ: TLVVendorInformation, Length: 2, Value: []uint8{0xde, 0xad}},
 				},
 			},
 		},
@@ -1019,8 +1213,8 @@ func TestVendorInformationObject_ColorPreference(t *testing.T) {
 			object: &VendorInformationObject{
 				EnterpriseNumber: EnterpriseNumberCisco,
 				TLVs: []TLVInterface{
-					&UndefinedTLV{Typ: SubTLVColorCisco, Length: 4, Value: Uint32ToByteSlice(100)},
-					&UndefinedTLV{Typ: SubTLVPreferenceCisco, Length: 4, Value: Uint32ToByteSlice(200)},
+					&UnknownTLV{Typ: SubTLVColorCisco, Length: 4, Value: Uint32ToByteSlice(100)},
+					&UnknownTLV{Typ: SubTLVPreferenceCisco, Length: 4, Value: Uint32ToByteSlice(200)},
 				},
 			},
 			wantColor: 100, wantPreference: 200,
@@ -1030,8 +1224,8 @@ func TestVendorInformationObject_ColorPreference(t *testing.T) {
 			object: &VendorInformationObject{
 				EnterpriseNumber: EnterpriseNumberCisco,
 				TLVs: []TLVInterface{
-					&UndefinedTLV{Typ: SubTLVColorCisco, Length: 0, Value: []uint8{}},
-					&UndefinedTLV{Typ: SubTLVPreferenceCisco, Length: 2, Value: []uint8{0x00, 0x01}},
+					&UnknownTLV{Typ: SubTLVColorCisco, Length: 0, Value: []uint8{}},
+					&UnknownTLV{Typ: SubTLVPreferenceCisco, Length: 2, Value: []uint8{0x00, 0x01}},
 				},
 			},
 			wantColor: 0, wantPreference: 0,
@@ -1060,7 +1254,7 @@ func TestVendorInformationObject_RoundTrip(t *testing.T) {
 			ObjectType:       ObjectTypeVendorSpecificConstraints,
 			EnterpriseNumber: EnterpriseNumberCisco,
 			TLVs: []TLVInterface{
-				&UndefinedTLV{
+				&UnknownTLV{
 					Typ:    SubTLVColorCisco,
 					Length: SubTLVColorCiscoValueLength,
 					Value:  Uint32ToByteSlice(100),
@@ -1071,12 +1265,12 @@ func TestVendorInformationObject_RoundTrip(t *testing.T) {
 			ObjectType:       ObjectTypeVendorSpecificConstraints,
 			EnterpriseNumber: EnterpriseNumberCisco,
 			TLVs: []TLVInterface{
-				&UndefinedTLV{
+				&UnknownTLV{
 					Typ:    SubTLVColorCisco,
 					Length: SubTLVColorCiscoValueLength,
 					Value:  Uint32ToByteSlice(100),
 				},
-				&UndefinedTLV{
+				&UnknownTLV{
 					Typ:    SubTLVPreferenceCisco,
 					Length: SubTLVPreferenceCiscoValueLength,
 					Value:  Uint32ToByteSlice(200),
@@ -1087,12 +1281,12 @@ func TestVendorInformationObject_RoundTrip(t *testing.T) {
 			ObjectType:       ObjectTypeVendorSpecificConstraints,
 			EnterpriseNumber: EnterpriseNumberCisco,
 			TLVs: []TLVInterface{
-				&UndefinedTLV{
+				&UnknownTLV{
 					Typ:    SubTLVColorCisco,
 					Length: SubTLVColorCiscoValueLength,
 					Value:  Uint32ToByteSlice(0),
 				},
-				&UndefinedTLV{
+				&UnknownTLV{
 					Typ:    SubTLVPreferenceCisco,
 					Length: SubTLVPreferenceCiscoValueLength,
 					Value:  Uint32ToByteSlice(0),

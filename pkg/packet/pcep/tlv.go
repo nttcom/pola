@@ -263,6 +263,11 @@ var tlvMap = map[TLVType]func() TLVInterface{
 	TLVSRPolicyCPathID:         func() TLVInterface { return &SRPolicyCandidatePathIdentifier{} },
 	TLVSRPolicyCPathPreference: func() TLVInterface { return &SRPolicyCandidatePathPreference{} },
 	TLVColor:                   func() TLVInterface { return &Color{} },
+
+	// Juniper vendor-specific Association TLVs.
+	TLVExtendedAssociationIDIPv4Juniper: func() TLVInterface { return &ExtendedAssociationIDIPv4Juniper{} },
+	TLVSRPolicyCPathIDJuniper:           func() TLVInterface { return &SRPolicyCandidatePathIdentifierJuniper{} },
+	TLVSRPolicyCPathPreferenceJuniper:   func() TLVInterface { return &SRPolicyCandidatePathPreferenceJuniper{} },
 }
 
 // VendorInformation represents the VENDOR-INFORMATION TLV (RFC7470 4).
@@ -1225,6 +1230,10 @@ func (tlv *ExtendedAssociationID) DecodeFromBytes(data []byte) error {
 }
 
 func (tlv *ExtendedAssociationID) Serialize() []byte {
+	return tlv.serialize(tlv.Type())
+}
+
+func (tlv *ExtendedAssociationID) serialize(typ TLVType) []byte {
 	if !tlv.Endpoint.IsValid() {
 		return nil
 	}
@@ -1243,7 +1252,7 @@ func (tlv *ExtendedAssociationID) Serialize() []byte {
 	copy(value[ExtendedAssociationIDEndpointOffset:], tlv.Endpoint.AsSlice())
 
 	return AppendByteSlices(
-		Uint16ToByteSlice(tlv.Type()),
+		Uint16ToByteSlice(typ),
 		Uint16ToByteSlice(length),
 		value,
 	)
@@ -1286,6 +1295,47 @@ func NewExtendedAssociationID(color uint32, endpoint netip.Addr) *ExtendedAssoci
 		Color:    color,
 		Endpoint: endpoint,
 	}
+}
+
+// ExtendedAssociationIDIPv4Juniper is the Juniper vendor-specific
+// Extended Association ID TLV (0xffe3). Juniper devices always use the
+// IPv4 zero-padded wire format for this TLV, even on IPv6 PCEP sessions,
+// so the IPv6 wire format (value length 20) is rejected here.
+type ExtendedAssociationIDIPv4Juniper struct {
+	ExtendedAssociationID
+}
+
+func (tlv *ExtendedAssociationIDIPv4Juniper) DecodeFromBytes(data []byte) error {
+	valueLen, err := decodeTLVLength(data, false)
+	if err != nil {
+		return fmt.Errorf("ExtendedAssociationIDIPv4Juniper: %w", err)
+	}
+
+	if valueLen != int(TLVExtendedAssociationIDIPv4ValueLength) {
+		return fmt.Errorf("ExtendedAssociationIDIPv4Juniper: invalid value length %d", valueLen)
+	}
+
+	return tlv.ExtendedAssociationID.DecodeFromBytes(data)
+}
+
+func (tlv *ExtendedAssociationIDIPv4Juniper) Serialize() []byte {
+	if !tlv.Endpoint.Is4() {
+		return nil
+	}
+
+	return tlv.serialize(tlv.Type())
+}
+
+func (tlv *ExtendedAssociationIDIPv4Juniper) Type() TLVType {
+	return TLVExtendedAssociationIDIPv4Juniper
+}
+
+func (tlv *ExtendedAssociationIDIPv4Juniper) Len() uint16 {
+	if !tlv.Endpoint.Is4() {
+		return 0
+	}
+
+	return TLVValueOffset + TLVExtendedAssociationIDIPv4ValueLength
 }
 
 type PathSetupTypeCapability struct {
@@ -1607,6 +1657,10 @@ func (tlv *SRPolicyCandidatePathIdentifier) DecodeFromBytes(data []byte) error {
 }
 
 func (tlv *SRPolicyCandidatePathIdentifier) Serialize() []byte {
+	return tlv.serialize(tlv.Type())
+}
+
+func (tlv *SRPolicyCandidatePathIdentifier) serialize(typ TLVType) []byte {
 
 	value := make([]byte, TLVSRPolicyCPathIDValueLength)
 
@@ -1646,7 +1700,7 @@ func (tlv *SRPolicyCandidatePathIdentifier) Serialize() []byte {
 	)
 
 	return AppendByteSlices(
-		Uint16ToByteSlice(tlv.Type()),
+		Uint16ToByteSlice(typ),
 		Uint16ToByteSlice(TLVSRPolicyCPathIDValueLength),
 		value,
 	)
@@ -1672,6 +1726,20 @@ func (tlv *SRPolicyCandidatePathIdentifier) Len() uint16 {
 	return TLVValueOffset + TLVSRPolicyCPathIDValueLength
 }
 
+// SRPolicyCandidatePathIdentifierJuniper is the Juniper vendor-specific
+// SR Policy candidate path identifier TLV (0xffe4).
+type SRPolicyCandidatePathIdentifierJuniper struct {
+	SRPolicyCandidatePathIdentifier
+}
+
+func (tlv *SRPolicyCandidatePathIdentifierJuniper) Serialize() []byte {
+	return tlv.serialize(tlv.Type())
+}
+
+func (tlv *SRPolicyCandidatePathIdentifierJuniper) Type() TLVType {
+	return TLVSRPolicyCPathIDJuniper
+}
+
 type SRPolicyCandidatePathPreference struct {
 	Preference uint32
 }
@@ -1693,6 +1761,10 @@ func (tlv *SRPolicyCandidatePathPreference) DecodeFromBytes(data []byte) error {
 }
 
 func (tlv *SRPolicyCandidatePathPreference) Serialize() []byte {
+	return tlv.serialize(tlv.Type())
+}
+
+func (tlv *SRPolicyCandidatePathPreference) serialize(typ TLVType) []byte {
 	value := make([]byte, TLVSRPolicyCPathPreferenceValueLength)
 
 	binary.BigEndian.PutUint32(
@@ -1701,7 +1773,7 @@ func (tlv *SRPolicyCandidatePathPreference) Serialize() []byte {
 	)
 
 	return AppendByteSlices(
-		Uint16ToByteSlice(tlv.Type()),
+		Uint16ToByteSlice(typ),
 		Uint16ToByteSlice(TLVSRPolicyCPathPreferenceValueLength),
 		value,
 	)
@@ -1722,6 +1794,20 @@ func (tlv *SRPolicyCandidatePathPreference) Type() TLVType {
 
 func (tlv *SRPolicyCandidatePathPreference) Len() uint16 {
 	return TLVValueOffset + TLVSRPolicyCPathPreferenceValueLength
+}
+
+// SRPolicyCandidatePathPreferenceJuniper is the Juniper vendor-specific
+// SR Policy candidate path preference TLV (0xffe5).
+type SRPolicyCandidatePathPreferenceJuniper struct {
+	SRPolicyCandidatePathPreference
+}
+
+func (tlv *SRPolicyCandidatePathPreferenceJuniper) Serialize() []byte {
+	return tlv.serialize(tlv.Type())
+}
+
+func (tlv *SRPolicyCandidatePathPreferenceJuniper) Type() TLVType {
+	return TLVSRPolicyCPathPreferenceJuniper
 }
 
 type Color struct {
@@ -1776,16 +1862,16 @@ func (tlv *Color) Len() uint16 {
 	return TLVValueOffset + TLVColorValueLength
 }
 
-type UndefinedTLV struct {
+type UnknownTLV struct {
 	Typ    TLVType
 	Length uint16
 	Value  []byte
 }
 
-func (tlv *UndefinedTLV) DecodeFromBytes(data []byte) error {
+func (tlv *UnknownTLV) DecodeFromBytes(data []byte) error {
 	valueLen, err := decodeTLVLength(data, true)
 	if err != nil {
-		return fmt.Errorf("UndefinedTLV: %w", err)
+		return fmt.Errorf("UnknownTLV: %w", err)
 	}
 
 	tlv.Typ = TLVType(binary.BigEndian.Uint16(data[TLVTypeOffset:TLVLengthOffset]))
@@ -1795,7 +1881,7 @@ func (tlv *UndefinedTLV) DecodeFromBytes(data []byte) error {
 	return nil
 }
 
-func (tlv *UndefinedTLV) Serialize() []byte {
+func (tlv *UnknownTLV) Serialize() []byte {
 	padding := (TLVAlignment - (tlv.Length % TLVAlignment)) % TLVAlignment
 
 	return AppendByteSlices(
@@ -1806,7 +1892,7 @@ func (tlv *UndefinedTLV) Serialize() []byte {
 	)
 }
 
-func (tlv *UndefinedTLV) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+func (tlv *UnknownTLV) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	if tlv == nil {
 		return nil
 	}
@@ -1816,11 +1902,11 @@ func (tlv *UndefinedTLV) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	return nil
 }
 
-func (tlv *UndefinedTLV) Type() TLVType {
+func (tlv *UnknownTLV) Type() TLVType {
 	return tlv.Typ
 }
 
-func (tlv *UndefinedTLV) Len() uint16 {
+func (tlv *UnknownTLV) Len() uint16 {
 	padding := uint16(0)
 	if tlv.Length%4 != 0 {
 		padding = (4 - tlv.Length%4)
@@ -1830,7 +1916,7 @@ func (tlv *UndefinedTLV) Len() uint16 {
 
 // CapStrings reports the registered TLV name even when no decoder exists.
 // Unknown TLV types fall back to "unknown_type_<n>".
-func (tlv *UndefinedTLV) CapStrings() []string {
+func (tlv *UnknownTLV) CapStrings() []string {
 	if desc, ok := tlvDescriptions[tlv.Typ]; ok {
 		return []string{desc.Description}
 	}
@@ -1838,7 +1924,7 @@ func (tlv *UndefinedTLV) CapStrings() []string {
 	return []string{capStr}
 }
 
-func (tlv *UndefinedTLV) SetLength() {
+func (tlv *UnknownTLV) SetLength() {
 	tlv.Length = uint16(len(tlv.Value))
 }
 
@@ -1854,7 +1940,7 @@ func DecodeTLV(data []byte) (TLVInterface, error) {
 func decodeTLV(data []byte, tlvType TLVType) (TLVInterface, error) {
 	createTLV, found := tlvMap[tlvType]
 	if !found {
-		return decodeUndefinedTLV(data, tlvType)
+		return decodeUnknownTLV(data, tlvType)
 	}
 
 	tlv := createTLV()
@@ -1865,11 +1951,11 @@ func decodeTLV(data []byte, tlvType TLVType) (TLVInterface, error) {
 	return tlv, nil
 }
 
-// decodeUndefinedTLV decodes a single TLV without consulting tlvMap, keeping its value as raw bytes.
-func decodeUndefinedTLV(data []byte, tlvType TLVType) (TLVInterface, error) {
-	tlv := &UndefinedTLV{}
+// decodeUnknownTLV decodes a single TLV without consulting tlvMap, keeping its value as raw bytes.
+func decodeUnknownTLV(data []byte, tlvType TLVType) (TLVInterface, error) {
+	tlv := &UnknownTLV{}
 	if err := tlv.DecodeFromBytes(data); err != nil {
-		return nil, fmt.Errorf("error decoding undefined TLV type %x: %w", uint16(tlvType), err)
+		return nil, fmt.Errorf("error decoding unknown TLV type %x: %w", uint16(tlvType), err)
 	}
 
 	return tlv, nil
@@ -1880,11 +1966,9 @@ func DecodeTLVs(data []byte) ([]TLVInterface, error) {
 	return decodeTLVSequence(data, decodeTLV)
 }
 
-// DecodeVendorTLVs decodes a sequence of TLVs carried in a VENDOR-INFORMATION Object (RFC7470 4).
-// Their type space is enterprise-specific and may collide with the standard one, so every TLV is
-// kept as an UndefinedTLV instead of being matched against tlvMap.
+// DecodeVendorTLVs decodes vendor-specific TLVs as UnknownTLV.
 func DecodeVendorTLVs(data []byte) ([]TLVInterface, error) {
-	return decodeTLVSequence(data, decodeUndefinedTLV)
+	return decodeTLVSequence(data, decodeUnknownTLV)
 }
 
 func decodeTLVSequence(data []byte, decode func([]byte, TLVType) (TLVInterface, error)) ([]TLVInterface, error) {

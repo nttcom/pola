@@ -54,6 +54,10 @@ func TestTLVMap(t *testing.T) {
 		"SRPolicyCPathID":         {TLVSRPolicyCPathID, &SRPolicyCandidatePathIdentifier{}},
 		"SRPolicyCPathPreference": {TLVSRPolicyCPathPreference, &SRPolicyCandidatePathPreference{}},
 		"Color":                   {TLVColor, &Color{}},
+
+		"ExtendedAssociationIDIPv4Juniper": {TLVExtendedAssociationIDIPv4Juniper, &ExtendedAssociationIDIPv4Juniper{}},
+		"SRPolicyCPathIDJuniper":           {TLVSRPolicyCPathIDJuniper, &SRPolicyCandidatePathIdentifierJuniper{}},
+		"SRPolicyCPathPreferenceJuniper":   {TLVSRPolicyCPathPreferenceJuniper, &SRPolicyCandidatePathPreferenceJuniper{}},
 	}
 
 	for name, tt := range cases {
@@ -1273,6 +1277,95 @@ func TestExtendedAssociationID_Len(t *testing.T) {
 	runTLVLenTests(t, cases)
 }
 
+func TestExtendedAssociationIDIPv4Juniper_Type(t *testing.T) {
+	t.Parallel()
+
+	tlv := &ExtendedAssociationIDIPv4Juniper{}
+	assert.Equal(t, TLVExtendedAssociationIDIPv4Juniper, tlv.Type())
+}
+
+func TestExtendedAssociationIDIPv4Juniper_Serialize(t *testing.T) {
+	expectedIPv4 := append([]byte(nil), testIPv4ExtendedAssociationIDBytes...)
+	expectedIPv4[0], expectedIPv4[1] = 0xff, 0xe3 // type=0xffe3, value layout unchanged
+
+	cases := map[string]struct {
+		input    TLVInterface
+		expected []byte
+	}{
+		"IPv4": {
+			&ExtendedAssociationIDIPv4Juniper{ExtendedAssociationID: *testIPv4ExtendedAssociationID},
+			expectedIPv4,
+		},
+		"IPv6Rejected": {
+			&ExtendedAssociationIDIPv4Juniper{ExtendedAssociationID: *testIPv6ExtendedAssociationID},
+			nil,
+		},
+	}
+	runTLVSerializeTests(t, cases)
+}
+
+func TestExtendedAssociationIDIPv4Juniper_Len(t *testing.T) {
+	cases := map[string]struct {
+		input    TLVInterface
+		expected uint16
+	}{
+		"IPv4": {
+			&ExtendedAssociationIDIPv4Juniper{ExtendedAssociationID: *testIPv4ExtendedAssociationID},
+			testIPv4ExtendedAssociationID.Len(),
+		},
+		"IPv6Rejected": {
+			&ExtendedAssociationIDIPv4Juniper{ExtendedAssociationID: *testIPv6ExtendedAssociationID},
+			0,
+		},
+	}
+	runTLVLenTests(t, cases)
+}
+
+// Verifies Juniper vendor TLVs preserve structured logging fields.
+func TestExtendedAssociationIDIPv4Juniper_MarshalLogObject(t *testing.T) {
+	t.Parallel()
+
+	tlv := &ExtendedAssociationIDIPv4Juniper{ExtendedAssociationID: *testIPv4ExtendedAssociationID}
+
+	enc := zapcore.NewMapObjectEncoder()
+	err := tlv.MarshalLogObject(enc)
+	assert.NoError(t, err, "unexpected error during MarshalLogObject")
+	assert.Equal(t, map[string]any{
+		"color":    testIPv4ExtendedAssociationID.Color,
+		"ipv4Addr": testIPv4ExtendedAssociationID.Endpoint.String(),
+	}, enc.Fields)
+}
+
+// testExtendedAssociationIDIPv4JuniperIPv6Bytes is the IPv6 wire format (value length 20) with
+// the Juniper TLV type. Juniper devices always send the IPv4 zero-padded format, even over IPv6
+// PCEP sessions, so this layout must be rejected.
+var testExtendedAssociationIDIPv4JuniperIPv6Bytes = func() []byte {
+	b := append([]byte(nil), testIPv6ExtendedAssociationIDBytes...)
+	b[0], b[1] = 0xff, 0xe3 // type=0xffe3, IPv6 value layout (length 20)
+	return b
+}()
+
+func TestExtendedAssociationIDIPv4Juniper_DecodeFromBytes(t *testing.T) {
+	t.Parallel()
+
+	input := append([]byte(nil), testIPv4ExtendedAssociationIDBytes...)
+	input[0], input[1] = 0xff, 0xe3 // type=0xffe3, value layout unchanged
+
+	cases := map[string]TLVTestCase{
+		"IPv4Juniper": {
+			input,
+			&ExtendedAssociationIDIPv4Juniper{ExtendedAssociationID: *testIPv4ExtendedAssociationID},
+			false,
+		},
+		"IPv6Rejected": {
+			testExtendedAssociationIDIPv4JuniperIPv6Bytes,
+			nil,
+			true,
+		},
+	}
+	runTLVDecodeTests(t, cases, func() TLVInterface { return &ExtendedAssociationIDIPv4Juniper{} })
+}
+
 // Test data for AssocTypeList.
 var (
 	// AssocTypeList with two entries.
@@ -1588,6 +1681,48 @@ func TestSRPolicyCandidatePathIdentifier_ProtocolOriginRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSRPolicyCandidatePathIdentifierJuniper_Type(t *testing.T) {
+	t.Parallel()
+
+	tlv := &SRPolicyCandidatePathIdentifierJuniper{}
+	assert.Equal(t, TLVSRPolicyCPathIDJuniper, tlv.Type())
+}
+
+func TestSRPolicyCandidatePathIdentifierJuniper_Serialize(t *testing.T) {
+	tlv := &SRPolicyCandidatePathIdentifierJuniper{
+		SRPolicyCandidatePathIdentifier: *testSRPolicyCPathIDIPv4,
+	}
+
+	expected := append([]byte(nil), testSRPolicyCPathIDIPv4Bytes...)
+	expected[0], expected[1] = 0xff, 0xe4 // type=0xffe4, value layout unchanged
+
+	assert.Equal(t, expected, tlv.Serialize())
+}
+
+func TestSRPolicyCandidatePathIdentifierJuniper_Len(t *testing.T) {
+	tlv := &SRPolicyCandidatePathIdentifierJuniper{
+		SRPolicyCandidatePathIdentifier: *testSRPolicyCPathIDIPv4,
+	}
+	assert.Equal(t, testSRPolicyCPathIDIPv4.Len(), tlv.Len())
+}
+
+// Verifies Juniper vendor TLVs preserve structured logging fields.
+func TestSRPolicyCandidatePathIdentifierJuniper_MarshalLogObject(t *testing.T) {
+	t.Parallel()
+
+	tlv := &SRPolicyCandidatePathIdentifierJuniper{SRPolicyCandidatePathIdentifier: *testSRPolicyCPathIDIPv4}
+
+	enc := zapcore.NewMapObjectEncoder()
+	err := tlv.MarshalLogObject(enc)
+	assert.NoError(t, err, "unexpected error during MarshalLogObject")
+	assert.Equal(t, map[string]any{
+		"protocolOrigin": testSRPolicyCPathIDIPv4.ProtocolOrigin,
+		"originatorAsn":  testSRPolicyCPathIDIPv4.OriginatorASN,
+		"originatorAddr": testSRPolicyCPathIDIPv4.OriginatorAddr.String(),
+		"discriminator":  testSRPolicyCPathIDIPv4.Discriminator,
+	}, enc.Fields)
+}
+
 // Test data for SRPolicyCandidatePathPreference.
 var (
 	testSRPolicyCPathPreference = &SRPolicyCandidatePathPreference{Preference: 100}
@@ -1662,6 +1797,61 @@ func TestSRPolicyCandidatePathPreference_Len(t *testing.T) {
 		"ValidLen": {testSRPolicyCPathPreference, TLVValueOffset + TLVSRPolicyCPathPreferenceValueLength},
 	}
 	runTLVLenTests(t, cases)
+}
+
+func TestSRPolicyCandidatePathPreferenceJuniper_Type(t *testing.T) {
+	t.Parallel()
+
+	tlv := &SRPolicyCandidatePathPreferenceJuniper{}
+	assert.Equal(t, TLVSRPolicyCPathPreferenceJuniper, tlv.Type())
+}
+
+func TestSRPolicyCandidatePathPreferenceJuniper_Serialize(t *testing.T) {
+	tlv := &SRPolicyCandidatePathPreferenceJuniper{
+		SRPolicyCandidatePathPreference: *testSRPolicyCPathPreference,
+	}
+
+	expected := append([]byte(nil), testSRPolicyCPathPreferenceBytes...)
+	expected[0], expected[1] = 0xff, 0xe5 // type=0xffe5, value layout unchanged
+
+	assert.Equal(t, expected, tlv.Serialize())
+}
+
+func TestSRPolicyCandidatePathPreferenceJuniper_Len(t *testing.T) {
+	tlv := &SRPolicyCandidatePathPreferenceJuniper{
+		SRPolicyCandidatePathPreference: *testSRPolicyCPathPreference,
+	}
+	assert.Equal(t, testSRPolicyCPathPreference.Len(), tlv.Len())
+}
+
+// Verifies Juniper vendor TLVs preserve structured logging fields.
+func TestSRPolicyCandidatePathPreferenceJuniper_MarshalLogObject(t *testing.T) {
+	t.Parallel()
+
+	tlv := &SRPolicyCandidatePathPreferenceJuniper{SRPolicyCandidatePathPreference: *testSRPolicyCPathPreference}
+
+	enc := zapcore.NewMapObjectEncoder()
+	err := tlv.MarshalLogObject(enc)
+	assert.NoError(t, err, "unexpected error during MarshalLogObject")
+	assert.Equal(t, map[string]any{
+		"preference": testSRPolicyCPathPreference.Preference,
+	}, enc.Fields)
+}
+
+func TestSRPolicyCandidatePathPreferenceJuniper_DecodeFromBytes(t *testing.T) {
+	t.Parallel()
+
+	input := append([]byte(nil), testSRPolicyCPathPreferenceBytes...)
+	input[0], input[1] = 0xff, 0xe5 // type=0xffe5, value layout unchanged
+
+	cases := map[string]TLVTestCase{
+		"PreferenceJuniper": {
+			input,
+			&SRPolicyCandidatePathPreferenceJuniper{SRPolicyCandidatePathPreference: *testSRPolicyCPathPreference},
+			false,
+		},
+	}
+	runTLVDecodeTests(t, cases, func() TLVInterface { return &SRPolicyCandidatePathPreferenceJuniper{} })
 }
 
 // Test data for Color.
@@ -1746,65 +1936,65 @@ func TestColor_Len(t *testing.T) {
 	runTLVLenTests(t, cases)
 }
 
-// Test data for UndefinedTLV.
+// Test data for UnknownTLV.
 var (
-	// Standard 4-byte UndefinedTLV
-	testUndefinedTLV = &UndefinedTLV{
+	// Standard 4-byte UnknownTLV
+	testUnknownTLV = &UnknownTLV{
 		Typ:    TLVType(0xffff),
 		Length: 4,
 		Value:  []byte{0xde, 0xad, 0xbe, 0xef},
 	}
 	// 3-byte value (odd → 1 byte padding required)
-	testUndefinedTLVOddLength = &UndefinedTLV{
+	testUnknownTLVOddLength = &UnknownTLV{
 		Typ:    TLVType(0xffff),
 		Length: 3,
 		Value:  []byte{0x01, 0x02, 0x03},
 	}
 
 	// Serialized TLV bytes
-	testUndefinedTLVBytes           = []byte{0xff, 0xff, 0x00, 0x04, 0xde, 0xad, 0xbe, 0xef}
-	testUndefinedTLVOddLengthBytes  = []byte{0xff, 0xff, 0x00, 0x03, 0x01, 0x02, 0x03, 0x00}
-	testUndefinedTLVTruncatedHeader = []byte{0xff, 0xff, 0x00}
-	testUndefinedTLVTruncatedValue  = []byte{0xff, 0xff, 0x00, 0x08, 0x01, 0x02}
+	testUnknownTLVBytes           = []byte{0xff, 0xff, 0x00, 0x04, 0xde, 0xad, 0xbe, 0xef}
+	testUnknownTLVOddLengthBytes  = []byte{0xff, 0xff, 0x00, 0x03, 0x01, 0x02, 0x03, 0x00}
+	testUnknownTLVTruncatedHeader = []byte{0xff, 0xff, 0x00}
+	testUnknownTLVTruncatedValue  = []byte{0xff, 0xff, 0x00, 0x08, 0x01, 0x02}
 )
 
-func TestUndefinedTLV_DecodeFromBytes(t *testing.T) {
+func TestUnknownTLV_DecodeFromBytes(t *testing.T) {
 	cases := map[string]TLVTestCase{
-		"ValidUndefinedTLV": {testUndefinedTLVBytes, testUndefinedTLV, false},
-		"TruncatedHeader":   {testUndefinedTLVTruncatedHeader, nil, true},
-		"TruncatedValue":    {testUndefinedTLVTruncatedValue, nil, true},
+		"ValidUnknownTLV": {testUnknownTLVBytes, testUnknownTLV, false},
+		"TruncatedHeader": {testUnknownTLVTruncatedHeader, nil, true},
+		"TruncatedValue":  {testUnknownTLVTruncatedValue, nil, true},
 	}
-	runTLVDecodeTests(t, cases, func() TLVInterface { return &UndefinedTLV{} })
+	runTLVDecodeTests(t, cases, func() TLVInterface { return &UnknownTLV{} })
 }
 
-func TestUndefinedTLV_Serialize(t *testing.T) {
+func TestUnknownTLV_Serialize(t *testing.T) {
 	cases := map[string]struct {
 		input    TLVInterface
 		expected []byte
 	}{
-		"AlignedValue":   {testUndefinedTLV, testUndefinedTLVBytes},
-		"UnalignedValue": {testUndefinedTLVOddLength, testUndefinedTLVOddLengthBytes},
+		"AlignedValue":   {testUnknownTLV, testUnknownTLVBytes},
+		"UnalignedValue": {testUnknownTLVOddLength, testUnknownTLVOddLengthBytes},
 	}
 	runTLVSerializeTests(t, cases)
 }
 
-func TestUndefinedTLV_MarshalLogObject(t *testing.T) {
+func TestUnknownTLV_MarshalLogObject(t *testing.T) {
 	cases := map[string]struct {
-		input    *UndefinedTLV
+		input    *UnknownTLV
 		expected map[string]any
 	}{
 		"StandardTLV": {
-			testUndefinedTLV,
+			testUnknownTLV,
 			map[string]any{
-				"type":   fmt.Sprintf("0x%04x", testUndefinedTLV.Typ),
-				"length": testUndefinedTLV.Length,
+				"type":   fmt.Sprintf("0x%04x", testUnknownTLV.Typ),
+				"length": testUnknownTLV.Length,
 			},
 		},
 		"OddLength": {
-			testUndefinedTLVOddLength,
+			testUnknownTLVOddLength,
 			map[string]any{
-				"type":   fmt.Sprintf("0x%04x", testUndefinedTLVOddLength.Typ),
-				"length": testUndefinedTLVOddLength.Length,
+				"type":   fmt.Sprintf("0x%04x", testUnknownTLVOddLength.Typ),
+				"length": testUnknownTLVOddLength.Length,
 			},
 		},
 		"NilTLV": {
@@ -1823,18 +2013,18 @@ func TestUndefinedTLV_MarshalLogObject(t *testing.T) {
 	}
 }
 
-func TestUndefinedTLV_Len(t *testing.T) {
+func TestUnknownTLV_Len(t *testing.T) {
 	cases := map[string]struct {
 		input    TLVInterface
 		expected uint16
 	}{
-		"AlignedLen":   {testUndefinedTLV, TLVValueOffset + 4},          // 4-byte value
-		"UnalignedLen": {testUndefinedTLVOddLength, TLVValueOffset + 4}, // 3-byte value + 1 pad = 4
+		"AlignedLen":   {testUnknownTLV, TLVValueOffset + 4},          // 4-byte value
+		"UnalignedLen": {testUnknownTLVOddLength, TLVValueOffset + 4}, // 3-byte value + 1 pad = 4
 	}
 	runTLVLenTests(t, cases)
 }
 
-func TestUndefinedTLV_CapStrings(t *testing.T) {
+func TestUnknownTLV_CapStrings(t *testing.T) {
 	cases := map[string]struct {
 		input    CapStringsInterface
 		expected []string
@@ -1842,16 +2032,16 @@ func TestUndefinedTLV_CapStrings(t *testing.T) {
 		// Registered in tlvDescriptions but with no dedicated decoder: reported
 		// under its registry name rather than as unknown_type_<n>.
 		"RegisteredWithoutDecoder": {
-			input:    &UndefinedTLV{Typ: TLVSRP2MPPolicyCapability},
+			input:    &UnknownTLV{Typ: TLVSRP2MPPolicyCapability},
 			expected: []string{"SR-P2MP-POLICY-CAPABILITY"},
 		},
 		"RegisteredVendorSpecific": {
-			input:    &UndefinedTLV{Typ: TLVSRPolicyCPathPreferenceJuniper},
+			input:    &UnknownTLV{Typ: TLVSRPolicyCPathPreferenceJuniper},
 			expected: []string{"SRPOLICY-CPATH-PREFERENCE (Juniper)"},
 		},
 		// Absent from the registry: falls back to the numeric form.
 		"UnregisteredType": {
-			input:    &UndefinedTLV{Typ: TLVType(0x1234)},
+			input:    &UnknownTLV{Typ: TLVType(0x1234)},
 			expected: []string{"unknown_type_4660"},
 		},
 	}
@@ -1859,8 +2049,8 @@ func TestUndefinedTLV_CapStrings(t *testing.T) {
 	runCapStringsTests(t, cases)
 }
 
-func TestUndefinedTLV_SetLength(t *testing.T) {
-	tlv := &UndefinedTLV{Value: []byte{0x01, 0x02, 0x03}}
+func TestUnknownTLV_SetLength(t *testing.T) {
+	tlv := &UnknownTLV{Value: []byte{0x01, 0x02, 0x03}}
 	tlv.SetLength()
 	assert.Equal(t, uint16(3), tlv.Length, "SetLength() should set Length to len(Value)")
 }
@@ -1930,6 +2120,9 @@ func TestDecodeTLVs(t *testing.T) {
 		"TruncatedTLVPadding": {testDecodeTruncatedPadding, true, 0, "truncated TLV padding"},
 		"InvalidKnownTLVBody": {append(tlvHeader(TLVStatefulPCECapability, 4), 0x00, 0x00, 0x00, 0x00), false, 1, ""},
 		"InvalidPadding":      {invalidPaddingBytes, true, 0, "invalid TLV padding"},
+		"JuniperExtendedAssociationIDIPv6Rejected": {
+			testExtendedAssociationIDIPv4JuniperIPv6Bytes, true, 0, "invalid value length",
+		},
 	}
 
 	for name, tt := range cases {

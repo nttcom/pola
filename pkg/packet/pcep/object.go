@@ -1700,33 +1700,31 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 		AssocSrc:   srcAddr,
 	}
 	if opts.pccType == JuniperLegacy {
+		if !dstAddr.Is4() {
+			return nil, fmt.Errorf("invalid endpoint address for JuniperLegacy (NewAssociationObject): only IPv4 is supported, got dst=%v", dstAddr)
+		}
 		o.AssocID = 0
 		o.AssocType = AssociationTypeSRPolicyAssociationJuniper
 		associationObjectTLVs := []TLVInterface{
-			&UndefinedTLV{
-				Typ:    TLVExtendedAssociationIDIPv4Juniper,
-				Length: TLVExtendedAssociationIDIPv4ValueLength, // JuniperLegacy has only IPv4 implementation
-				Value: AppendByteSlices(
-					Uint32ToByteSlice(color), dstAddr.AsSlice(),
-				),
+			&ExtendedAssociationIDIPv4Juniper{
+				ExtendedAssociationID: ExtendedAssociationID{
+					Color:    color,
+					Endpoint: dstAddr, // JuniperLegacy has only IPv4 implementation
+				},
 			},
-			&UndefinedTLV{
-				Typ:    TLVSRPolicyCPathIDJuniper,
-				Length: TLVSRPolicyCPathIDValueLength,
-				Value: AppendByteSlices(
-					[]uint8{
-						ProtocolOriginPCEP, // protocol origin
-						0x00, 0x00, 0x00,   // mbz
-					},
-					Uint32ToByteSlice(opts.originatorASN), // Originator ASN
-					make([]uint8, 16),                     // Originator Address
-					make([]uint8, 4),                      // discriminator
-				),
+			&SRPolicyCandidatePathIdentifierJuniper{
+				// Juniper legacy CPATH-ID TLV uses a zero-filled IPv4 Originator Address.
+				SRPolicyCandidatePathIdentifier: SRPolicyCandidatePathIdentifier{
+					ProtocolOrigin: ProtocolOriginPCEP,
+					OriginatorASN:  opts.originatorASN,
+					OriginatorAddr: netip.IPv4Unspecified(),
+					Discriminator:  1,
+				},
 			},
-			&UndefinedTLV{
-				Typ:    TLVSRPolicyCPathPreferenceJuniper,
-				Length: TLVSRPolicyCPathPreferenceValueLength,
-				Value:  Uint32ToByteSlice(preference),
+			&SRPolicyCandidatePathPreferenceJuniper{
+				SRPolicyCandidatePathPreference: SRPolicyCandidatePathPreference{
+					Preference: preference,
+				},
 			},
 		}
 		o.TLVs = append(o.TLVs, associationObjectTLVs...)
@@ -1757,14 +1755,18 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 // (I.D. pce-segment-routing-policy-cp-08 5.1)
 func (o *AssociationObject) Color() uint32 {
 	for _, tlv := range o.TLVs {
-		if t, ok := tlv.(*UndefinedTLV); ok {
-			if t.Type() == TLVExtendedAssociationIDIPv4Juniper {
+		switch t := tlv.(type) {
+		case *ExtendedAssociationIDIPv4Juniper:
+			return t.Color
+
+		case *ExtendedAssociationID:
+			return t.Color
+
+		case *UnknownTLV:
+			if t.Type() == TLVExtendedAssociationIDIPv4Juniper && len(t.Value) >= 4 {
 				return uint32(binary.BigEndian.Uint32(t.Value[:4]))
 			}
-		} else if t, ok := tlv.(*ExtendedAssociationID); ok {
-			return t.Color
 		}
-
 	}
 	return 0
 }
@@ -1772,12 +1774,17 @@ func (o *AssociationObject) Color() uint32 {
 // (I.D. pce-segment-routing-policy-cp-08 5.1)
 func (o *AssociationObject) Preference() uint32 {
 	for _, tlv := range o.TLVs {
-		if t, ok := tlv.(*UndefinedTLV); ok {
-			if t.Type() == TLVSRPolicyCPathPreferenceJuniper {
+		switch t := tlv.(type) {
+		case *SRPolicyCandidatePathPreferenceJuniper:
+			return t.Preference
+
+		case *SRPolicyCandidatePathPreference:
+			return t.Preference
+
+		case *UnknownTLV:
+			if t.Type() == TLVSRPolicyCPathPreferenceJuniper && len(t.Value) >= 4 {
 				return uint32(binary.BigEndian.Uint32(t.Value))
 			}
-		} else if t, ok := tlv.(*SRPolicyCandidatePathPreference); ok {
-			return t.Preference
 		}
 	}
 	return 0
@@ -1785,7 +1792,10 @@ func (o *AssociationObject) Preference() uint32 {
 
 func (o *AssociationObject) Endpoint() netip.Addr {
 	for _, tlv := range o.TLVs {
-		if t, ok := tlv.(*ExtendedAssociationID); ok {
+		switch t := tlv.(type) {
+		case *ExtendedAssociationIDIPv4Juniper:
+			return t.Endpoint
+		case *ExtendedAssociationID:
 			return t.Endpoint
 		}
 	}
@@ -1855,12 +1865,12 @@ func NewVendorInformationObject(vendor PccType, color uint32, preference uint32)
 	if vendor == CiscoLegacy {
 		o.EnterpriseNumber = EnterpriseNumberCisco
 		vendorInformationObjectTLVs := []TLVInterface{
-			&UndefinedTLV{
+			&UnknownTLV{
 				Typ:    SubTLVColorCisco,
 				Length: SubTLVColorCiscoValueLength, // TODO: 20 if ipv6 endpoint
 				Value:  Uint32ToByteSlice(color),
 			},
-			&UndefinedTLV{
+			&UnknownTLV{
 				Typ:    SubTLVPreferenceCisco,
 				Length: SubTLVPreferenceCiscoValueLength,
 				Value:  Uint32ToByteSlice(preference),
@@ -1885,7 +1895,7 @@ func (o *VendorInformationObject) Preference() uint32 {
 // or 0 if it is absent or too short to hold one.
 func (o *VendorInformationObject) subTLVUint32(typ TLVType) uint32 {
 	for _, tlv := range o.TLVs {
-		t, ok := tlv.(*UndefinedTLV)
+		t, ok := tlv.(*UnknownTLV)
 		if !ok || t.Type() != typ {
 			continue
 		}

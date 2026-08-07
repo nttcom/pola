@@ -121,3 +121,58 @@ func TestNewPCInitiateMessage_OriginatorASNReachesWire(t *testing.T) {
 		})
 	}
 }
+
+// Verify object selection for each PccType.
+func TestNewPCInitiateMessage_VendorObjectSelection(t *testing.T) {
+	t.Parallel()
+
+	srcAddr := netip.MustParseAddr("192.0.2.1")
+	dstAddr := netip.MustParseAddr("192.0.2.2")
+	segmentList := []table.Segment{table.NewSegmentSRMPLS(16001)}
+
+	cases := map[string]struct {
+		pccType         PccType
+		wantAssociation bool
+		wantAssocType   AssocType
+		wantVendorInfo  bool
+	}{
+		"JuniperLegacy": {
+			pccType:         JuniperLegacy,
+			wantAssociation: true,
+			wantAssocType:   AssociationTypeSRPolicyAssociationJuniper,
+		},
+		"CiscoLegacy": {
+			pccType:        CiscoLegacy,
+			wantVendorInfo: true,
+		},
+		"RFCCompliant": {
+			pccType:         RFCCompliant,
+			wantAssociation: true,
+			wantAssocType:   AssociationTypeSRPolicyAssociation,
+			wantVendorInfo:  true,
+		},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			m, err := NewPCInitiateMessage(1, "policy1", false, 0, segmentList, 100, 200, srcAddr, dstAddr, VendorSpecific(tt.pccType))
+			require.NoError(t, err, "NewPCInitiateMessage failed")
+
+			if tt.wantAssociation {
+				require.NotNil(t, m.AssociationObject, "AssociationObject should be set")
+				assert.Equal(t, tt.wantAssocType, m.AssociationObject.AssocType, "unexpected AssocType")
+			} else {
+				assert.Nil(t, m.AssociationObject, "AssociationObject should not be set")
+			}
+
+			if tt.wantVendorInfo {
+				require.NotNil(t, m.VendorInformationObject, "VendorInformationObject should be set")
+				assert.Equal(t, EnterpriseNumberCisco, m.VendorInformationObject.EnterpriseNumber, "unexpected EnterpriseNumber")
+			} else {
+				assert.Nil(t, m.VendorInformationObject, "VendorInformationObject should not be set")
+			}
+		})
+	}
+}
