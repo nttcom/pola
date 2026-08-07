@@ -434,7 +434,8 @@ func (x *SRPolicy) GetWaypoints() []*Waypoint {
 type CreateSRPolicyRequest struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
 	SrPolicy *SRPolicy              `protobuf:"bytes,1,opt,name=sr_policy,json=srPolicy,proto3" json:"sr_policy,omitempty"`
-	Asn      uint32                 `protobuf:"varint,2,opt,name=asn,proto3" json:"asn,omitempty"`
+	// Not required when disable_path_compute is true.
+	Asn uint32 `protobuf:"varint,2,opt,name=asn,proto3" json:"asn,omitempty"`
 	// Use endpoints and segments provided in the request without TED lookup
 	// or path computation (no CSPF or router-ID resolution).
 	DisablePathCompute bool `protobuf:"varint,4,opt,name=disable_path_compute,json=disablePathCompute,proto3" json:"disable_path_compute,omitempty"`

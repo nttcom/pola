@@ -3,6 +3,8 @@
 // This software is released under the MIT License.
 // see https://github.com/nttcom/pola/blob/main/LICENSE
 
+// Command sr-policy-delete deletes an SR Policy.
+// The policy is identified by PcepSessionAddr, Color, DstAddr and PolicyName.
 package main
 
 import (
@@ -18,50 +20,40 @@ import (
 	pb "github.com/nttcom/pola/api/pola/v1"
 )
 
+const requestTimeout = 10 * time.Second
+
 func main() {
+	serverAddr := flag.String("server", "localhost:50051", "address of the polad gRPC server")
 	flag.Parse()
 
 	conn, err := grpc.NewClient(
-		"localhost:50051",
+		*serverAddr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
-		log.Fatalf("can't connect: %v", err)
+		log.Fatalf("unable to connect to %s: %v", *serverAddr, err)
 	}
-	defer func() {
-		if err := conn.Close(); err != nil {
-			log.Printf("warning: failed to close connection: %v", err)
-		}
-	}()
+	defer func() { _ = conn.Close() }()
 
 	c := pb.NewPCEServiceClient(conn)
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 	defer cancel()
 
 	ssAddr := netip.MustParseAddr("192.0.2.1")
-	srcAddr := netip.MustParseAddr("192.0.2.1")
 	dstAddr := netip.MustParseAddr("192.0.2.2")
 
-	r, err := c.CreateSRPolicy(ctx, &pb.CreateSRPolicyRequest{
+	r, err := c.DeleteSRPolicy(ctx, &pb.DeleteSRPolicyRequest{
 		SrPolicy: &pb.SRPolicy{
 			PcepSessionAddr: ssAddr.AsSlice(),
-			SrcAddr:         srcAddr.AsSlice(),
 			DstAddr:         dstAddr.AsSlice(),
-			Color:           uint32(100),
+			Color:           100,
 			PolicyName:      "sample-name",
-			SegmentList: []*pb.Segment{
-				{Sid: "16002"},
-				{Sid: "16003"},
-				{Sid: "16004"},
-			},
 		},
-		DisablePathCompute: true,
-		NoSidValidate:      true,
 	})
 	if err != nil {
-		log.Fatalf("c.CreateSRPolicy error: %v", err)
+		log.Fatalf("c.DeleteSRPolicy error: %v", err)
 	}
 
-	log.Printf("Success: %#v", r)
+	log.Printf("success: isSuccess=%t", r.GetIsSuccess())
 }
