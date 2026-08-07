@@ -1,33 +1,42 @@
-GO_CMDS               := pola polad
-IMAGE                 := pola
-TAG                   ?= latest
-PYTHON_DIRS           := test
-TEST_BIN_DIR          := test/bin
-GOBGP_CMDS            := gobgp gobgpd
-GOBGP_MODULE          := github.com/osrg/gobgp/v4
-GOBGP_VERSION         := $(shell go list -m -f '{{.Version}}' $(GOBGP_MODULE))
+# Build
+GO_CMDS := pola polad
+IMAGE   := pola
+TAG     ?= latest
+
+# Test
+PYTHON_DIRS  := test
+TEST_BIN_DIR := test/bin
+PYTEST_ARGS  ?= -s
+
+# External dependencies
+GOBGP_CMDS    := gobgp gobgpd
+GOBGP_MODULE  := github.com/osrg/gobgp/v4
+GOBGP_VERSION := $(shell go list -m -f '{{.Version}}' $(GOBGP_MODULE))
+
+# Tool versions
 GO_VERSION            := $(shell go list -m -f '{{.GoVersion}}')
 GOLANGCI_LINT_VERSION ?= latest
 BUF_VERSION           ?= latest
 PINACT_VERSION        ?= latest
+GOCREDITS_VERSION     ?= latest
 MARKDOWNLINT_VERSION  ?= latest
 RUFF_VERSION          ?= latest
-PYTEST_ARGS           ?= -s
 
 .PHONY: \
 	help \
 	setup \
-	build \
-	install \
 	fmt \
 	fix \
 	lint \
-	test \
-	test-race \
 	proto \
 	check-proto \
+	build \
+	install \
+	test \
+	test-race \
 	image \
 	image-debug \
+	licenses \
 	fetch-gobgp \
 	test-deps \
 	test-scenario \
@@ -48,6 +57,7 @@ setup: ## Install development tools required by this Makefile
 	GOTOOLCHAIN=go$(GO_VERSION) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 	GOTOOLCHAIN=go$(GO_VERSION) go install github.com/bufbuild/buf/cmd/buf@$(BUF_VERSION)
 	GOTOOLCHAIN=go$(GO_VERSION) go install github.com/suzuki-shunsuke/pinact/cmd/pinact@$(PINACT_VERSION)
+	GOTOOLCHAIN=go$(GO_VERSION) go install github.com/Songmu/gocredits/cmd/gocredits@$(GOCREDITS_VERSION)
 	npm install -g markdownlint-cli@$(MARKDOWNLINT_VERSION)
 	uv tool install ruff@$(RUFF_VERSION)
 	@echo ""
@@ -58,17 +68,6 @@ setup: ## Install development tools required by this Makefile
 	@echo "Also required but not installed by this target:"
 	@echo "  - Docker (for 'image', 'image-debug', and 'test-scenario')"
 	@echo "  - containerlab (https://containerlab.dev/install/, for 'test-scenario')"
-
-build: ## Build Go binaries
-	mkdir -p bin
-	@for cmd in $(GO_CMDS); do \
-		go build -o bin/$$cmd ./cmd/$$cmd; \
-	done
-
-install: ## Install Go binaries into GOPATH/bin
-	@for cmd in $(GO_CMDS); do \
-		go install ./cmd/$$cmd; \
-	done
 
 fmt: ## Format Go and Python source code
 	go fmt ./...
@@ -88,18 +87,30 @@ lint: ## Run linters
 	markdownlint '**/*.md' --ignore node_modules
 	pinact run
 
-test: ## Run Go unit tests
-	go test ./...
-
-test-race: ## Run Go unit tests with race detector
-	go test -race ./...
-
 proto: ## Generate protobuf code
 	buf generate
 
 check-proto: proto ## Verify generated protobuf code is up to date
 	git diff --exit-code -- '*.pb.go' '*_grpc.pb.go'
 	test -z "$$(git ls-files --others --exclude-standard -- '*.pb.go' '*_grpc.pb.go')"
+
+
+build: ## Build Go binaries
+	mkdir -p bin
+	@for cmd in $(GO_CMDS); do \
+		go build -o bin/$$cmd ./cmd/$$cmd; \
+	done
+
+install: ## Install Go binaries into GOPATH/bin
+	@for cmd in $(GO_CMDS); do \
+		go install ./cmd/$$cmd; \
+	done
+
+test: ## Run Go unit tests
+	go test ./...
+
+test-race: ## Run Go unit tests with race detector
+	go test -race ./...
 
 image: ## Build production Docker image
 	docker buildx build \
@@ -114,6 +125,10 @@ image-debug: ## Build debug Docker image (adds a shell and network tools)
 		-f build/package/Dockerfile.debug \
 		--load \
 		.
+
+licenses: ## Generate third-party license file
+	@echo "Generating third-party license file..."
+	gocredits . > THIRD_PARTY_LICENSES.md
 
 fetch-gobgp: ## Fetch gobgp/gobgpd binaries into test/bin
 	mkdir -p $(TEST_BIN_DIR)
@@ -135,7 +150,7 @@ test-scenario: test-deps ## Run containerlab scenario tests
 test-scenario-parallel: PYTEST_ARGS = -s -n 4 --dist loadgroup
 test-scenario-parallel: test-scenario ## Run containerlab scenario tests, one lab per worker
 
-ci: build check-proto lint test ## Run the same checks as CI
+ci: check-proto lint build test ## Run the same checks as CI
 
 clean: ## Remove generated files
 	$(RM) -r bin $(TEST_BIN_DIR)
