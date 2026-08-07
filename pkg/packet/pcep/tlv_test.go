@@ -1420,31 +1420,43 @@ func TestAssocTypeList_CapStrings(t *testing.T) {
 
 // Test data for SRPolicyCandidatePathIdentifier.
 var (
-	testSRPolicyCPathIDIPv4 = &SRPolicyCandidatePathIdentifier{OriginatorAddr: netip.AddrFrom4([4]byte{192, 0, 2, 1})} // IPv4 originator
-	testSRPolicyCPathIDIPv6 = &SRPolicyCandidatePathIdentifier{OriginatorAddr: netip.MustParseAddr("2001:db8::1")}     // IPv6 originator
+	testSRPolicyCPathIDIPv4 = &SRPolicyCandidatePathIdentifier{
+		ProtocolOrigin: ProtocolOriginPCEP,
+		OriginatorASN:  65000,
+		OriginatorAddr: netip.AddrFrom4([4]byte{192, 0, 2, 1}), // IPv4 originator
+		Discriminator:  1,
+	}
+	testSRPolicyCPathIDIPv6 = &SRPolicyCandidatePathIdentifier{
+		ProtocolOrigin: ProtocolOriginPCEP,
+		OriginatorASN:  65000,
+		OriginatorAddr: netip.MustParseAddr("2001:db8::1"), // IPv6 originator
+		Discriminator:  2,
+	}
 
 	testSRPolicyCPathIDIPv4Bytes = []byte{
 		0x00, 0x39, 0x00, 0x1c, // type=0x0039, len=28
 		0x0a, 0x00, 0x00, 0x00, // protocol=0x0a + mbz
-		0x00, 0x00, 0x00, 0x00, // ASN=0
+		0x00, 0x00, 0xfd, 0xe8, // ASN=65000
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // originator addr padding
 		0xc0, 0x00, 0x02, 0x01, // IPv4 addr
-		0x00, 0x00, 0x00, 0x01, // discriminator
+		0x00, 0x00, 0x00, 0x01, // discriminator=1
 	}
 
 	testSRPolicyCPathIDIPv6Bytes = []byte{
 		0x00, 0x39, 0x00, 0x1c, // type=0x0039, len=28
 		0x0a, 0x00, 0x00, 0x00, // protocol + mbz
-		0x00, 0x00, 0x00, 0x00, // ASN
+		0x00, 0x00, 0xfd, 0xe8, // ASN=65000
 		0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, // IPv6 addr
-		0x00, 0x00, 0x00, 0x01, // discriminator
+		0x00, 0x00, 0x00, 0x02, // discriminator=2
 	}
 
 	testSRPolicyCPathIDTooShort        = []byte{0x00, 0x39, 0x00, 0x0a, 0x0a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00} // Less than 16 bytes for OriginatorAddr
 	testSRPolicyCPathIDTruncatedHeader = []byte{0x00, 0x39, 0x00}                                                                   // Truncated header (less than 4 bytes)
 
 	testSRPolicyCPathIDInvalid = &SRPolicyCandidatePathIdentifier{
+		ProtocolOrigin: ProtocolOriginPCEP,
 		OriginatorAddr: netip.Addr{}, // zero value, IsValid() == false
+		Discriminator:  1,
 	}
 	testSRPolicyCPathIDInvalidBytes = []byte{
 		0x00, 0x39, 0x00, 0x1c, // type + length
@@ -1456,14 +1468,31 @@ var (
 		0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x01, // discriminator
 	}
+
+	// Protocol-Origin other than PCEP must survive decode and re-serialize unchanged.
+	testSRPolicyCPathIDNonPCEP = &SRPolicyCandidatePathIdentifier{
+		ProtocolOrigin: 0x14, // BGP SR Policy origin defined by RFC
+		OriginatorASN:  65001,
+		OriginatorAddr: netip.AddrFrom4([4]byte{192, 0, 2, 3}),
+		Discriminator:  3,
+	}
+	testSRPolicyCPathIDNonPCEPBytes = []byte{
+		0x00, 0x39, 0x00, 0x1c, // type=0x0039, len=28
+		0x14, 0x00, 0x00, 0x00, // protocol origin=0x14 + mbz
+		0x00, 0x00, 0xfd, 0xe9, // ASN=65001
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // originator addr padding
+		0xc0, 0x00, 0x02, 0x03, // IPv4 addr
+		0x00, 0x00, 0x00, 0x03, // discriminator=3
+	}
 )
 
 func TestSRPolicyCandidatePathIdentifier_DecodeFromBytes(t *testing.T) {
 	cases := map[string]TLVTestCase{
-		"ValidIPv4":       {testSRPolicyCPathIDIPv4Bytes, testSRPolicyCPathIDIPv4, false},
-		"ValidIPv6":       {testSRPolicyCPathIDIPv6Bytes, testSRPolicyCPathIDIPv6, false},
-		"TooShort":        {testSRPolicyCPathIDTooShort, nil, true},
-		"TruncatedHeader": {testSRPolicyCPathIDTruncatedHeader, nil, true},
+		"ValidIPv4":             {testSRPolicyCPathIDIPv4Bytes, testSRPolicyCPathIDIPv4, false},
+		"ValidIPv6":             {testSRPolicyCPathIDIPv6Bytes, testSRPolicyCPathIDIPv6, false},
+		"NonPCEPProtocolOrigin": {testSRPolicyCPathIDNonPCEPBytes, testSRPolicyCPathIDNonPCEP, false},
+		"TooShort":              {testSRPolicyCPathIDTooShort, nil, true},
+		"TruncatedHeader":       {testSRPolicyCPathIDTruncatedHeader, nil, true},
 	}
 	runTLVDecodeTests(t, cases, func() TLVInterface { return &SRPolicyCandidatePathIdentifier{} })
 }
@@ -1473,8 +1502,9 @@ func TestSRPolicyCandidatePathIdentifier_Serialize(t *testing.T) {
 		input    TLVInterface
 		expected []byte
 	}{
-		"SerializeIPv4": {testSRPolicyCPathIDIPv4, testSRPolicyCPathIDIPv4Bytes},
-		"SerializeIPv6": {testSRPolicyCPathIDIPv6, testSRPolicyCPathIDIPv6Bytes},
+		"SerializeIPv4":                  {testSRPolicyCPathIDIPv4, testSRPolicyCPathIDIPv4Bytes},
+		"SerializeIPv6":                  {testSRPolicyCPathIDIPv6, testSRPolicyCPathIDIPv6Bytes},
+		"SerializeNonPCEPProtocolOrigin": {testSRPolicyCPathIDNonPCEP, testSRPolicyCPathIDNonPCEPBytes},
 	}
 	runTLVSerializeTests(t, cases)
 }
@@ -1497,13 +1527,19 @@ func TestSRPolicyCandidatePathIdentifier_MarshalLogObject(t *testing.T) {
 		"IPv4": {
 			testSRPolicyCPathIDIPv4,
 			map[string]any{
+				"protocolOrigin": testSRPolicyCPathIDIPv4.ProtocolOrigin,
+				"originatorAsn":  testSRPolicyCPathIDIPv4.OriginatorASN,
 				"originatorAddr": testSRPolicyCPathIDIPv4.OriginatorAddr.String(),
+				"discriminator":  testSRPolicyCPathIDIPv4.Discriminator,
 			},
 		},
 		"IPv6": {
 			testSRPolicyCPathIDIPv6,
 			map[string]any{
+				"protocolOrigin": testSRPolicyCPathIDIPv6.ProtocolOrigin,
+				"originatorAsn":  testSRPolicyCPathIDIPv6.OriginatorASN,
 				"originatorAddr": testSRPolicyCPathIDIPv6.OriginatorAddr.String(),
+				"discriminator":  testSRPolicyCPathIDIPv6.Discriminator,
 			},
 		},
 		"NilTLV": {
@@ -1530,6 +1566,26 @@ func TestSRPolicyCandidatePathIdentifier_Len(t *testing.T) {
 		"ValidLen": {testSRPolicyCPathIDIPv4, TLVValueOffset + TLVSRPolicyCPathIDValueLength},
 	}
 	runTLVLenTests(t, cases)
+}
+
+// Protocol-Origin must survive Decode -> Serialize without being rewritten to PCEP.
+func TestSRPolicyCandidatePathIdentifier_ProtocolOriginRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	for _, origin := range []uint8{0x00, 0x0a, 0x14, 0x1e, 0xff} {
+		t.Run(fmt.Sprintf("Origin_0x%02x", origin), func(t *testing.T) {
+			t.Parallel()
+
+			raw := append([]byte(nil), testSRPolicyCPathIDIPv4Bytes...)
+			raw[TLVValueOffset+SRPolicyCPathIDProtocolOriginOffset] = origin
+
+			var got SRPolicyCandidatePathIdentifier
+			require.NoError(t, got.DecodeFromBytes(raw), "DecodeFromBytes failed")
+			assert.Equal(t, origin, got.ProtocolOrigin, "ProtocolOrigin not preserved on decode")
+
+			assert.Equal(t, raw, got.Serialize(), "re-serialized bytes differ")
+		})
+	}
 }
 
 // Test data for SRPolicyCandidatePathPreference.

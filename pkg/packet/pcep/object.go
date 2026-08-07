@@ -1713,13 +1713,15 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 			&UndefinedTLV{
 				Typ:    TLVSRPolicyCPathIDJuniper,
 				Length: TLVSRPolicyCPathIDValueLength,
-				Value: []uint8{
-					0x00,             // protocol origin
-					0x00, 0x00, 0x00, // mbz
-					0x00, 0x00, 0x00, 0x00, // Originator ASN
-					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Originator Address
-					0x00, 0x00, 0x00, 0x00, //discriminator
-				},
+				Value: AppendByteSlices(
+					[]uint8{
+						ProtocolOriginPCEP, // protocol origin
+						0x00, 0x00, 0x00,   // mbz
+					},
+					Uint32ToByteSlice(opts.originatorASN), // Originator ASN
+					make([]uint8, 16),                     // Originator Address
+					make([]uint8, 4),                      // discriminator
+				),
 			},
 			&UndefinedTLV{
 				Typ:    TLVSRPolicyCPathPreferenceJuniper,
@@ -1737,7 +1739,10 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 				Endpoint: dstAddr,
 			},
 			&SRPolicyCandidatePathIdentifier{
+				ProtocolOrigin: ProtocolOriginPCEP, // this PCE originates the candidate path
+				OriginatorASN:  opts.originatorASN,
 				OriginatorAddr: dstAddr,
+				Discriminator:  1, // keep existing wire value
 			},
 			&SRPolicyCandidatePathPreference{
 				Preference: preference,
@@ -1893,7 +1898,8 @@ func (o *VendorInformationObject) subTLVUint32(typ TLVType) uint32 {
 }
 
 type optParams struct {
-	pccType PccType
+	pccType       PccType
+	originatorASN uint32
 }
 
 type Opt func(*optParams)
@@ -1901,5 +1907,11 @@ type Opt func(*optParams)
 func VendorSpecific(pt PccType) Opt {
 	return func(op *optParams) {
 		op.pccType = pt
+	}
+}
+
+func OriginatorASN(asn uint32) Opt {
+	return func(op *optParams) {
+		op.originatorASN = asn
 	}
 }

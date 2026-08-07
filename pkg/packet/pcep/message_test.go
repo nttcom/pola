@@ -6,8 +6,11 @@
 package pcep
 
 import (
+	"bytes"
+	"net/netip"
 	"testing"
 
+	"github.com/nttcom/pola/pkg/table"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -66,6 +69,55 @@ func TestPCErrMessage_RoundTrip(t *testing.T) {
 			raw2, err := got.Serialize()
 			require.NoError(t, err, "re-Serialize failed")
 			assert.Equal(t, raw, raw2, "re-serialized bytes differ")
+		})
+	}
+}
+
+// Verify OriginatorASN is propagated to the SRPOLICY-CPATH-ID TLV.
+func TestNewPCInitiateMessage_OriginatorASNReachesWire(t *testing.T) {
+	t.Parallel()
+
+	srcAddr := netip.MustParseAddr("192.0.2.1")
+	dstAddr := netip.MustParseAddr("192.0.2.2")
+	segmentList := []table.Segment{table.NewSegmentSRMPLS(16001)}
+
+	cases := map[string]struct {
+		opts        []Opt
+		expectedASN uint32
+	}{
+		"OriginatorASNSet":     {opts: []Opt{VendorSpecific(RFCCompliant), OriginatorASN(65000)}, expectedASN: 65000},
+		"OriginatorASNOmitted": {opts: []Opt{VendorSpecific(RFCCompliant)}, expectedASN: 0},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			m, err := NewPCInitiateMessage(1, "policy1", false, 0, segmentList, 100, 200, srcAddr, dstAddr, tt.opts...)
+			require.NoError(t, err, "NewPCInitiateMessage failed")
+			require.NotNil(t, m.AssociationObject, "RFC compliant PCInitiate must carry an ASSOCIATION object")
+
+			var cpathID *SRPolicyCandidatePathIdentifier
+			for _, tlv := range m.AssociationObject.TLVs {
+				if id, ok := tlv.(*SRPolicyCandidatePathIdentifier); ok {
+					cpathID = id
+					break
+				}
+			}
+			require.NotNil(t, cpathID, "SRPOLICY-CPATH-ID TLV missing from ASSOCIATION object")
+			assert.Equal(t, tt.expectedASN, cpathID.OriginatorASN, "OriginatorASN not propagated to the TLV")
+
+			raw, err := m.Serialize()
+			require.NoError(t, err, "Serialize failed")
+
+			expectedTLV := AppendByteSlices(
+				[]uint8{0x00, 0x39, 0x00, 0x1c}, // SRPOLICY-CPATH-ID TLV: type=0x0039, len=28
+				[]uint8{0x0a, 0x00, 0x00, 0x00}, // protocol origin + mbz
+				Uint32ToByteSlice(tt.expectedASN),
+				make([]uint8, 12), dstAddr.AsSlice(), // originator address (IPv4 in the 16 byte field)
+				[]uint8{0x00, 0x00, 0x00, 0x01}, // discriminator
+			)
+			assert.True(t, bytes.Contains(raw, expectedTLV), "serialized message does not carry ASN %d in the SRPOLICY-CPATH-ID TLV", tt.expectedASN)
 		})
 	}
 }

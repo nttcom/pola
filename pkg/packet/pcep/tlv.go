@@ -1553,15 +1553,21 @@ func (tlv *AssocTypeList) CapStrings() []string {
 }
 
 type SRPolicyCandidatePathIdentifier struct {
-	OriginatorAddr netip.Addr // After DecodeFromBytes, IPv4 addresses are stored as native IPv4 (upper 12 bytes zero), not IPv4-mapped IPv6
+	ProtocolOrigin uint8 // Protocol that originated the candidate path.
+	OriginatorASN  uint32
+	OriginatorAddr netip.Addr // Decoded IPv4 addresses are stored as native IPv4.
+	Discriminator  uint32
 }
 
 const (
-	SRPolicyCPathIDASNOffset  = 4
-	SRPolicyCPathIDAddrOffset = 8
-	SRPolicyCPathIDIPv4Offset = 12
-	DiscriminatorLen          = 4
-	ProtocolOriginPCEP        = 0x0a
+	SRPolicyCPathIDProtocolOriginOffset = 0
+	SRPolicyCPathIDASNOffset            = 4
+	SRPolicyCPathIDAddrOffset           = 8
+	SRPolicyCPathIDIPv4Offset           = 12 // offset within Originator Address field
+	SRPolicyCPathIDDiscriminatorOffset  = 24
+	SRPolicyCPathIDASNLen               = 4
+	SRPolicyCPathIDDiscriminatorLen     = 4
+	ProtocolOriginPCEP                  = 0x0a
 )
 
 func (tlv *SRPolicyCandidatePathIdentifier) DecodeFromBytes(data []byte) error {
@@ -1575,6 +1581,12 @@ func (tlv *SRPolicyCandidatePathIdentifier) DecodeFromBytes(data []byte) error {
 		return fmt.Errorf("SRPolicyCandidatePathIdentifier: invalid value length, expected %d, got %d", TLVSRPolicyCPathIDValueLength, len(value))
 	}
 
+	tlv.ProtocolOrigin = value[SRPolicyCPathIDProtocolOriginOffset]
+
+	tlv.OriginatorASN = binary.BigEndian.Uint32(
+		value[SRPolicyCPathIDASNOffset : SRPolicyCPathIDASNOffset+SRPolicyCPathIDASNLen],
+	)
+
 	addrBytes := value[SRPolicyCPathIDAddrOffset : SRPolicyCPathIDAddrOffset+IPv6AddrLen]
 
 	if isIPv4Bytes(addrBytes) {
@@ -1587,6 +1599,10 @@ func (tlv *SRPolicyCandidatePathIdentifier) DecodeFromBytes(data []byte) error {
 		tlv.OriginatorAddr = netip.AddrFrom16(addr16)
 	}
 
+	tlv.Discriminator = binary.BigEndian.Uint32(
+		value[SRPolicyCPathIDDiscriminatorOffset : SRPolicyCPathIDDiscriminatorOffset+SRPolicyCPathIDDiscriminatorLen],
+	)
+
 	return nil
 }
 
@@ -1594,7 +1610,12 @@ func (tlv *SRPolicyCandidatePathIdentifier) Serialize() []byte {
 
 	value := make([]byte, TLVSRPolicyCPathIDValueLength)
 
-	value[0] = ProtocolOriginPCEP
+	value[SRPolicyCPathIDProtocolOriginOffset] = tlv.ProtocolOrigin
+
+	binary.BigEndian.PutUint32(
+		value[SRPolicyCPathIDASNOffset:SRPolicyCPathIDASNOffset+SRPolicyCPathIDASNLen],
+		tlv.OriginatorASN,
+	)
 
 	addr := tlv.OriginatorAddr
 
@@ -1620,8 +1641,8 @@ func (tlv *SRPolicyCandidatePathIdentifier) Serialize() []byte {
 	}
 
 	binary.BigEndian.PutUint32(
-		value[SRPolicyCPathIDAddrOffset+IPv6AddrLen:SRPolicyCPathIDAddrOffset+IPv6AddrLen+DiscriminatorLen],
-		1, // TODO: set discriminator properly if needed
+		value[SRPolicyCPathIDDiscriminatorOffset:SRPolicyCPathIDDiscriminatorOffset+SRPolicyCPathIDDiscriminatorLen],
+		tlv.Discriminator,
 	)
 
 	return AppendByteSlices(
@@ -1636,7 +1657,10 @@ func (tlv *SRPolicyCandidatePathIdentifier) MarshalLogObject(enc zapcore.ObjectE
 		return nil
 	}
 
+	enc.AddUint8("protocolOrigin", tlv.ProtocolOrigin)
+	enc.AddUint32("originatorAsn", tlv.OriginatorASN)
 	enc.AddString("originatorAddr", tlv.OriginatorAddr.String())
+	enc.AddUint32("discriminator", tlv.Discriminator)
 	return nil
 }
 

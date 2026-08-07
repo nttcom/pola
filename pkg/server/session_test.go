@@ -46,7 +46,7 @@ func newTestStateReport(t *testing.T, plspID uint32, srpID uint32) *pcep.StateRe
 // With the TED disabled the PCE cannot compute anything, but that must not fail the state report:
 // doing so used to tear down the PCEP session and made the PCC reconnect in a loop.
 func TestHandleStateReportWithoutTED(t *testing.T) {
-	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil)
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
 	sr := newTestStateReport(t, 1, 0)
 
 	if err := ss.handleStateReport(sr, pcep.NewPCRptMessage()); err != nil {
@@ -67,7 +67,7 @@ func TestHandleStateReportWithoutTED(t *testing.T) {
 
 // The same report with the R-Flag set removes the SR Policy instead of registering it.
 func TestHandleStateReportRemove(t *testing.T) {
-	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil)
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
 	sr := newTestStateReport(t, 1, 0)
 
 	if err := ss.handleStateReport(sr, pcep.NewPCRptMessage()); err != nil {
