@@ -1094,7 +1094,7 @@ func TestPathSetupTypeCapability_MarshalLogObject(t *testing.T) {
 				"pathSetupTypes": []any{
 					"Traffic engineering path is set up using Segment Routing (RFC8664)",
 				},
-				"subTLVs": []any{"0x53522d5043452d4341504142494c49545920285246433836363429 (SR-PCE-CAPABILITY (RFC8664))"},
+				"subTLVs": []any{"0x001a (SR-PCE-CAPABILITY (RFC8664))"},
 			},
 		},
 		"NilTLV": {
@@ -1986,14 +1986,14 @@ func TestUnknownTLV_MarshalLogObject(t *testing.T) {
 		"StandardTLV": {
 			testUnknownTLV,
 			map[string]any{
-				"type":   fmt.Sprintf("0x%04x", testUnknownTLV.Typ),
+				"type":   "0xffff",
 				"length": testUnknownTLV.Length,
 			},
 		},
 		"OddLength": {
 			testUnknownTLVOddLength,
 			map[string]any{
-				"type":   fmt.Sprintf("0x%04x", testUnknownTLVOddLength.Typ),
+				"type":   "0xffff",
 				"length": testUnknownTLVOddLength.Length,
 			},
 		},
@@ -2011,6 +2011,21 @@ func TestUnknownTLV_MarshalLogObject(t *testing.T) {
 			assert.Equal(t, tt.expected, enc.Fields, "unexpected fields for '%s'", name)
 		})
 	}
+}
+
+// Ensure TLVType is not formatted as ASCII hex via its String() method.
+func TestMarshalLogObject_TLVTypeHexFormatting(t *testing.T) {
+	enc := zapcore.NewMapObjectEncoder()
+	err := testPathSetupTypeCapabilityWithSubTLV.MarshalLogObject(enc)
+	assert.NoError(t, err)
+	subTLVs, ok := enc.Fields["subTLVs"].([]any)
+	assert.True(t, ok)
+	assert.Equal(t, []any{"0x001a (SR-PCE-CAPABILITY (RFC8664))"}, subTLVs)
+
+	enc = zapcore.NewMapObjectEncoder()
+	err = testUnknownTLV.MarshalLogObject(enc)
+	assert.NoError(t, err)
+	assert.Equal(t, "0xffff", enc.Fields["type"])
 }
 
 func TestUnknownTLV_Len(t *testing.T) {
