@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"net/netip"
 	"slices"
@@ -47,12 +48,24 @@ func NewAPIServer(pce *Server, grpcServer *grpc.Server, usidMode bool, logger *z
 }
 
 func (s *APIServer) Serve(address string, port string) error {
-	listenInfo := net.JoinHostPort(address, port)
-	s.logger.Info("Start listening on gRPC port", zap.String("listenInfo", listenInfo))
-	grpcListener, err := net.Listen("tcp", listenInfo)
+	a, err := netip.ParseAddr(address)
 	if err != nil {
-		return fmt.Errorf("failed to listen: %w", err)
+		return fmt.Errorf("failed to parse gRPC address %q: %w", address, err)
 	}
+	p, err := strconv.Atoi(port)
+	if err != nil {
+		return fmt.Errorf("failed to convert gRPC port %q: %w", port, err)
+	}
+	if p < 0 || p > math.MaxUint16 {
+		return errors.New("invalid gRPC listen port")
+	}
+	localAddr := netip.AddrPortFrom(a, uint16(p))
+
+	grpcListener, err := net.Listen("tcp", localAddr.String())
+	if err != nil {
+		return fmt.Errorf("failed to listen on gRPC port %s: %w", localAddr.String(), err)
+	}
+	s.logger.Info("Start listening on gRPC port", zap.String("listenInfo", grpcListener.Addr().String()))
 	return s.grpcServer.Serve(grpcListener)
 }
 

@@ -35,6 +35,7 @@ See the [Docker page](../../build/package/README.md).
 ## Configuration
 
 Specify the IP address and port number for each PCEP and gRPC.
+`address` must be a literal IPv4 or IPv6 address; hostnames are not resolved.
 See [JSON schema](../schemas/server/polad_config.json) for config details.
 
 ### case: TED disable

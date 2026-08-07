@@ -95,7 +95,7 @@ func (s *Server) Serve(address string, port string, usidMode bool) error {
 	if err != nil {
 		return fmt.Errorf("failed to convert port %s: %w", port, err)
 	}
-	if p > math.MaxUint16 {
+	if p < 0 || p > math.MaxUint16 {
 		return errors.New("invalid PCEP listen port")
 	}
 	localAddr := netip.AddrPortFrom(a, uint16(p))

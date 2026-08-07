@@ -44,6 +44,9 @@ func main() {
 	if err != nil {
 		log.Panicf("failed to read config file: %v", err)
 	}
+	if err := c.Validate(); err != nil {
+		log.Panicf("invalid config file: %v", err)
+	}
 
 	// Create log directory if it does not exist
 	if err := os.MkdirAll(c.Global.Log.Path, 0755); err != nil {

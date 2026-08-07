@@ -26,7 +26,8 @@
                     "required": [
                         "address",
                         "port"
-                    ]
+                    ],
+                    "additionalProperties": false
                 },
                 "grpcServer": {
                     "type": "object",
@@ -49,7 +50,8 @@
                     "required": [
                         "address",
                         "port"
-                    ]
+                    ],
+                    "additionalProperties": false
                 },
                 "log": {
                     "type": "object",
@@ -67,7 +69,8 @@
                     "required": [
                         "path",
                         "name"
-                    ]
+                    ],
+                    "additionalProperties": false
                 },
                 "ted": {
                     "type": "object",
@@ -89,7 +92,8 @@
                     },
                     "required": [
                         "enable"
-                    ]
+                    ],
+                    "additionalProperties": false
                 },
                 "gobgp": {
                     "type": "object",
@@ -115,12 +119,14 @@
                             "required": [
                                 "address",
                                 "port"
-                            ]
+                            ],
+                            "additionalProperties": false
                         }
                     },
                     "required": [
                         "grpcClient"
-                    ]
+                    ],
+                    "additionalProperties": false
                 },
                 "usidMode": {
                     "type": "boolean",
@@ -132,7 +138,8 @@
                 "grpcServer",
                 "log",
                 "ted"
-            ]
+            ],
+            "additionalProperties": false
         }
     },
     "required": [

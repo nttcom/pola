@@ -6,6 +6,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -69,8 +70,54 @@ func ReadConfigFile(configFile string) (Config, error) {
 		}
 	}()
 
-	if err := yaml.NewDecoder(f).Decode(c); err != nil {
-		return *c, err
+	dec := yaml.NewDecoder(f)
+	dec.KnownFields(true)
+	if err := dec.Decode(c); err != nil {
+		return *c, fmt.Errorf("failed to parse config file %q: %w", configFile, err)
 	}
 	return *c, nil
+}
+
+// Validate checks required configuration fields.
+func (c *Config) Validate() error {
+	var errs []error
+
+	if c.Global.PCEP.Address == "" {
+		errs = append(errs, errors.New("global.pcep.address is required"))
+	}
+	if c.Global.PCEP.Port == "" {
+		errs = append(errs, errors.New("global.pcep.port is required"))
+	}
+	if c.Global.GRPCServer.Address == "" {
+		errs = append(errs, errors.New("global.grpcServer.address is required"))
+	}
+	if c.Global.GRPCServer.Port == "" {
+		errs = append(errs, errors.New("global.grpcServer.port is required"))
+	}
+	if c.Global.Log.Path == "" {
+		errs = append(errs, errors.New("global.log.path is required"))
+	}
+	if c.Global.Log.Name == "" {
+		errs = append(errs, errors.New("global.log.name is required"))
+	}
+	if c.Global.TED == nil {
+		errs = append(errs, errors.New("global.ted is required"))
+	} else if c.Global.TED.Enable {
+		if c.Global.TED.Source == "" {
+			errs = append(errs, errors.New("global.ted.source is required when global.ted.enable is true"))
+		}
+		if c.Global.TED.ASN == 0 {
+			errs = append(errs, errors.New("global.ted.asn is required when global.ted.enable is true"))
+		}
+		if c.Global.TED.Source == "gobgp" {
+			if c.Global.GoBGP.GRPCClient.Address == "" {
+				errs = append(errs, errors.New("global.gobgp.grpcClient.address is required when global.ted.source is gobgp"))
+			}
+			if c.Global.GoBGP.GRPCClient.Port == "" {
+				errs = append(errs, errors.New("global.gobgp.grpcClient.port is required when global.ted.source is gobgp"))
+			}
+		}
+	}
+
+	return errors.Join(errs...)
 }
