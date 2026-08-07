@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/nttcom/pola/internal/pkg/version"
+	"github.com/nttcom/pola/internal/version"
 )
 
 func main() {

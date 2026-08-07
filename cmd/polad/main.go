@@ -14,8 +14,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/nttcom/pola/internal/config"
-	"github.com/nttcom/pola/internal/pkg/gobgp"
-	"github.com/nttcom/pola/internal/pkg/version"
+	"github.com/nttcom/pola/internal/gobgp"
+	"github.com/nttcom/pola/internal/version"
 	"github.com/nttcom/pola/pkg/logger"
 	"github.com/nttcom/pola/pkg/server"
 	"github.com/nttcom/pola/pkg/table"
