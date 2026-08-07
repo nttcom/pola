@@ -60,7 +60,7 @@ JSON formatted response
 ]
 ```
 
-### pola session del *Address* \[-j\]
+### pola session delete *Address* \[-j\]
 
 Deletes the specified session.
 
