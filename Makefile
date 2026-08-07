@@ -42,6 +42,7 @@ RUFF_VERSION          ?= latest
 	test-scenario \
 	test-scenario-parallel \
 	ci \
+	release \
 	clean
 
 .DEFAULT_GOAL := build
@@ -151,6 +152,26 @@ test-scenario-parallel: PYTEST_ARGS = -s -n 4 --dist loadgroup
 test-scenario-parallel: test-scenario ## Run containerlab scenario tests, one lab per worker
 
 ci: check-proto lint build test ## Run the same checks as CI
+
+release: ## Cut a release: make release VERSION=X.Y.Z
+	@if [ -z "$(VERSION)" ]; then echo "Usage: make release VERSION=X.Y.Z"; exit 1; fi
+	@if ! echo "$(VERSION)" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$'; then echo "VERSION must be in X.Y.Z format: $(VERSION)"; exit 1; fi
+	@if [ -n "$$(git status --porcelain)" ]; then echo "Working tree is not clean"; exit 1; fi
+	@if [ "$$(git rev-parse --abbrev-ref HEAD)" != "main" ]; then echo "Must be on main branch"; exit 1; fi
+	@git fetch origin main develop --tags
+	@if git rev-parse -q --verify "refs/tags/v$(VERSION)" >/dev/null; then \
+		echo "Tag v$(VERSION) already exists"; exit 1; \
+	fi
+	@if [ "$$(git rev-parse HEAD)" != "$$(git rev-parse origin/main)" ]; then echo "Local main is out of sync with origin/main"; exit 1; fi
+	@if [ -n "$$(git log origin/main..origin/develop --oneline)" ]; then \
+		echo "develop has commits not yet merged into main:"; \
+		git log origin/main..origin/develop --oneline; \
+		exit 1; \
+	fi
+	$(MAKE) ci
+	$(MAKE) test-race
+	git tag -a "v$(VERSION)" -m "Release v$(VERSION)"
+	git push origin "v$(VERSION)"
 
 clean: ## Remove generated files
 	$(RM) -r bin $(TEST_BIN_DIR)
