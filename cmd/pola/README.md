@@ -237,7 +237,7 @@ form additionally needs
 For each SID, specify the address information required to construct the NAI.
 `localAddr` is required for SRv6 SIDs but optional for SR-MPLS labels.
 
-See [JSON schema](docs/schemas/policy.json) for input details.
+See [JSON schema](../../docs/schemas/cli/policy.json) for input details.
 
 YAML input format
 
