@@ -10,6 +10,7 @@ import pytest
 from helpers.wait import (
     run_command,
     wait_for_ssh,
+    wait_until_command_output_contains,
     wait_until_command_success,
     wait_until_lsp_up,
     wait_until_ssh_output_contains,
@@ -129,9 +130,9 @@ class TestExplicitPathSRMPLS:
     def _assert_frr_policy(self):
         """Verify the SR Policy installed on the FRRouting PCC."""
 
-        result = wait_until_command_success(
-            f"docker exec clab-{LAB}-pe03 vtysh -c 'show sr-te policy detail' "
-            f"| grep 'Name: pe03-policy1'"
+        result = wait_until_command_output_contains(
+            f"docker exec clab-{LAB}-pe03 vtysh -c 'show sr-te policy detail'",
+            "Status: Active",
         )
 
-        assert "Status: Active" in result.stdout, result.stdout
+        assert "Name: pe03-policy1" in result.stdout, result.stdout
