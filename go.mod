@@ -3,7 +3,7 @@ module github.com/nttcom/pola
 go 1.26.5
 
 require (
-	github.com/osrg/gobgp/v4 v4.7.0
+	github.com/osrg/gobgp/v4 v4.8.0
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/zap v1.28.0
