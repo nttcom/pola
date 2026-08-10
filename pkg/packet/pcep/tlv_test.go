@@ -734,10 +734,12 @@ var (
 	testSRPCECapabilityUnlimitedOnly  = &SRPCECapability{HasUnlimitedMaxSIDDepth: true}
 	testSRPCECapabilityNAIOnly        = &SRPCECapability{IsNAISupported: true}
 	testSRPCECapabilityNoneEnabled    = &SRPCECapability{}
-	testSRPCECapabilityAllEnabledStrs = []string{"Unlimited-SID-Depth", "NAI-Supported"}
-	testSRPCECapabilityUnlimitedStrs  = []string{"Unlimited-SID-Depth"}
-	testSRPCECapabilityNAIStrs        = []string{"NAI-Supported"}
-	testSRPCECapabilityNoneStrs       = []string(nil)
+	testSRPCECapabilityAllEnabledStrs = []string{"SR", "Unlimited-SID-Depth", "SR-NAI-Supported"}
+	testSRPCECapabilityUnlimitedStrs  = []string{"SR", "Unlimited-SID-Depth"}
+	testSRPCECapabilityNAIStrs        = []string{"SR", "MSD=0", "SR-NAI-Supported"}
+	testSRPCECapabilityMSDOnly        = &SRPCECapability{MaximumSidDepth: 10}
+	testSRPCECapabilityMSDOnlyStrs    = []string{"SR", "MSD=10"}
+	testSRPCECapabilityNoneStrs       = []string{"SR", "MSD=0"}
 )
 
 func TestSRPCECapability_DecodeFromBytes(t *testing.T) {
@@ -829,6 +831,7 @@ func TestSRPCECapability_CapStrings(t *testing.T) {
 		"OnlyUnlimitedMaxSIDDepthEnabled": {testSRPCECapabilityUnlimitedOnly, testSRPCECapabilityUnlimitedStrs},
 		"OnlyNAISupportedEnabled":         {testSRPCECapabilityNAIOnly, testSRPCECapabilityNAIStrs},
 		"NoCapabilitiesEnabled":           {testSRPCECapabilityNoneEnabled, testSRPCECapabilityNoneStrs},
+		"WithNonZeroMSD":                  {testSRPCECapabilityMSDOnly, testSRPCECapabilityMSDOnlyStrs},
 	}
 	runCapStringsTests(t, cases)
 }
@@ -1507,6 +1510,17 @@ func TestAssocTypeList_CapStrings(t *testing.T) {
 		expected []string
 	}{
 		"EmptyList": {&AssocTypeList{}, []string{}},
+		"TwoEntries": {
+			testAssocTypeList,
+			[]string{
+				"AssocType:Path Protection Association",
+				"AssocType:SR Policy Association",
+			},
+		},
+		"SingleEntry": {
+			testAssocTypeListSingle,
+			[]string{"AssocType:Path Protection Association"},
+		},
 	}
 	runCapStringsTests(t, cases)
 }
@@ -2045,14 +2059,14 @@ func TestUnknownTLV_CapStrings(t *testing.T) {
 		expected []string
 	}{
 		// Registered in tlvDescriptions but with no dedicated decoder: reported
-		// under its registry name rather than as unknown_type_<n>.
+		// as its TLV identifier plus registry name rather than as unknown_type_<n>.
 		"RegisteredWithoutDecoder": {
 			input:    &UnknownTLV{Typ: TLVSRP2MPPolicyCapability},
-			expected: []string{"SR-P2MP-POLICY-CAPABILITY"},
+			expected: []string{"0x0049 (SR-P2MP-POLICY-CAPABILITY (draft-ietf-pce-sr-p2mp-policy-11))"},
 		},
 		"RegisteredVendorSpecific": {
 			input:    &UnknownTLV{Typ: TLVSRPolicyCPathPreferenceJuniper},
-			expected: []string{"SRPOLICY-CPATH-PREFERENCE (Juniper)"},
+			expected: []string{"0xffe5 (SRPOLICY-CPATH-PREFERENCE (Juniper) (vendor-specific))"},
 		},
 		// Absent from the registry: falls back to the numeric form.
 		"UnregisteredType": {
@@ -2195,7 +2209,7 @@ var (
 	testSRv6PCECapabilityShortLength = append(tlvHeader(TLVSRv6PCECapability, 3), 0x00, 0x00, 0x00)
 	testSRv6PCECapabilityTruncated   = append(tlvHeader(TLVSRv6PCECapability, 4), 0x00, 0x00)
 	testSRv6PCECapabilityNoNAI       = &SRv6PCECapability{}
-	testSRv6PCECapabilityNAIStrs     = []string{"SRv6", "NAI-Supported"}
+	testSRv6PCECapabilityNAIStrs     = []string{"SRv6", "SRv6-NAI-Supported"}
 	testSRv6PCECapabilityNoNAIStrs   = []string{"SRv6"}
 )
 
@@ -2304,12 +2318,13 @@ func TestSRv6PCECapability_RoundTrip(t *testing.T) {
 var (
 	testMultipathCapability = NewMultipathCapability(8, true, true, true, true)
 	// MaxMultipaths=8 (0x0008), Flags=W|O|F|C = 0x001D
-	testMultipathCapabilityBytes        = append(tlvHeader(TLVMultipathCap, 4), 0x00, 0x08, 0x00, 0x1d)
-	testMultipathCapabilityNoFlags      = NewMultipathCapability(1, false, false, false, false)
-	testMultipathCapabilityNoFlagsBytes = append(tlvHeader(TLVMultipathCap, 4), 0x00, 0x01, 0x00, 0x00)
-	testMultipathCapabilityTruncated    = append(tlvHeader(TLVMultipathCap, 4), 0x00, 0x08)
-	testMultipathCapabilityInvalidLen   = append(tlvHeader(TLVMultipathCap, 8), 0x00, 0x08, 0x00, 0x0f, 0xde, 0xad, 0xbe, 0xef)
-	testMultipathCapabilityCapStrs      = []string{"Multipath"}
+	testMultipathCapabilityBytes          = append(tlvHeader(TLVMultipathCap, 4), 0x00, 0x08, 0x00, 0x1d)
+	testMultipathCapabilityNoFlags        = NewMultipathCapability(1, false, false, false, false)
+	testMultipathCapabilityNoFlagsBytes   = append(tlvHeader(TLVMultipathCap, 4), 0x00, 0x01, 0x00, 0x00)
+	testMultipathCapabilityTruncated      = append(tlvHeader(TLVMultipathCap, 4), 0x00, 0x08)
+	testMultipathCapabilityInvalidLen     = append(tlvHeader(TLVMultipathCap, 8), 0x00, 0x08, 0x00, 0x0f, 0xde, 0xad, 0xbe, 0xef)
+	testMultipathCapabilityCapStrs        = []string{"Multipath", "MaxMultipaths=8", "Weighted", "OppositeDir", "ForwardClass", "CompositePath"}
+	testMultipathCapabilityNoFlagsCapStrs = []string{"Multipath", "MaxMultipaths=1"}
 )
 
 func TestMultipathCapability_DecodeFromBytes(t *testing.T) {
@@ -2387,7 +2402,7 @@ func TestMultipathCapability_CapStrings(t *testing.T) {
 		expected []string
 	}{
 		"AllFlagsEnabled": {testMultipathCapability, testMultipathCapabilityCapStrs},
-		"NoFlagsEnabled":  {testMultipathCapabilityNoFlags, testMultipathCapabilityCapStrs},
+		"NoFlagsEnabled":  {testMultipathCapabilityNoFlags, testMultipathCapabilityNoFlagsCapStrs},
 	}
 	runCapStringsTests(t, cases)
 }
