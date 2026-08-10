@@ -189,6 +189,44 @@ func TestSRPolicyIntent_AttachedOnCreationBySRPID(t *testing.T) {
 	}
 }
 
+// A policy update must also replace the recorded type and metric, using the intent
+// keyed by the SRP-ID of the update request.
+func TestSRPolicyIntent_AttachedOnUpdateBySRPID(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+
+	ss.rememberSRPolicyIntent(1, table.PolicyTypeExplicit, table.UnspecifiedMetric)
+	sr := newTestStateReport(t, 1, 1)
+	if err := ss.handleStateReport(sr, pcep.NewPCRptMessage()); err != nil {
+		t.Fatalf("handleStateReport returned an error: %v", err)
+	}
+
+	policy, found := ss.SearchSRPolicy(sr.LSPObject.PlspID)
+	if !found {
+		t.Fatal("SR Policy reported by the PCC was not registered")
+	}
+	if policy.Type != table.PolicyTypeExplicit || policy.Metric != table.UnspecifiedMetric {
+		t.Fatalf("initial policy intent: got (%q, %v), want (%q, %v)", policy.Type, policy.Metric, table.PolicyTypeExplicit, table.UnspecifiedMetric)
+	}
+
+	// A PCRpt for the same PLSP-ID takes the update path and must pick up the new intent.
+	ss.rememberSRPolicyIntent(2, table.PolicyTypeDynamic, table.TEMetric)
+	sr2 := newTestStateReport(t, 1, 2)
+	if err := ss.handleStateReport(sr2, pcep.NewPCRptMessage()); err != nil {
+		t.Fatalf("handleStateReport returned an error: %v", err)
+	}
+
+	policy, found = ss.SearchSRPolicy(sr2.LSPObject.PlspID)
+	if !found {
+		t.Fatal("SR Policy reported by the PCC was not registered")
+	}
+	if policy.Type != table.PolicyTypeDynamic {
+		t.Errorf("policy type after update: got %q, want %q", policy.Type, table.PolicyTypeDynamic)
+	}
+	if policy.Metric != table.TEMetric {
+		t.Errorf("policy metric after update: got %v, want %v", policy.Metric, table.TEMetric)
+	}
+}
+
 func TestSRPolicyIntent_UnknownWhenNeverRemembered(t *testing.T) {
 	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
 	sr := newTestStateReport(t, 1, 0)
