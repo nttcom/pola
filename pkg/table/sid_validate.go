@@ -149,3 +149,36 @@ func MissingSegments(ted *LsTED, segmentList []Segment) []MissingSegment {
 	}
 	return missing
 }
+
+// HasUnknownSegmentType reports whether segmentList contains a segment with an unknown family.
+func HasUnknownSegmentType(segmentList []Segment) bool {
+	for _, seg := range segmentList {
+		if seg == nil {
+			continue
+		}
+		if seg.GetFamily() == SegmentUnknown {
+			return true
+		}
+	}
+	return false
+}
+
+// HasMixedSegmentTypes reports whether segmentList contains both SRv6 and SR-MPLS segments.
+func HasMixedSegmentTypes(segmentList []Segment) bool {
+	var hasSRv6, hasSRMPLS bool
+	for _, seg := range segmentList {
+		if seg == nil {
+			continue
+		}
+		switch seg.GetFamily() {
+		case SegmentSRv6Family:
+			hasSRv6 = true
+		case SegmentSRMPLSFamily:
+			hasSRMPLS = true
+		}
+		if hasSRv6 && hasSRMPLS {
+			return true
+		}
+	}
+	return false
+}

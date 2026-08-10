@@ -197,3 +197,120 @@ func TestMissingSegments(t *testing.T) {
 		t.Errorf("unexpected second missing segment: %+v", missing[1])
 	}
 }
+
+type fakeUnknownSegment struct{}
+
+func (fakeUnknownSegment) SidString() string        { return "unknown" }
+func (fakeUnknownSegment) GetFamily() SegmentFamily { return SegmentUnknown }
+
+func TestHasUnknownSegmentType(t *testing.T) {
+	tests := []struct {
+		name string
+		segs []Segment
+		want bool
+	}{
+		{
+			name: "all known, SR-MPLS",
+			segs: []Segment{NewSegmentSRMPLS(16001), NewSegmentSRMPLS(16002)},
+			want: false,
+		},
+		{
+			name: "all known, SRv6",
+			segs: []Segment{NewSegmentSRv6(netip.MustParseAddr("2001:db8::1"))},
+			want: false,
+		},
+		{
+			name: "contains nil only",
+			segs: []Segment{nil, nil},
+			want: false,
+		},
+		{
+			name: "empty list",
+			segs: []Segment{},
+			want: false,
+		},
+		{
+			name: "contains unknown family",
+			segs: []Segment{NewSegmentSRMPLS(16001), fakeUnknownSegment{}},
+			want: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := HasUnknownSegmentType(tt.segs); got != tt.want {
+				t.Errorf("HasUnknownSegmentType() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestHasMixedSegmentTypes(t *testing.T) {
+	tests := []struct {
+		name string
+		segs []Segment
+		want bool
+	}{
+		{
+			name: "all SRv6",
+			segs: []Segment{
+				NewSegmentSRv6(netip.MustParseAddr("2001:db8::1")),
+				NewSegmentSRv6(netip.MustParseAddr("2001:db8::2")),
+			},
+			want: false,
+		},
+
+		{
+			name: "all SR-MPLS",
+			segs: []Segment{NewSegmentSRMPLS(16001), NewSegmentSRMPLS(16002)},
+			want: false,
+		},
+		{
+			name: "mixed SRv6 then SR-MPLS",
+			segs: []Segment{
+				NewSegmentSRv6(netip.MustParseAddr("2001:db8::1")),
+				NewSegmentSRMPLS(16001),
+			},
+			want: true,
+		},
+
+		{
+			name: "mixed SR-MPLS then SRv6",
+			segs: []Segment{
+				NewSegmentSRMPLS(16001),
+				NewSegmentSRv6(netip.MustParseAddr("2001:db8::1")),
+			},
+			want: true,
+		},
+		{
+			name: "SRv6 with unknown family",
+			segs: []Segment{
+				NewSegmentSRv6(netip.MustParseAddr("2001:db8::1")),
+				fakeUnknownSegment{},
+			},
+			want: false,
+		},
+		{
+			name: "SR-MPLS with unknown family",
+			segs: []Segment{NewSegmentSRMPLS(16001), fakeUnknownSegment{}},
+			want: false,
+		},
+
+		{
+			name: "empty list",
+			segs: []Segment{},
+			want: false,
+		},
+		{
+			name: "single SR-MPLS",
+			segs: []Segment{NewSegmentSRMPLS(16001)},
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := HasMixedSegmentTypes(tt.segs); got != tt.want {
+				t.Errorf("HasMixedSegmentTypes() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

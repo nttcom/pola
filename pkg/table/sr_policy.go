@@ -90,6 +90,7 @@ const SRv6SIDBitLength = 128
 
 type Segment interface {
 	SidString() string
+	GetFamily() SegmentFamily
 }
 
 func NewSegment(sid string) (Segment, error) {
@@ -143,6 +144,9 @@ type SegmentSRv6 struct {
 
 func (seg SegmentSRv6) SidString() string {
 	return seg.Sid.String()
+}
+func (seg SegmentSRv6) GetFamily() SegmentFamily {
+	return SegmentSRv6Family
 }
 
 func (seg SegmentSRv6) Behavior() (uint16, error) {
@@ -226,6 +230,10 @@ func NewSegmentSRMPLS(sid uint32) SegmentSRMPLS {
 	}
 }
 
+func (seg SegmentSRMPLS) GetFamily() SegmentFamily {
+	return SegmentSRMPLSFamily
+}
+
 // Equal for SegmentSRv6
 func (seg SegmentSRv6) Equal(other SegmentSRv6) bool {
 	// Compare SID, LocalAddr, and RemoteAddr
@@ -260,3 +268,11 @@ type Waypoint struct {
 	RouterID string
 	SID      string // optional: fixed SID override
 }
+
+type SegmentFamily int
+
+const (
+	SegmentUnknown SegmentFamily = iota
+	SegmentSRv6Family
+	SegmentSRMPLSFamily
+)

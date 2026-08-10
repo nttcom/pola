@@ -266,6 +266,14 @@ func (s *APIServer) validateSIDs(req *pb.CreateSRPolicyRequest, segmentList []ta
 		return nil
 	}
 
+	if table.HasUnknownSegmentType(segmentList) {
+		return status.Errorf(codes.InvalidArgument, "segment list contains a segment with an unrecognized SID family")
+	}
+
+	if table.HasMixedSegmentTypes(segmentList) {
+		return status.Errorf(codes.InvalidArgument, "segment list contains mixed SR-MPLS and SRv6 SIDs")
+	}
+
 	ted := s.pce.ted
 	if ted == nil {
 		return status.Errorf(codes.FailedPrecondition,
