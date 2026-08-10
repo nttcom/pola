@@ -553,7 +553,7 @@ func (s *APIServer) GetSessionList(ctx context.Context, _ *pb.GetSessionListRequ
 			Caps:     []string{},
 			IsSynced: pcepSession.isSynced,
 		}
-		for _, cap := range pcepSession.pccCapabilities {
+		for _, cap := range pcepSession.advertisedCapabilities {
 			ss.Caps = append(ss.Caps, cap.CapStrings()...)
 		}
 		ss.Caps = slices.Compact(ss.Caps)

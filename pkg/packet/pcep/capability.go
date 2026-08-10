@@ -10,6 +10,7 @@ type CapabilityInterface interface {
 	CapStrings() []string
 }
 
+// PolaCapability converts received capabilities to those advertised by Pola.
 func PolaCapability(caps []CapabilityInterface) []CapabilityInterface {
 	polaCaps := []CapabilityInterface{}
 	for _, cap := range caps {
