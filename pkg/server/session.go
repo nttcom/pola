@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/netip"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/nttcom/pola/pkg/cspf"
@@ -24,9 +25,13 @@ type Session struct {
 	sessionID               uint8
 	peerAddr                netip.Addr
 	tcpConn                 *net.TCPConn
+	stateMu                 sync.RWMutex // guards isSynced and advertisedCapabilities.
 	isSynced                bool
-	srpIDHead               uint32 // 0x00000000 and 0xFFFFFFFF are reserved.
+	srpIDHead               uint32       // 0x00000000 and 0xFFFFFFFF are reserved.
+	srPoliciesMu            sync.RWMutex // guards srPolicies.
 	srPolicies              []*table.SRPolicy
+	srPolicyIntentsMu       sync.Mutex // guards srPolicyIntents.
+	srPolicyIntents         map[srPolicyIntentKey]srPolicyIntent
 	logger                  *zap.Logger
 	keepAlive               uint8
 	pccType                 pcep.PccType
@@ -34,6 +39,54 @@ type Session struct {
 	receivedPccCapabilities []pcep.CapabilityInterface // Capabilities received from the PCC.
 	ted                     *table.LsTED
 	asn                     uint32
+}
+
+// srPolicyIntentKey identifies an SR Policy the same way SearchPlspID does,
+// since a PCRpt for a newly requested policy does not provide a known PLSP-ID.
+type srPolicyIntentKey struct {
+	color uint32
+	dst   netip.Addr
+}
+
+// srPolicyIntent stores the candidate-path type and metric because PCEP does
+// not report them after the policy is established.
+type srPolicyIntent struct {
+	polType table.PolicyType
+	metric  table.MetricType
+}
+
+// RememberSRPolicyIntent records the candidate-path type and metric for an SR Policy.
+func (ss *Session) RememberSRPolicyIntent(color uint32, dst netip.Addr, polType table.PolicyType, metric table.MetricType) {
+	ss.srPolicyIntentsMu.Lock()
+	defer ss.srPolicyIntentsMu.Unlock()
+	if ss.srPolicyIntents == nil {
+		ss.srPolicyIntents = make(map[srPolicyIntentKey]srPolicyIntent)
+	}
+	ss.srPolicyIntents[srPolicyIntentKey{color: color, dst: dst}] = srPolicyIntent{polType: polType, metric: metric}
+}
+
+// takeSRPolicyIntent returns and removes the intent for (color, dst).
+func (ss *Session) takeSRPolicyIntent(color uint32, dst netip.Addr) (srPolicyIntent, bool) {
+	ss.srPolicyIntentsMu.Lock()
+	defer ss.srPolicyIntentsMu.Unlock()
+	key := srPolicyIntentKey{color: color, dst: dst}
+	intent, ok := ss.srPolicyIntents[key]
+	delete(ss.srPolicyIntents, key)
+	return intent, ok
+}
+
+// forgetSRPolicyIntent discards an intent that will no longer be consumed.
+func (ss *Session) forgetSRPolicyIntent(color uint32, dst netip.Addr) {
+	ss.srPolicyIntentsMu.Lock()
+	defer ss.srPolicyIntentsMu.Unlock()
+	delete(ss.srPolicyIntents, srPolicyIntentKey{color: color, dst: dst})
+}
+
+// clearSRPolicyIntents discards all remembered intents when the session ends.
+func (ss *Session) clearSRPolicyIntents() {
+	ss.srPolicyIntentsMu.Lock()
+	defer ss.srPolicyIntentsMu.Unlock()
+	ss.srPolicyIntents = nil
 }
 
 func NewSession(sessionID uint8, peerAddr netip.Addr, tcpConn *net.TCPConn, logger *zap.Logger, ted *table.LsTED, asn uint32) *Session {
@@ -147,7 +200,7 @@ func (ss *Session) ReceiveOpen() error {
 	}
 
 	ss.receivedPccCapabilities = slices.Clone(openMessage.OpenObject.Caps)
-	ss.advertisedCapabilities = pcep.PolaCapability(openMessage.OpenObject.Caps)
+	ss.setAdvertisedCapabilities(pcep.PolaCapability(openMessage.OpenObject.Caps))
 
 	// pccType detection
 	// * FRRouting cannot be detected from the open message, so it is treated as an RFC compliant
@@ -308,7 +361,33 @@ func (ss *Session) handleSynchronization(sr *pcep.StateReport, message *pcep.PCR
 // Finish synchronization (PlspID == 0)
 func (ss *Session) handleFinishSynchronization() {
 	ss.logger.Debug("Finish PCRpt state synchronization")
+	ss.setSynced()
+}
+
+// IsSynced reports whether the session has finished PCRpt state synchronization.
+func (ss *Session) IsSynced() bool {
+	ss.stateMu.RLock()
+	defer ss.stateMu.RUnlock()
+	return ss.isSynced
+}
+
+func (ss *Session) setSynced() {
+	ss.stateMu.Lock()
+	defer ss.stateMu.Unlock()
 	ss.isSynced = true
+}
+
+// AdvertisedCapabilities returns a snapshot of the capabilities Pola advertises to the PCC.
+func (ss *Session) AdvertisedCapabilities() []pcep.CapabilityInterface {
+	ss.stateMu.RLock()
+	defer ss.stateMu.RUnlock()
+	return slices.Clone(ss.advertisedCapabilities)
+}
+
+func (ss *Session) setAdvertisedCapabilities(caps []pcep.CapabilityInterface) {
+	ss.stateMu.Lock()
+	defer ss.stateMu.Unlock()
+	ss.advertisedCapabilities = caps
 }
 
 // Response to request from PCE (SrpID != 0)
@@ -499,7 +578,7 @@ func (ss *Session) RequestSRPolicyCreated(srPolicy table.SRPolicy) error {
 }
 
 func (ss *Session) SendOpen() error {
-	openMessage, err := pcep.NewOpenMessage(ss.sessionID, ss.keepAlive, ss.advertisedCapabilities)
+	openMessage, err := pcep.NewOpenMessage(ss.sessionID, ss.keepAlive, ss.AdvertisedCapabilities())
 	if err != nil {
 		return err
 	}
@@ -611,7 +690,10 @@ func validateSegmentList(sr pcep.StateReport) ([]table.Segment, error) {
 func (ss *Session) updateOrCreatePolicy(sr pcep.StateReport, segmentList []table.Segment, color, preference uint32, state table.PolicyState) error {
 	lspID := sr.LSPObject.LSPID
 
-	if p, ok := ss.SearchSRPolicy(sr.LSPObject.PlspID); ok {
+	ss.srPoliciesMu.Lock()
+	defer ss.srPoliciesMu.Unlock()
+
+	if p, ok := ss.searchSRPolicyLocked(sr.LSPObject.PlspID); ok {
 		// Update existing policy if LSPID is new or equal
 		if p.LSPID <= lspID {
 			p.Update(table.PolicyDiff{
@@ -622,6 +704,10 @@ func (ss *Session) updateOrCreatePolicy(sr pcep.StateReport, segmentList []table
 				LSPID:       lspID,
 				State:       state,
 			})
+			if intent, ok := ss.takeSRPolicyIntent(color, p.DstAddr); ok {
+				p.Type = intent.polType
+				p.Metric = intent.metric
+			}
 		}
 		return nil
 	}
@@ -644,15 +730,24 @@ func (ss *Session) updateOrCreatePolicy(sr pcep.StateReport, segmentList []table
 	}
 
 	p := table.NewSRPolicy(sr.LSPObject.PlspID, sr.LSPObject.Name, segmentList, src, dst, color, preference, lspID, state)
+	if intent, ok := ss.takeSRPolicyIntent(color, dst); ok {
+		p.Type = intent.polType
+		p.Metric = intent.metric
+	}
 	ss.srPolicies = append(ss.srPolicies, p)
 	return nil
 }
 
 func (ss *Session) DeleteSRPolicy(sr pcep.StateReport) {
 	lspID := sr.LSPObject.LSPID
+
+	ss.srPoliciesMu.Lock()
+	defer ss.srPoliciesMu.Unlock()
+
 	for i, v := range ss.srPolicies {
 		// If the LSP ID is old, it is not the latest data update.
 		if v.PlspID == sr.LSPObject.PlspID && v.LSPID <= lspID {
+			ss.forgetSRPolicyIntent(v.Color, v.DstAddr)
 			ss.srPolicies[i] = ss.srPolicies[len(ss.srPolicies)-1]
 			ss.srPolicies = ss.srPolicies[:len(ss.srPolicies)-1]
 			break
@@ -660,7 +755,8 @@ func (ss *Session) DeleteSRPolicy(sr pcep.StateReport) {
 	}
 }
 
-func (ss *Session) SearchSRPolicy(plspID uint32) (*table.SRPolicy, bool) {
+// searchSRPolicyLocked searches srPolicies without locking.
+func (ss *Session) searchSRPolicyLocked(plspID uint32) (*table.SRPolicy, bool) {
 	for _, v := range ss.srPolicies {
 		if v.PlspID == plspID {
 			return v, true
@@ -669,12 +765,32 @@ func (ss *Session) SearchSRPolicy(plspID uint32) (*table.SRPolicy, bool) {
 	return nil, false
 }
 
+func (ss *Session) SearchSRPolicy(plspID uint32) (*table.SRPolicy, bool) {
+	ss.srPoliciesMu.RLock()
+	defer ss.srPoliciesMu.RUnlock()
+	return ss.searchSRPolicyLocked(plspID)
+}
+
 // SearchPlspID returns the PLSP-ID of a registered SR Policy, along with a boolean value indicating if it was found.
 func (ss *Session) SearchPlspID(color uint32, endpoint netip.Addr) (uint32, bool) {
+	ss.srPoliciesMu.RLock()
+	defer ss.srPoliciesMu.RUnlock()
 	for _, v := range ss.srPolicies {
 		if v.Color == color && v.DstAddr == endpoint {
 			return v.PlspID, true
 		}
 	}
 	return 0, false
+}
+
+// SRPolicies returns a snapshot of the registered SR Policies.
+func (ss *Session) SRPolicies() []*table.SRPolicy {
+	ss.srPoliciesMu.RLock()
+	defer ss.srPoliciesMu.RUnlock()
+	policies := make([]*table.SRPolicy, len(ss.srPolicies))
+	for i, p := range ss.srPolicies {
+		clone := *p
+		policies[i] = &clone
+	}
+	return policies
 }

@@ -25,7 +25,8 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// localAddr / remoteAddr from the gRPC message must land on the SR-MPLS segment.
+// TestNewEnrichedSegmentSRMPLS verifies that localAddr and remoteAddr are
+// propagated to SR-MPLS segments.
 func TestNewEnrichedSegmentSRMPLS(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -78,8 +79,7 @@ func TestNewEnrichedSegmentSRMPLS(t *testing.T) {
 	}
 }
 
-// newEnrichedSegment is shared by the SR-MPLS and the SRv6 call paths, so the
-// SRv6 extras must keep being applied.
+// TestNewEnrichedSegmentSRv6 verifies that SRv6 segment attributes are preserved.
 func TestNewEnrichedSegmentSRv6(t *testing.T) {
 	segment := &pb.Segment{
 		Sid:          "2001:db8:1005::",
@@ -97,7 +97,7 @@ func TestNewEnrichedSegmentSRv6(t *testing.T) {
 		assert.Equal(t, "2001:db8:1005::", srv6Seg.Sid.String(), "Sid")
 		assert.Equal(t, "2001:db8::5", addrString(srv6Seg.LocalAddr), "LocalAddr")
 		assert.Equal(t, "2001:db8::6", addrString(srv6Seg.RemoteAddr), "RemoteAddr")
-		assert.Equal(t, []uint8{32, 16, 0, 80}, srv6Seg.Structure, "Structure")
+		assert.Equal(t, table.SIDStructureBytes{32, 16, 0, 80}, srv6Seg.Structure, "Structure")
 		assert.Equalf(t, usidMode, srv6Seg.USid, "USid with usidMode=%v", usidMode)
 	}
 }
@@ -114,8 +114,8 @@ func addrString(addr netip.Addr) string {
 	return addr.String()
 }
 
-// An SR-MPLS segment carrying a localAddr must be serialized into an SR-ERO
-// subobject whose body ends with that address (RFC8664 4.3.1 node NAI).
+// TestCreateEroFromSegmentListWithNAI verifies that a localAddr is encoded as
+// the SR-ERO node NAI.
 func TestCreateEroFromSegmentListWithNAI(t *testing.T) {
 	seg := table.NewSegmentSRMPLS(16002)
 	seg.LocalAddr = netip.MustParseAddr("10.255.0.2")
@@ -398,7 +398,7 @@ func TestConvertLsPrefixes_SidIndexPresence(t *testing.T) {
 	}
 }
 
-func TestGetSessionList_DeduplicatesNonAdjacentCaps(t *testing.T) {
+func TestGetSessionList_DeduplicatesNonAdjacentCapabilities(t *testing.T) {
 	session := &Session{
 		peerAddr: netip.MustParseAddr("10.0.0.1"),
 		isSynced: true,
@@ -416,9 +416,413 @@ func TestGetSessionList_DeduplicatesNonAdjacentCaps(t *testing.T) {
 	resp, err := s.GetSessionList(context.Background(), &pb.GetSessionListRequest{})
 	require.NoError(t, err)
 	require.Len(t, resp.Sessions, 1)
+	require.Len(t, resp.Sessions[0].Capabilities, 2)
 
-	assert.Equal(t, []string{
-		"SR", "MSD=0", "SR-NAI-Supported",
-		"SRv6", "SRv6-NAI-Supported",
-	}, resp.Sessions[0].Caps)
+	sr := resp.Sessions[0].Capabilities[0]
+	assert.Equal(t, pb.CapabilityType_CAPABILITY_TYPE_SR, sr.GetType())
+	assert.True(t, sr.GetSr().GetNaiSupported())
+
+	srv6 := resp.Sessions[0].Capabilities[1]
+	assert.Equal(t, pb.CapabilityType_CAPABILITY_TYPE_SRV6, srv6.GetType())
+	assert.True(t, srv6.GetSrv6().GetNaiSupported())
+}
+
+func TestGetSessionList_BuildsStructuredCapabilities(t *testing.T) {
+	session := &Session{
+		peerAddr: netip.MustParseAddr("10.0.0.1"),
+		isSynced: true,
+		advertisedCapabilities: []pcep.CapabilityInterface{
+			&pcep.SRPCECapability{IsNAISupported: true, MaximumSidDepth: 10},
+			&pcep.LSPDBVersion{VersionNumber: 42},
+		},
+	}
+	s := &APIServer{
+		pce:    &Server{sessionList: []*Session{session}},
+		logger: zap.NewNop(),
+	}
+
+	resp, err := s.GetSessionList(context.Background(), &pb.GetSessionListRequest{})
+	require.NoError(t, err)
+	require.Len(t, resp.Sessions, 1)
+	require.Len(t, resp.Sessions[0].Capabilities, 2)
+
+	sr := resp.Sessions[0].Capabilities[0]
+	assert.Equal(t, pb.CapabilityType_CAPABILITY_TYPE_SR, sr.GetType())
+	assert.Equal(t, uint32(10), sr.GetSr().GetMsd())
+	assert.True(t, sr.GetSr().GetNaiSupported())
+
+	dbVersion := resp.Sessions[0].Capabilities[1]
+	assert.Equal(t, pb.CapabilityType_CAPABILITY_TYPE_LSP_DB_VERSION, dbVersion.GetType())
+	assert.Equal(t, uint64(42), dbVersion.GetLspDbVersion().GetVersionNumber())
+}
+
+func TestGetSessionList_MultipathCapabilityDoesNotSetMsd(t *testing.T) {
+	session := &Session{
+		peerAddr: netip.MustParseAddr("10.0.0.1"),
+		isSynced: true,
+		advertisedCapabilities: []pcep.CapabilityInterface{
+			pcep.NewMultipathCapability(8, true, true, true, true),
+		},
+	}
+	s := &APIServer{
+		pce:    &Server{sessionList: []*Session{session}},
+		logger: zap.NewNop(),
+	}
+
+	resp, err := s.GetSessionList(context.Background(), &pb.GetSessionListRequest{})
+	require.NoError(t, err)
+	require.Len(t, resp.Sessions, 1)
+	require.Len(t, resp.Sessions[0].Capabilities, 1)
+
+	multipath := resp.Sessions[0].Capabilities[0]
+	assert.Equal(t, pb.CapabilityType_CAPABILITY_TYPE_MULTIPATH, multipath.GetType())
+	assert.Nil(t, multipath.GetSr(), "MaxMultipaths must not be reported via the SR capability's Msd (Maximum SID Depth)")
+	assert.Equal(t, uint32(8), multipath.GetMultipath().GetMaxMultipaths())
+}
+
+func TestGetSessionList_SortsSessionsByAddr(t *testing.T) {
+	s := &APIServer{
+		pce: &Server{sessionList: []*Session{
+			{peerAddr: netip.MustParseAddr("10.0.0.2")},
+			{peerAddr: netip.MustParseAddr("10.0.0.1")},
+		}},
+		logger: zap.NewNop(),
+	}
+
+	resp, err := s.GetSessionList(context.Background(), &pb.GetSessionListRequest{})
+	require.NoError(t, err)
+	require.Len(t, resp.Sessions, 2)
+
+	addr0, _ := netip.AddrFromSlice(resp.Sessions[0].GetAddr())
+	addr1, _ := netip.AddrFromSlice(resp.Sessions[1].GetAddr())
+	assert.Equal(t, "10.0.0.1", addr0.String())
+	assert.Equal(t, "10.0.0.2", addr1.String())
+}
+
+func TestGetSRPolicyList_FillsMissingFieldsAndOrdersDeterministically(t *testing.T) {
+	seg, err := table.NewSegment("16003")
+	require.NoError(t, err)
+
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{}}
+	srcNode := table.NewLsNode(65000, "0000.0aff.0001")
+	srcPrefix := table.NewLsPrefix(srcNode)
+	srcPrefix.Prefix = netip.MustParsePrefix("192.0.2.10/32")
+	srcNode.Prefixes = append(srcNode.Prefixes, srcPrefix)
+	ted.Nodes[srcNode.RouterID] = srcNode
+
+	session2 := &Session{
+		peerAddr: netip.MustParseAddr("10.0.0.2"),
+		isSynced: true,
+		srPolicies: []*table.SRPolicy{
+			table.NewSRPolicy(1, "policy-b", []table.Segment{seg},
+				netip.MustParseAddr("192.0.2.10"), netip.MustParseAddr("192.0.2.20"),
+				200, 100, 5, table.PolicyUp),
+		},
+	}
+	session1 := &Session{
+		peerAddr: netip.MustParseAddr("10.0.0.1"),
+		isSynced: true,
+		srPolicies: []*table.SRPolicy{
+			table.NewSRPolicy(2, "policy-a", []table.Segment{seg},
+				netip.MustParseAddr("192.0.2.10"), netip.MustParseAddr("192.0.2.20"),
+				100, 100, 7, table.PolicyActive),
+		},
+	}
+
+	s := &APIServer{
+		pce:    &Server{sessionList: []*Session{session2, session1}, ted: ted},
+		logger: zap.NewNop(),
+	}
+
+	resp, err := s.GetSRPolicyList(context.Background(), &pb.GetSRPolicyListRequest{})
+	require.NoError(t, err)
+	require.Len(t, resp.Sessions, 2)
+
+	// Sessions are ordered by peer address, not insertion order.
+	addr0, _ := netip.AddrFromSlice(resp.Sessions[0].GetAddr())
+	assert.Equal(t, "10.0.0.1", addr0.String())
+	require.Len(t, resp.Sessions[0].GetSrPolicies(), 1)
+
+	policy := resp.Sessions[0].GetSrPolicies()[0]
+	assert.Equal(t, uint32(2), policy.GetPlspId())
+	assert.Equal(t, uint32(7), policy.GetLspId())
+	assert.Equal(t, pb.SRPolicyState_SR_POLICY_STATE_ACTIVE, policy.GetState())
+	assert.Equal(t, "0000.0aff.0001", policy.GetSrcRouterId())
+	assert.Empty(t, policy.GetDstRouterId(), "no TED node owns the destination address")
+}
+
+func TestBuildRouterIDIndex(t *testing.T) {
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{}}
+
+	v4Node := table.NewLsNode(65000, "router-v4")
+	v4Prefix := table.NewLsPrefix(v4Node)
+	v4Prefix.Prefix = netip.MustParsePrefix("192.0.2.10/32")
+	v4Node.Prefixes = append(v4Node.Prefixes, v4Prefix)
+	ted.Nodes[v4Node.RouterID] = v4Node
+
+	v6Node := table.NewLsNode(65000, "router-v6")
+	v6Prefix := table.NewLsPrefix(v6Node)
+	v6Prefix.Prefix = netip.MustParsePrefix("2001:db8::1/128")
+	v6Node.Prefixes = append(v6Node.Prefixes, v6Prefix)
+	ted.Nodes[v6Node.RouterID] = v6Node
+
+	// A node without a loopback (host) prefix must not appear in the index.
+	noLoopbackNode := table.NewLsNode(65000, "router-no-loopback")
+	nonHostPrefix := table.NewLsPrefix(noLoopbackNode)
+	nonHostPrefix.Prefix = netip.MustParsePrefix("192.0.2.0/24")
+	noLoopbackNode.Prefixes = append(noLoopbackNode.Prefixes, nonHostPrefix)
+	ted.Nodes[noLoopbackNode.RouterID] = noLoopbackNode
+
+	index := buildRouterIDIndex(ted)
+	assert.Equal(t, "router-v4", index[netip.MustParseAddr("192.0.2.10")])
+	assert.Equal(t, "router-v6", index[netip.MustParseAddr("2001:db8::1")])
+	assert.Empty(t, index[netip.MustParseAddr("192.0.2.0")])
+
+	assert.Nil(t, buildRouterIDIndex(nil))
+}
+
+func TestGetSRPolicyList_FiltersBySessionAddr(t *testing.T) {
+	seg, err := table.NewSegment("16003")
+	require.NoError(t, err)
+
+	s := &APIServer{
+		pce: &Server{sessionList: []*Session{
+			{
+				peerAddr: netip.MustParseAddr("10.0.0.1"),
+				isSynced: true,
+				srPolicies: []*table.SRPolicy{
+					table.NewSRPolicy(1, "policy-a", []table.Segment{seg}, netip.Addr{}, netip.Addr{}, 100, 100, 0, table.PolicyUp),
+				},
+			},
+			{
+				peerAddr: netip.MustParseAddr("10.0.0.2"),
+				isSynced: true,
+				srPolicies: []*table.SRPolicy{
+					table.NewSRPolicy(2, "policy-b", []table.Segment{seg}, netip.Addr{}, netip.Addr{}, 200, 100, 0, table.PolicyUp),
+				},
+			},
+		}},
+		logger: zap.NewNop(),
+	}
+
+	resp, err := s.GetSRPolicyList(context.Background(), &pb.GetSRPolicyListRequest{SessionAddr: netip.MustParseAddr("10.0.0.2").AsSlice()})
+	require.NoError(t, err)
+	require.Len(t, resp.Sessions, 1)
+	addr, _ := netip.AddrFromSlice(resp.Sessions[0].GetAddr())
+	assert.Equal(t, "10.0.0.2", addr.String())
+}
+
+func TestGetSRPolicyList_RejectsInvalidSessionFilter(t *testing.T) {
+	s := &APIServer{
+		pce:    &Server{},
+		logger: zap.NewNop(),
+	}
+
+	_, err := s.GetSRPolicyList(context.Background(), &pb.GetSRPolicyListRequest{SessionAddr: []byte{1, 2, 3}})
+	require.Error(t, err)
+	assert.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+func TestResolveSRPolicyIntent(t *testing.T) {
+	tests := []struct {
+		name               string
+		policy             *pb.SRPolicy
+		disablePathCompute bool
+		wantType           table.PolicyType
+		wantMetric         table.MetricType
+		wantErr            bool
+	}{
+		{
+			name:               "disable_path_compute is always explicit regardless of Type",
+			policy:             &pb.SRPolicy{Type: pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC},
+			disablePathCompute: true,
+			wantType:           table.PolicyTypeExplicit,
+			wantMetric:         table.UnspecifiedMetric,
+		},
+		{
+			name:       "explicit path has no metric",
+			policy:     &pb.SRPolicy{Type: pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT},
+			wantType:   table.PolicyTypeExplicit,
+			wantMetric: table.UnspecifiedMetric,
+		},
+		{
+			name:       "dynamic path resolves its metric",
+			policy:     &pb.SRPolicy{Type: pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC, Metric: pb.MetricType_METRIC_TYPE_TE},
+			wantType:   table.PolicyTypeDynamic,
+			wantMetric: table.TEMetric,
+		},
+		{
+			name:    "dynamic path with unresolvable metric is an error",
+			policy:  &pb.SRPolicy{Type: pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC, Metric: pb.MetricType_METRIC_TYPE_UNSPECIFIED},
+			wantErr: true,
+		},
+		{
+			name:    "unspecified type is an error",
+			policy:  &pb.SRPolicy{},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotType, gotMetric, err := resolveSRPolicyIntent(tt.policy, tt.disablePathCompute)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantType, gotType)
+			assert.Equal(t, tt.wantMetric, gotMetric)
+		})
+	}
+}
+
+func TestGetSRPolicyList_RoundTripsTypeAndMetric(t *testing.T) {
+	seg, err := table.NewSegment("16003")
+	require.NoError(t, err)
+
+	knownPolicy := table.NewSRPolicy(1, "policy-known", []table.Segment{seg}, netip.Addr{}, netip.Addr{}, 100, 100, 0, table.PolicyUp)
+	knownPolicy.Type = table.PolicyTypeDynamic
+	knownPolicy.Metric = table.DelayMetric
+
+	unknownPolicy := table.NewSRPolicy(2, "policy-unknown", []table.Segment{seg}, netip.Addr{}, netip.Addr{}, 200, 100, 0, table.PolicyUp)
+
+	s := &APIServer{
+		pce: &Server{sessionList: []*Session{
+			{
+				peerAddr:   netip.MustParseAddr("10.0.0.1"),
+				isSynced:   true,
+				srPolicies: []*table.SRPolicy{knownPolicy, unknownPolicy},
+			},
+		}},
+		logger: zap.NewNop(),
+	}
+
+	resp, err := s.GetSRPolicyList(context.Background(), &pb.GetSRPolicyListRequest{})
+	require.NoError(t, err)
+	require.Len(t, resp.Sessions, 1)
+	require.Len(t, resp.Sessions[0].GetSrPolicies(), 2)
+
+	byColor := map[uint32]*pb.SRPolicy{}
+	for _, p := range resp.Sessions[0].GetSrPolicies() {
+		byColor[p.GetColor()] = p
+	}
+
+	known := byColor[100]
+	require.NotNil(t, known)
+	assert.Equal(t, pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC, known.GetType())
+	assert.Equal(t, pb.MetricType_METRIC_TYPE_DELAY, known.GetMetric())
+
+	unknown := byColor[200]
+	require.NotNil(t, unknown)
+	assert.Equal(t, pb.SRPolicyType_SR_POLICY_TYPE_UNSPECIFIED, unknown.GetType())
+	assert.Equal(t, pb.MetricType_METRIC_TYPE_UNSPECIFIED, unknown.GetMetric())
+}
+
+func TestConvertSegment_CarriesSRv6NAIAndStructure(t *testing.T) {
+	sid := netip.MustParseAddr("2001:db8:1005::")
+	seg := table.SegmentSRv6{
+		Sid:        sid,
+		LocalAddr:  netip.MustParseAddr("2001:db8::5"),
+		RemoteAddr: netip.MustParseAddr("2001:db8::6"),
+		Structure:  table.SIDStructureBytes{32, 16, 0, 80},
+	}
+
+	pbSeg := convertSegment(seg)
+	assert.Equal(t, sid.String(), pbSeg.GetSid())
+	assert.Equal(t, "2001:db8::5", pbSeg.GetLocalAddr())
+	assert.Equal(t, "2001:db8::6", pbSeg.GetRemoteAddr())
+	assert.Equal(t, "32,16,0,80", pbSeg.GetSidStructure())
+}
+
+func TestConvertSegment_SRMPLS(t *testing.T) {
+	tests := []struct {
+		name       string
+		localAddr  netip.Addr
+		remoteAddr netip.Addr
+	}{
+		{name: "localAddr only", localAddr: netip.MustParseAddr("192.0.2.1")},
+		{name: "remoteAddr only", remoteAddr: netip.MustParseAddr("192.0.2.2")},
+		{
+			name:       "localAddr and remoteAddr",
+			localAddr:  netip.MustParseAddr("192.0.2.1"),
+			remoteAddr: netip.MustParseAddr("192.0.2.2"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			seg := table.SegmentSRMPLS{Sid: 16003, LocalAddr: tt.localAddr, RemoteAddr: tt.remoteAddr}
+
+			pbSeg := convertSegment(seg)
+			assert.Equal(t, "16003", pbSeg.GetSid())
+			if tt.localAddr.IsValid() {
+				assert.Equal(t, tt.localAddr.String(), pbSeg.GetLocalAddr())
+			} else {
+				assert.Empty(t, pbSeg.GetLocalAddr())
+			}
+			if tt.remoteAddr.IsValid() {
+				assert.Equal(t, tt.remoteAddr.String(), pbSeg.GetRemoteAddr())
+			} else {
+				assert.Empty(t, pbSeg.GetRemoteAddr())
+			}
+		})
+	}
+}
+
+// TestTED_ConcurrentUpdate verifies that TED reads and updates are synchronized.
+func TestTED_ConcurrentUpdate(t *testing.T) {
+	s := &Server{ted: &table.LsTED{Nodes: map[string]*table.LsNode{}}}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 100; i++ {
+			node := table.NewLsNode(1, "router")
+			prefix := table.NewLsPrefix(node)
+			prefix.Prefix = netip.MustParsePrefix("192.0.2.1/32")
+			node.Prefixes = append(node.Prefixes, prefix)
+			s.setTED(&table.LsTED{Nodes: map[string]*table.LsNode{"router": node}})
+		}
+	}()
+
+	for i := 0; i < 100; i++ {
+		_ = s.TED()
+	}
+	<-done
+}
+
+// TestSessionList_ConcurrentAccess verifies that session list reads and updates are synchronized.
+func TestSessionList_ConcurrentAccess(t *testing.T) {
+	s := &Server{}
+	addr := netip.MustParseAddr("192.0.2.1")
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 100; i++ {
+			ss := &Session{sessionID: uint8(i), peerAddr: addr, isSynced: true}
+
+			s.sessionMu.Lock()
+			s.sessionList = append(s.sessionList, ss)
+			s.sessionMu.Unlock()
+
+			s.sessionMu.Lock()
+			for j, v := range s.sessionList {
+				if v.sessionID == ss.sessionID {
+					s.sessionList[j] = s.sessionList[len(s.sessionList)-1]
+					s.sessionList = s.sessionList[:len(s.sessionList)-1]
+					break
+				}
+			}
+			s.sessionMu.Unlock()
+		}
+	}()
+
+	for i := 0; i < 100; i++ {
+		s.SearchSession(addr, false)
+		s.SRPolicies()
+		s.Sessions()
+	}
+	<-done
 }

@@ -36,6 +36,14 @@ message Waypoint {
   string sid = 2; // optional: explicit SID override
 }
 
+enum SRPolicyState {
+  SR_POLICY_STATE_UNSPECIFIED = 0;
+  SR_POLICY_STATE_DOWN = 1;
+  SR_POLICY_STATE_UP = 2;
+  SR_POLICY_STATE_ACTIVE = 3;
+  SR_POLICY_STATE_UNKNOWN = 4;
+}
+
 message SRPolicy {
   bytes pcep_session_addr = 1;
   bytes src_addr = 2;
@@ -49,22 +57,17 @@ message SRPolicy {
   repeated Segment segment_list = 10;
   MetricType metric = 11;
   repeated Waypoint waypoints = 12;
+  uint32 plsp_id = 13;
+  uint32 lsp_id = 14;
+  SRPolicyState state = 15;
 }
 
 message CreateSRPolicyRequest {
   SRPolicy sr_policy = 1;
-
-  // Not required when disable_path_compute is true.
   uint32 asn = 2;
-
   reserved 3;
   reserved "sid_validate";
-
-  // Use endpoints and segments provided in the request without TED lookup
-  // or path computation (no CSPF or router-ID resolution).
   bool disable_path_compute = 4;
-
-  // Skip checking that explicit SIDs exist in the TED.
   bool no_sid_validate = 5;
 }
 
@@ -87,19 +90,92 @@ enum SessionState {
   SESSION_STATE_UP = 2;
 }
 
+enum CapabilityType {
+  CAPABILITY_TYPE_UNSPECIFIED = 0;
+  CAPABILITY_TYPE_STATEFUL = 1;
+  CAPABILITY_TYPE_SR = 2;
+  CAPABILITY_TYPE_SRV6 = 3;
+  CAPABILITY_TYPE_PATH_SETUP_TYPE = 4;
+  CAPABILITY_TYPE_ASSOC_TYPE_LIST = 5;
+  CAPABILITY_TYPE_LSP_DB_VERSION = 6;
+  CAPABILITY_TYPE_MULTIPATH = 7;
+  CAPABILITY_TYPE_VENDOR_INFORMATION = 8;
+  CAPABILITY_TYPE_UNKNOWN = 9;
+}
+
+message StatefulCapability {
+  bool lsp_update = 1;
+  bool include_db_version = 2;
+  bool lsp_instantiation = 3;
+  bool triggered_resync = 4;
+  bool delta_lsp_sync = 5;
+  bool triggered_initial_sync = 6;
+  bool color = 7;
+}
+
+message SrCapability {
+  bool unlimited_msd = 1;
+  bool nai_supported = 2;
+  uint32 msd = 3;
+}
+
+message Srv6Capability {
+  bool nai_supported = 1;
+}
+
+message PathSetupTypeCapability {
+  repeated uint32 path_setup_types = 1;
+}
+
+message AssocTypeListCapability {
+  repeated uint32 assoc_types = 1;
+}
+
+message LspDbVersionCapability {
+  uint64 version_number = 1;
+}
+
+message MultipathCapability {
+  uint32 max_multipaths = 1;
+  bool weighted = 2;
+  bool opposite_dir = 3;
+  bool forward_class = 4;
+  bool composite_path = 5;
+}
+
+message VendorInformationCapability {
+  uint32 enterprise_number = 1;
+}
+
+message UnknownCapability {
+  uint32 tlv_type = 1;
+}
+
+message Capability {
+  CapabilityType type = 1;
+
+  oneof detail {
+    StatefulCapability stateful = 2;
+    SrCapability sr = 3;
+    Srv6Capability srv6 = 4;
+    PathSetupTypeCapability path_setup_type = 5;
+    AssocTypeListCapability assoc_type_list = 6;
+    LspDbVersionCapability lsp_db_version = 7;
+    MultipathCapability multipath = 8;
+    VendorInformationCapability vendor_information = 9;
+    UnknownCapability unknown = 10;
+  }
+}
+
 message Session {
   bytes addr = 1;
   SessionState state = 2;
-  repeated string caps = 3;
+  reserved 3;
+  reserved "caps";
   bool is_synced = 4;
-}
-
-message SessionList {
-  repeated Session sessions = 1;
-}
-
-message SRPolicyList {
-  repeated SRPolicy sr_policies = 1;
+  repeated Capability capabilities = 5;
+  // Populated by GetSRPolicyList; empty when returned from GetSessionList.
+  repeated SRPolicy sr_policies = 6;
 }
 
 message EndpointBehavior {
@@ -191,10 +267,14 @@ message GetSessionListResponse {
 }
 
 message GetSRPolicyListRequest {
+  // Optional filter: only return policies for the PCEP session with this peer address.
+  bytes session_addr = 1;
 }
 
 message GetSRPolicyListResponse {
-  repeated SRPolicy sr_policies = 1;
+  reserved 1;
+  reserved "sr_policies";
+  repeated Session sessions = 2;
 }
 
 message GetTEDRequest {

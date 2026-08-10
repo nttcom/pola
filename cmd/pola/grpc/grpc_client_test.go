@@ -10,6 +10,8 @@ import (
 
 	pb "github.com/nttcom/pola/api/pola/v1"
 	"github.com/nttcom/pola/pkg/table"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -59,4 +61,58 @@ func TestCreateLsPrefix_SidIndexPresence(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSegmentFromPB_SRMPLS(t *testing.T) {
+	tests := []struct {
+		name       string
+		localAddr  string
+		remoteAddr string
+	}{
+		{name: "localAddr only", localAddr: "192.0.2.1"},
+		{name: "remoteAddr only", remoteAddr: "192.0.2.2"},
+		{name: "localAddr and remoteAddr", localAddr: "192.0.2.1", remoteAddr: "192.0.2.2"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			seg, err := segmentFromPB(&pb.Segment{
+				Sid:        "16003",
+				LocalAddr:  tt.localAddr,
+				RemoteAddr: tt.remoteAddr,
+			})
+			require.NoError(t, err)
+
+			mplsSeg, ok := seg.(table.SegmentSRMPLS)
+			require.Truef(t, ok, "segment type: got %T, want table.SegmentSRMPLS", seg)
+			assert.Equal(t, "16003", mplsSeg.SidString())
+			if tt.localAddr == "" {
+				assert.False(t, mplsSeg.LocalAddr.IsValid())
+			} else {
+				assert.Equal(t, tt.localAddr, mplsSeg.LocalAddr.String())
+			}
+			if tt.remoteAddr == "" {
+				assert.False(t, mplsSeg.RemoteAddr.IsValid())
+			} else {
+				assert.Equal(t, tt.remoteAddr, mplsSeg.RemoteAddr.String())
+			}
+		})
+	}
+}
+
+func TestSegmentFromPB_SRv6(t *testing.T) {
+	seg, err := segmentFromPB(&pb.Segment{
+		Sid:          "2001:db8:1005::",
+		LocalAddr:    "2001:db8::5",
+		RemoteAddr:   "2001:db8::6",
+		SidStructure: "32,16,0,80",
+	})
+	require.NoError(t, err)
+
+	srv6Seg, ok := seg.(table.SegmentSRv6)
+	require.Truef(t, ok, "segment type: got %T, want table.SegmentSRv6", seg)
+	assert.Equal(t, "2001:db8:1005::", srv6Seg.SidString())
+	assert.Equal(t, "2001:db8::5", srv6Seg.LocalAddr.String())
+	assert.Equal(t, "2001:db8::6", srv6Seg.RemoteAddr.String())
+	assert.Equal(t, table.SIDStructureBytes{32, 16, 0, 80}, srv6Seg.Structure)
 }
