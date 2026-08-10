@@ -6,6 +6,7 @@
 package server
 
 import (
+	"context"
 	"net/netip"
 	"strconv"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	pb "github.com/nttcom/pola/api/pola/v1"
+	"github.com/nttcom/pola/pkg/packet/pcep"
 	"github.com/nttcom/pola/pkg/table"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -394,4 +396,29 @@ func TestConvertLsPrefixes_SidIndexPresence(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGetSessionList_DeduplicatesNonAdjacentCaps(t *testing.T) {
+	session := &Session{
+		peerAddr: netip.MustParseAddr("10.0.0.1"),
+		isSynced: true,
+		advertisedCapabilities: []pcep.CapabilityInterface{
+			&pcep.SRPCECapability{IsNAISupported: true},
+			&pcep.SRv6PCECapability{IsNAISupported: true},
+			&pcep.SRPCECapability{IsNAISupported: true},
+		},
+	}
+	s := &APIServer{
+		pce:    &Server{sessionList: []*Session{session}},
+		logger: zap.NewNop(),
+	}
+
+	resp, err := s.GetSessionList(context.Background(), &pb.GetSessionListRequest{})
+	require.NoError(t, err)
+	require.Len(t, resp.Sessions, 1)
+
+	assert.Equal(t, []string{
+		"SR", "MSD=0", "SR-NAI-Supported",
+		"SRv6", "SRv6-NAI-Supported",
+	}, resp.Sessions[0].Caps)
 }
