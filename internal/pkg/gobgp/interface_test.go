@@ -69,6 +69,40 @@ func TestGetLsPrefix_SidIndex(t *testing.T) {
 			wantSidIndex:    0,
 			wantHasSidIndex: false,
 		},
+		{
+			name: "singular field kept alongside an algorithm 0 index of 0",
+			attr: &api.LsAttributePrefix{
+				SrPrefixSid: 0,
+				SrPrefixSids: []*api.LsAttributePrefixSID{
+					{Algorithm: 0, Sid: 0},
+				},
+			},
+			wantSidIndex:    0,
+			wantHasSidIndex: true,
+		},
+		{
+			name: "singular field contradicts a list without algorithm 0",
+			attr: &api.LsAttributePrefix{
+				SrPrefixSid: 3,
+				SrPrefixSids: []*api.LsAttributePrefixSID{
+					{Algorithm: 128, Sid: 3},
+				},
+			},
+			wantSidIndex:    0,
+			wantHasSidIndex: false,
+		},
+		{
+			name: "algorithm 0 entry after a Flex-Algo entry wins over the singular field",
+			attr: &api.LsAttributePrefix{
+				SrPrefixSid: 3,
+				SrPrefixSids: []*api.LsAttributePrefixSID{
+					{Algorithm: 128, Sid: 3},
+					{Algorithm: 0, Sid: 16003},
+				},
+			},
+			wantSidIndex:    16003,
+			wantHasSidIndex: true,
+		},
 	}
 
 	for _, tt := range tests {

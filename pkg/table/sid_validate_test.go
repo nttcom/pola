@@ -23,7 +23,7 @@ func TestSIDIndexHas_SRMPLS(t *testing.T) {
 		RouterID:  "0000.0000.0001",
 		SrgbBegin: 16000,
 		Prefixes: []*LsPrefix{
-			{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 3},
+			{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 3, HasSidIndex: true},
 		},
 		Links: []*LsLink{
 			{AdjSid: 24001},
@@ -95,6 +95,79 @@ func TestSIDIndexHas_SRMPLS_NoPrefixSID(t *testing.T) {
 	}
 }
 
+func TestSIDIndexHas_SRMPLS_PrefixSIDRanges(t *testing.T) {
+	tests := []struct {
+		name  string
+		node  *LsNode
+		label uint32
+		want  bool
+	}{
+		{
+			name: "index inside the SRGB",
+			node: &LsNode{
+				RouterID: "0000.0000.0001", SrgbBegin: 16000, SrgbEnd: 24000,
+				Prefixes: []*LsPrefix{{SidIndex: 3, HasSidIndex: true}},
+			},
+			label: 16003,
+			want:  true,
+		},
+		{
+			name: "last index of the SRGB (SrgbEnd is exclusive)",
+			node: &LsNode{
+				RouterID: "0000.0000.0001", SrgbBegin: 16000, SrgbEnd: 24000,
+				Prefixes: []*LsPrefix{{SidIndex: 7999, HasSidIndex: true}},
+			},
+			label: 23999,
+			want:  true,
+		},
+		{
+			name: "index at SrgbEnd is outside the SRGB",
+			node: &LsNode{
+				RouterID: "0000.0000.0001", SrgbBegin: 16000, SrgbEnd: 24000,
+				Prefixes: []*LsPrefix{{SidIndex: 8000, HasSidIndex: true}},
+			},
+			label: 24000,
+			want:  false,
+		},
+		{
+			name: "index beyond the SRGB",
+			node: &LsNode{
+				RouterID: "0000.0000.0001", SrgbBegin: 16000, SrgbEnd: 24000,
+				Prefixes: []*LsPrefix{{SidIndex: 100000, HasSidIndex: true}},
+			},
+			label: 116000,
+			want:  false,
+		},
+		{
+			name: "label beyond the 20-bit MPLS range without an SRGB end",
+			node: &LsNode{
+				RouterID: "0000.0000.0001", SrgbBegin: 1000000,
+				Prefixes: []*LsPrefix{{SidIndex: 100000, HasSidIndex: true}},
+			},
+			label: 1100000,
+			want:  false,
+		},
+		{
+			name: "index that would overflow uint32",
+			node: &LsNode{
+				RouterID: "0000.0000.0001", SrgbBegin: 16000,
+				Prefixes: []*LsPrefix{{SidIndex: 0xFFFFFFFF, HasSidIndex: true}},
+			},
+			label: 15999, // 16000 + 0xFFFFFFFF wrapped around
+			want:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			idx := NewSIDIndex(newTestTED(tt.node))
+			if got := idx.Has(NewSegmentSRMPLS(tt.label)); got != tt.want {
+				t.Errorf("Has(%d) = %v, want %v", tt.label, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestLsPrefixHasPrefixSID(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -105,7 +178,6 @@ func TestLsPrefixHasPrefixSID(t *testing.T) {
 		{"no Prefix-SID", &LsPrefix{}, false},
 		{"advertised index 0", &LsPrefix{HasSidIndex: true}, true},
 		{"advertised non-zero index", &LsPrefix{SidIndex: 3, HasSidIndex: true}, true},
-		{"non-zero index without flag", &LsPrefix{SidIndex: 3}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -237,7 +309,7 @@ func TestMissingSegments(t *testing.T) {
 		RouterID:  "0000.0000.0001",
 		SrgbBegin: 16000,
 		Prefixes: []*LsPrefix{
-			{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 3},
+			{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 3, HasSidIndex: true},
 		},
 	}
 	ted := newTestTED(node)

@@ -301,10 +301,7 @@ type LsPrefix struct {
 
 // HasPrefixSID reports whether this prefix has a Prefix-SID.
 func (lp *LsPrefix) HasPrefixSID() bool {
-	if lp == nil {
-		return false
-	}
-	return lp.HasSidIndex || lp.SidIndex != 0
+	return lp != nil && lp.HasSidIndex
 }
 
 func NewLsPrefix(localNode *LsNode) *LsPrefix {

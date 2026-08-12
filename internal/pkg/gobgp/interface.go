@@ -499,24 +499,29 @@ func getLsPrefixList(nlris []*api.NLRI, lsAttrPrefix *api.LsAttributePrefix) ([]
 	return lsPrefixList, nil
 }
 
+// algo0PrefixSID returns the algorithm 0 Prefix-SID index, if present.
+// The repeated field takes precedence when populated.
+func algo0PrefixSID(lsAttrPrefix *api.LsAttributePrefix) (uint32, bool) {
+	if sids := lsAttrPrefix.GetSrPrefixSids(); len(sids) > 0 {
+		for _, sid := range sids {
+			if sid.GetAlgorithm() == 0 {
+				return sid.GetSid(), true
+			}
+		}
+		return 0, false
+	}
+	if sid := lsAttrPrefix.GetSrPrefixSid(); sid != 0 {
+		return sid, true
+	}
+	return 0, false
+}
+
 func getLsPrefix(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrPrefix *api.LsAttributePrefix) (*table.LsPrefix, error) {
 	var localNodeID string
 	var localNodeAsn uint32
 	var prefix []string
 
-	// Prefix-SID index 0 is valid, so presence is determined from the TLV list.
-	sidIndex := lsAttrPrefix.GetSrPrefixSid()
-	hasSidIndex := sidIndex != 0
-	if !hasSidIndex {
-		for _, sid := range lsAttrPrefix.GetSrPrefixSids() {
-			if sid.GetAlgorithm() != 0 {
-				continue
-			}
-			sidIndex = sid.GetSid()
-			hasSidIndex = true
-			break
-		}
-	}
+	sidIndex, hasSidIndex := algo0PrefixSID(lsAttrPrefix)
 
 	switch prefNLRI := typedLinkStateNLRI.Nlri.Nlri.(type) {
 	case *api.LsAddrPrefix_LsNLRI_PrefixV4:

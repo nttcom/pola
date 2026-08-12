@@ -218,7 +218,7 @@ func TestValidateSIDs_DynamicWithDisablePathComputeIsStillValidated(t *testing.T
 		RouterID:  "0000.0000.0001",
 		SrgbBegin: 16000,
 		Prefixes: []*table.LsPrefix{
-			{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 3},
+			{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 3, HasSidIndex: true},
 		},
 	}
 	ted := &table.LsTED{Nodes: map[string]*table.LsNode{node.RouterID: node}}
@@ -273,7 +273,7 @@ func TestValidateSIDs_MissingSID(t *testing.T) {
 		RouterID:  "0000.0000.0001",
 		SrgbBegin: 16000,
 		Prefixes: []*table.LsPrefix{
-			{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 3},
+			{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 3, HasSidIndex: true},
 		},
 	}
 	ted := &table.LsTED{Nodes: map[string]*table.LsNode{node.RouterID: node}}
@@ -297,7 +297,7 @@ func TestValidateSIDs_EndpointFormIsStillValidated(t *testing.T) {
 		RouterID:  "0000.0000.0001",
 		SrgbBegin: 16000,
 		Prefixes: []*table.LsPrefix{
-			{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 3},
+			{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 3, HasSidIndex: true},
 		},
 	}
 	ted := &table.LsTED{Nodes: map[string]*table.LsNode{node.RouterID: node}}
@@ -352,7 +352,7 @@ func TestValidateSIDs_AllKnownSucceeds(t *testing.T) {
 		RouterID:  "0000.0000.0001",
 		SrgbBegin: 16000,
 		Prefixes: []*table.LsPrefix{
-			{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 3},
+			{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 3, HasSidIndex: true},
 		},
 	}
 	ted := &table.LsTED{Nodes: map[string]*table.LsNode{node.RouterID: node}}

@@ -58,10 +58,26 @@ func (idx *SIDIndex) addNodePrefixSIDs(node *LsNode) {
 		return
 	}
 	for _, p := range node.Prefixes {
-		if p.HasPrefixSID() {
-			idx.mplsSIDs[node.SrgbBegin+p.SidIndex] = struct{}{}
+		if !p.HasPrefixSID() {
+			continue
+		}
+		if label, ok := srgbLabel(node, p.SidIndex); ok {
+			idx.mplsSIDs[label] = struct{}{}
 		}
 	}
+}
+
+// srgbLabel converts a Prefix-SID index to an MPLS label within the SRGB.
+// It returns false if the resulting label is out of range.
+func srgbLabel(node *LsNode, sidIndex uint32) (uint32, bool) {
+	label := uint64(node.SrgbBegin) + uint64(sidIndex)
+	if label > uint64(MPLSLabelMax) {
+		return 0, false
+	}
+	if node.SrgbEnd > node.SrgbBegin && label >= uint64(node.SrgbEnd) {
+		return 0, false
+	}
+	return uint32(label), true
 }
 
 // addLinkSIDs registers adjacency SIDs and SRv6 End.X SIDs.
