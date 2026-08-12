@@ -108,7 +108,7 @@ func enrichSRv6Segment(srv6Seg table.SegmentSRv6, segment *pb.Segment, usidMode 
 	if structure, err := parseSidStructure(segment.GetSidStructure()); err != nil {
 		return srv6Seg, err
 	} else if structure != nil {
-		srv6Seg.Structure = structure
+		srv6Seg.Structure = table.SIDStructureBytes(structure)
 	}
 	if s := segment.GetLocalAddr(); s != "" {
 		la, err := netip.ParseAddr(s)
@@ -276,21 +276,15 @@ func sendSRPolicyRequest(s *APIServer, input *pb.CreateSRPolicyRequest, segmentL
 		Metric:      metricType,
 	}
 
-	// PCEP does not report candidate path type/metric after LSP establishment,
-	// so remember them when creating or updating the policy (RFC 9256 §2.4.2).
-	pcepSession.RememberSRPolicyIntent(srPolicy.Color, dstAddr, policyType, metricType)
-
 	if id, exists := pcepSession.SearchPlspID(inputSRPolicy.GetColor(), dstAddr); exists {
 		s.logger.Debug("Request to update SR Policy", zap.Uint32("plspID", id))
 		srPolicy.PlspID = id
 		if err := pcepSession.SendPCUpdate(srPolicy); err != nil {
-			pcepSession.forgetSRPolicyIntent(srPolicy.Color, dstAddr)
 			return fmt.Errorf("failed to send PC update: %w", err)
 		}
 	} else {
 		s.logger.Debug("Request to create SR Policy")
 		if err := pcepSession.RequestSRPolicyCreated(srPolicy); err != nil {
-			pcepSession.forgetSRPolicyIntent(srPolicy.Color, dstAddr)
 			return fmt.Errorf("failed to request SR policy creation: %w", err)
 		}
 	}

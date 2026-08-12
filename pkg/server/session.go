@@ -8,6 +8,7 @@ package server
 import (
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"net/netip"
 	"slices"
@@ -27,11 +28,12 @@ type Session struct {
 	tcpConn                 *net.TCPConn
 	stateMu                 sync.RWMutex // guards isSynced and advertisedCapabilities.
 	isSynced                bool
+	srpIDMu                 sync.Mutex   // guards SRP-ID allocation and intent registration.
 	srpIDHead               uint32       // 0x00000000 and 0xFFFFFFFF are reserved.
 	srPoliciesMu            sync.RWMutex // guards srPolicies.
 	srPolicies              []*table.SRPolicy
 	srPolicyIntentsMu       sync.Mutex // guards srPolicyIntents.
-	srPolicyIntents         map[srPolicyIntentKey]srPolicyIntent
+	srPolicyIntents         map[uint32]srPolicyIntent
 	logger                  *zap.Logger
 	keepAlive               uint8
 	pccType                 pcep.PccType
@@ -41,13 +43,6 @@ type Session struct {
 	asn                     uint32
 }
 
-// srPolicyIntentKey identifies an SR Policy the same way SearchPlspID does,
-// since a PCRpt for a newly requested policy does not provide a known PLSP-ID.
-type srPolicyIntentKey struct {
-	color uint32
-	dst   netip.Addr
-}
-
 // srPolicyIntent stores the candidate-path type and metric because PCEP does
 // not report them after the policy is established.
 type srPolicyIntent struct {
@@ -55,31 +50,41 @@ type srPolicyIntent struct {
 	metric  table.MetricType
 }
 
-// RememberSRPolicyIntent records the candidate-path type and metric for an SR Policy.
-func (ss *Session) RememberSRPolicyIntent(color uint32, dst netip.Addr, polType table.PolicyType, metric table.MetricType) {
+// rememberSRPolicyIntent records the intent for an SRP-ID.
+// SRP-ID 0 is reserved for unsolicited PCRpt messages and is ignored.
+func (ss *Session) rememberSRPolicyIntent(srpID uint32, polType table.PolicyType, metric table.MetricType) {
+	if srpID == 0 {
+		return
+	}
 	ss.srPolicyIntentsMu.Lock()
 	defer ss.srPolicyIntentsMu.Unlock()
 	if ss.srPolicyIntents == nil {
-		ss.srPolicyIntents = make(map[srPolicyIntentKey]srPolicyIntent)
+		ss.srPolicyIntents = make(map[uint32]srPolicyIntent)
 	}
-	ss.srPolicyIntents[srPolicyIntentKey{color: color, dst: dst}] = srPolicyIntent{polType: polType, metric: metric}
+	ss.srPolicyIntents[srpID] = srPolicyIntent{polType: polType, metric: metric}
 }
 
-// takeSRPolicyIntent returns and removes the intent for (color, dst).
-func (ss *Session) takeSRPolicyIntent(color uint32, dst netip.Addr) (srPolicyIntent, bool) {
+// takeSRPolicyIntent returns and removes the intent for srpID.
+// SRP-ID 0 never consumes an intent.
+func (ss *Session) takeSRPolicyIntent(srpID uint32) (srPolicyIntent, bool) {
+	if srpID == 0 {
+		return srPolicyIntent{}, false
+	}
 	ss.srPolicyIntentsMu.Lock()
 	defer ss.srPolicyIntentsMu.Unlock()
-	key := srPolicyIntentKey{color: color, dst: dst}
-	intent, ok := ss.srPolicyIntents[key]
-	delete(ss.srPolicyIntents, key)
+	intent, ok := ss.srPolicyIntents[srpID]
+	delete(ss.srPolicyIntents, srpID)
 	return intent, ok
 }
 
 // forgetSRPolicyIntent discards an intent that will no longer be consumed.
-func (ss *Session) forgetSRPolicyIntent(color uint32, dst netip.Addr) {
+func (ss *Session) forgetSRPolicyIntent(srpID uint32) {
+	if srpID == 0 {
+		return
+	}
 	ss.srPolicyIntentsMu.Lock()
 	defer ss.srPolicyIntentsMu.Unlock()
-	delete(ss.srPolicyIntents, srPolicyIntentKey{color: color, dst: dst})
+	delete(ss.srPolicyIntents, srpID)
 }
 
 // clearSRPolicyIntents discards all remembered intents when the session ends.
@@ -265,15 +270,7 @@ func (ss *Session) ReceivePCEPMessage() error {
 			if err := pcerrMessage.DecodeFromBytes(bytePCErrMessageBody); err != nil {
 				return err
 			}
-
-			srpIDs := pcerrMessage.SRPIDs()
-			for _, errObj := range pcerrMessage.Errors {
-				ss.logger.Debug("Received PCErr",
-					zap.Uint8("error-Type", errObj.ErrorType),
-					zap.Uint8("error-value", errObj.ErrorValue),
-					zap.Uint32s("srp-ids", srpIDs),
-					zap.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#pcep-error-object"))
-			}
+			ss.handlePCErr(pcerrMessage)
 		case pcep.MessageTypeClose:
 			byteCloseMessageBody := make([]uint8, commonHeader.MessageLength-pcep.CommonHeaderLength)
 			if _, err := ss.tcpConn.Read(byteCloseMessageBody); err != nil {
@@ -307,6 +304,21 @@ func (ss *Session) readCommonHeader() (*pcep.CommonHeader, error) {
 	}
 
 	return commonHeader, nil
+}
+
+// handlePCErr logs the error and forgets intents for the reported SRP-IDs.
+func (ss *Session) handlePCErr(pcerrMessage *pcep.PCErrMessage) {
+	srpIDs := pcerrMessage.SRPIDs()
+	for _, errObj := range pcerrMessage.Errors {
+		ss.logger.Debug("Received PCErr",
+			zap.Uint8("error-Type", errObj.ErrorType),
+			zap.Uint8("error-value", errObj.ErrorValue),
+			zap.Uint32s("srp-ids", srpIDs),
+			zap.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#pcep-error-object"))
+	}
+	for _, srpID := range srpIDs {
+		ss.forgetSRPolicyIntent(srpID)
+	}
 }
 
 func (ss *Session) handlePCRpt(length uint16) error {
@@ -586,30 +598,49 @@ func (ss *Session) SendOpen() error {
 	return ss.sendPCEPMessage(openMessage)
 }
 
+// allocateSRPID allocates a non-reserved SRP-ID and records its intent.
+func (ss *Session) allocateSRPID(polType table.PolicyType, metric table.MetricType) uint32 {
+	ss.srpIDMu.Lock()
+	defer ss.srpIDMu.Unlock()
+	if ss.srpIDHead == 0 || ss.srpIDHead == math.MaxUint32 {
+		ss.srpIDHead = 1
+	}
+	srpID := ss.srpIDHead
+	ss.srpIDHead++
+	ss.rememberSRPolicyIntent(srpID, polType, metric)
+	return srpID
+}
+
 func (ss *Session) SendPCInitiate(srPolicy table.SRPolicy, lspDelete bool) error {
-	pcinitiateMessage, err := pcep.NewPCInitiateMessage(ss.srpIDHead, srPolicy.Name, lspDelete, srPolicy.PlspID, srPolicy.SegmentList, srPolicy.Color, srPolicy.Preference, srPolicy.SrcAddr, srPolicy.DstAddr, pcep.VendorSpecific(ss.pccType), pcep.OriginatorASN(ss.asn))
+	srpID := ss.allocateSRPID(srPolicy.Type, srPolicy.Metric)
+
+	pcinitiateMessage, err := pcep.NewPCInitiateMessage(srpID, srPolicy.Name, lspDelete, srPolicy.PlspID, srPolicy.SegmentList, srPolicy.Color, srPolicy.Preference, srPolicy.SrcAddr, srPolicy.DstAddr, pcep.VendorSpecific(ss.pccType), pcep.OriginatorASN(ss.asn))
 	if err != nil {
+		ss.forgetSRPolicyIntent(srpID)
 		return err
 	}
 	ss.logger.Debug("Send PCInitiate Message")
-	err = ss.sendPCEPMessage(pcinitiateMessage)
-	if err == nil {
-		ss.srpIDHead++
+	if err := ss.sendPCEPMessage(pcinitiateMessage); err != nil {
+		ss.forgetSRPolicyIntent(srpID)
+		return err
 	}
-	return err
+	return nil
 }
 
 func (ss *Session) SendPCUpdate(srPolicy table.SRPolicy) error {
-	pcupdateMessage, err := pcep.NewPCUpdMessage(ss.srpIDHead, srPolicy.Name, srPolicy.PlspID, srPolicy.SegmentList)
+	srpID := ss.allocateSRPID(srPolicy.Type, srPolicy.Metric)
+
+	pcupdateMessage, err := pcep.NewPCUpdMessage(srpID, srPolicy.Name, srPolicy.PlspID, srPolicy.SegmentList)
 	if err != nil {
+		ss.forgetSRPolicyIntent(srpID)
 		return err
 	}
 	ss.logger.Debug("Send Update Message")
-	err = ss.sendPCEPMessage(pcupdateMessage)
-	if err == nil {
-		ss.srpIDHead++
+	if err := ss.sendPCEPMessage(pcupdateMessage); err != nil {
+		ss.forgetSRPolicyIntent(srpID)
+		return err
 	}
-	return err
+	return nil
 }
 
 func (ss *Session) RegisterSRPolicy(sr pcep.StateReport) error {
@@ -704,7 +735,7 @@ func (ss *Session) updateOrCreatePolicy(sr pcep.StateReport, segmentList []table
 				LSPID:       lspID,
 				State:       state,
 			})
-			if intent, ok := ss.takeSRPolicyIntent(color, p.DstAddr); ok {
+			if intent, ok := ss.takeSRPolicyIntent(sr.SrpObject.SrpID); ok {
 				p.Type = intent.polType
 				p.Metric = intent.metric
 			}
@@ -730,7 +761,7 @@ func (ss *Session) updateOrCreatePolicy(sr pcep.StateReport, segmentList []table
 	}
 
 	p := table.NewSRPolicy(sr.LSPObject.PlspID, sr.LSPObject.Name, segmentList, src, dst, color, preference, lspID, state)
-	if intent, ok := ss.takeSRPolicyIntent(color, dst); ok {
+	if intent, ok := ss.takeSRPolicyIntent(sr.SrpObject.SrpID); ok {
 		p.Type = intent.polType
 		p.Metric = intent.metric
 	}
@@ -747,7 +778,7 @@ func (ss *Session) DeleteSRPolicy(sr pcep.StateReport) {
 	for i, v := range ss.srPolicies {
 		// If the LSP ID is old, it is not the latest data update.
 		if v.PlspID == sr.LSPObject.PlspID && v.LSPID <= lspID {
-			ss.forgetSRPolicyIntent(v.Color, v.DstAddr)
+			ss.forgetSRPolicyIntent(sr.SrpObject.SrpID)
 			ss.srPolicies[i] = ss.srPolicies[len(ss.srPolicies)-1]
 			ss.srPolicies = ss.srPolicies[:len(ss.srPolicies)-1]
 			break

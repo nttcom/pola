@@ -189,7 +189,7 @@ type Capability struct {
 // Strings returns the human-readable flags for this capability's TLV.
 func (c Capability) Strings() []string {
 	if c.Detail == nil {
-		return nil
+		return []string{c.Type}
 	}
 	return c.Detail.Strings()
 }

@@ -116,3 +116,15 @@ func TestSegmentFromPB_SRv6(t *testing.T) {
 	assert.Equal(t, "2001:db8::6", srv6Seg.RemoteAddr.String())
 	assert.Equal(t, table.SIDStructureBytes{32, 16, 0, 80}, srv6Seg.Structure)
 }
+
+func TestCapability_Strings(t *testing.T) {
+	t.Run("nil Detail falls back to type token", func(t *testing.T) {
+		cap := Capability{Type: "VENDOR_INFORMATION"}
+		assert.Equal(t, []string{"VENDOR_INFORMATION"}, cap.Strings())
+	})
+
+	t.Run("typed Detail is unaffected", func(t *testing.T) {
+		cap := Capability{Type: "SR", Detail: SRCapability{MSD: 10}}
+		assert.Equal(t, []string{"SR", "MSD=10"}, cap.Strings())
+	})
+}

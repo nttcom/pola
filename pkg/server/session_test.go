@@ -6,9 +6,11 @@
 package server
 
 import (
+	"math"
 	"net"
 	"net/netip"
 	"reflect"
+	"sync"
 	"testing"
 
 	"go.uber.org/zap"
@@ -107,12 +109,13 @@ func TestHandleStateReportWithoutTED(t *testing.T) {
 }
 
 // A CreateSRPolicy request's type/metric has no PCEP wire representation (RFC 9256
-// §2.4.2), so RememberSRPolicyIntent is the only way it reaches the eventual PCRpt-created record.
-func TestRememberSRPolicyIntent_AttachedOnCreation(t *testing.T) {
+// §2.4.2), so rememberSRPolicyIntent, keyed by the SRP-ID assigned to the request, is
+// the only way it reaches the eventual PCRpt-created record.
+func TestSRPolicyIntent_AttachedOnCreationBySRPID(t *testing.T) {
 	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
-	sr := newTestStateReport(t, 1, 0)
+	sr := newTestStateReport(t, 1, 7)
 
-	ss.RememberSRPolicyIntent(0, sr.LSPObject.DstAddr, table.PolicyTypeDynamic, table.TEMetric)
+	ss.rememberSRPolicyIntent(7, table.PolicyTypeDynamic, table.TEMetric)
 
 	if err := ss.handleStateReport(sr, pcep.NewPCRptMessage()); err != nil {
 		t.Fatalf("handleStateReport returned an error: %v", err)
@@ -130,44 +133,6 @@ func TestRememberSRPolicyIntent_AttachedOnCreation(t *testing.T) {
 	}
 }
 
-// A policy update must also replace the recorded type and metric.
-func TestRememberSRPolicyIntent_AttachedOnUpdate(t *testing.T) {
-	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
-	sr := newTestStateReport(t, 1, 0)
-
-	ss.RememberSRPolicyIntent(0, sr.LSPObject.DstAddr, table.PolicyTypeExplicit, table.UnspecifiedMetric)
-	if err := ss.handleStateReport(sr, pcep.NewPCRptMessage()); err != nil {
-		t.Fatalf("handleStateReport returned an error: %v", err)
-	}
-
-	policy, found := ss.SearchSRPolicy(sr.LSPObject.PlspID)
-	if !found {
-		t.Fatal("SR Policy reported by the PCC was not registered")
-	}
-	if policy.Type != table.PolicyTypeExplicit || policy.Metric != table.UnspecifiedMetric {
-		t.Fatalf("initial policy intent: got (%q, %v), want (%q, %v)", policy.Type, policy.Metric, table.PolicyTypeExplicit, table.UnspecifiedMetric)
-	}
-
-	ss.RememberSRPolicyIntent(0, sr.LSPObject.DstAddr, table.PolicyTypeDynamic, table.TEMetric)
-
-	sr2 := newTestStateReport(t, 1, 0)
-	if err := ss.handleStateReport(sr2, pcep.NewPCRptMessage()); err != nil {
-		t.Fatalf("handleStateReport returned an error: %v", err)
-	}
-
-	policy, found = ss.SearchSRPolicy(sr2.LSPObject.PlspID)
-	if !found {
-		t.Fatal("SR Policy reported by the PCC was not registered")
-	}
-	if policy.Type != table.PolicyTypeDynamic {
-		t.Errorf("policy type after update: got %q, want %q", policy.Type, table.PolicyTypeDynamic)
-	}
-	if policy.Metric != table.TEMetric {
-		t.Errorf("policy metric after update: got %v, want %v", policy.Metric, table.TEMetric)
-	}
-}
-
-// A policy with no remembered intent must keep its type and metric unset.
 func TestSRPolicyIntent_UnknownWhenNeverRemembered(t *testing.T) {
 	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
 	sr := newTestStateReport(t, 1, 0)
@@ -188,31 +153,110 @@ func TestSRPolicyIntent_UnknownWhenNeverRemembered(t *testing.T) {
 	}
 }
 
-// Removing a policy must also remove its remembered intent to prevent stale reuse.
-func TestSRPolicyIntent_ClearedOnDelete(t *testing.T) {
+func TestSRPolicyIntent_IndependentPerSRPID(t *testing.T) {
 	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+
+	ss.rememberSRPolicyIntent(1, table.PolicyTypeExplicit, table.UnspecifiedMetric)
+	ss.rememberSRPolicyIntent(2, table.PolicyTypeDynamic, table.TEMetric)
+
+	// SRP-ID 2's PCRpt arrives first and must only consume intent 2.
+	srB := newTestStateReport(t, 20, 2)
+	if err := ss.handleStateReport(srB, pcep.NewPCRptMessage()); err != nil {
+		t.Fatalf("handleStateReport returned an error: %v", err)
+	}
+	policyB, found := ss.SearchSRPolicy(srB.LSPObject.PlspID)
+	if !found {
+		t.Fatal("SR Policy for SRP-ID 2 was not registered")
+	}
+	if policyB.Type != table.PolicyTypeDynamic || policyB.Metric != table.TEMetric {
+		t.Errorf("policy for SRP-ID 2: got (%q, %v), want (%q, %v)", policyB.Type, policyB.Metric, table.PolicyTypeDynamic, table.TEMetric)
+	}
+	ss.srPolicyIntentsMu.Lock()
+	_, ok := ss.srPolicyIntents[1]
+	ss.srPolicyIntentsMu.Unlock()
+	if !ok {
+		t.Error("intent for SRP-ID 1 must survive consuming SRP-ID 2's intent")
+	}
+
+	// SRP-ID 1's PCRpt arrives second and must consume only intent 1.
+	srA := newTestStateReport(t, 10, 1)
+	if err := ss.handleStateReport(srA, pcep.NewPCRptMessage()); err != nil {
+		t.Fatalf("handleStateReport returned an error: %v", err)
+	}
+	policyA, found := ss.SearchSRPolicy(srA.LSPObject.PlspID)
+	if !found {
+		t.Fatal("SR Policy for SRP-ID 1 was not registered")
+	}
+	if policyA.Type != table.PolicyTypeExplicit || policyA.Metric != table.UnspecifiedMetric {
+		t.Errorf("policy for SRP-ID 1: got (%q, %v), want (%q, %v)", policyA.Type, policyA.Metric, table.PolicyTypeExplicit, table.UnspecifiedMetric)
+	}
+}
+
+func TestSRPolicyIntent_UnsolicitedPCRptDoesNotConsume(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	ss.rememberSRPolicyIntent(1, table.PolicyTypeDynamic, table.TEMetric)
+
 	sr := newTestStateReport(t, 1, 0)
-
-	ss.RememberSRPolicyIntent(0, sr.LSPObject.DstAddr, table.PolicyTypeDynamic, table.TEMetric)
 	if err := ss.handleStateReport(sr, pcep.NewPCRptMessage()); err != nil {
 		t.Fatalf("handleStateReport returned an error: %v", err)
 	}
 
-	sr.LSPObject.RFlag = true
-	if err := ss.handleStateReport(sr, pcep.NewPCRptMessage()); err != nil {
-		t.Fatalf("handleStateReport returned an error: %v", err)
-	}
-
-	sr2 := newTestStateReport(t, 2, 0)
-	if err := ss.handleStateReport(sr2, pcep.NewPCRptMessage()); err != nil {
-		t.Fatalf("handleStateReport returned an error: %v", err)
-	}
-	policy, found := ss.SearchSRPolicy(sr2.LSPObject.PlspID)
+	policy, found := ss.SearchSRPolicy(sr.LSPObject.PlspID)
 	if !found {
 		t.Fatal("SR Policy reported by the PCC was not registered")
 	}
 	if policy.Type != "" {
-		t.Errorf("policy type: got %q, want unset (stale intent must not be reused)", policy.Type)
+		t.Errorf("policy type: got %q, want unset (unsolicited PCRpt must not consume an intent)", policy.Type)
+	}
+
+	if _, ok := ss.takeSRPolicyIntent(1); !ok {
+		t.Error("intent for SRP-ID 1 must remain after an unrelated unsolicited PCRpt")
+	}
+}
+
+func TestSRPolicyIntent_ClearedOnRFlagDelete(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+
+	// Create the policy unsolicited so its creation does not consume the intent below.
+	sr := newTestStateReport(t, 1, 0)
+	if err := ss.handleStateReport(sr, pcep.NewPCRptMessage()); err != nil {
+		t.Fatalf("handleStateReport returned an error: %v", err)
+	}
+
+	ss.rememberSRPolicyIntent(5, table.PolicyTypeDynamic, table.TEMetric)
+
+	del := newTestStateReport(t, 1, 5)
+	del.LSPObject.RFlag = true
+	if err := ss.handleStateReport(del, pcep.NewPCRptMessage()); err != nil {
+		t.Fatalf("handleStateReport returned an error: %v", err)
+	}
+
+	if _, found := ss.SearchSRPolicy(del.LSPObject.PlspID); found {
+		t.Error("SR Policy is still registered after being reported as removed")
+	}
+	if _, ok := ss.takeSRPolicyIntent(5); ok {
+		t.Error("intent for SRP-ID 5 was not removed after an R-Flag PCRpt")
+	}
+}
+
+func TestHandlePCErr_ForgetsReportedSRPIDIntents(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	ss.rememberSRPolicyIntent(1, table.PolicyTypeDynamic, table.TEMetric)
+	ss.rememberSRPolicyIntent(2, table.PolicyTypeExplicit, table.UnspecifiedMetric)
+
+	pcerrMessage, err := pcep.NewPCErrMessage(1, 1, nil)
+	if err != nil {
+		t.Fatalf("failed to create PCErr message: %v", err)
+	}
+	pcerrMessage.SRPs = []*pcep.SrpObject{{SrpID: 1}}
+
+	ss.handlePCErr(pcerrMessage)
+
+	if _, ok := ss.takeSRPolicyIntent(1); ok {
+		t.Error("intent for SRP-ID 1 was not removed after a PCErr reporting it")
+	}
+	if _, ok := ss.takeSRPolicyIntent(2); !ok {
+		t.Error("intent for SRP-ID 2 must survive a PCErr that does not report it")
 	}
 }
 
@@ -227,6 +271,7 @@ func TestSendSRPolicyRequest_ForgetsIntentOnSendFailure(t *testing.T) {
 
 	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
 	ss.isSynced = true
+	wantSRPID := ss.srpIDHead
 
 	// Close the PCEP-side connection so the send inside sendSRPolicyRequest fails.
 	if err := server.Close(); err != nil {
@@ -252,7 +297,7 @@ func TestSendSRPolicyRequest_ForgetsIntentOnSendFailure(t *testing.T) {
 		t.Fatal("expected sendSRPolicyRequest to fail once the connection is closed")
 	}
 
-	if _, ok := ss.takeSRPolicyIntent(100, dstAddr); ok {
+	if _, ok := ss.takeSRPolicyIntent(wantSRPID); ok {
 		t.Error("srPolicyIntents entry was not removed after a failed send")
 	}
 }
@@ -267,13 +312,102 @@ func TestCloseSession_ClearsSRPolicyIntents(t *testing.T) {
 	})
 
 	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
-	ss.RememberSRPolicyIntent(100, netip.MustParseAddr("10.255.0.2"), table.PolicyTypeDynamic, table.TEMetric)
+	ss.rememberSRPolicyIntent(1, table.PolicyTypeDynamic, table.TEMetric)
 
 	s := &Server{sessionList: []*Session{ss}, logger: zap.NewNop()}
 	s.closeSession(ss)
 
 	if len(ss.srPolicyIntents) != 0 {
 		t.Errorf("srPolicyIntents was not cleared on session close: %+v", ss.srPolicyIntents)
+	}
+}
+
+// Concurrent SendPCUpdate/SendPCInitiate calls must never allocate the same SRP-ID,
+// and every allocated SRP-ID must have exactly one intent registered for it.
+func TestConcurrentSRPolicyRequestsAllocateUniqueSRPIDs(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() {
+		if err := server.Close(); err != nil {
+			t.Errorf("failed to close server connection: %v", err)
+		}
+	})
+
+	// Drain everything the server writes so sends never block on a full socket buffer.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		buf := make([]byte, 4096)
+		for {
+			if _, err := client.Read(buf); err != nil {
+				return
+			}
+		}
+	}()
+	t.Cleanup(func() {
+		if err := client.Close(); err != nil {
+			t.Errorf("failed to close client connection: %v", err)
+		}
+		<-done
+	})
+
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+
+	const goroutines = 20
+	var wg sync.WaitGroup
+	errCh := make(chan error, goroutines)
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			srPolicy := table.SRPolicy{
+				Name:    "concurrent-test",
+				SrcAddr: netip.MustParseAddr("10.255.0.1"),
+				DstAddr: netip.MustParseAddr("10.255.0.2"),
+				Color:   uint32(i),
+				Type:    table.PolicyTypeDynamic,
+				Metric:  table.TEMetric,
+			}
+			var err error
+			if i%2 == 0 {
+				err = ss.SendPCUpdate(srPolicy)
+			} else {
+				err = ss.RequestSRPolicyCreated(srPolicy)
+			}
+			errCh <- err
+		}(i)
+	}
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		if err != nil {
+			t.Errorf("send returned an error: %v", err)
+		}
+	}
+
+	ss.srPolicyIntentsMu.Lock()
+	gotIntents := len(ss.srPolicyIntents)
+	ss.srPolicyIntentsMu.Unlock()
+	if gotIntents != goroutines {
+		t.Errorf("srPolicyIntents count: got %d, want %d (SRP-IDs must not collide)", gotIntents, goroutines)
+	}
+	if ss.srpIDHead != uint32(1+goroutines) {
+		t.Errorf("srpIDHead: got %d, want %d", ss.srpIDHead, uint32(1+goroutines))
+	}
+}
+
+func TestAllocateSRPID_SkipsReservedValues(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	ss.srpIDHead = math.MaxUint32 - 1
+
+	for i, want := range []uint32{math.MaxUint32 - 1, 1, 2} {
+		got := ss.allocateSRPID(table.PolicyTypeDynamic, table.TEMetric)
+		if got == 0 || got == math.MaxUint32 {
+			t.Fatalf("allocation %d: got reserved SRP-ID %d", i, got)
+		}
+		if got != want {
+			t.Errorf("allocation %d: got %d, want %d", i, got, want)
+		}
 	}
 }
 

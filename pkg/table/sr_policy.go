@@ -25,9 +25,7 @@ const (
 
 // PolicyType is the RFC 9256 §2.4.2 SR Policy candidate path type: a candidate path
 // is either explicit (a fixed SID list) or dynamic (computed against an optimization
-// metric, and subject to recomputation). The zero value means "not known": PCEP
-// carries no TLV for this on PCRpt, so it can only be known for policies Pola itself
-// created (see Session.RememberSRPolicyIntent).
+// metric and subject to recomputation). The zero value means "not known".
 type PolicyType string
 
 const (
@@ -226,7 +224,7 @@ func NewSegmentSRv6WithNodeInfo(sid netip.Addr, n *LsNode) (SegmentSRv6, error) 
 				return seg, err
 			}
 			seg.LocalAddr = addr
-			seg.Structure = []uint8{
+			seg.Structure = SIDStructureBytes{
 				srv6SID.SIDStructure.LocalBlock,
 				srv6SID.SIDStructure.LocalNode,
 				srv6SID.SIDStructure.LocalFunc,
