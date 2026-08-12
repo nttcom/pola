@@ -902,3 +902,21 @@ func TestSendPCEPMessage_UnlocksAfterSendFailure(t *testing.T) {
 		t.Fatal("second SendKeepalive blocked; send mutex may not have been released")
 	}
 }
+
+// TestIsSynced_ConcurrentAccess verifies that setSynced and IsSynced are synchronized.
+func TestIsSynced_ConcurrentAccess(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 100; i++ {
+			ss.setSynced()
+		}
+	}()
+
+	for i := 0; i < 100; i++ {
+		ss.IsSynced()
+	}
+	<-done
+}

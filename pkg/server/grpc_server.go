@@ -750,7 +750,11 @@ func (s *APIServer) GetSRPolicyList(ctx context.Context, req *pb.GetSRPolicyList
 	}
 	slices.SortFunc(peerAddrs, func(a, b netip.Addr) int { return a.Compare(b) })
 
-	routerIDIndex := buildRouterIDIndex(s.pce.TED())
+	var routerIDIndex map[netip.Addr]string
+	if s.pce != nil {
+		routerIDIndex = buildRouterIDIndex(s.pce.TED())
+	}
+
 	sessions := make([]*pb.Session, 0, len(peerAddrs))
 	for _, peerAddr := range peerAddrs {
 		pbPolicies := make([]*pb.SRPolicy, 0, len(policiesByPeer[peerAddr]))
@@ -801,10 +805,8 @@ func (s *APIServer) buildPBSRPolicy(peerAddr netip.Addr, policy *table.SRPolicy,
 		Metric:          toPBMetricType(policy.Metric),
 	}
 
-	if routerIDIndex != nil {
-		srPolicy.SrcRouterId = routerIDIndex[policy.SrcAddr]
-		srPolicy.DstRouterId = routerIDIndex[policy.DstAddr]
-	}
+	srPolicy.SrcRouterId = routerIDIndex[policy.SrcAddr]
+	srPolicy.DstRouterId = routerIDIndex[policy.DstAddr]
 
 	for _, segment := range policy.SegmentList {
 		srPolicy.SegmentList = append(srPolicy.SegmentList, convertSegment(segment))

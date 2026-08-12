@@ -787,7 +787,7 @@ func TestTED_ConcurrentUpdate(t *testing.T) {
 	}()
 
 	for i := 0; i < 100; i++ {
-		_ = s.TED()
+		_ = buildRouterIDIndex(s.TED())
 	}
 	<-done
 }
