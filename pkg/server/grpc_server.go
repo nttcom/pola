@@ -750,10 +750,7 @@ func (s *APIServer) GetSRPolicyList(ctx context.Context, req *pb.GetSRPolicyList
 	}
 	slices.SortFunc(peerAddrs, func(a, b netip.Addr) int { return a.Compare(b) })
 
-	var routerIDIndex map[netip.Addr]string
-	if s.pce != nil {
-		routerIDIndex = buildRouterIDIndex(s.pce.TED())
-	}
+	routerIDIndex := buildRouterIDIndex(s.pce.TED())
 
 	sessions := make([]*pb.Session, 0, len(peerAddrs))
 	for _, peerAddr := range peerAddrs {
@@ -871,6 +868,23 @@ func buildRouterIDIndex(ted *table.LsTED) map[netip.Addr]string {
 			if prefix.Prefix.Bits() == prefix.Prefix.Addr().BitLen() {
 				index[prefix.Prefix.Addr()] = node.RouterID
 			}
+		}
+	}
+	return index
+}
+
+// buildAddressRouterIDIndex builds an index from prefix addresses to router IDs.
+func buildAddressRouterIDIndex(ted *table.LsTED) map[netip.Addr]string {
+	if ted == nil {
+		return nil
+	}
+	index := make(map[netip.Addr]string)
+	for routerID, node := range ted.Nodes {
+		if node == nil {
+			continue
+		}
+		for _, prefix := range node.Prefixes {
+			index[prefix.Prefix.Addr()] = routerID
 		}
 	}
 	return index

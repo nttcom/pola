@@ -189,8 +189,6 @@ func TestSRPolicyIntent_AttachedOnCreationBySRPID(t *testing.T) {
 	}
 }
 
-// A policy update must also replace the recorded type and metric, using the intent
-// keyed by the SRP-ID of the update request.
 func TestSRPolicyIntent_AttachedOnUpdateBySRPID(t *testing.T) {
 	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
 
@@ -900,6 +898,102 @@ func TestSendPCEPMessage_UnlocksAfterSendFailure(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("second SendKeepalive blocked; send mutex may not have been released")
+	}
+}
+
+func TestFindRouterIDFromAddress(t *testing.T) {
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{}}
+
+	v4Node := table.NewLsNode(0, "router-v4")
+	v4Prefix := table.NewLsPrefix(v4Node)
+	v4Prefix.Prefix = netip.MustParsePrefix("192.0.2.10/32")
+	v4Node.Prefixes = append(v4Node.Prefixes, v4Prefix)
+	ted.Nodes[v4Node.RouterID] = v4Node
+
+	v6Node := table.NewLsNode(0, "router-v6")
+	v6Prefix := table.NewLsPrefix(v6Node)
+	v6Prefix.Prefix = netip.MustParsePrefix("2001:db8::1/128")
+	v6Node.Prefixes = append(v6Node.Prefixes, v6Prefix)
+	ted.Nodes[v6Node.RouterID] = v6Node
+
+	subnetNode := table.NewLsNode(0, "router-subnet")
+	subnetPrefix := table.NewLsPrefix(subnetNode)
+	subnetPrefix.Prefix = netip.MustParsePrefix("192.0.2.0/24")
+	subnetNode.Prefixes = append(subnetNode.Prefixes, subnetPrefix)
+	ted.Nodes[subnetNode.RouterID] = subnetNode
+
+	// No prefixes: only matchable by Router ID.
+	idNode := table.NewLsNode(0, "198.51.100.1")
+	ted.Nodes[idNode.RouterID] = idNode
+
+	ss := &Session{ted: ted}
+	addrIndex := buildAddressRouterIDIndex(ted)
+
+	cases := []struct {
+		name    string
+		addr    netip.Addr
+		want    string
+		wantErr bool
+	}{
+		{"ipv4 prefix", netip.MustParseAddr("192.0.2.10"), "router-v4", false},
+		{"ipv6 prefix", netip.MustParseAddr("2001:db8::1"), "router-v6", false},
+		{"non-host prefix network address", netip.MustParseAddr("192.0.2.0"), "router-subnet", false},
+		{"router id match", netip.MustParseAddr("198.51.100.1"), "198.51.100.1", false},
+		{"not found", netip.MustParseAddr("203.0.113.5"), "", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := ss.findRouterIDFromAddress(addrIndex, tc.addr)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got routerID %q", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestExtractSrcDstRouterIDs(t *testing.T) {
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{}}
+
+	srcNode := table.NewLsNode(0, "src-router")
+	srcPrefix := table.NewLsPrefix(srcNode)
+	srcPrefix.Prefix = netip.MustParsePrefix("10.255.0.1/32")
+	srcNode.Prefixes = append(srcNode.Prefixes, srcPrefix)
+	ted.Nodes[srcNode.RouterID] = srcNode
+
+	dstNode := table.NewLsNode(0, "10.255.0.2")
+	ted.Nodes[dstNode.RouterID] = dstNode
+
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), ted, 0)
+
+	sr := newTestStateReport(t, 1, 0)
+	srcRouterID, dstRouterID, err := ss.extractSrcDstRouterIDs(*sr)
+	if err != nil {
+		t.Fatalf("extractSrcDstRouterIDs failed: %v", err)
+	}
+	if srcRouterID != "src-router" {
+		t.Errorf("srcRouterID: got %q, want %q", srcRouterID, "src-router")
+	}
+	if dstRouterID != "10.255.0.2" {
+		t.Errorf("dstRouterID: got %q, want %q", dstRouterID, "10.255.0.2")
+	}
+}
+
+func TestExtractSrcDstRouterIDs_AddressNotFound(t *testing.T) {
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{}}
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), ted, 0)
+
+	sr := newTestStateReport(t, 1, 0)
+	if _, _, err := ss.extractSrcDstRouterIDs(*sr); err == nil {
+		t.Error("expected an error when neither address is present in the TED")
 	}
 }
 
