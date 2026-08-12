@@ -91,7 +91,7 @@ func printTED(jsonFlag bool) error {
 				prefixMap := map[string]any{
 					"prefix": prefix.Prefix.String(),
 				}
-				if prefix.SidIndex != 0 {
+				if prefix.HasPrefixSID() {
 					prefixMap["sidIndex"] = prefix.SidIndex
 				}
 				prefixes = append(prefixes, prefixMap)

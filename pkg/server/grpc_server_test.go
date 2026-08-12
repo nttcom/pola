@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"net/netip"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -318,6 +319,34 @@ func TestValidateSIDs_EndpointFormIsStillValidated(t *testing.T) {
 	}
 }
 
+func TestValidateSIDs_LabelOutOfRangeIsRejectedEvenWithNoSidValidate(t *testing.T) {
+	s := newTestAPIServer(nil)
+	req := explicitPolicyRequest(true, "1048576")
+	segmentList := []table.Segment{table.NewSegmentSRMPLS(1048576)}
+
+	err := s.validateSIDs(req, segmentList)
+	st, ok := status.FromError(err)
+	if !ok || st.Code() != codes.InvalidArgument {
+		t.Fatalf("expected codes.InvalidArgument, got: %v", err)
+	}
+	if !strings.Contains(st.Message(), "0-1048575") || !strings.Contains(st.Message(), "hop 1") {
+		t.Errorf("unexpected message: %s", st.Message())
+	}
+}
+
+func TestValidateSIDs_LabelBoundsAreAccepted(t *testing.T) {
+	s := newTestAPIServer(nil)
+
+	for _, label := range []uint32{0, 1048575} {
+		req := explicitPolicyRequest(true, strconv.FormatUint(uint64(label), 10))
+		segmentList := []table.Segment{table.NewSegmentSRMPLS(label)}
+
+		if err := s.validateSIDs(req, segmentList); err != nil {
+			t.Errorf("expected label %d to be in range, got: %v", label, err)
+		}
+	}
+}
+
 func TestValidateSIDs_AllKnownSucceeds(t *testing.T) {
 	node := &table.LsNode{
 		RouterID:  "0000.0000.0001",
@@ -334,5 +363,47 @@ func TestValidateSIDs_AllKnownSucceeds(t *testing.T) {
 
 	if err := s.validateSIDs(req, segmentList); err != nil {
 		t.Errorf("expected no error, got: %v", err)
+	}
+}
+
+func TestConvertLsPrefixes_SidIndexPresence(t *testing.T) {
+	tests := []struct {
+		name         string
+		prefix       *table.LsPrefix
+		wantSet      bool
+		wantSidIndex uint32
+	}{
+		{
+			name:    "no Prefix-SID",
+			prefix:  &table.LsPrefix{Prefix: netip.MustParsePrefix("10.0.0.1/32")},
+			wantSet: false,
+		},
+		{
+			name:         "Prefix-SID index 0",
+			prefix:       &table.LsPrefix{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 0, HasSidIndex: true},
+			wantSet:      true,
+			wantSidIndex: 0,
+		},
+		{
+			name:         "Prefix-SID index 16000",
+			prefix:       &table.LsPrefix{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 16000, HasSidIndex: true},
+			wantSet:      true,
+			wantSidIndex: 16000,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := convertLsPrefixes([]*table.LsPrefix{tt.prefix})
+			if len(got) != 1 {
+				t.Fatalf("convertLsPrefixes() returned %d prefixes, want 1", len(got))
+			}
+			if (got[0].SidIndex != nil) != tt.wantSet {
+				t.Fatalf("sid_index set = %v, want %v", got[0].SidIndex != nil, tt.wantSet)
+			}
+			if tt.wantSet && got[0].GetSidIndex() != tt.wantSidIndex {
+				t.Errorf("sid_index = %d, want %d", got[0].GetSidIndex(), tt.wantSidIndex)
+			}
+		})
 	}
 }

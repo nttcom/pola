@@ -1085,7 +1085,7 @@ func (x *LsSrv6SID) GetMultiTopoIds() []*MultiTopoID {
 type LsPrefix struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Prefix        string                 `protobuf:"bytes,1,opt,name=prefix,proto3" json:"prefix,omitempty"`
-	SidIndex      uint32                 `protobuf:"varint,2,opt,name=sid_index,json=sidIndex,proto3" json:"sid_index,omitempty"`
+	SidIndex      *uint32                `protobuf:"varint,2,opt,name=sid_index,json=sidIndex,proto3,oneof" json:"sid_index,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1128,8 +1128,8 @@ func (x *LsPrefix) GetPrefix() string {
 }
 
 func (x *LsPrefix) GetSidIndex() uint32 {
-	if x != nil {
-		return x.SidIndex
+	if x != nil && x.SidIndex != nil {
+		return *x.SidIndex
 	}
 	return 0
 }
@@ -1926,10 +1926,12 @@ const file_api_pola_v1_pola_proto_rawDesc = "" +
 	"\x04sids\x18\x01 \x03(\v2\x10.api.pola.v1.SIDR\x04sids\x12J\n" +
 	"\x11endpoint_behavior\x18\x02 \x01(\v2\x1d.api.pola.v1.EndpointBehaviorR\x10endpointBehavior\x12>\n" +
 	"\rsid_structure\x18\x03 \x01(\v2\x19.api.pola.v1.SidStructureR\fsidStructure\x12>\n" +
-	"\x0emulti_topo_ids\x18\x04 \x03(\v2\x18.api.pola.v1.MultiTopoIDR\fmultiTopoIds\"?\n" +
+	"\x0emulti_topo_ids\x18\x04 \x03(\v2\x18.api.pola.v1.MultiTopoIDR\fmultiTopoIds\"R\n" +
 	"\bLsPrefix\x12\x16\n" +
-	"\x06prefix\x18\x01 \x01(\tR\x06prefix\x12\x1b\n" +
-	"\tsid_index\x18\x02 \x01(\rR\bsidIndex\"K\n" +
+	"\x06prefix\x18\x01 \x01(\tR\x06prefix\x12 \n" +
+	"\tsid_index\x18\x02 \x01(\rH\x00R\bsidIndex\x88\x01\x01B\f\n" +
+	"\n" +
+	"_sid_index\"K\n" +
 	"\x06Metric\x12+\n" +
 	"\x04type\x18\x01 \x01(\x0e2\x17.api.pola.v1.MetricTypeR\x04type\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\rR\x05value\"\xa0\x01\n" +
@@ -2103,6 +2105,7 @@ func file_api_pola_v1_pola_proto_init() {
 	if File_api_pola_v1_pola_proto != nil {
 		return
 	}
+	file_api_pola_v1_pola_proto_msgTypes[15].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

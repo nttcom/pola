@@ -129,7 +129,7 @@ message LsSrv6SID {
 
 message LsPrefix {
   string prefix = 1;
-  uint32 sid_index = 2;
+  optional uint32 sid_index = 2;
 }
 
 enum MetricType {

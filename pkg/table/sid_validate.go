@@ -10,6 +10,9 @@ import (
 	"net/netip"
 )
 
+// MPLSLabelMax is the maximum 20-bit MPLS label value.
+const MPLSLabelMax uint32 = 0xFFFFF
+
 // SIDIndex is a lookup structure over the SIDs advertised by the TED.
 type SIDIndex struct {
 	mplsSIDs     map[uint32]struct{}       // prefix SIDs and adjacency SIDs
@@ -50,8 +53,12 @@ func NewSIDIndex(ted *LsTED) *SIDIndex {
 
 // addNodePrefixSIDs registers SR-MPLS prefix SIDs.
 func (idx *SIDIndex) addNodePrefixSIDs(node *LsNode) {
+	// Without an SRGB, a Prefix-SID index cannot be converted to a label.
+	if node.SrgbBegin == 0 {
+		return
+	}
 	for _, p := range node.Prefixes {
-		if p != nil && p.SidIndex > FirstSIDIndex {
+		if p.HasPrefixSID() {
 			idx.mplsSIDs[node.SrgbBegin+p.SidIndex] = struct{}{}
 		}
 	}
@@ -116,6 +123,9 @@ func (idx *SIDIndex) hasSRv6(s SegmentSRv6) bool {
 	if _, ok := idx.srv6SIDs[s.Sid]; ok {
 		return true
 	}
+	if !s.USid {
+		return false
+	}
 	// Fall back to locator containment for uSID containers.
 	locBits := 0
 	if len(s.Structure) == 4 {
@@ -150,13 +160,26 @@ func MissingSegments(ted *LsTED, segmentList []Segment) []MissingSegment {
 	return missing
 }
 
-// HasUnknownSegmentType reports whether segmentList contains a segment with an unknown family.
-func HasUnknownSegmentType(segmentList []Segment) bool {
-	for _, seg := range segmentList {
-		if seg == nil {
+// OutOfRangeSRMPLSLabels reports SR-MPLS segments with labels outside the 20-bit range.
+func OutOfRangeSRMPLSLabels(segmentList []Segment) []MissingSegment {
+	var invalid []MissingSegment
+	for i, segment := range segmentList {
+		seg, ok := segment.(SegmentSRMPLS)
+		if !ok || seg.Sid <= MPLSLabelMax {
 			continue
 		}
-		if seg.GetFamily() == SegmentUnknown {
+		invalid = append(invalid, MissingSegment{Hop: i + 1, SID: seg.SidString()})
+	}
+	return invalid
+}
+
+// HasUnknownSegmentType reports whether segmentList contains a segment with an unknown family.
+func HasUnknownSegmentType(segmentList []Segment) bool {
+	for _, segment := range segmentList {
+		if segment == nil {
+			continue
+		}
+		if segmentFamily(segment) == SegmentUnknown {
 			return true
 		}
 	}
@@ -165,20 +188,27 @@ func HasUnknownSegmentType(segmentList []Segment) bool {
 
 // HasMixedSegmentTypes reports whether segmentList contains both SRv6 and SR-MPLS segments.
 func HasMixedSegmentTypes(segmentList []Segment) bool {
-	var hasSRv6, hasSRMPLS bool
-	for _, seg := range segmentList {
-		if seg == nil {
+	var family SegmentFamily
+
+	for _, segment := range segmentList {
+		if segment == nil {
 			continue
 		}
-		switch seg.GetFamily() {
-		case SegmentSRv6Family:
-			hasSRv6 = true
-		case SegmentSRMPLSFamily:
-			hasSRMPLS = true
+
+		current := segmentFamily(segment)
+		if current == SegmentUnknown {
+			continue
 		}
-		if hasSRv6 && hasSRMPLS {
+
+		if family == SegmentUnknown {
+			family = current
+			continue
+		}
+
+		if family != current {
 			return true
 		}
 	}
+
 	return false
 }

@@ -503,12 +503,19 @@ func getLsPrefix(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrPrefix *api.LsAttri
 	var localNodeID string
 	var localNodeAsn uint32
 	var prefix []string
-	var sidIndex uint32
 
-	if lsAttrPrefix.GetSrPrefixSid() != 0 {
-		sidIndex = lsAttrPrefix.GetSrPrefixSid()
-	} else {
-		sidIndex = 0
+	// Prefix-SID index 0 is valid, so presence is determined from the TLV list.
+	sidIndex := lsAttrPrefix.GetSrPrefixSid()
+	hasSidIndex := sidIndex != 0
+	if !hasSidIndex {
+		for _, sid := range lsAttrPrefix.GetSrPrefixSids() {
+			if sid.GetAlgorithm() != 0 {
+				continue
+			}
+			sidIndex = sid.GetSid()
+			hasSidIndex = true
+			break
+		}
 	}
 
 	switch prefNLRI := typedLinkStateNLRI.Nlri.Nlri.(type) {
@@ -527,6 +534,7 @@ func getLsPrefix(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrPrefix *api.LsAttri
 	localNode := table.NewLsNode(localNodeAsn, localNodeID)
 	lsPrefix := table.NewLsPrefix(localNode)
 	lsPrefix.SidIndex = sidIndex
+	lsPrefix.HasSidIndex = hasSidIndex
 
 	if len(prefix) != 1 {
 		return nil, errors.New("invalid prefix length: expected 1 prefix")

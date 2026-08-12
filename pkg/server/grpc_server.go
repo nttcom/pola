@@ -24,6 +24,7 @@ import (
 	grpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 type APIServer struct {
@@ -253,17 +254,15 @@ func (s *APIServer) CreateSRPolicy(ctx context.Context, req *pb.CreateSRPolicyRe
 func (s *APIServer) validateSIDs(req *pb.CreateSRPolicyRequest, segmentList []table.Segment) error {
 	policy := req.GetSrPolicy()
 
-	if req.GetNoSidValidate() {
-		s.logger.Warn("skipping SID validation: no_sid_validate specified",
-			zap.String("policyName", policy.GetPolicyName()),
-			zap.Uint32("color", policy.GetColor()),
-		)
-		return nil
-	}
-
-	// Skip validation for TED-computed dynamic paths.
-	if policy.GetType() == pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC && !req.GetDisablePathCompute() {
-		return nil
+	// Reject out-of-range labels before the validation skip paths.
+	if invalid := table.OutOfRangeSRMPLSLabels(segmentList); len(invalid) > 0 {
+		descriptions := make([]string, 0, len(invalid))
+		for _, s := range invalid {
+			descriptions = append(descriptions, s.String())
+		}
+		return status.Errorf(codes.InvalidArgument,
+			"segment list contains SR-MPLS labels outside the valid range 0-%d: %s",
+			table.MPLSLabelMax, strings.Join(descriptions, ", "))
 	}
 
 	if table.HasUnknownSegmentType(segmentList) {
@@ -272,6 +271,19 @@ func (s *APIServer) validateSIDs(req *pb.CreateSRPolicyRequest, segmentList []ta
 
 	if table.HasMixedSegmentTypes(segmentList) {
 		return status.Errorf(codes.InvalidArgument, "segment list contains mixed SR-MPLS and SRv6 SIDs")
+	}
+
+	// Skip TED lookup for dynamically computed paths.
+	if policy.GetType() == pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC && !req.GetDisablePathCompute() {
+		return nil
+	}
+
+	if req.GetNoSidValidate() {
+		s.logger.Warn("skipping SID validation: no_sid_validate specified",
+			zap.String("policyName", policy.GetPolicyName()),
+			zap.Uint32("color", policy.GetColor()),
+		)
+		return nil
 	}
 
 	ted := s.pce.ted
@@ -399,6 +411,9 @@ var validator = map[ValidationKind]func(policy *pb.SRPolicy, asn uint32) error{
 	ValidationAddDisablePathCompute: func(policy *pb.SRPolicy, asn uint32) error {
 		if policy.PcepSessionAddr == nil {
 			return errors.New("policy.PCEP session address must not be nil")
+		}
+		if policy.Color == 0 {
+			return errors.New("policy.Color must not be zero")
 		}
 		if len(policy.SrcAddr) == 0 {
 			return errors.New("policy.SrcAddr must not be empty")
@@ -671,7 +686,12 @@ func convertLsPrefixes(prefixes []*table.LsPrefix) []*pb.LsPrefix {
 	result := make([]*pb.LsPrefix, 0, len(prefixes))
 	for _, p := range prefixes {
 		if p != nil {
-			result = append(result, &pb.LsPrefix{Prefix: p.Prefix.String(), SidIndex: p.SidIndex})
+			pbPrefix := &pb.LsPrefix{Prefix: p.Prefix.String()}
+			// Preserve Prefix-SID presence, including index 0.
+			if p.HasPrefixSID() {
+				pbPrefix.SidIndex = proto.Uint32(p.SidIndex)
+			}
+			result = append(result, pbPrefix)
 		}
 	}
 	return result

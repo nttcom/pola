@@ -51,17 +51,68 @@ func TestSIDIndexHas_SRMPLS(t *testing.T) {
 }
 
 func TestSIDIndexHas_SRMPLS_SrgbBeginZero(t *testing.T) {
-	// A node that hasn't advertised its SRGB yet registers the raw SidIndex
-	// value as-is; this is a known limitation, not a correctness guarantee.
+	// Without an SRGB, a Prefix-SID index cannot be converted to a label.
 	node := &LsNode{
 		RouterID: "0000.0000.0001",
 		Prefixes: []*LsPrefix{
-			{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 16003},
+			{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 16003, HasSidIndex: true},
 		},
 	}
 	idx := NewSIDIndex(newTestTED(node))
-	if !idx.Has(NewSegmentSRMPLS(16003)) {
-		t.Errorf("expected SidIndex to be registered verbatim when SrgbBegin is 0")
+	if idx.Has(NewSegmentSRMPLS(16003)) {
+		t.Errorf("expected SidIndex not to be registered when SrgbBegin is unavailable")
+	}
+}
+
+func TestSIDIndexHas_SRMPLS_PrefixSIDIndexZero(t *testing.T) {
+	// Prefix-SID index 0 is a valid index: SRGB begin + 0 must be registered
+	// when the Prefix-SID TLV was actually advertised.
+	node := &LsNode{
+		RouterID:  "0000.0000.0001",
+		SrgbBegin: 16000,
+		Prefixes: []*LsPrefix{
+			{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 0, HasSidIndex: true},
+		},
+	}
+	idx := NewSIDIndex(newTestTED(node))
+	if !idx.Has(NewSegmentSRMPLS(16000)) {
+		t.Errorf("expected Prefix-SID index 0 to be registered as label 16000")
+	}
+}
+
+func TestSIDIndexHas_SRMPLS_NoPrefixSID(t *testing.T) {
+	// A prefix without a Prefix-SID TLV must not register the SRGB begin label.
+	node := &LsNode{
+		RouterID:  "0000.0000.0001",
+		SrgbBegin: 16000,
+		Prefixes: []*LsPrefix{
+			{Prefix: netip.MustParsePrefix("10.0.0.1/32")},
+		},
+	}
+	idx := NewSIDIndex(newTestTED(node))
+	if idx.Has(NewSegmentSRMPLS(16000)) {
+		t.Errorf("expected no MPLS SID for a prefix without a Prefix-SID")
+	}
+}
+
+func TestLsPrefixHasPrefixSID(t *testing.T) {
+	tests := []struct {
+		name   string
+		prefix *LsPrefix
+		want   bool
+	}{
+		{"nil prefix", nil, false},
+		{"no Prefix-SID", &LsPrefix{}, false},
+		{"advertised index 0", &LsPrefix{HasSidIndex: true}, true},
+		{"advertised non-zero index", &LsPrefix{SidIndex: 3, HasSidIndex: true}, true},
+		{"non-zero index without flag", &LsPrefix{SidIndex: 3}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.prefix.HasPrefixSID(); got != tt.want {
+				t.Errorf("HasPrefixSID() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 
@@ -118,6 +169,7 @@ func TestSIDIndexHas_USID(t *testing.T) {
 
 	t.Run("structure present, container within locator", func(t *testing.T) {
 		seg := NewSegmentSRv6(container)
+		seg.USid = true
 		seg.Structure = []uint8{32, 16, 16, 0}
 		if !NewSIDIndex(ted).Has(seg) {
 			t.Errorf("expected uSID container to be accepted via locator containment")
@@ -126,6 +178,7 @@ func TestSIDIndexHas_USID(t *testing.T) {
 
 	t.Run("no structure, falls back to containment", func(t *testing.T) {
 		seg := NewSegmentSRv6(container)
+		seg.USid = true
 		if !NewSIDIndex(ted).Has(seg) {
 			t.Errorf("expected uSID container without structure to be accepted via containment fallback")
 		}
@@ -133,6 +186,7 @@ func TestSIDIndexHas_USID(t *testing.T) {
 
 	t.Run("declared locator shorter than TED advertised", func(t *testing.T) {
 		seg := NewSegmentSRv6(container)
+		seg.USid = true
 		// Declares a /32 locator (block=24,node=8), which contradicts the /48
 		// the TED actually advertises.
 		seg.Structure = []uint8{24, 8, 16, 0}
@@ -143,8 +197,16 @@ func TestSIDIndexHas_USID(t *testing.T) {
 
 	t.Run("outside any known locator", func(t *testing.T) {
 		seg := NewSegmentSRv6(netip.MustParseAddr("fcbb:bb00:ffff::"))
+		seg.USid = true
 		if NewSIDIndex(ted).Has(seg) {
 			t.Errorf("expected mismatch for a SID outside any known locator")
+		}
+	})
+
+	t.Run("non-uSID segment does not fall back to locator containment", func(t *testing.T) {
+		seg := NewSegmentSRv6(container)
+		if NewSIDIndex(ted).Has(seg) {
+			t.Errorf("expected non-uSID segment to require an exact SID match")
 		}
 	})
 }
@@ -239,6 +301,57 @@ func TestHasUnknownSegmentType(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := HasUnknownSegmentType(tt.segs); got != tt.want {
 				t.Errorf("HasUnknownSegmentType() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestOutOfRangeSRMPLSLabels(t *testing.T) {
+	tests := []struct {
+		name string
+		segs []Segment
+		want []MissingSegment
+	}{
+		{
+			name: "lower bound is valid",
+			segs: []Segment{NewSegmentSRMPLS(0)},
+		},
+		{
+			name: "upper bound is valid",
+			segs: []Segment{NewSegmentSRMPLS(1048575)},
+		},
+		{
+			name: "one past the upper bound is rejected",
+			segs: []Segment{NewSegmentSRMPLS(1048576)},
+			want: []MissingSegment{{Hop: 1, SID: "1048576"}},
+		},
+		{
+			name: "reports the offending hop only",
+			segs: []Segment{
+				NewSegmentSRMPLS(16001),
+				NewSegmentSRMPLS(1048576),
+			},
+			want: []MissingSegment{{Hop: 2, SID: "1048576"}},
+		},
+		{
+			name: "SRv6 and nil segments are ignored",
+			segs: []Segment{nil, NewSegmentSRv6(netip.MustParseAddr("2001:db8::1"))},
+		},
+		{
+			name: "empty list",
+			segs: []Segment{},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := OutOfRangeSRMPLSLabels(tt.segs)
+			if len(got) != len(tt.want) {
+				t.Fatalf("OutOfRangeSRMPLSLabels() = %v, want %v", got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("OutOfRangeSRMPLSLabels()[%d] = %v, want %v", i, got[i], tt.want[i])
+				}
 			}
 		})
 	}

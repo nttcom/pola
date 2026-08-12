@@ -68,7 +68,7 @@ func printNodePrefixes(node *LsNode) {
 			continue
 		}
 		fmt.Printf("    %s\n", prefix.Prefix.String())
-		if prefix.SidIndex != 0 {
+		if prefix.HasPrefixSID() {
 			fmt.Printf("      index: %d\n", prefix.SidIndex)
 		}
 	}
@@ -180,7 +180,7 @@ func NewLsNode(asn uint32, nodeID string) *LsNode {
 func (n *LsNode) NodeSegment() (Segment, error) {
 	// for SR-MPLS Segment
 	for _, prefix := range n.Prefixes {
-		if prefix.SidIndex > FirstSIDIndex {
+		if prefix.HasPrefixSID() {
 			sid := strconv.Itoa(int(n.SrgbBegin + prefix.SidIndex))
 			seg, err := NewSegment(sid)
 			if err != nil {
@@ -295,6 +295,16 @@ type LsPrefix struct {
 	LocalNode *LsNode      // primary key, in MP_REACH_NLRI Attr
 	Prefix    netip.Prefix // in MP_REACH_NLRI Attr
 	SidIndex  uint32       // in BGP-LS Attr (only for Lo Address Prefix)
+	// HasSidIndex reports whether a Prefix-SID TLV is present.
+	HasSidIndex bool
+}
+
+// HasPrefixSID reports whether this prefix has a Prefix-SID.
+func (lp *LsPrefix) HasPrefixSID() bool {
+	if lp == nil {
+		return false
+	}
+	return lp.HasSidIndex || lp.SidIndex != 0
 }
 
 func NewLsPrefix(localNode *LsNode) *LsPrefix {
