@@ -581,13 +581,17 @@ func (x *SRPolicy) GetState() SRPolicyState {
 }
 
 type CreateSRPolicyRequest struct {
-	state              protoimpl.MessageState `protogen:"open.v1"`
-	SrPolicy           *SRPolicy              `protobuf:"bytes,1,opt,name=sr_policy,json=srPolicy,proto3" json:"sr_policy,omitempty"`
-	Asn                uint32                 `protobuf:"varint,2,opt,name=asn,proto3" json:"asn,omitempty"`
-	DisablePathCompute bool                   `protobuf:"varint,4,opt,name=disable_path_compute,json=disablePathCompute,proto3" json:"disable_path_compute,omitempty"`
-	NoSidValidate      bool                   `protobuf:"varint,5,opt,name=no_sid_validate,json=noSidValidate,proto3" json:"no_sid_validate,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	SrPolicy *SRPolicy              `protobuf:"bytes,1,opt,name=sr_policy,json=srPolicy,proto3" json:"sr_policy,omitempty"`
+	// Not required when disable_path_compute is true.
+	Asn uint32 `protobuf:"varint,2,opt,name=asn,proto3" json:"asn,omitempty"`
+	// Use endpoints and segments provided in the request without TED lookup
+	// or path computation (no CSPF or router-ID resolution).
+	DisablePathCompute bool `protobuf:"varint,4,opt,name=disable_path_compute,json=disablePathCompute,proto3" json:"disable_path_compute,omitempty"`
+	// Skip checking that explicit SIDs exist in the TED.
+	NoSidValidate bool `protobuf:"varint,5,opt,name=no_sid_validate,json=noSidValidate,proto3" json:"no_sid_validate,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CreateSRPolicyRequest) Reset() {

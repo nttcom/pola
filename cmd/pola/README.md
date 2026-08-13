@@ -144,8 +144,9 @@ JSON formatted response
 
 Notes:
 
-- `plspId`, `lspId`, and `state` reflect the latest PCRpt received. They may
-  be omitted for newly created policies before the first report.
+- Policies appear in this list only after their first PCRpt is received.
+- `lspId` is omitted when the reported LSP-ID is zero. `plspId` and `state`
+  reflect the latest PCRpt received.
 - `srcRouterId`/`dstRouterId` are resolved from TED loopback addresses and are
   omitted when no matching node is found.
 - `segmentList` entries include `localAddr`/`remoteAddr` when the SID carries
