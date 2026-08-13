@@ -13,7 +13,7 @@ import (
 	"strings"
 )
 
-// sr-policy state
+// PolicyState represents the state of an SR Policy.
 type PolicyState string
 
 const (
@@ -23,11 +23,8 @@ const (
 	PolicyUnknown = PolicyState("unknown")
 )
 
-// PolicyType is the RFC 9256 §2.4.2 SR Policy candidate path type: a candidate path
-// is either explicit (a fixed SID list) or dynamic (computed against an optimization
-// metric and subject to recomputation). The zero value means "not known": PCEP
-// carries no TLV for this on PCRpt, so it can only be known for policies Pola itself
-// created (see Session.RememberSRPolicyIntent).
+// PolicyType is the SR Policy candidate path type defined in RFC 9256 §2.4.2.
+// The zero value means the type is unknown.
 type PolicyType string
 
 const (
@@ -47,8 +44,7 @@ type SRPolicy struct {
 	Preference  uint32      `json:"preference"`
 	LSPID       uint16      `json:"lspId,omitempty"`
 	State       PolicyState `json:"state,omitempty"`
-	// Type and Metric are only known for policies Pola itself created; both are
-	// left at their zero value ("" / UnspecifiedMetric) otherwise. See PolicyType.
+	// Type and Metric are only known for policies created by Pola.
 	Type   PolicyType `json:"type,omitempty"`
 	Metric MetricType `json:"metric,omitempty"`
 }
@@ -79,7 +75,7 @@ func NewSRPolicy(
 	return p
 }
 
-// SR Policy parameter that can be changed
+// PolicyDiff contains SR Policy parameters that can be changed.
 type PolicyDiff struct {
 	Name        *string
 	Color       *uint32
@@ -253,7 +249,7 @@ type SegmentSRMPLS struct {
 	TTL uint8  `json:"ttl,omitempty"`
 	TC  uint8  `json:"tc,omitempty"`
 	S   bool   `json:"s,omitempty"`
-	// Optional NAI for SR-ERO encoding (RFC8664 4.3.1).
+	// Optional NAI for SR-ERO encoding (RFC 8664 §4.3.1).
 	LocalAddr  netip.Addr `json:"localAddr,omitzero"`
 	RemoteAddr netip.Addr `json:"remoteAddr,omitzero"`
 }
@@ -272,21 +268,18 @@ func NewSegmentSRMPLS(sid uint32) SegmentSRMPLS {
 	}
 }
 
-// Equal for SegmentSRv6
 func (seg SegmentSRv6) Equal(other SegmentSRv6) bool {
-	// Compare SID, LocalAddr, and RemoteAddr
 	return seg.Sid == other.Sid &&
 		seg.LocalAddr == other.LocalAddr &&
 		seg.RemoteAddr == other.RemoteAddr
 }
 
-// Equal for SegmentSRMPLS
 func (seg SegmentSRMPLS) Equal(other SegmentSRMPLS) bool {
-	// Compare MPLS SID only: the NAI does not change which hop the label is.
+	// Compare only the MPLS SID; the NAI does not change the hop.
 	return seg.Sid == other.Sid
 }
 
-// Helper function for Segment interface equality check
+// SegmentsEqual reports whether two segments are equal.
 func SegmentsEqual(a, b Segment) bool {
 	switch sa := a.(type) {
 	case SegmentSRv6:
