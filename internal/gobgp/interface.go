@@ -24,8 +24,16 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
+const (
+	defaultDebounceCooldown = 5 * time.Second
+	defaultRetryInterval    = 10 * time.Second
+)
+
 func MonitorBGPLsEvents(serverAddr string, serverPort string, tedChan chan []table.TEDElem, logger *zap.Logger) {
-	// Establish gRPC connection
+	monitorBGPLsEvents(serverAddr, serverPort, tedChan, logger, defaultDebounceCooldown, defaultRetryInterval)
+}
+
+func monitorBGPLsEvents(serverAddr string, serverPort string, tedChan chan []table.TEDElem, logger *zap.Logger, debounceCooldown time.Duration, retryInterval time.Duration) {
 	cc, client, err := newGoBGPClient(serverAddr, serverPort)
 	if err != nil {
 		logger.Error("failed to create gRPC client", zap.String("address", fmt.Sprintf("%s:%s", serverAddr, serverPort)), zap.Error(err))
@@ -40,27 +48,27 @@ func MonitorBGPLsEvents(serverAddr string, serverPort string, tedChan chan []tab
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Initial TED sync
-	initialSync(client, tedChan, logger)
+	initialSync(ctx, client, tedChan, logger)
 
 	req := newWatchRequest()
 
-	// Establish watch stream with retry
 	var stream grpc.ServerStreamingClient[api.WatchEventResponse]
 	for {
 		stream, err = client.WatchEvent(ctx, req)
 		if err != nil {
 			logger.Error("failed to monitor BGP-LS events from gRPC server", zap.Error(err))
-			time.Sleep(10 * time.Second)
+			if !waitForRetry(ctx, retryInterval) {
+				return
+			}
 			continue
 		}
 		break
 	}
 
-	debouncer := NewDebouncer(5 * time.Second) // If no additional triggers occur within this time from the trigger, TED is retrieved once
+	debouncer := NewDebouncer(debounceCooldown)
 
 	fetch := func() ([]table.TEDElem, error) {
-		return GetBGPlsNLRIs(client)
+		return GetBGPlsNLRIs(ctx, client)
 	}
 
 	deliver := func(tedElems []table.TEDElem) {
@@ -69,22 +77,25 @@ func MonitorBGPLsEvents(serverAddr string, serverPort string, tedChan chan []tab
 		case <-ctx.Done():
 		}
 	}
-	// Debounce start function: starts a goroutine on the first event.
-	// Subsequent events update lastEvent, and the goroutine waits for the cooldown to elapse before retrieving TED once.
 
-	// Event receive loop: update lastEvent on each receive, start debounce only on the first event
+	// Debounce consecutive events to avoid fetching TED for every event.
 	for {
 		res, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		} else if err != nil {
 			logger.Error("error receiving BGP-LS event", zap.Error(err))
-			time.Sleep(10 * time.Second)
+			if !waitForRetry(ctx, retryInterval) {
+				return
+			}
+
 			for {
 				stream, err = client.WatchEvent(ctx, req)
 				if err != nil {
 					logger.Error("failed to re-establish watch stream", zap.Error(err))
-					time.Sleep(10 * time.Second)
+					if !waitForRetry(ctx, retryInterval) {
+						return
+					}
 					continue
 				}
 				break
@@ -93,16 +104,26 @@ func MonitorBGPLsEvents(serverAddr string, serverPort string, tedChan chan []tab
 		}
 
 		if t := res.GetTable(); t != nil {
-			// Start debounce goroutine only on the first trigger (subsequent triggers only update the timestamp)
 			debouncer.Trigger(ctx, fetch, deliver, logger)
 		}
+	}
+}
+
+func waitForRetry(ctx context.Context, interval time.Duration) bool {
+	timer := time.NewTimer(interval)
+	defer timer.Stop()
+
+	select {
+	case <-timer.C:
+		return true
+	case <-ctx.Done():
+		return false
 	}
 }
 
 func newGoBGPClient(serverAddress string, serverPort string) (*grpc.ClientConn, api.GoBgpServiceClient, error) {
 	gobgpAddress := fmt.Sprintf("%s:%s", serverAddress, serverPort)
 
-	// Establish gRPC connection
 	cc, err := grpc.NewClient(
 		gobgpAddress,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -111,18 +132,21 @@ func newGoBGPClient(serverAddress string, serverPort string) (*grpc.ClientConn, 
 		return nil, nil, err
 	}
 
-	// Create gRPC client
 	client := api.NewGoBgpServiceClient(cc)
 	return cc, client, nil
 }
 
-func initialSync(client api.GoBgpServiceClient, tedChan chan []table.TEDElem, logger *zap.Logger) {
-	tedElems, err := GetBGPlsNLRIs(client)
+func initialSync(ctx context.Context, client api.GoBgpServiceClient, tedChan chan []table.TEDElem, logger *zap.Logger) {
+	tedElems, err := GetBGPlsNLRIs(ctx, client)
 	if err != nil {
 		logger.Error("failed to get initial TED info", zap.Error(err))
 		return
 	}
-	tedChan <- tedElems
+
+	select {
+	case tedChan <- tedElems:
+	case <-ctx.Done():
+	}
 }
 
 type Debouncer struct {
@@ -136,8 +160,7 @@ func NewDebouncer(cd time.Duration) *Debouncer {
 	return &Debouncer{cooldown: cd}
 }
 
-// Debounce start function: starts a goroutine on the first event.
-// Subsequent events update lastEvent, and the goroutine waits for the cooldown to elapse before retrieving TED once.
+// Debounce consecutive events before retrieving TED.
 func (d *Debouncer) Trigger(
 	ctx context.Context,
 	fetch func() ([]table.TEDElem, error),
@@ -166,23 +189,19 @@ func (d *Debouncer) Trigger(
 			d.mu.Unlock()
 
 			if remaining <= 0 {
-				break // If no additional triggers occur within the cooldown, retrieve TED once
+				break
 			}
 
-			// Wait with context cancellation support
 			timer := time.NewTimer(remaining)
 			select {
 			case <-timer.C:
-				// Loop again to recalculate remaining
+			// Loop again to recalculate remaining.
 			case <-ctx.Done():
-				if !timer.Stop() {
-					<-timer.C
-				}
+				timer.Stop()
 				return
 			}
 		}
 
-		// Retrieve TED info: GetBGPlsNLRIs()
 		tedElems, err := fetch()
 		if err != nil {
 			logger.Error("failed to get TED info", zap.Error(err))
@@ -209,11 +228,8 @@ func newWatchRequest() *api.WatchEventRequest {
 		},
 	}
 }
-func GetBGPlsNLRIs(client api.GoBgpServiceClient) ([]table.TEDElem, error) {
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
+func GetBGPlsNLRIs(ctx context.Context, client api.GoBgpServiceClient) ([]table.TEDElem, error) {
 	req := &api.ListPathRequest{
 		TableType: api.TableType_TABLE_TYPE_GLOBAL,
 		Family: &api.Family{
@@ -233,7 +249,7 @@ func GetBGPlsNLRIs(client api.GoBgpServiceClient) ([]table.TEDElem, error) {
 	for {
 		r, err := stream.Recv()
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			return nil, fmt.Errorf("error receiving stream data: %w", err)
@@ -250,7 +266,7 @@ func GetBGPlsNLRIs(client api.GoBgpServiceClient) ([]table.TEDElem, error) {
 	return tedElems, nil
 }
 
-// ConvertToTEDElem converts a single api.Destination to TEDElem(s) with low cyclomatic complexity.
+// ConvertToTEDElem converts an api.Destination to TEDElem(s).
 func ConvertToTEDElem(dst *api.Destination) ([]table.TEDElem, error) {
 	if len(dst.GetPaths()) != 1 {
 		return nil, errors.New("invalid path length: expected 1 path")
@@ -269,14 +285,12 @@ func ConvertToTEDElem(dst *api.Destination) ([]table.TEDElem, error) {
 
 	lsAttr := findLsAttribute(path)
 	if lsAttr == nil {
-		// BGP-LS Attribute not found, return empty
 		return nil, nil
 	}
 
 	return convertByNlriType(lsAddrPrefix, lsAttr, path)
 }
 
-// findLsAttribute extracts the BGP-LS attribute from a path.
 func findLsAttribute(path *api.Path) *api.Attribute_Ls {
 	for _, pathAttr := range path.GetPattrs() {
 		if lsAttr, ok := pathAttr.Attr.(*api.Attribute_Ls); ok {
@@ -286,7 +300,6 @@ func findLsAttribute(path *api.Path) *api.Attribute_Ls {
 	return nil
 }
 
-// convertByNlriType dispatches NLRI processing based on its type.
 func convertByNlriType(nlri *api.LsAddrPrefix, lsAttr *api.Attribute_Ls, path *api.Path) ([]table.TEDElem, error) {
 	switch nlri.GetType() {
 	case api.LsNLRIType_LS_NLRI_TYPE_NODE:
@@ -302,7 +315,6 @@ func convertByNlriType(nlri *api.LsAddrPrefix, lsAttr *api.Attribute_Ls, path *a
 	}
 }
 
-// convertNode handles LS Node NLRI.
 func convertNode(nlri *api.LsAddrPrefix, lsAttr *api.Attribute_Ls) ([]table.TEDElem, error) {
 	nodeAttr := lsAttr.Ls.GetNode()
 	if nodeAttr == nil {
@@ -315,7 +327,6 @@ func convertNode(nlri *api.LsAddrPrefix, lsAttr *api.Attribute_Ls) ([]table.TEDE
 	return []table.TEDElem{lsNode}, nil
 }
 
-// convertLink handles LS Link NLRI.
 func convertLink(nlri *api.LsAddrPrefix, lsAttr *api.Attribute_Ls) ([]table.TEDElem, error) {
 	linkAttr := lsAttr.Ls.GetLink()
 	if linkAttr == nil {
@@ -328,7 +339,6 @@ func convertLink(nlri *api.LsAddrPrefix, lsAttr *api.Attribute_Ls) ([]table.TEDE
 	return []table.TEDElem{lsLink}, nil
 }
 
-// convertPrefix handles LS Prefix V4/V6 NLRI.
 func convertPrefix(nlri *api.LsAddrPrefix, lsAttr *api.Attribute_Ls, path *api.Path) ([]table.TEDElem, error) {
 	prefixAttr := lsAttr.Ls.GetPrefix()
 	if prefixAttr == nil {
@@ -348,7 +358,6 @@ func convertPrefix(nlri *api.LsAddrPrefix, lsAttr *api.Attribute_Ls, path *api.P
 	return lsPrefixList, nil
 }
 
-// convertSrv6SID handles LS SRv6 SID NLRI.
 func convertSrv6SID(nlri *api.LsAddrPrefix, lsAttr *api.Attribute_Ls, path *api.Path) ([]table.TEDElem, error) {
 	srv6Attr := lsAttr.Ls.GetSrv6Sid()
 	if srv6Attr == nil {
@@ -368,7 +377,6 @@ func convertSrv6SID(nlri *api.LsAddrPrefix, lsAttr *api.Attribute_Ls, path *api.
 	return lsSrv6List, nil
 }
 
-// findMpReach searches for MP-REACH NLRI attribute in path.
 func findMpReach(path *api.Path) *api.MpReachNLRIAttribute {
 	for _, attr := range path.GetPattrs() {
 		if mp := attr.GetMpReach(); mp != nil {
@@ -378,7 +386,6 @@ func findMpReach(path *api.Path) *api.MpReachNLRIAttribute {
 	return nil
 }
 
-// formatIsisAreaID formats the ISIS Area ID into a human-readable string.
 func formatIsisAreaID(isisArea []byte) string {
 	tmpIsisArea := hex.EncodeToString(isisArea)
 	var strIsisArea strings.Builder
@@ -456,7 +463,6 @@ func getLsLink(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrLink *api.LsAttribute
 		lsLink.Metrics = append(lsLink.Metrics, table.NewMetric(table.MetricType(table.TEMetric), teMetric))
 	}
 
-	//  UnidirectionalLinkDelay metric support
 	if delay := lsAttrLink.GetUnidirectionalLinkDelay(); delay != 0 {
 		lsLink.Metrics = append(
 			lsLink.Metrics,
@@ -466,7 +472,6 @@ func getLsLink(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrLink *api.LsAttribute
 
 	lsLink.AdjSid = lsAttrLink.GetSrAdjacencySid()
 
-	// handle SRv6 SID TLV
 	srv6EndXSID := lsAttrLink.GetSrv6EndXSid()
 	if srv6EndXSID != nil {
 		lsLink.Srv6EndXSID = &table.Srv6EndXSID{
@@ -570,7 +575,6 @@ func getLsSrv6SIDList(nlris []*api.NLRI, lsAttrSrv6SID *api.LsAttributeSrv6SID) 
 	return lsSrv6SIDList, nil
 }
 
-// getLsSrv6SID processes the LS SRv6 SID NLRI and returns a corresponding LsSrv6SID.
 func getLsSrv6SID(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrSrv6SID *api.LsAttributeSrv6SID) (*table.LsSrv6SID, error) {
 
 	srv6SIDStructure := lsAttrSrv6SID.GetSrv6SidStructure()
