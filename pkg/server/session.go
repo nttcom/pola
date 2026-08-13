@@ -601,6 +601,8 @@ func (ss *Session) findRouterIDFromAddress(addrIndex map[netip.Addr]string, addr
 	return "", fmt.Errorf("address %s not found in TED", addr)
 }
 
+// selectMetricType maps the PCEP METRIC object's T field to the internal MetricType.
+// T=1, 2, and 3 correspond to IGP metric, TE metric, and hop count, respectively.
 func (ss *Session) selectMetricType(sr pcep.StateReport) table.MetricType {
 	if len(sr.MetricObjects) > 0 {
 		switch sr.MetricObjects[0].MetricType {
@@ -609,8 +611,6 @@ func (ss *Session) selectMetricType(sr pcep.StateReport) table.MetricType {
 		case 2:
 			return table.TEMetric
 		case 3:
-			return table.DelayMetric
-		case 4:
 			return table.HopcountMetric
 		default:
 			return table.TEMetric

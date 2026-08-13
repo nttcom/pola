@@ -505,6 +505,27 @@ func TestIntentSweep_RunsInBackgroundAndStopsCleanly(t *testing.T) {
 	}, 2*time.Second, 5*time.Millisecond, "intent was not swept in the background within the deadline")
 }
 
+func TestRememberSRPolicyIntent_IgnoresReservedSRPID(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	ss.rememberSRPolicyIntent(0, table.PolicyTypeDynamic, table.TEMetric)
+	assert.False(t, ss.srPolicyIntentExists(0))
+}
+
+func TestStartIntentSweep_Idempotent(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	ss.startIntentSweep()
+	firstStop := ss.sweepStop
+	ss.startIntentSweep()
+	defer ss.stopIntentSweep()
+
+	assert.True(t, firstStop == ss.sweepStop, "startIntentSweep must not replace an already-running sweeper's stop channel")
+}
+
+func TestStopIntentSweep_NoopWhenNeverStarted(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	ss.stopIntentSweep()
+}
+
 func TestIntentSweep_StopsCleanly(t *testing.T) {
 	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
 	ss.startIntentSweep()
@@ -812,7 +833,394 @@ func TestExtractSrcDstRouterIDs_AddressNotFound(t *testing.T) {
 	assert.Error(t, err, "expected an error when neither address is present in the TED")
 }
 
-// TestIsSynced_ConcurrentAccess verifies that setSynced and IsSynced are synchronized.
+func TestExtractSrcDstRouterIDs_InvalidAddresses(t *testing.T) {
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{}}
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), ted, 0)
+
+	sr := newTestStateReport(t, 1, 0)
+	sr.LSPObject.SrcAddr = netip.Addr{}
+	sr.LSPObject.DstAddr = netip.Addr{}
+
+	_, _, err := ss.extractSrcDstRouterIDs(*sr)
+	assert.Error(t, err, "expected an error when neither address is valid")
+}
+
+func TestExtractSrcDstRouterIDs_DestinationNotFound(t *testing.T) {
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{}}
+	srcNode := table.NewLsNode(0, "10.255.0.1")
+	ted.Nodes[srcNode.RouterID] = srcNode
+
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), ted, 0)
+	sr := newTestStateReport(t, 1, 0)
+
+	_, _, err := ss.extractSrcDstRouterIDs(*sr)
+	assert.Error(t, err, "expected an error when the destination address is not present in the TED")
+}
+
+func writeMessage(t *testing.T, w io.Writer, message pcep.Message) {
+	t.Helper()
+	b, err := message.Serialize()
+	require.NoError(t, err, "failed to serialize message")
+	_, err = w.Write(b)
+	require.NoError(t, err, "failed to write message")
+}
+
+// writeStateReportMessage writes sr as an unsolicited PCRpt.
+// LSPObject fields populated by decode must be mirrored into TLVs for the wire round trip.
+func writeStateReportMessage(t *testing.T, w io.Writer, sr *pcep.StateReport) {
+	t.Helper()
+	sr.LSPObject.TLVs = append(sr.LSPObject.TLVs,
+		&pcep.SymbolicPathName{Name: sr.LSPObject.Name},
+		pcep.NewIPv4LSPIdentifiers(sr.LSPObject.SrcAddr, sr.LSPObject.DstAddr, sr.LSPObject.LSPID, 0, 0),
+	)
+	byteEro, err := sr.EroObject.Serialize()
+	require.NoError(t, err, "failed to serialize EroObject")
+	body := append(append(sr.SrpObject.Serialize(), sr.LSPObject.Serialize()...), byteEro...)
+	writeRawPCEPMessage(t, w, pcep.MessageTypeReport, body)
+}
+
+func writeRawPCEPMessage(t *testing.T, w io.Writer, msgType pcep.MessageType, body []byte) {
+	t.Helper()
+	header := &pcep.CommonHeader{Version: 1, MessageType: msgType, MessageLength: pcep.CommonHeaderLength + uint16(len(body))}
+	_, err := w.Write(append(header.Serialize(), body...))
+	require.NoError(t, err, "failed to write PCEP message")
+}
+
+func TestOpen_Established_ReturnsWhenOpenFails(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() {
+		assert.NoError(t, server.Close(), "failed to close server connection")
+	})
+
+	// The peer disconnects before ever sending an Open message.
+	require.NoError(t, client.Close(), "failed to close client connection")
+
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+
+	done := make(chan struct{})
+	go func() {
+		ss.Established()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		require.Fail(t, "Established did not return after Open failed")
+	}
+}
+
+func TestEstablished_ReturnsOnCloseMessage(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() {
+		assert.NoError(t, client.Close(), "failed to close client connection")
+	})
+
+	openMessage, err := pcep.NewOpenMessage(1, 30, nil)
+	require.NoError(t, err, "failed to create open message")
+	writeMessage(t, client, openMessage)
+
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+
+	done := make(chan struct{})
+	go func() {
+		ss.Established()
+		close(done)
+	}()
+
+	// Reading the Open reply and initial Keepalive ensures Established is in its receive loop.
+	require.NoError(t, readPCEPMessage(client), "failed to read Open reply")
+	require.NoError(t, readPCEPMessage(client), "failed to read initial Keepalive")
+
+	closeMessage, err := pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided)
+	require.NoError(t, err, "failed to create close message")
+	writeMessage(t, client, closeMessage)
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		require.Fail(t, "Established did not return after the peer sent a Close message")
+	}
+}
+
+func TestEstablished_ReturnsWhenPeerDisconnectsAbruptly(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() {
+		assert.NoError(t, server.Close(), "failed to close server connection")
+	})
+
+	openMessage, err := pcep.NewOpenMessage(1, 30, nil)
+	require.NoError(t, err, "failed to create open message")
+	writeMessage(t, client, openMessage)
+
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+
+	done := make(chan struct{})
+	go func() {
+		ss.Established()
+		close(done)
+	}()
+
+	require.NoError(t, readPCEPMessage(client), "failed to read Open reply")
+	require.NoError(t, readPCEPMessage(client), "failed to read initial Keepalive")
+
+	require.NoError(t, client.Close(), "failed to close client connection")
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		require.Fail(t, "Established did not return after the peer connection was closed")
+	}
+}
+
+func TestEstablished_ReturnsWhenPeriodicKeepaliveSendFails(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() {
+		assert.NoError(t, client.Close(), "failed to close client connection")
+	})
+
+	openMessage, err := pcep.NewOpenMessage(1, 1, nil) // 1-second keepalive interval
+	require.NoError(t, err, "failed to create open message")
+	writeMessage(t, client, openMessage)
+
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+
+	done := make(chan struct{})
+	go func() {
+		ss.Established()
+		close(done)
+	}()
+
+	require.NoError(t, readPCEPMessage(client), "failed to read Open reply")
+	require.NoError(t, readPCEPMessage(client), "failed to read initial Keepalive")
+
+	// Keep the receive loop blocked on Read so the keepalive send failure drives the return.
+	require.NoError(t, server.CloseWrite(), "failed to half-close server connection")
+
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		require.Fail(t, "Established did not return after the periodic keepalive send failed")
+	}
+}
+
+func TestReceiveOpen_MalformedOpenMessage(t *testing.T) {
+	cases := []struct {
+		name  string
+		setup func(t *testing.T, client *net.TCPConn) (clientClosed bool)
+	}{
+		{
+			name: "PCEP version mismatch",
+			setup: func(t *testing.T, client *net.TCPConn) bool {
+				header := &pcep.CommonHeader{Version: 2, MessageType: pcep.MessageTypeOpen, MessageLength: pcep.CommonHeaderLength}
+				_, err := client.Write(header.Serialize())
+				require.NoError(t, err, "failed to write header")
+				return false
+			},
+		},
+		{
+			name: "unexpected message type",
+			setup: func(t *testing.T, client *net.TCPConn) bool {
+				header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeKeepalive, MessageLength: pcep.CommonHeaderLength}
+				_, err := client.Write(header.Serialize())
+				require.NoError(t, err, "failed to write header")
+				return false
+			},
+		},
+		{
+			name: "connection closed before the Open object body is read",
+			setup: func(t *testing.T, client *net.TCPConn) bool {
+				header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeOpen, MessageLength: pcep.CommonHeaderLength + 10}
+				_, err := client.Write(header.Serialize())
+				require.NoError(t, err, "failed to write header")
+				require.NoError(t, client.Close(), "failed to close client connection")
+				return true
+			},
+		},
+		{
+			name: "Open object has the wrong ObjectClass",
+			setup: func(t *testing.T, client *net.TCPConn) bool {
+				body := pcep.NewCommonObjectHeader(pcep.ObjectClassClose, pcep.ObjectTypeOpenOpen, pcep.CommonHeaderLength).Serialize()
+				header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeOpen, MessageLength: pcep.CommonHeaderLength + uint16(len(body))}
+				_, err := client.Write(append(header.Serialize(), body...))
+				require.NoError(t, err, "failed to write message")
+				return false
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server, client := newTCPConnPair(t)
+			t.Cleanup(func() {
+				assert.NoError(t, server.Close(), "failed to close server connection")
+			})
+
+			clientClosed := tc.setup(t, client)
+			if !clientClosed {
+				t.Cleanup(func() {
+					assert.NoError(t, client.Close(), "failed to close client connection")
+				})
+			}
+
+			ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+			assert.Error(t, ss.ReceiveOpen())
+		})
+	}
+}
+
+func TestReceivePCEPMessage_ProcessesMessagesThenReturnsOnClose(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() {
+		assert.NoError(t, server.Close(), "failed to close server connection")
+	})
+	t.Cleanup(func() {
+		assert.NoError(t, client.Close(), "failed to close client connection")
+	})
+
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss.rememberSRPolicyIntent(9, table.PolicyTypeExplicit, table.UnspecifiedMetric)
+
+	keepaliveMessage, err := pcep.NewKeepaliveMessage()
+	require.NoError(t, err, "failed to create keepalive message")
+	writeMessage(t, client, keepaliveMessage)
+
+	sr := newTestStateReport(t, 5, 0)
+	writeStateReportMessage(t, client, sr)
+
+	pcerrMessage, err := pcep.NewPCErrMessage(1, 1, nil)
+	require.NoError(t, err, "failed to create PCErr message")
+	pcerrMessage.SRPs = []*pcep.SrpObject{{SrpID: 9}}
+	writeMessage(t, client, pcerrMessage)
+
+	// An unrecognized MessageType is logged and skipped rather than treated as an error.
+	writeRawPCEPMessage(t, client, pcep.MessageType(0x63), nil)
+
+	closeMessage, err := pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided)
+	require.NoError(t, err, "failed to create close message")
+	writeMessage(t, client, closeMessage)
+
+	require.NoError(t, ss.ReceivePCEPMessage())
+
+	policy, found := ss.SearchSRPolicy(5)
+	require.True(t, found, "unsolicited PCRpt was not registered")
+	assert.Len(t, policy.SegmentList, 2)
+
+	_, ok := ss.takeSRPolicyIntent(9)
+	assert.False(t, ok, "PCErr referencing SRP-ID 9 must forget its intent")
+}
+
+func TestReceivePCEPMessage_StateReportHandlingErrorIsLoggedNotFatal(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() {
+		assert.NoError(t, server.Close(), "failed to close server connection")
+	})
+	t.Cleanup(func() {
+		assert.NoError(t, client.Close(), "failed to close client connection")
+	})
+
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+
+	sr := newTestStateReport(t, 7, 0)
+	body := append(sr.SrpObject.Serialize(), sr.LSPObject.Serialize()...) // no ERO object
+	writeRawPCEPMessage(t, client, pcep.MessageTypeReport, body)
+
+	closeMessage, err := pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided)
+	require.NoError(t, err, "failed to create close message")
+	writeMessage(t, client, closeMessage)
+
+	require.NoError(t, ss.ReceivePCEPMessage(), "a per-report handling error must not abort the receive loop")
+
+	_, found := ss.SearchSRPolicy(7)
+	assert.False(t, found, "a report without a segment list must not be registered")
+}
+
+func TestReceivePCEPMessage_Errors(t *testing.T) {
+	cases := []struct {
+		name  string
+		setup func(t *testing.T, client *net.TCPConn) (clientClosed bool)
+	}{
+		{
+			name: "connection closed before a header is read",
+			setup: func(t *testing.T, client *net.TCPConn) bool {
+				require.NoError(t, client.Close(), "failed to close client connection")
+				return true
+			},
+		},
+		{
+			name: "PCRpt with a malformed StateReport object",
+			setup: func(t *testing.T, client *net.TCPConn) bool {
+				body := pcep.NewCommonObjectHeader(pcep.ObjectClassLSP, pcep.ObjectTypeLSPLSP, pcep.CommonHeaderLength).Serialize()
+				writeRawPCEPMessage(t, client, pcep.MessageTypeReport, body)
+				return false
+			},
+		},
+		{
+			name: "connection closed before a PCRpt body is read",
+			setup: func(t *testing.T, client *net.TCPConn) bool {
+				header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeReport, MessageLength: pcep.CommonHeaderLength + 8}
+				_, err := client.Write(header.Serialize())
+				require.NoError(t, err, "failed to write header")
+				require.NoError(t, client.Close(), "failed to close client connection")
+				return true
+			},
+		},
+		{
+			name: "PCErr message with no PCEP-ERROR object",
+			setup: func(t *testing.T, client *net.TCPConn) bool {
+				writeRawPCEPMessage(t, client, pcep.MessageTypeError, nil)
+				return false
+			},
+		},
+		{
+			name: "connection closed before a PCErr body is read",
+			setup: func(t *testing.T, client *net.TCPConn) bool {
+				header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeError, MessageLength: pcep.CommonHeaderLength + 8}
+				_, err := client.Write(header.Serialize())
+				require.NoError(t, err, "failed to write header")
+				require.NoError(t, client.Close(), "failed to close client connection")
+				return true
+			},
+		},
+		{
+			name: "Close message body too short to decode",
+			setup: func(t *testing.T, client *net.TCPConn) bool {
+				writeRawPCEPMessage(t, client, pcep.MessageTypeClose, nil)
+				return false
+			},
+		},
+		{
+			name: "connection closed before a Close body is read",
+			setup: func(t *testing.T, client *net.TCPConn) bool {
+				header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeClose, MessageLength: pcep.CommonHeaderLength + 8}
+				_, err := client.Write(header.Serialize())
+				require.NoError(t, err, "failed to write header")
+				require.NoError(t, client.Close(), "failed to close client connection")
+				return true
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server, client := newTCPConnPair(t)
+			t.Cleanup(func() {
+				assert.NoError(t, server.Close(), "failed to close server connection")
+			})
+
+			clientClosed := tc.setup(t, client)
+			if !clientClosed {
+				t.Cleanup(func() {
+					assert.NoError(t, client.Close(), "failed to close client connection")
+				})
+			}
+
+			ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+			assert.Error(t, ss.ReceivePCEPMessage())
+		})
+	}
+}
+
 func TestIsSynced_ConcurrentAccess(t *testing.T) {
 	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
 
@@ -828,4 +1236,428 @@ func TestIsSynced_ConcurrentAccess(t *testing.T) {
 		ss.IsSynced()
 	}
 	<-done
+}
+
+// RFC 8231 §5.6: an LSP report with the S-Flag is part of state synchronization
+// and is registered regardless of PLSP-ID or SRP-ID..
+func TestHandleStateReport_Synchronization(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	sr := newTestStateReport(t, 1, 0)
+	sr.LSPObject.SFlag = true
+
+	require.NoError(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
+
+	policy, found := ss.SearchSRPolicy(1)
+	require.True(t, found, "SR Policy reported during synchronization was not registered")
+	assert.Equal(t, sr.LSPObject.Name, policy.Name)
+}
+
+func TestHandleStateReport_SynchronizationRegistrationFailure(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	sr := newTestStateReport(t, 1, 0)
+	sr.LSPObject.SFlag = true
+	sr.EroObject = nil
+
+	assert.Error(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
+}
+
+// RFC 8231 §5.6: PLSP-ID 0 marks the end of state synchronization.
+func TestHandleStateReport_FinishSynchronization(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	require.False(t, ss.IsSynced())
+
+	sr := newTestStateReport(t, 0, 0)
+	require.NoError(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
+
+	assert.True(t, ss.IsSynced())
+}
+
+func TestHandleStateReport_StatefulPCERequestRegistrationFailure(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	sr := newTestStateReport(t, 1, 3) // non-zero SRP-ID uses handleStatefulPCERequest
+	sr.EroObject = nil
+
+	assert.Error(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
+
+	_, found := ss.SearchSRPolicy(1)
+	assert.False(t, found)
+}
+
+func TestHandleStateReport_ReportedSRPolicyRegistrationFailure(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	sr := newTestStateReport(t, 1, 0)
+	sr.EroObject = nil // no TED available and no explicit path reported
+
+	assert.Error(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
+}
+
+func TestComputePathFromTED_NoTED(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	sr := newTestStateReport(t, 1, 0)
+
+	_, err := ss.computePathFromTED(*sr)
+	assert.Error(t, err)
+}
+
+func TestHandleSRPolicyWithPLSPID_ExtractRouterIDsFails(t *testing.T) {
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{}}
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), ted, 0)
+	sr := newTestStateReport(t, 1, 0) // src/dst addresses are absent from the TED
+
+	assert.Error(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
+}
+
+func TestComputePathFromTED_CSPFFailsWithoutNodeSID(t *testing.T) {
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{}}
+	srcNode := table.NewLsNode(0, "src-router")
+	srcPrefix := table.NewLsPrefix(srcNode)
+	srcPrefix.Prefix = netip.MustParsePrefix("10.255.0.1/32")
+	srcNode.Prefixes = append(srcNode.Prefixes, srcPrefix)
+	ted.Nodes[srcNode.RouterID] = srcNode
+
+	dstNode := table.NewLsNode(0, "10.255.0.2")
+	ted.Nodes[dstNode.RouterID] = dstNode
+
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), ted, 0)
+	sr := newTestStateReport(t, 1, 0)
+
+	_, err := ss.computePathFromTED(*sr)
+	assert.Error(t, err, "CSPF must fail when the headend advertises no Prefix-SID or SRv6 SID")
+}
+
+// newLinkedSRMPLSNodes builds two SR-MPLS nodes connected by a link with the given TE metric.
+// Each node has a Prefix-SID bound to its address.
+func newLinkedSRMPLSNodes(srcAddr, dstAddr netip.Addr, metric uint32) (src, dst *table.LsNode) {
+	src = table.NewLsNode(65000, "PE1")
+	srcPrefix := table.NewLsPrefix(src)
+	srcPrefix.Prefix = netip.PrefixFrom(srcAddr, srcAddr.BitLen())
+	srcPrefix.HasSidIndex = true
+	srcPrefix.SidIndex = 1
+	src.Prefixes = append(src.Prefixes, srcPrefix)
+	src.SrgbBegin, src.SrgbEnd = 16000, 23999
+
+	dst = table.NewLsNode(65000, "PE2")
+	dstPrefix := table.NewLsPrefix(dst)
+	dstPrefix.Prefix = netip.PrefixFrom(dstAddr, dstAddr.BitLen())
+	dstPrefix.HasSidIndex = true
+	dstPrefix.SidIndex = 2
+	dst.Prefixes = append(dst.Prefixes, dstPrefix)
+	dst.SrgbBegin, dst.SrgbEnd = 16000, 23999
+
+	link := table.NewLsLink(src, dst)
+	link.Metrics = []*table.Metric{table.NewMetric(table.TEMetric, metric)}
+	src.AddLink(link)
+
+	return src, dst
+}
+
+func TestHandleSRPolicyWithPLSPID_ComputesPathFromTED(t *testing.T) {
+	srcAddr := netip.MustParseAddr("10.0.0.1")
+	dstAddr := netip.MustParseAddr("10.0.0.2")
+	srcNode, dstNode := newLinkedSRMPLSNodes(srcAddr, dstAddr, 10)
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{srcNode.RouterID: srcNode, dstNode.RouterID: dstNode}}
+
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() {
+		assert.NoError(t, server.Close(), "failed to close server connection")
+	})
+	t.Cleanup(func() {
+		assert.NoError(t, client.Close(), "failed to close client connection")
+	})
+
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), ted, 0)
+
+	sr := newTestStateReport(t, 1, 0)
+	sr.LSPObject.SrcAddr = srcAddr
+	sr.LSPObject.DstAddr = dstAddr
+
+	require.NoError(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
+
+	policy, found := ss.SearchSRPolicy(1)
+	require.True(t, found)
+	assert.Equal(t, []table.Segment{table.NewSegmentSRMPLS(16002)}, policy.SegmentList)
+
+	require.NoError(t, readPCEPMessage(client), "expected a PCUpd to be sent for the newly computed policy")
+}
+
+// A self-destination produces an empty CSPF path, which SR Policy validation must reject.
+func TestHandleSRPolicyWithPLSPID_EmptyComputedPathIsRejected(t *testing.T) {
+	selfAddr := netip.MustParseAddr("10.0.0.9")
+	node := table.NewLsNode(65000, "PE-self")
+	prefix := table.NewLsPrefix(node)
+	prefix.Prefix = netip.PrefixFrom(selfAddr, selfAddr.BitLen())
+	prefix.HasSidIndex = true
+	prefix.SidIndex = 1
+	node.Prefixes = append(node.Prefixes, prefix)
+	node.SrgbBegin, node.SrgbEnd = 16000, 23999
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{node.RouterID: node}}
+
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), ted, 0)
+
+	sr := newTestStateReport(t, 1, 0)
+	sr.LSPObject.SrcAddr = selfAddr
+	sr.LSPObject.DstAddr = selfAddr
+
+	assert.Error(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
+
+	_, found := ss.SearchSRPolicy(1)
+	assert.False(t, found)
+}
+
+func TestHandleSRPolicyWithPLSPID_SendPCUpdateFailureIsPropagated(t *testing.T) {
+	srcAddr := netip.MustParseAddr("10.0.0.1")
+	dstAddr := netip.MustParseAddr("10.0.0.2")
+	srcNode, dstNode := newLinkedSRMPLSNodes(srcAddr, dstAddr, 10)
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{srcNode.RouterID: srcNode, dstNode.RouterID: dstNode}}
+
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() {
+		assert.NoError(t, client.Close(), "failed to close client connection")
+	})
+	require.NoError(t, server.Close(), "failed to close server connection")
+
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), ted, 0)
+
+	sr := newTestStateReport(t, 1, 0)
+	sr.LSPObject.SrcAddr = srcAddr
+	sr.LSPObject.DstAddr = dstAddr
+
+	assert.Error(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
+
+	// The policy was registered before the PCUpd send failed.
+	_, found := ss.SearchSRPolicy(1)
+	assert.True(t, found)
+}
+
+func TestSelectMetricType(t *testing.T) {
+	cases := []struct {
+		name          string
+		pccType       pcep.PccType
+		hasMetric     bool
+		metricObjType uint8
+		want          table.MetricType
+	}{
+		{"T=1 (RFC5440) maps to IGP metric", pcep.RFCCompliant, true, 1, table.IGPMetric},
+		{"T=2 (RFC5440) maps to TE metric", pcep.RFCCompliant, true, 2, table.TEMetric},
+		{"T=3 (RFC5440 Hop Counts) maps to Hopcount metric", pcep.RFCCompliant, true, 3, table.HopcountMetric},
+		{"T=4 (RFC5541 aggregate bandwidth) falls back to TE metric", pcep.RFCCompliant, true, 4, table.TEMetric},
+		{"unrecognized T falls back to TE metric", pcep.RFCCompliant, true, 99, table.TEMetric},
+		{"no METRIC object, RFC-compliant PCC defaults to TE", pcep.RFCCompliant, false, 0, table.TEMetric},
+		{"no METRIC object, Cisco legacy PCC defaults to TE", pcep.CiscoLegacy, false, 0, table.TEMetric},
+		{"no METRIC object, Juniper legacy PCC defaults to IGP", pcep.JuniperLegacy, false, 0, table.IGPMetric},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+			ss.pccType = tc.pccType
+			sr := *newTestStateReport(t, 1, 0)
+			if tc.hasMetric {
+				sr.MetricObjects = []*pcep.MetricObject{{MetricType: tc.metricObjType}}
+			}
+			assert.Equal(t, tc.want, ss.selectMetricType(sr))
+		})
+	}
+}
+
+func TestResolveColorPreference_CiscoLegacy(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	ss.pccType = pcep.CiscoLegacy
+
+	sr := newTestStateReport(t, 1, 0)
+	vio, err := pcep.NewVendorInformationObject(pcep.CiscoLegacy, 42, 7)
+	require.NoError(t, err)
+	sr.VendorInformationObject = vio
+
+	color, preference := ss.resolveColorPreference(sr)
+	assert.Equal(t, uint32(42), color)
+	assert.Equal(t, uint32(7), preference)
+}
+
+func TestResolveColorPreference_AssociationColorTakesPrecedence(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	ss.receivedPccCapabilities = []pcep.CapabilityInterface{&pcep.StatefulPCECapability{ColorCapability: true}}
+
+	sr := newTestStateReport(t, 1, 0)
+	sr.LSPObject.TLVs = append(sr.LSPObject.TLVs, &pcep.Color{Color: 999})
+	sr.AssociationObject.TLVs = append(sr.AssociationObject.TLVs,
+		pcep.NewExtendedAssociationID(55, netip.Addr{}),
+		&pcep.SRPolicyCandidatePathPreference{Preference: 33},
+	)
+
+	color, preference := ss.resolveColorPreference(sr)
+	assert.Equal(t, uint32(55), color, "Association color must take precedence over the LSP color TLV")
+	assert.Equal(t, uint32(33), preference)
+}
+
+func TestResolvePolicyState(t *testing.T) {
+	cases := []struct {
+		name  string
+		oflag uint8
+		want  table.PolicyState
+	}{
+		{"DOWN (RFC 8231 Table 2, O=0)", 0x00, table.PolicyDown},
+		{"UP (RFC 8231 Table 2, O=1)", 0x01, table.PolicyUp},
+		{"ACTIVE (RFC 8231 Table 2, O=2)", 0x02, table.PolicyActive},
+		{"GOING-DOWN (RFC 8231 Table 2, O=3, unhandled)", 0x03, table.PolicyUnknown},
+		{"GOING-UP (RFC 8231 Table 2, O=4, unhandled)", 0x04, table.PolicyUnknown},
+		{"reserved value", 0x07, table.PolicyUnknown},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, resolvePolicyState(tc.oflag))
+		})
+	}
+}
+
+func TestValidateSegmentList_NilEroObject(t *testing.T) {
+	sr := *newTestStateReport(t, 1, 0)
+	sr.EroObject = nil
+
+	_, err := validateSegmentList(sr)
+	assert.Error(t, err)
+}
+
+func TestValidateSegmentList_EmptySegmentList(t *testing.T) {
+	sr := *newTestStateReport(t, 1, 0)
+	sr.EroObject.EroSubobjects = nil
+
+	_, err := validateSegmentList(sr)
+	assert.Error(t, err)
+}
+
+func TestUpdateOrCreatePolicy_SrcAddrFallsBackToAssociationSrc(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	sr := *newTestStateReport(t, 1, 0)
+	sr.LSPObject.SrcAddr = netip.Addr{}
+	sr.AssociationObject.AssocSrc = netip.MustParseAddr("192.0.2.9")
+
+	require.NoError(t, ss.updateOrCreatePolicy(sr, sr.EroObject.ToSegmentList(), 0, 0, table.PolicyUp))
+
+	policy, found := ss.SearchSRPolicy(1)
+	require.True(t, found)
+	assert.Equal(t, netip.MustParseAddr("192.0.2.9"), policy.SrcAddr)
+}
+
+func TestUpdateOrCreatePolicy_InvalidSrcAddr(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	sr := *newTestStateReport(t, 1, 0)
+	sr.LSPObject.SrcAddr = netip.Addr{}
+
+	err := ss.updateOrCreatePolicy(sr, sr.EroObject.ToSegmentList(), 0, 0, table.PolicyUp)
+	assert.Error(t, err)
+}
+
+func TestUpdateOrCreatePolicy_DstAddrFallsBackToAssociationEndpoint(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	sr := *newTestStateReport(t, 1, 0)
+	sr.LSPObject.DstAddr = netip.Addr{}
+	sr.AssociationObject.TLVs = append(sr.AssociationObject.TLVs,
+		pcep.NewExtendedAssociationID(0, netip.MustParseAddr("192.0.2.20")))
+
+	require.NoError(t, ss.updateOrCreatePolicy(sr, sr.EroObject.ToSegmentList(), 0, 0, table.PolicyUp))
+
+	policy, found := ss.SearchSRPolicy(1)
+	require.True(t, found)
+	assert.Equal(t, netip.MustParseAddr("192.0.2.20"), policy.DstAddr)
+}
+
+func TestUpdateOrCreatePolicy_InvalidDstAddr(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	sr := *newTestStateReport(t, 1, 0)
+	sr.LSPObject.DstAddr = netip.Addr{}
+
+	err := ss.updateOrCreatePolicy(sr, sr.EroObject.ToSegmentList(), 0, 0, table.PolicyUp)
+	assert.Error(t, err)
+}
+
+// RFC 8231 §7.3: a stale LSP-ID must not overwrite newer state.
+func TestUpdateOrCreatePolicy_StaleLSPIDIsIgnored(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	sr := *newTestStateReport(t, 1, 0)
+	sr.LSPObject.LSPID = 5
+	require.NoError(t, ss.updateOrCreatePolicy(sr, sr.EroObject.ToSegmentList(), 10, 20, table.PolicyUp))
+
+	stale := sr
+	stale.LSPObject.LSPID = 3
+	require.NoError(t, ss.updateOrCreatePolicy(stale, stale.EroObject.ToSegmentList(), 999, 999, table.PolicyDown))
+
+	policy, found := ss.SearchSRPolicy(1)
+	require.True(t, found)
+	assert.Equal(t, uint16(5), policy.LSPID, "a stale LSP-ID report must not overwrite newer state")
+	assert.Equal(t, uint32(10), policy.Color)
+	assert.Equal(t, table.PolicyUp, policy.State)
+}
+
+// RFC 9603 §4.3.1: F=1 indicates that the NAI is absent.
+func TestCreateEroFromSegmentList_SRv6(t *testing.T) {
+	seg := table.NewSegmentSRv6(netip.MustParseAddr("2001:db8:1::1"))
+
+	ero := createEroFromSegmentList([]table.Segment{seg})
+
+	require.Len(t, ero.EroSubobjects, 1)
+	srv6Subobj, ok := ero.EroSubobjects[0].(*pcep.SRv6EroSubobject)
+	require.Truef(t, ok, "subobject type: got %T, want *pcep.SRv6EroSubobject", ero.EroSubobjects[0])
+	assert.Equal(t, seg, srv6Subobj.ToSegment())
+	assert.True(t, srv6Subobj.FFlag, "F-Flag must be set when the segment has no NAI")
+	assert.Equal(t, pcep.NAITypeSRv6Absent, srv6Subobj.NAIType)
+}
+
+type failingMessage struct{}
+
+func (failingMessage) Serialize() ([]uint8, error) {
+	return nil, fmt.Errorf("serialize failed")
+}
+
+func TestSendPCEPMessage_SerializeErrorIsPropagated(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	assert.Error(t, ss.sendPCEPMessage(failingMessage{}))
+}
+
+type unknownSegment struct{}
+
+func (unknownSegment) SidString() string { return "unknown" }
+
+func TestSendPCInitiate_InvalidSegmentTypeIsRejected(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	wantSRPID := ss.srpIDHead
+	srPolicy := table.SRPolicy{
+		Name:        "bad-segment",
+		SrcAddr:     netip.MustParseAddr("10.255.0.1"),
+		DstAddr:     netip.MustParseAddr("10.255.0.2"),
+		SegmentList: []table.Segment{unknownSegment{}},
+	}
+
+	assert.Error(t, ss.SendPCInitiate(srPolicy, false))
+
+	_, ok := ss.takeSRPolicyIntent(wantSRPID)
+	assert.False(t, ok, "intent must be forgotten when message construction fails")
+}
+
+func TestSendPCUpdate_InvalidSegmentTypeIsRejected(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	wantSRPID := ss.srpIDHead
+	srPolicy := table.SRPolicy{
+		Name:        "bad-segment",
+		SegmentList: []table.Segment{unknownSegment{}},
+	}
+
+	assert.Error(t, ss.SendPCUpdate(srPolicy))
+
+	_, ok := ss.takeSRPolicyIntent(wantSRPID)
+	assert.False(t, ok, "intent must be forgotten when message construction fails")
+}
+
+func TestRequestAllSRPolicyDeleted(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() {
+		assert.NoError(t, server.Close(), "failed to close server connection")
+	})
+	t.Cleanup(func() {
+		assert.NoError(t, client.Close(), "failed to close client connection")
+	})
+
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+
+	require.NoError(t, ss.RequestAllSRPolicyDeleted())
+	require.NoError(t, readPCEPMessage(client))
 }

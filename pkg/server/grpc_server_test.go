@@ -7,6 +7,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"net/netip"
 	"strconv"
 	"strings"
@@ -885,4 +886,40 @@ func TestDeleteSRPolicy_SrcAddrOmitted(t *testing.T) {
 	resp, err := apiServer.DeleteSRPolicy(context.Background(), req)
 	require.NoError(t, err)
 	assert.True(t, resp.GetIsSuccess())
+}
+
+// TestGetSegmentList_DynamicHopcountPrefersFewerHops verifies that hop count selects the shortest path.
+func TestGetSegmentList_DynamicHopcountPrefersFewerHops(t *testing.T) {
+	mkNode := func(routerID string, sidIndex uint32) *table.LsNode {
+		return &table.LsNode{
+			RouterID:  routerID,
+			SrgbBegin: 16000,
+			SrgbEnd:   17000,
+			Prefixes: []*table.LsPrefix{
+				{Prefix: netip.MustParsePrefix(fmt.Sprintf("10.0.0.%d/32", sidIndex)), SidIndex: sidIndex, HasSidIndex: true},
+			},
+		}
+	}
+	nodeA := mkNode("A", 1)
+	nodeB := mkNode("B", 2)
+	nodeD := mkNode("D", 4)
+	nodeA.Links = []*table.LsLink{table.NewLsLink(nodeA, nodeD), table.NewLsLink(nodeA, nodeB)}
+	nodeB.Links = []*table.LsLink{table.NewLsLink(nodeB, nodeD)}
+
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{"A": nodeA, "B": nodeB, "D": nodeD}}
+
+	srPolicy := &pb.SRPolicy{
+		Type:        pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC,
+		SrcRouterId: "A",
+		DstRouterId: "D",
+		Metric:      pb.MetricType_METRIC_TYPE_HOPCOUNT,
+	}
+
+	segmentList, err := getSegmentList(srPolicy, ted, false)
+	require.NoError(t, err)
+	require.Len(t, segmentList, 1, "expected the direct 1-hop path over the 2-hop detour")
+
+	mplsSeg, ok := segmentList[0].(table.SegmentSRMPLS)
+	require.Truef(t, ok, "segment type: got %T, want table.SegmentSRMPLS", segmentList[0])
+	assert.Equal(t, uint32(16004), mplsSeg.Sid)
 }
