@@ -576,12 +576,14 @@ func (ss *Session) extractSrcDstRouterIDs(sr pcep.StateReport) (string, string, 
 		return "", "", errors.New("could not extract valid source and destination addresses")
 	}
 
-	srcRouterID, err := ss.findRouterIDFromAddress(srcAddr)
+	addrIndex := buildAddressRouterIDIndex(ss.ted)
+
+	srcRouterID, err := ss.findRouterIDFromAddress(addrIndex, srcAddr)
 	if err != nil {
 		return "", "", fmt.Errorf("cannot find source router ID for %s: %w", srcAddr, err)
 	}
 
-	dstRouterID, err := ss.findRouterIDFromAddress(dstAddr)
+	dstRouterID, err := ss.findRouterIDFromAddress(addrIndex, dstAddr)
 	if err != nil {
 		return "", "", fmt.Errorf("cannot find destination router ID for %s: %w", dstAddr, err)
 	}
@@ -589,17 +591,12 @@ func (ss *Session) extractSrcDstRouterIDs(sr pcep.StateReport) (string, string, 
 	return srcRouterID, dstRouterID, nil
 }
 
-func (ss *Session) findRouterIDFromAddress(addr netip.Addr) (string, error) {
-	for routerID, node := range ss.ted.Nodes {
-		if node.RouterID == addr.String() {
-			return routerID, nil
-		}
-
-		for _, prefix := range node.Prefixes {
-			if prefix.Prefix.Addr() == addr {
-				return routerID, nil
-			}
-		}
+func (ss *Session) findRouterIDFromAddress(addrIndex map[netip.Addr]string, addr netip.Addr) (string, error) {
+	if node, ok := ss.ted.Nodes[addr.String()]; ok {
+		return node.RouterID, nil
+	}
+	if routerID, ok := addrIndex[addr]; ok {
+		return routerID, nil
 	}
 	return "", fmt.Errorf("address %s not found in TED", addr)
 }

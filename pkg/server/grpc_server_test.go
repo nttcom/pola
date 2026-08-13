@@ -581,6 +581,36 @@ func TestBuildRouterIDIndex(t *testing.T) {
 	assert.Nil(t, buildRouterIDIndex(nil))
 }
 
+func TestBuildAddressRouterIDIndex(t *testing.T) {
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{}}
+
+	v4Node := table.NewLsNode(65000, "router-v4")
+	v4Prefix := table.NewLsPrefix(v4Node)
+	v4Prefix.Prefix = netip.MustParsePrefix("192.0.2.10/32")
+	v4Node.Prefixes = append(v4Node.Prefixes, v4Prefix)
+	ted.Nodes[v4Node.RouterID] = v4Node
+
+	v6Node := table.NewLsNode(65000, "router-v6")
+	v6Prefix := table.NewLsPrefix(v6Node)
+	v6Prefix.Prefix = netip.MustParsePrefix("2001:db8::1/128")
+	v6Node.Prefixes = append(v6Node.Prefixes, v6Prefix)
+	ted.Nodes[v6Node.RouterID] = v6Node
+
+	// Non-host prefixes are indexed too, by their network address.
+	subnetNode := table.NewLsNode(65000, "router-subnet")
+	subnetPrefix := table.NewLsPrefix(subnetNode)
+	subnetPrefix.Prefix = netip.MustParsePrefix("192.0.2.0/24")
+	subnetNode.Prefixes = append(subnetNode.Prefixes, subnetPrefix)
+	ted.Nodes[subnetNode.RouterID] = subnetNode
+
+	index := buildAddressRouterIDIndex(ted)
+	assert.Equal(t, "router-v4", index[netip.MustParseAddr("192.0.2.10")])
+	assert.Equal(t, "router-v6", index[netip.MustParseAddr("2001:db8::1")])
+	assert.Equal(t, "router-subnet", index[netip.MustParseAddr("192.0.2.0")])
+
+	assert.Nil(t, buildAddressRouterIDIndex(nil))
+}
+
 func TestGetSRPolicyList_FiltersBySessionAddr(t *testing.T) {
 	seg, err := table.NewSegment("16003")
 	require.NoError(t, err)
@@ -787,7 +817,7 @@ func TestTED_ConcurrentUpdate(t *testing.T) {
 	}()
 
 	for i := 0; i < 100; i++ {
-		_ = s.TED()
+		_ = buildRouterIDIndex(s.TED())
 	}
 	<-done
 }
