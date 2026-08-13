@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"slices"
 	"time"
 
 	"github.com/nttcom/pola/pkg/cspf"
@@ -20,18 +21,19 @@ import (
 )
 
 type Session struct {
-	sessionID       uint8
-	peerAddr        netip.Addr
-	tcpConn         *net.TCPConn
-	isSynced        bool
-	srpIDHead       uint32 // 0x00000000 and 0xFFFFFFFF are reserved.
-	srPolicies      []*table.SRPolicy
-	logger          *zap.Logger
-	keepAlive       uint8
-	pccType         pcep.PccType
-	pccCapabilities []pcep.CapabilityInterface
-	ted             *table.LsTED
-	asn             uint32
+	sessionID               uint8
+	peerAddr                netip.Addr
+	tcpConn                 *net.TCPConn
+	isSynced                bool
+	srpIDHead               uint32 // 0x00000000 and 0xFFFFFFFF are reserved.
+	srPolicies              []*table.SRPolicy
+	logger                  *zap.Logger
+	keepAlive               uint8
+	pccType                 pcep.PccType
+	advertisedCapabilities  []pcep.CapabilityInterface // Capabilities Pola advertises to the PCC.
+	receivedPccCapabilities []pcep.CapabilityInterface // Capabilities received from the PCC.
+	ted                     *table.LsTED
+	asn                     uint32
 }
 
 func NewSession(sessionID uint8, peerAddr netip.Addr, tcpConn *net.TCPConn, logger *zap.Logger, ted *table.LsTED, asn uint32) *Session {
@@ -144,11 +146,12 @@ func (ss *Session) ReceiveOpen() error {
 		return err
 	}
 
-	ss.pccCapabilities = pcep.PolaCapability(openMessage.OpenObject.Caps)
+	ss.receivedPccCapabilities = slices.Clone(openMessage.OpenObject.Caps)
+	ss.advertisedCapabilities = pcep.PolaCapability(openMessage.OpenObject.Caps)
 
 	// pccType detection
 	// * FRRouting cannot be detected from the open message, so it is treated as an RFC compliant
-	ss.pccType = pcep.DeterminePccType(ss.pccCapabilities)
+	ss.pccType = pcep.DeterminePccType(ss.receivedPccCapabilities)
 	ss.logger.Debug("Determine PCC Type", zap.Int("pcc-type", int(ss.pccType)))
 	ss.keepAlive = openMessage.OpenObject.Keepalive
 
@@ -496,7 +499,7 @@ func (ss *Session) RequestSRPolicyCreated(srPolicy table.SRPolicy) error {
 }
 
 func (ss *Session) SendOpen() error {
-	openMessage, err := pcep.NewOpenMessage(ss.sessionID, ss.keepAlive, ss.pccCapabilities)
+	openMessage, err := pcep.NewOpenMessage(ss.sessionID, ss.keepAlive, ss.advertisedCapabilities)
 	if err != nil {
 		return err
 	}
@@ -558,7 +561,7 @@ func (ss *Session) resolveColorPreference(sr *pcep.StateReport) (uint32, uint32)
 	} else {
 		// Check if PCC supports color capability
 		hasColor := false
-		for _, cap := range ss.pccCapabilities {
+		for _, cap := range ss.receivedPccCapabilities {
 			if c, ok := cap.(*pcep.StatefulPCECapability); ok && c.ColorCapability {
 				hasColor = true
 				break

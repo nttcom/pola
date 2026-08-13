@@ -6,7 +6,9 @@
 package server
 
 import (
+	"net"
 	"net/netip"
+	"reflect"
 	"testing"
 
 	"go.uber.org/zap"
@@ -14,6 +16,46 @@ import (
 	"github.com/nttcom/pola/pkg/packet/pcep"
 	"github.com/nttcom/pola/pkg/table"
 )
+
+// newTCPConnPair returns a connected TCP connection pair over loopback.
+func newTCPConnPair(t *testing.T) (server, client *net.TCPConn) {
+	t.Helper()
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := ln.Close(); err != nil {
+			t.Errorf("failed to close listener: %v", err)
+		}
+	})
+
+	serverCh := make(chan *net.TCPConn, 1)
+	errCh := make(chan error, 1)
+
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			errCh <- err
+			return
+		}
+		serverCh <- conn.(*net.TCPConn)
+	}()
+
+	clientConn, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatalf("failed to dial: %v", err)
+	}
+
+	select {
+	case server := <-serverCh:
+		return server, clientConn.(*net.TCPConn)
+	case err := <-errCh:
+		t.Fatalf("failed to accept connection: %v", err)
+		return nil, clientConn.(*net.TCPConn)
+	}
+}
 
 // newTestStateReport builds a PCRpt state report for an SR-MPLS policy with an explicit path.
 func newTestStateReport(t *testing.T, plspID uint32, srpID uint32) *pcep.StateReport {
@@ -81,5 +123,68 @@ func TestHandleStateReportRemove(t *testing.T) {
 
 	if _, found := ss.SearchSRPolicy(sr.LSPObject.PlspID); found {
 		t.Error("SR Policy is still registered after being reported as removed")
+	}
+}
+
+func TestReceiveOpenSeparatesPccAndPolaCapabilities(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() {
+		if err := server.Close(); err != nil {
+			t.Errorf("failed to close server connection: %v", err)
+		}
+	})
+	t.Cleanup(func() {
+		if err := client.Close(); err != nil {
+			t.Errorf("failed to close client connection: %v", err)
+		}
+	})
+
+	// The PCC advertises Color Capability support but not LSP Update Capability.
+	pccCaps := []pcep.CapabilityInterface{
+		&pcep.StatefulPCECapability{
+			LSPUpdateCapability: false,
+			ColorCapability:     true,
+		},
+	}
+	openMessage, err := pcep.NewOpenMessage(1, 30, pccCaps)
+	if err != nil {
+		t.Fatalf("failed to create open message: %v", err)
+	}
+	byteOpenMessage, err := openMessage.Serialize()
+	if err != nil {
+		t.Fatalf("failed to serialize open message: %v", err)
+	}
+	if _, err := client.Write(byteOpenMessage); err != nil {
+		t.Fatalf("failed to write open message: %v", err)
+	}
+
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	if err := ss.ReceiveOpen(); err != nil {
+		t.Fatalf("ReceiveOpen returned an error: %v", err)
+	}
+
+	if !reflect.DeepEqual(ss.receivedPccCapabilities, pccCaps) {
+		t.Errorf("receivedPccCapabilities: got %+v, want %+v", ss.receivedPccCapabilities, pccCaps)
+	}
+
+	wantPolaCaps := pcep.PolaCapability(pccCaps)
+	if !reflect.DeepEqual(ss.advertisedCapabilities, wantPolaCaps) {
+		t.Errorf("advertisedCapabilities: got %+v, want %+v", ss.advertisedCapabilities, wantPolaCaps)
+	}
+
+	sr := newTestStateReport(t, 1, 0)
+	sr.LSPObject.TLVs = append(sr.LSPObject.TLVs, &pcep.Color{Color: 100})
+	color, _ := ss.resolveColorPreference(sr)
+	if color != 100 {
+		t.Errorf("resolveColorPreference did not detect Color Capability from receivedPccCapabilities: got color %d, want 100", color)
+	}
+
+	receivedCap := ss.receivedPccCapabilities[0].(*pcep.StatefulPCECapability)
+	polaCap := ss.advertisedCapabilities[0].(*pcep.StatefulPCECapability)
+	if receivedCap == polaCap {
+		t.Error("receivedPccCapabilities and advertisedCapabilities share the same StatefulPCECapability instance")
+	}
+	if receivedCap.LSPUpdateCapability == polaCap.LSPUpdateCapability {
+		t.Error("expected received and advertised StatefulPCECapability to diverge, got identical LSPUpdateCapability")
 	}
 }
