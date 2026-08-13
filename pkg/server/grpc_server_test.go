@@ -281,12 +281,10 @@ func TestValidateSIDs_LabelOutOfRangeIsRejectedEvenWithNoSidValidate(t *testing.
 
 	err := s.validateSIDs(req, segmentList)
 	st, ok := status.FromError(err)
-	if !ok || st.Code() != codes.InvalidArgument {
-		t.Fatalf("expected codes.InvalidArgument, got: %v", err)
-	}
-	if !strings.Contains(st.Message(), "0-1048575") || !strings.Contains(st.Message(), "hop 1") {
-		t.Errorf("unexpected message: %s", st.Message())
-	}
+	require.True(t, ok)
+	assert.Equal(t, codes.InvalidArgument, st.Code())
+	assert.Contains(t, st.Message(), "0-1048575")
+	assert.Contains(t, st.Message(), "hop 1")
 }
 
 func TestValidateSIDs_LabelBoundsAreAccepted(t *testing.T) {
@@ -296,9 +294,7 @@ func TestValidateSIDs_LabelBoundsAreAccepted(t *testing.T) {
 		req := explicitPolicyRequest(true, strconv.FormatUint(uint64(label), 10))
 		segmentList := []table.Segment{table.NewSegmentSRMPLS(label)}
 
-		if err := s.validateSIDs(req, segmentList); err != nil {
-			t.Errorf("expected label %d to be in range, got: %v", label, err)
-		}
+		assert.NoErrorf(t, s.validateSIDs(req, segmentList), "expected label %d to be in range", label)
 	}
 }
 
@@ -385,14 +381,10 @@ func TestConvertLsPrefixes_SidIndexPresence(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := convertLsPrefixes([]*table.LsPrefix{tt.prefix})
-			if len(got) != 1 {
-				t.Fatalf("convertLsPrefixes() returned %d prefixes, want 1", len(got))
-			}
-			if (got[0].SidIndex != nil) != tt.wantSet {
-				t.Fatalf("sid_index set = %v, want %v", got[0].SidIndex != nil, tt.wantSet)
-			}
-			if tt.wantSet && got[0].GetSidIndex() != tt.wantSidIndex {
-				t.Errorf("sid_index = %d, want %d", got[0].GetSidIndex(), tt.wantSidIndex)
+			require.Len(t, got, 1)
+			require.Equal(t, tt.wantSet, got[0].SidIndex != nil, "sid_index set")
+			if tt.wantSet {
+				assert.Equal(t, tt.wantSidIndex, got[0].GetSidIndex())
 			}
 		})
 	}
@@ -860,9 +852,7 @@ func TestSessionList_ConcurrentAccess(t *testing.T) {
 func TestDeleteSRPolicy_SrcAddrOmitted(t *testing.T) {
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
-		if err := client.Close(); err != nil {
-			t.Errorf("failed to close client connection: %v", err)
-		}
+		assert.NoError(t, client.Close(), "failed to close client connection")
 	})
 
 	peerAddr := netip.MustParseAddr("10.0.255.1")

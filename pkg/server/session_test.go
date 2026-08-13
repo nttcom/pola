@@ -11,11 +11,12 @@ import (
 	"math"
 	"net"
 	"net/netip"
-	"reflect"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
 	pb "github.com/nttcom/pola/api/pola/v1"
@@ -28,13 +29,9 @@ func newTCPConnPair(t *testing.T) (server, client *net.TCPConn) {
 	t.Helper()
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("failed to listen: %v", err)
-	}
+	require.NoError(t, err, "failed to listen")
 	t.Cleanup(func() {
-		if err := ln.Close(); err != nil {
-			t.Errorf("failed to close listener: %v", err)
-		}
+		assert.NoError(t, ln.Close(), "failed to close listener")
 	})
 
 	serverCh := make(chan *net.TCPConn, 1)
@@ -50,15 +47,13 @@ func newTCPConnPair(t *testing.T) (server, client *net.TCPConn) {
 	}()
 
 	clientConn, err := net.Dial("tcp", ln.Addr().String())
-	if err != nil {
-		t.Fatalf("failed to dial: %v", err)
-	}
+	require.NoError(t, err, "failed to dial")
 
 	select {
 	case server := <-serverCh:
 		return server, clientConn.(*net.TCPConn)
 	case err := <-errCh:
-		t.Fatalf("failed to accept connection: %v", err)
+		require.NoError(t, err, "failed to accept connection")
 		return nil, clientConn.(*net.TCPConn)
 	}
 }
@@ -68,9 +63,7 @@ func newTestStateReport(t *testing.T, plspID uint32, srpID uint32) *pcep.StateRe
 	t.Helper()
 
 	sr, err := pcep.NewStateReport()
-	if err != nil {
-		t.Fatalf("failed to create state report: %v", err)
-	}
+	require.NoError(t, err, "failed to create state report")
 
 	sr.SrpObject.SrpID = srpID
 	sr.LSPObject.PlspID = plspID
@@ -81,9 +74,7 @@ func newTestStateReport(t *testing.T, plspID uint32, srpID uint32) *pcep.StateRe
 
 	for _, sid := range []uint32{16002, 16003} {
 		subobj, err := pcep.NewSREroSubobject(table.NewSegmentSRMPLS(sid))
-		if err != nil {
-			t.Fatalf("failed to create SR ERO subobject: %v", err)
-		}
+		require.NoError(t, err, "failed to create SR ERO subobject")
 		sr.EroObject.EroSubobjects = append(sr.EroObject.EroSubobjects, subobj)
 	}
 
@@ -95,45 +86,30 @@ func TestHandleStateReportWithoutTED(t *testing.T) {
 	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
 	sr := newTestStateReport(t, 1, 0)
 
-	if err := ss.handleStateReport(sr, pcep.NewPCRptMessage()); err != nil {
-		t.Fatalf("handleStateReport returned an error: %v", err)
-	}
+	require.NoError(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
 
 	policy, found := ss.SearchSRPolicy(sr.LSPObject.PlspID)
-	if !found {
-		t.Fatal("SR Policy reported by the PCC was not registered")
-	}
-	if policy.Name != sr.LSPObject.Name {
-		t.Errorf("policy name: got %q, want %q", policy.Name, sr.LSPObject.Name)
-	}
-	if len(policy.SegmentList) != 2 {
-		t.Errorf("segment list length: got %d, want 2", len(policy.SegmentList))
-	}
+	require.True(t, found, "SR Policy reported by the PCC was not registered")
+	assert.Equal(t, sr.LSPObject.Name, policy.Name)
+	assert.Len(t, policy.SegmentList, 2)
 }
 
 func TestSRPolicies_SnapshotSegmentListIsIndependent(t *testing.T) {
 	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
 	sr := newTestStateReport(t, 1, 0)
 
-	if err := ss.handleStateReport(sr, pcep.NewPCRptMessage()); err != nil {
-		t.Fatalf("handleStateReport returned an error: %v", err)
-	}
+	require.NoError(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
 
 	policies := ss.SRPolicies()
-	if len(policies) != 1 || len(policies[0].SegmentList) == 0 {
-		t.Fatalf("expected one SR Policy with a non-empty segment list, got %+v", policies)
-	}
+	require.Len(t, policies, 1)
+	require.NotEmpty(t, policies[0].SegmentList)
 
 	want := policies[0].SegmentList[0]
 	policies[0].SegmentList[0] = table.NewSegmentSRMPLS(99999)
 
 	got, found := ss.SearchSRPolicy(sr.LSPObject.PlspID)
-	if !found {
-		t.Fatal("SR Policy reported by the PCC was not registered")
-	}
-	if !reflect.DeepEqual(got.SegmentList[0], want) {
-		t.Errorf("mutating the snapshot's SegmentList changed the session's SR Policy: got %v, want %v", got.SegmentList[0], want)
-	}
+	require.True(t, found, "SR Policy reported by the PCC was not registered")
+	assert.Equal(t, want, got.SegmentList[0], "mutating the snapshot's SegmentList changed the session's SR Policy")
 }
 
 func TestSRPolicies_SnapshotSRv6StructureIsIndependent(t *testing.T) {
@@ -144,27 +120,19 @@ func TestSRPolicies_SnapshotSRv6StructureIsIndependent(t *testing.T) {
 	ss.srPolicies = append(ss.srPolicies, table.NewSRPolicy(1, "pe01-policy1", []table.Segment{srv6Seg}, netip.MustParseAddr("10.255.0.1"), netip.MustParseAddr("10.255.0.2"), 0, 0, 0, table.PolicyUp))
 
 	policies := ss.SRPolicies()
-	if len(policies) != 1 || len(policies[0].SegmentList) == 0 {
-		t.Fatalf("expected one SR Policy with a non-empty segment list, got %+v", policies)
-	}
+	require.Len(t, policies, 1)
+	require.NotEmpty(t, policies[0].SegmentList)
 
 	snapshotSeg, ok := policies[0].SegmentList[0].(table.SegmentSRv6)
-	if !ok {
-		t.Fatalf("segment type: got %T, want table.SegmentSRv6", policies[0].SegmentList[0])
-	}
+	require.Truef(t, ok, "segment type: got %T, want table.SegmentSRv6", policies[0].SegmentList[0])
 	snapshotSeg.Structure[0] = 99
 
 	got, found := ss.SearchSRPolicy(1)
-	if !found {
-		t.Fatal("SR Policy was not registered")
-	}
+	require.True(t, found, "SR Policy was not registered")
 	gotSeg, ok := got.SegmentList[0].(table.SegmentSRv6)
-	if !ok {
-		t.Fatalf("segment type: got %T, want table.SegmentSRv6", got.SegmentList[0])
-	}
-	if !reflect.DeepEqual(gotSeg.Structure, table.SIDStructureBytes{32, 16, 0, 80}) {
-		t.Errorf("mutating the snapshot's SegmentSRv6.Structure changed the session's SR Policy: got %v", gotSeg.Structure)
-	}
+	require.Truef(t, ok, "segment type: got %T, want table.SegmentSRv6", got.SegmentList[0])
+	assert.Equal(t, table.SIDStructureBytes{32, 16, 0, 80}, gotSeg.Structure,
+		"mutating the snapshot's SegmentSRv6.Structure changed the session's SR Policy")
 }
 
 func TestSRPolicyIntent_AttachedOnCreationBySRPID(t *testing.T) {
@@ -173,20 +141,12 @@ func TestSRPolicyIntent_AttachedOnCreationBySRPID(t *testing.T) {
 
 	ss.rememberSRPolicyIntent(7, table.PolicyTypeDynamic, table.TEMetric)
 
-	if err := ss.handleStateReport(sr, pcep.NewPCRptMessage()); err != nil {
-		t.Fatalf("handleStateReport returned an error: %v", err)
-	}
+	require.NoError(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
 
 	policy, found := ss.SearchSRPolicy(sr.LSPObject.PlspID)
-	if !found {
-		t.Fatal("SR Policy reported by the PCC was not registered")
-	}
-	if policy.Type != table.PolicyTypeDynamic {
-		t.Errorf("policy type: got %q, want %q", policy.Type, table.PolicyTypeDynamic)
-	}
-	if policy.Metric != table.TEMetric {
-		t.Errorf("policy metric: got %v, want %v", policy.Metric, table.TEMetric)
-	}
+	require.True(t, found, "SR Policy reported by the PCC was not registered")
+	assert.Equal(t, table.PolicyTypeDynamic, policy.Type)
+	assert.Equal(t, table.TEMetric, policy.Metric)
 }
 
 func TestSRPolicyIntent_AttachedOnUpdateBySRPID(t *testing.T) {
@@ -194,55 +154,34 @@ func TestSRPolicyIntent_AttachedOnUpdateBySRPID(t *testing.T) {
 
 	ss.rememberSRPolicyIntent(1, table.PolicyTypeExplicit, table.UnspecifiedMetric)
 	sr := newTestStateReport(t, 1, 1)
-	if err := ss.handleStateReport(sr, pcep.NewPCRptMessage()); err != nil {
-		t.Fatalf("handleStateReport returned an error: %v", err)
-	}
+	require.NoError(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
 
 	policy, found := ss.SearchSRPolicy(sr.LSPObject.PlspID)
-	if !found {
-		t.Fatal("SR Policy reported by the PCC was not registered")
-	}
-	if policy.Type != table.PolicyTypeExplicit || policy.Metric != table.UnspecifiedMetric {
-		t.Fatalf("initial policy intent: got (%q, %v), want (%q, %v)", policy.Type, policy.Metric, table.PolicyTypeExplicit, table.UnspecifiedMetric)
-	}
+	require.True(t, found, "SR Policy reported by the PCC was not registered")
+	require.Equal(t, table.PolicyTypeExplicit, policy.Type, "initial policy intent")
+	require.Equal(t, table.UnspecifiedMetric, policy.Metric, "initial policy intent")
 
 	// A PCRpt for the same PLSP-ID takes the update path and must pick up the new intent.
 	ss.rememberSRPolicyIntent(2, table.PolicyTypeDynamic, table.TEMetric)
 	sr2 := newTestStateReport(t, 1, 2)
-	if err := ss.handleStateReport(sr2, pcep.NewPCRptMessage()); err != nil {
-		t.Fatalf("handleStateReport returned an error: %v", err)
-	}
+	require.NoError(t, ss.handleStateReport(sr2, pcep.NewPCRptMessage()))
 
 	policy, found = ss.SearchSRPolicy(sr2.LSPObject.PlspID)
-	if !found {
-		t.Fatal("SR Policy reported by the PCC was not registered")
-	}
-	if policy.Type != table.PolicyTypeDynamic {
-		t.Errorf("policy type after update: got %q, want %q", policy.Type, table.PolicyTypeDynamic)
-	}
-	if policy.Metric != table.TEMetric {
-		t.Errorf("policy metric after update: got %v, want %v", policy.Metric, table.TEMetric)
-	}
+	require.True(t, found, "SR Policy reported by the PCC was not registered")
+	assert.Equal(t, table.PolicyTypeDynamic, policy.Type, "policy type after update")
+	assert.Equal(t, table.TEMetric, policy.Metric, "policy metric after update")
 }
 
 func TestSRPolicyIntent_UnknownWhenNeverRemembered(t *testing.T) {
 	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
 	sr := newTestStateReport(t, 1, 0)
 
-	if err := ss.handleStateReport(sr, pcep.NewPCRptMessage()); err != nil {
-		t.Fatalf("handleStateReport returned an error: %v", err)
-	}
+	require.NoError(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
 
 	policy, found := ss.SearchSRPolicy(sr.LSPObject.PlspID)
-	if !found {
-		t.Fatal("SR Policy reported by the PCC was not registered")
-	}
-	if policy.Type != "" {
-		t.Errorf("policy type: got %q, want unset", policy.Type)
-	}
-	if policy.Metric != table.UnspecifiedMetric {
-		t.Errorf("policy metric: got %v, want UnspecifiedMetric", policy.Metric)
-	}
+	require.True(t, found, "SR Policy reported by the PCC was not registered")
+	assert.Equal(t, table.PolicyType(""), policy.Type, "policy type should be unset")
+	assert.Equal(t, table.UnspecifiedMetric, policy.Metric)
 }
 
 func TestSRPolicyIntent_IndependentPerSRPID(t *testing.T) {
@@ -253,35 +192,24 @@ func TestSRPolicyIntent_IndependentPerSRPID(t *testing.T) {
 
 	// SRP-ID 2's PCRpt arrives first and must only consume intent 2.
 	srB := newTestStateReport(t, 20, 2)
-	if err := ss.handleStateReport(srB, pcep.NewPCRptMessage()); err != nil {
-		t.Fatalf("handleStateReport returned an error: %v", err)
-	}
+	require.NoError(t, ss.handleStateReport(srB, pcep.NewPCRptMessage()))
 	policyB, found := ss.SearchSRPolicy(srB.LSPObject.PlspID)
-	if !found {
-		t.Fatal("SR Policy for SRP-ID 2 was not registered")
-	}
-	if policyB.Type != table.PolicyTypeDynamic || policyB.Metric != table.TEMetric {
-		t.Errorf("policy for SRP-ID 2: got (%q, %v), want (%q, %v)", policyB.Type, policyB.Metric, table.PolicyTypeDynamic, table.TEMetric)
-	}
+	require.True(t, found, "SR Policy for SRP-ID 2 was not registered")
+	assert.Equal(t, table.PolicyTypeDynamic, policyB.Type, "policy for SRP-ID 2")
+	assert.Equal(t, table.TEMetric, policyB.Metric, "policy for SRP-ID 2")
+
 	ss.srPolicyIntentsMu.Lock()
 	_, ok := ss.srPolicyIntents[1]
 	ss.srPolicyIntentsMu.Unlock()
-	if !ok {
-		t.Error("intent for SRP-ID 1 must survive consuming SRP-ID 2's intent")
-	}
+	assert.True(t, ok, "intent for SRP-ID 1 must survive consuming SRP-ID 2's intent")
 
 	// SRP-ID 1's PCRpt arrives second and must consume only intent 1.
 	srA := newTestStateReport(t, 10, 1)
-	if err := ss.handleStateReport(srA, pcep.NewPCRptMessage()); err != nil {
-		t.Fatalf("handleStateReport returned an error: %v", err)
-	}
+	require.NoError(t, ss.handleStateReport(srA, pcep.NewPCRptMessage()))
 	policyA, found := ss.SearchSRPolicy(srA.LSPObject.PlspID)
-	if !found {
-		t.Fatal("SR Policy for SRP-ID 1 was not registered")
-	}
-	if policyA.Type != table.PolicyTypeExplicit || policyA.Metric != table.UnspecifiedMetric {
-		t.Errorf("policy for SRP-ID 1: got (%q, %v), want (%q, %v)", policyA.Type, policyA.Metric, table.PolicyTypeExplicit, table.UnspecifiedMetric)
-	}
+	require.True(t, found, "SR Policy for SRP-ID 1 was not registered")
+	assert.Equal(t, table.PolicyTypeExplicit, policyA.Type, "policy for SRP-ID 1")
+	assert.Equal(t, table.UnspecifiedMetric, policyA.Metric, "policy for SRP-ID 1")
 }
 
 func TestSRPolicyIntent_UnsolicitedPCRptDoesNotConsume(t *testing.T) {
@@ -289,21 +217,14 @@ func TestSRPolicyIntent_UnsolicitedPCRptDoesNotConsume(t *testing.T) {
 	ss.rememberSRPolicyIntent(1, table.PolicyTypeDynamic, table.TEMetric)
 
 	sr := newTestStateReport(t, 1, 0)
-	if err := ss.handleStateReport(sr, pcep.NewPCRptMessage()); err != nil {
-		t.Fatalf("handleStateReport returned an error: %v", err)
-	}
+	require.NoError(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
 
 	policy, found := ss.SearchSRPolicy(sr.LSPObject.PlspID)
-	if !found {
-		t.Fatal("SR Policy reported by the PCC was not registered")
-	}
-	if policy.Type != "" {
-		t.Errorf("policy type: got %q, want unset (unsolicited PCRpt must not consume an intent)", policy.Type)
-	}
+	require.True(t, found, "SR Policy reported by the PCC was not registered")
+	assert.Equal(t, table.PolicyType(""), policy.Type, "unsolicited PCRpt must not consume an intent")
 
-	if _, ok := ss.takeSRPolicyIntent(1); !ok {
-		t.Error("intent for SRP-ID 1 must remain after an unrelated unsolicited PCRpt")
-	}
+	_, ok := ss.takeSRPolicyIntent(1)
+	assert.True(t, ok, "intent for SRP-ID 1 must remain after an unrelated unsolicited PCRpt")
 }
 
 func TestSRPolicyIntent_ClearedOnRFlagDelete(t *testing.T) {
@@ -311,24 +232,19 @@ func TestSRPolicyIntent_ClearedOnRFlagDelete(t *testing.T) {
 
 	// Create the policy unsolicited so its creation does not consume the intent below.
 	sr := newTestStateReport(t, 1, 0)
-	if err := ss.handleStateReport(sr, pcep.NewPCRptMessage()); err != nil {
-		t.Fatalf("handleStateReport returned an error: %v", err)
-	}
+	require.NoError(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
 
 	ss.rememberSRPolicyIntent(5, table.PolicyTypeDynamic, table.TEMetric)
 
 	del := newTestStateReport(t, 1, 5)
 	del.LSPObject.RFlag = true
-	if err := ss.handleStateReport(del, pcep.NewPCRptMessage()); err != nil {
-		t.Fatalf("handleStateReport returned an error: %v", err)
-	}
+	require.NoError(t, ss.handleStateReport(del, pcep.NewPCRptMessage()))
 
-	if _, found := ss.SearchSRPolicy(del.LSPObject.PlspID); found {
-		t.Error("SR Policy is still registered after being reported as removed")
-	}
-	if _, ok := ss.takeSRPolicyIntent(5); ok {
-		t.Error("intent for SRP-ID 5 was not removed after an R-Flag PCRpt")
-	}
+	_, found := ss.SearchSRPolicy(del.LSPObject.PlspID)
+	assert.False(t, found, "SR Policy is still registered after being reported as removed")
+
+	_, ok := ss.takeSRPolicyIntent(5)
+	assert.False(t, ok, "intent for SRP-ID 5 was not removed after an R-Flag PCRpt")
 }
 
 func TestHandlePCErr_ForgetsReportedSRPIDIntents(t *testing.T) {
@@ -337,28 +253,23 @@ func TestHandlePCErr_ForgetsReportedSRPIDIntents(t *testing.T) {
 	ss.rememberSRPolicyIntent(2, table.PolicyTypeExplicit, table.UnspecifiedMetric)
 
 	pcerrMessage, err := pcep.NewPCErrMessage(1, 1, nil)
-	if err != nil {
-		t.Fatalf("failed to create PCErr message: %v", err)
-	}
+	require.NoError(t, err, "failed to create PCErr message")
 	pcerrMessage.SRPs = []*pcep.SrpObject{{SrpID: 1}}
 
 	ss.handlePCErr(pcerrMessage)
 
-	if _, ok := ss.takeSRPolicyIntent(1); ok {
-		t.Error("intent for SRP-ID 1 was not removed after a PCErr reporting it")
-	}
-	if _, ok := ss.takeSRPolicyIntent(2); !ok {
-		t.Error("intent for SRP-ID 2 must survive a PCErr that does not report it")
-	}
+	_, ok := ss.takeSRPolicyIntent(1)
+	assert.False(t, ok, "intent for SRP-ID 1 was not removed after a PCErr reporting it")
+
+	_, ok = ss.takeSRPolicyIntent(2)
+	assert.True(t, ok, "intent for SRP-ID 2 must survive a PCErr that does not report it")
 }
 
 // A failed PCEP send must not leave an intent waiting for a PCRpt that will never arrive.
 func TestSendSRPolicyRequest_ForgetsIntentOnSendFailure(t *testing.T) {
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
-		if err := client.Close(); err != nil {
-			t.Errorf("failed to close client connection: %v", err)
-		}
+		assert.NoError(t, client.Close(), "failed to close client connection")
 	})
 
 	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
@@ -366,9 +277,7 @@ func TestSendSRPolicyRequest_ForgetsIntentOnSendFailure(t *testing.T) {
 	wantSRPID := ss.srpIDHead
 
 	// Close the PCEP-side connection so the send inside sendSRPolicyRequest fails.
-	if err := server.Close(); err != nil {
-		t.Fatalf("failed to close server connection: %v", err)
-	}
+	require.NoError(t, server.Close(), "failed to close server connection")
 
 	pce := &Server{sessionList: []*Session{ss}}
 	apiServer := &APIServer{pce: pce, logger: zap.NewNop()}
@@ -385,22 +294,18 @@ func TestSendSRPolicyRequest_ForgetsIntentOnSendFailure(t *testing.T) {
 		DisablePathCompute: true,
 	}
 
-	if err := sendSRPolicyRequest(apiServer, req, nil, netip.MustParseAddr("10.255.0.1"), dstAddr, true); err == nil {
-		t.Fatal("expected sendSRPolicyRequest to fail once the connection is closed")
-	}
+	err := sendSRPolicyRequest(apiServer, req, nil, netip.MustParseAddr("10.255.0.1"), dstAddr, true)
+	require.Error(t, err, "expected sendSRPolicyRequest to fail once the connection is closed")
 
-	if _, ok := ss.takeSRPolicyIntent(wantSRPID); ok {
-		t.Error("srPolicyIntents entry was not removed after a failed send")
-	}
+	_, ok := ss.takeSRPolicyIntent(wantSRPID)
+	assert.False(t, ok, "srPolicyIntents entry was not removed after a failed send")
 }
 
 // Closing a session must clear its remembered SR Policy intents.
 func TestCloseSession_ClearsSRPolicyIntents(t *testing.T) {
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
-		if err := client.Close(); err != nil {
-			t.Errorf("failed to close client connection: %v", err)
-		}
+		assert.NoError(t, client.Close(), "failed to close client connection")
 	})
 
 	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
@@ -409,9 +314,7 @@ func TestCloseSession_ClearsSRPolicyIntents(t *testing.T) {
 	s := &Server{sessionList: []*Session{ss}, logger: zap.NewNop()}
 	s.closeSession(ss)
 
-	if len(ss.srPolicyIntents) != 0 {
-		t.Errorf("srPolicyIntents was not cleared on session close: %+v", ss.srPolicyIntents)
-	}
+	assert.Empty(t, ss.srPolicyIntents, "srPolicyIntents was not cleared on session close")
 }
 
 // Concurrent SendPCUpdate/SendPCInitiate calls must never allocate the same SRP-ID,
@@ -419,9 +322,7 @@ func TestCloseSession_ClearsSRPolicyIntents(t *testing.T) {
 func TestConcurrentSRPolicyRequestsAllocateUniqueSRPIDs(t *testing.T) {
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
-		if err := server.Close(); err != nil {
-			t.Errorf("failed to close server connection: %v", err)
-		}
+		assert.NoError(t, server.Close(), "failed to close server connection")
 	})
 
 	// Drain everything the server writes so sends never block on a full socket buffer.
@@ -436,9 +337,7 @@ func TestConcurrentSRPolicyRequestsAllocateUniqueSRPIDs(t *testing.T) {
 		}
 	}()
 	t.Cleanup(func() {
-		if err := client.Close(); err != nil {
-			t.Errorf("failed to close client connection: %v", err)
-		}
+		assert.NoError(t, client.Close(), "failed to close client connection")
 		<-done
 	})
 
@@ -472,20 +371,14 @@ func TestConcurrentSRPolicyRequestsAllocateUniqueSRPIDs(t *testing.T) {
 	close(errCh)
 
 	for err := range errCh {
-		if err != nil {
-			t.Errorf("send returned an error: %v", err)
-		}
+		assert.NoError(t, err)
 	}
 
 	ss.srPolicyIntentsMu.Lock()
 	gotIntents := len(ss.srPolicyIntents)
 	ss.srPolicyIntentsMu.Unlock()
-	if gotIntents != goroutines {
-		t.Errorf("srPolicyIntents count: got %d, want %d (SRP-IDs must not collide)", gotIntents, goroutines)
-	}
-	if ss.srpIDHead != uint32(1+goroutines) {
-		t.Errorf("srpIDHead: got %d, want %d", ss.srpIDHead, uint32(1+goroutines))
-	}
+	assert.Equal(t, goroutines, gotIntents, "SRP-IDs must not collide")
+	assert.Equal(t, uint32(1+goroutines), ss.srpIDHead)
 }
 
 func TestAllocateSRPID_SkipsReservedValues(t *testing.T) {
@@ -494,15 +387,9 @@ func TestAllocateSRPID_SkipsReservedValues(t *testing.T) {
 
 	for i, want := range []uint32{math.MaxUint32 - 1, 1, 2} {
 		got, err := ss.allocateSRPID(table.PolicyTypeDynamic, table.TEMetric)
-		if err != nil {
-			t.Fatalf("allocation %d: unexpected error: %v", i, err)
-		}
-		if got == 0 || got == math.MaxUint32 {
-			t.Fatalf("allocation %d: got reserved SRP-ID %d", i, got)
-		}
-		if got != want {
-			t.Errorf("allocation %d: got %d, want %d", i, got, want)
-		}
+		require.NoErrorf(t, err, "allocation %d", i)
+		require.NotContainsf(t, []uint32{0, math.MaxUint32}, got, "allocation %d: got reserved SRP-ID", i)
+		assert.Equalf(t, want, got, "allocation %d", i)
 	}
 }
 
@@ -511,31 +398,22 @@ func TestHandleStateReportRemove(t *testing.T) {
 	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
 	sr := newTestStateReport(t, 1, 0)
 
-	if err := ss.handleStateReport(sr, pcep.NewPCRptMessage()); err != nil {
-		t.Fatalf("handleStateReport returned an error: %v", err)
-	}
+	require.NoError(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
 
 	sr.LSPObject.RFlag = true
-	if err := ss.handleStateReport(sr, pcep.NewPCRptMessage()); err != nil {
-		t.Fatalf("handleStateReport returned an error: %v", err)
-	}
+	require.NoError(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
 
-	if _, found := ss.SearchSRPolicy(sr.LSPObject.PlspID); found {
-		t.Error("SR Policy is still registered after being reported as removed")
-	}
+	_, found := ss.SearchSRPolicy(sr.LSPObject.PlspID)
+	assert.False(t, found, "SR Policy is still registered after being reported as removed")
 }
 
 func TestReceiveOpenSeparatesPccAndPolaCapabilities(t *testing.T) {
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
-		if err := server.Close(); err != nil {
-			t.Errorf("failed to close server connection: %v", err)
-		}
+		assert.NoError(t, server.Close(), "failed to close server connection")
 	})
 	t.Cleanup(func() {
-		if err := client.Close(); err != nil {
-			t.Errorf("failed to close client connection: %v", err)
-		}
+		assert.NoError(t, client.Close(), "failed to close client connection")
 	})
 
 	// The PCC advertises Color Capability support but not LSP Update Capability.
@@ -546,46 +424,28 @@ func TestReceiveOpenSeparatesPccAndPolaCapabilities(t *testing.T) {
 		},
 	}
 	openMessage, err := pcep.NewOpenMessage(1, 30, pccCaps)
-	if err != nil {
-		t.Fatalf("failed to create open message: %v", err)
-	}
+	require.NoError(t, err, "failed to create open message")
 	byteOpenMessage, err := openMessage.Serialize()
-	if err != nil {
-		t.Fatalf("failed to serialize open message: %v", err)
-	}
-	if _, err := client.Write(byteOpenMessage); err != nil {
-		t.Fatalf("failed to write open message: %v", err)
-	}
+	require.NoError(t, err, "failed to serialize open message")
+	_, err = client.Write(byteOpenMessage)
+	require.NoError(t, err, "failed to write open message")
 
 	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
-	if err := ss.ReceiveOpen(); err != nil {
-		t.Fatalf("ReceiveOpen returned an error: %v", err)
-	}
+	require.NoError(t, ss.ReceiveOpen())
 
-	if !reflect.DeepEqual(ss.receivedPccCapabilities, pccCaps) {
-		t.Errorf("receivedPccCapabilities: got %+v, want %+v", ss.receivedPccCapabilities, pccCaps)
-	}
-
-	wantPolaCaps := pcep.PolaCapability(pccCaps)
-	if !reflect.DeepEqual(ss.advertisedCapabilities, wantPolaCaps) {
-		t.Errorf("advertisedCapabilities: got %+v, want %+v", ss.advertisedCapabilities, wantPolaCaps)
-	}
+	assert.Equal(t, pccCaps, ss.receivedPccCapabilities)
+	assert.Equal(t, pcep.PolaCapability(pccCaps), ss.advertisedCapabilities)
 
 	sr := newTestStateReport(t, 1, 0)
 	sr.LSPObject.TLVs = append(sr.LSPObject.TLVs, &pcep.Color{Color: 100})
 	color, _ := ss.resolveColorPreference(sr)
-	if color != 100 {
-		t.Errorf("resolveColorPreference did not detect Color Capability from receivedPccCapabilities: got color %d, want 100", color)
-	}
+	assert.Equal(t, uint32(100), color, "resolveColorPreference did not detect Color Capability from receivedPccCapabilities")
 
 	receivedCap := ss.receivedPccCapabilities[0].(*pcep.StatefulPCECapability)
 	polaCap := ss.advertisedCapabilities[0].(*pcep.StatefulPCECapability)
-	if receivedCap == polaCap {
-		t.Error("receivedPccCapabilities and advertisedCapabilities share the same StatefulPCECapability instance")
-	}
-	if receivedCap.LSPUpdateCapability == polaCap.LSPUpdateCapability {
-		t.Error("expected received and advertised StatefulPCECapability to diverge, got identical LSPUpdateCapability")
-	}
+	assert.NotSame(t, receivedCap, polaCap, "receivedPccCapabilities and advertisedCapabilities share the same StatefulPCECapability instance")
+	assert.NotEqual(t, receivedCap.LSPUpdateCapability, polaCap.LSPUpdateCapability,
+		"expected received and advertised StatefulPCECapability to diverge, got identical LSPUpdateCapability")
 }
 
 func TestSweepExpiredSRPolicyIntents_RemovesExpired(t *testing.T) {
@@ -598,9 +458,8 @@ func TestSweepExpiredSRPolicyIntents_RemovesExpired(t *testing.T) {
 
 	ss.sweepExpiredSRPolicyIntents()
 
-	if _, ok := ss.takeSRPolicyIntent(1); ok {
-		t.Error("expired intent was not removed by the sweeper")
-	}
+	_, ok := ss.takeSRPolicyIntent(1)
+	assert.False(t, ok, "expired intent was not removed by the sweeper")
 }
 
 func TestSweepExpiredSRPolicyIntents_KeepsUnexpired(t *testing.T) {
@@ -613,9 +472,8 @@ func TestSweepExpiredSRPolicyIntents_KeepsUnexpired(t *testing.T) {
 
 	ss.sweepExpiredSRPolicyIntents()
 
-	if _, ok := ss.takeSRPolicyIntent(1); !ok {
-		t.Error("unexpired intent was removed by the sweeper")
-	}
+	_, ok := ss.takeSRPolicyIntent(1)
+	assert.True(t, ok, "unexpired intent was removed by the sweeper")
 }
 
 func TestSweepExpiredSRPolicyIntents_KeepsUnrelatedIntent(t *testing.T) {
@@ -623,15 +481,13 @@ func TestSweepExpiredSRPolicyIntents_KeepsUnrelatedIntent(t *testing.T) {
 	ss.rememberSRPolicyIntent(1, table.PolicyTypeDynamic, table.TEMetric)
 	ss.rememberSRPolicyIntent(2, table.PolicyTypeExplicit, table.UnspecifiedMetric)
 
-	if _, ok := ss.takeSRPolicyIntent(1); !ok {
-		t.Fatal("expected intent 1 to be present before consuming it")
-	}
+	_, ok := ss.takeSRPolicyIntent(1)
+	require.True(t, ok, "expected intent 1 to be present before consuming it")
 
 	ss.sweepExpiredSRPolicyIntents()
 
-	if _, ok := ss.takeSRPolicyIntent(2); !ok {
-		t.Error("sweep must not remove an unrelated intent still within its TTL")
-	}
+	_, ok = ss.takeSRPolicyIntent(2)
+	assert.True(t, ok, "sweep must not remove an unrelated intent still within its TTL")
 }
 
 func TestIntentSweep_RunsInBackgroundAndStopsCleanly(t *testing.T) {
@@ -644,13 +500,9 @@ func TestIntentSweep_RunsInBackgroundAndStopsCleanly(t *testing.T) {
 
 	ss.rememberSRPolicyIntent(1, table.PolicyTypeDynamic, table.TEMetric)
 
-	deadline := time.Now().Add(2 * time.Second)
-	for ss.srPolicyIntentExists(1) {
-		if time.Now().After(deadline) {
-			t.Fatal("intent was not swept in the background within the deadline")
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
+	require.Eventually(t, func() bool {
+		return !ss.srPolicyIntentExists(1)
+	}, 2*time.Second, 5*time.Millisecond, "intent was not swept in the background within the deadline")
 }
 
 func TestIntentSweep_StopsCleanly(t *testing.T) {
@@ -666,7 +518,7 @@ func TestIntentSweep_StopsCleanly(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
-		t.Fatal("stopIntentSweep did not return; the sweep goroutine may have leaked")
+		require.Fail(t, "stopIntentSweep did not return; the sweep goroutine may have leaked")
 	}
 }
 
@@ -693,19 +545,14 @@ func TestIntentSweep_ConcurrentWithIntentConsumption(t *testing.T) {
 func TestNextUnusedSRPID_SkipsUsedAcrossWraparound(t *testing.T) {
 	used := map[uint32]bool{1: true, 2: true, 4: true}
 	got, _, err := nextUnusedSRPID(4, 5, func(id uint32) bool { return used[id] })
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got != 3 {
-		t.Errorf("got %d, want 3 (SRP-IDs 4, 1 and 2 are in use and must be skipped)", got)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, uint32(3), got, "SRP-IDs 4, 1 and 2 are in use and must be skipped")
 }
 
 func TestNextUnusedSRPID_ErrorsWhenExhausted(t *testing.T) {
 	used := map[uint32]bool{1: true, 2: true, 3: true, 4: true}
-	if _, _, err := nextUnusedSRPID(1, 5, func(id uint32) bool { return used[id] }); err == nil {
-		t.Fatal("expected an error when every non-reserved SRP-ID is in use")
-	}
+	_, _, err := nextUnusedSRPID(1, 5, func(id uint32) bool { return used[id] })
+	require.Error(t, err, "expected an error when every non-reserved SRP-ID is in use")
 }
 
 func TestAllocateSRPID_SkipsInUseIDsOnWraparound(t *testing.T) {
@@ -716,20 +563,15 @@ func TestAllocateSRPID_SkipsInUseIDsOnWraparound(t *testing.T) {
 	ss.rememberSRPolicyIntent(1, table.PolicyTypeExplicit, table.UnspecifiedMetric)
 
 	got, err := ss.allocateSRPID(table.PolicyTypeDynamic, table.TEMetric)
-	if err != nil || got != math.MaxUint32-1 {
-		t.Fatalf("allocation 1: got (%d, %v), want (%d, nil)", got, err, uint32(math.MaxUint32-1))
-	}
+	require.NoError(t, err, "allocation 1")
+	require.Equal(t, uint32(math.MaxUint32-1), got, "allocation 1")
 
 	got, err = ss.allocateSRPID(table.PolicyTypeDynamic, table.TEMetric)
-	if err != nil {
-		t.Fatalf("allocation 2: unexpected error: %v", err)
-	}
-	if got != 2 {
-		t.Errorf("allocation 2: got %d, want 2 (SRP-ID 1 is still in use and must be skipped)", got)
-	}
-	if _, ok := ss.takeSRPolicyIntent(2); !ok {
-		t.Error("allocateSRPID must register an intent for the SRP-ID it returns")
-	}
+	require.NoError(t, err, "allocation 2")
+	assert.Equal(t, uint32(2), got, "allocation 2: SRP-ID 1 is still in use and must be skipped")
+
+	_, ok := ss.takeSRPolicyIntent(2)
+	assert.True(t, ok, "allocateSRPID must register an intent for the SRP-ID it returns")
 }
 
 // concurrentSendCase defines a PCEP message send used by the concurrent-send test.
@@ -799,9 +641,7 @@ func sendConcurrentPCEPMessages(t *testing.T, ss *Session, goroutines int) {
 	close(errCh)
 
 	for err := range errCh {
-		if err != nil {
-			t.Errorf("send returned an error: %v", err)
-		}
+		assert.NoError(t, err)
 	}
 }
 
@@ -845,9 +685,7 @@ func startPCEPFramingValidator(r io.Reader, wantCount int) <-chan error {
 func TestSendPCEPMessage_ConcurrentSendsDoNotInterleave(t *testing.T) {
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
-		if err := client.Close(); err != nil {
-			t.Errorf("failed to close client connection: %v", err)
-		}
+		assert.NoError(t, client.Close(), "failed to close client connection")
 	})
 
 	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
@@ -860,31 +698,23 @@ func TestSendPCEPMessage_ConcurrentSendsDoNotInterleave(t *testing.T) {
 
 	select {
 	case err := <-readerErr:
-		if err != nil {
-			t.Fatalf("reader failed: %v", err)
-		}
+		require.NoError(t, err, "reader failed")
 	case <-time.After(5 * time.Second):
-		t.Fatal("did not observe all messages on the wire; sends may have interleaved and corrupted framing")
+		require.Fail(t, "did not observe all messages on the wire; sends may have interleaved and corrupted framing")
 	}
 }
 
 func TestSendPCEPMessage_UnlocksAfterSendFailure(t *testing.T) {
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
-		if err := client.Close(); err != nil {
-			t.Errorf("failed to close client connection: %v", err)
-		}
+		assert.NoError(t, client.Close(), "failed to close client connection")
 	})
 
 	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
 
-	if err := server.Close(); err != nil {
-		t.Fatalf("failed to close server connection: %v", err)
-	}
+	require.NoError(t, server.Close(), "failed to close server connection")
 
-	if err := ss.SendKeepalive(); err == nil {
-		t.Fatal("expected SendKeepalive to fail once the connection is closed")
-	}
+	require.Error(t, ss.SendKeepalive(), "expected SendKeepalive to fail once the connection is closed")
 
 	done := make(chan error, 1)
 	go func() {
@@ -893,11 +723,9 @@ func TestSendPCEPMessage_UnlocksAfterSendFailure(t *testing.T) {
 
 	select {
 	case err := <-done:
-		if err == nil {
-			t.Fatal("expected second SendKeepalive to fail")
-		}
+		require.Error(t, err, "expected second SendKeepalive to fail")
 	case <-time.After(2 * time.Second):
-		t.Fatal("second SendKeepalive blocked; send mutex may not have been released")
+		require.Fail(t, "second SendKeepalive blocked; send mutex may not have been released")
 	}
 }
 
@@ -945,17 +773,11 @@ func TestFindRouterIDFromAddress(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := ss.findRouterIDFromAddress(addrIndex, tc.addr)
 			if tc.wantErr {
-				if err == nil {
-					t.Fatalf("expected error, got routerID %q", got)
-				}
+				require.Errorf(t, err, "expected error, got routerID %q", got)
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if got != tc.want {
-				t.Errorf("got %q, want %q", got, tc.want)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
 		})
 	}
 }
@@ -976,15 +798,9 @@ func TestExtractSrcDstRouterIDs(t *testing.T) {
 
 	sr := newTestStateReport(t, 1, 0)
 	srcRouterID, dstRouterID, err := ss.extractSrcDstRouterIDs(*sr)
-	if err != nil {
-		t.Fatalf("extractSrcDstRouterIDs failed: %v", err)
-	}
-	if srcRouterID != "src-router" {
-		t.Errorf("srcRouterID: got %q, want %q", srcRouterID, "src-router")
-	}
-	if dstRouterID != "10.255.0.2" {
-		t.Errorf("dstRouterID: got %q, want %q", dstRouterID, "10.255.0.2")
-	}
+	require.NoError(t, err, "extractSrcDstRouterIDs failed")
+	assert.Equal(t, "src-router", srcRouterID)
+	assert.Equal(t, "10.255.0.2", dstRouterID)
 }
 
 func TestExtractSrcDstRouterIDs_AddressNotFound(t *testing.T) {
@@ -992,9 +808,8 @@ func TestExtractSrcDstRouterIDs_AddressNotFound(t *testing.T) {
 	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), ted, 0)
 
 	sr := newTestStateReport(t, 1, 0)
-	if _, _, err := ss.extractSrcDstRouterIDs(*sr); err == nil {
-		t.Error("expected an error when neither address is present in the TED")
-	}
+	_, _, err := ss.extractSrcDstRouterIDs(*sr)
+	assert.Error(t, err, "expected an error when neither address is present in the TED")
 }
 
 // TestIsSynced_ConcurrentAccess verifies that setSynced and IsSynced are synchronized.

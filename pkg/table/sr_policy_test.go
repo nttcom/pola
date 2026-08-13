@@ -8,6 +8,8 @@ package table
 import (
 	"net/netip"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func newTestSegmentSRMPLS(sid uint32, local, remote string) SegmentSRMPLS {
@@ -80,9 +82,7 @@ func TestSegmentsEqual(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := SegmentsEqual(tt.a, tt.b); got != tt.want {
-				t.Errorf("SegmentsEqual: got %v, want %v", got, tt.want)
-			}
+			assert.Equal(t, tt.want, SegmentsEqual(tt.a, tt.b))
 		})
 	}
 }

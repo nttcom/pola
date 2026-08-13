@@ -8,6 +8,7 @@ package server
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 )
 
@@ -15,14 +16,10 @@ import (
 // wrap around to a valid uint16 (e.g. -1 -> 65535) instead of being rejected.
 func TestServer_Serve_NegativePortRejected(t *testing.T) {
 	s := &Server{logger: zap.NewNop()}
-	if err := s.Serve("127.0.0.1", "-1", false); err == nil {
-		t.Fatal("expected error for negative port")
-	}
+	assert.Error(t, s.Serve("127.0.0.1", "-1", false))
 }
 
 func TestServer_Serve_PortOutOfRange(t *testing.T) {
 	s := &Server{logger: zap.NewNop()}
-	if err := s.Serve("127.0.0.1", "70000", false); err == nil {
-		t.Fatal("expected error for out-of-range port")
-	}
+	assert.Error(t, s.Serve("127.0.0.1", "70000", false))
 }

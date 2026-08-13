@@ -6,8 +6,9 @@
 package pcep
 
 import (
-	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestPolaCapability(t *testing.T) {
@@ -95,10 +96,7 @@ func TestPolaCapability(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := PolaCapability(tt.input)
-			if !reflect.DeepEqual(result, tt.expected) {
-				t.Fatalf("%s: expected %+v, got %+v", tt.name, tt.expected, result)
-			}
+			assert.Equal(t, tt.expected, PolaCapability(tt.input))
 		})
 	}
 }

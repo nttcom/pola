@@ -6,8 +6,9 @@
 package pcep
 
 import (
-	"bytes"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestAppendByteSlices(t *testing.T) {
@@ -30,10 +31,7 @@ func TestAppendByteSlices(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := AppendByteSlices(tt.input...)
-			if !bytes.Equal(result, tt.expected) {
-				t.Errorf("expected %v, got %v", tt.expected, result)
-			}
+			assert.Equal(t, tt.expected, AppendByteSlices(tt.input...))
 		})
 	}
 }
@@ -77,9 +75,7 @@ func TestUint16ToByteSlice(t *testing.T) {
 			default:
 				t.Fatalf("unexpected type %T", v)
 			}
-			if !bytes.Equal(result, tt.expected) {
-				t.Errorf("expected %v, got %v", tt.expected, result)
-			}
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
@@ -104,10 +100,7 @@ func TestUint32ToByteSlice(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := Uint32ToByteSlice(tt.input)
-			if !bytes.Equal(result, tt.expected) {
-				t.Errorf("expected %v, got %v", tt.expected, result)
-			}
+			assert.Equal(t, tt.expected, Uint32ToByteSlice(tt.input))
 		})
 	}
 }
@@ -128,9 +121,7 @@ func TestIsBitSet(t *testing.T) {
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				if got := IsBitSet(tt.value, tt.mask); got != tt.expected {
-					t.Errorf("expected %v, got %v", tt.expected, got)
-				}
+				assert.Equal(t, tt.expected, IsBitSet(tt.value, tt.mask))
 			})
 		}
 	})
@@ -143,9 +134,7 @@ func TestIsBitSet(t *testing.T) {
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				if got := IsBitSet(tt.value, tt.mask); got != tt.expected {
-					t.Errorf("expected %v, got %v", tt.expected, got)
-				}
+				assert.Equal(t, tt.expected, IsBitSet(tt.value, tt.mask))
 			})
 		}
 	})
@@ -158,9 +147,7 @@ func TestIsBitSet(t *testing.T) {
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				if got := IsBitSet(tt.value, tt.mask); got != tt.expected {
-					t.Errorf("expected %v, got %v", tt.expected, got)
-				}
+				assert.Equal(t, tt.expected, IsBitSet(tt.value, tt.mask))
 			})
 		}
 	})
@@ -220,10 +207,7 @@ func TestSetBit(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := SetBit(tt.value, tt.bit, tt.condition)
-			if result != tt.expected {
-				t.Errorf("Test %s failed: expected %v, got %v", tt.name, tt.expected, result)
-			}
+			assert.Equal(t, tt.expected, SetBit(tt.value, tt.bit, tt.condition))
 		})
 	}
 }

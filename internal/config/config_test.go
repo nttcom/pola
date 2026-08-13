@@ -8,16 +8,16 @@ package config
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func writeConfig(t *testing.T, content string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "polad.yaml")
-	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
-		t.Fatalf("failed to write config file: %v", err)
-	}
+	require.NoError(t, os.WriteFile(path, []byte(content), 0600))
 	return path
 }
 
@@ -47,18 +47,10 @@ func TestReadConfigFile_Valid(t *testing.T) {
 	path := writeConfig(t, validConfig)
 
 	c, err := ReadConfigFile(path)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if c.Global.GRPCServer.Address != "127.0.0.1" || c.Global.GRPCServer.Port != "50052" {
-		t.Errorf("unexpected GRPCServer: %+v", c.Global.GRPCServer)
-	}
-	if c.Global.TED == nil || !c.Global.TED.Enable || c.Global.TED.ASN != 65000 {
-		t.Errorf("unexpected TED: %+v", c.Global.TED)
-	}
-	if err := c.Validate(); err != nil {
-		t.Errorf("unexpected validation error: %v", err)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, GRPCServer{Address: "127.0.0.1", Port: "50052"}, c.Global.GRPCServer)
+	assert.Equal(t, &TED{Enable: true, Source: "gobgp", ASN: 65000}, c.Global.TED)
+	assert.NoError(t, c.Validate())
 }
 
 // Regression test: v1.3.0 configs used kebab-case keys (grpc-server, usid-mode,
@@ -81,12 +73,8 @@ global:
 	path := writeConfig(t, legacyConfig)
 
 	_, err := ReadConfigFile(path)
-	if err == nil {
-		t.Fatal("expected error for legacy kebab-case config, got nil")
-	}
-	if !strings.Contains(err.Error(), "grpc-server") {
-		t.Errorf("expected error to mention the offending key \"grpc-server\", got: %v", err)
-	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "grpc-server")
 }
 
 func TestConfig_Validate(t *testing.T) {
@@ -189,16 +177,14 @@ global:
 		t.Run(tt.name, func(t *testing.T) {
 			path := writeConfig(t, tt.config)
 			c, err := ReadConfigFile(path)
-			if err != nil {
-				t.Fatalf("unexpected read error: %v", err)
-			}
+			require.NoError(t, err)
+
 			err = c.Validate()
-			if tt.wantErr && err == nil {
-				t.Error("expected validation error, got nil")
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
 			}
-			if !tt.wantErr && err != nil {
-				t.Errorf("unexpected validation error: %v", err)
-			}
+			require.NoError(t, err)
 		})
 	}
 }
@@ -209,10 +195,6 @@ func TestReadConfigFile_UnquotedIntegerPort(t *testing.T) {
 	path := writeConfig(t, validConfig)
 
 	c, err := ReadConfigFile(path)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if c.Global.GRPCServer.Port != "50052" {
-		t.Errorf("expected Port %q, got %q", "50052", c.Global.GRPCServer.Port)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "50052", c.Global.GRPCServer.Port)
 }

@@ -5,7 +5,12 @@
 
 package pcep
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
 
 func TestDecodeTLVLength(t *testing.T) {
 	tests := []struct {
@@ -73,19 +78,11 @@ func TestDecodeTLVLength(t *testing.T) {
 			gotLen, err := decodeTLVLength(tt.data, tt.allowPadding)
 
 			if tt.wantError {
-				if err == nil {
-					t.Errorf("expected error, got nil")
-				}
+				assert.Error(t, err)
 				return
 			}
-
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-
-			if gotLen != tt.wantLen {
-				t.Errorf("expected length %d, got %d", tt.wantLen, gotLen)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantLen, gotLen)
 		})
 	}
 }
@@ -131,10 +128,7 @@ func TestPaddedLength(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := paddedLength(tt.n, tt.align)
-			if result != tt.expected {
-				t.Errorf("expected %d, got %d", tt.expected, result)
-			}
+			assert.Equal(t, tt.expected, paddedLength(tt.n, tt.align))
 		})
 	}
 }
@@ -179,10 +173,7 @@ func TestIsIPv4Bytes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := isIPv4Bytes(tt.b)
-			if got != tt.want {
-				t.Errorf("isIPv4Bytes(%v) = %v; want %v", tt.b, got, tt.want)
-			}
+			assert.Equal(t, tt.want, isIPv4Bytes(tt.b))
 		})
 	}
 }

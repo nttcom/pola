@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	api "github.com/osrg/gobgp/v4/api"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func testLsAddrPrefixV4(t *testing.T, prefix string) *api.LsAddrPrefix {
@@ -108,15 +110,9 @@ func TestGetLsPrefix_SidIndex(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			lsPrefix, err := getLsPrefix(testLsAddrPrefixV4(t, "10.0.0.1/32"), tt.attr)
-			if err != nil {
-				t.Fatalf("getLsPrefix() error = %v, want nil", err)
-			}
-			if lsPrefix.SidIndex != tt.wantSidIndex {
-				t.Errorf("SidIndex = %d, want %d", lsPrefix.SidIndex, tt.wantSidIndex)
-			}
-			if lsPrefix.HasSidIndex != tt.wantHasSidIndex {
-				t.Errorf("HasSidIndex = %v, want %v", lsPrefix.HasSidIndex, tt.wantHasSidIndex)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantSidIndex, lsPrefix.SidIndex)
+			assert.Equal(t, tt.wantHasSidIndex, lsPrefix.HasSidIndex)
 		})
 	}
 }

@@ -8,6 +8,9 @@ package table
 import (
 	"net/netip"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestLsNodeNodeSegment_PrefixSIDIndexZero(t *testing.T) {
@@ -20,12 +23,8 @@ func TestLsNodeNodeSegment_PrefixSIDIndexZero(t *testing.T) {
 	}
 
 	seg, err := node.NodeSegment()
-	if err != nil {
-		t.Fatalf("NodeSegment() error = %v, want nil", err)
-	}
-	if got, want := seg.SidString(), "16000"; got != want {
-		t.Errorf("NodeSegment() = %s, want %s", got, want)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "16000", seg.SidString())
 }
 
 func TestLsNodeNodeSegment_NoPrefixSID(t *testing.T) {
@@ -37,7 +36,6 @@ func TestLsNodeNodeSegment_NoPrefixSID(t *testing.T) {
 		},
 	}
 
-	if _, err := node.NodeSegment(); err == nil {
-		t.Errorf("NodeSegment() error = nil, want error for a node without a Node SID")
-	}
+	_, err := node.NodeSegment()
+	assert.Error(t, err, "expected an error for a node without a Node SID")
 }

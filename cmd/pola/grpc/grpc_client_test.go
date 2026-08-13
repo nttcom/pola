@@ -51,18 +51,10 @@ func TestCreateLsPrefix_SidIndexPresence(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			lsPrefix, err := createLsPrefix(table.NewLsNode(65000, "0000.0000.0001"), tt.prefix)
-			if err != nil {
-				t.Fatalf("createLsPrefix() returned an error: %v", err)
-			}
-			if lsPrefix.SidIndex != tt.wantSidIndex {
-				t.Errorf("SidIndex = %d, want %d", lsPrefix.SidIndex, tt.wantSidIndex)
-			}
-			if lsPrefix.HasSidIndex != tt.wantHasSidIndex {
-				t.Errorf("HasSidIndex = %v, want %v", lsPrefix.HasSidIndex, tt.wantHasSidIndex)
-			}
-			if lsPrefix.HasPrefixSID() != tt.wantHasSidIndex {
-				t.Errorf("HasPrefixSID() = %v, want %v", lsPrefix.HasPrefixSID(), tt.wantHasSidIndex)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantSidIndex, lsPrefix.SidIndex)
+			assert.Equal(t, tt.wantHasSidIndex, lsPrefix.HasSidIndex)
+			assert.Equal(t, tt.wantHasSidIndex, lsPrefix.HasPrefixSID())
 		})
 	}
 }
