@@ -236,6 +236,12 @@ func TestLsLinkMetric(t *testing.T) {
 		_, err := link.Metric(TEMetric)
 		assert.EqualError(t, err, "metric METRIC_TYPE_TE not defined")
 	})
+
+	t.Run("hopcount is always 1 regardless of Metrics", func(t *testing.T) {
+		got, err := link.Metric(HopcountMetric)
+		require.NoError(t, err)
+		assert.Equal(t, uint32(1), got)
+	})
 }
 
 func TestLsLinkUpdateTED_ASNMismatch(t *testing.T) {

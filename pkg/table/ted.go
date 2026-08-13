@@ -257,6 +257,11 @@ func NewLsLink(localNode *LsNode, remoteNode *LsNode) *LsLink {
 }
 
 func (l *LsLink) Metric(metricType MetricType) (uint32, error) {
+	// Hop count is implicit: each link counts as one hop.
+	if metricType == HopcountMetric {
+		return 1, nil
+	}
+
 	for _, metric := range l.Metrics {
 		if metric.Type == metricType {
 			return metric.Value, nil
