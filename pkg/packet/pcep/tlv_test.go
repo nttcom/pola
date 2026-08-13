@@ -1365,6 +1365,11 @@ func TestExtendedAssociationIDIPv4Juniper_DecodeFromBytes(t *testing.T) {
 			nil,
 			true,
 		},
+		"TooShort": {
+			[]byte{0xff, 0xe3, 0x00},
+			nil,
+			true,
+		},
 	}
 	runTLVDecodeTests(t, cases, func() TLVInterface { return &ExtendedAssociationIDIPv4Juniper{} })
 }

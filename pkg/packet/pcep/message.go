@@ -425,8 +425,7 @@ func (m *PCRptMessage) DecodeFromBytes(messageBody []uint8) error {
 			}
 
 			var err error
-			sr, err = NewStateReport()
-			if err != nil {
+			if sr, err = NewStateReport(); err != nil {
 				return err
 			}
 		}
@@ -460,64 +459,44 @@ type PCInitiateMessage struct {
 }
 
 func (m *PCInitiateMessage) Serialize() ([]uint8, error) {
-	var eroObjectLength uint16
 	var err error
-	if m.EroObject != nil {
-		eroObjectLength, err = m.EroObject.Len()
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	var endpointsObjectLength uint16
-	if m.EndpointsObject != nil {
-		endpointsObjectLength, err = m.EndpointsObject.Len()
-		if err != nil {
-			return nil, err
-		}
-	}
-	pcinitiateMessageLength := CommonHeaderLength +
-		m.SrpObject.Len() +
-		m.LSPObject.Len() +
-		endpointsObjectLength +
-		eroObjectLength
 
 	byteSrpObject := m.SrpObject.Serialize()
 	byteLSPObject := m.LSPObject.Serialize()
 
-	byteEndpointsObject := []uint8{}
+	var byteEndpointsObject []uint8
 	if m.EndpointsObject != nil {
-		byteEndpointsObject, err = m.EndpointsObject.Serialize()
-		if err != nil {
+		if byteEndpointsObject, err = m.EndpointsObject.Serialize(); err != nil {
 			return nil, err
 		}
 	}
-	byteEroObject := []uint8{}
+	var byteEroObject []uint8
 	if m.EroObject != nil {
-		byteEroObject, err = m.EroObject.Serialize()
-		if err != nil {
+		if byteEroObject, err = m.EroObject.Serialize(); err != nil {
 			return nil, err
 		}
 	}
 
-	byteVendorInformationObject := []uint8{}
-	byteAssociationObject := []uint8{}
-
+	var byteAssociationObject []uint8
 	if m.AssociationObject != nil {
-		byteAssociationObject, err = m.AssociationObject.Serialize()
-		if err != nil {
+		if byteAssociationObject, err = m.AssociationObject.Serialize(); err != nil {
 			return nil, err
 		}
-		associationObjectLength, err := m.AssociationObject.Len()
-		if err != nil {
-			return nil, err
-		}
-		pcinitiateMessageLength += associationObjectLength
 	}
+	var byteVendorInformationObject []uint8
 	if m.VendorInformationObject != nil {
-		byteVendorInformationObject = append(byteVendorInformationObject, m.VendorInformationObject.Serialize()...)
-		pcinitiateMessageLength += m.VendorInformationObject.Len()
+		byteVendorInformationObject = m.VendorInformationObject.Serialize()
 	}
+
+	// Use the serialized lengths to keep the message length consistent with
+	// the bytes appended below.
+	pcinitiateMessageLength := CommonHeaderLength +
+		m.SrpObject.Len() +
+		m.LSPObject.Len() +
+		uint16(len(byteEndpointsObject)) +
+		uint16(len(byteEroObject)) +
+		uint16(len(byteAssociationObject)) +
+		uint16(len(byteVendorInformationObject))
 
 	pcinitiateHeader := NewCommonHeader(MessageTypeLSPInitReq, pcinitiateMessageLength)
 	bytePCInitiateHeader := pcinitiateHeader.Serialize()
@@ -573,7 +552,6 @@ func NewPCInitiateMessage(srpID uint32, lspName string, lspDelete bool, plspID u
 		if m.AssociationObject, err = NewAssociationObject(srcAddr, dstAddr, color, preference, OriginatorASN(opts.originatorASN)); err != nil {
 			return nil, err
 		}
-		// FRRouting is considered RFC compliant
 		if m.VendorInformationObject, err = NewVendorInformationObject(CiscoLegacy, color, preference); err != nil {
 			return nil, err
 		}
@@ -599,15 +577,13 @@ func (m *PCUpdMessage) Serialize() ([]uint8, error) {
 		return nil, err
 	}
 
-	eroObjectLength, err := m.EroObject.Len()
-	if err != nil {
-		return nil, err
-	}
-	pcupdMessageLength := CommonHeaderLength + m.SrpObject.Len() + m.LSPObject.Len() + eroObjectLength
+	// Use the serialized lengths to keep the message length consistent with
+	// the bytes appended below.
+	pcupdMessageLength := CommonHeaderLength + m.SrpObject.Len() + m.LSPObject.Len() + uint16(len(byteEroObject))
 	pcupdHeader := NewCommonHeader(MessageTypeUpdate, pcupdMessageLength)
 	bytePCUpdHeader := pcupdHeader.Serialize()
 	bytePCUpdMessage := AppendByteSlices(bytePCUpdHeader, byteSrpObject, byteLSPObject, byteEroObject)
-	return bytePCUpdMessage, err
+	return bytePCUpdMessage, nil
 }
 
 func NewPCUpdMessage(srpID uint32, lspName string, plspID uint32, segmentList []table.Segment) (*PCUpdMessage, error) {

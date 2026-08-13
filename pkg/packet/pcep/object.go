@@ -211,6 +211,10 @@ type OpenObject struct {
 }
 
 func (o *OpenObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
+	if len(objectBody) < 4 {
+		return fmt.Errorf("OPEN object body too short: got %d bytes, need at least 4", len(objectBody))
+	}
+
 	o.ObjectType = typ
 	o.Version = uint8(objectBody[0] >> 5)
 	o.Flag = uint8(objectBody[0] & 0x1f)
@@ -278,6 +282,10 @@ type BandwidthObject struct {
 }
 
 func (o *BandwidthObject) DecodeFromBytes(objectType ObjectType, objectBody []uint8) error {
+	if len(objectBody) < 4 {
+		return fmt.Errorf("BANDWIDTH object body too short: got %d bytes, need at least 4", len(objectBody))
+	}
+
 	o.ObjectType = objectType
 	o.Bandwidth = binary.BigEndian.Uint32(objectBody[:])
 	return nil
@@ -293,6 +301,10 @@ type MetricObject struct {
 }
 
 func (o *MetricObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
+	if len(objectBody) < 8 {
+		return fmt.Errorf("METRIC object body too short: got %d bytes, need at least 8", len(objectBody))
+	}
+
 	o.ObjectType = typ
 	o.CFlag = (objectBody[2] & 0x02) != 0
 	o.BFlag = (objectBody[2] & 0x01) != 0
@@ -345,6 +357,10 @@ type LSPAObject struct {
 }
 
 func (o *LSPAObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
+	if len(objectBody) < 15 {
+		return fmt.Errorf("LSPA object body too short: got %d bytes, need at least 15", len(objectBody))
+	}
+
 	o.ObjectType = typ
 	o.ExcludeAny = binary.BigEndian.Uint32(objectBody[0:4])
 	o.IncludeAny = binary.BigEndian.Uint32(objectBody[4:8])
@@ -500,6 +516,10 @@ type CloseObject struct {
 }
 
 func (o *CloseObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
+	if len(objectBody) < 4 {
+		return fmt.Errorf("CLOSE object body too short: got %d bytes, need at least 4", len(objectBody))
+	}
+
 	o.ObjectType = typ
 	o.Reason = CloseReason(objectBody[3])
 	return nil
@@ -634,6 +654,10 @@ type LSPObject struct {
 }
 
 func (o *LSPObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
+	if len(objectBody) < 4 {
+		return fmt.Errorf("LSP object body too short: got %d bytes, need at least 4", len(objectBody))
+	}
+
 	o.ObjectType = typ
 	o.PlspID = uint32(binary.BigEndian.Uint32(objectBody[0:4]) >> 12) // 20 bits from top
 	o.CFlag = (objectBody[3] & 0x80) != 0
@@ -783,15 +807,15 @@ func (o *EroObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
 			return err
 		}
 		o.EroSubobjects = append(o.EroSubobjects, eroSubobj)
-		if objByteLength, err := eroSubobj.Len(); err != nil {
+		// DecodeFromBytes validates the subobject length before advancing objectBody.
+		objByteLength, err := eroSubobj.Len()
+		if err != nil {
 			return err
-		} else if int(objByteLength) < len(objectBody) {
-			objectBody = objectBody[objByteLength:]
-		} else if int(objByteLength) == len(objectBody) {
-			break
-		} else {
-			return errors.New("srerosubobject parse error")
 		}
+		if int(objByteLength) == len(objectBody) {
+			break
+		}
+		objectBody = objectBody[objByteLength:]
 	}
 	return nil
 }
@@ -1598,6 +1622,10 @@ type AssociationObject struct {
 }
 
 func (o *AssociationObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
+	if len(objectBody) < 8 {
+		return fmt.Errorf("ASSOCIATION object body too short: got %d bytes, need at least 8", len(objectBody))
+	}
+
 	o.ObjectType = typ
 	o.RFlag = (objectBody[3] & 0x01) != 0
 	o.AssocType = AssocType(binary.BigEndian.Uint16(objectBody[4:6]))
@@ -1605,6 +1633,9 @@ func (o *AssociationObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) 
 
 	switch o.ObjectType {
 	case ObjectTypeAssociationIPv4:
+		if len(objectBody) < 12 {
+			return fmt.Errorf("ASSOCIATION (IPv4) object body too short: got %d bytes, need at least 12", len(objectBody))
+		}
 		assocSrcBytes, _ := netip.AddrFromSlice(objectBody[8:12])
 		o.AssocSrc = assocSrcBytes
 		if len(objectBody) > 12 {
@@ -1615,6 +1646,9 @@ func (o *AssociationObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) 
 			}
 		}
 	case ObjectTypeAssociationIPv6:
+		if len(objectBody) < 24 {
+			return fmt.Errorf("ASSOCIATION (IPv6) object body too short: got %d bytes, need at least 24", len(objectBody))
+		}
 		o.AssocSrc, _ = netip.AddrFromSlice(objectBody[8:24])
 		if len(objectBody) > 24 {
 			byteTLVs := objectBody[24:]

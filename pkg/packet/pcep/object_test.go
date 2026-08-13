@@ -6,6 +6,7 @@
 package pcep
 
 import (
+	"math"
 	"net/netip"
 	"testing"
 
@@ -14,6 +15,11 @@ import (
 
 	"github.com/nttcom/pola/pkg/table"
 )
+
+// fakeSegment is used to test unsupported segment types.
+type fakeSegment struct{}
+
+func (fakeSegment) SidString() string { return "fake" }
 
 func TestSREroSubobject_RoundTrip(t *testing.T) {
 	t.Parallel()
@@ -85,6 +91,12 @@ func TestSREroSubobject_RoundTrip(t *testing.T) {
 				seg.TC, seg.S, seg.TTL = 3, true, 10
 				return seg
 			}(),
+		},
+		"AbsentNAIType_FFlagFalse_SFlagTrue": {
+			SubobjectType: SubobjectTypeEROSR,
+			NAIType:       NAITypeSRAbsent,
+			SFlag:         true, MFlag: true,
+			Segment: table.NewSegmentSRMPLS(500),
 		},
 	}
 
@@ -281,6 +293,13 @@ func TestSRv6EroSubobject_RoundTrip(t *testing.T) {
 			NAIType:       NAITypeSRv6IPv6Node,
 			Segment:       table.SegmentSRv6{Sid: sid, LocalAddr: local},
 		},
+		// SID is absent (S=1); the NAI identifies the segment.
+		"SIDAbsent_NAIPresent": {
+			SubobjectType: SubobjectTypeEROSRv6,
+			NAIType:       NAITypeSRv6IPv6Node,
+			VFlag:         true, SFlag: true,
+			Segment: table.SegmentSRv6{LocalAddr: local},
+		},
 	}
 
 	for name, want := range cases {
@@ -378,7 +397,7 @@ func TestSrpObject_RoundTrip(t *testing.T) {
 			raw := want.Serialize()
 			require.Equal(t, int(want.Len()), len(raw), "Len() must match serialized size")
 
-			// DecodeFromBytes expects the object body (without 4-byte CommonObjectHeader).
+			// DecodeFromBytes expects the object body without the CommonObjectHeader.
 			var got SrpObject
 			require.NoError(t,
 				got.DecodeFromBytes(ObjectTypeSRPSRP, raw[commonObjectHeaderLength:]),
@@ -462,6 +481,25 @@ func TestOpenObject_RoundTrip(t *testing.T) {
 	}
 }
 
+func TestOpenObject_DecodeFromBytes_TooShort(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string][]uint8{
+		"Empty":     {},
+		"OneByte":   {0x20},
+		"ThreeByte": {0x20, 0x1e, 0x78},
+	}
+
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var o OpenObject
+			assert.Error(t, o.DecodeFromBytes(ObjectTypeOpenOpen, body))
+		})
+	}
+}
+
 func TestLSPAObject_RoundTrip(t *testing.T) {
 	t.Parallel()
 
@@ -500,6 +538,24 @@ func TestLSPAObject_RoundTrip(t *testing.T) {
 			assert.Equal(t, want, got, "round-trip value mismatch")
 
 			assert.Equal(t, raw, got.Serialize(), "re-serialized bytes differ")
+		})
+	}
+}
+
+func TestLSPAObject_DecodeFromBytes_TooShort(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string][]uint8{
+		"Empty":       {},
+		"PartialBody": make([]uint8, 14), // LSPA object body requires at least 15 bytes
+	}
+
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var o LSPAObject
+			assert.Error(t, o.DecodeFromBytes(ObjectType(1), body))
 		})
 	}
 }
@@ -582,13 +638,28 @@ func TestCloseObject_RoundTrip(t *testing.T) {
 			require.Equal(t, int(want.Len()), len(raw), "Len() must match serialized size")
 
 			var got CloseObject
-			require.NoError(t,
-				got.DecodeFromBytes(ObjectTypeCloseClose, raw[commonObjectHeaderLength:]),
-				"DecodeFromBytes failed",
-			)
+			require.NoError(t, got.DecodeFromBytes(ObjectTypeCloseClose, raw[commonObjectHeaderLength:]))
 			assert.Equal(t, want, got, "round-trip value mismatch")
 
 			assert.Equal(t, raw, got.Serialize(), "re-serialized bytes differ")
+		})
+	}
+}
+
+func TestCloseObject_DecodeFromBytes_TooShort(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string][]uint8{
+		"Empty":       {},
+		"PartialBody": {0x00, 0x00, 0x00},
+	}
+
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var o CloseObject
+			assert.Error(t, o.DecodeFromBytes(ObjectTypeCloseClose, body))
 		})
 	}
 }
@@ -1062,6 +1133,10 @@ func TestAssociationObject_ColorPreferenceFromTLVs(t *testing.T) {
 		wantColor      uint32
 		wantPreference uint32
 	}{
+		"NoMatch": {
+			object:    &AssociationObject{},
+			wantColor: 0, wantPreference: 0,
+		},
 		"RFCTypedTLV": {
 			object: &AssociationObject{
 				TLVs: []TLVInterface{
@@ -1310,6 +1385,945 @@ func TestVendorInformationObject_RoundTrip(t *testing.T) {
 			assert.Equal(t, want, got, "round-trip value mismatch")
 
 			assert.Equal(t, raw, got.Serialize(), "re-serialized bytes differ")
+		})
+	}
+}
+
+func TestObjectClass_String(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		class ObjectClass
+		want  string
+	}{
+		"Open":    {ObjectClassOpen, "Open (0x01)"},
+		"ERO":     {ObjectClassERO, "ERO (0x07)"},
+		"Unknown": {ObjectClass(0x99), "Unknown Object Class (0x99)"},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, tt.class.String())
+		})
+	}
+}
+
+// Pin the current incorrect hex-encoding of the Stringer result.
+func TestObjectClass_StringWithReference(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		class ObjectClass
+		want  string
+	}{
+		"Open":    {ObjectClassOpen, "Open (0x4f70656e20283078303129) [RFC5440]"},
+		"Unknown": {ObjectClass(0x99), "Unknown Object Class (0x99)"},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, tt.class.StringWithReference())
+		})
+	}
+}
+
+func TestCommonObjectHeader_RoundTrip(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]CommonObjectHeader{
+		"NoFlags":       {ObjectClass: ObjectClassOpen, ObjectType: ObjectTypeOpenOpen, ObjectLength: 8},
+		"PFlagOnly":     {ObjectClass: ObjectClassOpen, ObjectType: ObjectTypeOpenOpen, PFlag: true, ObjectLength: 8},
+		"IFlagOnly":     {ObjectClass: ObjectClassOpen, ObjectType: ObjectTypeOpenOpen, IFlag: true, ObjectLength: 8},
+		"PFlagAndIFlag": {ObjectClass: ObjectClassOpen, ObjectType: ObjectTypeOpenOpen, PFlag: true, IFlag: true, ObjectLength: 8},
+	}
+
+	for name, want := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			raw := want.Serialize()
+			require.Len(t, raw, int(commonObjectHeaderLength))
+
+			var got CommonObjectHeader
+			require.NoError(t, got.DecodeFromBytes(raw))
+			assert.Equal(t, want, got)
+		})
+	}
+}
+
+func TestCommonObjectHeader_DecodeFromBytes_TooShort(t *testing.T) {
+	t.Parallel()
+
+	var h CommonObjectHeader
+	assert.Error(t, h.DecodeFromBytes([]uint8{0x01, 0x02, 0x03}))
+}
+
+func TestNewOpenObject(t *testing.T) {
+	t.Parallel()
+
+	caps := []CapabilityInterface{&SRPCECapability{MaximumSidDepth: 10}}
+	o, err := NewOpenObject(7, 30, caps)
+	require.NoError(t, err)
+
+	want := &OpenObject{
+		ObjectType: ObjectTypeOpenOpen,
+		Version:    1,
+		Keepalive:  30,
+		Deadtime:   120, // RFC 5440 §7.3: 4 × Keepalive
+		Sid:        7,
+		Caps:       caps,
+	}
+	assert.Equal(t, want, o)
+}
+
+func TestBandwidthObject_DecodeFromBytes(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		objectType ObjectType
+		body       []uint8
+		want       uint32
+	}{
+		"RequestedBandwidth": {ObjectType(1), []uint8{0x00, 0x00, 0x03, 0xe8}, 1000},
+		"ZeroBandwidth":      {ObjectType(2), []uint8{0x00, 0x00, 0x00, 0x00}, 0},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var o BandwidthObject
+			require.NoError(t, o.DecodeFromBytes(tt.objectType, tt.body))
+			assert.Equal(t, BandwidthObject{ObjectType: tt.objectType, Bandwidth: tt.want}, o)
+		})
+	}
+}
+
+func TestBandwidthObject_DecodeFromBytes_TooShort(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string][]uint8{
+		"Empty":       {},
+		"PartialBody": {0x00, 0x00, 0x03},
+	}
+
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var o BandwidthObject
+			assert.Error(t, o.DecodeFromBytes(ObjectType(1), body))
+		})
+	}
+}
+
+func TestMetricObject_Serialize(t *testing.T) {
+	t.Parallel()
+
+	o := MetricObject{ObjectType: ObjectType(1), CFlag: true, BFlag: true, MetricType: 2, MetricValue: 30}
+	raw := o.Serialize()
+	require.Len(t, raw, int(o.Len()))
+
+	// RFC 5440 §7.8: Metric Value is a 32-bit IEEE floating-point number.
+	want := AppendByteSlices(
+		[]uint8{0x06, 0x10, 0x00, 0x0c}, // common object header: class=METRIC, type=1, length=12
+		[]uint8{0x00, 0x00, 0x03, 0x02}, // reserved(2) + flags(C=1,B=1) + metric-type=2
+		Uint32ToByteSlice(math.Float32bits(30)),
+	)
+	assert.Equal(t, want, raw)
+}
+
+// Pin the current asymmetric behavior: Serialize uses float32, DecodeFromBytes uses uint32.
+func TestMetricObject_DecodeFromBytes(t *testing.T) {
+	t.Parallel()
+
+	body := []uint8{0x00, 0x00, 0x02, 0x02, 0x00, 0x00, 0x00, 0xc8}
+	var o MetricObject
+	require.NoError(t, o.DecodeFromBytes(ObjectType(1), body))
+	assert.Equal(t, MetricObject{ObjectType: ObjectType(1), CFlag: true, MetricType: 2, MetricValue: 200}, o)
+}
+
+func TestMetricObject_DecodeFromBytes_TooShort(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string][]uint8{
+		"Empty":       {},
+		"PartialBody": {0x00, 0x00, 0x02, 0x02, 0x00, 0x00, 0x00},
+	}
+
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var o MetricObject
+			assert.Error(t, o.DecodeFromBytes(ObjectType(1), body))
+		})
+	}
+}
+
+func TestMetricObject_Len(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, uint16(12), (&MetricObject{}).Len())
+}
+
+func TestNewMetricObject(t *testing.T) {
+	t.Parallel()
+
+	o, err := NewMetricObject()
+	require.NoError(t, err)
+	assert.Equal(t, &MetricObject{ObjectType: ObjectType(1), MetricType: 2, MetricValue: 30}, o)
+}
+
+func TestNewLSPAObject(t *testing.T) {
+	t.Parallel()
+
+	o, err := NewLSPAObject()
+	require.NoError(t, err)
+	assert.Equal(t, &LSPAObject{ObjectType: ObjectType(1), SetupPriority: 7, HoldingPriority: 7, LFlag: true}, o)
+}
+
+func TestPCEPErrorObject_DecodeFromBytes_TooShort(t *testing.T) {
+	t.Parallel()
+
+	var o PCEPErrorObject
+	assert.Error(t, o.DecodeFromBytes(ObjectTypeErrorError, []uint8{0x00, 0x00, 0x01}))
+}
+
+func TestNewPCEPErrorObject(t *testing.T) {
+	t.Parallel()
+
+	tlvs := []TLVInterface{&SymbolicPathName{Name: "err"}}
+	o, err := NewPCEPErrorObject(6, 1, tlvs)
+	require.NoError(t, err)
+	assert.Equal(t, &PCEPErrorObject{ObjectType: ObjectTypeErrorError, ErrorType: 6, ErrorValue: 1, Tlvs: tlvs}, o)
+}
+
+func TestCloseReason_String(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		reason CloseReason
+		want   string
+	}{
+		"DeadTimerExpired": {CloseReasonDeadTimerExpired, "DeadTimer expired (0x02)"},
+		"Unknown":          {CloseReason(0x99), "Unknown Close Reason (0x99)"},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, tt.reason.String())
+		})
+	}
+}
+
+// Pin the current incorrect hex-encoding of the Stringer result.
+func TestCloseReason_StringWithReference(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		reason CloseReason
+		want   string
+	}{
+		"DeadTimerExpired": {CloseReasonDeadTimerExpired, "DeadTimer expired (0x4465616454696d6572206578706972656420283078303229) [RFC5440]"},
+		"Unknown":          {CloseReason(0x99), "Unknown Close Reason (0x99)"},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, tt.reason.StringWithReference())
+		})
+	}
+}
+
+func TestNewCloseObject(t *testing.T) {
+	t.Parallel()
+
+	o, err := NewCloseObject(CloseReasonMalformedPCEPMessage)
+	require.NoError(t, err)
+	assert.Equal(t, &CloseObject{ObjectType: ObjectTypeCloseClose, Reason: CloseReasonMalformedPCEPMessage}, o)
+}
+
+func TestSrpObject_DecodeFromBytes_Errors(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string][]uint8{
+		"TooShort":     {0x00, 0x00, 0x00, 0x00},
+		"MalformedTLV": {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0xff},
+	}
+
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var o SrpObject
+			assert.Error(t, o.DecodeFromBytes(ObjectTypeSRPSRP, body))
+		})
+	}
+}
+
+func TestNewSrpObject(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		segs    []table.Segment
+		srpID   uint32
+		remove  bool
+		want    *SrpObject
+		wantErr bool
+	}{
+		"NoSegments": {
+			segs: nil, srpID: 1,
+			want: &SrpObject{ObjectType: ObjectTypeSRPSRP, SrpID: 1, TLVs: []TLVInterface{}},
+		},
+		"SRMPLS": {
+			segs: []table.Segment{table.NewSegmentSRMPLS(16001)}, srpID: 2,
+			want: &SrpObject{ObjectType: ObjectTypeSRPSRP, SrpID: 2, TLVs: []TLVInterface{&PathSetupType{PathSetupType: PathSetupTypeSRTE}}},
+		},
+		"SRv6": {
+			segs: []table.Segment{table.NewSegmentSRv6(netip.MustParseAddr("fc00:0:1::"))}, srpID: 3, remove: true,
+			want: &SrpObject{ObjectType: ObjectTypeSRPSRP, RFlag: true, SrpID: 3, TLVs: []TLVInterface{&PathSetupType{PathSetupType: PathSetupTypeSRv6TE}}},
+		},
+		"InvalidSegmentType": {
+			segs: []table.Segment{fakeSegment{}}, srpID: 4, wantErr: true,
+		},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := NewSrpObject(tt.segs, tt.srpID, tt.remove)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestLSPObject_Color(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		object *LSPObject
+		want   uint32
+	}{
+		"NoTLVs":    {&LSPObject{}, 0},
+		"WithColor": {&LSPObject{TLVs: []TLVInterface{&Color{Color: 42}}}, 42},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, tt.object.Color())
+		})
+	}
+}
+
+func TestEroObject_DecodeFromBytes_Errors(t *testing.T) {
+	t.Parallel()
+
+	srv6AbsentNAIWithoutFFlag := append(
+		[]uint8{0x28, 0x18, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+		make([]uint8, 16)...,
+	)
+
+	cases := map[string][]uint8{
+		"UnknownSubobjectType":      {0x50, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+		"TruncatedSubobject":        {0x24, 0x0c, 0x10, 0x01, 0x03, 0xe8, 0x10, 0x00, 0x0a, 0x00},
+		"SRv6AbsentNAIWithoutFFlag": srv6AbsentNAIWithoutFFlag,
+	}
+
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var o EroObject
+			assert.Error(t, o.DecodeFromBytes(ObjectTypeEROExplicitRoute, body))
+		})
+	}
+}
+
+func TestEroObject_Len_Error(t *testing.T) {
+	t.Parallel()
+
+	badSubo := &SREroSubobject{
+		SubobjectType: SubobjectTypeEROSR,
+		NAIType:       NAITypeSRUnnumberedAdjacency,
+		MFlag:         true,
+		Segment:       table.NewSegmentSRMPLS(16001),
+	}
+	o := EroObject{ObjectType: ObjectTypeEROExplicitRoute, EroSubobjects: []EroSubobject{badSubo}}
+
+	_, err := o.Len()
+	assert.Error(t, err)
+}
+
+func TestEroObject_Serialize_Error(t *testing.T) {
+	t.Parallel()
+
+	badSubo := &SREroSubobject{
+		SubobjectType: SubobjectTypeEROSR,
+		NAIType:       NAITypeSRIPv4Node,
+		MFlag:         true,
+		Segment:       table.NewSegmentSRMPLS(16001),
+	}
+	o := EroObject{ObjectType: ObjectTypeEROExplicitRoute, EroSubobjects: []EroSubobject{badSubo}}
+
+	_, err := o.Serialize()
+	assert.Error(t, err)
+}
+
+func TestNewEroObject_InvalidSegment(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewEroObject([]table.Segment{fakeSegment{}})
+	assert.Error(t, err)
+}
+
+func TestNewEroSubobject(t *testing.T) {
+	t.Parallel()
+
+	t.Run("SRMPLSError", func(t *testing.T) {
+		t.Parallel()
+
+		seg := table.NewSegmentSRMPLS(16001)
+		seg.LocalAddr = netip.MustParseAddr("10.0.0.1")
+		seg.RemoteAddr = netip.MustParseAddr("2001:db8::1") // mismatched address families
+		_, err := NewEroSubobject(seg)
+		assert.Error(t, err)
+	})
+
+	t.Run("SRv6", func(t *testing.T) {
+		t.Parallel()
+
+		seg := table.NewSegmentSRv6(netip.MustParseAddr("fc00:0:1::"))
+		subo, err := NewEroSubobject(seg)
+		require.NoError(t, err)
+		assert.IsType(t, &SRv6EroSubobject{}, subo)
+	})
+
+	t.Run("InvalidType", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := NewEroSubobject(fakeSegment{})
+		assert.Error(t, err)
+	})
+}
+
+func TestEroObject_ToSegmentList(t *testing.T) {
+	t.Parallel()
+
+	srMPLSSubo, err := NewSREroSubobject(table.NewSegmentSRMPLS(16001))
+	require.NoError(t, err)
+	rsvpSubo, err := NewRSVPIPv4PrefixEroSubobject(netip.MustParseAddr("10.0.0.1"), 32)
+	require.NoError(t, err)
+
+	o := EroObject{
+		ObjectType:    ObjectTypeEROExplicitRoute,
+		EroSubobjects: []EroSubobject{srMPLSSubo, rsvpSubo},
+	}
+
+	assert.Equal(t, []table.Segment{table.NewSegmentSRMPLS(16001)}, o.ToSegmentList())
+}
+
+func TestNAITypeSR_String(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		nt   NAITypeSR
+		want string
+	}{
+		"IPv4Node": {NAITypeSRIPv4Node, "NAI is an IPv4 node ID (0x01)"},
+		"Unknown":  {NAITypeSR(0x07), "Unknown NAI Type (0x07)"},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, tt.nt.String())
+		})
+	}
+}
+
+func TestNAITypeSR_StringWithReference(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		nt   NAITypeSR
+		want string
+	}{
+		"IPv4Node": {NAITypeSRIPv4Node, "NAI is an IPv4 node ID (0x01) [RFC8664]"},
+		"Unknown":  {NAITypeSR(0x07), "Unknown NAI Type (0x07)"},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, tt.nt.StringWithReference())
+		})
+	}
+}
+
+func TestSREroSubobject_ToSegment(t *testing.T) {
+	t.Parallel()
+
+	seg := table.NewSegmentSRMPLS(16001)
+	subo := &SREroSubobject{Segment: seg}
+	assert.Equal(t, seg, subo.ToSegment())
+}
+
+func TestNAITypeSRv6_String(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		nt   NAITypeSRv6
+		want string
+	}{
+		"IPv6Node": {NAITypeSRv6IPv6Node, "NAI is an IPv6 node ID (0x02)"},
+		"Unknown":  {NAITypeSRv6(0x01), "Unknown NAI Type (0x01)"},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, tt.nt.String())
+		})
+	}
+}
+
+func TestNAITypeSRv6_StringWithReference(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		nt   NAITypeSRv6
+		want string
+	}{
+		"IPv6Node": {NAITypeSRv6IPv6Node, "NAI is an IPv6 node ID (0x02) [RFC9603]"},
+		"Unknown":  {NAITypeSRv6(0x01), "Unknown NAI Type (0x01)"},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, tt.nt.StringWithReference())
+		})
+	}
+}
+
+func TestSRv6EroSubobject_ToSegment(t *testing.T) {
+	t.Parallel()
+
+	seg := table.NewSegmentSRv6(netip.MustParseAddr("fc00:0:1::"))
+	subo := &SRv6EroSubobject{Segment: seg}
+	assert.Equal(t, seg, subo.ToSegment())
+}
+
+func TestSRv6EroSubobject_Len_Errors(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]*SRv6EroSubobject{
+		// RFC9603 §4.3.1: when NAI Type is 0 (absent), F MUST be 1.
+		"AbsentNAIWithoutFFlag": {NAIType: NAITypeSRv6Absent, FFlag: false},
+		"UnsupportedNAIType":    {NAIType: NAITypeSRv6(0x01), FFlag: false},
+	}
+
+	for name, subo := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := subo.Len()
+			assert.Error(t, err)
+		})
+	}
+}
+
+// Serialize still requires LocalAddr even when the NAI is absent (F=1).
+func TestSRv6EroSubobject_Serialize_Error(t *testing.T) {
+	t.Parallel()
+
+	o := &SRv6EroSubobject{
+		SubobjectType: SubobjectTypeEROSRv6,
+		NAIType:       NAITypeSRv6Absent,
+		FFlag:         true,
+		Segment:       table.SegmentSRv6{Sid: netip.MustParseAddr("fc00:0:1::")},
+	}
+
+	_, err := o.Serialize()
+	assert.Error(t, err)
+}
+
+func TestEndpointsObject_Len_Error(t *testing.T) {
+	t.Parallel()
+
+	o := EndpointsObject{SrcAddr: netip.MustParseAddr("10.0.0.1"), DstAddr: netip.MustParseAddr("2001:db8::1")}
+	_, err := o.Len()
+	assert.Error(t, err)
+}
+
+func TestEndpointsObject_Serialize_Error(t *testing.T) {
+	t.Parallel()
+
+	o := EndpointsObject{SrcAddr: netip.MustParseAddr("10.0.0.1"), DstAddr: netip.MustParseAddr("2001:db8::1")}
+	_, err := o.Serialize()
+	assert.Error(t, err)
+}
+
+func TestNewEndpointsObject(t *testing.T) {
+	t.Parallel()
+
+	v4a, v4b := netip.MustParseAddr("192.0.2.1"), netip.MustParseAddr("192.0.2.2")
+	v6a, v6b := netip.MustParseAddr("2001:db8::1"), netip.MustParseAddr("2001:db8::2")
+
+	cases := map[string]struct {
+		dst, src netip.Addr
+		wantType ObjectType
+		wantLen  uint16
+		wantErr  bool
+	}{
+		"IPv4":       {v4b, v4a, ObjectTypeEndpointIPv4, commonObjectHeaderLength + 4 + 4, false},
+		"IPv6":       {v6b, v6a, ObjectTypeEndpointIPv6, commonObjectHeaderLength + 16 + 16, false},
+		"Mismatched": {v6b, v4a, 0, 0, true},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			o, err := NewEndpointsObject(tt.dst, tt.src)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, &EndpointsObject{ObjectType: tt.wantType, DstAddr: tt.dst, SrcAddr: tt.src}, o)
+
+			l, err := o.Len()
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantLen, l)
+		})
+	}
+}
+
+func TestDeterminePccType(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		caps []CapabilityInterface
+		want PccType
+	}{
+		"NoCaps":          {nil, RFCCompliant},
+		"NoAssocTypeList": {[]CapabilityInterface{&SRPCECapability{}}, RFCCompliant},
+		"CiscoAssocType": {
+			[]CapabilityInterface{&AssocTypeList{AssocTypes: []AssocType{AssociationTypeSRPolicyAssociationCisco}}},
+			CiscoLegacy,
+		},
+		"JuniperAssocType": {
+			[]CapabilityInterface{&AssocTypeList{AssocTypes: []AssocType{AssociationTypeSRPolicyAssociationJuniper}}},
+			JuniperLegacy,
+		},
+		"JuniperWinsOverCisco": {
+			[]CapabilityInterface{&AssocTypeList{AssocTypes: []AssocType{
+				AssociationTypeSRPolicyAssociationCisco, AssociationTypeSRPolicyAssociationJuniper,
+			}}},
+			JuniperLegacy,
+		},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, DeterminePccType(tt.caps))
+		})
+	}
+}
+
+func TestAssociationObject_DecodeFromBytes_Errors(t *testing.T) {
+	t.Parallel()
+
+	v4Body := []uint8{0x00, 0x00, 0x00, 0x00, 0x00, 0x06, 0x00, 0x01, 0xc0, 0x00, 0x02, 0x01}
+	v6Body := AppendByteSlices(
+		make([]uint8, 4),
+		Uint16ToByteSlice(uint16(AssociationTypeSRPolicyAssociation)),
+		Uint16ToByteSlice(uint16(1)),
+		netip.MustParseAddr("2001:db8::1").AsSlice(),
+	)
+
+	cases := map[string]struct {
+		objectType ObjectType
+		body       []uint8
+	}{
+		"UnknownObjectType": {ObjectType(99), v4Body},
+		"MalformedIPv4TLV":  {ObjectTypeAssociationIPv4, AppendByteSlices(v4Body, []uint8{0x00, 0x27, 0x00, 0xff})},
+		"MalformedIPv6TLV":  {ObjectTypeAssociationIPv6, AppendByteSlices(v6Body, []uint8{0x00, 0x27, 0x00, 0xff})},
+		"EmptyBody":         {ObjectTypeAssociationIPv4, []uint8{}},
+		"PartialCommonBody": {ObjectTypeAssociationIPv4, make([]uint8, 7)},
+		"PartialIPv4Body":   {ObjectTypeAssociationIPv4, make([]uint8, 11)},
+		"PartialIPv6Body":   {ObjectTypeAssociationIPv6, make([]uint8, 23)},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var o AssociationObject
+			assert.Error(t, o.DecodeFromBytes(tt.objectType, tt.body))
+		})
+	}
+}
+
+func TestAssociationObject_Len_Error(t *testing.T) {
+	t.Parallel()
+
+	o := AssociationObject{}
+	_, err := o.Len()
+	assert.Error(t, err)
+}
+
+func TestAssociationObject_Serialize_Error(t *testing.T) {
+	t.Parallel()
+
+	o := AssociationObject{}
+	_, err := o.Serialize()
+	assert.Error(t, err)
+}
+
+func TestNewAssociationObject_MismatchedFamilies(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewAssociationObject(netip.MustParseAddr("192.0.2.1"), netip.MustParseAddr("2001:db8::1"), 100, 200)
+	assert.Error(t, err)
+}
+
+func TestAssociationObject_Endpoint(t *testing.T) {
+	t.Parallel()
+
+	dstAddr := netip.MustParseAddr("192.0.2.2")
+
+	cases := map[string]struct {
+		object *AssociationObject
+		want   netip.Addr
+	}{
+		"NoMatch": {&AssociationObject{}, netip.Addr{}},
+		"ExtendedAssociationID": {
+			&AssociationObject{TLVs: []TLVInterface{&ExtendedAssociationID{Endpoint: dstAddr}}},
+			dstAddr,
+		},
+		"JuniperTLV": {
+			&AssociationObject{TLVs: []TLVInterface{
+				&ExtendedAssociationIDIPv4Juniper{ExtendedAssociationID: ExtendedAssociationID{Endpoint: dstAddr}},
+			}},
+			dstAddr,
+		},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, tt.object.Endpoint())
+		})
+	}
+}
+
+func TestLSPObject_DecodeFromBytes_Error(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string][]uint8{
+		"MalformedTLV": AppendByteSlices(
+			make([]uint8, 4),
+			[]uint8{0x00, 0x27, 0x00, 0xff}, // TLV length exceeds available data
+		),
+		"Empty":       {},
+		"PartialBody": {0x00, 0x00, 0x00},
+	}
+
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var o LSPObject
+			assert.Error(t, o.DecodeFromBytes(ObjectTypeLSPLSP, body))
+		})
+	}
+}
+
+func TestEroObject_Serialize_LenError(t *testing.T) {
+	t.Parallel()
+
+	badSubo := &SREroSubobject{
+		SubobjectType: SubobjectTypeEROSR,
+		NAIType:       NAITypeSRUnnumberedAdjacency,
+		MFlag:         true,
+		Segment:       table.NewSegmentSRMPLS(16001),
+	}
+	o := EroObject{ObjectType: ObjectTypeEROExplicitRoute, EroSubobjects: []EroSubobject{badSubo}}
+
+	_, err := o.Serialize()
+	assert.Error(t, err)
+}
+
+func TestSRv6EroSubobject_DecodeFromBytes_Errors(t *testing.T) {
+	t.Parallel()
+
+	nodeType := uint8(NAITypeSRv6IPv6Node) << 4
+	adjGlobalType := uint8(NAITypeSRv6IPv6AdjacencyGlobal) << 4
+	adjLinkLocalType := uint8(NAITypeSRv6IPv6AdjacencyLinkLocal) << 4
+
+	cases := map[string][]uint8{
+		"TooShort":     {0x28, 0x00, 0x00},
+		"TruncatedSID": AppendByteSlices([]uint8{0x28, 0x00, 0x00, 0x00}, make([]uint8, 4)),
+		"TruncatedNodeNAI": AppendByteSlices(
+			[]uint8{0x28, 0x00, nodeType, 0x00}, make([]uint8, 4+16),
+		),
+		"TruncatedAdjGlobalNAI": AppendByteSlices(
+			[]uint8{0x28, 0x00, adjGlobalType, 0x00}, make([]uint8, 4+16+16),
+		),
+		"TruncatedAdjLinkLocalNAI": AppendByteSlices(
+			[]uint8{0x28, 0x00, adjLinkLocalType, 0x00}, make([]uint8, 4+16+16),
+		),
+		// TFlag requires an additional 4-byte SID-Structure field.
+		"TruncatedSIDStructure": AppendByteSlices(
+			[]uint8{0x28, 0x00, 0x00, 0x04}, make([]uint8, 4+16),
+		),
+	}
+
+	for name, raw := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var o SRv6EroSubobject
+			assert.Error(t, o.DecodeFromBytes(raw))
+		})
+	}
+}
+
+func TestSRv6EroSubobject_DecodeFromBytes_LinkLocalAdjacency(t *testing.T) {
+	t.Parallel()
+
+	local := netip.MustParseAddr("2001:db8::1")
+	remote := netip.MustParseAddr("2001:db8::2")
+
+	raw := AppendByteSlices(
+		[]uint8{0x28, 0x00, uint8(NAITypeSRv6IPv6AdjacencyLinkLocal) << 4, 0x00},
+		make([]uint8, 4),
+		netip.MustParseAddr("fc00:0:1::").AsSlice(),
+		local.AsSlice(), make([]uint8, 4),
+		remote.AsSlice(), make([]uint8, 4),
+	)
+
+	var o SRv6EroSubobject
+	require.NoError(t, o.DecodeFromBytes(raw))
+	assert.Equal(t, local, o.Segment.LocalAddr)
+	assert.Equal(t, remote, o.Segment.RemoteAddr)
+
+	l, err := o.Len()
+	require.NoError(t, err)
+	assert.Equal(t, uint16(8+16+40), l)
+}
+
+func TestNewSRv6EroSubobject_NAIFromSegment(t *testing.T) {
+	t.Parallel()
+
+	sid := netip.MustParseAddr("fc00:0:1::")
+	local := netip.MustParseAddr("2001:db8::1")
+	remote := netip.MustParseAddr("2001:db8::2")
+
+	cases := map[string]struct {
+		seg         table.SegmentSRv6
+		wantNAIType NAITypeSRv6
+		wantFFlag   bool
+		wantTFlag   bool
+	}{
+		"NoAddr": {
+			seg: table.SegmentSRv6{Sid: sid}, wantNAIType: NAITypeSRv6Absent, wantFFlag: true,
+		},
+		"LocalOnly": {
+			seg: table.SegmentSRv6{Sid: sid, LocalAddr: local}, wantNAIType: NAITypeSRv6IPv6Node,
+		},
+		"LocalAndRemote": {
+			seg:         table.SegmentSRv6{Sid: sid, LocalAddr: local, RemoteAddr: remote},
+			wantNAIType: NAITypeSRv6IPv6AdjacencyGlobal,
+		},
+		"WithStructure": {
+			seg:         table.SegmentSRv6{Sid: sid, LocalAddr: local, Structure: []uint8{32, 16, 16, 0}},
+			wantNAIType: NAITypeSRv6IPv6Node, wantTFlag: true,
+		},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			subo, err := NewSRv6EroSubobject(tt.seg)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantNAIType, subo.NAIType)
+			assert.Equal(t, tt.wantFFlag, subo.FFlag)
+			assert.Equal(t, tt.wantTFlag, subo.TFlag)
+		})
+	}
+}
+
+func TestRSVPIPv4PrefixEroSubobject_DecodeFromBytes_Errors(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string][]uint8{
+		"TooShort":            {0x01, 0x08, 0x0a, 0x00, 0x00, 0x01},
+		"InvalidLengthField":  {0x01, 0x07, 0x0a, 0x00, 0x00, 0x01, 0x20, 0x00},
+		"InvalidPrefixLength": {0x01, 0x08, 0x0a, 0x00, 0x00, 0x01, 0x21, 0x00},
+	}
+
+	for name, raw := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var o RSVPIPv4PrefixEroSubobject
+			assert.Error(t, o.DecodeFromBytes(raw))
+		})
+	}
+}
+
+func TestRSVPIPv4PrefixEroSubobject_Serialize_Errors(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]*RSVPIPv4PrefixEroSubobject{
+		"NotIPv4":             {Address: netip.MustParseAddr("2001:db8::1")},
+		"InvalidPrefixLength": {Address: netip.MustParseAddr("10.0.0.1"), PrefixLen: 33},
+	}
+
+	for name, o := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := o.Serialize()
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestNewRSVPIPv4PrefixEroSubobject_Errors(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		address   netip.Addr
+		prefixLen uint8
+	}{
+		"NotIPv4":             {netip.MustParseAddr("2001:db8::1"), 32},
+		"InvalidPrefixLength": {netip.MustParseAddr("10.0.0.1"), 33},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := NewRSVPIPv4PrefixEroSubobject(tt.address, tt.prefixLen)
+			assert.Error(t, err)
 		})
 	}
 }

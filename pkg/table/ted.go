@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
-	"strconv"
 )
 
 type LsTED struct {
@@ -182,9 +181,11 @@ func (n *LsNode) NodeSegment() (Segment, error) {
 	// for SR-MPLS Segment
 	for _, prefix := range n.Prefixes {
 		if prefix.HasPrefixSID() {
-			sid := strconv.Itoa(int(n.SrgbBegin + prefix.SidIndex))
-			seg, _ := NewSegment(sid)
-			return seg, nil
+			label, ok := srgbLabel(n, prefix.SidIndex)
+			if !ok {
+				return nil, fmt.Errorf("prefix-SID index %d is out of range for SRGB [%d, %d)", prefix.SidIndex, n.SrgbBegin, n.SrgbEnd)
+			}
+			return NewSegmentSRMPLS(label), nil
 		}
 	}
 	// for SRv6 Segment
@@ -194,8 +195,7 @@ func (n *LsNode) NodeSegment() (Segment, error) {
 			if err != nil {
 				return nil, err
 			}
-			seg, _ := NewSegmentSRv6WithNodeInfo(addr, n)
-			return seg, nil
+			return NewSegmentSRv6WithNodeInfo(addr, n)
 		}
 	}
 
