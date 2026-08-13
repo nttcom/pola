@@ -8,6 +8,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/netip"
 	"strconv"
 	"strings"
@@ -24,10 +25,9 @@ import (
 	grpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
-// TestNewEnrichedSegmentSRMPLS verifies that localAddr and remoteAddr are
-// propagated to SR-MPLS segments.
 func TestNewEnrichedSegmentSRMPLS(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -317,6 +317,33 @@ func TestValidateSIDs_AllKnownSucceeds(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestValidateSIDs_UnknownSegmentTypeIsRejected(t *testing.T) {
+	s := newTestAPIServer(nil)
+	req := explicitPolicyRequest(true, "16099")
+	segmentList := []table.Segment{unknownSegment{}}
+
+	err := s.validateSIDs(req, segmentList)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.InvalidArgument, st.Code())
+	assert.Contains(t, st.Message(), "unrecognized SID family")
+}
+
+func TestValidateSIDs_MixedSegmentTypesAreRejected(t *testing.T) {
+	s := newTestAPIServer(nil)
+	req := explicitPolicyRequest(true, "16099")
+	segmentList := []table.Segment{
+		table.NewSegmentSRMPLS(16099),
+		table.SegmentSRv6{Sid: netip.MustParseAddr("2001:db8::1")},
+	}
+
+	err := s.validateSIDs(req, segmentList)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.InvalidArgument, st.Code())
+	assert.Contains(t, st.Message(), "mixed SR-MPLS and SRv6 SIDs")
+}
+
 func TestServe_InvalidAddress(t *testing.T) {
 	s := &APIServer{grpcServer: grpc.NewServer(), logger: zap.NewNop()}
 	require.Error(t, s.Serve("", "50052"))
@@ -330,6 +357,20 @@ func TestServe_InvalidPort(t *testing.T) {
 func TestServe_PortOutOfRange(t *testing.T) {
 	s := &APIServer{grpcServer: grpc.NewServer(), logger: zap.NewNop()}
 	require.Error(t, s.Serve("127.0.0.1", "70000"))
+}
+
+func TestServe_ListenFailure(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err, "failed to reserve a port")
+	t.Cleanup(func() {
+		assert.NoError(t, ln.Close(), "failed to close listener")
+	})
+
+	addr, port, err := net.SplitHostPort(ln.Addr().String())
+	require.NoError(t, err)
+
+	s := &APIServer{grpcServer: grpc.NewServer(), logger: zap.NewNop()}
+	require.ErrorContains(t, s.Serve(addr, port), "failed to listen on gRPC port", "expected the already-bound port to be rejected")
 }
 
 func TestServe_ListensAndLogsActualAddr(t *testing.T) {
@@ -565,6 +606,7 @@ func TestBuildRouterIDIndex(t *testing.T) {
 	nonHostPrefix.Prefix = netip.MustParsePrefix("192.0.2.0/24")
 	noLoopbackNode.Prefixes = append(noLoopbackNode.Prefixes, nonHostPrefix)
 	ted.Nodes[noLoopbackNode.RouterID] = noLoopbackNode
+	ted.Nodes["router-nil"] = nil
 
 	index := buildRouterIDIndex(ted)
 	assert.Equal(t, "router-v4", index[netip.MustParseAddr("192.0.2.10")])
@@ -595,6 +637,7 @@ func TestBuildAddressRouterIDIndex(t *testing.T) {
 	subnetPrefix.Prefix = netip.MustParsePrefix("192.0.2.0/24")
 	subnetNode.Prefixes = append(subnetNode.Prefixes, subnetPrefix)
 	ted.Nodes[subnetNode.RouterID] = subnetNode
+	ted.Nodes["router-nil"] = nil
 
 	index := buildAddressRouterIDIndex(ted)
 	assert.Equal(t, "router-v4", index[netip.MustParseAddr("192.0.2.10")])
@@ -793,7 +836,6 @@ func TestConvertSegment_SRMPLS(t *testing.T) {
 	}
 }
 
-// TestTED_ConcurrentUpdate verifies that TED reads and updates are synchronized.
 func TestTED_ConcurrentUpdate(t *testing.T) {
 	s := &Server{ted: &table.LsTED{Nodes: map[string]*table.LsNode{}}}
 
@@ -815,7 +857,6 @@ func TestTED_ConcurrentUpdate(t *testing.T) {
 	<-done
 }
 
-// TestSessionList_ConcurrentAccess verifies that session list reads and updates are synchronized.
 func TestSessionList_ConcurrentAccess(t *testing.T) {
 	s := &Server{}
 	addr := netip.MustParseAddr("192.0.2.1")
@@ -888,7 +929,6 @@ func TestDeleteSRPolicy_SrcAddrOmitted(t *testing.T) {
 	assert.True(t, resp.GetIsSuccess())
 }
 
-// TestGetSegmentList_DynamicHopcountPrefersFewerHops verifies that hop count selects the shortest path.
 func TestGetSegmentList_DynamicHopcountPrefersFewerHops(t *testing.T) {
 	mkNode := func(routerID string, sidIndex uint32) *table.LsNode {
 		return &table.LsNode{
@@ -922,4 +962,1117 @@ func TestGetSegmentList_DynamicHopcountPrefersFewerHops(t *testing.T) {
 	mplsSeg, ok := segmentList[0].(table.SegmentSRMPLS)
 	require.Truef(t, ok, "segment type: got %T, want table.SegmentSRMPLS", segmentList[0])
 	assert.Equal(t, uint32(16004), mplsSeg.Sid)
+}
+
+func TestGetSegmentList_DynamicWithWaypointsForcesTransit(t *testing.T) {
+	mkNode := func(routerID string, sidIndex uint32) *table.LsNode {
+		return &table.LsNode{
+			RouterID:  routerID,
+			SrgbBegin: 16000,
+			SrgbEnd:   17000,
+			Prefixes: []*table.LsPrefix{
+				{Prefix: netip.MustParsePrefix(fmt.Sprintf("10.0.0.%d/32", sidIndex)), SidIndex: sidIndex, HasSidIndex: true},
+			},
+		}
+	}
+	nodeA := mkNode("A", 1)
+	nodeB := mkNode("B", 2)
+	nodeD := mkNode("D", 4)
+	nodeA.Links = []*table.LsLink{table.NewLsLink(nodeA, nodeD), table.NewLsLink(nodeA, nodeB)}
+	nodeB.Links = []*table.LsLink{table.NewLsLink(nodeB, nodeD)}
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{"A": nodeA, "B": nodeB, "D": nodeD}}
+
+	srPolicy := &pb.SRPolicy{
+		Type:        pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC,
+		SrcRouterId: "A",
+		DstRouterId: "D",
+		Metric:      pb.MetricType_METRIC_TYPE_HOPCOUNT,
+		Waypoints:   []*pb.Waypoint{{RouterId: "B"}},
+	}
+
+	segmentList, err := getSegmentList(srPolicy, ted, false)
+	require.NoError(t, err)
+	require.Len(t, segmentList, 2, "expected the direct 1-hop A-D path to be overridden by the B waypoint")
+
+	firstHop, ok := segmentList[0].(table.SegmentSRMPLS)
+	require.Truef(t, ok, "segment type: got %T, want table.SegmentSRMPLS", segmentList[0])
+	assert.Equal(t, uint32(16002), firstHop.Sid, "first hop must be the waypoint node B")
+
+	secondHop, ok := segmentList[1].(table.SegmentSRMPLS)
+	require.Truef(t, ok, "segment type: got %T, want table.SegmentSRMPLS", segmentList[1])
+	assert.Equal(t, uint32(16004), secondHop.Sid, "second hop must be the destination node D")
+}
+
+func TestGetSegmentList_Explicit(t *testing.T) {
+	tests := []struct {
+		name    string
+		policy  *pb.SRPolicy
+		wantErr bool
+		wantLen int
+	}{
+		{
+			name:    "converts every segment",
+			policy:  &pb.SRPolicy{Type: pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT, SegmentList: []*pb.Segment{{Sid: "16003"}, {Sid: "16004"}}},
+			wantLen: 2,
+		},
+		{
+			name:    "empty segment list is an error",
+			policy:  &pb.SRPolicy{Type: pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT},
+			wantErr: true,
+		},
+		{
+			name:    "malformed segment SID propagates the error",
+			policy:  &pb.SRPolicy{Type: pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT, SegmentList: []*pb.Segment{{Sid: "not-a-sid"}}},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := getSegmentList(tt.policy, &table.LsTED{}, false)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Len(t, got, tt.wantLen)
+		})
+	}
+}
+
+func TestGetSegmentList_DynamicMetricError(t *testing.T) {
+	policy := &pb.SRPolicy{Type: pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC, Metric: pb.MetricType_METRIC_TYPE_UNSPECIFIED}
+	_, err := getSegmentList(policy, &table.LsTED{Nodes: map[string]*table.LsNode{}}, false)
+	assert.Error(t, err, "expected an unresolvable metric to be rejected before CSPF runs")
+}
+
+func TestGetSegmentList_UndefinedType(t *testing.T) {
+	_, err := getSegmentList(&pb.SRPolicy{}, &table.LsTED{}, false)
+	assert.Error(t, err)
+}
+
+func TestGetMetricType(t *testing.T) {
+	tests := []struct {
+		name    string
+		in      pb.MetricType
+		want    table.MetricType
+		wantErr bool
+	}{
+		{name: "IGP", in: pb.MetricType_METRIC_TYPE_IGP, want: table.IGPMetric},
+		{name: "TE", in: pb.MetricType_METRIC_TYPE_TE, want: table.TEMetric},
+		{name: "delay", in: pb.MetricType_METRIC_TYPE_DELAY, want: table.DelayMetric},
+		{name: "hopcount", in: pb.MetricType_METRIC_TYPE_HOPCOUNT, want: table.HopcountMetric},
+		{name: "unspecified is an error", in: pb.MetricType_METRIC_TYPE_UNSPECIFIED, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := getMetricType(tt.in)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestToPBPolicyType(t *testing.T) {
+	tests := []struct {
+		name string
+		in   table.PolicyType
+		want pb.SRPolicyType
+	}{
+		{name: "explicit", in: table.PolicyTypeExplicit, want: pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT},
+		{name: "dynamic", in: table.PolicyTypeDynamic, want: pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC},
+		{name: "unrecognized maps to unspecified", in: table.PolicyType("bogus"), want: pb.SRPolicyType_SR_POLICY_TYPE_UNSPECIFIED},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, toPBPolicyType(tt.in))
+		})
+	}
+}
+
+func TestToPBMetricType(t *testing.T) {
+	tests := []struct {
+		name string
+		in   table.MetricType
+		want pb.MetricType
+	}{
+		{name: "igp", in: table.IGPMetric, want: pb.MetricType_METRIC_TYPE_IGP},
+		{name: "te", in: table.TEMetric, want: pb.MetricType_METRIC_TYPE_TE},
+		{name: "delay", in: table.DelayMetric, want: pb.MetricType_METRIC_TYPE_DELAY},
+		{name: "hopcount", in: table.HopcountMetric, want: pb.MetricType_METRIC_TYPE_HOPCOUNT},
+		{name: "unspecified maps to unspecified", in: table.UnspecifiedMetric, want: pb.MetricType_METRIC_TYPE_UNSPECIFIED},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, toPBMetricType(tt.in))
+		})
+	}
+}
+
+func TestToPBPolicyState(t *testing.T) {
+	tests := []struct {
+		name string
+		in   table.PolicyState
+		want pb.SRPolicyState
+	}{
+		{name: "down", in: table.PolicyDown, want: pb.SRPolicyState_SR_POLICY_STATE_DOWN},
+		{name: "up", in: table.PolicyUp, want: pb.SRPolicyState_SR_POLICY_STATE_UP},
+		{name: "active", in: table.PolicyActive, want: pb.SRPolicyState_SR_POLICY_STATE_ACTIVE},
+		{name: "unknown", in: table.PolicyUnknown, want: pb.SRPolicyState_SR_POLICY_STATE_UNKNOWN},
+		{name: "unrecognized maps to unspecified", in: table.PolicyState("bogus"), want: pb.SRPolicyState_SR_POLICY_STATE_UNSPECIFIED},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, toPBPolicyState(tt.in))
+		})
+	}
+}
+
+func TestGetSRPolicyList_SortsBySameColorThenPlspIdThenName(t *testing.T) {
+	mk := func(color, plspID uint32, name string) *table.SRPolicy {
+		return table.NewSRPolicy(plspID, name, nil, netip.Addr{}, netip.Addr{}, color, 100, 0, table.PolicyUp)
+	}
+
+	s := &APIServer{
+		pce: &Server{sessionList: []*Session{
+			{
+				peerAddr: netip.MustParseAddr("10.0.0.1"),
+				isSynced: true,
+				srPolicies: []*table.SRPolicy{
+					mk(200, 1, "z"),
+					mk(100, 1, "z"),
+					mk(100, 2, "b"),
+					mk(100, 2, "a"),
+					mk(100, 1, "y"),
+				},
+			},
+		}},
+		logger: zap.NewNop(),
+	}
+
+	resp, err := s.GetSRPolicyList(context.Background(), &pb.GetSRPolicyListRequest{})
+	require.NoError(t, err)
+	require.Len(t, resp.Sessions, 1)
+
+	var gotOrder []string
+	for _, p := range resp.Sessions[0].GetSrPolicies() {
+		gotOrder = append(gotOrder, fmt.Sprintf("%d/%d/%s", p.GetColor(), p.GetPlspId(), p.GetPolicyName()))
+	}
+	assert.Equal(t, []string{"100/1/y", "100/1/z", "100/2/a", "100/2/b", "200/1/z"}, gotOrder)
+}
+
+func TestNewAPIServer(t *testing.T) {
+	grpcServer := grpc.NewServer()
+	pce := &Server{}
+	logger := zap.NewNop()
+
+	s := NewAPIServer(pce, grpcServer, true, logger)
+
+	assert.Same(t, pce, s.pce)
+	assert.Same(t, grpcServer, s.grpcServer)
+	assert.True(t, s.usidMode)
+
+	_, ok := grpcServer.GetServiceInfo()["api.pola.v1.PCEService"]
+	assert.True(t, ok, "expected the PCE service to be registered with the gRPC server")
+}
+
+func TestValidateCreateSRPolicy(t *testing.T) {
+	tests := []struct {
+		name               string
+		req                *pb.CreateSRPolicyRequest
+		disablePathCompute bool
+		wantErr            bool
+	}{
+		{
+			name: "path-compute request valid",
+			req: &pb.CreateSRPolicyRequest{
+				Asn: 65000,
+				SrPolicy: &pb.SRPolicy{
+					PcepSessionAddr: netip.MustParseAddr("10.0.0.1").AsSlice(),
+					Color:           100,
+					SrcRouterId:     "r1",
+					DstRouterId:     "r2",
+				},
+			},
+		},
+		{
+			name: "path-compute request missing router IDs",
+			req: &pb.CreateSRPolicyRequest{
+				Asn:      65000,
+				SrPolicy: &pb.SRPolicy{PcepSessionAddr: netip.MustParseAddr("10.0.0.1").AsSlice(), Color: 100},
+			},
+			wantErr: true,
+		},
+		{
+			name: "disable_path_compute request valid",
+			req: &pb.CreateSRPolicyRequest{
+				SrPolicy: &pb.SRPolicy{
+					PcepSessionAddr: netip.MustParseAddr("10.0.0.1").AsSlice(),
+					Color:           100,
+					SrcAddr:         netip.MustParseAddr("10.0.0.1").AsSlice(),
+					DstAddr:         netip.MustParseAddr("10.0.0.2").AsSlice(),
+					SegmentList:     []*pb.Segment{{Sid: "16003"}},
+				},
+				DisablePathCompute: true,
+			},
+			disablePathCompute: true,
+		},
+		{
+			name: "disable_path_compute request missing segment list",
+			req: &pb.CreateSRPolicyRequest{
+				SrPolicy: &pb.SRPolicy{
+					PcepSessionAddr: netip.MustParseAddr("10.0.0.1").AsSlice(),
+					Color:           100,
+					SrcAddr:         netip.MustParseAddr("10.0.0.1").AsSlice(),
+					DstAddr:         netip.MustParseAddr("10.0.0.2").AsSlice(),
+				},
+				DisablePathCompute: true,
+			},
+			disablePathCompute: true,
+			wantErr:            true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateCreateSRPolicy(tt.req, tt.disablePathCompute)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+		})
+	}
+}
+
+func TestGetLoopbackAddr(t *testing.T) {
+	node := &table.LsNode{
+		RouterID: "r1",
+		Prefixes: []*table.LsPrefix{{Prefix: netip.MustParsePrefix("10.0.0.1/32")}},
+	}
+	noLoopbackNode := &table.LsNode{
+		RouterID: "r2",
+		Prefixes: []*table.LsPrefix{{Prefix: netip.MustParsePrefix("10.0.0.0/24")}},
+	}
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{node.RouterID: node, noLoopbackNode.RouterID: noLoopbackNode}}
+
+	addr, err := getLoopbackAddr(ted, "r1")
+	require.NoError(t, err)
+	assert.Equal(t, "10.0.0.1", addr.String())
+
+	_, err = getLoopbackAddr(ted, "missing")
+	assert.ErrorContains(t, err, "no node with router ID missing")
+
+	_, err = getLoopbackAddr(ted, "r2")
+	assert.Error(t, err, "expected an error for a node without a loopback address")
+}
+
+func TestGetSyncedPCEPSession(t *testing.T) {
+	peerAddr := netip.MustParseAddr("10.0.255.1")
+	ss := &Session{peerAddr: peerAddr, isSynced: true}
+	pce := &Server{sessionList: []*Session{ss}}
+
+	got, err := getSyncedPCEPSession(pce, peerAddr.AsSlice())
+	require.NoError(t, err)
+	assert.Same(t, ss, got)
+
+	_, err = getSyncedPCEPSession(pce, []byte{1, 2, 3})
+	assert.Error(t, err, "expected an error for a malformed address")
+
+	_, err = getSyncedPCEPSession(pce, netip.MustParseAddr("10.0.255.2").AsSlice())
+	assert.Error(t, err, "expected an error when no synced session matches")
+}
+
+func TestParseSidStructure(t *testing.T) {
+	tests := []struct {
+		name    string
+		in      string
+		want    []uint8
+		wantErr bool
+	}{
+		{name: "empty string", in: "", want: nil},
+		{name: "valid", in: "32,16,0,80", want: []uint8{32, 16, 0, 80}},
+		{name: "wrong part count", in: "1,2,3", wantErr: true},
+		{name: "non-numeric part", in: "1,2,3,x", wantErr: true},
+		{name: "value out of uint8 range", in: "1,2,3,256", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseSidStructure(tt.in)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestNewEnrichedSegmentSRv6_Errors(t *testing.T) {
+	tests := []struct {
+		name    string
+		segment *pb.Segment
+	}{
+		{name: "malformed SID structure", segment: &pb.Segment{Sid: "2001:db8:1005::", SidStructure: "1,2,3"}},
+		{name: "malformed localAddr", segment: &pb.Segment{Sid: "2001:db8:1005::", LocalAddr: "not-an-addr"}},
+		{name: "malformed remoteAddr", segment: &pb.Segment{Sid: "2001:db8:1005::", LocalAddr: "2001:db8::5", RemoteAddr: "not-an-addr"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := newEnrichedSegment(tt.segment, false)
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestBuildSegmentList_PathCompute(t *testing.T) {
+	srcNode := &table.LsNode{ASN: 65000, RouterID: "r1", Prefixes: []*table.LsPrefix{{Prefix: netip.MustParsePrefix("10.0.0.1/32")}}}
+	dstNode := &table.LsNode{ASN: 65000, RouterID: "r2", Prefixes: []*table.LsPrefix{{Prefix: netip.MustParsePrefix("10.0.0.2/32")}}}
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{srcNode.RouterID: srcNode, dstNode.RouterID: dstNode}}
+
+	explicitReq := func() *pb.CreateSRPolicyRequest {
+		return &pb.CreateSRPolicyRequest{
+			Asn: 65000,
+			SrPolicy: &pb.SRPolicy{
+				Type:        pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT,
+				SrcRouterId: "r1",
+				DstRouterId: "r2",
+				SegmentList: []*pb.Segment{{Sid: "16003"}},
+			},
+		}
+	}
+
+	t.Run("success resolves loopbacks and segments", func(t *testing.T) {
+		s := newTestAPIServer(ted)
+		segmentList, srcAddr, dstAddr, err := buildSegmentList(s, explicitReq(), false)
+		require.NoError(t, err)
+		assert.Equal(t, "10.0.0.1", srcAddr.String())
+		assert.Equal(t, "10.0.0.2", dstAddr.String())
+		assert.Len(t, segmentList, 1)
+	})
+
+	t.Run("TED disabled", func(t *testing.T) {
+		s := newTestAPIServer(nil)
+		_, _, _, err := buildSegmentList(s, explicitReq(), false)
+		assert.ErrorContains(t, err, "ted is disabled")
+	})
+
+	t.Run("TED not yet synchronized", func(t *testing.T) {
+		s := newTestAPIServer(&table.LsTED{Nodes: map[string]*table.LsNode{}})
+		_, _, _, err := buildSegmentList(s, explicitReq(), false)
+		assert.ErrorContains(t, err, "no node in TED")
+	})
+
+	t.Run("ASN mismatch", func(t *testing.T) {
+		s := newTestAPIServer(ted)
+		req := explicitReq()
+		req.Asn = 1
+		_, _, _, err := buildSegmentList(s, req, false)
+		assert.ErrorContains(t, err, "does not match ted ASN")
+	})
+
+	t.Run("unknown source router ID", func(t *testing.T) {
+		s := newTestAPIServer(ted)
+		req := explicitReq()
+		req.SrPolicy.SrcRouterId = "missing"
+		_, _, _, err := buildSegmentList(s, req, false)
+		assert.ErrorContains(t, err, "no node with router ID missing")
+	})
+
+	t.Run("unknown destination router ID", func(t *testing.T) {
+		s := newTestAPIServer(ted)
+		req := explicitReq()
+		req.SrPolicy.DstRouterId = "missing"
+		_, _, _, err := buildSegmentList(s, req, false)
+		assert.ErrorContains(t, err, "no node with router ID missing")
+	})
+
+	t.Run("segment list resolution error propagates", func(t *testing.T) {
+		s := newTestAPIServer(ted)
+		req := explicitReq()
+		req.SrPolicy.SegmentList = nil
+		_, _, _, err := buildSegmentList(s, req, false)
+		assert.ErrorContains(t, err, "no segments in SRPolicy input")
+	})
+}
+
+func TestBuildSegmentList_DisablePathCompute(t *testing.T) {
+	disabledReq := func() *pb.CreateSRPolicyRequest {
+		return &pb.CreateSRPolicyRequest{
+			DisablePathCompute: true,
+			SrPolicy: &pb.SRPolicy{
+				SrcAddr:     netip.MustParseAddr("10.0.0.1").AsSlice(),
+				DstAddr:     netip.MustParseAddr("10.0.0.2").AsSlice(),
+				SegmentList: []*pb.Segment{{Sid: "16003"}},
+			},
+		}
+	}
+
+	t.Run("success uses the request addresses and segments verbatim", func(t *testing.T) {
+		s := newTestAPIServer(nil)
+		segmentList, srcAddr, dstAddr, err := buildSegmentList(s, disabledReq(), true)
+		require.NoError(t, err)
+		assert.Equal(t, "10.0.0.1", srcAddr.String())
+		assert.Equal(t, "10.0.0.2", dstAddr.String())
+		assert.Len(t, segmentList, 1)
+	})
+
+	t.Run("malformed source address", func(t *testing.T) {
+		s := newTestAPIServer(nil)
+		req := disabledReq()
+		req.SrPolicy.SrcAddr = []byte{1, 2, 3}
+		_, _, _, err := buildSegmentList(s, req, true)
+		assert.ErrorContains(t, err, "invalid source address")
+	})
+
+	t.Run("malformed destination address", func(t *testing.T) {
+		s := newTestAPIServer(nil)
+		req := disabledReq()
+		req.SrPolicy.DstAddr = []byte{1, 2, 3}
+		_, _, _, err := buildSegmentList(s, req, true)
+		assert.ErrorContains(t, err, "invalid destination address")
+	})
+
+	t.Run("malformed segment SID", func(t *testing.T) {
+		s := newTestAPIServer(nil)
+		req := disabledReq()
+		req.SrPolicy.SegmentList = []*pb.Segment{{Sid: "not-a-sid"}}
+		_, _, _, err := buildSegmentList(s, req, true)
+		assert.Error(t, err)
+	})
+}
+
+func TestCreateSRPolicy(t *testing.T) {
+	srcNode := &table.LsNode{ASN: 65000, RouterID: "r1", Prefixes: []*table.LsPrefix{{Prefix: netip.MustParsePrefix("10.0.0.1/32")}}}
+	dstNode := &table.LsNode{
+		ASN: 65000, RouterID: "r2", SrgbBegin: 16000,
+		Prefixes: []*table.LsPrefix{{Prefix: netip.MustParsePrefix("10.0.0.2/32"), SidIndex: 3, HasSidIndex: true}},
+	}
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{srcNode.RouterID: srcNode, dstNode.RouterID: dstNode}}
+
+	baseReq := func() *pb.CreateSRPolicyRequest {
+		return &pb.CreateSRPolicyRequest{
+			Asn: 65000,
+			SrPolicy: &pb.SRPolicy{
+				Type:            pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT,
+				PolicyName:      "test",
+				Color:           100,
+				PcepSessionAddr: netip.MustParseAddr("10.0.255.1").AsSlice(),
+				SrcRouterId:     "r1",
+				DstRouterId:     "r2",
+				SegmentList:     []*pb.Segment{{Sid: "16003"}},
+			},
+			NoSidValidate: true,
+		}
+	}
+
+	t.Run("validation error", func(t *testing.T) {
+		s := newTestAPIServer(ted)
+		req := baseReq()
+		req.Asn = 0
+		_, err := s.CreateSRPolicy(context.Background(), req)
+		assert.ErrorContains(t, err, "failed to validate SR policy creation")
+	})
+
+	t.Run("build segment list error", func(t *testing.T) {
+		s := newTestAPIServer(nil)
+		_, err := s.CreateSRPolicy(context.Background(), baseReq())
+		assert.ErrorContains(t, err, "failed to build segment list")
+	})
+
+	t.Run("SID validation error", func(t *testing.T) {
+		s := newTestAPIServer(ted)
+		req := baseReq()
+		req.NoSidValidate = false
+		req.SrPolicy.SegmentList = []*pb.Segment{{Sid: "16099"}}
+		_, err := s.CreateSRPolicy(context.Background(), req)
+		st, ok := status.FromError(err)
+		require.True(t, ok)
+		assert.Equal(t, codes.InvalidArgument, st.Code())
+	})
+
+	t.Run("send request error", func(t *testing.T) {
+		s := newTestAPIServer(ted)
+		_, err := s.CreateSRPolicy(context.Background(), baseReq())
+		assert.ErrorContains(t, err, "failed to send SR policy request")
+	})
+
+	t.Run("success", func(t *testing.T) {
+		server, client := newTCPConnPair(t)
+		t.Cleanup(func() {
+			assert.NoError(t, client.Close(), "failed to close client connection")
+		})
+
+		peerAddr := netip.MustParseAddr("10.0.255.1")
+		ss := NewSession(1, peerAddr, server, zap.NewNop(), nil, 0)
+		ss.isSynced = true
+
+		s := &APIServer{pce: &Server{ted: ted, sessionList: []*Session{ss}}, logger: zap.NewNop()}
+
+		resp, err := s.CreateSRPolicy(context.Background(), baseReq())
+		require.NoError(t, err)
+		assert.True(t, resp.GetIsSuccess())
+	})
+}
+
+func TestDeleteSRPolicy(t *testing.T) {
+	peerAddr := netip.MustParseAddr("10.0.255.1")
+	dstAddr := netip.MustParseAddr("10.255.0.2")
+
+	validPolicy := func() *pb.SRPolicy {
+		return &pb.SRPolicy{
+			PcepSessionAddr: peerAddr.AsSlice(),
+			DstAddr:         dstAddr.AsSlice(),
+			Color:           100,
+			PolicyName:      "test-policy",
+		}
+	}
+
+	t.Run("validation error", func(t *testing.T) {
+		s := &APIServer{logger: zap.NewNop()}
+		resp, err := s.DeleteSRPolicy(context.Background(), &pb.DeleteSRPolicyRequest{SrPolicy: &pb.SRPolicy{}})
+		require.Error(t, err)
+		assert.False(t, resp.GetIsSuccess())
+	})
+
+	t.Run("malformed source address", func(t *testing.T) {
+		s := &APIServer{logger: zap.NewNop()}
+		policy := validPolicy()
+		policy.SrcAddr = []byte{1, 2, 3}
+		resp, err := s.DeleteSRPolicy(context.Background(), &pb.DeleteSRPolicyRequest{SrPolicy: policy})
+		assert.ErrorContains(t, err, "invalid source address")
+		assert.False(t, resp.GetIsSuccess())
+	})
+
+	t.Run("malformed destination address", func(t *testing.T) {
+		s := &APIServer{logger: zap.NewNop()}
+		policy := validPolicy()
+		policy.DstAddr = []byte{1, 2, 3}
+		resp, err := s.DeleteSRPolicy(context.Background(), &pb.DeleteSRPolicyRequest{SrPolicy: policy})
+		assert.ErrorContains(t, err, "invalid destination address")
+		assert.False(t, resp.GetIsSuccess())
+	})
+
+	t.Run("malformed segment SID", func(t *testing.T) {
+		s := &APIServer{logger: zap.NewNop()}
+		policy := validPolicy()
+		policy.SegmentList = []*pb.Segment{{Sid: "not-a-sid"}}
+		resp, err := s.DeleteSRPolicy(context.Background(), &pb.DeleteSRPolicyRequest{SrPolicy: policy})
+		require.Error(t, err)
+		assert.False(t, resp.GetIsSuccess())
+	})
+
+	t.Run("no synced session", func(t *testing.T) {
+		s := &APIServer{pce: &Server{}, logger: zap.NewNop()}
+		resp, err := s.DeleteSRPolicy(context.Background(), &pb.DeleteSRPolicyRequest{SrPolicy: validPolicy()})
+		require.Error(t, err)
+		assert.False(t, resp.GetIsSuccess())
+	})
+
+	t.Run("SR Policy not found", func(t *testing.T) {
+		ss := &Session{peerAddr: peerAddr, isSynced: true}
+		s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: zap.NewNop()}
+		resp, err := s.DeleteSRPolicy(context.Background(), &pb.DeleteSRPolicyRequest{SrPolicy: validPolicy()})
+		assert.ErrorContains(t, err, "requested SR Policy not found")
+		assert.False(t, resp.GetIsSuccess())
+	})
+
+	t.Run("delete request send failure", func(t *testing.T) {
+		server, client := newTCPConnPair(t)
+		t.Cleanup(func() {
+			assert.NoError(t, client.Close(), "failed to close client connection")
+		})
+
+		ss := NewSession(1, peerAddr, server, zap.NewNop(), nil, 0)
+		ss.isSynced = true
+		ss.srPolicies = []*table.SRPolicy{{PlspID: 1, Name: "test-policy", DstAddr: dstAddr, Color: 100, Preference: 100}}
+		require.NoError(t, server.Close(), "failed to close server connection")
+
+		s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: zap.NewNop()}
+		resp, err := s.DeleteSRPolicy(context.Background(), &pb.DeleteSRPolicyRequest{SrPolicy: validPolicy()})
+		require.Error(t, err)
+		assert.False(t, resp.GetIsSuccess())
+	})
+
+	t.Run("success with explicit segment list", func(t *testing.T) {
+		server, client := newTCPConnPair(t)
+		t.Cleanup(func() {
+			assert.NoError(t, client.Close(), "failed to close client connection")
+		})
+
+		ss := NewSession(1, peerAddr, server, zap.NewNop(), nil, 0)
+		ss.isSynced = true
+		ss.srPolicies = []*table.SRPolicy{{PlspID: 1, Name: "test-policy", DstAddr: dstAddr, Color: 100, Preference: 100}}
+
+		s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: zap.NewNop()}
+		policy := validPolicy()
+		policy.SegmentList = []*pb.Segment{{Sid: "16003"}}
+		resp, err := s.DeleteSRPolicy(context.Background(), &pb.DeleteSRPolicyRequest{SrPolicy: policy})
+		require.NoError(t, err)
+		assert.True(t, resp.GetIsSuccess())
+	})
+}
+
+func TestValidate_NilPolicy(t *testing.T) {
+	assert.ErrorContains(t, validate(nil, 100, ValidationAdd), "input is nil")
+}
+
+func TestValidate_AddRequiresNonZeroASN(t *testing.T) {
+	policy := &pb.SRPolicy{PcepSessionAddr: []byte{10, 0, 0, 1}, Color: 100, SrcRouterId: "r1", DstRouterId: "r2"}
+	assert.ErrorContains(t, validate(policy, 0, ValidationAdd), "ASN must not be zero")
+}
+
+func TestValidate_UnknownKind(t *testing.T) {
+	policy := &pb.SRPolicy{PcepSessionAddr: []byte{10, 0, 0, 1}, Color: 100}
+	assert.ErrorContains(t, validate(policy, 100, ValidationKind("bogus")), "unknown validation kind")
+}
+
+func TestValidate_Add(t *testing.T) {
+	full := func() *pb.SRPolicy {
+		return &pb.SRPolicy{PcepSessionAddr: []byte{10, 0, 0, 1}, Color: 100, SrcRouterId: "r1", DstRouterId: "r2"}
+	}
+
+	tests := []struct {
+		name    string
+		mutate  func(*pb.SRPolicy)
+		wantErr string
+	}{
+		{name: "valid"},
+		{name: "missing PCEP session address", mutate: func(p *pb.SRPolicy) { p.PcepSessionAddr = nil }, wantErr: "PCEP session address must not be nil"},
+		{name: "zero color", mutate: func(p *pb.SRPolicy) { p.Color = 0 }, wantErr: "Color must not be zero"},
+		{name: "missing source router ID", mutate: func(p *pb.SRPolicy) { p.SrcRouterId = "" }, wantErr: "SrcRouterId must not be empty"},
+		{name: "missing destination router ID", mutate: func(p *pb.SRPolicy) { p.DstRouterId = "" }, wantErr: "DstRouterId must not be empty"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			policy := full()
+			if tt.mutate != nil {
+				tt.mutate(policy)
+			}
+			err := validate(policy, 65000, ValidationAdd)
+			if tt.wantErr == "" {
+				assert.NoError(t, err)
+				return
+			}
+			assert.ErrorContains(t, err, tt.wantErr)
+		})
+	}
+}
+
+func TestValidate_AddDisablePathCompute(t *testing.T) {
+	full := func() *pb.SRPolicy {
+		return &pb.SRPolicy{
+			PcepSessionAddr: []byte{10, 0, 0, 1},
+			Color:           100,
+			SrcAddr:         []byte{10, 0, 0, 1},
+			DstAddr:         []byte{10, 0, 0, 2},
+			SegmentList:     []*pb.Segment{{Sid: "16003"}},
+		}
+	}
+
+	tests := []struct {
+		name    string
+		mutate  func(*pb.SRPolicy)
+		wantErr string
+	}{
+		{name: "valid"},
+		{name: "missing PCEP session address", mutate: func(p *pb.SRPolicy) { p.PcepSessionAddr = nil }, wantErr: "PCEP session address must not be nil"},
+		{name: "zero color", mutate: func(p *pb.SRPolicy) { p.Color = 0 }, wantErr: "Color must not be zero"},
+		{name: "missing source address", mutate: func(p *pb.SRPolicy) { p.SrcAddr = nil }, wantErr: "SrcAddr must not be empty"},
+		{name: "missing destination address", mutate: func(p *pb.SRPolicy) { p.DstAddr = nil }, wantErr: "DstAddr must not be empty"},
+		{name: "missing segment list", mutate: func(p *pb.SRPolicy) { p.SegmentList = nil }, wantErr: "SegmentList must not be empty"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			policy := full()
+			if tt.mutate != nil {
+				tt.mutate(policy)
+			}
+			err := validate(policy, 65000, ValidationAddDisablePathCompute)
+			if tt.wantErr == "" {
+				assert.NoError(t, err)
+				return
+			}
+			assert.ErrorContains(t, err, tt.wantErr)
+		})
+	}
+}
+
+func TestValidate_Delete(t *testing.T) {
+	full := func() *pb.SRPolicy {
+		return &pb.SRPolicy{
+			PcepSessionAddr: []byte{10, 0, 0, 1},
+			Color:           100,
+			DstAddr:         []byte{10, 0, 0, 2},
+			PolicyName:      "test",
+		}
+	}
+
+	tests := []struct {
+		name    string
+		mutate  func(*pb.SRPolicy)
+		wantErr string
+	}{
+		{name: "valid"},
+		{name: "missing PCEP session address", mutate: func(p *pb.SRPolicy) { p.PcepSessionAddr = nil }, wantErr: "PCEP session address must not be nil"},
+		{name: "zero color", mutate: func(p *pb.SRPolicy) { p.Color = 0 }, wantErr: "Color must not be zero"},
+		{name: "missing destination address", mutate: func(p *pb.SRPolicy) { p.DstAddr = nil }, wantErr: "DstAddr must not be empty"},
+		{name: "missing policy name", mutate: func(p *pb.SRPolicy) { p.PolicyName = "" }, wantErr: "PolicyName must not be empty"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			policy := full()
+			if tt.mutate != nil {
+				tt.mutate(policy)
+			}
+			err := validate(policy, 0, ValidationDelete)
+			if tt.wantErr == "" {
+				assert.NoError(t, err)
+				return
+			}
+			assert.ErrorContains(t, err, tt.wantErr)
+		})
+	}
+}
+
+func TestSendSRPolicyRequest_GetSyncedPCEPSessionError(t *testing.T) {
+	s := &APIServer{pce: &Server{}, logger: zap.NewNop()}
+	req := &pb.CreateSRPolicyRequest{SrPolicy: &pb.SRPolicy{PcepSessionAddr: netip.MustParseAddr("10.0.255.1").AsSlice()}}
+
+	err := sendSRPolicyRequest(s, req, nil, netip.Addr{}, netip.Addr{}, false)
+	assert.ErrorContains(t, err, "failed to get synchronized PCEP session")
+}
+
+func TestSendSRPolicyRequest_ResolveIntentError(t *testing.T) {
+	peerAddr := netip.MustParseAddr("10.0.255.1")
+	ss := &Session{peerAddr: peerAddr, isSynced: true}
+	s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: zap.NewNop()}
+	req := &pb.CreateSRPolicyRequest{SrPolicy: &pb.SRPolicy{PcepSessionAddr: peerAddr.AsSlice(), Type: pb.SRPolicyType_SR_POLICY_TYPE_UNSPECIFIED}}
+
+	err := sendSRPolicyRequest(s, req, nil, netip.Addr{}, netip.Addr{}, false)
+	assert.ErrorContains(t, err, "failed to resolve SR policy type")
+}
+
+func TestSendSRPolicyRequest_CreatesNewPolicy(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() {
+		assert.NoError(t, client.Close(), "failed to close client connection")
+	})
+
+	peerAddr := netip.MustParseAddr("10.0.255.1")
+	dstAddr := netip.MustParseAddr("10.255.0.2")
+	ss := NewSession(1, peerAddr, server, zap.NewNop(), nil, 0)
+	ss.isSynced = true
+
+	s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: zap.NewNop()}
+	req := &pb.CreateSRPolicyRequest{SrPolicy: &pb.SRPolicy{PcepSessionAddr: peerAddr.AsSlice(), Color: 100, Type: pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT}}
+	segmentList := []table.Segment{table.NewSegmentSRMPLS(16003)}
+
+	require.NoError(t, sendSRPolicyRequest(s, req, segmentList, netip.MustParseAddr("10.255.0.1"), dstAddr, false))
+	assert.NoError(t, readPCEPMessage(client), "expected a well-framed PCInitiate message on the wire")
+}
+
+func TestSendSRPolicyRequest_UpdatesExistingPolicy(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() {
+		assert.NoError(t, client.Close(), "failed to close client connection")
+	})
+
+	peerAddr := netip.MustParseAddr("10.0.255.1")
+	dstAddr := netip.MustParseAddr("10.255.0.2")
+	ss := NewSession(1, peerAddr, server, zap.NewNop(), nil, 0)
+	ss.isSynced = true
+	ss.srPolicies = []*table.SRPolicy{{PlspID: 7, Color: 100, DstAddr: dstAddr}}
+
+	s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: zap.NewNop()}
+	req := &pb.CreateSRPolicyRequest{SrPolicy: &pb.SRPolicy{PcepSessionAddr: peerAddr.AsSlice(), Color: 100, Type: pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT}}
+	segmentList := []table.Segment{table.NewSegmentSRMPLS(16003)}
+
+	require.NoError(t, sendSRPolicyRequest(s, req, segmentList, netip.MustParseAddr("10.255.0.1"), dstAddr, false))
+	assert.NoError(t, readPCEPMessage(client), "expected a well-framed PCUpdate message on the wire")
+}
+
+func TestSendSRPolicyRequest_UpdateSendFailure(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() {
+		assert.NoError(t, client.Close(), "failed to close client connection")
+	})
+
+	peerAddr := netip.MustParseAddr("10.0.255.1")
+	dstAddr := netip.MustParseAddr("10.255.0.2")
+	ss := NewSession(1, peerAddr, server, zap.NewNop(), nil, 0)
+	ss.isSynced = true
+	ss.srPolicies = []*table.SRPolicy{{PlspID: 7, Color: 100, DstAddr: dstAddr}}
+	require.NoError(t, server.Close(), "failed to close server connection")
+
+	s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: zap.NewNop()}
+	req := &pb.CreateSRPolicyRequest{SrPolicy: &pb.SRPolicy{PcepSessionAddr: peerAddr.AsSlice(), Color: 100, Type: pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT}}
+	segmentList := []table.Segment{table.NewSegmentSRMPLS(16003)}
+
+	err := sendSRPolicyRequest(s, req, segmentList, netip.MustParseAddr("10.255.0.1"), dstAddr, false)
+	assert.ErrorContains(t, err, "failed to send PC update")
+}
+
+func TestBuildCapability(t *testing.T) {
+	tests := []struct {
+		name string
+		cap  pcep.CapabilityInterface
+		want *pb.Capability
+	}{
+		{
+			name: "stateful",
+			cap: &pcep.StatefulPCECapability{
+				LSPUpdateCapability:        true,
+				IncludeDBVersion:           true,
+				LSPInstantiationCapability: true,
+				TriggeredResync:            true,
+				DeltaLSPSyncCapability:     true,
+				TriggeredInitialSync:       true,
+				ColorCapability:            true,
+			},
+			want: &pb.Capability{
+				Type: pb.CapabilityType_CAPABILITY_TYPE_STATEFUL,
+				Detail: &pb.Capability_Stateful{Stateful: &pb.StatefulCapability{
+					LspUpdate: true, IncludeDbVersion: true, LspInstantiation: true,
+					TriggeredResync: true, DeltaLspSync: true, TriggeredInitialSync: true, Color: true,
+				}},
+			},
+		},
+		{
+			name: "path setup type",
+			cap:  &pcep.PathSetupTypeCapability{PathSetupTypes: pcep.Psts{1, 3}},
+			want: &pb.Capability{
+				Type:   pb.CapabilityType_CAPABILITY_TYPE_PATH_SETUP_TYPE,
+				Detail: &pb.Capability_PathSetupType{PathSetupType: &pb.PathSetupTypeCapability{PathSetupTypes: []uint32{1, 3}}},
+			},
+		},
+		{
+			name: "association type list",
+			cap:  &pcep.AssocTypeList{AssocTypes: []pcep.AssocType{1, 2}},
+			want: &pb.Capability{
+				Type:   pb.CapabilityType_CAPABILITY_TYPE_ASSOC_TYPE_LIST,
+				Detail: &pb.Capability_AssocTypeList{AssocTypeList: &pb.AssocTypeListCapability{AssocTypes: []uint32{1, 2}}},
+			},
+		},
+		{
+			name: "vendor information",
+			cap:  &pcep.VendorInformation{EnterpriseNumber: 9},
+			want: &pb.Capability{
+				Type:   pb.CapabilityType_CAPABILITY_TYPE_VENDOR_INFORMATION,
+				Detail: &pb.Capability_VendorInformation{VendorInformation: &pb.VendorInformationCapability{EnterpriseNumber: 9}},
+			},
+		},
+		{
+			name: "unknown TLV falls back to the unknown capability type",
+			cap:  &pcep.UnknownTLV{Typ: pcep.TLVType(0x9999)},
+			want: &pb.Capability{
+				Type:   pb.CapabilityType_CAPABILITY_TYPE_UNKNOWN,
+				Detail: &pb.Capability_Unknown{Unknown: &pb.UnknownCapability{TlvType: 0x9999}},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, buildCapability(tt.cap))
+		})
+	}
+}
+
+func TestGetTED_Disabled(t *testing.T) {
+	tests := []struct {
+		name string
+		s    *APIServer
+	}{
+		{name: "pce is nil", s: &APIServer{logger: zap.NewNop()}},
+		{name: "TED is nil", s: newTestAPIServer(nil)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp, err := tt.s.GetTED(context.Background(), &pb.GetTEDRequest{})
+			require.NoError(t, err)
+			assert.False(t, resp.GetEnable())
+			assert.Empty(t, resp.GetLsNodes())
+		})
+	}
+}
+
+func TestConvertMetrics_Nil(t *testing.T) {
+	assert.Nil(t, convertMetrics(nil))
+}
+
+func TestGetTED_ConvertsFullNode(t *testing.T) {
+	node := &table.LsNode{
+		ASN:        65000,
+		RouterID:   "0000.0000.0001",
+		IsisAreaID: "49.0001",
+		Hostname:   "pe1",
+		SrgbBegin:  16000,
+		SrgbEnd:    17000,
+	}
+	remote := &table.LsNode{ASN: 65000, RouterID: "0000.0000.0002"}
+
+	link := table.NewLsLink(node, remote)
+	link.LocalIP = netip.MustParseAddr("192.0.2.1")
+	link.RemoteIP = netip.MustParseAddr("192.0.2.2")
+	link.AdjSid = 24001
+	link.Metrics = []*table.Metric{
+		nil,
+		table.NewMetric(table.IGPMetric, 10),
+		table.NewMetric(table.TEMetric, 20),
+	}
+	link.Srv6EndXSID = &table.Srv6EndXSID{
+		EndpointBehavior: table.BehaviorENDX,
+		Sids:             []string{"2001:db8::1", ""},
+		Srv6SIDStructure: table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
+	}
+	node.Links = []*table.LsLink{
+		link,
+		{LocalNode: node, RemoteNode: nil},
+		nil,
+	}
+
+	node.Prefixes = []*table.LsPrefix{
+		{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 0, HasSidIndex: true},
+		{Prefix: netip.MustParsePrefix("10.0.0.0/24")},
+		nil,
+	}
+
+	node.SRv6SIDs = []*table.LsSrv6SID{
+		{
+			Sids:             []string{"2001:db8:1::1", ""},
+			EndpointBehavior: table.EndpointBehavior{Behavior: table.BehaviorEND, Flags: 0x40, Algorithm: 0},
+			SIDStructure:     table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
+			MultiTopoIDs:     []uint32{0, 1},
+		},
+		{Sids: []string{"2001:db8:2::1"}},
+		nil,
+	}
+
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{
+		node.RouterID:   node,
+		remote.RouterID: remote,
+		"ghost":         nil,
+	}}
+
+	s := newTestAPIServer(ted)
+	resp, err := s.GetTED(context.Background(), &pb.GetTEDRequest{})
+	require.NoError(t, err)
+	require.True(t, resp.GetEnable())
+	require.Len(t, resp.GetLsNodes(), 2, "the nil TED entry must not produce a node")
+
+	byRouterID := map[string]*pb.LsNode{}
+	for _, n := range resp.GetLsNodes() {
+		byRouterID[n.GetRouterId()] = n
+	}
+
+	want := &pb.LsNode{
+		Asn:        65000,
+		RouterId:   "0000.0000.0001",
+		IsisAreaId: "49.0001",
+		Hostname:   "pe1",
+		SrgbBegin:  16000,
+		SrgbEnd:    17000,
+		LsLinks: []*pb.LsLink{
+			{
+				LocalRouterId:  "0000.0000.0001",
+				LocalAsn:       65000,
+				LocalIp:        "192.0.2.1",
+				RemoteRouterId: "0000.0000.0002",
+				RemoteAsn:      65000,
+				RemoteIp:       "192.0.2.2",
+				Metrics: []*pb.Metric{
+					{Type: pb.MetricType_METRIC_TYPE_IGP, Value: 10},
+					{Type: pb.MetricType_METRIC_TYPE_TE, Value: 20},
+				},
+				AdjSid: 24001,
+				Srv6EndXSid: &pb.Srv6EndXSID{
+					EndpointBehavior: uint32(table.BehaviorENDX),
+					Sids:             []*pb.SID{{Sid: "2001:db8::1"}},
+					SidStructure:     &pb.SidStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
+				},
+			},
+		},
+		LsPrefixes: []*pb.LsPrefix{
+			{Prefix: "10.0.0.1/32", SidIndex: proto.Uint32(0)},
+			{Prefix: "10.0.0.0/24"},
+		},
+		LsSrv6Sids: []*pb.LsSrv6SID{
+			{
+				Sids:         []*pb.SID{{Sid: "2001:db8:1::1"}},
+				MultiTopoIds: []*pb.MultiTopoID{{MultiTopoId: 0}, {MultiTopoId: 1}},
+				SidStructure: &pb.SidStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
+				EndpointBehavior: &pb.EndpointBehavior{
+					Behavior: uint32(table.BehaviorEND),
+					Flags:    0x40,
+				},
+			},
+			{
+				Sids:         []*pb.SID{{Sid: "2001:db8:2::1"}},
+				MultiTopoIds: []*pb.MultiTopoID{},
+				SidStructure: &pb.SidStructure{},
+			},
+		},
+	}
+	assert.Equal(t, want, byRouterID[node.RouterID])
+	assert.Equal(t, &pb.LsNode{Asn: 65000, RouterId: "0000.0000.0002"}, byRouterID[remote.RouterID])
+}
+
+func TestDeleteSession(t *testing.T) {
+	t.Run("malformed address", func(t *testing.T) {
+		s := &APIServer{pce: &Server{}, logger: zap.NewNop()}
+		_, err := s.DeleteSession(context.Background(), &pb.DeleteSessionRequest{Addr: []byte{1, 2, 3}})
+		assert.ErrorContains(t, err, "invalid address")
+	})
+
+	t.Run("no such session", func(t *testing.T) {
+		s := &APIServer{pce: &Server{}, logger: zap.NewNop()}
+		_, err := s.DeleteSession(context.Background(), &pb.DeleteSessionRequest{Addr: netip.MustParseAddr("10.0.255.1").AsSlice()})
+		assert.ErrorContains(t, err, "no session with address")
+	})
+
+	t.Run("close message send failure", func(t *testing.T) {
+		server, client := newTCPConnPair(t)
+		t.Cleanup(func() {
+			assert.NoError(t, client.Close(), "failed to close client connection")
+		})
+
+		peerAddr := netip.MustParseAddr("10.0.255.1")
+		ss := NewSession(1, peerAddr, server, zap.NewNop(), nil, 0)
+		require.NoError(t, server.Close(), "failed to close server connection")
+
+		s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: zap.NewNop()}
+		resp, err := s.DeleteSession(context.Background(), &pb.DeleteSessionRequest{Addr: peerAddr.AsSlice()})
+		require.Error(t, err)
+		assert.False(t, resp.GetIsSuccess())
+	})
+
+	t.Run("success closes and removes the session", func(t *testing.T) {
+		server, client := newTCPConnPair(t)
+		t.Cleanup(func() {
+			assert.NoError(t, client.Close(), "failed to close client connection")
+		})
+
+		peerAddr := netip.MustParseAddr("10.0.255.1")
+		ss := NewSession(1, peerAddr, server, zap.NewNop(), nil, 0)
+		pce := &Server{sessionList: []*Session{ss}}
+		s := &APIServer{pce: pce, logger: zap.NewNop()}
+
+		resp, err := s.DeleteSession(context.Background(), &pb.DeleteSessionRequest{Addr: peerAddr.AsSlice()})
+		require.NoError(t, err)
+		assert.True(t, resp.GetIsSuccess())
+		assert.Nil(t, pce.SearchSession(peerAddr, false), "expected the session to be removed from the PCE")
+	})
 }

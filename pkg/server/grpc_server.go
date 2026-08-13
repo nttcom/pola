@@ -152,13 +152,10 @@ func newEnrichedSegment(segment *pb.Segment, usidMode bool) (table.Segment, erro
 	if err != nil {
 		return nil, err
 	}
-	switch v := seg.(type) {
-	case table.SegmentSRv6:
+	if v, ok := seg.(table.SegmentSRv6); ok {
 		return enrichSRv6Segment(v, segment, usidMode)
-	case table.SegmentSRMPLS:
-		return enrichSRMPLSSegment(v, segment)
 	}
-	return seg, nil
+	return enrichSRMPLSSegment(seg.(table.SegmentSRMPLS), segment)
 }
 
 func buildSegmentList(s *APIServer, input *pb.CreateSRPolicyRequest, disablePathCompute bool) ([]table.Segment, netip.Addr, netip.Addr, error) {
