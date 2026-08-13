@@ -22,18 +22,31 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	// defaultSRPolicyIntentTTL is the lifetime of an SR Policy intent.
+	defaultSRPolicyIntentTTL = 60 * time.Second
+	// defaultSRPolicyIntentSweepInterval is the sweep interval for expired intents.
+	defaultSRPolicyIntentSweepInterval = 10 * time.Second
+)
+
 type Session struct {
 	sessionID               uint8
 	peerAddr                netip.Addr
 	tcpConn                 *net.TCPConn
+	sendMu                  sync.Mutex
 	stateMu                 sync.RWMutex // guards isSynced and advertisedCapabilities.
 	isSynced                bool
 	srpIDMu                 sync.Mutex   // guards SRP-ID allocation and intent registration.
 	srpIDHead               uint32       // 0x00000000 and 0xFFFFFFFF are reserved.
 	srPoliciesMu            sync.RWMutex // guards srPolicies.
 	srPolicies              []*table.SRPolicy
-	srPolicyIntentsMu       sync.Mutex // guards srPolicyIntents.
+	srPolicyIntentsMu       sync.Mutex
 	srPolicyIntents         map[uint32]srPolicyIntent
+	srPolicyIntentTTL       time.Duration
+	sweepInterval           time.Duration
+	sweepMu                 sync.Mutex
+	sweepStop               chan struct{}
+	sweepDone               chan struct{}
 	logger                  *zap.Logger
 	keepAlive               uint8
 	pccType                 pcep.PccType
@@ -43,11 +56,11 @@ type Session struct {
 	asn                     uint32
 }
 
-// srPolicyIntent stores the candidate-path type and metric because PCEP does
-// not report them after the policy is established.
+// srPolicyIntent stores policy information not reported by PCEP.
 type srPolicyIntent struct {
-	polType table.PolicyType
-	metric  table.MetricType
+	polType   table.PolicyType
+	metric    table.MetricType
+	expiresAt time.Time
 }
 
 // rememberSRPolicyIntent records the intent for an SRP-ID.
@@ -61,7 +74,71 @@ func (ss *Session) rememberSRPolicyIntent(srpID uint32, polType table.PolicyType
 	if ss.srPolicyIntents == nil {
 		ss.srPolicyIntents = make(map[uint32]srPolicyIntent)
 	}
-	ss.srPolicyIntents[srpID] = srPolicyIntent{polType: polType, metric: metric}
+	ss.srPolicyIntents[srpID] = srPolicyIntent{polType: polType, metric: metric, expiresAt: time.Now().Add(ss.srPolicyIntentTTL)}
+}
+
+func (ss *Session) srPolicyIntentExists(srpID uint32) bool {
+	ss.srPolicyIntentsMu.Lock()
+	defer ss.srPolicyIntentsMu.Unlock()
+	_, ok := ss.srPolicyIntents[srpID]
+	return ok
+}
+
+// sweepExpiredSRPolicyIntents removes expired intents.
+func (ss *Session) sweepExpiredSRPolicyIntents() {
+	now := time.Now()
+	ss.srPolicyIntentsMu.Lock()
+	defer ss.srPolicyIntentsMu.Unlock()
+	for srpID, intent := range ss.srPolicyIntents {
+		if now.After(intent.expiresAt) {
+			delete(ss.srPolicyIntents, srpID)
+		}
+	}
+}
+
+// startIntentSweep starts the intent sweeper. It is idempotent.
+func (ss *Session) startIntentSweep() {
+	ss.sweepMu.Lock()
+	defer ss.sweepMu.Unlock()
+
+	if ss.sweepStop != nil {
+		return
+	}
+
+	ss.sweepStop = make(chan struct{})
+	ss.sweepDone = make(chan struct{})
+	go ss.runIntentSweep(ss.sweepStop, ss.sweepDone)
+}
+
+func (ss *Session) runIntentSweep(stop, done chan struct{}) {
+	defer close(done)
+	ticker := time.NewTicker(ss.sweepInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-stop:
+			return
+		case <-ticker.C:
+			ss.sweepExpiredSRPolicyIntents()
+		}
+	}
+}
+
+func (ss *Session) stopIntentSweep() {
+	ss.sweepMu.Lock()
+	if ss.sweepStop == nil {
+		ss.sweepMu.Unlock()
+		return
+	}
+
+	stop := ss.sweepStop
+	done := ss.sweepDone
+	ss.sweepStop = nil
+	ss.sweepDone = nil
+	ss.sweepMu.Unlock()
+
+	close(stop)
+	<-done
 }
 
 // takeSRPolicyIntent returns and removes the intent for srpID.
@@ -96,15 +173,17 @@ func (ss *Session) clearSRPolicyIntents() {
 
 func NewSession(sessionID uint8, peerAddr netip.Addr, tcpConn *net.TCPConn, logger *zap.Logger, ted *table.LsTED, asn uint32) *Session {
 	return &Session{
-		sessionID: sessionID,
-		isSynced:  false,
-		srpIDHead: uint32(1),
-		logger:    logger.With(zap.String("server", "pcep"), zap.String("session", peerAddr.String())),
-		pccType:   pcep.RFCCompliant,
-		peerAddr:  peerAddr,
-		tcpConn:   tcpConn,
-		ted:       ted,
-		asn:       asn,
+		sessionID:         sessionID,
+		isSynced:          false,
+		srpIDHead:         uint32(1),
+		srPolicyIntentTTL: defaultSRPolicyIntentTTL,
+		sweepInterval:     defaultSRPolicyIntentSweepInterval,
+		logger:            logger.With(zap.String("server", "pcep"), zap.String("session", peerAddr.String())),
+		pccType:           pcep.RFCCompliant,
+		peerAddr:          peerAddr,
+		tcpConn:           tcpConn,
+		ted:               ted,
+		asn:               asn,
 	}
 }
 
@@ -120,6 +199,9 @@ func (ss *Session) Established() {
 		ss.logger.Debug("ERROR! Send Keepalive Message", zap.Error(err))
 		return
 	}
+
+	ss.startIntentSweep()
+	defer ss.stopIntentSweep()
 
 	done := make(chan struct{}, 1)
 
@@ -147,15 +229,18 @@ func (ss *Session) Established() {
 	}
 }
 
+// sendPCEPMessage serializes and writes a PCEP message.
 func (ss *Session) sendPCEPMessage(message pcep.Message) error {
 	byteMessage, err := message.Serialize()
 	if err != nil {
 		return err
 	}
-	if _, err = ss.tcpConn.Write(byteMessage); err != nil {
-		return err
-	}
-	return nil
+
+	ss.sendMu.Lock()
+	defer ss.sendMu.Unlock()
+
+	_, err = ss.tcpConn.Write(byteMessage)
+	return err
 }
 
 func (ss *Session) Open() error {
@@ -230,18 +315,11 @@ func (ss *Session) SendClose(reason pcep.CloseReason) error {
 	if err != nil {
 		return err
 	}
-	byteCloseMessage, err := closeMessage.Serialize()
-	if err != nil {
-		return err
-	}
 
 	ss.logger.Debug("Send Close Message",
 		zap.Uint8("reason", uint8(closeMessage.CloseObject.Reason)),
 		zap.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#close-object-reason-field"))
-	if _, err := ss.tcpConn.Write(byteCloseMessage); err != nil {
-		return err
-	}
-	return nil
+	return ss.sendPCEPMessage(closeMessage)
 }
 
 func (ss *Session) ReceivePCEPMessage() error {
@@ -598,21 +676,43 @@ func (ss *Session) SendOpen() error {
 	return ss.sendPCEPMessage(openMessage)
 }
 
-// allocateSRPID allocates a non-reserved SRP-ID and records its intent.
-func (ss *Session) allocateSRPID(polType table.PolicyType, metric table.MetricType) uint32 {
+// nextUnusedSRPID returns an unused SRP-ID, wrapping at max.
+// It returns an error if all non-reserved IDs are in use.
+func nextUnusedSRPID(head, max uint32, used func(uint32) bool) (srpID uint32, nextHead uint32, err error) {
+	capacity := max - 1 // valid range is [1, max-1]; 0 and max are reserved.
+	for attempts := uint32(0); attempts < capacity; attempts++ {
+		if head == 0 || head >= max {
+			head = 1
+		}
+		candidate := head
+		head++
+		if !used(candidate) {
+			return candidate, head, nil
+		}
+	}
+	return 0, head, errors.New("no SRP-ID available: all SRP-IDs are in use")
+}
+
+// allocateSRPID allocates an unused SRP-ID and records its intent.
+// In-use IDs are skipped on wraparound.
+func (ss *Session) allocateSRPID(polType table.PolicyType, metric table.MetricType) (uint32, error) {
 	ss.srpIDMu.Lock()
 	defer ss.srpIDMu.Unlock()
-	if ss.srpIDHead == 0 || ss.srpIDHead == math.MaxUint32 {
-		ss.srpIDHead = 1
+
+	srpID, nextHead, err := nextUnusedSRPID(ss.srpIDHead, math.MaxUint32, ss.srPolicyIntentExists)
+	if err != nil {
+		return 0, err
 	}
-	srpID := ss.srpIDHead
-	ss.srpIDHead++
+	ss.srpIDHead = nextHead
 	ss.rememberSRPolicyIntent(srpID, polType, metric)
-	return srpID
+	return srpID, nil
 }
 
 func (ss *Session) SendPCInitiate(srPolicy table.SRPolicy, lspDelete bool) error {
-	srpID := ss.allocateSRPID(srPolicy.Type, srPolicy.Metric)
+	srpID, err := ss.allocateSRPID(srPolicy.Type, srPolicy.Metric)
+	if err != nil {
+		return err
+	}
 
 	pcinitiateMessage, err := pcep.NewPCInitiateMessage(srpID, srPolicy.Name, lspDelete, srPolicy.PlspID, srPolicy.SegmentList, srPolicy.Color, srPolicy.Preference, srPolicy.SrcAddr, srPolicy.DstAddr, pcep.VendorSpecific(ss.pccType), pcep.OriginatorASN(ss.asn))
 	if err != nil {
@@ -628,7 +728,10 @@ func (ss *Session) SendPCInitiate(srPolicy table.SRPolicy, lspDelete bool) error
 }
 
 func (ss *Session) SendPCUpdate(srPolicy table.SRPolicy) error {
-	srpID := ss.allocateSRPID(srPolicy.Type, srPolicy.Metric)
+	srpID, err := ss.allocateSRPID(srPolicy.Type, srPolicy.Metric)
+	if err != nil {
+		return err
+	}
 
 	pcupdateMessage, err := pcep.NewPCUpdMessage(srpID, srPolicy.Name, srPolicy.PlspID, srPolicy.SegmentList)
 	if err != nil {
@@ -821,6 +924,7 @@ func (ss *Session) SRPolicies() []*table.SRPolicy {
 	policies := make([]*table.SRPolicy, len(ss.srPolicies))
 	for i, p := range ss.srPolicies {
 		clone := *p
+		clone.SegmentList = slices.Clone(p.SegmentList)
 		policies[i] = &clone
 	}
 	return policies

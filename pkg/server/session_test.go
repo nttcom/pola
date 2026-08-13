@@ -6,12 +6,15 @@
 package server
 
 import (
+	"fmt"
+	"io"
 	"math"
 	"net"
 	"net/netip"
 	"reflect"
 	"sync"
 	"testing"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -108,9 +111,31 @@ func TestHandleStateReportWithoutTED(t *testing.T) {
 	}
 }
 
-// A CreateSRPolicy request's type/metric has no PCEP wire representation (RFC 9256
-// §2.4.2), so rememberSRPolicyIntent, keyed by the SRP-ID assigned to the request, is
-// the only way it reaches the eventual PCRpt-created record.
+func TestSRPolicies_SnapshotSegmentListIsIndependent(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	sr := newTestStateReport(t, 1, 0)
+
+	if err := ss.handleStateReport(sr, pcep.NewPCRptMessage()); err != nil {
+		t.Fatalf("handleStateReport returned an error: %v", err)
+	}
+
+	policies := ss.SRPolicies()
+	if len(policies) != 1 || len(policies[0].SegmentList) == 0 {
+		t.Fatalf("expected one SR Policy with a non-empty segment list, got %+v", policies)
+	}
+
+	want := policies[0].SegmentList[0]
+	policies[0].SegmentList[0] = table.NewSegmentSRMPLS(99999)
+
+	got, found := ss.SearchSRPolicy(sr.LSPObject.PlspID)
+	if !found {
+		t.Fatal("SR Policy reported by the PCC was not registered")
+	}
+	if !reflect.DeepEqual(got.SegmentList[0], want) {
+		t.Errorf("mutating the snapshot's SegmentList changed the session's SR Policy: got %v, want %v", got.SegmentList[0], want)
+	}
+}
+
 func TestSRPolicyIntent_AttachedOnCreationBySRPID(t *testing.T) {
 	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
 	sr := newTestStateReport(t, 1, 7)
@@ -401,7 +426,10 @@ func TestAllocateSRPID_SkipsReservedValues(t *testing.T) {
 	ss.srpIDHead = math.MaxUint32 - 1
 
 	for i, want := range []uint32{math.MaxUint32 - 1, 1, 2} {
-		got := ss.allocateSRPID(table.PolicyTypeDynamic, table.TEMetric)
+		got, err := ss.allocateSRPID(table.PolicyTypeDynamic, table.TEMetric)
+		if err != nil {
+			t.Fatalf("allocation %d: unexpected error: %v", i, err)
+		}
 		if got == 0 || got == math.MaxUint32 {
 			t.Fatalf("allocation %d: got reserved SRP-ID %d", i, got)
 		}
@@ -490,5 +518,283 @@ func TestReceiveOpenSeparatesPccAndPolaCapabilities(t *testing.T) {
 	}
 	if receivedCap.LSPUpdateCapability == polaCap.LSPUpdateCapability {
 		t.Error("expected received and advertised StatefulPCECapability to diverge, got identical LSPUpdateCapability")
+	}
+}
+
+func TestSweepExpiredSRPolicyIntents_RemovesExpired(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	ss.srPolicyIntentsMu.Lock()
+	ss.srPolicyIntents = map[uint32]srPolicyIntent{
+		1: {polType: table.PolicyTypeDynamic, metric: table.TEMetric, expiresAt: time.Now().Add(-time.Second)},
+	}
+	ss.srPolicyIntentsMu.Unlock()
+
+	ss.sweepExpiredSRPolicyIntents()
+
+	if _, ok := ss.takeSRPolicyIntent(1); ok {
+		t.Error("expired intent was not removed by the sweeper")
+	}
+}
+
+func TestSweepExpiredSRPolicyIntents_KeepsUnexpired(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	ss.srPolicyIntentsMu.Lock()
+	ss.srPolicyIntents = map[uint32]srPolicyIntent{
+		1: {polType: table.PolicyTypeDynamic, metric: table.TEMetric, expiresAt: time.Now().Add(time.Hour)},
+	}
+	ss.srPolicyIntentsMu.Unlock()
+
+	ss.sweepExpiredSRPolicyIntents()
+
+	if _, ok := ss.takeSRPolicyIntent(1); !ok {
+		t.Error("unexpired intent was removed by the sweeper")
+	}
+}
+
+func TestSweepExpiredSRPolicyIntents_KeepsUnrelatedIntent(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	ss.rememberSRPolicyIntent(1, table.PolicyTypeDynamic, table.TEMetric)
+	ss.rememberSRPolicyIntent(2, table.PolicyTypeExplicit, table.UnspecifiedMetric)
+
+	if _, ok := ss.takeSRPolicyIntent(1); !ok {
+		t.Fatal("expected intent 1 to be present before consuming it")
+	}
+
+	ss.sweepExpiredSRPolicyIntents()
+
+	if _, ok := ss.takeSRPolicyIntent(2); !ok {
+		t.Error("sweep must not remove an unrelated intent still within its TTL")
+	}
+}
+
+func TestIntentSweep_RunsInBackgroundAndStopsCleanly(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	ss.srPolicyIntentTTL = 10 * time.Millisecond
+	ss.sweepInterval = 5 * time.Millisecond
+
+	ss.startIntentSweep()
+	defer ss.stopIntentSweep()
+
+	ss.rememberSRPolicyIntent(1, table.PolicyTypeDynamic, table.TEMetric)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for ss.srPolicyIntentExists(1) {
+		if time.Now().After(deadline) {
+			t.Fatal("intent was not swept in the background within the deadline")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func TestIntentSweep_StopsCleanly(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	ss.startIntentSweep()
+
+	done := make(chan struct{})
+	go func() {
+		ss.stopIntentSweep()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("stopIntentSweep did not return; the sweep goroutine may have leaked")
+	}
+}
+
+func TestIntentSweep_ConcurrentWithIntentConsumption(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	ss.srPolicyIntentTTL = 5 * time.Millisecond
+	ss.sweepInterval = 2 * time.Millisecond
+	ss.startIntentSweep()
+	defer ss.stopIntentSweep()
+
+	var wg sync.WaitGroup
+	for i := uint32(1); i <= 20; i++ {
+		wg.Add(1)
+		go func(srpID uint32) {
+			defer wg.Done()
+			ss.rememberSRPolicyIntent(srpID, table.PolicyTypeDynamic, table.TEMetric)
+			time.Sleep(time.Millisecond)
+			ss.takeSRPolicyIntent(srpID)
+		}(i)
+	}
+	wg.Wait()
+}
+
+func TestNextUnusedSRPID_SkipsUsedAcrossWraparound(t *testing.T) {
+	used := map[uint32]bool{1: true, 2: true, 4: true}
+	got, _, err := nextUnusedSRPID(4, 5, func(id uint32) bool { return used[id] })
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != 3 {
+		t.Errorf("got %d, want 3 (SRP-IDs 4, 1 and 2 are in use and must be skipped)", got)
+	}
+}
+
+func TestNextUnusedSRPID_ErrorsWhenExhausted(t *testing.T) {
+	used := map[uint32]bool{1: true, 2: true, 3: true, 4: true}
+	if _, _, err := nextUnusedSRPID(1, 5, func(id uint32) bool { return used[id] }); err == nil {
+		t.Fatal("expected an error when every non-reserved SRP-ID is in use")
+	}
+}
+
+func TestAllocateSRPID_SkipsInUseIDsOnWraparound(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	ss.srpIDHead = math.MaxUint32 - 1
+
+	// Pre-occupy SRP-ID 1 so the wraparound scan must skip over it.
+	ss.rememberSRPolicyIntent(1, table.PolicyTypeExplicit, table.UnspecifiedMetric)
+
+	got, err := ss.allocateSRPID(table.PolicyTypeDynamic, table.TEMetric)
+	if err != nil || got != math.MaxUint32-1 {
+		t.Fatalf("allocation 1: got (%d, %v), want (%d, nil)", got, err, uint32(math.MaxUint32-1))
+	}
+
+	got, err = ss.allocateSRPID(table.PolicyTypeDynamic, table.TEMetric)
+	if err != nil {
+		t.Fatalf("allocation 2: unexpected error: %v", err)
+	}
+	if got != 2 {
+		t.Errorf("allocation 2: got %d, want 2 (SRP-ID 1 is still in use and must be skipped)", got)
+	}
+	if _, ok := ss.takeSRPolicyIntent(2); !ok {
+		t.Error("allocateSRPID must register an intent for the SRP-ID it returns")
+	}
+}
+
+func TestSendPCEPMessage_ConcurrentSendsDoNotInterleave(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() {
+		if err := client.Close(); err != nil {
+			t.Errorf("failed to close client connection: %v", err)
+		}
+	})
+
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+
+	const goroutines = 40
+
+	readerErr := make(chan error, 1)
+
+	go func() {
+		receivedCount := 0
+		for receivedCount < goroutines {
+			headerBytes := make([]byte, pcep.CommonHeaderLength)
+			if _, err := io.ReadFull(client, headerBytes); err != nil {
+				readerErr <- err
+				return
+			}
+
+			var header pcep.CommonHeader
+			if err := header.DecodeFromBytes(headerBytes); err != nil {
+				readerErr <- fmt.Errorf(
+					"failed to decode a PCEP common header; sends may have interleaved: %w",
+					err,
+				)
+				return
+			}
+
+			bodyLen := int(header.MessageLength) - int(pcep.CommonHeaderLength)
+			if bodyLen > 0 {
+				if _, err := io.ReadFull(client, make([]byte, bodyLen)); err != nil {
+					readerErr <- err
+					return
+				}
+			}
+
+			receivedCount++
+		}
+
+		readerErr <- nil
+	}()
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+
+			switch i % 5 {
+			case 0:
+				errCh <- ss.SendKeepalive()
+			case 1:
+				errCh <- ss.SendOpen()
+			case 2:
+				errCh <- ss.SendClose(pcep.CloseReasonNoExplanationProvided)
+			case 3:
+				errCh <- ss.SendPCUpdate(table.SRPolicy{
+					Name:    "concurrent-send-test",
+					SrcAddr: netip.MustParseAddr("10.255.0.1"),
+					DstAddr: netip.MustParseAddr("10.255.0.2"),
+					Type:    table.PolicyTypeDynamic,
+					Metric:  table.TEMetric,
+				})
+			default:
+				errCh <- ss.RequestSRPolicyCreated(table.SRPolicy{
+					Name:    "concurrent-send-test",
+					SrcAddr: netip.MustParseAddr("10.255.0.1"),
+					DstAddr: netip.MustParseAddr("10.255.0.2"),
+					Color:   uint32(i),
+					Type:    table.PolicyTypeDynamic,
+					Metric:  table.TEMetric,
+				})
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		if err != nil {
+			t.Errorf("send returned an error: %v", err)
+		}
+	}
+
+	select {
+	case err := <-readerErr:
+		if err != nil {
+			t.Fatalf("reader failed: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("did not observe all messages on the wire; sends may have interleaved and corrupted framing")
+	}
+}
+
+func TestSendPCEPMessage_UnlocksAfterSendFailure(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() {
+		if err := client.Close(); err != nil {
+			t.Errorf("failed to close client connection: %v", err)
+		}
+	})
+
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+
+	if err := server.Close(); err != nil {
+		t.Fatalf("failed to close server connection: %v", err)
+	}
+
+	if err := ss.SendKeepalive(); err == nil {
+		t.Fatal("expected SendKeepalive to fail once the connection is closed")
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- ss.SendKeepalive()
+	}()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected second SendKeepalive to fail")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("second SendKeepalive blocked; send mutex may not have been released")
 	}
 }
