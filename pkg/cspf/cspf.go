@@ -30,6 +30,9 @@ func newNode(id string, cost uint32, nodeSeg table.Segment) *node {
 }
 
 func CSPF(srcRouterID string, dstRouterID string, metric table.MetricType, ted *table.LsTED) ([]table.Segment, error) {
+	if ted == nil {
+		return nil, errors.New("ted is nil")
+	}
 	network := ted.Nodes
 	// TODO: update network information according to constraints
 	segmentList, err := spf(srcRouterID, dstRouterID, metric, network)
@@ -47,10 +50,21 @@ func CSPFWithLooseSourceRouting(
 	metric table.MetricType,
 	ted *table.LsTED,
 ) ([]table.Segment, error) {
+	if ted == nil {
+		return nil, errors.New("ted is nil")
+	}
+
+	// Validate waypoints before computing any section.
+	for _, wp := range waypoints {
+		if _, ok := nodeInTED(ted.Nodes, wp.RouterID); !ok {
+			return nil, fmt.Errorf("waypoint router %s not found in TED", wp.RouterID)
+		}
+	}
+
 	fullList := []table.Segment{}
 	prev := src
 
-	// Append destination as a pseudo-waypoint without mutating the input slice
+	// Append the destination without modifying the input slice.
 	allWaypoints := append(append([]table.Waypoint{}, waypoints...), table.Waypoint{RouterID: dst})
 
 	for _, wp := range allWaypoints {
@@ -78,7 +92,7 @@ func buildSectionSegments(prev string, wp table.Waypoint, metric table.MetricTyp
 	sectionSegs = removeDuplicateFirst(fullList, sectionSegs)
 
 	// Lookup the node from TED
-	node, ok := ted.Nodes[wp.RouterID]
+	node, ok := nodeInTED(ted.Nodes, wp.RouterID)
 	if !ok {
 		return nil, nil, fmt.Errorf("waypoint router %s not found in TED", wp.RouterID)
 	}
@@ -126,6 +140,10 @@ func spf(srcRouterID string, dstRouterID string, metricType table.MetricType, ne
 		return nil, err
 	}
 
+	if _, ok := nodeInTED(network, dstRouterID); !ok {
+		return nil, fmt.Errorf("destination router %s not found in TED", dstRouterID)
+	}
+
 	// Keep calculating the shortest path until the destination node is reached.
 	for {
 		calcNodeID, err := nextNode(calculatingNodes)
@@ -146,9 +164,22 @@ func spf(srcRouterID string, dstRouterID string, metricType table.MetricType, ne
 	return buildSegmentListFromPath(srcRouterID, dstRouterID, calculatingNodes), nil
 }
 
+// nodeInTED returns the node for routerID if it exists and is non-nil.
+func nodeInTED(network map[string]*table.LsNode, routerID string) (*table.LsNode, bool) {
+	node, ok := network[routerID]
+	if !ok || node == nil {
+		return nil, false
+	}
+	return node, true
+}
+
 // initNodeMap initializes the map of nodes used for SPF calculation.
 func initNodeMap(srcRouterID string, network map[string]*table.LsNode) (map[string]*node, error) {
-	startNodeSeg, err := network[srcRouterID].NodeSegment()
+	srcNode, ok := nodeInTED(network, srcRouterID)
+	if !ok {
+		return nil, fmt.Errorf("source router %s not found in TED", srcRouterID)
+	}
+	startNodeSeg, err := srcNode.NodeSegment()
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +190,19 @@ func initNodeMap(srcRouterID string, network map[string]*table.LsNode) (map[stri
 
 // updateNeighborCosts updates costs for neighbors of the given node in SPF calculation.
 func updateNeighborCosts(calcNodeID string, calculatingNodes map[string]*node, network map[string]*table.LsNode, metricType table.MetricType) error {
-	for _, link := range network[calcNodeID].Links {
+	calcNode, ok := nodeInTED(network, calcNodeID)
+	if !ok {
+		return fmt.Errorf("router %s not found in TED", calcNodeID)
+	}
+
+	for _, link := range calcNode.Links {
+		if link == nil || link.RemoteNode == nil {
+			continue
+		}
+		if _, ok := nodeInTED(network, link.RemoteNode.RouterID); !ok {
+			continue
+		}
+
 		metric, err := link.Metric(metricType)
 		if err != nil {
 			return err
