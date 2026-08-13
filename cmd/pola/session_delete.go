@@ -14,19 +14,19 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newSessionDelCmd() *cobra.Command {
+func newSessionDeleteCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:          "del",
+		Use:          "delete",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) < 1 {
-				return fmt.Errorf("requires session address\nUsage: pola session del [session address]")
+				return fmt.Errorf("requires session address\nUsage: pola session delete [session address]")
 			}
 			ssAddr, err := netip.ParseAddr(args[0])
 			if err != nil {
-				return fmt.Errorf("invalid input\nUsage: pola session del [session address]")
+				return fmt.Errorf("invalid input\nUsage: pola session delete [session address]")
 			}
-			if err := delSession(ssAddr, jsonFmt); err != nil {
+			if err := deleteSession(ssAddr, jsonFmt); err != nil {
 				return err
 			}
 			return nil
@@ -34,7 +34,7 @@ func newSessionDelCmd() *cobra.Command {
 	}
 }
 
-func delSession(session netip.Addr, jsonFlag bool) error {
+func deleteSession(session netip.Addr, jsonFlag bool) error {
 	request := &pb.DeleteSessionRequest{
 		Addr: session.AsSlice(),
 	}
