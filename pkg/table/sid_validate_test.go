@@ -262,6 +262,79 @@ func TestSIDIndexHas_USID(t *testing.T) {
 	})
 }
 
+func TestMissingSegmentString(t *testing.T) {
+	m := MissingSegment{Hop: 2, SID: "16099"}
+	assert.Equal(t, "hop 2 (16099)", m.String())
+}
+
+func TestNewSIDIndex_SkipsNilNode(t *testing.T) {
+	ted := &LsTED{Nodes: map[string]*LsNode{"0000.0000.0001": nil}}
+	idx := NewSIDIndex(ted)
+	assert.False(t, idx.Has(NewSegmentSRMPLS(16003)), "expected no panic and no match when a map entry is nil")
+}
+
+func TestSIDIndexAddLinkSIDs_SkipsNilLink(t *testing.T) {
+	node := &LsNode{
+		RouterID: "0000.0000.0001",
+		Links:    []*LsLink{nil, {AdjSid: 24001}},
+	}
+	idx := NewSIDIndex(newTestTED(node))
+	assert.True(t, idx.Has(NewSegmentSRMPLS(24001)), "expected the adj SID after the nil link to still be registered")
+}
+
+func TestSIDIndexHas_UnknownSegmentType(t *testing.T) {
+	idx := NewSIDIndex(newTestTED())
+	assert.False(t, idx.Has(fakeUnknownSegment{}))
+}
+
+func TestSIDIndexAddSRv6_EdgeCases(t *testing.T) {
+	t.Run("non-IPv6 SID is not registered", func(t *testing.T) {
+		node := &LsNode{
+			RouterID: "0000.0000.0001",
+			SRv6SIDs: []*LsSrv6SID{{Sids: []string{"10.0.0.1"}}},
+		}
+		idx := NewSIDIndex(newTestTED(node))
+		assert.False(t, idx.Has(NewSegmentSRv6(netip.MustParseAddr("10.0.0.1"))), "expected an IPv4 address advertised as an SRv6 SID to be ignored")
+	})
+
+	t.Run("unparsable SID is not registered", func(t *testing.T) {
+		node := &LsNode{
+			RouterID: "0000.0000.0001",
+			SRv6SIDs: []*LsSrv6SID{{Sids: []string{"not-an-address"}}},
+		}
+		idx := NewSIDIndex(newTestTED(node))
+		assert.False(t, idx.Has(NewSegmentSRv6(netip.MustParseAddr("2001:db8::1"))))
+	})
+
+	t.Run("zero locator length still registers the exact SID but skips the locator", func(t *testing.T) {
+		sid := netip.MustParseAddr("fc00:0:1::")
+		node := &LsNode{
+			RouterID: "0000.0000.0001",
+			SRv6SIDs: []*LsSrv6SID{{Sids: []string{sid.String()}, SIDStructure: SIDStructure{}}},
+		}
+		idx := NewSIDIndex(newTestTED(node))
+		assert.True(t, idx.Has(NewSegmentSRv6(sid)), "expected exact match regardless of locator length")
+
+		other := NewSegmentSRv6(netip.MustParseAddr("fc00:0:1::1234"))
+		other.USid = true
+		assert.False(t, idx.Has(other), "expected no locator fallback registered when LocalBlock+LocalNode is 0")
+	})
+
+	t.Run("locator length beyond 128 bits is not registered", func(t *testing.T) {
+		sid := netip.MustParseAddr("fc00:0:1::")
+		node := &LsNode{
+			RouterID: "0000.0000.0001",
+			SRv6SIDs: []*LsSrv6SID{{Sids: []string{sid.String()}, SIDStructure: SIDStructure{LocalBlock: 200, LocalNode: 200}}},
+		}
+		idx := NewSIDIndex(newTestTED(node))
+		assert.True(t, idx.Has(NewSegmentSRv6(sid)), "expected exact match regardless of locator length")
+
+		other := NewSegmentSRv6(netip.MustParseAddr("fc00:0:1::1234"))
+		other.USid = true
+		assert.False(t, idx.Has(other), "expected no locator fallback registered when LocalBlock+LocalNode exceeds 128 bits")
+	})
+}
+
 func TestSIDIndexHas_EmptyTED(t *testing.T) {
 	tests := []struct {
 		name string
@@ -435,6 +508,11 @@ func TestHasMixedSegmentTypes(t *testing.T) {
 		{
 			name: "SR-MPLS with unknown family",
 			segs: []Segment{NewSegmentSRMPLS(16001), fakeUnknownSegment{}},
+			want: false,
+		},
+		{
+			name: "nil segment does not count toward either family",
+			segs: []Segment{nil, NewSegmentSRMPLS(16001)},
 			want: false,
 		},
 		{

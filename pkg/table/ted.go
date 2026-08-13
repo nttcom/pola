@@ -183,10 +183,7 @@ func (n *LsNode) NodeSegment() (Segment, error) {
 	for _, prefix := range n.Prefixes {
 		if prefix.HasPrefixSID() {
 			sid := strconv.Itoa(int(n.SrgbBegin + prefix.SidIndex))
-			seg, err := NewSegment(sid)
-			if err != nil {
-				return nil, err
-			}
+			seg, _ := NewSegment(sid)
 			return seg, nil
 		}
 	}
@@ -197,10 +194,7 @@ func (n *LsNode) NodeSegment() (Segment, error) {
 			if err != nil {
 				return nil, err
 			}
-			seg, err := NewSegmentSRv6WithNodeInfo(addr, n)
-			if err != nil {
-				return nil, err
-			}
+			seg, _ := NewSegmentSRv6WithNodeInfo(addr, n)
 			return seg, nil
 		}
 	}
