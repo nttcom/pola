@@ -1087,145 +1087,187 @@ func startTestGoBGPServer(t *testing.T, server *testGoBGPServer) (string, string
 }
 
 func TestMonitorBGPLsEvents(t *testing.T) {
-	t.Run("returns immediately when the gRPC client cannot be created", func(t *testing.T) {
-		core, logs := observer.New(zap.ErrorLevel)
-		tedChan := make(chan []table.TEDElem, 1)
-		done := make(chan struct{})
+	t.Run("returns immediately when the gRPC client cannot be created", testMonitorBGPLsEventsUnusableAddress)
+	t.Run("syncs the TED and processes watch events until the stream ends", testMonitorBGPLsEventsUntilStreamEnds)
+	t.Run("returns when the caller's context is canceled", testMonitorBGPLsEventsContextCanceled)
+	t.Run("triggers a debounced fetch and delivers the refreshed TED", testMonitorBGPLsEventsDebouncedFetch)
+	t.Run("re-establishes the watch stream after a receive error", testMonitorBGPLsEventsReestablishesStream)
+}
 
-		go func() {
-			MonitorBGPLsEvents("\x00", "50051", tedChan, zap.New(core))
-			close(done)
-		}()
+func testMonitorBGPLsEventsUnusableAddress(t *testing.T) {
+	core, logs := observer.New(zap.ErrorLevel)
+	tedChan := make(chan []table.TEDElem, 1)
+	done := make(chan struct{})
 
-		select {
-		case <-done:
-		case <-time.After(time.Second):
-			t.Fatal("MonitorBGPLsEvents did not return for an unusable server address")
-		}
-		require.Equal(t, 1, logs.Len())
-		assert.Equal(t, "failed to create gRPC client", logs.All()[0].Message)
+	go func() {
+		MonitorBGPLsEvents(context.Background(), "\x00", "50051", tedChan, zap.New(core))
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("MonitorBGPLsEvents did not return for an unusable server address")
+	}
+	require.Equal(t, 1, logs.Len())
+	assert.Equal(t, "failed to create gRPC client", logs.All()[0].Message)
+}
+
+func testMonitorBGPLsEventsUntilStreamEnds(t *testing.T) {
+	host, port := startTestGoBGPServer(t, &testGoBGPServer{
+		listPathResp: []*api.ListPathResponse{
+			{Destination: testNodeDestination(t, 65000, "0000.0000.0001", "r1")},
+		},
+		watchEvents: []*api.WatchEventResponse{
+			{},
+			{Event: &api.WatchEventResponse_Table{Table: &api.WatchEventResponse_TableEvent{}}},
+		},
 	})
 
-	t.Run("syncs the TED and processes watch events until the stream ends", func(t *testing.T) {
-		host, port := startTestGoBGPServer(t, &testGoBGPServer{
-			listPathResp: []*api.ListPathResponse{
-				{Destination: testNodeDestination(t, 65000, "0000.0000.0001", "r1")},
-			},
-			watchEvents: []*api.WatchEventResponse{
-				{},
-				{Event: &api.WatchEventResponse_Table{Table: &api.WatchEventResponse_TableEvent{}}},
-			},
+	tedChan := make(chan []table.TEDElem, 2)
+	done := make(chan struct{})
+
+	go func() {
+		MonitorBGPLsEvents(context.Background(), host, port, tedChan, zap.NewNop())
+		close(done)
+	}()
+
+	select {
+	case got := <-tedChan:
+		assert.Len(t, got, 1) // initial TED sync
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for the initial TED sync")
+	}
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("MonitorBGPLsEvents did not return after the watch stream ended")
+	}
+}
+
+func testMonitorBGPLsEventsContextCanceled(t *testing.T) {
+	host, port := startTestGoBGPServer(t, &testGoBGPServer{
+		listPathResp: []*api.ListPathResponse{
+			{Destination: testNodeDestination(t, 65000, "0000.0000.0001", "r1")},
+		},
+		watchEventHold: 5 * time.Second, // keep the stream open until cancellation
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	tedChan := make(chan []table.TEDElem, 1)
+	done := make(chan struct{})
+
+	go func() {
+		MonitorBGPLsEvents(ctx, host, port, tedChan, zap.NewNop())
+		close(done)
+	}()
+
+	select {
+	case <-tedChan:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for the initial TED sync")
+	}
+
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("MonitorBGPLsEvents did not return after the caller's context was canceled")
+	}
+}
+
+func testMonitorBGPLsEventsDebouncedFetch(t *testing.T) {
+	server := &testGoBGPServer{
+		listPathResp: []*api.ListPathResponse{
+			{Destination: testNodeDestination(t, 65000, "0000.0000.0001", "r1")},
+		},
+		watchEvents: []*api.WatchEventResponse{
+			{Event: &api.WatchEventResponse_Table{Table: &api.WatchEventResponse_TableEvent{}}},
+		},
+		watchEventHold: 200 * time.Millisecond,
+	}
+	host, port := startTestGoBGPServer(t, server)
+
+	tedChan := make(chan []table.TEDElem, 2)
+	done := make(chan struct{})
+
+	go func() {
+		monitorBGPLsEvents(context.Background(), host, port, tedChan, zap.NewNop(), monitorOptions{
+			debounceCooldown: 20 * time.Millisecond,
+			retryInterval:    10 * time.Millisecond,
 		})
+		close(done)
+	}()
 
-		tedChan := make(chan []table.TEDElem, 2)
-		done := make(chan struct{})
+	select {
+	case got := <-tedChan:
+		assert.Len(t, got, 1)
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for the initial TED sync")
+	}
 
-		go func() {
-			MonitorBGPLsEvents(host, port, tedChan, zap.NewNop())
-			close(done)
-		}()
+	select {
+	case got := <-tedChan:
+		assert.Len(t, got, 1)
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for the debounced fetch to deliver")
+	}
+	assert.GreaterOrEqual(t, atomic.LoadInt32(&server.listPathCalls), int32(2))
 
-		select {
-		case got := <-tedChan:
-			assert.Len(t, got, 1) // initial TED sync
-		case <-time.After(5 * time.Second):
-			t.Fatal("timed out waiting for the initial TED sync")
-		}
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("monitorBGPLsEvents did not return after the watch stream ended")
+	}
+}
 
-		select {
-		case <-done:
-		case <-time.After(5 * time.Second):
-			t.Fatal("MonitorBGPLsEvents did not return after the watch stream ended")
-		}
-	})
+func testMonitorBGPLsEventsReestablishesStream(t *testing.T) {
+	server := &testGoBGPServer{
+		listPathResp: []*api.ListPathResponse{
+			{Destination: testNodeDestination(t, 65000, "0000.0000.0001", "r1")},
+		},
+		watchEvents: []*api.WatchEventResponse{
+			{Event: &api.WatchEventResponse_Table{Table: &api.WatchEventResponse_TableEvent{}}},
+		},
+		watchEventErrs: []error{status.Error(codes.Unavailable, "watch stream broken")},
+		watchEventHold: 200 * time.Millisecond,
+	}
+	host, port := startTestGoBGPServer(t, server)
 
-	t.Run("triggers a debounced fetch and delivers the refreshed TED", func(t *testing.T) {
-		server := &testGoBGPServer{
-			listPathResp: []*api.ListPathResponse{
-				{Destination: testNodeDestination(t, 65000, "0000.0000.0001", "r1")},
-			},
-			watchEvents: []*api.WatchEventResponse{
-				{Event: &api.WatchEventResponse_Table{Table: &api.WatchEventResponse_TableEvent{}}},
-			},
-			watchEventHold: 200 * time.Millisecond, // stays well above the debounce cooldown below
-		}
-		host, port := startTestGoBGPServer(t, server)
+	core, logs := observer.New(zap.ErrorLevel)
+	tedChan := make(chan []table.TEDElem, 2)
+	done := make(chan struct{})
 
-		tedChan := make(chan []table.TEDElem, 2)
-		done := make(chan struct{})
+	go func() {
+		monitorBGPLsEvents(context.Background(), host, port, tedChan, zap.New(core), monitorOptions{
+			debounceCooldown: 20 * time.Millisecond,
+			retryInterval:    10 * time.Millisecond,
+		})
+		close(done)
+	}()
 
-		go func() {
-			monitorBGPLsEvents(host, port, tedChan, zap.NewNop(), 20*time.Millisecond, 10*time.Millisecond)
-			close(done)
-		}()
+	select {
+	case got := <-tedChan:
+		assert.Len(t, got, 1)
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for the initial TED sync")
+	}
 
-		select {
-		case got := <-tedChan:
-			assert.Len(t, got, 1) // initial TED sync
-		case <-time.After(5 * time.Second):
-			t.Fatal("timed out waiting for the initial TED sync")
-		}
+	select {
+	case got := <-tedChan:
+		assert.Len(t, got, 1)
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for the re-established stream to deliver")
+	}
+	assert.EqualValues(t, 2, atomic.LoadInt32(&server.watchEventCalls))
+	require.GreaterOrEqual(t, logs.Len(), 1)
+	assert.Equal(t, "error receiving BGP-LS event", logs.All()[0].Message)
 
-		select {
-		case got := <-tedChan:
-			assert.Len(t, got, 1) // debounced fetch triggered by the table event
-		case <-time.After(5 * time.Second):
-			t.Fatal("timed out waiting for the debounced fetch to deliver")
-		}
-		assert.GreaterOrEqual(t, atomic.LoadInt32(&server.listPathCalls), int32(2))
-
-		select {
-		case <-done:
-		case <-time.After(5 * time.Second):
-			t.Fatal("monitorBGPLsEvents did not return after the watch stream ended")
-		}
-	})
-
-	t.Run("re-establishes the watch stream after a receive error", func(t *testing.T) {
-		server := &testGoBGPServer{
-			listPathResp: []*api.ListPathResponse{
-				{Destination: testNodeDestination(t, 65000, "0000.0000.0001", "r1")},
-			},
-			watchEvents: []*api.WatchEventResponse{
-				{Event: &api.WatchEventResponse_Table{Table: &api.WatchEventResponse_TableEvent{}}},
-			},
-			watchEventErrs: []error{status.Error(codes.Unavailable, "watch stream broken")},
-			watchEventHold: 200 * time.Millisecond,
-		}
-		host, port := startTestGoBGPServer(t, server)
-
-		core, logs := observer.New(zap.ErrorLevel)
-		tedChan := make(chan []table.TEDElem, 2)
-		done := make(chan struct{})
-
-		go func() {
-			monitorBGPLsEvents(host, port, tedChan, zap.New(core), 20*time.Millisecond, 10*time.Millisecond)
-			close(done)
-		}()
-
-		select {
-		case got := <-tedChan:
-			assert.Len(t, got, 1) // initial TED sync
-		case <-time.After(5 * time.Second):
-			t.Fatal("timed out waiting for the initial TED sync")
-		}
-
-		// The second stream carries the table event, so a delivery here proves the
-		// stream was re-established after the first one failed.
-		select {
-		case got := <-tedChan:
-			assert.Len(t, got, 1)
-		case <-time.After(5 * time.Second):
-			t.Fatal("timed out waiting for the re-established stream to deliver")
-		}
-		assert.EqualValues(t, 2, atomic.LoadInt32(&server.watchEventCalls))
-		require.GreaterOrEqual(t, logs.Len(), 1)
-		assert.Equal(t, "error receiving BGP-LS event", logs.All()[0].Message)
-
-		select {
-		case <-done:
-		case <-time.After(5 * time.Second):
-			t.Fatal("monitorBGPLsEvents did not return after the watch stream ended")
-		}
-	})
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("monitorBGPLsEvents did not return after the watch stream ended")
+	}
 }

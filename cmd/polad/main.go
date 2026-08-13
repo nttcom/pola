@@ -6,6 +6,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -83,7 +84,7 @@ func main() {
 	if c.Global.TED.Enable {
 		switch c.Global.TED.Source {
 		case "gobgp":
-			tedElemsChan = startGoBGPUpdate(&c, logger)
+			tedElemsChan = startGoBGPUpdate(context.Background(), &c, logger)
 			if tedElemsChan == nil {
 				logger.Panic("GoBGP update channel is nil")
 				log.Panic("GoBGP update channel is nil")
@@ -110,7 +111,7 @@ func main() {
 	}
 }
 
-func startGoBGPUpdate(c *config.Config, logger *zap.Logger) chan []table.TEDElem {
+func startGoBGPUpdate(ctx context.Context, c *config.Config, logger *zap.Logger) chan []table.TEDElem {
 	if c.Global.TED == nil {
 		logger.Error("TED does not exist")
 		return nil
@@ -118,6 +119,7 @@ func startGoBGPUpdate(c *config.Config, logger *zap.Logger) chan []table.TEDElem
 	tedElemsChan := make(chan []table.TEDElem)
 
 	go gobgp.MonitorBGPLsEvents(
+		ctx,
 		c.Global.GoBGP.GRPCClient.Address,
 		c.Global.GoBGP.GRPCClient.Port,
 		tedElemsChan,
