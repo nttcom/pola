@@ -50,6 +50,7 @@ and a PCEP Library in Go.
   * [SRv6 Explicit Path L3VPN](examples/containerlab/srv6-explicit-path-l3vpn)
   * [SRv6 uSID Dynamic Path](examples/containerlab/srv6-usid-dynamic-path)
   * [SRv6 uSID Loose Source Routing SFC](examples/containerlab/srv6-usid-dynamic-path-loose-source-routing-sfc)
+* [Go gRPC API Examples](examples/grpc/go) (for building your own controller)
 
 ## Contributing
 

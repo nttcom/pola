@@ -53,7 +53,10 @@ message SRPolicy {
 
 message CreateSRPolicyRequest {
   SRPolicy sr_policy = 1;
+
+  // Not required when disable_path_compute is true.
   uint32 asn = 2;
+
   reserved 3;
   reserved "sid_validate";
 
