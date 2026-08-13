@@ -54,7 +54,27 @@ func main() {
 		}
 		fmt.Printf("sessionAddr(%d): %v\n", i, addr)
 		fmt.Printf("  state: %s\n", ss.GetState())
-		fmt.Printf("  capabilities: %s\n", strings.Join(ss.GetCaps(), ", "))
+		fmt.Printf("  capabilities: %s\n", strings.Join(capStrings(ss.GetCapabilities()), ", "))
 		fmt.Printf("  isSynced: %t\n", ss.GetIsSynced())
+	}
+}
+
+func capStrings(capabilities []*pb.Capability) []string {
+	var caps []string
+	for _, c := range capabilities {
+		caps = append(caps, capString(c))
+	}
+	return caps
+}
+
+func capString(c *pb.Capability) string {
+	typ := strings.TrimPrefix(c.GetType().String(), "CAPABILITY_TYPE_")
+	switch detail := c.GetDetail().(type) {
+	case *pb.Capability_Sr:
+		return fmt.Sprintf("%s(msd=%d, unlimitedMsd=%t, naiSupported=%t)", typ, detail.Sr.GetMsd(), detail.Sr.GetUnlimitedMsd(), detail.Sr.GetNaiSupported())
+	case *pb.Capability_LspDbVersion:
+		return fmt.Sprintf("%s(versionNumber=%d)", typ, detail.LspDbVersion.GetVersionNumber())
+	default:
+		return typ
 	}
 }

@@ -6,6 +6,7 @@
 package table
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -112,7 +113,7 @@ func printLink(link *LsLink) {
 			if metric == nil {
 				continue
 			}
-			fmt.Printf("        %s: %d\n", metric.Type.String(), metric.Value)
+			fmt.Printf("        %s: %d\n", metric.Type.DisplayString(), metric.Value)
 		}
 	}
 
@@ -393,7 +394,10 @@ func NewMetric(metricType MetricType, value uint32) *Metric {
 type MetricType int
 
 const (
-	IGPMetric MetricType = iota
+	// UnspecifiedMetric is the zero value: no optimization metric applies (e.g. an
+	// explicit SR Policy candidate path, which by definition has no objective function).
+	UnspecifiedMetric MetricType = iota
+	IGPMetric
 	TEMetric
 	DelayMetric
 	HopcountMetric
@@ -412,6 +416,29 @@ func (m MetricType) String() string {
 	default:
 		return "METRIC_TYPE_UNSPECIFIED"
 	}
+}
+
+// DisplayString renders the metric as a short lowercase token (e.g. "igp"), used
+// for human-facing CLI output (unlike String()'s "METRIC_TYPE_..." form).
+func (m MetricType) DisplayString() string {
+	switch m {
+	case IGPMetric:
+		return "igp"
+	case TEMetric:
+		return "te"
+	case DelayMetric:
+		return "delay"
+	case HopcountMetric:
+		return "hopcount"
+	default:
+		return ""
+	}
+}
+
+// MarshalJSON renders the metric as a short lowercase token (e.g. "igp"), consistent
+// with the other lowercase enum-like fields on SRPolicy (e.g. State).
+func (m MetricType) MarshalJSON() ([]byte, error) {
+	return json.Marshal(m.DisplayString())
 }
 
 type Srv6EndXSID struct {

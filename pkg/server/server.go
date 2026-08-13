@@ -11,7 +11,9 @@ import (
 	"math"
 	"net"
 	"net/netip"
+	"slices"
 	"strconv"
+	"sync"
 
 	"go.uber.org/zap"
 	grpc "google.golang.org/grpc"
@@ -20,10 +22,25 @@ import (
 )
 
 type Server struct {
+	sessionMu   sync.RWMutex // guards sessionList; written from the PCEP accept/close goroutines, read from gRPC handler goroutines.
 	sessionList []*Session
+	tedMu       sync.RWMutex // guards ted; written from the TED-update goroutine, read from gRPC handler goroutines.
 	ted         *table.LsTED
 	logger      *zap.Logger
 	asn         uint32
+}
+
+// TED returns the current TED snapshot. Safe for concurrent use with setTED.
+func (s *Server) TED() *table.LsTED {
+	s.tedMu.RLock()
+	defer s.tedMu.RUnlock()
+	return s.ted
+}
+
+func (s *Server) setTED(ted *table.LsTED) {
+	s.tedMu.Lock()
+	defer s.tedMu.Unlock()
+	s.ted = ted
 }
 
 type PCEOptions struct {
@@ -42,9 +59,9 @@ func NewPCE(o *PCEOptions, logger *zap.Logger, tedElemsChan chan []table.TEDElem
 		asn:    o.ASN,
 	}
 	if o.TEDEnable {
-		s.ted = &table.LsTED{
+		s.setTED(&table.LsTED{
 			Nodes: map[string]*table.LsNode{},
-		}
+		})
 
 		// Update TED
 		go func() {
@@ -54,7 +71,7 @@ func NewPCE(o *PCEOptions, logger *zap.Logger, tedElemsChan chan []table.TEDElem
 					Nodes: map[string]*table.LsNode{},
 				}
 				ted.Update(tedElems, o.ASN)
-				s.ted = ted
+				s.setTED(ted)
 				logger.Debug("Update TED")
 			}
 		}()
@@ -121,10 +138,12 @@ func (s *Server) Serve(address string, port string, usidMode bool) error {
 		if err != nil {
 			return fmt.Errorf("failed to parse remote address %s: %w", tcpConn.RemoteAddr().String(), err)
 		}
-		ss := NewSession(sessionID, peerAddrPort.Addr(), tcpConn, s.logger, s.ted, s.asn)
+		ss := NewSession(sessionID, peerAddrPort.Addr(), tcpConn, s.logger, s.TED(), s.asn)
 		ss.logger.Info("start PCEP session")
 
+		s.sessionMu.Lock()
 		s.sessionList = append(s.sessionList, ss)
+		s.sessionMu.Unlock()
 		go func() {
 			ss.Established()
 			s.closeSession(ss)
@@ -138,8 +157,10 @@ func (s *Server) closeSession(session *Session) {
 	if err := session.tcpConn.Close(); err != nil {
 		s.logger.Warn("failed to close TCP connection", zap.Error(err))
 	}
+	session.clearSRPolicyIntents()
 
 	// Remove Session List
+	s.sessionMu.Lock()
 	for i, v := range s.sessionList {
 		if v.sessionID == session.sessionID {
 			s.sessionList[i] = s.sessionList[len(s.sessionList)-1]
@@ -147,14 +168,17 @@ func (s *Server) closeSession(session *Session) {
 			break
 		}
 	}
+	s.sessionMu.Unlock()
 }
 
 // SearchSession returns a struct pointer of (Synced) session.
 // If not exist, return nil
 func (s *Server) SearchSession(peerAddr netip.Addr, onlySynced bool) *Session {
+	s.sessionMu.RLock()
+	defer s.sessionMu.RUnlock()
 	for _, pcepSession := range s.sessionList {
 		if pcepSession.peerAddr == peerAddr {
-			if !onlySynced || pcepSession.isSynced {
+			if !onlySynced || pcepSession.IsSynced() {
 				return pcepSession
 			}
 		}
@@ -162,12 +186,23 @@ func (s *Server) SearchSession(peerAddr netip.Addr, onlySynced bool) *Session {
 	return nil
 }
 
+// Sessions returns a snapshot copy of the current session list, safe for concurrent use.
+func (s *Server) Sessions() []*Session {
+	s.sessionMu.RLock()
+	defer s.sessionMu.RUnlock()
+	return slices.Clone(s.sessionList)
+}
+
 // SRPolicies returns a map of registered SR Policy with key sessionAddr
 func (s *Server) SRPolicies() map[netip.Addr][]*table.SRPolicy {
+	s.sessionMu.RLock()
+	sessions := slices.Clone(s.sessionList)
+	s.sessionMu.RUnlock()
+
 	srPolicies := make(map[netip.Addr][]*table.SRPolicy)
-	for _, ss := range s.sessionList {
-		if ss.isSynced {
-			srPolicies[ss.peerAddr] = ss.srPolicies
+	for _, ss := range sessions {
+		if ss.IsSynced() {
+			srPolicies[ss.peerAddr] = ss.SRPolicies()
 		}
 	}
 	return srPolicies

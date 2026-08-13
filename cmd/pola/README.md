@@ -1,6 +1,6 @@
 # Pola CLI Tool
 
-## Instllation
+## Installation
 
 ### From Go Package
 
@@ -30,7 +30,7 @@ go install ./...
 
 ### pola session \[-j\]
 
-Displays the peer addresses of the active session.
+Displays the peer addresses of the active session, sorted by address.
 
 JSON formatted response
 
@@ -38,27 +38,38 @@ JSON formatted response
 [
   {
     "Addr": "192.0.2.1",
-    "State": "UP",
-    "Caps": [
-      "Stateful",
-      "Update",
-      "Initiate",
-      "SR-TE",
-    ]
-  },
-  {
-    "Addr": "192.0.2.2",
-    "State": "UP",
-    "Caps": [
-      "Stateful",
-      "Update",
-      "Initiate",
-      "SR-TE",
-      "SRv6-TE"
-    ]
+    "State": "SESSION_STATE_UP",
+    "Capabilities": [
+      {
+        "Type": "STATEFUL",
+        "Detail": {
+          "LSPUpdate": true,
+          "IncludeDBVersion": false,
+          "LSPInstantiation": true,
+          "TriggeredResync": false,
+          "DeltaLSPSync": false,
+          "TriggeredInitialSync": false,
+          "Color": false
+        }
+      },
+      {
+        "Type": "SR",
+        "Detail": {
+          "UnlimitedMSD": false,
+          "NAISupported": true,
+          "MSD": 10
+        }
+      }
+    ],
+    "IsSynced": true
   }
 ]
 ```
+
+`Capabilities` is the list of advertised capability TLVs, one entry per TLV.
+`Type` identifies the TLV, and `Detail` carries its type-specific fields
+(e.g. `MSD` for the SR capability, `VersionNumber` for LSP-DB-Version); it is
+omitted for TLVs with no fields beyond their type.
 
 ### pola session delete *Address* \[-j\]
 
@@ -72,99 +83,77 @@ JSON formatted response
 }
 ```
 
-### pola sr-policy list \[-j\]
+### pola sr-policy list \[-j\] \[--session *address*\]
 
-Displays the lsp list managed by polad.
+Displays the SR Policies managed by polad, grouped by PCEP session and sorted
+by session address. Pass `--session` to only show policies on the session
+with that peer address.
 
 JSON formatted response
 
 ```json
-{
-  "lsps": [
-    {
-      "color": 999,
-      "dstAddr": "192.0.2.1",
-      "segmentList": [
-        16003,
-        16001
-      ],
-      "peerAddr": "192.0.2.2",
-      "policyName": "sample_policy1",
-      "preference": 100,
-      "srcAddr": "192.0.2.2"
-    },
-    {
-      "color": 888,
-      "dstAddr": "192.0.2.2",
-      "segmentList": [
-        16003,
-        16002
-      ],
-      "peerAddr": "192.0.2.1",
-      "policyName": "sample_policy2",
-      "preference": 100,
-      "srcAddr": "192.0.2.1"
-    }
-  ]
-}
+[
+  {
+    "peerAddr": "192.0.2.2",
+    "srPolicies": [
+      {
+        "plspId": 1,
+        "policyName": "sample_policy1",
+        "segmentList": [
+          { "sid": 16003 },
+          { "sid": 16001 }
+        ],
+        "srcAddr": "192.0.2.2",
+        "dstAddr": "192.0.2.1",
+        "srcRouterId": "0000.0aff.0002",
+        "dstRouterId": "0000.0aff.0001",
+        "color": 999,
+        "preference": 100,
+        "lspId": 1,
+        "state": "up",
+        "type": "explicit"
+      }
+    ]
+  },
+  {
+    "peerAddr": "2001:0db8::1",
+    "srPolicies": [
+      {
+        "plspId": 1,
+        "policyName": "sample_policy2",
+        "segmentList": [
+          {
+            "sid": "2001:0db8:1005::",
+            "localAddr": "2001:0db8::5",
+            "sidStructure": "32,16,0,80"
+          }
+        ],
+        "srcAddr": "2001:0db8::1",
+        "dstAddr": "2001:0db8::2",
+        "color": 888,
+        "preference": 100,
+        "lspId": 1,
+        "state": "active",
+        "type": "dynamic",
+        "metric": "te"
+      }
+    ]
+  }
+]
 ```
 
-※ want to change to this format later.
+Notes:
 
-```json
-  "peers": [
-    {
-      "peerAddr": "192.0.2.1",
-      "lsps": [
-        {
-          "policyName": "sample_policy1",
-          "srcAddr": "192.0.2.1",
-          "dstAddr": "192.0.2.2",
-          "segmentList": [
-            16003,
-            16002
-          ]
-        },
-        {
-          "policyName": "sample_policy2",
-          "srcAddr": "192.0.2.1",
-          "dstAddr": "192.0.2.2",
-          "segmentList": [
-            16003,
-            16001,
-            16002
-          ]
-        }
-      ]
-    },
-    {
-      "peerAddr": "192.0.2.2",
-      "lsps": [
-        {
-          "policyName": "sample_policy3",
-          "srcAddr": "192.0.2.2",
-          "dstAddr": "192.0.2.1",
-          "segmentList": [
-            16003,
-            16001
-          ]
-        },
-        {
-          "policyName": "sample_policy4",
-          "srcAddr": "192.0.2.2",
-          "dstAddr": "192.0.2.1",
-          "segmentList": [
-            16003,
-            16002,
-            16001
-          ]
-        }
-      ]
-    }
-  ]
-}
-
-```
+- Policies appear in this list only after their first PCRpt is received.
+- `lspId` is omitted when the reported LSP-ID is zero. `plspId` and `state`
+  reflect the latest PCRpt received.
+- `srcRouterId`/`dstRouterId` are resolved from TED loopback addresses and are
+  omitted when no matching node is found.
+- `segmentList` entries include `localAddr`/`remoteAddr` when the SID carries
+  NAI information. SRv6 segments may also include `sidStructure`.
+- `type` and `metric` reflect the candidate-path settings used when the policy
+  was created by `pola sr-policy add`. They are omitted for policies discovered
+  from the router or after a polad restart.
 
 ### pola sr-policy add -f `filepath`
 
@@ -178,11 +167,11 @@ YAML input format
 asn: 65000
 srPolicy:
   pcepSessionAddr: 192.0.2.1
-  name: policy-name    
+  name: policy-name
   srcRouterID: 0000.0aff.0001
   dstRouterID: 0000.0aff.0004
   color: 100
-  type: dynamic 
+  type: dynamic
   metric: igp / te / delay
 ```
 
@@ -204,7 +193,7 @@ YAML input format
 asn: 65000
 srPolicy:
   pcepSessionAddr: 192.0.2.1
-  name: policy-name    
+  name: policy-name
   srcRouterID: 0000.0aff.0001
   dstRouterID: 0000.0aff.0004
   color: 100
@@ -263,7 +252,7 @@ srPolicy:
       sidStructure: "32,16,0,80"
 ```
 
-json formatted response
+JSON formatted response
 
 ```json
 {
@@ -291,7 +280,7 @@ Notes:
 
 ### pola ted \[-j\]
 
-Displays the ted managed by polad.
+Displays the TED managed by polad.
 
 JSON formatted response
 
@@ -442,21 +431,21 @@ JSON formatted response
 
 ## Completion
 
-## Bash
+### Bash
 
 ```bash
 pola completion bash | sudo tee -a /usr/share/bash-completion/completions/pola >/dev/null
 source /usr/share/bash-completion/completions/pola
 ```
 
-## Zsh
+### Zsh
 
 ```bash
 pola completion zsh > /usr/local/share/zsh/site-functions/_pola
 compinit
 ```
 
-## Fish
+### Fish
 
 ```bash
 pola completion fish > ~/.config/fish/completions/pola.fish

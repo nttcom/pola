@@ -46,15 +46,20 @@ func main() {
 		log.Fatalf("unable to get SR policy list from server: %v", err)
 	}
 
-	for i, srPolicy := range ret.GetSrPolicies() {
-		fmt.Printf("srPolicy(%d):\n", i)
-		fmt.Printf("  sessionAddr: %s\n", formatAddr(srPolicy.GetPcepSessionAddr()))
-		fmt.Printf("  policyName: %s\n", srPolicy.GetPolicyName())
-		fmt.Printf("  srcAddr: %s\n", formatAddr(srPolicy.GetSrcAddr()))
-		fmt.Printf("  dstAddr: %s\n", formatAddr(srPolicy.GetDstAddr()))
-		fmt.Printf("  color: %d\n", srPolicy.GetColor())
-		fmt.Printf("  preference: %d\n", srPolicy.GetPreference())
-		fmt.Printf("  path: %s\n", formatSegmentList(srPolicy.GetSegmentList()))
+	i := 0
+	for _, session := range ret.GetSessions() {
+		sessionAddr := formatAddr(session.GetAddr())
+		for _, srPolicy := range session.GetSrPolicies() {
+			fmt.Printf("srPolicy(%d):\n", i)
+			i++
+			fmt.Printf("  sessionAddr: %s\n", sessionAddr)
+			fmt.Printf("  policyName: %s\n", srPolicy.GetPolicyName())
+			fmt.Printf("  srcAddr: %s\n", formatAddr(srPolicy.GetSrcAddr()))
+			fmt.Printf("  dstAddr: %s\n", formatAddr(srPolicy.GetDstAddr()))
+			fmt.Printf("  color: %d\n", srPolicy.GetColor())
+			fmt.Printf("  preference: %d\n", srPolicy.GetPreference())
+			fmt.Printf("  path: %s\n", formatSegmentList(srPolicy.GetSegmentList()))
+		}
 	}
 }
 

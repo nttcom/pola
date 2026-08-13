@@ -32,9 +32,9 @@ type fakeServer struct {
 
 	fail bool
 
-	sessions []*pb.Session
-	policies []*pb.SRPolicy
-	ted      *pb.GetTEDResponse
+	sessions         []*pb.Session
+	srPolicySessions []*pb.Session
+	ted              *pb.GetTEDResponse
 
 	mu         sync.Mutex
 	createReq  *pb.CreateSRPolicyRequest
@@ -83,7 +83,7 @@ func (f *fakeServer) GetSRPolicyList(_ context.Context, _ *pb.GetSRPolicyListReq
 	if f.fail {
 		return nil, errFake
 	}
-	return &pb.GetSRPolicyListResponse{SrPolicies: f.policies}, nil
+	return &pb.GetSRPolicyListResponse{Sessions: f.srPolicySessions}, nil
 }
 
 func (f *fakeServer) GetTED(_ context.Context, _ *pb.GetTEDRequest) (*pb.GetTEDResponse, error) {
@@ -495,9 +495,12 @@ func TestSessionList(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		f := &fakeServer{sessions: []*pb.Session{
 			{
-				Addr:     addrBytes(t, "192.0.2.1"),
-				State:    pb.SessionState_SESSION_STATE_UP,
-				Caps:     []string{"Stateful", "SR"},
+				Addr:  addrBytes(t, "192.0.2.1"),
+				State: pb.SessionState_SESSION_STATE_UP,
+				Capabilities: []*pb.Capability{
+					{Type: pb.CapabilityType_CAPABILITY_TYPE_STATEFUL},
+					{Type: pb.CapabilityType_CAPABILITY_TYPE_SR, Detail: &pb.Capability_Sr{Sr: &pb.SrCapability{Msd: 10}}},
+				},
 				IsSynced: true,
 			},
 			// Invalid session address: the example should warn and skip the session.
@@ -507,7 +510,7 @@ func TestSessionList(t *testing.T) {
 		wantOutput(t, out, code,
 			"sessionAddr(0): 192.0.2.1",
 			"state: SESSION_STATE_UP",
-			"capabilities: Stateful, SR",
+			"capabilities: STATEFUL, SR(msd=10, unlimitedMsd=false, naiSupported=false)",
 			"isSynced: true",
 			"invalid address for session 1",
 		)
@@ -524,19 +527,23 @@ func TestSessionList(t *testing.T) {
 
 func TestSRPolicyList(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
-		f := &fakeServer{policies: []*pb.SRPolicy{
+		f := &fakeServer{srPolicySessions: []*pb.Session{
 			{
-				PcepSessionAddr: addrBytes(t, "192.0.2.1"),
-				SrcAddr:         addrBytes(t, "192.0.2.1"),
-				DstAddr:         addrBytes(t, "192.0.2.2"),
-				PolicyName:      "with-segments",
-				Color:           100,
-				Preference:      200,
-				SegmentList:     []*pb.Segment{{Sid: "16002"}, {Sid: "16003"}},
+				Addr: addrBytes(t, "192.0.2.1"),
+				SrPolicies: []*pb.SRPolicy{{
+					SrcAddr:     addrBytes(t, "192.0.2.1"),
+					DstAddr:     addrBytes(t, "192.0.2.2"),
+					PolicyName:  "with-segments",
+					Color:       100,
+					Preference:  200,
+					SegmentList: []*pb.Segment{{Sid: "16002"}, {Sid: "16003"}},
+				}},
 			},
 			{
-				PcepSessionAddr: []byte{1, 2, 3},
-				PolicyName:      "no-segments",
+				Addr: []byte{1, 2, 3},
+				SrPolicies: []*pb.SRPolicy{{
+					PolicyName: "no-segments",
+				}},
 			},
 		}}
 		out, code := run(t, "sr-policy-list", serve(t, f))

@@ -8,6 +8,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/nttcom/pola/cmd/pola/grpc"
 	"github.com/spf13/cobra"
@@ -47,7 +48,7 @@ func showSession(jsonFlag bool) error {
 		for i, ss := range sessions {
 			fmt.Printf("sessionAddr(%d): %s\n", i, ss.Addr.String())
 			fmt.Printf("  State: %s\n", ss.State)
-			fmt.Printf("  Capabilities: %s\n", ss.Caps)
+			fmt.Printf("  Capabilities: %s\n", strings.Join(ss.CapStrings(), ", "))
 			fmt.Printf("  IsSynced: %t\n", ss.IsSynced)
 		}
 	}

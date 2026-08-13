@@ -6,9 +6,11 @@
 package table
 
 import (
+	"encoding/json"
 	"errors"
 	"net/netip"
 	"strconv"
+	"strings"
 )
 
 // sr-policy state
@@ -21,16 +23,32 @@ const (
 	PolicyUnknown = PolicyState("unknown")
 )
 
+// PolicyType is the RFC 9256 §2.4.2 SR Policy candidate path type: a candidate path
+// is either explicit (a fixed SID list) or dynamic (computed against an optimization
+// metric and subject to recomputation). The zero value means "not known".
+type PolicyType string
+
+const (
+	PolicyTypeExplicit = PolicyType("explicit")
+	PolicyTypeDynamic  = PolicyType("dynamic")
+)
+
 type SRPolicy struct {
-	PlspID      uint32
-	Name        string
-	SegmentList []Segment
-	SrcAddr     netip.Addr
-	DstAddr     netip.Addr
-	Color       uint32
-	Preference  uint32
-	LSPID       uint16
-	State       PolicyState
+	PlspID      uint32      `json:"plspId,omitempty"`
+	Name        string      `json:"policyName"`
+	SegmentList []Segment   `json:"segmentList"`
+	SrcAddr     netip.Addr  `json:"srcAddr"`
+	DstAddr     netip.Addr  `json:"dstAddr"`
+	SrcRouterID string      `json:"srcRouterId,omitempty"`
+	DstRouterID string      `json:"dstRouterId,omitempty"`
+	Color       uint32      `json:"color"`
+	Preference  uint32      `json:"preference"`
+	LSPID       uint16      `json:"lspId,omitempty"`
+	State       PolicyState `json:"state,omitempty"`
+	// Type and Metric are only known for policies Pola itself created; both are
+	// left at their zero value ("" / UnspecifiedMetric) otherwise. See PolicyType.
+	Type   PolicyType `json:"type,omitempty"`
+	Metric MetricType `json:"metric,omitempty"`
 }
 
 func NewSRPolicy(
@@ -144,12 +162,27 @@ func BehaviorToString(behavior uint16) string {
 
 const FirstSIDIndex = 0 // Index for first SID in Sids array
 
+// SIDStructureBytes is the [LocalBlock, LocalNode, LocalFunc, LocalArg] length split of an SRv6 SID.
+// It marshals as a comma-separated string (e.g. "32,16,0,80").
+type SIDStructureBytes []uint8
+
+func (s SIDStructureBytes) MarshalJSON() ([]byte, error) {
+	if len(s) == 0 {
+		return json.Marshal(nil)
+	}
+	parts := make([]string, len(s))
+	for i, v := range s {
+		parts[i] = strconv.Itoa(int(v))
+	}
+	return json.Marshal(strings.Join(parts, ","))
+}
+
 type SegmentSRv6 struct {
-	Sid        netip.Addr
-	LocalAddr  netip.Addr
-	RemoteAddr netip.Addr
-	Structure  []uint8
-	USid       bool
+	Sid        netip.Addr        `json:"sid"`
+	LocalAddr  netip.Addr        `json:"localAddr,omitzero"`
+	RemoteAddr netip.Addr        `json:"remoteAddr,omitzero"`
+	Structure  SIDStructureBytes `json:"sidStructure,omitempty"`
+	USid       bool              `json:"uSid,omitempty"`
 }
 
 func (seg SegmentSRv6) SidString() string {
@@ -191,7 +224,7 @@ func NewSegmentSRv6WithNodeInfo(sid netip.Addr, n *LsNode) (SegmentSRv6, error) 
 				return seg, err
 			}
 			seg.LocalAddr = addr
-			seg.Structure = []uint8{
+			seg.Structure = SIDStructureBytes{
 				srv6SID.SIDStructure.LocalBlock,
 				srv6SID.SIDStructure.LocalNode,
 				srv6SID.SIDStructure.LocalFunc,
@@ -214,13 +247,13 @@ func NewSegmentSRv6WithNodeInfo(sid netip.Addr, n *LsNode) (SegmentSRv6, error) 
 }
 
 type SegmentSRMPLS struct {
-	Sid uint32
-	TTL uint8
-	TC  uint8
-	S   bool
+	Sid uint32 `json:"sid"`
+	TTL uint8  `json:"ttl,omitempty"`
+	TC  uint8  `json:"tc,omitempty"`
+	S   bool   `json:"s,omitempty"`
 	// Optional NAI for SR-ERO encoding (RFC8664 4.3.1).
-	LocalAddr  netip.Addr
-	RemoteAddr netip.Addr
+	LocalAddr  netip.Addr `json:"localAddr,omitzero"`
+	RemoteAddr netip.Addr `json:"remoteAddr,omitzero"`
 }
 
 func (seg SegmentSRMPLS) SidString() string {
