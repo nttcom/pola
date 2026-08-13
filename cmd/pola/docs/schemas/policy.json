@@ -3,69 +3,144 @@
     "type": "object",
     "properties": {
         "asn": {
-            "type": "integer"
+            "type": "integer",
+            "minimum": 1
         },
         "srPolicy": {
             "type": "object",
             "properties": {
                 "pcepSessionAddr": {
-                    "type": "string",
-                    "oneOf": [
-                        {
-                            "format": "ipv4"
-                        },
-                        {
-                            "format": "ipv6"
-                        }
-                    ]
+                    "$ref": "#/$defs/ipAddr"
                 },
                 "srcAddr": {
-                    "type": "string",
-                    "oneOf": [
-                        {
-                            "format": "ipv4"
-                        },
-                        {
-                            "format": "ipv6"
-                        }
-                    ]
+                    "$ref": "#/$defs/ipAddr"
                 },
                 "dstAddr": {
-                    "type": "string",
-                    "oneOf": [
-                        {
-                            "format": "ipv4"
-                        },
-                        {
-                            "format": "ipv6"
-                        }
-                    ]
+                    "$ref": "#/$defs/ipAddr"
+                },
+                "srcRouterID": {
+                    "type": "string"
+                },
+                "dstRouterID": {
+                    "type": "string"
                 },
                 "name": {
                     "type": "string"
                 },
                 "color": {
-                    "type": "integer"
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "type": {
+                    "type": "string",
+                    "enum": ["explicit", "dynamic"]
+                },
+                "metric": {
+                    "type": "string",
+                    "enum": ["igp", "te", "delay"]
                 },
                 "segmentList": {
                     "type": "array",
                     "items": {
                         "$ref": "segment.json"
                     }
+                },
+                "waypoints": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "routerID": {
+                                "type": "string"
+                            },
+                            "sid": {
+                                "type": "string"
+                            }
+                        },
+                        "required": ["routerID"],
+                        "additionalProperties": false
+                    }
                 }
             },
-            "required": [
-                "pcepSessionAddr",
-                "srcAddr",
-                "dstAddr",
-                "name",
-                "color",
-                "segmentList"
+            "additionalProperties": false,
+            "oneOf": [
+                {
+                    "title": "Endpoints resolved from the TED by router ID",
+                    "required": ["pcepSessionAddr", "srcRouterID", "dstRouterID", "name", "color", "type"],
+                    "not": {
+                        "anyOf": [
+                            { "required": ["srcAddr"] },
+                            { "required": ["dstAddr"] }
+                        ]
+                    },
+                    "allOf": [
+                        {
+                            "if": {
+                                "properties": { "type": { "const": "explicit" } }
+                            },
+                            "then": {
+                                "required": ["segmentList"]
+                            }
+                        },
+                        {
+                            "if": {
+                                "properties": { "type": { "const": "dynamic" } }
+                            },
+                            "then": {
+                                "required": ["metric"]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "title": "Endpoints given directly; no path computation, so explicit only",
+                    "required": ["pcepSessionAddr", "srcAddr", "dstAddr", "name", "color", "segmentList"],
+                    "properties": {
+                        "type": { "const": "explicit" }
+                    },
+                    "not": {
+                        "anyOf": [
+                            { "required": ["srcRouterID"] },
+                            { "required": ["dstRouterID"] },
+                            { "required": ["metric"] },
+                            { "required": ["waypoints"] }
+                        ]
+                    }
+                }
             ]
         }
     },
     "required": [
         "srPolicy"
     ],
-    "additionalProperties": false
+    "allOf": [
+        {
+            "$comment": "The router-ID form resolves endpoints from the TED, which is keyed by ASN",
+            "if": {
+                "required": ["srPolicy"],
+                "properties": {
+                    "srPolicy": {
+                        "anyOf": [
+                            { "required": ["srcRouterID"] },
+                            { "required": ["dstRouterID"] }
+                        ]
+                    }
+                }
+            },
+            "then": {
+                "required": ["asn"]
+            }
+        }
+    ],
+    "additionalProperties": false,
+    "$defs": {
+        "ipAddr": {
+            "$comment": "anyOf, not oneOf: `format` is an annotation by default, so both branches would match and oneOf would always fail",
+            "type": "string",
+            "anyOf": [
+                { "format": "ipv4" },
+                { "format": "ipv6" }
+            ]
+        }
+    }
 }

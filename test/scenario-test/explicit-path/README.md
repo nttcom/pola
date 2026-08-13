@@ -8,6 +8,7 @@ The tests verify:
 - Explicit-path SR Policy installation via `pola sr-policy add --no-sid-validate` (without TED)
 - The Node/Adjacency Identifier (NAI) built from the `localAddr` of each SID (RFC8664 4.3.1)
 - Segment lists without `localAddr`, which must keep the NAI absent
+- Installing without `--no-sid-validate` is refused when there is no TED
 
 ## Topology
 
@@ -50,9 +51,11 @@ The scenario tests perform the following steps:
 
 1. Deploy the Containerlab topology
 2. Wait for the PCEP session establishment of all three PCCs
-3. Install explicit-path SR Policies via `pola sr-policy add --no-sid-validate`
-4. Verify that each PCC installs the policy and that the SR-ERO label stack matches the input
-5. Verify the NAI of each SR-ERO hop on the PCC that reports it
+3. Verify that installing a policy without `--no-sid-validate` is refused,
+   since this lab runs with TED disabled
+4. Install explicit-path SR Policies via `pola sr-policy add --no-sid-validate`
+5. Verify that each PCC installs the policy and that the SR-ERO label stack matches the input
+6. Verify the NAI of each SR-ERO hop on the PCC that reports it
 
 ## Test Cases
 

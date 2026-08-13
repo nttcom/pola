@@ -22,6 +22,9 @@ import (
 	"github.com/nttcom/pola/pkg/table"
 	"go.uber.org/zap"
 	grpc "google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 type APIServer struct {
@@ -227,14 +230,18 @@ func sendSRPolicyRequest(s *APIServer, input *pb.CreateSRPolicyRequest, segmentL
 }
 
 func (s *APIServer) CreateSRPolicy(ctx context.Context, req *pb.CreateSRPolicyRequest) (*pb.CreateSRPolicyResponse, error) {
-	sidvalidate := req.GetSidValidate()
-	if err := validateCreateSRPolicy(req, sidvalidate); err != nil {
+	disablePathCompute := req.GetDisablePathCompute()
+	if err := validateCreateSRPolicy(req, disablePathCompute); err != nil {
 		return nil, fmt.Errorf("failed to validate SR policy creation: %w", err)
 	}
 
-	segmentList, srcAddr, dstAddr, err := buildSegmentList(s, req, sidvalidate)
+	segmentList, srcAddr, dstAddr, err := buildSegmentList(s, req, disablePathCompute)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build segment list: %w", err)
+	}
+
+	if err := s.validateSIDs(req, segmentList); err != nil {
+		return nil, err
 	}
 
 	if err := sendSRPolicyRequest(s, req, segmentList, srcAddr, dstAddr); err != nil {
@@ -242,6 +249,64 @@ func (s *APIServer) CreateSRPolicy(ctx context.Context, req *pb.CreateSRPolicyRe
 	}
 
 	return &pb.CreateSRPolicyResponse{IsSuccess: true}, nil
+}
+
+func (s *APIServer) validateSIDs(req *pb.CreateSRPolicyRequest, segmentList []table.Segment) error {
+	policy := req.GetSrPolicy()
+
+	// Reject out-of-range labels before the validation skip paths.
+	if invalid := table.OutOfRangeSRMPLSLabels(segmentList); len(invalid) > 0 {
+		descriptions := make([]string, 0, len(invalid))
+		for _, s := range invalid {
+			descriptions = append(descriptions, s.String())
+		}
+		return status.Errorf(codes.InvalidArgument,
+			"segment list contains SR-MPLS labels outside the valid range 0-%d: %s",
+			table.MPLSLabelMax, strings.Join(descriptions, ", "))
+	}
+
+	if table.HasUnknownSegmentType(segmentList) {
+		return status.Errorf(codes.InvalidArgument, "segment list contains a segment with an unrecognized SID family")
+	}
+
+	if table.HasMixedSegmentTypes(segmentList) {
+		return status.Errorf(codes.InvalidArgument, "segment list contains mixed SR-MPLS and SRv6 SIDs")
+	}
+
+	// Skip TED lookup for dynamically computed paths.
+	if policy.GetType() == pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC && !req.GetDisablePathCompute() {
+		return nil
+	}
+
+	if req.GetNoSidValidate() {
+		s.logger.Warn("skipping SID validation: no_sid_validate specified",
+			zap.String("policyName", policy.GetPolicyName()),
+			zap.Uint32("color", policy.GetColor()),
+		)
+		return nil
+	}
+
+	ted := s.pce.ted
+	if ted == nil {
+		return status.Errorf(codes.FailedPrecondition,
+			"TED is not enabled, SID validation cannot be performed")
+	}
+	if len(ted.Nodes) == 0 {
+		return status.Errorf(codes.FailedPrecondition,
+			"TED is enabled but empty (not yet synchronized), SID validation cannot be performed")
+	}
+
+	missingSegments := table.MissingSegments(ted, segmentList)
+	if len(missingSegments) == 0 {
+		return nil
+	}
+
+	descriptions := make([]string, 0, len(missingSegments))
+	for _, m := range missingSegments {
+		descriptions = append(descriptions, m.String())
+	}
+	return status.Errorf(codes.InvalidArgument,
+		"SID validation failed, the following SIDs are not found in TED: %s", strings.Join(descriptions, ", "))
 }
 
 func (s *APIServer) DeleteSRPolicy(ctx context.Context, input *pb.DeleteSRPolicyRequest) (*pb.DeleteSRPolicyResponse, error) {
@@ -346,6 +411,9 @@ var validator = map[ValidationKind]func(policy *pb.SRPolicy, asn uint32) error{
 	ValidationAddDisablePathCompute: func(policy *pb.SRPolicy, asn uint32) error {
 		if policy.PcepSessionAddr == nil {
 			return errors.New("policy.PCEP session address must not be nil")
+		}
+		if policy.Color == 0 {
+			return errors.New("policy.Color must not be zero")
 		}
 		if len(policy.SrcAddr) == 0 {
 			return errors.New("policy.SrcAddr must not be empty")
@@ -618,7 +686,12 @@ func convertLsPrefixes(prefixes []*table.LsPrefix) []*pb.LsPrefix {
 	result := make([]*pb.LsPrefix, 0, len(prefixes))
 	for _, p := range prefixes {
 		if p != nil {
-			result = append(result, &pb.LsPrefix{Prefix: p.Prefix.String(), SidIndex: p.SidIndex})
+			pbPrefix := &pb.LsPrefix{Prefix: p.Prefix.String()}
+			// Preserve Prefix-SID presence, including index 0.
+			if p.HasPrefixSID() {
+				pbPrefix.SidIndex = proto.Uint32(p.SidIndex)
+			}
+			result = append(result, pbPrefix)
 		}
 	}
 	return result

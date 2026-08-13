@@ -92,6 +92,17 @@ type Segment interface {
 	SidString() string
 }
 
+func segmentFamily(segment Segment) SegmentFamily {
+	switch segment.(type) {
+	case SegmentSRv6:
+		return SegmentSRv6Family
+	case SegmentSRMPLS:
+		return SegmentSRMPLSFamily
+	default:
+		return SegmentUnknown
+	}
+}
+
 func NewSegment(sid string) (Segment, error) {
 	addr, err := netip.ParseAddr(sid)
 	if err == nil && addr.Is6() {
@@ -260,3 +271,11 @@ type Waypoint struct {
 	RouterID string
 	SID      string // optional: fixed SID override
 }
+
+type SegmentFamily int
+
+const (
+	SegmentUnknown SegmentFamily = iota
+	SegmentSRv6Family
+	SegmentSRMPLSFamily
+)

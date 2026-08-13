@@ -58,6 +58,7 @@ Prefix-SID labels 16002 (p01), 16004 (p02) and 16003 (pe02).
 
 ```bash
 root@pola:/pola# pola sr-policy add -f pe01-policy1.yaml --no-sid-validate
+warning: skipping SID validation (--no-sid-validate)
 success!
 root@pola:/pola# pola sr-policy list
 Session: 10.0.255.1

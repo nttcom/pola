@@ -70,11 +70,11 @@ and `fd00:ffff:4:0:1::` (p02).
 
 ```bash
 root@pola:/pola# pola sr-policy add -f pe01-policy1.yaml --no-sid-validate
+warning: skipping SID validation (--no-sid-validate)
 success!
-
 root@pola:/pola# pola sr-policy add -f pe02-policy1.yaml --no-sid-validate
+warning: skipping SID validation (--no-sid-validate)
 success!
-
 root@pola:/pola# pola sr-policy list
 Session: fd00::2
   PolicyName: pe02-policy1

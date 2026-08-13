@@ -1,0 +1,230 @@
+// Copyright (c) 2022 NTT Communications Corporation
+//
+// This software is released under the MIT License.
+// see https://github.com/nttcom/pola/blob/main/LICENSE
+
+package table
+
+import (
+	"fmt"
+	"net/netip"
+)
+
+// MPLSLabelMax is the maximum 20-bit MPLS label value.
+const MPLSLabelMax uint32 = 0xFFFFF
+
+// SIDIndex is a lookup structure over the SIDs advertised by the TED.
+type SIDIndex struct {
+	mplsSIDs     map[uint32]struct{}       // prefix SIDs and adjacency SIDs
+	srv6SIDs     map[netip.Addr]struct{}   // End / End.X SIDs, matched exactly
+	srv6Locators map[netip.Prefix]struct{} // locator prefixes derived from SID structures
+}
+
+// MissingSegment identifies one segment the TED does not know about.
+type MissingSegment struct {
+	Hop int // 1-origin position in the segment list
+	SID string
+}
+
+func (m MissingSegment) String() string {
+	return fmt.Sprintf("hop %d (%s)", m.Hop, m.SID)
+}
+
+// NewSIDIndex builds a SIDIndex from the TED.
+func NewSIDIndex(ted *LsTED) *SIDIndex {
+	idx := &SIDIndex{
+		mplsSIDs:     map[uint32]struct{}{},
+		srv6SIDs:     map[netip.Addr]struct{}{},
+		srv6Locators: map[netip.Prefix]struct{}{},
+	}
+	if ted == nil {
+		return idx
+	}
+	for _, node := range ted.Nodes {
+		if node == nil {
+			continue
+		}
+		idx.addNodePrefixSIDs(node)
+		idx.addLinkSIDs(node)
+		idx.addSRv6NodeSIDs(node)
+	}
+	return idx
+}
+
+// addNodePrefixSIDs registers SR-MPLS prefix SIDs.
+func (idx *SIDIndex) addNodePrefixSIDs(node *LsNode) {
+	// Without an SRGB, a Prefix-SID index cannot be converted to a label.
+	if node.SrgbBegin == 0 {
+		return
+	}
+	for _, p := range node.Prefixes {
+		if !p.HasPrefixSID() {
+			continue
+		}
+		if label, ok := srgbLabel(node, p.SidIndex); ok {
+			idx.mplsSIDs[label] = struct{}{}
+		}
+	}
+}
+
+// srgbLabel converts a Prefix-SID index to an MPLS label within the SRGB.
+// It returns false if the resulting label is out of range.
+func srgbLabel(node *LsNode, sidIndex uint32) (uint32, bool) {
+	label := uint64(node.SrgbBegin) + uint64(sidIndex)
+	if label > uint64(MPLSLabelMax) {
+		return 0, false
+	}
+	if node.SrgbEnd > node.SrgbBegin && label >= uint64(node.SrgbEnd) {
+		return 0, false
+	}
+	return uint32(label), true
+}
+
+// addLinkSIDs registers adjacency SIDs and SRv6 End.X SIDs.
+func (idx *SIDIndex) addLinkSIDs(node *LsNode) {
+	for _, l := range node.Links {
+		if l == nil {
+			continue
+		}
+		if l.AdjSid != 0 {
+			idx.mplsSIDs[l.AdjSid] = struct{}{}
+		}
+		if l.Srv6EndXSID != nil {
+			idx.addSRv6(l.Srv6EndXSID.Sids, l.Srv6EndXSID.Srv6SIDStructure)
+		}
+	}
+}
+
+// addSRv6NodeSIDs registers the SRv6 End SIDs a node advertises.
+func (idx *SIDIndex) addSRv6NodeSIDs(node *LsNode) {
+	for _, s := range node.SRv6SIDs {
+		if s != nil {
+			idx.addSRv6(s.Sids, s.SIDStructure)
+		}
+	}
+}
+
+// addSRv6 registers exact SIDs and their locator prefixes.
+func (idx *SIDIndex) addSRv6(sids []string, st SIDStructure) {
+	locBits := int(st.LocalBlock) + int(st.LocalNode)
+	for _, s := range sids {
+		addr, err := netip.ParseAddr(s)
+		if err != nil || !addr.Is6() {
+			continue
+		}
+		idx.srv6SIDs[addr] = struct{}{}
+		if locBits <= 0 || locBits > SRv6SIDBitLength {
+			continue
+		}
+		if p, err := addr.Prefix(locBits); err == nil {
+			idx.srv6Locators[p] = struct{}{}
+		}
+	}
+}
+
+// Has reports whether the TED knows about seg.
+func (idx *SIDIndex) Has(seg Segment) bool {
+	switch s := seg.(type) {
+	case SegmentSRMPLS:
+		_, ok := idx.mplsSIDs[s.Sid]
+		return ok
+	case SegmentSRv6:
+		return idx.hasSRv6(s)
+	}
+	return false
+}
+
+func (idx *SIDIndex) hasSRv6(s SegmentSRv6) bool {
+	// End / End.X SIDs are advertised verbatim, so prefer the exact match.
+	if _, ok := idx.srv6SIDs[s.Sid]; ok {
+		return true
+	}
+	if !s.USid {
+		return false
+	}
+	// Fall back to locator containment for uSID containers.
+	locBits := 0
+	if len(s.Structure) == 4 {
+		locBits = int(s.Structure[0]) + int(s.Structure[1])
+	}
+	for loc := range idx.srv6Locators {
+		if !loc.Contains(s.Sid) {
+			continue
+		}
+		// Reject a request whose declared locator is shorter than the TED's.
+		if locBits > 0 && loc.Bits() > locBits {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+// MissingSegments reports the segments not found in the TED.
+func MissingSegments(ted *LsTED, segmentList []Segment) []MissingSegment {
+	idx := NewSIDIndex(ted)
+	var missing []MissingSegment
+	for i, seg := range segmentList {
+		if seg == nil || !idx.Has(seg) {
+			sid := "<nil>"
+			if seg != nil {
+				sid = seg.SidString()
+			}
+			missing = append(missing, MissingSegment{Hop: i + 1, SID: sid})
+		}
+	}
+	return missing
+}
+
+// OutOfRangeSRMPLSLabels reports SR-MPLS segments with labels outside the 20-bit range.
+func OutOfRangeSRMPLSLabels(segmentList []Segment) []MissingSegment {
+	var invalid []MissingSegment
+	for i, segment := range segmentList {
+		seg, ok := segment.(SegmentSRMPLS)
+		if !ok || seg.Sid <= MPLSLabelMax {
+			continue
+		}
+		invalid = append(invalid, MissingSegment{Hop: i + 1, SID: seg.SidString()})
+	}
+	return invalid
+}
+
+// HasUnknownSegmentType reports whether segmentList contains a segment with an unknown family.
+func HasUnknownSegmentType(segmentList []Segment) bool {
+	for _, segment := range segmentList {
+		if segment == nil {
+			continue
+		}
+		if segmentFamily(segment) == SegmentUnknown {
+			return true
+		}
+	}
+	return false
+}
+
+// HasMixedSegmentTypes reports whether segmentList contains both SRv6 and SR-MPLS segments.
+func HasMixedSegmentTypes(segmentList []Segment) bool {
+	var family SegmentFamily
+
+	for _, segment := range segmentList {
+		if segment == nil {
+			continue
+		}
+
+		current := segmentFamily(segment)
+		if current == SegmentUnknown {
+			continue
+		}
+
+		if family == SegmentUnknown {
+			family = current
+			continue
+		}
+
+		if family != current {
+			return true
+		}
+	}
+
+	return false
+}

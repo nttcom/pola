@@ -52,7 +52,6 @@ func main() {
 			Type:            pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC,
 			Metric:          pb.MetricType_METRIC_TYPE_TE,
 		},
-		SidValidate: true,
 	})
 	if err != nil {
 		log.Fatalf("c.CreateSRPolicy error: %v", err)

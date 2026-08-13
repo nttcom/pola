@@ -432,10 +432,14 @@ func (x *SRPolicy) GetWaypoints() []*Waypoint {
 }
 
 type CreateSRPolicyRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SrPolicy      *SRPolicy              `protobuf:"bytes,1,opt,name=sr_policy,json=srPolicy,proto3" json:"sr_policy,omitempty"`
-	Asn           uint32                 `protobuf:"varint,2,opt,name=asn,proto3" json:"asn,omitempty"`
-	SidValidate   bool                   `protobuf:"varint,3,opt,name=sid_validate,json=sidValidate,proto3" json:"sid_validate,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	SrPolicy *SRPolicy              `protobuf:"bytes,1,opt,name=sr_policy,json=srPolicy,proto3" json:"sr_policy,omitempty"`
+	Asn      uint32                 `protobuf:"varint,2,opt,name=asn,proto3" json:"asn,omitempty"`
+	// Use endpoints and segments provided in the request without TED lookup
+	// or path computation (no CSPF or router-ID resolution).
+	DisablePathCompute bool `protobuf:"varint,4,opt,name=disable_path_compute,json=disablePathCompute,proto3" json:"disable_path_compute,omitempty"`
+	// Skip checking that explicit SIDs exist in the TED.
+	NoSidValidate bool `protobuf:"varint,5,opt,name=no_sid_validate,json=noSidValidate,proto3" json:"no_sid_validate,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -484,9 +488,16 @@ func (x *CreateSRPolicyRequest) GetAsn() uint32 {
 	return 0
 }
 
-func (x *CreateSRPolicyRequest) GetSidValidate() bool {
+func (x *CreateSRPolicyRequest) GetDisablePathCompute() bool {
 	if x != nil {
-		return x.SidValidate
+		return x.DisablePathCompute
+	}
+	return false
+}
+
+func (x *CreateSRPolicyRequest) GetNoSidValidate() bool {
+	if x != nil {
+		return x.NoSidValidate
 	}
 	return false
 }
@@ -1074,7 +1085,7 @@ func (x *LsSrv6SID) GetMultiTopoIds() []*MultiTopoID {
 type LsPrefix struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Prefix        string                 `protobuf:"bytes,1,opt,name=prefix,proto3" json:"prefix,omitempty"`
-	SidIndex      uint32                 `protobuf:"varint,2,opt,name=sid_index,json=sidIndex,proto3" json:"sid_index,omitempty"`
+	SidIndex      *uint32                `protobuf:"varint,2,opt,name=sid_index,json=sidIndex,proto3,oneof" json:"sid_index,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1117,8 +1128,8 @@ func (x *LsPrefix) GetPrefix() string {
 }
 
 func (x *LsPrefix) GetSidIndex() uint32 {
-	if x != nil {
-		return x.SidIndex
+	if x != nil && x.SidIndex != nil {
+		return *x.SidIndex
 	}
 	return 0
 }
@@ -1870,11 +1881,12 @@ const file_api_pola_v1_pola_proto_rawDesc = "" +
 	"\fsegment_list\x18\n" +
 	" \x03(\v2\x14.api.pola.v1.SegmentR\vsegmentList\x12/\n" +
 	"\x06metric\x18\v \x01(\x0e2\x17.api.pola.v1.MetricTypeR\x06metric\x123\n" +
-	"\twaypoints\x18\f \x03(\v2\x15.api.pola.v1.WaypointR\twaypoints\"\x80\x01\n" +
+	"\twaypoints\x18\f \x03(\v2\x15.api.pola.v1.WaypointR\twaypoints\"\xcb\x01\n" +
 	"\x15CreateSRPolicyRequest\x122\n" +
 	"\tsr_policy\x18\x01 \x01(\v2\x15.api.pola.v1.SRPolicyR\bsrPolicy\x12\x10\n" +
-	"\x03asn\x18\x02 \x01(\rR\x03asn\x12!\n" +
-	"\fsid_validate\x18\x03 \x01(\bR\vsidValidate\"7\n" +
+	"\x03asn\x18\x02 \x01(\rR\x03asn\x120\n" +
+	"\x14disable_path_compute\x18\x04 \x01(\bR\x12disablePathCompute\x12&\n" +
+	"\x0fno_sid_validate\x18\x05 \x01(\bR\rnoSidValidateJ\x04\b\x03\x10\x04R\fsid_validate\"7\n" +
 	"\x16CreateSRPolicyResponse\x12\x1d\n" +
 	"\n" +
 	"is_success\x18\x01 \x01(\bR\tisSuccess\"]\n" +
@@ -1914,10 +1926,12 @@ const file_api_pola_v1_pola_proto_rawDesc = "" +
 	"\x04sids\x18\x01 \x03(\v2\x10.api.pola.v1.SIDR\x04sids\x12J\n" +
 	"\x11endpoint_behavior\x18\x02 \x01(\v2\x1d.api.pola.v1.EndpointBehaviorR\x10endpointBehavior\x12>\n" +
 	"\rsid_structure\x18\x03 \x01(\v2\x19.api.pola.v1.SidStructureR\fsidStructure\x12>\n" +
-	"\x0emulti_topo_ids\x18\x04 \x03(\v2\x18.api.pola.v1.MultiTopoIDR\fmultiTopoIds\"?\n" +
+	"\x0emulti_topo_ids\x18\x04 \x03(\v2\x18.api.pola.v1.MultiTopoIDR\fmultiTopoIds\"R\n" +
 	"\bLsPrefix\x12\x16\n" +
-	"\x06prefix\x18\x01 \x01(\tR\x06prefix\x12\x1b\n" +
-	"\tsid_index\x18\x02 \x01(\rR\bsidIndex\"K\n" +
+	"\x06prefix\x18\x01 \x01(\tR\x06prefix\x12 \n" +
+	"\tsid_index\x18\x02 \x01(\rH\x00R\bsidIndex\x88\x01\x01B\f\n" +
+	"\n" +
+	"_sid_index\"K\n" +
 	"\x06Metric\x12+\n" +
 	"\x04type\x18\x01 \x01(\x0e2\x17.api.pola.v1.MetricTypeR\x04type\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\rR\x05value\"\xa0\x01\n" +
@@ -2091,6 +2105,7 @@ func file_api_pola_v1_pola_proto_init() {
 	if File_api_pola_v1_pola_proto != nil {
 		return
 	}
+	file_api_pola_v1_pola_proto_msgTypes[15].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

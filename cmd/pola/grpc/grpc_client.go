@@ -193,7 +193,10 @@ func createLsPrefix(lsNode *table.LsNode, prefix *pb.LsPrefix) (*table.LsPrefix,
 	if err != nil {
 		return nil, err
 	}
-	lsPrefix.SidIndex = prefix.GetSidIndex()
+	if prefix.SidIndex != nil {
+		lsPrefix.SidIndex = prefix.GetSidIndex()
+		lsPrefix.HasSidIndex = true
+	}
 
 	return lsPrefix, nil
 }

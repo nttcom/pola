@@ -56,7 +56,8 @@ func main() {
 				{Sid: "16004"},
 			},
 		},
-		SidValidate: false,
+		DisablePathCompute: true,
+		NoSidValidate:      true,
 	})
 	if err != nil {
 		log.Fatalf("c.CreateSRPolicy error: %v", err)

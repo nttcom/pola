@@ -197,8 +197,6 @@ JSON formatted response
 #### Case: Explicit Path
 
 Each SID may include address information for the NAI.
-See [`--no-sid-validate`](#pola-sr-policy-add--f-filepath---no-sid-validate)
-for details.
 
 YAML input format
 
@@ -225,9 +223,16 @@ JSON formatted response
 }
 ```
 
-### pola sr-policy add -f `filepath` --no-sid-validate
+#### Case: Explicit Path (endpoint addresses)
 
-Create a new SR Policy **without using TED**
+Instead of `srcRouterID`/`dstRouterID`, endpoints can be given directly as
+`srcAddr`/`dstAddr`. This form bypasses path computation: no CSPF and no
+router-ID resolution, so it accepts only `type: explicit` and takes the
+segment list verbatim.
+
+Each SID is still validated against the TED, so with `ted.enable: false` this
+form additionally needs
+[`--no-sid-validate`](#pola-sr-policy-add--f-filepath---no-sid-validate).
 
 For each SID, specify the address information required to construct the NAI.
 `localAddr` is required for SRv6 SIDs but optional for SR-MPLS labels.
@@ -265,6 +270,24 @@ json formatted response
   "status": "success"
 }
 ```
+
+### pola sr-policy add -f `filepath` --no-sid-validate
+
+Skips the check that every explicit SID exists in the TED. Without the flag,
+the request fails if any SID is missing from the TED, including when the TED is
+disabled or not yet synchronized. With the flag, the policy is provisioned and
+both the CLI and polad log a warning.
+
+Notes:
+
+- Dynamic paths and `waypoints[].sid` overrides are not validated.
+- Validation is best-effort: the TED is populated asynchronously via BGP-LS,
+  so results can lag behind the actual topology.
+- For SRv6 uSID containers, only the locator portion is checked, not the
+  full SID.
+- SID types not represented in the TED (Binding SID, Flex-Algorithm prefix
+  SID, anycast SID, static labels) always require `--no-sid-validate`.
+- The `-s` shorthand was removed in 1.4.0; use the long flag.
 
 ### pola ted \[-j\]
 
