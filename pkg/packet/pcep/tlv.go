@@ -886,12 +886,14 @@ func (tlv *SRPCECapability) Len() uint16 {
 }
 
 func (tlv *SRPCECapability) CapStrings() []string {
-	var ret []string
+	ret := []string{"SR"}
 	if tlv.HasUnlimitedMaxSIDDepth {
 		ret = append(ret, "Unlimited-SID-Depth")
+	} else {
+		ret = append(ret, fmt.Sprintf("MSD=%d", tlv.MaximumSidDepth))
 	}
 	if tlv.IsNAISupported {
-		ret = append(ret, "NAI-Supported")
+		ret = append(ret, "SR-NAI-Supported")
 	}
 	return ret
 }
@@ -969,7 +971,7 @@ func (tlv *SRv6PCECapability) Len() uint16 {
 func (tlv *SRv6PCECapability) CapStrings() []string {
 	ret := []string{"SRv6"}
 	if tlv.IsNAISupported {
-		ret = append(ret, "NAI-Supported")
+		ret = append(ret, "SRv6-NAI-Supported")
 	}
 	return ret
 }
@@ -1072,7 +1074,20 @@ func (tlv *MultipathCapability) Len() uint16 {
 }
 
 func (tlv *MultipathCapability) CapStrings() []string {
-	return []string{"Multipath"}
+	ret := []string{"Multipath", fmt.Sprintf("MaxMultipaths=%d", tlv.MaxMultipaths)}
+	if tlv.IsWeightedSupported {
+		ret = append(ret, "Weighted")
+	}
+	if tlv.IsOppositeDirSupported {
+		ret = append(ret, "OppositeDir")
+	}
+	if tlv.IsForwardClassSupported {
+		ret = append(ret, "ForwardClass")
+	}
+	if tlv.IsCompositePathSupported {
+		ret = append(ret, "CompositePath")
+	}
+	return ret
 }
 
 func NewMultipathCapability(maxMultipaths uint16, isWeightedSupported, isOppositeDirSupported, isForwardClassSupported, isCompositePathSupported bool) *MultipathCapability {
@@ -1600,7 +1615,11 @@ func (tlv *AssocTypeList) Len() uint16 {
 }
 
 func (tlv *AssocTypeList) CapStrings() []string {
-	return []string{}
+	ret := make([]string, 0, len(tlv.AssocTypes))
+	for _, at := range tlv.AssocTypes {
+		ret = append(ret, "AssocType:"+at.String())
+	}
+	return ret
 }
 
 type SRPolicyCandidatePathIdentifier struct {
@@ -1915,11 +1934,10 @@ func (tlv *UnknownTLV) Len() uint16 {
 	return TLVValueOffset + tlv.Length + padding
 }
 
-// CapStrings reports the registered TLV name even when no decoder exists.
-// Unknown TLV types fall back to "unknown_type_<n>".
+// Registered TLVs are reported with their identifier and name.
 func (tlv *UnknownTLV) CapStrings() []string {
-	if desc, ok := tlvDescriptions[tlv.Typ]; ok {
-		return []string{desc.Description}
+	if _, ok := tlvDescriptions[tlv.Typ]; ok {
+		return []string{fmt.Sprintf("0x%04x (%s)", uint16(tlv.Typ), tlv.Typ)}
 	}
 	capStr := "unknown_type_" + strconv.FormatInt(int64(tlv.Typ), 10)
 	return []string{capStr}

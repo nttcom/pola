@@ -13,7 +13,6 @@ import (
 	"math"
 	"net"
 	"net/netip"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -553,10 +552,16 @@ func (s *APIServer) GetSessionList(ctx context.Context, _ *pb.GetSessionListRequ
 			Caps:     []string{},
 			IsSynced: pcepSession.isSynced,
 		}
+		seenCaps := make(map[string]struct{})
 		for _, cap := range pcepSession.advertisedCapabilities {
-			ss.Caps = append(ss.Caps, cap.CapStrings()...)
+			for _, capStr := range cap.CapStrings() {
+				if _, ok := seenCaps[capStr]; ok {
+					continue
+				}
+				seenCaps[capStr] = struct{}{}
+				ss.Caps = append(ss.Caps, capStr)
+			}
 		}
-		ss.Caps = slices.Compact(ss.Caps)
 		sessions = append(sessions, ss)
 	}
 
