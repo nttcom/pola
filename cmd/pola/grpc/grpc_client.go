@@ -271,9 +271,10 @@ func GetSessions(client pb.PCEServiceClient) ([]Session, error) {
 		}
 
 		ss := Session{
-			Addr:     addr,
-			State:    pbss.State.String(),
-			IsSynced: pbss.GetIsSynced(),
+			Addr:         addr,
+			State:        pbss.State.String(),
+			IsSynced:     pbss.GetIsSynced(),
+			Capabilities: []Capability{},
 		}
 		for _, c := range pbss.GetCapabilities() {
 			ss.Capabilities = append(ss.Capabilities, capabilityFromPB(c))

@@ -826,3 +826,43 @@ func TestSessionList_ConcurrentAccess(t *testing.T) {
 	}
 	<-done
 }
+
+func TestDeleteSRPolicy_SrcAddrOmitted(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() {
+		if err := client.Close(); err != nil {
+			t.Errorf("failed to close client connection: %v", err)
+		}
+	})
+
+	peerAddr := netip.MustParseAddr("10.0.255.1")
+	dstAddr := netip.MustParseAddr("10.255.0.2")
+
+	ss := NewSession(1, peerAddr, server, zap.NewNop(), nil, 0)
+	ss.isSynced = true
+	ss.srPolicies = []*table.SRPolicy{
+		{
+			PlspID:     1,
+			Name:       "test-policy",
+			DstAddr:    dstAddr,
+			Color:      100,
+			Preference: 100,
+		},
+	}
+
+	pce := &Server{sessionList: []*Session{ss}}
+	apiServer := &APIServer{pce: pce, logger: zap.NewNop()}
+
+	req := &pb.DeleteSRPolicyRequest{
+		SrPolicy: &pb.SRPolicy{
+			PcepSessionAddr: peerAddr.AsSlice(),
+			DstAddr:         dstAddr.AsSlice(),
+			Color:           100,
+			PolicyName:      "test-policy",
+		},
+	}
+
+	resp, err := apiServer.DeleteSRPolicy(context.Background(), req)
+	require.NoError(t, err)
+	assert.True(t, resp.GetIsSuccess())
+}

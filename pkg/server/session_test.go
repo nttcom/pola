@@ -136,6 +136,37 @@ func TestSRPolicies_SnapshotSegmentListIsIndependent(t *testing.T) {
 	}
 }
 
+func TestSRPolicies_SnapshotSRv6StructureIsIndependent(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+
+	srv6Seg := table.NewSegmentSRv6(netip.MustParseAddr("2001:db8:1005::"))
+	srv6Seg.Structure = table.SIDStructureBytes{32, 16, 0, 80}
+	ss.srPolicies = append(ss.srPolicies, table.NewSRPolicy(1, "pe01-policy1", []table.Segment{srv6Seg}, netip.MustParseAddr("10.255.0.1"), netip.MustParseAddr("10.255.0.2"), 0, 0, 0, table.PolicyUp))
+
+	policies := ss.SRPolicies()
+	if len(policies) != 1 || len(policies[0].SegmentList) == 0 {
+		t.Fatalf("expected one SR Policy with a non-empty segment list, got %+v", policies)
+	}
+
+	snapshotSeg, ok := policies[0].SegmentList[0].(table.SegmentSRv6)
+	if !ok {
+		t.Fatalf("segment type: got %T, want table.SegmentSRv6", policies[0].SegmentList[0])
+	}
+	snapshotSeg.Structure[0] = 99
+
+	got, found := ss.SearchSRPolicy(1)
+	if !found {
+		t.Fatal("SR Policy was not registered")
+	}
+	gotSeg, ok := got.SegmentList[0].(table.SegmentSRv6)
+	if !ok {
+		t.Fatalf("segment type: got %T, want table.SegmentSRv6", got.SegmentList[0])
+	}
+	if !reflect.DeepEqual(gotSeg.Structure, table.SIDStructureBytes{32, 16, 0, 80}) {
+		t.Errorf("mutating the snapshot's SegmentSRv6.Structure changed the session's SR Policy: got %v", gotSeg.Structure)
+	}
+}
+
 func TestSRPolicyIntent_AttachedOnCreationBySRPID(t *testing.T) {
 	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
 	sr := newTestStateReport(t, 1, 7)
@@ -665,6 +696,116 @@ func TestAllocateSRPID_SkipsInUseIDsOnWraparound(t *testing.T) {
 	}
 }
 
+// concurrentSendCase defines a PCEP message send used by the concurrent-send test.
+type concurrentSendCase struct {
+	name string
+	send func(ss *Session, i int) error
+}
+
+var concurrentSendCases = []concurrentSendCase{
+	{
+		name: "SendKeepalive",
+		send: func(ss *Session, i int) error { return ss.SendKeepalive() },
+	},
+	{
+		name: "SendOpen",
+		send: func(ss *Session, i int) error { return ss.SendOpen() },
+	},
+	{
+		name: "SendClose",
+		send: func(ss *Session, i int) error {
+			return ss.SendClose(pcep.CloseReasonNoExplanationProvided)
+		},
+	},
+	{
+		name: "SendPCUpdate",
+		send: func(ss *Session, i int) error {
+			return ss.SendPCUpdate(table.SRPolicy{
+				Name:    "concurrent-send-test",
+				SrcAddr: netip.MustParseAddr("10.255.0.1"),
+				DstAddr: netip.MustParseAddr("10.255.0.2"),
+				Type:    table.PolicyTypeDynamic,
+				Metric:  table.TEMetric,
+			})
+		},
+	},
+	{
+		name: "RequestSRPolicyCreated",
+		send: func(ss *Session, i int) error {
+			return ss.RequestSRPolicyCreated(table.SRPolicy{
+				Name:    "concurrent-send-test",
+				SrcAddr: netip.MustParseAddr("10.255.0.1"),
+				DstAddr: netip.MustParseAddr("10.255.0.2"),
+				Color:   uint32(i),
+				Type:    table.PolicyTypeDynamic,
+				Metric:  table.TEMetric,
+			})
+		},
+	},
+}
+
+func sendConcurrentPCEPMessages(t *testing.T, ss *Session, goroutines int) {
+	t.Helper()
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			c := concurrentSendCases[i%len(concurrentSendCases)]
+			errCh <- c.send(ss, i)
+		}(i)
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		if err != nil {
+			t.Errorf("send returned an error: %v", err)
+		}
+	}
+}
+
+// readPCEPMessage reads and validates one PCEP message.
+func readPCEPMessage(r io.Reader) error {
+	headerBytes := make([]byte, pcep.CommonHeaderLength)
+	if _, err := io.ReadFull(r, headerBytes); err != nil {
+		return err
+	}
+
+	var header pcep.CommonHeader
+	if err := header.DecodeFromBytes(headerBytes); err != nil {
+		return fmt.Errorf("failed to decode a PCEP common header; sends may have interleaved: %w", err)
+	}
+
+	bodyLen := int(header.MessageLength) - int(pcep.CommonHeaderLength)
+	if bodyLen == 0 {
+		return nil
+	}
+	_, err := io.ReadFull(r, make([]byte, bodyLen))
+	return err
+}
+
+// startPCEPFramingValidator validates PCEP message framing in the background.
+func startPCEPFramingValidator(r io.Reader, wantCount int) <-chan error {
+	result := make(chan error, 1)
+
+	go func() {
+		for i := 0; i < wantCount; i++ {
+			if err := readPCEPMessage(r); err != nil {
+				result <- err
+				return
+			}
+		}
+		result <- nil
+	}()
+
+	return result
+}
+
 func TestSendPCEPMessage_ConcurrentSendsDoNotInterleave(t *testing.T) {
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
@@ -677,84 +818,9 @@ func TestSendPCEPMessage_ConcurrentSendsDoNotInterleave(t *testing.T) {
 
 	const goroutines = 40
 
-	readerErr := make(chan error, 1)
+	readerErr := startPCEPFramingValidator(client, goroutines)
 
-	go func() {
-		receivedCount := 0
-		for receivedCount < goroutines {
-			headerBytes := make([]byte, pcep.CommonHeaderLength)
-			if _, err := io.ReadFull(client, headerBytes); err != nil {
-				readerErr <- err
-				return
-			}
-
-			var header pcep.CommonHeader
-			if err := header.DecodeFromBytes(headerBytes); err != nil {
-				readerErr <- fmt.Errorf(
-					"failed to decode a PCEP common header; sends may have interleaved: %w",
-					err,
-				)
-				return
-			}
-
-			bodyLen := int(header.MessageLength) - int(pcep.CommonHeaderLength)
-			if bodyLen > 0 {
-				if _, err := io.ReadFull(client, make([]byte, bodyLen)); err != nil {
-					readerErr <- err
-					return
-				}
-			}
-
-			receivedCount++
-		}
-
-		readerErr <- nil
-	}()
-
-	var wg sync.WaitGroup
-	errCh := make(chan error, goroutines)
-
-	for i := 0; i < goroutines; i++ {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-
-			switch i % 5 {
-			case 0:
-				errCh <- ss.SendKeepalive()
-			case 1:
-				errCh <- ss.SendOpen()
-			case 2:
-				errCh <- ss.SendClose(pcep.CloseReasonNoExplanationProvided)
-			case 3:
-				errCh <- ss.SendPCUpdate(table.SRPolicy{
-					Name:    "concurrent-send-test",
-					SrcAddr: netip.MustParseAddr("10.255.0.1"),
-					DstAddr: netip.MustParseAddr("10.255.0.2"),
-					Type:    table.PolicyTypeDynamic,
-					Metric:  table.TEMetric,
-				})
-			default:
-				errCh <- ss.RequestSRPolicyCreated(table.SRPolicy{
-					Name:    "concurrent-send-test",
-					SrcAddr: netip.MustParseAddr("10.255.0.1"),
-					DstAddr: netip.MustParseAddr("10.255.0.2"),
-					Color:   uint32(i),
-					Type:    table.PolicyTypeDynamic,
-					Metric:  table.TEMetric,
-				})
-			}
-		}(i)
-	}
-
-	wg.Wait()
-	close(errCh)
-
-	for err := range errCh {
-		if err != nil {
-			t.Errorf("send returned an error: %v", err)
-		}
-	}
+	sendConcurrentPCEPMessages(t, ss, goroutines)
 
 	select {
 	case err := <-readerErr:

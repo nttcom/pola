@@ -6,12 +6,16 @@
 package grpc
 
 import (
+	"context"
+	"encoding/json"
+	"net/netip"
 	"testing"
 
 	pb "github.com/nttcom/pola/api/pola/v1"
 	"github.com/nttcom/pola/pkg/table"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -115,6 +119,38 @@ func TestSegmentFromPB_SRv6(t *testing.T) {
 	assert.Equal(t, "2001:db8::5", srv6Seg.LocalAddr.String())
 	assert.Equal(t, "2001:db8::6", srv6Seg.RemoteAddr.String())
 	assert.Equal(t, table.SIDStructureBytes{32, 16, 0, 80}, srv6Seg.Structure)
+}
+
+// fakeSessionListClient returns a fixed GetSessionListResponse.
+type fakeSessionListClient struct {
+	pb.PCEServiceClient
+	resp *pb.GetSessionListResponse
+}
+
+func (f *fakeSessionListClient) GetSessionList(ctx context.Context, in *pb.GetSessionListRequest, opts ...grpc.CallOption) (*pb.GetSessionListResponse, error) {
+	return f.resp, nil
+}
+
+func TestGetSessions_NoCapabilitiesIsEmptySlice(t *testing.T) {
+	client := &fakeSessionListClient{resp: &pb.GetSessionListResponse{
+		Sessions: []*pb.Session{
+			{
+				Addr:  netip.MustParseAddr("192.0.2.1").AsSlice(),
+				State: pb.SessionState_SESSION_STATE_UP,
+			},
+		},
+	}}
+
+	sessions, err := GetSessions(client)
+	require.NoError(t, err)
+	require.Len(t, sessions, 1)
+
+	require.NotNil(t, sessions[0].Capabilities)
+	assert.Empty(t, sessions[0].Capabilities)
+
+	marshaled, err := json.Marshal(sessions[0])
+	require.NoError(t, err)
+	assert.Contains(t, string(marshaled), `"Capabilities":[]`)
 }
 
 func TestCapability_Strings(t *testing.T) {

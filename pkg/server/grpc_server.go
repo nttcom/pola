@@ -382,14 +382,17 @@ func (s *APIServer) DeleteSRPolicy(ctx context.Context, input *pb.DeleteSRPolicy
 	var srcAddr, dstAddr netip.Addr
 	var segmentList []table.Segment
 
-	srcAddr, ok := netip.AddrFromSlice(inputSRPolicy.GetSrcAddr())
-	if !ok {
-		return &pb.DeleteSRPolicyResponse{
-			IsSuccess: false,
-		}, errors.New("invalid source address")
+	if len(inputSRPolicy.GetSrcAddr()) > 0 {
+		var ok bool
+		srcAddr, ok = netip.AddrFromSlice(inputSRPolicy.GetSrcAddr())
+		if !ok {
+			return &pb.DeleteSRPolicyResponse{
+				IsSuccess: false,
+			}, errors.New("invalid source address")
+		}
 	}
 
-	dstAddr, ok = netip.AddrFromSlice(inputSRPolicy.GetDstAddr())
+	dstAddr, ok := netip.AddrFromSlice(inputSRPolicy.GetDstAddr())
 	if !ok {
 		return &pb.DeleteSRPolicyResponse{
 			IsSuccess: false,
@@ -623,8 +626,7 @@ func (s *APIServer) GetSessionList(ctx context.Context, _ *pb.GetSessionListRequ
 		}
 		seenCapabilities := make(map[string]struct{})
 		for _, cap := range pcepSession.AdvertisedCapabilities() {
-			capStrs := cap.CapStrings()
-			capabilityKey := fmt.Sprintf("%d:%s", cap.Type(), strings.Join(capStrs, ","))
+			capabilityKey := fmt.Sprintf("%d:%s", cap.Type(), cap.Serialize())
 			if _, ok := seenCapabilities[capabilityKey]; ok {
 				continue
 			}
