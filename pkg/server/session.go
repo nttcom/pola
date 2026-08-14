@@ -23,15 +23,15 @@ import (
 )
 
 const (
-	// defaultSRPolicyIntentTTL is the lifetime of an SR Policy intent.
-	defaultSRPolicyIntentTTL = 60 * time.Second
-	// defaultSRPolicyIntentSweepInterval is the sweep interval for expired intents.
+	defaultSRPolicyIntentTTL           = 60 * time.Second
 	defaultSRPolicyIntentSweepInterval = 10 * time.Second
-	// defaultMaxUnknownMsgs is the number of unrecognized PCEP messages tolerated
-	// within defaultUnknownMsgWindow (RFC 5440 §6.9).
-	defaultMaxUnknownMsgs = 5
-	// defaultUnknownMsgWindow is the rolling window used to rate-limit unrecognized messages.
+
+	// Unrecognized-message rate limit defined by RFC 5440 §6.9.
+	defaultMaxUnknownMsgs   = 5
 	defaultUnknownMsgWindow = 1 * time.Minute
+
+	pcepErrorTypeCapabilityNotSupported uint8 = 2
+	pcepErrorValueUnassigned            uint8 = 0
 )
 
 // pcepConn abstracts the transport used by Session, allowing tests to inject
@@ -344,6 +344,17 @@ func (ss *Session) SendClose(reason pcep.CloseReason) error {
 	return ss.sendPCEPMessage(closeMessage)
 }
 
+// SendPCErr sends a PCErr message with the given error type and value.
+func (ss *Session) SendPCErr(errorType, errorValue uint8) error {
+	pcerrMessage := pcep.NewPCErrMessage(errorType, errorValue, nil)
+
+	ss.logger.Debug("Send PCErr Message",
+		zap.Uint8("error-Type", errorType),
+		zap.Uint8("error-value", errorValue),
+		zap.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#pcep-error-object"))
+	return ss.sendPCEPMessage(pcerrMessage)
+}
+
 func (ss *Session) ReceivePCEPMessage() error {
 	for {
 		commonHeader, err := ss.readCommonHeader()
@@ -357,50 +368,69 @@ func (ss *Session) ReceivePCEPMessage() error {
 		case pcep.MessageTypeKeepalive:
 			ss.logger.Debug("Received Keepalive")
 		case pcep.MessageTypeReport:
-			err = ss.handlePCRpt(commonHeader.MessageLength)
-			if err != nil {
+			if err := ss.handlePCRpt(commonHeader.MessageLength); err != nil {
 				return err
 			}
 		case pcep.MessageTypeError:
-			bytePCErrMessageBody, err := ss.readMessageBody(commonHeader.MessageLength)
-			if err != nil {
+			if err := ss.receivePCErr(commonHeader.MessageLength); err != nil {
 				return err
 			}
-			pcerrMessage := &pcep.PCErrMessage{}
-			if err := pcerrMessage.DecodeFromBytes(bytePCErrMessageBody); err != nil {
-				return err
-			}
-			ss.handlePCErr(pcerrMessage)
 		case pcep.MessageTypeClose:
-			byteCloseMessageBody, err := ss.readMessageBody(commonHeader.MessageLength)
-			if err != nil {
-				return err
-			}
-			closeMessage := &pcep.CloseMessage{}
-			if err := closeMessage.DecodeFromBytes(byteCloseMessageBody); err != nil {
-				return err
-			}
-			ss.logger.Debug("Received Close",
-				zap.String("reason", closeMessage.CloseObject.Reason.String()),
-				zap.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#close-object-reason-field"))
-			return nil
+			return ss.receiveClose(commonHeader.MessageLength)
 		default:
-			// Consume the body to keep the next common header correctly aligned.
-			if _, err := ss.readMessageBody(commonHeader.MessageLength); err != nil {
+			if err := ss.handleUnsupportedMessage(commonHeader); err != nil {
 				return err
-			}
-			ss.logger.Debug("Received unsupported MessageType",
-				zap.String("MessageType", commonHeader.MessageType.String()))
-
-			// RFC 5440 §6.9: close the session if unrecognized messages arrive too fast.
-			if ss.recordUnknownMessage() {
-				if err := ss.SendClose(pcep.CloseReasonTooManyUnrecognizedPCEPMessages); err != nil {
-					ss.logger.Debug("ERROR! Send Close Message", zap.Error(err))
-				}
-				return fmt.Errorf("too many unrecognized PCEP messages received within %s", ss.unknownMsgWindow)
 			}
 		}
 	}
+}
+
+func (ss *Session) receivePCErr(messageLength uint16) error {
+	bytePCErrMessageBody, err := ss.readMessageBody(messageLength)
+	if err != nil {
+		return err
+	}
+	pcerrMessage := &pcep.PCErrMessage{}
+	if err := pcerrMessage.DecodeFromBytes(bytePCErrMessageBody); err != nil {
+		return err
+	}
+	ss.handlePCErr(pcerrMessage)
+	return nil
+}
+
+func (ss *Session) receiveClose(messageLength uint16) error {
+	byteCloseMessageBody, err := ss.readMessageBody(messageLength)
+	if err != nil {
+		return err
+	}
+	closeMessage := &pcep.CloseMessage{}
+	if err := closeMessage.DecodeFromBytes(byteCloseMessageBody); err != nil {
+		return err
+	}
+	ss.logger.Debug("Received Close",
+		zap.String("reason", closeMessage.CloseObject.Reason.String()),
+		zap.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#close-object-reason-field"))
+	return nil
+}
+
+func (ss *Session) handleUnsupportedMessage(commonHeader *pcep.CommonHeader) error {
+	if _, err := ss.readMessageBody(commonHeader.MessageLength); err != nil {
+		return err
+	}
+	ss.logger.Debug("Received unsupported MessageType",
+		zap.String("MessageType", commonHeader.MessageType.String()))
+
+	if err := ss.SendPCErr(pcepErrorTypeCapabilityNotSupported, pcepErrorValueUnassigned); err != nil {
+		ss.logger.Debug("ERROR! Send PCErr Message", zap.Error(err))
+	}
+
+	if ss.recordUnknownMessage() {
+		if err := ss.SendClose(pcep.CloseReasonTooManyUnrecognizedPCEPMessages); err != nil {
+			ss.logger.Debug("ERROR! Send Close Message", zap.Error(err))
+		}
+		return fmt.Errorf("too many unrecognized PCEP messages received within %s", ss.unknownMsgWindow)
+	}
+	return nil
 }
 
 func (ss *Session) readCommonHeader() (*pcep.CommonHeader, error) {
@@ -426,9 +456,8 @@ func (ss *Session) readMessageBody(messageLength uint16) ([]uint8, error) {
 	return body, nil
 }
 
-// recordUnknownMessage counts an unrecognized PCEP message received in the
-// current rate-limiting window and reports whether the count has exceeded
-// maxUnknownMsgs (RFC 5440 §6.9).
+// recordUnknownMessage counts unrecognized messages and reports whether the
+// rate limit has been reached.
 func (ss *Session) recordUnknownMessage() bool {
 	ss.unknownMsgMu.Lock()
 	defer ss.unknownMsgMu.Unlock()

@@ -1407,6 +1407,12 @@ func TestReceivePCEPMessage_TooManyUnknownMessagesClosesSession(t *testing.T) {
 	err := ss.ReceivePCEPMessage()
 	require.Error(t, err, "exceeding maxUnknownMsgs must terminate the receive loop")
 
+	for i := uint32(0); i <= ss.maxUnknownMsgs; i++ {
+		pcerrMessage := readPCErrMessage(t, client)
+		require.Len(t, pcerrMessage.Errors, 1)
+		assert.EqualValues(t, 2, pcerrMessage.Errors[0].ErrorType, "expected Error-Type 2 (Capability not supported)")
+	}
+
 	closeMessage := readCloseMessage(t, client)
 	assert.Equal(t, pcep.CloseReasonTooManyUnrecognizedPCEPMessages, closeMessage.CloseObject.Reason)
 }
@@ -1428,6 +1434,30 @@ func TestReceivePCEPMessage_FewUnknownMessagesToleratedWithinWindow(t *testing.T
 	writeMessage(t, client, pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided))
 
 	require.NoError(t, ss.ReceivePCEPMessage(), "unrecognized messages within the threshold must not close the session")
+
+	for i := uint32(0); i < ss.maxUnknownMsgs; i++ {
+		readPCErrMessage(t, client)
+	}
+}
+
+func readPCErrMessage(t *testing.T, r io.Reader) *pcep.PCErrMessage {
+	t.Helper()
+
+	headerBytes := make([]byte, pcep.CommonHeaderLength)
+	_, err := io.ReadFull(r, headerBytes)
+	require.NoError(t, err, "failed to read common header")
+
+	header := &pcep.CommonHeader{}
+	require.NoError(t, header.DecodeFromBytes(headerBytes), "failed to decode common header")
+	require.Equal(t, pcep.MessageTypeError, header.MessageType, "expected a PCErr message")
+
+	body := make([]byte, header.MessageLength-pcep.CommonHeaderLength)
+	_, err = io.ReadFull(r, body)
+	require.NoError(t, err, "failed to read PCErr message body")
+
+	pcerrMessage := &pcep.PCErrMessage{}
+	require.NoError(t, pcerrMessage.DecodeFromBytes(body), "failed to decode PCErr message")
+	return pcerrMessage
 }
 
 func readCloseMessage(t *testing.T, r io.Reader) *pcep.CloseMessage {
