@@ -8,6 +8,7 @@ package server
 import (
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"net"
 	"net/netip"
@@ -27,6 +28,8 @@ const (
 	defaultSRPolicyIntentTTL = 60 * time.Second
 	// defaultSRPolicyIntentSweepInterval is the sweep interval for expired intents.
 	defaultSRPolicyIntentSweepInterval = 10 * time.Second
+	// defaultKeepaliveSeconds is used when the peer advertises a Keepalive of 0.
+	defaultKeepaliveSeconds = 30
 )
 
 type Session struct {
@@ -213,7 +216,11 @@ func (ss *Session) Established() {
 		done <- struct{}{}
 	}()
 
-	ticker := time.NewTicker(time.Duration(ss.keepAlive) * time.Second)
+	keepalive := ss.keepAlive
+	if keepalive == 0 {
+		keepalive = defaultKeepaliveSeconds
+	}
+	ticker := time.NewTicker(time.Duration(keepalive) * time.Second)
 	defer ticker.Stop()
 
 	for {
@@ -253,7 +260,7 @@ func (ss *Session) Open() error {
 
 func (ss *Session) parseOpenMessage() (*pcep.OpenMessage, error) {
 	byteOpenHeader := make([]uint8, pcep.CommonHeaderLength)
-	if _, err := ss.tcpConn.Read(byteOpenHeader); err != nil {
+	if _, err := io.ReadFull(ss.tcpConn, byteOpenHeader); err != nil {
 		return nil, err
 	}
 
@@ -270,7 +277,7 @@ func (ss *Session) parseOpenMessage() (*pcep.OpenMessage, error) {
 	}
 
 	byteOpenObject := make([]uint8, openHeader.MessageLength-pcep.CommonHeaderLength)
-	if _, err := ss.tcpConn.Read(byteOpenObject); err != nil {
+	if _, err := io.ReadFull(ss.tcpConn, byteOpenObject); err != nil {
 		return nil, err
 	}
 
@@ -341,7 +348,7 @@ func (ss *Session) ReceivePCEPMessage() error {
 			}
 		case pcep.MessageTypeError:
 			bytePCErrMessageBody := make([]uint8, commonHeader.MessageLength-pcep.CommonHeaderLength)
-			if _, err := ss.tcpConn.Read(bytePCErrMessageBody); err != nil {
+			if _, err := io.ReadFull(ss.tcpConn, bytePCErrMessageBody); err != nil {
 				return err
 			}
 			pcerrMessage := &pcep.PCErrMessage{}
@@ -351,7 +358,7 @@ func (ss *Session) ReceivePCEPMessage() error {
 			ss.handlePCErr(pcerrMessage)
 		case pcep.MessageTypeClose:
 			byteCloseMessageBody := make([]uint8, commonHeader.MessageLength-pcep.CommonHeaderLength)
-			if _, err := ss.tcpConn.Read(byteCloseMessageBody); err != nil {
+			if _, err := io.ReadFull(ss.tcpConn, byteCloseMessageBody); err != nil {
 				return err
 			}
 			closeMessage := &pcep.CloseMessage{}
@@ -372,7 +379,7 @@ func (ss *Session) ReceivePCEPMessage() error {
 
 func (ss *Session) readCommonHeader() (*pcep.CommonHeader, error) {
 	commonHeaderBytes := make([]uint8, pcep.CommonHeaderLength)
-	if _, err := ss.tcpConn.Read(commonHeaderBytes); err != nil {
+	if _, err := io.ReadFull(ss.tcpConn, commonHeaderBytes); err != nil {
 		return nil, err
 	}
 
@@ -403,7 +410,7 @@ func (ss *Session) handlePCRpt(length uint16) error {
 	ss.logger.Debug("Received PCRpt Message")
 
 	messageBodyBytes := make([]uint8, length-pcep.CommonHeaderLength)
-	if _, err := ss.tcpConn.Read(messageBodyBytes); err != nil {
+	if _, err := io.ReadFull(ss.tcpConn, messageBodyBytes); err != nil {
 		return err
 	}
 

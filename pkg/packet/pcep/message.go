@@ -77,10 +77,18 @@ type CommonHeader struct { // RFC5440 6.1
 }
 
 func (h *CommonHeader) DecodeFromBytes(header []uint8) error {
+	if len(header) < int(CommonHeaderLength) {
+		return fmt.Errorf("PCEP common header too short: got %d bytes, need %d", len(header), CommonHeaderLength)
+	}
 	h.Version = uint8(header[0] >> 5)
 	h.Flag = uint8(header[0] & 0x1f)
 	h.MessageType = MessageType(header[1])
 	h.MessageLength = binary.BigEndian.Uint16(header[2:4])
+
+	// RFC 5440 §6.1 requires Message-Length to include the common header.
+	if h.MessageLength < CommonHeaderLength {
+		return fmt.Errorf("invalid PCEP message length %d", h.MessageLength)
+	}
 	return nil
 }
 
@@ -146,7 +154,7 @@ func (m *OpenMessage) DecodeFromBytes(messageBody []uint8) error {
 
 	body, err := objectBody(messageBody, &commonObjectHeader)
 	if err != nil {
-		return fmt.Errorf("Open: %w", err)
+		return fmt.Errorf("open: %w", err)
 	}
 
 	openObject := &OpenObject{}
@@ -291,7 +299,7 @@ func (m *CloseMessage) DecodeFromBytes(messageBody []uint8) error {
 	}
 	body, err := objectBody(messageBody, &commonObjectHeader)
 	if err != nil {
-		return fmt.Errorf("Close: %w", err)
+		return fmt.Errorf("close: %w", err)
 	}
 	closeObject := &CloseObject{}
 	if err := closeObject.DecodeFromBytes(commonObjectHeader.ObjectType, body); err != nil {

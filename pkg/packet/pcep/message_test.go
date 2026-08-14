@@ -264,6 +264,25 @@ func TestOpenMessage_DecodeFromBytes_Errors(t *testing.T) {
 	}
 }
 
+func TestCommonHeader_DecodeFromBytes_Errors(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string][]uint8{
+		"TooShort":                       {0x20, 0x01, 0x00},
+		"MessageLengthZero":              {0x20, 0x01, 0x00, 0x00},
+		"MessageLengthBelowCommonHeader": {0x20, 0x01, 0x00, 0x03},
+	}
+
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var h CommonHeader
+			assert.Error(t, h.DecodeFromBytes(body))
+		})
+	}
+}
+
 func TestKeepaliveMessage(t *testing.T) {
 	t.Parallel()
 

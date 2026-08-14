@@ -943,6 +943,38 @@ func TestEstablished_ReturnsOnCloseMessage(t *testing.T) {
 	}
 }
 
+func TestEstablished_ZeroKeepaliveDoesNotPanic(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() {
+		assert.NoError(t, client.Close(), "failed to close client connection")
+	})
+
+	openMessage, err := pcep.NewOpenMessage(1, 0, nil)
+	require.NoError(t, err, "failed to create open message")
+	writeMessage(t, client, openMessage)
+
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+
+	done := make(chan struct{})
+	go func() {
+		ss.Established()
+		close(done)
+	}()
+
+	require.NoError(t, readPCEPMessage(client), "failed to read Open reply")
+	require.NoError(t, readPCEPMessage(client), "failed to read initial Keepalive")
+
+	closeMessage, err := pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided)
+	require.NoError(t, err, "failed to create close message")
+	writeMessage(t, client, closeMessage)
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		require.Fail(t, "Established did not return after the peer sent a Close message")
+	}
+}
+
 func TestEstablished_ReturnsWhenPeerDisconnectsAbruptly(t *testing.T) {
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
@@ -1214,6 +1246,27 @@ func TestReceivePCEPMessage_Errors(t *testing.T) {
 					assert.NoError(t, client.Close(), "failed to close client connection")
 				})
 			}
+
+			ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+			assert.Error(t, ss.ReceivePCEPMessage())
+		})
+	}
+}
+
+func TestReceivePCEPMessage_ShortMessageLengthIsRejected(t *testing.T) {
+	for length := uint16(0); length < pcep.CommonHeaderLength; length++ {
+		t.Run(fmt.Sprintf("MessageLength=%d", length), func(t *testing.T) {
+			server, client := newTCPConnPair(t)
+			t.Cleanup(func() {
+				assert.NoError(t, server.Close(), "failed to close server connection")
+			})
+			t.Cleanup(func() {
+				assert.NoError(t, client.Close(), "failed to close client connection")
+			})
+
+			header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeKeepalive, MessageLength: length}
+			_, err := client.Write(header.Serialize())
+			require.NoError(t, err, "failed to write header")
 
 			ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
 			assert.Error(t, ss.ReceivePCEPMessage())
