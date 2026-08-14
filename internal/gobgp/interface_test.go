@@ -165,6 +165,16 @@ func TestGetLsPrefix_NLRITypesAndErrors(t *testing.T) {
 		assert.EqualError(t, err, "invalid LS prefix NLRI type")
 	})
 
+	t.Run("nil NLRI", func(t *testing.T) {
+		_, err := getLsPrefix(nil, &api.LsAttributePrefix{})
+		require.EqualError(t, err, "LS Prefix NLRI is nil")
+	})
+
+	t.Run("nil NLRI field", func(t *testing.T) {
+		_, err := getLsPrefix(&api.LsAddrPrefix{}, &api.LsAttributePrefix{})
+		require.EqualError(t, err, "LS Prefix NLRI is nil")
+	})
+
 	reachTests := []struct {
 		name          string
 		reach         []string
@@ -422,34 +432,88 @@ func TestGetLsLink(t *testing.T) {
 			})
 		}
 	})
+
+	t.Run("invalid NLRI", func(t *testing.T) {
+		// Node NLRI where a Link NLRI is expected.
+		wrongNLRI := &api.LsAddrPrefix{
+			Nlri: &api.LsAddrPrefix_LsNLRI{
+				Nlri: &api.LsAddrPrefix_LsNLRI_Node{
+					Node: &api.LsNodeNLRI{},
+				},
+			},
+		}
+
+		tests := []struct {
+			name string
+			nlri *api.LsAddrPrefix
+		}{
+			{"nil NLRI", nil},
+			{"wrong NLRI type", wrongNLRI},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				_, err := getLsLink(tt.nlri, &api.LsAttributeLink{})
+				require.Error(t, err)
+			})
+		}
+	})
 }
 
 func TestGetLsSrv6SID(t *testing.T) {
-	nlri := &api.LsAddrPrefix{
-		Nlri: &api.LsAddrPrefix_LsNLRI{
-			Nlri: &api.LsAddrPrefix_LsNLRI_Srv6Sid{
-				Srv6Sid: &api.LsSrv6SIDNLRI{
-					LocalNode:          &api.LsNodeDescriptor{Asn: 65000, IgpRouterId: "0000.0000.0001"},
-					Srv6SidInformation: &api.LsSrv6SIDInformation{Sids: []string{"2001:db8:1::"}},
-					MultiTopoId:        &api.LsMultiTopologyIdentifier{MultiTopoIds: []uint32{0}},
-				},
-			},
-		},
-	}
 	attr := &api.LsAttributeSrv6SID{
 		Srv6EndpointBehavior: &api.LsSrv6EndpointBehavior{EndpointBehavior: uint32(table.BehaviorEND)},
 		Srv6SidStructure:     &api.LsSrv6SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
 	}
 
-	got, err := getLsSrv6SID(nlri, attr)
-	require.NoError(t, err)
+	t.Run("success", func(t *testing.T) {
+		nlri := &api.LsAddrPrefix{
+			Nlri: &api.LsAddrPrefix_LsNLRI{
+				Nlri: &api.LsAddrPrefix_LsNLRI_Srv6Sid{
+					Srv6Sid: &api.LsSrv6SIDNLRI{
+						LocalNode:          &api.LsNodeDescriptor{Asn: 65000, IgpRouterId: "0000.0000.0001"},
+						Srv6SidInformation: &api.LsSrv6SIDInformation{Sids: []string{"2001:db8:1::"}},
+						MultiTopoId:        &api.LsMultiTopologyIdentifier{MultiTopoIds: []uint32{0}},
+					},
+				},
+			},
+		}
 
-	want := table.NewLsSrv6SID(table.NewLsNode(65000, "0000.0000.0001"))
-	want.Sids = []string{"2001:db8:1::"}
-	want.MultiTopoIDs = []uint32{0}
-	want.SIDStructure = table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0}
-	want.EndpointBehavior = table.EndpointBehavior{Behavior: table.BehaviorEND}
-	assert.Equal(t, want, got)
+		got, err := getLsSrv6SID(nlri, attr)
+		require.NoError(t, err)
+
+		want := table.NewLsSrv6SID(table.NewLsNode(65000, "0000.0000.0001"))
+		want.Sids = []string{"2001:db8:1::"}
+		want.MultiTopoIDs = []uint32{0}
+		want.SIDStructure = table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0}
+		want.EndpointBehavior = table.EndpointBehavior{Behavior: table.BehaviorEND}
+		assert.Equal(t, want, got)
+	})
+
+	t.Run("invalid NLRI", func(t *testing.T) {
+		wrongNLRI := &api.LsAddrPrefix{
+			Nlri: &api.LsAddrPrefix_LsNLRI{
+				Nlri: &api.LsAddrPrefix_LsNLRI_Node{
+					Node: &api.LsNodeNLRI{},
+				},
+			},
+		}
+
+		tests := []struct {
+			name string
+			nlri *api.LsAddrPrefix
+		}{
+			{"nil NLRI", nil},
+			{"wrong NLRI type", wrongNLRI},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				_, err := getLsSrv6SID(tt.nlri, attr)
+				require.Error(t, err)
+			})
+		}
+	})
 }
 
 func TestGetLsSrv6SIDList(t *testing.T) {
@@ -813,7 +877,7 @@ type fakeGoBGPClient struct {
 
 	// watchEventErr, when set, is returned by every WatchEvent call.
 	watchEventErr   error
-	watchEventCalls int32
+	watchEventCalls atomic.Int32
 }
 
 func (f *fakeGoBGPClient) ListPath(ctx context.Context, in *api.ListPathRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[api.ListPathResponse], error) {
@@ -826,7 +890,7 @@ func (f *fakeGoBGPClient) ListPath(ctx context.Context, in *api.ListPathRequest,
 }
 
 func (f *fakeGoBGPClient) WatchEvent(_ context.Context, _ *api.WatchEventRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[api.WatchEventResponse], error) {
-	atomic.AddInt32(&f.watchEventCalls, 1)
+	f.watchEventCalls.Add(1)
 	return nil, f.watchEventErr
 }
 
@@ -937,7 +1001,7 @@ func TestEstablishWatchStream_RetriesThenGivesUpOnContextCancel(t *testing.T) {
 
 	// Let a few retries happen before giving up via cancellation.
 	require.Eventually(t, func() bool {
-		return atomic.LoadInt32(&client.watchEventCalls) >= 2
+		return client.watchEventCalls.Load() >= 2
 	}, time.Second, time.Millisecond)
 	cancel()
 
@@ -979,18 +1043,16 @@ func TestInitialSync(t *testing.T) {
 func TestDebouncerTrigger(t *testing.T) {
 	t.Run("fetches once after the cooldown and delivers", func(t *testing.T) {
 		d := NewDebouncer(20 * time.Millisecond)
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
 
 		want := []table.TEDElem{table.NewLsNode(1, "r1")}
-		var fetchCount int32
+		var fetchCount atomic.Int32
 		fetch := func() ([]table.TEDElem, error) {
-			atomic.AddInt32(&fetchCount, 1)
+			fetchCount.Add(1)
 			return want, nil
 		}
 		delivered := make(chan []table.TEDElem, 1)
 
-		d.Trigger(ctx, fetch, func(elems []table.TEDElem) { delivered <- elems }, zap.NewNop())
+		d.Trigger(t.Context(), fetch, func(elems []table.TEDElem) { delivered <- elems }, zap.NewNop())
 
 		select {
 		case got := <-delivered:
@@ -998,17 +1060,16 @@ func TestDebouncerTrigger(t *testing.T) {
 		case <-time.After(time.Second):
 			t.Fatal("timed out waiting for delivery")
 		}
-		assert.EqualValues(t, 1, atomic.LoadInt32(&fetchCount))
+		assert.EqualValues(t, 1, fetchCount.Load())
 	})
 
 	t.Run("collapses triggers within the cooldown window into one fetch", func(t *testing.T) {
 		d := NewDebouncer(50 * time.Millisecond)
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 
-		var fetchCount int32
+		var fetchCount atomic.Int32
 		fetch := func() ([]table.TEDElem, error) {
-			atomic.AddInt32(&fetchCount, 1)
+			fetchCount.Add(1)
 			return nil, nil
 		}
 		delivered := make(chan []table.TEDElem, 1)
@@ -1024,16 +1085,16 @@ func TestDebouncerTrigger(t *testing.T) {
 		case <-time.After(time.Second):
 			t.Fatal("timed out waiting for delivery")
 		}
-		assert.EqualValues(t, 1, atomic.LoadInt32(&fetchCount))
+		assert.EqualValues(t, 1, fetchCount.Load())
 	})
 
 	t.Run("stops without fetching when the context is canceled first", func(t *testing.T) {
 		d := NewDebouncer(time.Hour)
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(t.Context())
 
-		var fetchCalled int32
+		var fetchCalled atomic.Int32
 		fetch := func() ([]table.TEDElem, error) {
-			atomic.StoreInt32(&fetchCalled, 1)
+			fetchCalled.Store(1)
 			return nil, nil
 		}
 		deliver := func([]table.TEDElem) { t.Fatal("deliver should not be called") }
@@ -1046,19 +1107,17 @@ func TestDebouncerTrigger(t *testing.T) {
 			defer d.mu.Unlock()
 			return !d.active
 		}, time.Second, time.Millisecond)
-		assert.EqualValues(t, 0, atomic.LoadInt32(&fetchCalled))
+		assert.EqualValues(t, 0, fetchCalled.Load())
 	})
 
 	t.Run("logs and skips delivery when the fetch fails", func(t *testing.T) {
 		d := NewDebouncer(10 * time.Millisecond)
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
 
 		core, logs := observer.New(zap.ErrorLevel)
 		fetch := func() ([]table.TEDElem, error) { return nil, errors.New("fetch failed") }
 		deliver := func([]table.TEDElem) { t.Fatal("deliver should not be called") }
 
-		d.Trigger(ctx, fetch, deliver, zap.New(core))
+		d.Trigger(t.Context(), fetch, deliver, zap.New(core))
 
 		require.Eventually(t, func() bool { return logs.Len() > 0 }, time.Second, time.Millisecond)
 		assert.Equal(t, "failed to get TED info", logs.All()[0].Message)
@@ -1093,12 +1152,12 @@ type testGoBGPServer struct {
 	watchEventHold time.Duration
 	// Errors returned by successive WatchEvent calls.
 	watchEventErrs  []error
-	listPathCalls   int32
-	watchEventCalls int32
+	listPathCalls   atomic.Int32
+	watchEventCalls atomic.Int32
 }
 
 func (s *testGoBGPServer) ListPath(_ *api.ListPathRequest, stream grpc.ServerStreamingServer[api.ListPathResponse]) error {
-	atomic.AddInt32(&s.listPathCalls, 1)
+	s.listPathCalls.Add(1)
 	for _, r := range s.listPathResp {
 		if err := stream.Send(r); err != nil {
 			return err
@@ -1108,7 +1167,7 @@ func (s *testGoBGPServer) ListPath(_ *api.ListPathRequest, stream grpc.ServerStr
 }
 
 func (s *testGoBGPServer) WatchEvent(_ *api.WatchEventRequest, stream grpc.ServerStreamingServer[api.WatchEventResponse]) error {
-	call := int(atomic.AddInt32(&s.watchEventCalls, 1)) - 1
+	call := int(s.watchEventCalls.Add(1)) - 1
 	if call < len(s.watchEventErrs) && s.watchEventErrs[call] != nil {
 		return s.watchEventErrs[call]
 	}
@@ -1266,7 +1325,7 @@ func testMonitorBGPLsEventsDebouncedFetch(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for the debounced fetch to deliver")
 	}
-	assert.GreaterOrEqual(t, atomic.LoadInt32(&server.listPathCalls), int32(2))
+	assert.GreaterOrEqual(t, server.listPathCalls.Load(), int32(2))
 
 	select {
 	case <-done:
@@ -1313,7 +1372,7 @@ func testMonitorBGPLsEventsReestablishesStream(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for the re-established stream to deliver")
 	}
-	assert.EqualValues(t, 2, atomic.LoadInt32(&server.watchEventCalls))
+	assert.EqualValues(t, 2, server.watchEventCalls.Load())
 	require.GreaterOrEqual(t, logs.Len(), 1)
 	assert.Equal(t, "error receiving BGP-LS event", logs.All()[0].Message)
 

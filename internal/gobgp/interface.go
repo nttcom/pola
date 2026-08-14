@@ -432,7 +432,13 @@ func getLsNode(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrNode *api.LsAttribute
 }
 
 func getLsLink(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrLink *api.LsAttributeLink) (*table.LsLink, error) {
+	if typedLinkStateNLRI == nil {
+		return nil, errors.New("LS Link NLRI is nil")
+	}
 	lsLinkNLRI := typedLinkStateNLRI.Nlri.GetLink()
+	if lsLinkNLRI == nil {
+		return nil, errors.New("LS Link NLRI is not a link type")
+	}
 	localNode := table.NewLsNode(lsLinkNLRI.GetLocalNode().GetAsn(), lsLinkNLRI.GetLocalNode().GetIgpRouterId())
 	remoteNode := table.NewLsNode(lsLinkNLRI.GetRemoteNode().GetAsn(), lsLinkNLRI.GetRemoteNode().GetIgpRouterId())
 
@@ -541,6 +547,10 @@ func getLsPrefix(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrPrefix *api.LsAttri
 	var localNodeAsn uint32
 	var prefix []string
 
+	if typedLinkStateNLRI == nil || typedLinkStateNLRI.Nlri == nil {
+		return nil, errors.New("LS Prefix NLRI is nil")
+	}
+
 	sidIndex, hasSidIndex := algo0PrefixSID(lsAttrPrefix)
 
 	switch prefNLRI := typedLinkStateNLRI.Nlri.Nlri.(type) {
@@ -591,10 +601,16 @@ func getLsSrv6SIDList(nlris []*api.NLRI, lsAttrSrv6SID *api.LsAttributeSrv6SID) 
 }
 
 func getLsSrv6SID(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrSrv6SID *api.LsAttributeSrv6SID) (*table.LsSrv6SID, error) {
+	if typedLinkStateNLRI == nil {
+		return nil, errors.New("LS SRv6 SID NLRI is nil")
+	}
 
 	srv6SIDStructure := lsAttrSrv6SID.GetSrv6SidStructure()
 	endpointBehavior := lsAttrSrv6SID.GetSrv6EndpointBehavior()
 	srv6SIDNLRI := typedLinkStateNLRI.Nlri.GetSrv6Sid()
+	if srv6SIDNLRI == nil {
+		return nil, errors.New("LS SRv6 SID NLRI is not an SRv6 SID type")
+	}
 
 	localNodeID := srv6SIDNLRI.GetLocalNode().GetIgpRouterId()
 	localNodeASN := srv6SIDNLRI.GetLocalNode().GetAsn()
