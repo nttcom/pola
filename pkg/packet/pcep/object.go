@@ -1104,21 +1104,18 @@ func (o *SREroSubobject) Serialize() ([]uint8, error) {
 func (nt NAITypeSR) naiLength() (uint16, error) {
 	switch nt {
 	case NAITypeSRAbsent:
-		return uint16(0), nil
+		return 0, nil
 	case NAITypeSRIPv4Node:
-		return uint16(4), nil
+		return 4, nil
 	case NAITypeSRIPv6Node:
-		return uint16(16), nil
+		return 16, nil
 	case NAITypeSRIPv4Adjacency:
-		return uint16(8), nil
+		return 8, nil
 	case NAITypeSRIPv6AdjacencyGlobal:
-		return uint16(32), nil
-	case NAITypeSRUnnumberedAdjacency:
-		return uint16(16), nil
-	case NAITypeSRIPv6AdjacencyLinkLocal:
-		return uint16(40), nil
+		return 32, nil
 	default:
-		return uint16(0), errors.New("unsupported naitype")
+		// Unnumbered and link-local adjacency NAIs are not supported by the decoder.
+		return 0, errors.New("unsupported naitype")
 	}
 }
 
@@ -1418,24 +1415,33 @@ func NewSRv6EroSubobject(seg table.SegmentSRv6) (*SRv6EroSubobject, error) {
 		Segment:       seg,
 	}
 
-	subo.TFlag = seg.Structure != nil
+	subo.TFlag = len(seg.Structure) > 0
+	if err := seg.Structure.Validate(); err != nil {
+		return nil, fmt.Errorf("SegmentSRv6: invalid SID structure: %w", err)
+	}
 
-	if seg.LocalAddr.IsValid() {
-		// Link-local adjacencies require NAITypeSRv6IPv6AdjacencyLinkLocal
-		// (RFC 9603 §4.3.1), which is not yet supported for encoding.
-		if seg.LocalAddr.IsLinkLocalUnicast() || seg.RemoteAddr.IsLinkLocalUnicast() {
-			return nil, errors.New("SegmentSRv6: link-local IPv6 adjacency NAI is unsupported")
+	local, remote := seg.LocalAddr.Unmap(), seg.RemoteAddr.Unmap()
+	switch {
+	case !local.IsValid():
+		if remote.IsValid() {
+			return nil, errors.New("SegmentSRv6: RemoteAddr requires LocalAddr")
 		}
-		subo.FFlag = false
-
-		if seg.RemoteAddr.IsValid() {
-			subo.NAIType = NAITypeSRv6IPv6AdjacencyGlobal
-		} else {
-			subo.NAIType = NAITypeSRv6IPv6Node
-		}
-	} else {
 		subo.FFlag = true
 		subo.NAIType = NAITypeSRv6Absent
+	case !local.Is6():
+		return nil, errors.New("SegmentSRv6: NAI LocalAddr must be IPv6")
+	case remote.IsValid() && !remote.Is6():
+		return nil, errors.New("SegmentSRv6: NAI RemoteAddr must be IPv6")
+	case local.IsLinkLocalUnicast() || remote.IsLinkLocalUnicast():
+		// Link-local adjacencies require NAITypeSRv6IPv6AdjacencyLinkLocal
+		// (RFC 9603 §4.3.1), which is not yet supported for encoding.
+		return nil, errors.New("SegmentSRv6: link-local IPv6 adjacency NAI is unsupported")
+	case remote.IsValid():
+		subo.FFlag = false
+		subo.NAIType = NAITypeSRv6IPv6AdjacencyGlobal
+	default:
+		subo.FFlag = false
+		subo.NAIType = NAITypeSRv6IPv6Node
 	}
 
 	length, err := subo.Len()
@@ -1451,7 +1457,7 @@ func (o *SRv6EroSubobject) ToSegment() table.Segment {
 }
 
 const (
-	// RSVP IPv4 Prefix ERO Subobject (RFC3209 4.3.3.1)
+	// SubobjectTypeEROIPv4Prefix is the RSVP IPv4 Prefix ERO Subobject (RFC 3209 §4.3.3.1).
 	SubobjectTypeEROIPv4Prefix SubobjectType = 0x01
 
 	// rsvpIPv4PrefixEroSubobjectLength is the fixed on-wire length of the
@@ -1475,9 +1481,8 @@ func (o *RSVPIPv4PrefixEroSubobject) DecodeFromBytes(subobject []uint8) error {
 		return fmt.Errorf("RSVPIPv4PrefixEroSubobject: subobject too short: %d", len(subobject))
 	}
 
-	// Per RFC3209 4.3.3.1 the Length field carries the total length of the
-	// subobject in bytes; for an IPv4 prefix hop it is fixed at 8. Validate it
-	// so a malformed subobject does not desync the enclosing ERO decode loop.
+	// RFC 3209 §4.3.3.1 defines a fixed length of 8 bytes for this subobject.
+	// Validate it to prevent malformed input from desynchronizing the ERO decode loop.
 	if subobject[1] != rsvpIPv4PrefixEroSubobjectLength {
 		return fmt.Errorf("RSVPIPv4PrefixEroSubobject: invalid length field: %d", subobject[1])
 	}

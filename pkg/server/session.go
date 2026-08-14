@@ -27,8 +27,6 @@ const (
 	defaultSRPolicyIntentTTL = 60 * time.Second
 	// defaultSRPolicyIntentSweepInterval is the sweep interval for expired intents.
 	defaultSRPolicyIntentSweepInterval = 10 * time.Second
-	// defaultKeepaliveSeconds is used when the peer advertises a Keepalive of 0.
-	defaultKeepaliveSeconds = 30
 )
 
 // pcepConn abstracts the transport used by Session, allowing tests to inject
@@ -225,11 +223,13 @@ func (ss *Session) Established() {
 		done <- struct{}{}
 	}()
 
-	keepalive := ss.keepAlive
-	if keepalive == 0 {
-		keepalive = defaultKeepaliveSeconds
+	// Keepalive == 0 means no periodic Keepalive is required.
+	if ss.keepAlive == 0 {
+		<-done
+		return
 	}
-	ticker := time.NewTicker(time.Duration(keepalive) * time.Second)
+
+	ticker := time.NewTicker(time.Duration(ss.keepAlive) * time.Second)
 	defer ticker.Stop()
 
 	for {

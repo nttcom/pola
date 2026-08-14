@@ -283,8 +283,8 @@ func TestNAITypeSR_naiLength(t *testing.T) {
 		"IPv6Node":               {nt: NAITypeSRIPv6Node, want: 16},
 		"IPv4Adjacency":          {nt: NAITypeSRIPv4Adjacency, want: 8},
 		"IPv6AdjacencyGlobal":    {nt: NAITypeSRIPv6AdjacencyGlobal, want: 32},
-		"UnnumberedAdjacency":    {nt: NAITypeSRUnnumberedAdjacency, want: 16},
-		"IPv6AdjacencyLinkLocal": {nt: NAITypeSRIPv6AdjacencyLinkLocal, want: 40},
+		"UnnumberedAdjacency":    {nt: NAITypeSRUnnumberedAdjacency, wantErr: true},
+		"IPv6AdjacencyLinkLocal": {nt: NAITypeSRIPv6AdjacencyLinkLocal, wantErr: true},
 		"Unknown":                {nt: NAITypeSR(0x07), wantErr: true},
 	}
 
@@ -2503,6 +2503,55 @@ func TestNewSRv6EroSubobject_LinkLocalRejected(t *testing.T) {
 			assert.Error(t, err)
 		})
 	}
+}
+
+func TestNewSRv6EroSubobject_AddressFamilyRejected(t *testing.T) {
+	t.Parallel()
+
+	sid := netip.MustParseAddr("fc00:0:1::")
+
+	cases := map[string]table.SegmentSRv6{
+		"IPv4LocalAddr": {
+			Sid: sid, LocalAddr: netip.MustParseAddr("10.0.0.1"),
+		},
+		"IPv4RemoteAddr": {
+			Sid: sid, LocalAddr: netip.MustParseAddr("2001:db8::1"), RemoteAddr: netip.MustParseAddr("10.0.0.2"),
+		},
+		"RemoteAddrWithoutLocalAddr": {
+			Sid: sid, RemoteAddr: netip.MustParseAddr("2001:db8::2"),
+		},
+	}
+
+	for name, seg := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := NewSRv6EroSubobject(seg)
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestNewSRv6EroSubobject_StructureValidation(t *testing.T) {
+	t.Parallel()
+
+	sid := netip.MustParseAddr("fc00:0:1::")
+	local := netip.MustParseAddr("2001:db8::1")
+
+	t.Run("EmptyStructureIsAbsent", func(t *testing.T) {
+		t.Parallel()
+
+		subo, err := NewSRv6EroSubobject(table.SegmentSRv6{Sid: sid, LocalAddr: local, Structure: []uint8{}})
+		require.NoError(t, err)
+		assert.False(t, subo.TFlag)
+	})
+
+	t.Run("InvalidLengthRejected", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := NewSRv6EroSubobject(table.SegmentSRv6{Sid: sid, LocalAddr: local, Structure: []uint8{32, 16, 16}})
+		assert.Error(t, err)
+	})
 }
 
 func TestRSVPIPv4PrefixEroSubobject_DecodeFromBytes_Errors(t *testing.T) {
