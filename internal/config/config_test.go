@@ -77,11 +77,18 @@ global:
 	assert.Contains(t, err.Error(), "grpc-server")
 }
 
+func TestReadConfigFile_FileNotFound(t *testing.T) {
+	_, err := ReadConfigFile(filepath.Join(t.TempDir(), "does-not-exist.yaml"))
+	require.Error(t, err)
+	assert.True(t, os.IsNotExist(err))
+}
+
 func TestConfig_Validate(t *testing.T) {
 	tests := []struct {
-		name    string
-		config  string
-		wantErr bool
+		name        string
+		config      string
+		wantErr     bool
+		errContains string
 	}{
 		{
 			name:   "valid, TED enabled",
@@ -171,6 +178,98 @@ global:
 `,
 			wantErr: true,
 		},
+		{
+			name: "missing pcep.address",
+			config: `
+global:
+  pcep:
+    port: 4189
+  grpcServer:
+    address: "127.0.0.1"
+    port: 50052
+  log:
+    path: "/var/log/pola/"
+    name: "polad.log"
+  ted:
+    enable: false
+`,
+			wantErr:     true,
+			errContains: "global.pcep.address is required",
+		},
+		{
+			name: "missing pcep.port",
+			config: `
+global:
+  pcep:
+    address: "127.0.0.1"
+  grpcServer:
+    address: "127.0.0.1"
+    port: 50052
+  log:
+    path: "/var/log/pola/"
+    name: "polad.log"
+  ted:
+    enable: false
+`,
+			wantErr:     true,
+			errContains: "global.pcep.port is required",
+		},
+		{
+			name: "missing log.path",
+			config: `
+global:
+  pcep:
+    address: "127.0.0.1"
+    port: 4189
+  grpcServer:
+    address: "127.0.0.1"
+    port: 50052
+  log:
+    name: "polad.log"
+  ted:
+    enable: false
+`,
+			wantErr:     true,
+			errContains: "global.log.path is required",
+		},
+		{
+			name: "missing log.name",
+			config: `
+global:
+  pcep:
+    address: "127.0.0.1"
+    port: 4189
+  grpcServer:
+    address: "127.0.0.1"
+    port: 50052
+  log:
+    path: "/var/log/pola/"
+  ted:
+    enable: false
+`,
+			wantErr:     true,
+			errContains: "global.log.name is required",
+		},
+		{
+			name: "ted enabled without source",
+			config: `
+global:
+  pcep:
+    address: "127.0.0.1"
+    port: 4189
+  grpcServer:
+    address: "127.0.0.1"
+    port: 50052
+  log:
+    path: "/var/log/pola/"
+    name: "polad.log"
+  ted:
+    enable: true
+    asn: 65000
+`,
+			wantErr:     true,
+			errContains: "global.ted.source is required when global.ted.enable is true",
+		},
 	}
 
 	for _, tt := range tests {
@@ -182,6 +281,9 @@ global:
 			err = c.Validate()
 			if tt.wantErr {
 				assert.Error(t, err)
+				if tt.errContains != "" {
+					assert.ErrorContains(t, err, tt.errContains)
+				}
 				return
 			}
 			require.NoError(t, err)
