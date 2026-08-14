@@ -220,10 +220,9 @@ func TestMessageType_StringWithReference(t *testing.T) {
 func TestOpenMessage_RoundTrip(t *testing.T) {
 	t.Parallel()
 
-	want, err := NewOpenMessage(7, 30, []CapabilityInterface{
+	want := NewOpenMessage(7, 30, []CapabilityInterface{
 		&SRPCECapability{MaximumSidDepth: 10},
 	})
-	require.NoError(t, err, "NewOpenMessage failed")
 
 	raw, err := want.Serialize()
 	require.NoError(t, err, "Serialize failed")
@@ -286,8 +285,7 @@ func TestCommonHeader_DecodeFromBytes_Errors(t *testing.T) {
 func TestKeepaliveMessage(t *testing.T) {
 	t.Parallel()
 
-	m, err := NewKeepaliveMessage()
-	require.NoError(t, err)
+	m := NewKeepaliveMessage()
 
 	raw, err := m.Serialize()
 	require.NoError(t, err)
@@ -312,8 +310,7 @@ func TestCloseMessage_RoundTrip(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			want, err := NewCloseMessage(reason)
-			require.NoError(t, err, "NewCloseMessage failed")
+			want := NewCloseMessage(reason)
 
 			raw, err := want.Serialize()
 			require.NoError(t, err, "Serialize failed")
@@ -356,8 +353,7 @@ func TestNewPCErrMessage(t *testing.T) {
 	t.Parallel()
 
 	tlvs := []TLVInterface{&SymbolicPathName{Name: "err"}}
-	m, err := NewPCErrMessage(6, 1, tlvs)
-	require.NoError(t, err)
+	m := NewPCErrMessage(6, 1, tlvs)
 
 	want := &PCErrMessage{
 		Errors: []*PCEPErrorObject{{ObjectType: ObjectTypeErrorError, ErrorType: 6, ErrorValue: 1, Tlvs: tlvs}},
@@ -390,8 +386,7 @@ func TestPCRptMessage_DecodeFromBytes(t *testing.T) {
 	}
 
 	newBaseStateReport := func() *StateReport {
-		sr, err := NewStateReport()
-		require.NoError(t, err)
+		sr := NewStateReport()
 		sr.SrpObject, sr.LSPObject, sr.EroObject = srp, lsp, ero
 		return sr
 	}
@@ -699,7 +694,7 @@ func TestPCInitiateMessage_Serialize_Errors(t *testing.T) {
 	}
 
 	cases := map[string]*PCInitiateMessage{
-		"EroObjectLenError": {
+		"EroObjectUnsupportedNAIError": {
 			SrpObject: &SrpObject{}, LSPObject: &LSPObject{},
 			EroObject: &EroObject{EroSubobjects: []EroSubobject{badLenSubo}},
 		},

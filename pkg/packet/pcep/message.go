@@ -175,15 +175,10 @@ func (m *OpenMessage) Serialize() ([]uint8, error) {
 	return byteOpenMessage, nil
 }
 
-func NewOpenMessage(sessionID uint8, keepalive uint8, capabilities []CapabilityInterface) (*OpenMessage, error) {
-	oo, err := NewOpenObject(sessionID, keepalive, capabilities)
-	if err != nil {
-		return nil, err
+func NewOpenMessage(sessionID uint8, keepalive uint8, capabilities []CapabilityInterface) *OpenMessage {
+	return &OpenMessage{
+		OpenObject: NewOpenObject(sessionID, keepalive, capabilities),
 	}
-	m := &OpenMessage{
-		OpenObject: oo,
-	}
-	return m, nil
 }
 
 // Keepalive Message
@@ -198,9 +193,8 @@ func (m *KeepaliveMessage) Serialize() ([]uint8, error) {
 	return byteKeepaliveMessage, nil
 }
 
-func NewKeepaliveMessage() (*KeepaliveMessage, error) {
-	m := &KeepaliveMessage{}
-	return m, nil
+func NewKeepaliveMessage() *KeepaliveMessage {
+	return &KeepaliveMessage{}
 }
 
 // PCErr Message
@@ -276,15 +270,10 @@ func (m *PCErrMessage) SRPIDs() []uint32 {
 	return ids
 }
 
-func NewPCErrMessage(errorType uint8, errorValue uint8, tlvs []TLVInterface) (*PCErrMessage, error) {
-	o, err := NewPCEPErrorObject(errorType, errorValue, tlvs)
-	if err != nil {
-		return nil, err
+func NewPCErrMessage(errorType uint8, errorValue uint8, tlvs []TLVInterface) *PCErrMessage {
+	return &PCErrMessage{
+		Errors: []*PCEPErrorObject{NewPCEPErrorObject(errorType, errorValue, tlvs)},
 	}
-	m := &PCErrMessage{
-		Errors: []*PCEPErrorObject{o},
-	}
-	return m, nil
 }
 
 // Close Message
@@ -318,15 +307,10 @@ func (m *CloseMessage) Serialize() ([]uint8, error) {
 	return byteCloseMessage, nil
 }
 
-func NewCloseMessage(reason CloseReason) (*CloseMessage, error) {
-	o, err := NewCloseObject(reason)
-	if err != nil {
-		return nil, err
+func NewCloseMessage(reason CloseReason) *CloseMessage {
+	return &CloseMessage{
+		CloseObject: NewCloseObject(reason),
 	}
-	m := &CloseMessage{
-		CloseObject: o,
-	}
-	return m, nil
 }
 
 type StateReport struct {
@@ -340,8 +324,8 @@ type StateReport struct {
 	VendorInformationObject *VendorInformationObject
 }
 
-func NewStateReport() (*StateReport, error) {
-	sr := &StateReport{
+func NewStateReport() *StateReport {
+	return &StateReport{
 		SrpObject:               &SrpObject{},
 		LSPObject:               &LSPObject{},
 		EroObject:               &EroObject{},
@@ -351,7 +335,6 @@ func NewStateReport() (*StateReport, error) {
 		AssociationObject:       &AssociationObject{},
 		VendorInformationObject: &VendorInformationObject{},
 	}
-	return sr, nil
 }
 
 func (r *StateReport) decodeBandwidthObject(objectType ObjectType, objectBody []uint8) error {
@@ -440,10 +423,7 @@ func (m *PCRptMessage) DecodeFromBytes(messageBody []uint8) error {
 				m.StateReports = append(m.StateReports, sr)
 			}
 
-			var err error
-			if sr, err = NewStateReport(); err != nil {
-				return err
-			}
+			sr = NewStateReport()
 		}
 		if sr == nil {
 			return fmt.Errorf("PCRpt: object class %d received before SRP/LSP object", commonObjectHeader.ObjectClass)
@@ -542,15 +522,11 @@ func NewPCInitiateMessage(srpID uint32, lspName string, lspDelete bool, plspID u
 	}
 
 	if lspDelete {
-		if m.LSPObject, err = NewLSPObject(lspName, &color, plspID); err != nil {
-			return nil, err
-		}
+		m.LSPObject = NewLSPObject(lspName, &color, plspID)
 		return m, nil
 	}
 
-	if m.LSPObject, err = NewLSPObject(lspName, &color, 0); err != nil {
-		return nil, err
-	}
+	m.LSPObject = NewLSPObject(lspName, &color, 0)
 	if m.EndpointsObject, err = NewEndpointsObject(dstAddr, srcAddr); err != nil {
 		return nil, err
 	}
@@ -612,9 +588,7 @@ func NewPCUpdMessage(srpID uint32, lspName string, plspID uint32, segmentList []
 	if m.SrpObject, err = NewSrpObject(segmentList, srpID, false); err != nil {
 		return nil, err
 	}
-	if m.LSPObject, err = NewLSPObject(lspName, nil, plspID); err != nil {
-		return nil, err
-	}
+	m.LSPObject = NewLSPObject(lspName, nil, plspID)
 	if m.EroObject, err = NewEroObject(segmentList); err != nil {
 		return nil, err
 	}

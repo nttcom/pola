@@ -62,8 +62,7 @@ func newTCPConnPair(t *testing.T) (server, client *net.TCPConn) {
 func newTestStateReport(t *testing.T, plspID uint32, srpID uint32) *pcep.StateReport {
 	t.Helper()
 
-	sr, err := pcep.NewStateReport()
-	require.NoError(t, err, "failed to create state report")
+	sr := pcep.NewStateReport()
 
 	sr.SrpObject.SrpID = srpID
 	sr.LSPObject.PlspID = plspID
@@ -252,8 +251,7 @@ func TestHandlePCErr_ForgetsReportedSRPIDIntents(t *testing.T) {
 	ss.rememberSRPolicyIntent(1, table.PolicyTypeDynamic, table.TEMetric)
 	ss.rememberSRPolicyIntent(2, table.PolicyTypeExplicit, table.UnspecifiedMetric)
 
-	pcerrMessage, err := pcep.NewPCErrMessage(1, 1, nil)
-	require.NoError(t, err, "failed to create PCErr message")
+	pcerrMessage := pcep.NewPCErrMessage(1, 1, nil)
 	pcerrMessage.SRPs = []*pcep.SrpObject{{SrpID: 1}}
 
 	ss.handlePCErr(pcerrMessage)
@@ -423,8 +421,7 @@ func TestReceiveOpenSeparatesPccAndPolaCapabilities(t *testing.T) {
 			ColorCapability:     true,
 		},
 	}
-	openMessage, err := pcep.NewOpenMessage(1, 30, pccCaps)
-	require.NoError(t, err, "failed to create open message")
+	openMessage := pcep.NewOpenMessage(1, 30, pccCaps)
 	byteOpenMessage, err := openMessage.Serialize()
 	require.NoError(t, err, "failed to serialize open message")
 	_, err = client.Write(byteOpenMessage)
@@ -916,8 +913,7 @@ func TestEstablished_ReturnsOnCloseMessage(t *testing.T) {
 		assert.NoError(t, client.Close(), "failed to close client connection")
 	})
 
-	openMessage, err := pcep.NewOpenMessage(1, 30, nil)
-	require.NoError(t, err, "failed to create open message")
+	openMessage := pcep.NewOpenMessage(1, 30, nil)
 	writeMessage(t, client, openMessage)
 
 	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
@@ -932,8 +928,7 @@ func TestEstablished_ReturnsOnCloseMessage(t *testing.T) {
 	require.NoError(t, readPCEPMessage(client), "failed to read Open reply")
 	require.NoError(t, readPCEPMessage(client), "failed to read initial Keepalive")
 
-	closeMessage, err := pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided)
-	require.NoError(t, err, "failed to create close message")
+	closeMessage := pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided)
 	writeMessage(t, client, closeMessage)
 
 	select {
@@ -949,8 +944,7 @@ func TestEstablished_ZeroKeepaliveDoesNotPanic(t *testing.T) {
 		assert.NoError(t, client.Close(), "failed to close client connection")
 	})
 
-	openMessage, err := pcep.NewOpenMessage(1, 0, nil)
-	require.NoError(t, err, "failed to create open message")
+	openMessage := pcep.NewOpenMessage(1, 0, nil)
 	writeMessage(t, client, openMessage)
 
 	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
@@ -964,8 +958,7 @@ func TestEstablished_ZeroKeepaliveDoesNotPanic(t *testing.T) {
 	require.NoError(t, readPCEPMessage(client), "failed to read Open reply")
 	require.NoError(t, readPCEPMessage(client), "failed to read initial Keepalive")
 
-	closeMessage, err := pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided)
-	require.NoError(t, err, "failed to create close message")
+	closeMessage := pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided)
 	writeMessage(t, client, closeMessage)
 
 	select {
@@ -981,8 +974,7 @@ func TestEstablished_ReturnsWhenPeerDisconnectsAbruptly(t *testing.T) {
 		assert.NoError(t, server.Close(), "failed to close server connection")
 	})
 
-	openMessage, err := pcep.NewOpenMessage(1, 30, nil)
-	require.NoError(t, err, "failed to create open message")
+	openMessage := pcep.NewOpenMessage(1, 30, nil)
 	writeMessage(t, client, openMessage)
 
 	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
@@ -1011,8 +1003,7 @@ func TestEstablished_ReturnsWhenPeriodicKeepaliveSendFails(t *testing.T) {
 		assert.NoError(t, client.Close(), "failed to close client connection")
 	})
 
-	openMessage, err := pcep.NewOpenMessage(1, 1, nil) // 1-second keepalive interval
-	require.NoError(t, err, "failed to create open message")
+	openMessage := pcep.NewOpenMessage(1, 1, nil) // 1-second keepalive interval
 	writeMessage(t, client, openMessage)
 
 	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
@@ -1122,23 +1113,20 @@ func TestReceivePCEPMessage_ProcessesMessagesThenReturnsOnClose(t *testing.T) {
 	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
 	ss.rememberSRPolicyIntent(9, table.PolicyTypeExplicit, table.UnspecifiedMetric)
 
-	keepaliveMessage, err := pcep.NewKeepaliveMessage()
-	require.NoError(t, err, "failed to create keepalive message")
+	keepaliveMessage := pcep.NewKeepaliveMessage()
 	writeMessage(t, client, keepaliveMessage)
 
 	sr := newTestStateReport(t, 5, 0)
 	writeStateReportMessage(t, client, sr)
 
-	pcerrMessage, err := pcep.NewPCErrMessage(1, 1, nil)
-	require.NoError(t, err, "failed to create PCErr message")
+	pcerrMessage := pcep.NewPCErrMessage(1, 1, nil)
 	pcerrMessage.SRPs = []*pcep.SrpObject{{SrpID: 9}}
 	writeMessage(t, client, pcerrMessage)
 
 	// An unrecognized MessageType is logged and skipped rather than treated as an error.
 	writeRawPCEPMessage(t, client, pcep.MessageType(0x63), nil)
 
-	closeMessage, err := pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided)
-	require.NoError(t, err, "failed to create close message")
+	closeMessage := pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided)
 	writeMessage(t, client, closeMessage)
 
 	require.NoError(t, ss.ReceivePCEPMessage())
@@ -1166,8 +1154,7 @@ func TestReceivePCEPMessage_StateReportHandlingErrorIsLoggedNotFatal(t *testing.
 	body := append(sr.SrpObject.Serialize(), sr.LSPObject.Serialize()...) // no ERO object
 	writeRawPCEPMessage(t, client, pcep.MessageTypeReport, body)
 
-	closeMessage, err := pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided)
-	require.NoError(t, err, "failed to create close message")
+	closeMessage := pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided)
 	writeMessage(t, client, closeMessage)
 
 	require.NoError(t, ss.ReceivePCEPMessage(), "a per-report handling error must not abort the receive loop")

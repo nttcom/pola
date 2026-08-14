@@ -309,19 +309,13 @@ func (ss *Session) ReceiveOpen() error {
 }
 
 func (ss *Session) SendKeepalive() error {
-	keepaliveMessage, err := pcep.NewKeepaliveMessage()
-	if err != nil {
-		return err
-	}
+	keepaliveMessage := pcep.NewKeepaliveMessage()
 	ss.logger.Debug("Send Keepalive Message")
 	return ss.sendPCEPMessage(keepaliveMessage)
 }
 
 func (ss *Session) SendClose(reason pcep.CloseReason) error {
-	closeMessage, err := pcep.NewCloseMessage(reason)
-	if err != nil {
-		return err
-	}
+	closeMessage := pcep.NewCloseMessage(reason)
 
 	ss.logger.Debug("Send Close Message",
 		zap.Uint8("reason", uint8(closeMessage.CloseObject.Reason)),
@@ -680,10 +674,7 @@ func (ss *Session) RequestSRPolicyCreated(srPolicy table.SRPolicy) error {
 }
 
 func (ss *Session) SendOpen() error {
-	openMessage, err := pcep.NewOpenMessage(ss.sessionID, ss.keepAlive, ss.AdvertisedCapabilities())
-	if err != nil {
-		return err
-	}
+	openMessage := pcep.NewOpenMessage(ss.sessionID, ss.keepAlive, ss.AdvertisedCapabilities())
 	ss.logger.Debug("Send Open Message")
 	return ss.sendPCEPMessage(openMessage)
 }

@@ -262,8 +262,8 @@ func (o *OpenObject) Len() uint16 {
 	return commonObjectHeaderLength + 4 + tlvsByteLength
 }
 
-func NewOpenObject(sessionID uint8, keepalive uint8, capabilities []CapabilityInterface) (*OpenObject, error) {
-	o := &OpenObject{
+func NewOpenObject(sessionID uint8, keepalive uint8, capabilities []CapabilityInterface) *OpenObject {
+	return &OpenObject{
 		ObjectType: ObjectTypeOpenOpen,
 		Version:    uint8(1), // PCEP version. Current version is 1
 		Flag:       uint8(0),
@@ -272,7 +272,6 @@ func NewOpenObject(sessionID uint8, keepalive uint8, capabilities []CapabilityIn
 		Sid:        sessionID,
 		Caps:       capabilities,
 	}
-	return o, nil
 }
 
 // BANDWIDTH Object (RFC5440 7.7)
@@ -337,13 +336,12 @@ func (o *MetricObject) Len() uint16 {
 	return commonObjectHeaderLength + 8
 }
 
-func NewMetricObject() (*MetricObject, error) {
-	o := &MetricObject{
+func NewMetricObject() *MetricObject {
+	return &MetricObject{
 		ObjectType:  ObjectType(1),
 		MetricType:  uint8(2),
 		MetricValue: uint32(30),
 	}
-	return o, nil
 }
 
 // LSPA Object (RFC5440 7.11)
@@ -395,14 +393,13 @@ func (o *LSPAObject) Len() uint16 {
 	return commonObjectHeaderLength + 16
 }
 
-func NewLSPAObject() (*LSPAObject, error) {
-	o := &LSPAObject{
+func NewLSPAObject() *LSPAObject {
+	return &LSPAObject{
 		ObjectType:      ObjectType(1),
 		SetupPriority:   uint8(7),
 		HoldingPriority: uint8(7),
 		LFlag:           true,
 	}
-	return o, nil
 }
 
 // PCEP Error Object (RFC5440 7.15)
@@ -461,14 +458,13 @@ func (o *PCEPErrorObject) Len() uint16 {
 	return commonObjectHeaderLength + 4 + tlvsByteLength
 }
 
-func NewPCEPErrorObject(errorType uint8, errorValue uint8, tlvs []TLVInterface) (*PCEPErrorObject, error) {
-	o := &PCEPErrorObject{
+func NewPCEPErrorObject(errorType uint8, errorValue uint8, tlvs []TLVInterface) *PCEPErrorObject {
+	return &PCEPErrorObject{
 		ObjectType: ObjectTypeErrorError,
 		ErrorType:  errorType,
 		ErrorValue: errorValue,
 		Tlvs:       tlvs,
 	}
-	return o, nil
 }
 
 // Close Object (RFC5440 7.17)
@@ -542,12 +538,11 @@ func (o *CloseObject) Len() uint16 {
 	return commonObjectHeaderLength + 4
 }
 
-func NewCloseObject(reason CloseReason) (*CloseObject, error) {
-	o := &CloseObject{
+func NewCloseObject(reason CloseReason) *CloseObject {
+	return &CloseObject{
 		ObjectType: ObjectTypeCloseClose,
 		Reason:     reason,
 	}
-	return o, nil
 }
 
 // SRP Object (RFC8231 7.2)
@@ -735,7 +730,7 @@ func (o *LSPObject) Len() uint16 {
 	return uint16(commonObjectHeaderLength) + lspObjectBodyLength
 }
 
-func NewLSPObject(lspName string, color *uint32, plspID uint32) (*LSPObject, error) {
+func NewLSPObject(lspName string, color *uint32, plspID uint32) *LSPObject {
 	o := &LSPObject{
 		ObjectType: ObjectTypeLSPLSP,
 		Name:       lspName,
@@ -763,7 +758,7 @@ func NewLSPObject(lspName string, color *uint32, plspID uint32) (*LSPObject, err
 	if colorTLV != nil {
 		o.TLVs = append(o.TLVs, TLVInterface(colorTLV))
 	}
-	return o, nil
+	return o
 }
 
 // (I.D.draft-ietf-pce-pcep-color-12)

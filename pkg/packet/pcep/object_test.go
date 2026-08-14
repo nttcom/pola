@@ -1581,8 +1581,7 @@ func TestNewOpenObject(t *testing.T) {
 	t.Parallel()
 
 	caps := []CapabilityInterface{&SRPCECapability{MaximumSidDepth: 10}}
-	o, err := NewOpenObject(7, 30, caps)
-	require.NoError(t, err)
+	o := NewOpenObject(7, 30, caps)
 
 	want := &OpenObject{
 		ObjectType: ObjectTypeOpenOpen,
@@ -1688,16 +1687,14 @@ func TestMetricObject_Len(t *testing.T) {
 func TestNewMetricObject(t *testing.T) {
 	t.Parallel()
 
-	o, err := NewMetricObject()
-	require.NoError(t, err)
+	o := NewMetricObject()
 	assert.Equal(t, &MetricObject{ObjectType: ObjectType(1), MetricType: 2, MetricValue: 30}, o)
 }
 
 func TestNewLSPAObject(t *testing.T) {
 	t.Parallel()
 
-	o, err := NewLSPAObject()
-	require.NoError(t, err)
+	o := NewLSPAObject()
 	assert.Equal(t, &LSPAObject{ObjectType: ObjectType(1), SetupPriority: 7, HoldingPriority: 7, LFlag: true}, o)
 }
 
@@ -1712,8 +1709,7 @@ func TestNewPCEPErrorObject(t *testing.T) {
 	t.Parallel()
 
 	tlvs := []TLVInterface{&SymbolicPathName{Name: "err"}}
-	o, err := NewPCEPErrorObject(6, 1, tlvs)
-	require.NoError(t, err)
+	o := NewPCEPErrorObject(6, 1, tlvs)
 	assert.Equal(t, &PCEPErrorObject{ObjectType: ObjectTypeErrorError, ErrorType: 6, ErrorValue: 1, Tlvs: tlvs}, o)
 }
 
@@ -1759,8 +1755,7 @@ func TestCloseReason_StringWithReference(t *testing.T) {
 func TestNewCloseObject(t *testing.T) {
 	t.Parallel()
 
-	o, err := NewCloseObject(CloseReasonMalformedPCEPMessage)
-	require.NoError(t, err)
+	o := NewCloseObject(CloseReasonMalformedPCEPMessage)
 	assert.Equal(t, &CloseObject{ObjectType: ObjectTypeCloseClose, Reason: CloseReasonMalformedPCEPMessage}, o)
 }
 
