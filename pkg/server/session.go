@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"net"
 	"net/netip"
 	"slices"
 	"sync"
@@ -32,10 +31,18 @@ const (
 	defaultKeepaliveSeconds = 30
 )
 
+// pcepConn abstracts the transport used by Session, allowing tests to inject
+// a fake connection.
+type pcepConn interface {
+	io.Reader
+	io.Writer
+	io.Closer
+}
+
 type Session struct {
 	sessionID               uint8
 	peerAddr                netip.Addr
-	tcpConn                 *net.TCPConn
+	tcpConn                 pcepConn
 	sendMu                  sync.Mutex
 	stateMu                 sync.RWMutex // guards isSynced and advertisedCapabilities.
 	isSynced                bool
@@ -175,7 +182,7 @@ func (ss *Session) clearSRPolicyIntents() {
 	ss.srPolicyIntents = nil
 }
 
-func NewSession(sessionID uint8, peerAddr netip.Addr, tcpConn *net.TCPConn, logger *zap.Logger, ted *table.LsTED, asn uint32) *Session {
+func NewSession(sessionID uint8, peerAddr netip.Addr, tcpConn pcepConn, logger *zap.Logger, ted *table.LsTED, asn uint32) *Session {
 	return &Session{
 		sessionID:         sessionID,
 		isSynced:          false,

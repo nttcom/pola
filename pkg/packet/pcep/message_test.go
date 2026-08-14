@@ -506,6 +506,28 @@ func TestPCRptMessage_DecodeFromBytes(t *testing.T) {
 	})
 }
 
+func TestPCRptMessage_DecodeFromBytes_MalformedNestedObjectBody(t *testing.T) {
+	t.Parallel()
+
+	srp := &SrpObject{ObjectType: ObjectTypeSRPSRP, SrpID: 1}
+	lsp := &LSPObject{ObjectType: ObjectTypeLSPLSP, PlspID: 5, OFlag: 1, AFlag: true, DFlag: true}
+	prefix := AppendByteSlices(srp.Serialize(), lsp.Serialize())
+
+	cases := map[string][]uint8{
+		"TruncatedBandwidthBody": AppendByteSlices(prefix, NewCommonObjectHeader(ObjectClassBandwidth, ObjectType(1), commonObjectHeaderLength).Serialize()),
+		"TruncatedMetricBody":    AppendByteSlices(prefix, NewCommonObjectHeader(ObjectClassMetric, ObjectType(1), commonObjectHeaderLength).Serialize()),
+	}
+
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var m PCRptMessage
+			assert.Error(t, m.DecodeFromBytes(body))
+		})
+	}
+}
+
 func TestPCRptMessage_DecodeFromBytes_MalformedObjectLength(t *testing.T) {
 	t.Parallel()
 

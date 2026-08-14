@@ -6,6 +6,8 @@
 package server
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -57,6 +59,30 @@ func newTCPConnPair(t *testing.T) (server, client *net.TCPConn) {
 		return nil, clientConn.(*net.TCPConn)
 	}
 }
+
+// fakeConn is a pcepConn test double that can deterministically fail writes.
+type fakeConn struct {
+	r io.Reader
+
+	mu         sync.Mutex
+	writeCount int
+	failAfter  int // writes beyond this count return writeErr; 0 disables.
+	writeErr   error
+}
+
+func (c *fakeConn) Read(p []byte) (int, error) { return c.r.Read(p) }
+
+func (c *fakeConn) Write(p []byte) (int, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.writeCount++
+	if c.failAfter > 0 && c.writeCount > c.failAfter {
+		return 0, c.writeErr
+	}
+	return len(p), nil
+}
+
+func (c *fakeConn) Close() error { return nil }
 
 // newTestStateReport builds a PCRpt state report for an SR-MPLS policy with an explicit path.
 func newTestStateReport(t *testing.T, plspID uint32, srpID uint32) *pcep.StateReport {
@@ -1042,27 +1068,30 @@ func TestEstablished_ReturnsWhenPeerDisconnectsAbruptly(t *testing.T) {
 }
 
 func TestEstablished_ReturnsWhenPeriodicKeepaliveSendFails(t *testing.T) {
-	server, client := newTCPConnPair(t)
+	openMessage := pcep.NewOpenMessage(1, 1, nil) // 1-second keepalive interval
+	openBytes, err := openMessage.Serialize()
+	require.NoError(t, err)
+
+	// Keep the receive loop blocked until the test finishes.
+	pr, pw := io.Pipe()
 	t.Cleanup(func() {
-		assert.NoError(t, client.Close(), "failed to close client connection")
+		assert.NoError(t, pw.Close(), "failed to close pipe writer")
 	})
 
-	openMessage := pcep.NewOpenMessage(1, 1, nil) // 1-second keepalive interval
-	writeMessage(t, client, openMessage)
+	// Fail the periodic keepalive send after the Open reply and initial Keepalive.
+	conn := &fakeConn{
+		r:         io.MultiReader(bytes.NewReader(openBytes), pr),
+		failAfter: 2,
+		writeErr:  errors.New("write: broken pipe"),
+	}
 
-	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
 
 	done := make(chan struct{})
 	go func() {
 		ss.Established()
 		close(done)
 	}()
-
-	require.NoError(t, readPCEPMessage(client), "failed to read Open reply")
-	require.NoError(t, readPCEPMessage(client), "failed to read initial Keepalive")
-
-	// Keep the receive loop blocked on Read so the keepalive send failure drives the return.
-	require.NoError(t, server.CloseWrite(), "failed to half-close server connection")
 
 	select {
 	case <-done:
@@ -1442,6 +1471,44 @@ func newLinkedSRMPLSNodes(srcAddr, dstAddr netip.Addr, metric uint32) (src, dst 
 	src.AddLink(link)
 
 	return src, dst
+}
+
+func newLinkedSRv6Nodes(srcAddr, dstAddr netip.Addr, metric uint32) (src, dst *table.LsNode) {
+	src = table.NewLsNode(65000, "PE1-v6")
+	srcPrefix := table.NewLsPrefix(src)
+	srcPrefix.Prefix = netip.PrefixFrom(srcAddr, srcAddr.BitLen())
+	src.Prefixes = append(src.Prefixes, srcPrefix)
+	src.SRv6SIDs = []*table.LsSrv6SID{{Sids: []string{"2001:db8::1"}}}
+
+	dst = table.NewLsNode(65000, "PE2-v6")
+	dstPrefix := table.NewLsPrefix(dst)
+	dstPrefix.Prefix = netip.PrefixFrom(dstAddr, dstAddr.BitLen())
+	dst.Prefixes = append(dst.Prefixes, dstPrefix)
+	dst.SRv6SIDs = []*table.LsSrv6SID{{Sids: []string{"fe80::2"}}}
+
+	link := table.NewLsLink(src, dst)
+	link.Metrics = []*table.Metric{table.NewMetric(table.TEMetric, metric)}
+	src.AddLink(link)
+
+	return src, dst
+}
+
+func TestHandleSRPolicyWithPLSPID_CreateEroFromSegmentListErrorIsPropagated(t *testing.T) {
+	srcAddr := netip.MustParseAddr("10.1.0.1")
+	dstAddr := netip.MustParseAddr("10.1.0.2")
+	srcNode, dstNode := newLinkedSRv6Nodes(srcAddr, dstAddr, 10)
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{srcNode.RouterID: srcNode, dstNode.RouterID: dstNode}}
+
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), ted, 0)
+
+	sr := newTestStateReport(t, 1, 0)
+	sr.LSPObject.SrcAddr = srcAddr
+	sr.LSPObject.DstAddr = dstAddr
+
+	assert.Error(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
+
+	_, found := ss.SearchSRPolicy(1)
+	assert.False(t, found, "SR Policy must not be registered when ERO construction fails")
 }
 
 func TestHandleSRPolicyWithPLSPID_ComputesPathFromTED(t *testing.T) {
