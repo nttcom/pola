@@ -13,6 +13,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestNewSessionDeleteCmd_DelAlias(t *testing.T) {
+	cmd := newSessionCmd()
+	found, _, err := cmd.Find([]string{"del"})
+	require.NoError(t, err)
+	assert.Equal(t, "delete", found.Name())
+}
+
 func TestNewSessionDeleteCmd_ArgValidation(t *testing.T) {
 	t.Run("missing address argument", func(t *testing.T) {
 		cmd := newSessionDeleteCmd()

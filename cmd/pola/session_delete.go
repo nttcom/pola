@@ -17,6 +17,7 @@ import (
 func newSessionDeleteCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:          "delete",
+		Aliases:      []string{"del"},
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) < 1 {

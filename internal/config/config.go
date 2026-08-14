@@ -109,13 +109,18 @@ func (c *Config) Validate() error {
 		if c.Global.TED.ASN == 0 {
 			errs = append(errs, errors.New("global.ted.asn is required when global.ted.enable is true"))
 		}
-		if c.Global.TED.Source == "gobgp" {
+		switch c.Global.TED.Source {
+		case "gobgp":
 			if c.Global.GoBGP.GRPCClient.Address == "" {
 				errs = append(errs, errors.New("global.gobgp.grpcClient.address is required when global.ted.source is gobgp"))
 			}
 			if c.Global.GoBGP.GRPCClient.Port == "" {
 				errs = append(errs, errors.New("global.gobgp.grpcClient.port is required when global.ted.source is gobgp"))
 			}
+		case "":
+			// already reported above
+		default:
+			errs = append(errs, fmt.Errorf("global.ted.source %q is not supported", c.Global.TED.Source))
 		}
 	}
 

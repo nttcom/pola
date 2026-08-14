@@ -270,6 +270,27 @@ global:
 			wantErr:     true,
 			errContains: "global.ted.source is required when global.ted.enable is true",
 		},
+		{
+			name: "ted enabled with unsupported source",
+			config: `
+global:
+  pcep:
+    address: "127.0.0.1"
+    port: 4189
+  grpcServer:
+    address: "127.0.0.1"
+    port: 50052
+  log:
+    path: "/var/log/pola/"
+    name: "polad.log"
+  ted:
+    enable: true
+    source: "bmp"
+    asn: 65000
+`,
+			wantErr:     true,
+			errContains: `global.ted.source "bmp" is not supported`,
+		},
 	}
 
 	for _, tt := range tests {
