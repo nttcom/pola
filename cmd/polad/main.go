@@ -70,13 +70,11 @@ func main() {
 	defer func() {
 		if err := logger.Sync(); err != nil {
 			logger.Panic("Failed to sync logger", zap.Error(err))
-			log.Panicf("failed to sync logger: %v", err)
 		}
 	}()
 
 	if c.Global.TED.Enable && c.Global.TED.ASN == 0 {
 		logger.Panic("TED is enabled but Global.TED.ASN is missing or invalid")
-		log.Panic("TED is enabled but Global.TED.ASN is missing or invalid")
 	}
 
 	// Prepare TED update tools
@@ -87,11 +85,9 @@ func main() {
 			tedElemsChan = startGoBGPUpdate(context.Background(), &c, logger)
 			if tedElemsChan == nil {
 				logger.Panic("GoBGP update channel is nil")
-				log.Panic("GoBGP update channel is nil")
 			}
 		default:
 			logger.Panic("Specified TED source is not defined")
-			log.Panic("specified TED source is not defined")
 		}
 	}
 
@@ -107,7 +103,6 @@ func main() {
 	}
 	if serverErr := server.NewPCE(o, logger, tedElemsChan); serverErr.Error != nil {
 		logger.Panic("Failed to start new server", zap.String("server", serverErr.Server), zap.Error(serverErr.Error))
-		log.Panicf("failed to start new server: %v", serverErr.Error)
 	}
 }
 
