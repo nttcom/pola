@@ -531,6 +531,25 @@ func TestPCRptMessage_DecodeFromBytes_MalformedObjectLength(t *testing.T) {
 	}
 }
 
+func TestPCRptMessage_DecodeFromBytes_ObjectBeforeSRPLSP(t *testing.T) {
+	t.Parallel()
+
+	metric := &MetricObject{ObjectType: ObjectType(1), CFlag: true, MetricType: 2}
+
+	cases := map[string][]uint8{
+		"MetricBeforeSRP": metric.Serialize(),
+	}
+
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var m PCRptMessage
+			assert.Error(t, m.DecodeFromBytes(body))
+		})
+	}
+}
+
 func TestNewPCUpdMessage(t *testing.T) {
 	t.Parallel()
 

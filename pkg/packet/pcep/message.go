@@ -445,6 +445,9 @@ func (m *PCRptMessage) DecodeFromBytes(messageBody []uint8) error {
 				return err
 			}
 		}
+		if sr == nil {
+			return fmt.Errorf("PCRpt: object class %d received before SRP/LSP object", commonObjectHeader.ObjectClass)
+		}
 		if err := decodeFunc(sr, commonObjectHeader.ObjectType, body); err != nil {
 			return err
 		}
