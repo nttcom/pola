@@ -289,6 +289,12 @@ func (m *CloseMessage) DecodeFromBytes(messageBody []uint8) error {
 	if err := commonObjectHeader.DecodeFromBytes(messageBody); err != nil {
 		return err
 	}
+	if commonObjectHeader.ObjectClass != ObjectClassClose {
+		return fmt.Errorf("unsupported ObjectClass: %d", commonObjectHeader.ObjectClass)
+	}
+	if commonObjectHeader.ObjectType != ObjectTypeCloseClose {
+		return fmt.Errorf("unsupported ObjectType: %d", commonObjectHeader.ObjectType)
+	}
 	body, err := objectBody(messageBody, &commonObjectHeader)
 	if err != nil {
 		return fmt.Errorf("close: %w", err)

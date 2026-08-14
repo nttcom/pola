@@ -68,9 +68,8 @@ type Session struct {
 	sweepMu                 sync.Mutex
 	sweepStop               chan struct{}
 	sweepDone               chan struct{}
-	unknownMsgMu            sync.Mutex // guards unknownMsgCount and unknownMsgWindowStart.
-	unknownMsgCount         uint32
-	unknownMsgWindowStart   time.Time
+	unknownMsgMu            sync.Mutex // guards unknownMsgTimes.
+	unknownMsgTimes         []time.Time
 	maxUnknownMsgs          uint32
 	unknownMsgWindow        time.Duration
 	logger                  *zap.Logger
@@ -481,20 +480,23 @@ func (ss *Session) readMessageBody(messageLength uint16) ([]uint8, error) {
 	return body, nil
 }
 
-// recordUnknownMessage counts unrecognized messages and reports whether the
-// rate limit has been reached.
+// recordUnknownMessage records an unrecognized message and reports whether
+// more than maxUnknownMsgs have arrived within the trailing unknownMsgWindow.
 func (ss *Session) recordUnknownMessage() bool {
 	ss.unknownMsgMu.Lock()
 	defer ss.unknownMsgMu.Unlock()
 
 	now := time.Now()
-	if now.Sub(ss.unknownMsgWindowStart) > ss.unknownMsgWindow {
-		ss.unknownMsgWindowStart = now
-		ss.unknownMsgCount = 0
+	cutoff := now.Add(-ss.unknownMsgWindow)
+	live := ss.unknownMsgTimes[:0]
+	for _, t := range ss.unknownMsgTimes {
+		if t.After(cutoff) {
+			live = append(live, t)
+		}
 	}
-	ss.unknownMsgCount++
+	ss.unknownMsgTimes = append(live, now)
 
-	return ss.unknownMsgCount > ss.maxUnknownMsgs
+	return uint32(len(ss.unknownMsgTimes)) > ss.maxUnknownMsgs
 }
 
 // handlePCErr logs the error and forgets intents for the reported SRP-IDs.

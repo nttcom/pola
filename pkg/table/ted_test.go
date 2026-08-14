@@ -116,6 +116,31 @@ func TestLsNodeNodeSegment_Errors(t *testing.T) {
 			},
 		},
 		{
+			name: "SRv6 SID is an IPv4 address",
+			node: &LsNode{
+				RouterID: "0000.0000.0001",
+				SRv6SIDs: []*LsSrv6SID{
+					{Sids: []string{"192.0.2.1"}},
+				},
+			},
+		},
+		{
+			name: "SRv6 SID is an IPv4-mapped IPv6 address",
+			node: &LsNode{
+				RouterID: "0000.0000.0001",
+				SRv6SIDs: []*LsSrv6SID{
+					{Sids: []string{"::ffff:192.0.2.1"}},
+				},
+			},
+		},
+		{
+			name: "Prefix-SID index without an SRGB",
+			node: &LsNode{
+				RouterID: "0000.0000.0001",
+				Prefixes: []*LsPrefix{{SidIndex: 10, HasSidIndex: true}},
+			},
+		},
+		{
 			name: "no Prefix-SID and no SRv6 SIDs",
 			node: &LsNode{RouterID: "0000.0000.0001"},
 		},

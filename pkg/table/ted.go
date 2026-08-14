@@ -181,6 +181,9 @@ func (n *LsNode) NodeSegment() (Segment, error) {
 	// for SR-MPLS Segment
 	for _, prefix := range n.Prefixes {
 		if prefix.HasPrefixSID() {
+			if n.SrgbBegin == 0 {
+				return nil, fmt.Errorf("cannot resolve prefix-SID index %d without an SRGB", prefix.SidIndex)
+			}
 			label, ok := srgbLabel(n, prefix.SidIndex)
 			if !ok {
 				return nil, fmt.Errorf("prefix-SID index %d is out of range for SRGB [%d, %d)", prefix.SidIndex, n.SrgbBegin, n.SrgbEnd)
@@ -194,6 +197,9 @@ func (n *LsNode) NodeSegment() (Segment, error) {
 			addr, err := netip.ParseAddr(srv6SID.Sids[FirstSIDIndex])
 			if err != nil {
 				return nil, err
+			}
+			if !addr.Is6() || addr.Is4In6() {
+				return nil, fmt.Errorf("SRv6 SID %q is not a valid IPv6 address", srv6SID.Sids[FirstSIDIndex])
 			}
 			return NewSegmentSRv6WithNodeInfo(addr, n)
 		}

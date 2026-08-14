@@ -481,6 +481,9 @@ func parseSidStructure(s string) ([]uint8, error) {
 		}
 		result[i] = uint8(v)
 	}
+	if err := table.SIDStructureBytes(result).Validate(); err != nil {
+		return nil, err
+	}
 	return result, nil
 }
 

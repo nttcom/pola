@@ -649,6 +649,8 @@ func TestCloseMessage_DecodeFromBytes_Errors(t *testing.T) {
 
 	cases := map[string][]uint8{
 		"TruncatedObjectHeader":   {0x01, 0x02},
+		"WrongObjectClass":        NewCommonObjectHeader(ObjectClassOpen, ObjectTypeOpenOpen, 8).Serialize(),
+		"WrongObjectType":         NewCommonObjectHeader(ObjectClassClose, ObjectType(2), 8).Serialize(),
 		"ObjectLengthHeaderOnly":  NewCommonObjectHeader(ObjectClassClose, ObjectTypeCloseClose, commonObjectHeaderLength).Serialize(),
 		"ObjectLengthZero":        NewCommonObjectHeader(ObjectClassClose, ObjectTypeCloseClose, 0).Serialize(),
 		"ObjectLengthExceedsBody": NewCommonObjectHeader(ObjectClassClose, ObjectTypeCloseClose, 100).Serialize(),

@@ -198,36 +198,46 @@ func (d *Debouncer) Trigger(
 			d.mu.Unlock()
 		}()
 
+		// Re-run the cycle if a trigger arrives while fetch() is running.
 		for {
-			d.mu.Lock()
-			remaining := d.cooldown - time.Since(d.last)
-			d.mu.Unlock()
+			for {
+				d.mu.Lock()
+				remaining := d.cooldown - time.Since(d.last)
+				d.mu.Unlock()
 
-			if remaining <= 0 {
-				break
+				if remaining <= 0 {
+					break
+				}
+
+				timer := time.NewTimer(remaining)
+				select {
+				case <-timer.C:
+				case <-ctx.Done():
+					timer.Stop()
+					return
+				}
 			}
 
-			timer := time.NewTimer(remaining)
-			select {
-			case <-timer.C:
-			// Loop again to recalculate remaining.
-			case <-ctx.Done():
-				timer.Stop()
+			fetchStart := time.Now()
+			tedElems, err := fetch()
+			if err != nil {
+				logger.Error("failed to get TED info", zap.Error(err))
+				return
+			}
+
+			if ctx.Err() != nil {
+				logger.Debug("deliver aborted due to context cancel")
+				return
+			}
+			deliver(tedElems)
+
+			d.mu.Lock()
+			pending := d.last.After(fetchStart)
+			d.mu.Unlock()
+			if !pending {
 				return
 			}
 		}
-
-		tedElems, err := fetch()
-		if err != nil {
-			logger.Error("failed to get TED info", zap.Error(err))
-			return
-		}
-
-		if ctx.Err() != nil {
-			logger.Debug("deliver aborted due to context cancel")
-			return
-		}
-		deliver(tedElems)
 	}()
 }
 

@@ -216,6 +216,7 @@ func TestParseSidStructure(t *testing.T) {
 		{name: "wrong part count", in: "32,16,0", wantErr: true},
 		{name: "non-numeric part", in: "32,16,0,xx", wantErr: true},
 		{name: "value out of uint8 range", in: "32,16,0,256", wantErr: true},
+		{name: "sum exceeds 128 bits", in: "128,128,0,0", wantErr: true},
 		{name: "whitespace around parts is trimmed", in: " 32 , 16 , 0 , 80 ", want: []uint8{32, 16, 0, 80}},
 	}
 	for _, tt := range tests {
