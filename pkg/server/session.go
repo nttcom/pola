@@ -32,6 +32,12 @@ const (
 
 	pcepErrorTypeCapabilityNotSupported uint8 = 2
 	pcepErrorValueUnassigned            uint8 = 0
+
+	// Maximum time to wait for a peer response when Keepalive is unavailable.
+	defaultDeadTimer = 120 * time.Second
+
+	// RFC 5440 recommends a DeadTimer of at least 4x the Keepalive interval.
+	deadTimerKeepaliveMultiplier = 4
 )
 
 // pcepConn abstracts the transport used by Session, allowing tests to inject
@@ -40,6 +46,7 @@ type pcepConn interface {
 	io.Reader
 	io.Writer
 	io.Closer
+	SetReadDeadline(t time.Time) error
 }
 
 type Session struct {
@@ -279,9 +286,27 @@ func (ss *Session) Open() error {
 	return ss.SendOpen()
 }
 
+// readDeadline returns the maximum time a read may block.
+// It follows RFC 5440's DeadTimer guidance based on the negotiated Keepalive.
+func (ss *Session) readDeadline() time.Duration {
+	if ss.keepAlive == 0 {
+		return defaultDeadTimer
+	}
+	return deadTimerKeepaliveMultiplier * time.Duration(ss.keepAlive) * time.Second
+}
+
+// readFull reads exactly len(buf) bytes with a read deadline.
+func (ss *Session) readFull(buf []uint8) error {
+	if err := ss.tcpConn.SetReadDeadline(time.Now().Add(ss.readDeadline())); err != nil {
+		return err
+	}
+	_, err := io.ReadFull(ss.tcpConn, buf)
+	return err
+}
+
 func (ss *Session) parseOpenMessage() (*pcep.OpenMessage, error) {
 	byteOpenHeader := make([]uint8, pcep.CommonHeaderLength)
-	if _, err := io.ReadFull(ss.tcpConn, byteOpenHeader); err != nil {
+	if err := ss.readFull(byteOpenHeader); err != nil {
 		return nil, err
 	}
 
@@ -298,7 +323,7 @@ func (ss *Session) parseOpenMessage() (*pcep.OpenMessage, error) {
 	}
 
 	byteOpenObject := make([]uint8, openHeader.MessageLength-pcep.CommonHeaderLength)
-	if _, err := io.ReadFull(ss.tcpConn, byteOpenObject); err != nil {
+	if err := ss.readFull(byteOpenObject); err != nil {
 		return nil, err
 	}
 
@@ -435,7 +460,7 @@ func (ss *Session) handleUnsupportedMessage(commonHeader *pcep.CommonHeader) err
 
 func (ss *Session) readCommonHeader() (*pcep.CommonHeader, error) {
 	commonHeaderBytes := make([]uint8, pcep.CommonHeaderLength)
-	if _, err := io.ReadFull(ss.tcpConn, commonHeaderBytes); err != nil {
+	if err := ss.readFull(commonHeaderBytes); err != nil {
 		return nil, err
 	}
 
@@ -450,7 +475,7 @@ func (ss *Session) readCommonHeader() (*pcep.CommonHeader, error) {
 // readMessageBody reads the body following the common header.
 func (ss *Session) readMessageBody(messageLength uint16) ([]uint8, error) {
 	body := make([]uint8, messageLength-pcep.CommonHeaderLength)
-	if _, err := io.ReadFull(ss.tcpConn, body); err != nil {
+	if err := ss.readFull(body); err != nil {
 		return nil, err
 	}
 	return body, nil

@@ -84,6 +84,8 @@ func (c *fakeConn) Write(p []byte) (int, error) {
 
 func (c *fakeConn) Close() error { return nil }
 
+func (c *fakeConn) SetReadDeadline(t time.Time) error { return nil }
+
 // newTestStateReport builds a PCRpt state report for an SR-MPLS policy with an explicit path.
 func newTestStateReport(t *testing.T, plspID uint32, srpID uint32) *pcep.StateReport {
 	t.Helper()
@@ -1211,6 +1213,30 @@ func TestReceivePCEPMessage_ProcessesMessagesThenReturnsOnClose(t *testing.T) {
 
 	_, ok := ss.takeSRPolicyIntent(9)
 	assert.False(t, ok, "PCErr referencing SRP-ID 9 must forget its intent")
+}
+
+// A stalled peer must not block the session goroutine beyond the DeadTimer.
+func TestReadCommonHeader_TimesOutOnStalledPeer(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() {
+		assert.NoError(t, client.Close(), "failed to close client connection")
+	})
+	t.Cleanup(func() {
+		assert.NoError(t, server.Close(), "failed to close server connection")
+	})
+
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss.keepAlive = 1 // shrinks the dead timer to a few seconds so the test stays fast
+
+	_, err := client.Write([]byte{0x20, 0x01}) // half of a 4-byte common header
+	require.NoError(t, err)
+
+	start := time.Now()
+	_, err = ss.readCommonHeader()
+	elapsed := time.Since(start)
+
+	require.Error(t, err, "a stalled peer must not block the read indefinitely")
+	assert.Less(t, elapsed, 10*time.Second, "read should time out near the negotiated dead timer, not hang")
 }
 
 func TestReceivePCEPMessage_StateReportHandlingErrorIsLoggedNotFatal(t *testing.T) {
