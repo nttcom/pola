@@ -493,7 +493,7 @@ func GetTED(client pb.PCEServiceClient) (*table.LsTED, error) {
 	}
 
 	if !ret.GetEnable() {
-		return nil, errors.New("ted is disabled")
+		return nil, nil
 	}
 
 	ted := &table.LsTED{
