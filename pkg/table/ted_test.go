@@ -128,6 +128,38 @@ func TestLsNodeNodeSegment_Errors(t *testing.T) {
 	}
 }
 
+func TestNodeSegment_PrefixSIDOutsideSRGB(t *testing.T) {
+	tests := []struct {
+		name string
+		node *LsNode
+	}{
+		{
+			name: "label overflows the maximum MPLS label",
+			node: &LsNode{
+				RouterID:  "0000.0000.0001",
+				SrgbBegin: 0xFFFFF,
+				Prefixes:  []*LsPrefix{{SidIndex: 10, HasSidIndex: true}},
+			},
+		},
+		{
+			name: "label reaches a bounded SRGB end",
+			node: &LsNode{
+				RouterID:  "0000.0000.0001",
+				SrgbBegin: 16000,
+				SrgbEnd:   16010,
+				Prefixes:  []*LsPrefix{{SidIndex: 100, HasSidIndex: true}},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := tt.node.NodeSegment()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "out of range for SRGB")
+		})
+	}
+}
+
 func TestLsNodeLoopbackAddr(t *testing.T) {
 	tests := []struct {
 		name    string

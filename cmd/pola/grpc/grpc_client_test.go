@@ -756,6 +756,32 @@ func TestCreateLsLink(t *testing.T) {
 	})
 }
 
+func TestCreateLsLink_InvalidMetric(t *testing.T) {
+	localNode := table.NewLsNode(65000, "0000.0000.0001")
+	remoteNode := table.NewLsNode(65000, "0000.0000.0002")
+
+	_, err := createLsLink(localNode, remoteNode, &pb.LsLink{
+		Metrics: []*pb.Metric{
+			{Type: pb.MetricType_METRIC_TYPE_IGP, Value: 10},
+			{Type: pb.MetricType_METRIC_TYPE_UNSPECIFIED, Value: 1},
+		},
+	})
+	assert.EqualError(t, err, "unknown metric type")
+}
+
+func TestAddLsNode_InvalidSrv6SID(t *testing.T) {
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{
+		"0000.0aff.0001": table.NewLsNode(65000, "0000.0aff.0001"),
+	}}
+	node := &pb.LsNode{
+		RouterId:   "0000.0aff.0001",
+		LsPrefixes: []*pb.LsPrefix{{Prefix: "not-a-prefix"}},
+	}
+
+	err := addLsNode(ted, node)
+	require.Error(t, err)
+}
+
 func TestCreateMetric(t *testing.T) {
 	tests := []struct {
 		name string

@@ -8,6 +8,7 @@ package server
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -18,6 +19,7 @@ import (
 	"time"
 
 	pb "github.com/nttcom/pola/api/pola/v1"
+	"github.com/nttcom/pola/pkg/cspf"
 	"github.com/nttcom/pola/pkg/packet/pcep"
 	"github.com/nttcom/pola/pkg/table"
 	"github.com/stretchr/testify/assert"
@@ -30,6 +32,51 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
+
+func TestStatusFromCSPFError(t *testing.T) {
+	reasonOf := func(t *testing.T, err error) (codes.Code, string) {
+		t.Helper()
+		st, ok := status.FromError(err)
+		require.True(t, ok)
+		var reason string
+		for _, d := range st.Details() {
+			if info, ok := d.(*errdetails.ErrorInfo); ok {
+				reason = info.Reason
+			}
+		}
+		return st.Code(), reason
+	}
+
+	t.Run("nil error maps to nil", func(t *testing.T) {
+		assert.NoError(t, statusFromCSPFError(nil))
+	})
+
+	t.Run("InvalidInputError maps to InvalidArgument", func(t *testing.T) {
+		err := statusFromCSPFError(&cspf.InvalidInputError{Err: errors.New("bad router ID")})
+		code, reason := reasonOf(t, err)
+		assert.Equal(t, codes.InvalidArgument, code)
+		assert.Equal(t, ReasonInvalidRequest, reason)
+		assert.ErrorContains(t, err, "bad router ID")
+	})
+
+	t.Run("TopologyLimitationError maps to FailedPrecondition with its own Reason", func(t *testing.T) {
+		err := statusFromCSPFError(&cspf.TopologyLimitationError{Err: errors.New("no path"), Reason: "DESTINATION_UNREACHABLE"})
+		code, reason := reasonOf(t, err)
+		assert.Equal(t, codes.FailedPrecondition, code)
+		assert.Equal(t, "DESTINATION_UNREACHABLE", reason)
+		assert.ErrorContains(t, err, "no path")
+	})
+
+	t.Run("an unclassified error is returned unchanged and surfaces as codes.Unknown", func(t *testing.T) {
+		raw := errors.New("ted is nil")
+		got := statusFromCSPFError(raw)
+		assert.Same(t, raw, got)
+
+		st, ok := status.FromError(got)
+		assert.False(t, ok, "a plain error carries no gRPC status of its own")
+		assert.Equal(t, codes.Unknown, st.Code())
+	})
+}
 
 func TestNewEnrichedSegmentSRMPLS(t *testing.T) {
 	tests := []struct {

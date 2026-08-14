@@ -484,6 +484,22 @@ func TestGetLsSrv6SIDList(t *testing.T) {
 	})
 }
 
+func TestConvertSrv6SID_MissingMpReach(t *testing.T) {
+	nlri := &api.LsAddrPrefix{
+		Nlri: &api.LsAddrPrefix_LsNLRI{Nlri: &api.LsAddrPrefix_LsNLRI_Srv6Sid{
+			Srv6Sid: &api.LsSrv6SIDNLRI{
+				LocalNode:          &api.LsNodeDescriptor{Asn: 65000, IgpRouterId: "0000.0000.0001"},
+				Srv6SidInformation: &api.LsSrv6SIDInformation{Sids: []string{"2001:db8:1::"}},
+			},
+		}},
+	}
+	lsAttr := &api.Attribute_Ls{Ls: &api.LsAttribute{Srv6Sid: &api.LsAttributeSrv6SID{}}}
+	path := &api.Path{Pattrs: []*api.Attribute{{Attr: lsAttr}}}
+
+	_, err := convertSrv6SID(nlri, lsAttr, path)
+	assert.EqualError(t, err, "MP-REACH NLRI Attribute is nil")
+}
+
 func TestFindLsAttribute(t *testing.T) {
 	t.Run("found among other attributes", func(t *testing.T) {
 		lsAttr := &api.Attribute_Ls{Ls: &api.LsAttribute{}}
@@ -787,8 +803,6 @@ func (s *fakeListPathStream) Recv() (*api.ListPathResponse, error) {
 	return nil, io.EOF
 }
 
-// fakeGoBGPClient implements api.GoBgpServiceClient by embedding a nil interface.
-// Only ListPath is exercised by the code under test.
 type fakeGoBGPClient struct {
 	api.GoBgpServiceClient
 	listPathResp    []*api.ListPathResponse
@@ -796,6 +810,10 @@ type fakeGoBGPClient struct {
 	recvErr         error
 	lastListPathReq *api.ListPathRequest
 	lastCtx         context.Context
+
+	// watchEventErr, when set, is returned by every WatchEvent call.
+	watchEventErr   error
+	watchEventCalls int32
 }
 
 func (f *fakeGoBGPClient) ListPath(ctx context.Context, in *api.ListPathRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[api.ListPathResponse], error) {
@@ -805,6 +823,11 @@ func (f *fakeGoBGPClient) ListPath(ctx context.Context, in *api.ListPathRequest,
 		return nil, f.listPathErr
 	}
 	return &fakeListPathStream{responses: f.listPathResp, err: f.recvErr}, nil
+}
+
+func (f *fakeGoBGPClient) WatchEvent(_ context.Context, _ *api.WatchEventRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[api.WatchEventResponse], error) {
+	atomic.AddInt32(&f.watchEventCalls, 1)
+	return nil, f.watchEventErr
 }
 
 func testNodeDestination(t *testing.T, asn uint32, routerID, hostname string) *api.Destination {
@@ -896,6 +919,35 @@ func TestWaitForRetry(t *testing.T) {
 			t.Fatal("waitForRetry did not return after the context was canceled")
 		}
 	})
+}
+
+func TestEstablishWatchStream_RetriesThenGivesUpOnContextCancel(t *testing.T) {
+	client := &fakeGoBGPClient{watchEventErr: errors.New("watch unavailable")}
+	ctx, cancel := context.WithCancel(context.Background())
+
+	type result struct {
+		stream grpc.ServerStreamingClient[api.WatchEventResponse]
+		ok     bool
+	}
+	done := make(chan result, 1)
+	go func() {
+		stream, ok := establishWatchStream(ctx, client, newWatchRequest(), 5*time.Millisecond, zap.NewNop())
+		done <- result{stream, ok}
+	}()
+
+	// Let a few retries happen before giving up via cancellation.
+	require.Eventually(t, func() bool {
+		return atomic.LoadInt32(&client.watchEventCalls) >= 2
+	}, time.Second, time.Millisecond)
+	cancel()
+
+	select {
+	case r := <-done:
+		assert.False(t, r.ok)
+		assert.Nil(t, r.stream)
+	case <-time.After(time.Second):
+		t.Fatal("establishWatchStream did not return after the context was canceled")
+	}
 }
 
 func TestInitialSync(t *testing.T) {
