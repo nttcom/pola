@@ -7,7 +7,9 @@ package server
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
+	"io"
 	"net"
 	"net/netip"
 	"strconv"
@@ -1313,6 +1315,7 @@ func TestParseSidStructure(t *testing.T) {
 		{name: "wrong part count", in: "1,2,3", wantErr: true},
 		{name: "non-numeric part", in: "1,2,3,x", wantErr: true},
 		{name: "value out of uint8 range", in: "1,2,3,256", wantErr: true},
+		{name: "sum exceeds 128 bits", in: "128,128,128,128", wantErr: true},
 	}
 
 	for _, tt := range tests {
@@ -1326,6 +1329,23 @@ func TestParseSidStructure(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestParseSidStructure_SumExceeds128(t *testing.T) {
+	_, err := parseSidStructure("128,128,128,128")
+	require.Error(t, err)
+
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.InvalidArgument, st.Code())
+
+	for _, d := range st.Details() {
+		if info, ok := d.(*errdetails.ErrorInfo); ok {
+			assert.Equal(t, ReasonInvalidRequest, info.GetReason())
+			return
+		}
+	}
+	t.Fatal("status has no ErrorInfo details")
 }
 
 func TestNewEnrichedSegmentSRv6_Errors(t *testing.T) {
@@ -1534,6 +1554,68 @@ func TestCreateSRPolicy(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, resp.GetIsSuccess())
 	})
+}
+
+// readEROBehavior reads a PCEP message and returns the behavior from its first ERO subobject.
+func readEROBehavior(t *testing.T, r io.Reader) uint16 {
+	t.Helper()
+
+	headerBytes := make([]byte, pcep.CommonHeaderLength)
+	_, err := io.ReadFull(r, headerBytes)
+	require.NoError(t, err)
+
+	var header pcep.CommonHeader
+	require.NoError(t, header.DecodeFromBytes(headerBytes))
+
+	body := make([]byte, int(header.MessageLength)-int(pcep.CommonHeaderLength))
+	_, err = io.ReadFull(r, body)
+	require.NoError(t, err)
+
+	const objectHeaderLength = 4
+	for len(body) > 0 {
+		var objHeader pcep.CommonObjectHeader
+		require.NoError(t, objHeader.DecodeFromBytes(body))
+		objBody := body[objectHeaderLength:objHeader.ObjectLength]
+		if objHeader.ObjectClass == pcep.ObjectClassERO {
+			require.GreaterOrEqual(t, len(objBody), 8)
+			return binary.BigEndian.Uint16(objBody[6:8])
+		}
+		body = body[objHeader.ObjectLength:]
+	}
+	t.Fatal("ERO object not found in PCEP message")
+	return 0
+}
+
+func TestCreateSRPolicy_SRv6WithoutLocalAddr(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() {
+		assert.NoError(t, client.Close(), "failed to close client connection")
+	})
+
+	peerAddr := netip.MustParseAddr("10.0.255.1")
+	ss := NewSession(1, peerAddr, server, zap.NewNop(), nil, 0)
+	ss.isSynced = true
+
+	s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: zap.NewNop()}
+
+	req := &pb.CreateSRPolicyRequest{
+		DisablePathCompute: true,
+		SrPolicy: &pb.SRPolicy{
+			PolicyName:      "test",
+			Color:           100,
+			PcepSessionAddr: netip.MustParseAddr("10.0.255.1").AsSlice(),
+			SrcAddr:         netip.MustParseAddr("10.0.0.1").AsSlice(),
+			DstAddr:         netip.MustParseAddr("10.0.0.2").AsSlice(),
+			SegmentList:     []*pb.Segment{{Sid: "2001:db8::1"}},
+		},
+		NoSidValidate: true,
+	}
+
+	resp, err := s.CreateSRPolicy(context.Background(), req)
+	require.NoError(t, err)
+	assert.True(t, resp.GetIsSuccess())
+
+	assert.Equal(t, table.BehaviorOpaque, readEROBehavior(t, client))
 }
 
 func TestCreateSRPolicy_StatusCodes(t *testing.T) {

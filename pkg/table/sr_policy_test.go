@@ -224,17 +224,16 @@ func TestSIDStructureBytesMarshalJSON(t *testing.T) {
 	}
 }
 
-func TestSegmentSRv6Behavior(t *testing.T) {
+func TestSegmentSRv6_Behavior(t *testing.T) {
 	tests := []struct {
-		name    string
-		seg     SegmentSRv6
-		want    uint16
-		wantErr bool
+		name string
+		seg  SegmentSRv6
+		want uint16
 	}{
 		{
-			name:    "no LocalAddr",
-			seg:     newTestSegmentSRv6("fc00:0:1::", "", ""),
-			wantErr: true,
+			name: "no LocalAddr",
+			seg:  newTestSegmentSRv6("fc00:0:1::", "", ""),
+			want: BehaviorOpaque,
 		},
 		{
 			name: "uSID with remote address is uA",
@@ -267,13 +266,54 @@ func TestSegmentSRv6Behavior(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := tt.seg.Behavior()
+			assert.Equal(t, tt.want, tt.seg.Behavior())
+		})
+	}
+}
+
+func TestIsUSidBehavior(t *testing.T) {
+	tests := []struct {
+		name     string
+		behavior uint16
+		want     bool
+	}{
+		{"just below uN range", 0x002A, false},
+		{"uN range start", 0x002B, true},
+		{"uN behavior", BehaviorUN, true},
+		{"uN range end", 0x0032, true},
+		{"just above uN range", 0x0033, false},
+		{"uA range start", 0x0034, true},
+		{"uA behavior", BehaviorUA, true},
+		{"uA range end", 0x003B, true},
+		{"just above uA range", 0x003C, false},
+		{"End behavior", BehaviorEND, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, IsUSidBehavior(tt.behavior))
+		})
+	}
+}
+
+func TestSIDStructureBytes_Validate(t *testing.T) {
+	tests := []struct {
+		name    string
+		s       SIDStructureBytes
+		wantErr bool
+	}{
+		{name: "nil structure", s: nil},
+		{name: "sum is 128", s: SIDStructureBytes{32, 32, 32, 32}},
+		{name: "sum exceeds 128", s: SIDStructureBytes{32, 32, 32, 33}, wantErr: true},
+		{name: "wrong element count", s: SIDStructureBytes{32, 32, 32}, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.s.Validate()
 			if tt.wantErr {
 				assert.Error(t, err)
 				return
 			}
-			require.NoError(t, err)
-			assert.Equal(t, tt.want, got)
+			assert.NoError(t, err)
 		})
 	}
 }

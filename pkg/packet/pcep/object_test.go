@@ -6,6 +6,7 @@
 package pcep
 
 import (
+	"encoding/binary"
 	"math"
 	"net/netip"
 	"testing"
@@ -1535,11 +1536,10 @@ func TestMetricObject_Serialize(t *testing.T) {
 	assert.Equal(t, want, raw)
 }
 
-// Pin the current asymmetric behavior: Serialize uses float32, DecodeFromBytes uses uint32.
 func TestMetricObject_DecodeFromBytes(t *testing.T) {
 	t.Parallel()
 
-	body := []uint8{0x00, 0x00, 0x02, 0x02, 0x00, 0x00, 0x00, 0xc8}
+	body := AppendByteSlices([]uint8{0x00, 0x00, 0x02, 0x02}, Uint32ToByteSlice(math.Float32bits(200)))
 	var o MetricObject
 	require.NoError(t, o.DecodeFromBytes(ObjectType(1), body))
 	assert.Equal(t, MetricObject{ObjectType: ObjectType(1), CFlag: true, MetricType: 2, MetricValue: 200}, o)
@@ -1946,7 +1946,7 @@ func TestSRv6EroSubobject_Len_Errors(t *testing.T) {
 }
 
 // Serialize still requires LocalAddr even when the NAI is absent (F=1).
-func TestSRv6EroSubobject_Serialize_Error(t *testing.T) {
+func TestSRv6EroSubobject_Serialize_UnknownBehavior(t *testing.T) {
 	t.Parallel()
 
 	o := &SRv6EroSubobject{
@@ -1956,8 +1956,10 @@ func TestSRv6EroSubobject_Serialize_Error(t *testing.T) {
 		Segment:       table.SegmentSRv6{Sid: netip.MustParseAddr("fc00:0:1::")},
 	}
 
-	_, err := o.Serialize()
-	assert.Error(t, err)
+	b, err := o.Serialize()
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(b), 8)
+	assert.Equal(t, table.BehaviorOpaque, binary.BigEndian.Uint16(b[6:8]))
 }
 
 func TestEndpointsObject_Len_Error(t *testing.T) {
@@ -2102,6 +2104,29 @@ func TestNewAssociationObject_MismatchedFamilies(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestNewAssociationObject_ObjectType(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		srcAddr netip.Addr
+		dstAddr netip.Addr
+		want    ObjectType
+	}{
+		"IPv4": {netip.MustParseAddr("192.0.2.1"), netip.MustParseAddr("192.0.2.2"), ObjectTypeAssociationIPv4},
+		"IPv6": {netip.MustParseAddr("2001:db8::1"), netip.MustParseAddr("2001:db8::2"), ObjectTypeAssociationIPv6},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			o, err := NewAssociationObject(tt.srcAddr, tt.dstAddr, 100, 200)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, o.ObjectType)
+		})
+	}
+}
+
 func TestAssociationObject_Endpoint(t *testing.T) {
 	t.Parallel()
 
@@ -2202,6 +2227,15 @@ func TestSRv6EroSubobject_DecodeFromBytes_Errors(t *testing.T) {
 			assert.Error(t, o.DecodeFromBytes(raw))
 		})
 	}
+}
+
+func TestSRv6EroSubobject_DecodeFromBytes_BothSIDAndNAIAbsent(t *testing.T) {
+	t.Parallel()
+
+	raw := []uint8{0x28, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00}
+
+	var o SRv6EroSubobject
+	assert.Error(t, o.DecodeFromBytes(raw))
 }
 
 func TestSRv6EroSubobject_DecodeFromBytes_LinkLocalAdjacency(t *testing.T) {

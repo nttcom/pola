@@ -137,6 +137,11 @@ func parseSidStructure(s string) ([]uint8, error) {
 		}
 		result[i] = uint8(v)
 	}
+
+	if err := table.SIDStructureBytes(result).Validate(); err != nil {
+		return nil, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "invalid SID structure %q: %s", s, err.Error())
+	}
+
 	return result, nil
 }
 

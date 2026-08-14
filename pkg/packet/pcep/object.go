@@ -309,7 +309,8 @@ func (o *MetricObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error
 	o.CFlag = (objectBody[2] & 0x02) != 0
 	o.BFlag = (objectBody[2] & 0x01) != 0
 	o.MetricType = objectBody[3]
-	o.MetricValue = binary.BigEndian.Uint32(objectBody[4:8])
+	// RFC 5440 §7.8 specifies metric-value as a 32-bit IEEE floating-point value.
+	o.MetricValue = uint32(math.Float32frombits(binary.BigEndian.Uint32(objectBody[4:8])))
 	return nil
 }
 
@@ -1242,44 +1243,21 @@ func (o *SRv6EroSubobject) DecodeFromBytes(subobject []uint8) error {
 	o.FFlag = (subobject[3] & 0x02) != 0
 	o.SFlag = (subobject[3] & 0x01) != 0
 
+	if o.SFlag && o.FFlag {
+		return errors.New("SRv6EroSubobject: both SID and NAI are absent")
+	}
+
 	behavior := binary.BigEndian.Uint16(subobject[6:8])
 
-	off := 8
-	if !o.SFlag {
-		if len(subobject) < off+16 {
-			return errors.New("SRv6EroSubobject: truncated SID")
-		}
-		sid, _ := netip.AddrFromSlice(subobject[off : off+16])
-		o.Segment = table.NewSegmentSRv6(sid)
-		off += 16
-	} else {
-		o.Segment = table.SegmentSRv6{}
+	off, err := o.decodeSID(subobject, 8)
+	if err != nil {
+		return err
 	}
 
 	if !o.FFlag {
-		switch o.NAIType {
-		case NAITypeSRv6IPv6Node:
-			if len(subobject) < off+16 {
-				return errors.New("SRv6EroSubobject: truncated NAI (Node)")
-			}
-			o.Segment.LocalAddr, _ = netip.AddrFromSlice(subobject[off : off+16])
-			off += 16
-		case NAITypeSRv6IPv6AdjacencyGlobal:
-			if len(subobject) < off+32 {
-				return errors.New("SRv6EroSubobject: truncated NAI (AdjGlobal)")
-			}
-			o.Segment.LocalAddr, _ = netip.AddrFromSlice(subobject[off : off+16])
-			o.Segment.RemoteAddr, _ = netip.AddrFromSlice(subobject[off+16 : off+32])
-			off += 32
-		case NAITypeSRv6IPv6AdjacencyLinkLocal:
-			if len(subobject) < off+40 {
-				return errors.New("SRv6EroSubobject: truncated NAI (AdjLinkLocal)")
-			}
-			o.Segment.LocalAddr, _ = netip.AddrFromSlice(subobject[off : off+16])
-			// subobject[off+16 : off+20] — Local Interface ID (not parsed)
-			o.Segment.RemoteAddr, _ = netip.AddrFromSlice(subobject[off+20 : off+36])
-			// subobject[off+36 : off+40] — Remote Interface ID (not parsed)
-			off += 40
+		off, err = o.decodeNAI(subobject, off)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -1293,13 +1271,58 @@ func (o *SRv6EroSubobject) DecodeFromBytes(subobject []uint8) error {
 			subobject[off+2],
 			subobject[off+3],
 		}
+		if err := o.Segment.Structure.Validate(); err != nil {
+			return err
+		}
 	}
 
-	if behavior == table.BehaviorUN || behavior == table.BehaviorUA {
+	if table.IsUSidBehavior(behavior) {
 		o.Segment.USid = true
 	}
 
 	return nil
+}
+
+func (o *SRv6EroSubobject) decodeSID(subobject []uint8, off int) (int, error) {
+	if o.SFlag {
+		o.Segment = table.SegmentSRv6{}
+		return off, nil
+	}
+	if len(subobject) < off+16 {
+		return off, errors.New("SRv6EroSubobject: truncated SID")
+	}
+	sid, _ := netip.AddrFromSlice(subobject[off : off+16])
+	o.Segment = table.NewSegmentSRv6(sid)
+	return off + 16, nil
+}
+
+func (o *SRv6EroSubobject) decodeNAI(subobject []uint8, off int) (int, error) {
+	switch o.NAIType {
+	case NAITypeSRv6IPv6Node:
+		if len(subobject) < off+16 {
+			return off, errors.New("SRv6EroSubobject: truncated NAI (Node)")
+		}
+		o.Segment.LocalAddr, _ = netip.AddrFromSlice(subobject[off : off+16])
+		return off + 16, nil
+	case NAITypeSRv6IPv6AdjacencyGlobal:
+		if len(subobject) < off+32 {
+			return off, errors.New("SRv6EroSubobject: truncated NAI (AdjGlobal)")
+		}
+		o.Segment.LocalAddr, _ = netip.AddrFromSlice(subobject[off : off+16])
+		o.Segment.RemoteAddr, _ = netip.AddrFromSlice(subobject[off+16 : off+32])
+		return off + 32, nil
+	case NAITypeSRv6IPv6AdjacencyLinkLocal:
+		if len(subobject) < off+40 {
+			return off, errors.New("SRv6EroSubobject: truncated NAI (AdjLinkLocal)")
+		}
+		o.Segment.LocalAddr, _ = netip.AddrFromSlice(subobject[off : off+16])
+		// subobject[off+16 : off+20] — Local Interface ID (not parsed)
+		o.Segment.RemoteAddr, _ = netip.AddrFromSlice(subobject[off+20 : off+36])
+		// subobject[off+36 : off+40] — Remote Interface ID (not parsed)
+		return off + 40, nil
+	default:
+		return off, nil
+	}
 }
 
 func (o *SRv6EroSubobject) Serialize() ([]uint8, error) {
@@ -1325,11 +1348,7 @@ func (o *SRv6EroSubobject) Serialize() ([]uint8, error) {
 
 	reserved := make([]uint8, 2)
 
-	behavior, err := o.Segment.Behavior()
-	if err != nil {
-		return nil, err
-	}
-	behaviorBytes := Uint16ToByteSlice(behavior)
+	behaviorBytes := Uint16ToByteSlice(o.Segment.Behavior())
 
 	byteSid := o.Segment.Sid.AsSlice()
 
@@ -1721,9 +1740,9 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 	}
 	var objectType ObjectType
 	if dstAddr.Is4() && srcAddr.Is4() {
-		objectType = ObjectTypeEndpointIPv4
+		objectType = ObjectTypeAssociationIPv4
 	} else if dstAddr.Is6() && srcAddr.Is6() {
-		objectType = ObjectTypeEndpointIPv6
+		objectType = ObjectTypeAssociationIPv6
 	} else {
 		return nil, fmt.Errorf("invalid endpoints address (NewAssociationObject): src=%v dst=%v", srcAddr, dstAddr)
 	}

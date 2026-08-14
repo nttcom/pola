@@ -8,6 +8,7 @@ package table
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/netip"
 	"strconv"
 	"strings"
@@ -137,21 +138,33 @@ const (
 	BehaviorReserved uint16 = 0x0000
 	BehaviorEND      uint16 = 0x0001
 	BehaviorENDX     uint16 = 0x0005
+	BehaviorUNFirst  uint16 = 0x002B
+	BehaviorUNLast   uint16 = 0x0032
+	BehaviorUAFirst  uint16 = 0x0034
+	BehaviorUALast   uint16 = 0x003B
 	BehaviorUN       uint16 = 0x0030
 	BehaviorUA       uint16 = 0x0039
+	// BehaviorOpaque represents an unknown endpoint behavior (RFC 9603 §4.3.1).
+	BehaviorOpaque uint16 = 0xFFFF
 )
 
+// IsUSidBehavior reports whether behavior is a uN or uA behavior.
+func IsUSidBehavior(behavior uint16) bool {
+	return (behavior >= BehaviorUNFirst && behavior <= BehaviorUNLast) ||
+		(behavior >= BehaviorUAFirst && behavior <= BehaviorUALast)
+}
+
 func BehaviorToString(behavior uint16) string {
-	switch behavior {
-	case BehaviorReserved:
+	switch {
+	case behavior == BehaviorReserved:
 		return "RESERVED"
-	case BehaviorEND:
+	case behavior == BehaviorEND:
 		return "END"
-	case BehaviorENDX:
+	case behavior == BehaviorENDX:
 		return "ENDX"
-	case BehaviorUN:
+	case behavior >= BehaviorUNFirst && behavior <= BehaviorUNLast:
 		return "UN"
-	case BehaviorUA:
+	case behavior >= BehaviorUAFirst && behavior <= BehaviorUALast:
 		return "UA"
 	default:
 		return "UNKNOWN"
@@ -175,6 +188,21 @@ func (s SIDStructureBytes) MarshalJSON() ([]byte, error) {
 	return json.Marshal(strings.Join(parts, ","))
 }
 
+// Validate checks the SID structure lengths.
+func (s SIDStructureBytes) Validate() error {
+	if len(s) == 0 {
+		return nil
+	}
+	if len(s) != 4 {
+		return fmt.Errorf("SID structure must have 4 elements, got %d", len(s))
+	}
+	sum := int(s[0]) + int(s[1]) + int(s[2]) + int(s[3])
+	if sum > SRv6SIDBitLength {
+		return fmt.Errorf("SID structure sum %d exceeds %d bits", sum, SRv6SIDBitLength)
+	}
+	return nil
+}
+
 type SegmentSRv6 struct {
 	Sid        netip.Addr        `json:"sid"`
 	LocalAddr  netip.Addr        `json:"localAddr,omitzero"`
@@ -187,20 +215,20 @@ func (seg SegmentSRv6) SidString() string {
 	return seg.Sid.String()
 }
 
-func (seg SegmentSRv6) Behavior() (uint16, error) {
+func (seg SegmentSRv6) Behavior() uint16 {
 	if !seg.LocalAddr.IsValid() {
-		return 0, errors.New("SegmentSRv6: LocalAddr is invalid")
+		return BehaviorOpaque
 	}
 	if seg.USid {
 		if seg.RemoteAddr.IsValid() {
-			return BehaviorUA, nil
+			return BehaviorUA
 		}
-		return BehaviorUN, nil
+		return BehaviorUN
 	}
 	if seg.RemoteAddr.IsValid() {
-		return BehaviorENDX, nil
+		return BehaviorENDX
 	}
-	return BehaviorEND, nil
+	return BehaviorEND
 }
 
 func NewSegmentSRv6(sid netip.Addr) SegmentSRv6 {
@@ -228,11 +256,8 @@ func NewSegmentSRv6WithNodeInfo(sid netip.Addr, n *LsNode) (SegmentSRv6, error) 
 				srv6SID.SIDStructure.LocalFunc,
 				srv6SID.SIDStructure.LocalArg,
 			}
-			switch srv6SID.EndpointBehavior.Behavior {
-			case BehaviorUN, BehaviorUA:
+			if IsUSidBehavior(srv6SID.EndpointBehavior.Behavior) {
 				seg.USid = true
-			default:
-				seg.USid = false
 			}
 			found = true
 			break
