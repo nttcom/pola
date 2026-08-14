@@ -242,9 +242,11 @@ func TestOpenMessage_DecodeFromBytes_Errors(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string][]uint8{
-		"TruncatedHeader":  {0x01, 0x02},
-		"WrongObjectClass": NewCommonObjectHeader(ObjectClassClose, ObjectTypeCloseClose, 8).Serialize(),
-		"WrongObjectType":  NewCommonObjectHeader(ObjectClassOpen, ObjectType(2), 8).Serialize(),
+		"TruncatedHeader":         {0x01, 0x02},
+		"WrongObjectClass":        NewCommonObjectHeader(ObjectClassClose, ObjectTypeCloseClose, 8).Serialize(),
+		"WrongObjectType":         NewCommonObjectHeader(ObjectClassOpen, ObjectType(2), 8).Serialize(),
+		"ObjectLengthZero":        NewCommonObjectHeader(ObjectClassOpen, ObjectTypeOpenOpen, 0).Serialize(),
+		"ObjectLengthExceedsBody": NewCommonObjectHeader(ObjectClassOpen, ObjectTypeOpenOpen, 100).Serialize(),
 		"MalformedTLV": AppendByteSlices(
 			NewCommonObjectHeader(ObjectClassOpen, ObjectTypeOpenOpen, 10).Serialize(),
 			[]uint8{0x20, 0x1e, 0x78, 0x01}, // version/flags, keepalive, deadtime, sid
@@ -490,6 +492,26 @@ func TestPCRptMessage_DecodeFromBytes(t *testing.T) {
 	})
 }
 
+func TestPCRptMessage_DecodeFromBytes_MalformedObjectLength(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string][]uint8{
+		"ObjectLengthZero":                      NewCommonObjectHeader(ObjectClassSRP, ObjectTypeSRPSRP, 0).Serialize(),
+		"ObjectLengthExceedsBody":               NewCommonObjectHeader(ObjectClassSRP, ObjectTypeSRPSRP, 100).Serialize(),
+		"ObjectLengthNotMultipleOf4":            NewCommonObjectHeader(ObjectClassSRP, ObjectTypeSRPSRP, 6).Serialize(),
+		"UnregisteredObjectClassWithZeroLength": NewCommonObjectHeader(ObjectClassClose, ObjectTypeCloseClose, 0).Serialize(),
+	}
+
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var m PCRptMessage
+			assert.Error(t, m.DecodeFromBytes(body))
+		})
+	}
+}
+
 func TestNewPCUpdMessage(t *testing.T) {
 	t.Parallel()
 
@@ -570,8 +592,10 @@ func TestCloseMessage_DecodeFromBytes_Errors(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string][]uint8{
-		"TruncatedObjectHeader":  {0x01, 0x02},
-		"ObjectLengthHeaderOnly": NewCommonObjectHeader(ObjectClassClose, ObjectTypeCloseClose, commonObjectHeaderLength).Serialize(),
+		"TruncatedObjectHeader":   {0x01, 0x02},
+		"ObjectLengthHeaderOnly":  NewCommonObjectHeader(ObjectClassClose, ObjectTypeCloseClose, commonObjectHeaderLength).Serialize(),
+		"ObjectLengthZero":        NewCommonObjectHeader(ObjectClassClose, ObjectTypeCloseClose, 0).Serialize(),
+		"ObjectLengthExceedsBody": NewCommonObjectHeader(ObjectClassClose, ObjectTypeCloseClose, 100).Serialize(),
 		"PartialBody": AppendByteSlices(
 			NewCommonObjectHeader(ObjectClassClose, ObjectTypeCloseClose, commonObjectHeaderLength+2).Serialize(),
 			make([]uint8, 2),

@@ -107,7 +107,6 @@ type Message interface {
 	Serialize() ([]uint8, error)
 }
 
-// Compile-time checks that all message types satisfy the Message interface.
 var (
 	_ Message = (*OpenMessage)(nil)
 	_ Message = (*KeepaliveMessage)(nil)
@@ -116,6 +115,16 @@ var (
 	_ Message = (*PCInitiateMessage)(nil)
 	_ Message = (*PCUpdMessage)(nil)
 )
+
+func objectBody(messageBody []uint8, h *CommonObjectHeader) ([]uint8, error) {
+	if h.ObjectLength < commonObjectHeaderLength || h.ObjectLength%4 != 0 {
+		return nil, fmt.Errorf("invalid object length %d", h.ObjectLength)
+	}
+	if int(h.ObjectLength) > len(messageBody) {
+		return nil, fmt.Errorf("object body extends past message (len=%d, total=%d)", h.ObjectLength, len(messageBody))
+	}
+	return messageBody[commonObjectHeaderLength:h.ObjectLength], nil
+}
 
 // Open Message
 type OpenMessage struct {
@@ -135,8 +144,13 @@ func (m *OpenMessage) DecodeFromBytes(messageBody []uint8) error {
 		return fmt.Errorf("unsupported ObjectType: %d", commonObjectHeader.ObjectType)
 	}
 
+	body, err := objectBody(messageBody, &commonObjectHeader)
+	if err != nil {
+		return fmt.Errorf("Open: %w", err)
+	}
+
 	openObject := &OpenObject{}
-	if err := openObject.DecodeFromBytes(commonObjectHeader.ObjectType, messageBody[commonObjectHeaderLength:commonObjectHeader.ObjectLength]); err != nil {
+	if err := openObject.DecodeFromBytes(commonObjectHeader.ObjectType, body); err != nil {
 		return fmt.Errorf("failed to decode OpenObject: %w", err)
 	}
 	m.OpenObject = openObject
@@ -184,16 +198,9 @@ func NewKeepaliveMessage() (*KeepaliveMessage, error) {
 // PCErr Message
 type PCErrMessage struct {
 	Errors []*PCEPErrorObject
-
-	// SRPs are present when a stateful PCC (RFC 8231) correlates the error
-	// with the PCInitiate/PCUpd request that triggered it.
-	SRPs []*SrpObject
+	SRPs   []*SrpObject
 }
 
-// DecodeFromBytes walks the message body object-by-object, framing each one by
-// the Common Object Header ObjectLength (RFC 5440 §7.2). A PCErr may carry an
-// SRP list followed by several PCEP-ERROR objects, so the whole body is
-// traversed rather than decoding only the first object.
 func (m *PCErrMessage) DecodeFromBytes(messageBody []uint8) error {
 	for offset := 0; offset < len(messageBody); {
 		if len(messageBody)-offset < int(commonObjectHeaderLength) {
@@ -203,31 +210,26 @@ func (m *PCErrMessage) DecodeFromBytes(messageBody []uint8) error {
 		if err := commonObjectHeader.DecodeFromBytes(messageBody[offset : offset+int(commonObjectHeaderLength)]); err != nil {
 			return err
 		}
-		if commonObjectHeader.ObjectLength < commonObjectHeaderLength || commonObjectHeader.ObjectLength%4 != 0 {
-			return fmt.Errorf("PCErr: invalid object length %d at offset %d", commonObjectHeader.ObjectLength, offset)
+		body, err := objectBody(messageBody[offset:], &commonObjectHeader)
+		if err != nil {
+			return fmt.Errorf("PCErr: %w", err)
 		}
-		end := offset + int(commonObjectHeader.ObjectLength)
-		if end > len(messageBody) {
-			return fmt.Errorf("PCErr: object body extends past message (offset=%d, len=%d, total=%d)",
-				offset, commonObjectHeader.ObjectLength, len(messageBody))
-		}
-		objectBody := messageBody[offset+int(commonObjectHeaderLength) : end]
 
 		switch commonObjectHeader.ObjectClass {
 		case ObjectClassPCEPError:
 			errObj := &PCEPErrorObject{}
-			if err := errObj.DecodeFromBytes(commonObjectHeader.ObjectType, objectBody); err != nil {
+			if err := errObj.DecodeFromBytes(commonObjectHeader.ObjectType, body); err != nil {
 				return err
 			}
 			m.Errors = append(m.Errors, errObj)
 		case ObjectClassSRP:
 			srp := &SrpObject{}
-			if err := srp.DecodeFromBytes(commonObjectHeader.ObjectType, objectBody); err != nil {
+			if err := srp.DecodeFromBytes(commonObjectHeader.ObjectType, body); err != nil {
 				return err
 			}
 			m.SRPs = append(m.SRPs, srp)
 		}
-		offset = end
+		offset += int(commonObjectHeader.ObjectLength)
 	}
 	// RFC 5440 §6.7 requires at least one PCEP-ERROR object per PCErr message.
 	if len(m.Errors) == 0 {
@@ -254,8 +256,7 @@ func (m *PCErrMessage) Serialize() ([]uint8, error) {
 	return buf, nil
 }
 
-// SRPIDs returns the SRP-ID of every SRP object in wire order, letting a
-// controller correlate the reported errors with its outstanding requests.
+// SRPIDs returns the SRP-IDs in wire order.
 func (m *PCErrMessage) SRPIDs() []uint32 {
 	if len(m.SRPs) == 0 {
 		return nil
@@ -288,8 +289,12 @@ func (m *CloseMessage) DecodeFromBytes(messageBody []uint8) error {
 	if err := commonObjectHeader.DecodeFromBytes(messageBody); err != nil {
 		return err
 	}
+	body, err := objectBody(messageBody, &commonObjectHeader)
+	if err != nil {
+		return fmt.Errorf("Close: %w", err)
+	}
 	closeObject := &CloseObject{}
-	if err := closeObject.DecodeFromBytes(commonObjectHeader.ObjectType, messageBody[commonObjectHeaderLength:commonObjectHeader.ObjectLength]); err != nil {
+	if err := closeObject.DecodeFromBytes(commonObjectHeader.ObjectType, body); err != nil {
 		return err
 	}
 	m.CloseObject = closeObject
@@ -405,7 +410,6 @@ var decodeFuncs = map[ObjectClass]func(*StateReport, ObjectType, []uint8) error{
 }
 
 func (m *PCRptMessage) DecodeFromBytes(messageBody []uint8) error {
-	// previousObjectClass: To track the object class and handle the delimitation of StateReports
 	var previousObjectClass ObjectClass
 	var sr *StateReport
 	for len(messageBody) > 0 {
@@ -413,9 +417,13 @@ func (m *PCRptMessage) DecodeFromBytes(messageBody []uint8) error {
 		if err := commonObjectHeader.DecodeFromBytes(messageBody); err != nil {
 			return err
 		}
+		body, err := objectBody(messageBody, &commonObjectHeader)
+		if err != nil {
+			return fmt.Errorf("PCRpt: %w", err)
+		}
+
 		decodeFunc, ok := decodeFuncs[commonObjectHeader.ObjectClass]
 		if !ok {
-			// Skip the current object if the object class is not registered in decodeFuncs
 			messageBody = messageBody[commonObjectHeader.ObjectLength:]
 			continue
 		}
@@ -429,7 +437,7 @@ func (m *PCRptMessage) DecodeFromBytes(messageBody []uint8) error {
 				return err
 			}
 		}
-		if err := decodeFunc(sr, commonObjectHeader.ObjectType, messageBody[commonObjectHeaderLength:commonObjectHeader.ObjectLength]); err != nil {
+		if err := decodeFunc(sr, commonObjectHeader.ObjectType, body); err != nil {
 			return err
 		}
 		previousObjectClass = commonObjectHeader.ObjectClass
