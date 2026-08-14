@@ -63,13 +63,21 @@ func TestPrintTED(t *testing.T) {
 			Asn:      65000,
 			RouterId: "0000.0aff.0001",
 			Hostname: "routerA",
-			LsLinks: []*pb.LsLink{{
-				LocalRouterId:  "0000.0aff.0001",
-				RemoteRouterId: "0000.0aff.0001",
-				LocalIp:        "192.0.2.1",
-				Metrics:        []*pb.Metric{{Type: pb.MetricType_METRIC_TYPE_IGP, Value: 10}},
-				AdjSid:         24001,
-			}},
+			LsLinks: []*pb.LsLink{
+				{
+					LocalRouterId:  "0000.0aff.0001",
+					RemoteRouterId: "0000.0aff.0001",
+					LocalIp:        "192.0.2.1",
+					Metrics:        []*pb.Metric{{Type: pb.MetricType_METRIC_TYPE_IGP, Value: 10}},
+					AdjSid:         24001,
+				},
+				{
+					LocalRouterId:  "0000.0aff.0001",
+					RemoteRouterId: "0000.0aff.0001",
+					RemoteIp:       "192.0.2.2",
+					AdjSid:         24002,
+				},
+			},
 			LsPrefixes: []*pb.LsPrefix{
 				{Prefix: "10.0.0.1/32", SidIndex: proto.Uint32(1)},
 				{Prefix: "10.0.0.2/32"},
@@ -96,10 +104,14 @@ func TestPrintTED(t *testing.T) {
 
 		links, ok := nodeMap["links"].([]any)
 		require.True(t, ok)
-		require.Len(t, links, 1)
+		require.Len(t, links, 2)
 		linkMap := links[0].(map[string]any)
 		assert.Equal(t, "192.0.2.1", linkMap["localIP"])
 		assert.Equal(t, "None", linkMap["remoteIP"])
+
+		linkMap2 := links[1].(map[string]any)
+		assert.Equal(t, "None", linkMap2["localIP"])
+		assert.Equal(t, "192.0.2.2", linkMap2["remoteIP"])
 
 		prefixes, ok := nodeMap["prefixes"].([]any)
 		require.True(t, ok)

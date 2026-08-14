@@ -1060,6 +1060,15 @@ func TestReceiveOpen_MalformedOpenMessage(t *testing.T) {
 			},
 		},
 		{
+			name: "MessageLength below CommonHeaderLength",
+			setup: func(t *testing.T, client *net.TCPConn) bool {
+				header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeOpen, MessageLength: pcep.CommonHeaderLength - 1}
+				_, err := client.Write(header.Serialize())
+				require.NoError(t, err, "failed to write header")
+				return false
+			},
+		},
+		{
 			name: "connection closed before the Open object body is read",
 			setup: func(t *testing.T, client *net.TCPConn) bool {
 				header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeOpen, MessageLength: pcep.CommonHeaderLength + 10}
@@ -1659,6 +1668,15 @@ func TestCreateEroFromSegmentList_SRv6(t *testing.T) {
 func TestCreateEroFromSegmentList_InvalidSegmentReturnsError(t *testing.T) {
 	seg := table.NewSegmentSRMPLS(16002)
 	seg.RemoteAddr = netip.MustParseAddr("10.255.0.2") // RemoteAddr without LocalAddr is invalid.
+
+	_, err := createEroFromSegmentList([]table.Segment{seg})
+	require.Error(t, err)
+}
+
+func TestCreateEroFromSegmentList_SRv6InvalidSegmentReturnsError(t *testing.T) {
+	seg := table.NewSegmentSRv6(netip.MustParseAddr("2001:db8:1::1"))
+	seg.LocalAddr = netip.MustParseAddr("fe80::1") // link-local adjacency NAI is unsupported.
+	seg.RemoteAddr = netip.MustParseAddr("fe80::2")
 
 	_, err := createEroFromSegmentList([]table.Segment{seg})
 	require.Error(t, err)

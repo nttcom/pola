@@ -248,9 +248,9 @@ func TestOpenMessage_DecodeFromBytes_Errors(t *testing.T) {
 		"ObjectLengthZero":        NewCommonObjectHeader(ObjectClassOpen, ObjectTypeOpenOpen, 0).Serialize(),
 		"ObjectLengthExceedsBody": NewCommonObjectHeader(ObjectClassOpen, ObjectTypeOpenOpen, 100).Serialize(),
 		"MalformedTLV": AppendByteSlices(
-			NewCommonObjectHeader(ObjectClassOpen, ObjectTypeOpenOpen, 10).Serialize(),
+			NewCommonObjectHeader(ObjectClassOpen, ObjectTypeOpenOpen, 12).Serialize(),
 			[]uint8{0x20, 0x1e, 0x78, 0x01}, // version/flags, keepalive, deadtime, sid
-			[]uint8{0x00, 0x27},             // truncated TLV header
+			[]uint8{0x00, 0x27, 0x00, 0x04}, // TLV header advertising a value longer than available
 		),
 	}
 

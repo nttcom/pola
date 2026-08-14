@@ -200,9 +200,11 @@ func TestSREroSubobject_DecodeErrors(t *testing.T) {
 
 	// Type, Length, NT/Flags (4byte) + SID (4byte) [+ NAI]
 	cases := map[string][]uint8{
+		"TooShort":                {0x24, 0x08, 0x00},
 		"ShorterThanHeaderAndSID": {0x24, 0x08, 0x00, 0x08, 0x00, 0x00},
 		"TruncatedIPv4NodeNAI":    {0x24, 0x0c, 0x10, 0x01, 0x03, 0xe8, 0x10, 0x00, 0x0a, 0x00},
 		"UnsupportedNAIType":      {0x24, 0x08, 0x50, 0x01, 0x03, 0xe8, 0x10, 0x00},
+		"UndefinedNAIType":        {0x24, 0x08, 0x70, 0x01, 0x00, 0x00, 0x00, 0x00},
 	}
 
 	for name, raw := range cases {
@@ -215,8 +217,16 @@ func TestSREroSubobject_DecodeErrors(t *testing.T) {
 	}
 }
 
-// The NAI must never be silently dropped: emitting a body that is shorter than
-// the advertised Length would corrupt every following ERO subobject.
+// RFC 8664 §4.3.1: S and F MUST NOT both be set.
+func TestSREroSubobject_DecodeFromBytes_BothSIDAndNAIAbsent(t *testing.T) {
+	t.Parallel()
+
+	raw := []uint8{0x24, 0x08, 0x00, 0x0c} // S=1, F=1
+
+	var subo SREroSubobject
+	assert.Error(t, subo.DecodeFromBytes(raw))
+}
+
 func TestSREroSubobject_SerializeRejectsNAIMismatch(t *testing.T) {
 	t.Parallel()
 
@@ -1922,6 +1932,18 @@ func TestNewEroSubobject(t *testing.T) {
 		_, err := NewEroSubobject(fakeSegment{})
 		assert.Error(t, err)
 	})
+
+	t.Run("SRv6LinkLocalError", func(t *testing.T) {
+		t.Parallel()
+
+		seg := table.SegmentSRv6{
+			Sid:        netip.MustParseAddr("fc00:0:1::"),
+			LocalAddr:  netip.MustParseAddr("fe80::1"),
+			RemoteAddr: netip.MustParseAddr("fe80::2"),
+		}
+		_, err := NewEroSubobject(seg)
+		assert.Error(t, err)
+	})
 }
 
 func TestEroObject_ToSegmentList(t *testing.T) {
@@ -2323,6 +2345,22 @@ func TestEroObject_Serialize_LenError(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// RFC 9603 §4.3.1: NAI Type 0 requires F=1.
+func TestEroObject_Serialize_LenError_SRv6AbsentNAI(t *testing.T) {
+	t.Parallel()
+
+	badSubo := &SRv6EroSubobject{
+		SubobjectType: SubobjectTypeEROSRv6,
+		NAIType:       NAITypeSRv6Absent,
+		FFlag:         false,
+		Segment:       table.SegmentSRv6{Sid: netip.MustParseAddr("fc00:0:1::")},
+	}
+	o := EroObject{ObjectType: ObjectTypeEROExplicitRoute, EroSubobjects: []EroSubobject{badSubo}}
+
+	_, err := o.Serialize()
+	assert.Error(t, err)
+}
+
 func TestSRv6EroSubobject_DecodeFromBytes_Errors(t *testing.T) {
 	t.Parallel()
 
@@ -2356,6 +2394,21 @@ func TestSRv6EroSubobject_DecodeFromBytes_Errors(t *testing.T) {
 			assert.Error(t, o.DecodeFromBytes(raw))
 		})
 	}
+}
+
+func TestSRv6EroSubobject_DecodeFromBytes_SIDStructureOverflow(t *testing.T) {
+	t.Parallel()
+
+	raw := AppendByteSlices(
+		[]uint8{0x28, 0x00, 0x00, 0x06}, // NAIType=Absent, T=1, F=1
+		make([]uint8, 4),                // reserved + behavior
+		netip.MustParseAddr("fc00:0:1::").AsSlice(),
+		[]uint8{200, 200, 200, 200}, // sum exceeds 128 bits
+		make([]uint8, 4),
+	)
+
+	var o SRv6EroSubobject
+	assert.Error(t, o.DecodeFromBytes(raw))
 }
 
 func TestSRv6EroSubobject_DecodeFromBytes_BothSIDAndNAIAbsent(t *testing.T) {

@@ -42,6 +42,16 @@ func TestSessionAddrFlag_Invalid(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestSessionAddrFlag_UnregisteredFlag(t *testing.T) {
+	_, err := sessionAddrFlag(&cobra.Command{})
+	require.Error(t, err)
+}
+
+func TestShowSRPolicyList_UnregisteredJSONFlag(t *testing.T) {
+	err := showSRPolicyList(&cobra.Command{}, []string{})
+	require.Error(t, err)
+}
+
 func TestSegmentDisplayString(t *testing.T) {
 	local := netip.MustParseAddr("192.0.2.1")
 	remote := netip.MustParseAddr("192.0.2.2")
