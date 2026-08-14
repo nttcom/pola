@@ -8,6 +8,15 @@ PYTHON_DIRS  := test
 TEST_BIN_DIR := test/bin
 PYTEST_ARGS  ?= -s
 
+# Coverage. Generated protobuf code under api/ and the standalone programs under
+# examples/ are deliberately excluded.
+COVER_PKGS    := ./cmd/... ./internal/... ./pkg/...
+COVER_PROFILE := coverage.out
+# Branch that test-coverage-diff compares against; its merge base with HEAD is
+# used, so the comparison covers only what this branch introduced.
+DIFF_BASE      ?= origin/main
+DIFF_COVER_MIN ?= 90
+
 # External dependencies
 GOBGP_CMDS    := gobgp gobgpd
 GOBGP_MODULE  := github.com/osrg/gobgp/v4
@@ -34,6 +43,9 @@ RUFF_VERSION          ?= latest
 	install \
 	test \
 	test-race \
+	test-coverage \
+	test-coverage-html \
+	test-coverage-diff \
 	image \
 	image-debug \
 	licenses \
@@ -49,7 +61,7 @@ RUFF_VERSION          ?= latest
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | \
-	awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-16s\033[0m %s\n", $$1, $$2}'
+	awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-22s\033[0m %s\n", $$1, $$2}'
 
 setup: ## Install development tools required by this Makefile
 	@command -v go >/dev/null || (echo "Go is required: https://go.dev/dl/"; exit 1)
@@ -113,6 +125,19 @@ test: ## Run Go unit tests
 test-race: ## Run Go unit tests with race detector
 	go test -race ./...
 
+test-coverage: ## Run Go unit tests and print a coverage summary
+	go test $(COVER_PKGS) -coverprofile=$(COVER_PROFILE)
+	go tool cover -func=$(COVER_PROFILE)
+
+test-coverage-html: test-coverage ## Open the coverage report in a browser
+	go tool cover -html=$(COVER_PROFILE)
+
+test-coverage-diff: test-coverage ## Report added lines not covered by tests (DIFF_BASE, DIFF_COVER_MIN)
+	go run ./tools/coverage-diff \
+		-base=$(DIFF_BASE) \
+		-profile=$(COVER_PROFILE) \
+		-min=$(DIFF_COVER_MIN)
+
 image: ## Build production Docker image
 	docker buildx build \
 		-t $(IMAGE):$(TAG) \
@@ -151,7 +176,7 @@ test-scenario: test-deps ## Run containerlab scenario tests
 test-scenario-parallel: PYTEST_ARGS = -s -n 4 --dist loadgroup
 test-scenario-parallel: test-scenario ## Run containerlab scenario tests, one lab per worker
 
-ci: check-proto lint build test ## Run the same checks as CI
+ci: check-proto lint build test test-coverage-diff ## Run the same checks as CI
 
 release: ## Cut a release: make release VERSION=X.Y.Z
 	@if [ -z "$(VERSION)" ]; then echo "Usage: make release VERSION=X.Y.Z"; exit 1; fi
@@ -175,3 +200,4 @@ release: ## Cut a release: make release VERSION=X.Y.Z
 
 clean: ## Remove generated files
 	$(RM) -r bin $(TEST_BIN_DIR)
+	$(RM) $(COVER_PROFILE)
