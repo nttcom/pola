@@ -97,7 +97,7 @@ func TestSREroSubobject_RoundTrip(t *testing.T) {
 			SubobjectType: SubobjectTypeEROSR,
 			NAIType:       NAITypeSRAbsent,
 			SFlag:         true, MFlag: true,
-			Segment: table.NewSegmentSRMPLS(500),
+			Segment: table.SegmentSRMPLS{},
 		},
 	}
 
@@ -256,9 +256,115 @@ func TestSREroSubobject_SerializeRejectsNAIMismatch(t *testing.T) {
 		})
 	}
 
-	// An NAI type this implementation cannot encode must not yield a length either.
-	_, err := cases["UnsupportedNAIType"].Len()
+	_, err := mkSubo(NAITypeSR(0x07), "10.0.0.1", "10.0.0.2").Len()
 	assert.Error(t, err)
+}
+
+func TestNAITypeSR_naiLength(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		nt      NAITypeSR
+		want    uint16
+		wantErr bool
+	}{
+		"Absent":                 {nt: NAITypeSRAbsent, want: 0},
+		"IPv4Node":               {nt: NAITypeSRIPv4Node, want: 4},
+		"IPv6Node":               {nt: NAITypeSRIPv6Node, want: 16},
+		"IPv4Adjacency":          {nt: NAITypeSRIPv4Adjacency, want: 8},
+		"IPv6AdjacencyGlobal":    {nt: NAITypeSRIPv6AdjacencyGlobal, want: 32},
+		"UnnumberedAdjacency":    {nt: NAITypeSRUnnumberedAdjacency, want: 16},
+		"IPv6AdjacencyLinkLocal": {nt: NAITypeSRIPv6AdjacencyLinkLocal, want: 40},
+		"Unknown":                {nt: NAITypeSR(0x07), wantErr: true},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := tc.nt.naiLength()
+			if tc.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestSREroSubobject_DecodeFromBytes_SIDAbsent(t *testing.T) {
+	t.Parallel()
+
+	mkSegment := func(local, remote string) table.SegmentSRMPLS {
+		var seg table.SegmentSRMPLS
+		if local != "" {
+			seg.LocalAddr = netip.MustParseAddr(local)
+		}
+		if remote != "" {
+			seg.RemoteAddr = netip.MustParseAddr(remote)
+		}
+		return seg
+	}
+
+	cases := map[string]struct {
+		naiType   NAITypeSR
+		sFlag     bool
+		local     string
+		remote    string
+		naiLength uint16
+	}{
+		"IPv4Node_S0":            {NAITypeSRIPv4Node, false, "10.0.0.1", "", 4},
+		"IPv4Node_S1":            {NAITypeSRIPv4Node, true, "10.0.0.1", "", 4},
+		"IPv6Node_S0":            {NAITypeSRIPv6Node, false, "2001:db8::1", "", 16},
+		"IPv6Node_S1":            {NAITypeSRIPv6Node, true, "2001:db8::1", "", 16},
+		"IPv4Adjacency_S0":       {NAITypeSRIPv4Adjacency, false, "10.0.0.1", "10.0.0.2", 8},
+		"IPv4Adjacency_S1":       {NAITypeSRIPv4Adjacency, true, "10.0.0.1", "10.0.0.2", 8},
+		"IPv6AdjacencyGlobal_S0": {NAITypeSRIPv6AdjacencyGlobal, false, "2001:db8::1", "2001:db8::2", 32},
+		"IPv6AdjacencyGlobal_S1": {NAITypeSRIPv6AdjacencyGlobal, true, "2001:db8::1", "2001:db8::2", 32},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			seg := mkSegment(tc.local, tc.remote)
+			if !tc.sFlag {
+				seg.Sid = 16001
+			}
+			subo := &SREroSubobject{
+				SubobjectType: SubobjectTypeEROSR,
+				NAIType:       tc.naiType,
+				SFlag:         tc.sFlag,
+				MFlag:         true,
+				Segment:       seg,
+			}
+
+			l, err := subo.Len()
+			require.NoError(t, err)
+			wantLen := uint16(4) + tc.naiLength
+			if !tc.sFlag {
+				wantLen += 4
+			}
+			require.Equal(t, wantLen, l, "Len()")
+			subo.Length = uint8(l)
+
+			raw, err := subo.Serialize()
+			require.NoError(t, err)
+			require.Equal(t, int(l), len(raw), "Serialize() size must match Len()")
+
+			var got SREroSubobject
+			require.NoError(t, got.DecodeFromBytes(raw))
+			assert.Equal(t, tc.sFlag, got.SFlag)
+			assert.Equal(t, seg.LocalAddr, got.Segment.LocalAddr, "NAI read position after SID")
+			assert.Equal(t, seg.RemoteAddr, got.Segment.RemoteAddr, "NAI read position after SID")
+			if tc.sFlag {
+				assert.Zero(t, got.Segment.Sid, "SID must not be decoded when S=1")
+			} else {
+				assert.Equal(t, seg.Sid, got.Segment.Sid)
+			}
+		})
+	}
 }
 
 func TestSRv6EroSubobject_RoundTrip(t *testing.T) {
@@ -1756,7 +1862,7 @@ func TestEroObject_Len_Error(t *testing.T) {
 
 	badSubo := &SREroSubobject{
 		SubobjectType: SubobjectTypeEROSR,
-		NAIType:       NAITypeSRUnnumberedAdjacency,
+		NAIType:       NAITypeSR(0x07),
 		MFlag:         true,
 		Segment:       table.NewSegmentSRMPLS(16001),
 	}
@@ -2179,6 +2285,29 @@ func TestLSPObject_DecodeFromBytes_Error(t *testing.T) {
 	}
 }
 
+func TestLSPObject_Serialize_MasksPlspIDAndOFlag(t *testing.T) {
+	t.Parallel()
+
+	o := &LSPObject{
+		ObjectType: ObjectTypeLSPLSP,
+		PlspID:     0x1FFFFF,
+		OFlag:      0x0F,
+		CFlag:      false,
+		TLVs:       []TLVInterface{},
+	}
+
+	raw := o.Serialize()
+	body := raw[commonObjectHeaderLength:]
+	require.Len(t, body, 4)
+	assert.False(t, body[3]&0x80 != 0, "PLSP-ID/OFlag overflow must not set the C flag")
+
+	var got LSPObject
+	require.NoError(t, got.DecodeFromBytes(o.ObjectType, body))
+	assert.Equal(t, o.PlspID&0xFFFFF, got.PlspID)
+	assert.Equal(t, o.OFlag&0x07, got.OFlag)
+	assert.False(t, got.CFlag)
+}
+
 func TestEroObject_Serialize_LenError(t *testing.T) {
 	t.Parallel()
 
@@ -2300,6 +2429,30 @@ func TestNewSRv6EroSubobject_NAIFromSegment(t *testing.T) {
 			assert.Equal(t, tt.wantNAIType, subo.NAIType)
 			assert.Equal(t, tt.wantFFlag, subo.FFlag)
 			assert.Equal(t, tt.wantTFlag, subo.TFlag)
+		})
+	}
+}
+
+func TestNewSRv6EroSubobject_LinkLocalRejected(t *testing.T) {
+	t.Parallel()
+
+	sid := netip.MustParseAddr("fc00:0:1::")
+
+	cases := map[string]table.SegmentSRv6{
+		"LinkLocalAdjacency": {
+			Sid: sid, LocalAddr: netip.MustParseAddr("fe80::1"), RemoteAddr: netip.MustParseAddr("fe80::2"),
+		},
+		"LinkLocalRemoteOnly": {
+			Sid: sid, LocalAddr: netip.MustParseAddr("2001:db8::1"), RemoteAddr: netip.MustParseAddr("fe80::2"),
+		},
+	}
+
+	for name, seg := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := NewSRv6EroSubobject(seg)
+			assert.Error(t, err)
 		})
 	}
 }

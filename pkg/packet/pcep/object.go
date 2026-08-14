@@ -699,7 +699,7 @@ func (o *LSPObject) Serialize() []uint8 {
 	byteLSPObjectHeader := lspObjectHeader.Serialize()
 
 	buf := make([]uint8, 4)
-	binary.BigEndian.PutUint32(buf, uint32(o.PlspID<<12)+uint32(o.OFlag<<4))
+	binary.BigEndian.PutUint32(buf, (o.PlspID&0xFFFFF)<<12|uint32(o.OFlag&0x07)<<4)
 	if o.CFlag {
 		buf[3] = buf[3] | 0x80
 	}
@@ -973,7 +973,7 @@ type SREroSubobject struct {
 }
 
 func (o *SREroSubobject) DecodeFromBytes(subobject []uint8) error {
-	if len(subobject) < 8 {
+	if len(subobject) < 4 {
 		return errors.New("SREroSubobject: subobject too short")
 	}
 
@@ -986,19 +986,30 @@ func (o *SREroSubobject) DecodeFromBytes(subobject []uint8) error {
 	o.CFlag = (subobject[3] & 0x02) != 0
 	o.MFlag = (subobject[3] & 0x01) != 0
 
-	sidWord := binary.BigEndian.Uint32(subobject[4:8])
-	sid := sidWord >> 12
-	o.Segment = table.NewSegmentSRMPLS(sid)
-	if o.CFlag {
-		// Per RFC 8664 §4.3.1: when C=1, TC/S/TTL of the MPLS LSE are set by the PCE.
-		o.Segment.TC = uint8((sidWord >> 9) & 0x07)
-		o.Segment.S = (sidWord & (uint32(1) << 8)) != 0
-		o.Segment.TTL = uint8(sidWord & 0xFF)
+	if o.SFlag && o.FFlag {
+		return errors.New("SREroSubobject: both SID and NAI are absent")
 	}
 
-	// The NAI follows the SID and is present only when F=0 (RFC8664 4.3.1).
+	off := 4
+	if !o.SFlag {
+		if len(subobject) < 8 {
+			return errors.New("SREroSubobject: subobject too short")
+		}
+		sidWord := binary.BigEndian.Uint32(subobject[4:8])
+		sid := sidWord >> 12
+		o.Segment = table.NewSegmentSRMPLS(sid)
+		if o.CFlag {
+			// Per RFC 8664 §4.3.1: when C=1, TC/S/TTL of the MPLS LSE are set by the PCE.
+			o.Segment.TC = uint8((sidWord >> 9) & 0x07)
+			o.Segment.S = (sidWord & (uint32(1) << 8)) != 0
+			o.Segment.TTL = uint8(sidWord & 0xFF)
+		}
+		off = 8
+	} else {
+		o.Segment = table.SegmentSRMPLS{}
+	}
+
 	if !o.FFlag {
-		const off = 8
 		naiLength, err := o.NAIType.naiLength()
 		if err != nil {
 			return err
@@ -1074,17 +1085,19 @@ func (o *SREroSubobject) Serialize() ([]uint8, error) {
 		buf[3] |= 0x01
 	}
 
-	sidWord := (o.Segment.Sid & 0xFFFFF) << 12
-	if o.CFlag {
-		sidWord |= uint32(o.Segment.TC&0x07) << 9
-		if o.Segment.S {
-			sidWord |= uint32(1) << 8
+	var byteSid []uint8
+	if !o.SFlag {
+		sidWord := (o.Segment.Sid & 0xFFFFF) << 12
+		if o.CFlag {
+			sidWord |= uint32(o.Segment.TC&0x07) << 9
+			if o.Segment.S {
+				sidWord |= uint32(1) << 8
+			}
+			sidWord |= uint32(o.Segment.TTL)
 		}
-		sidWord |= uint32(o.Segment.TTL)
+		byteSid = make([]uint8, 4)
+		binary.BigEndian.PutUint32(byteSid, sidWord)
 	}
-
-	byteSid := make([]uint8, 4)
-	binary.BigEndian.PutUint32(byteSid, sidWord)
 
 	byteNAI, err := o.serializeNAI()
 	if err != nil {
@@ -1106,13 +1119,20 @@ func (nt NAITypeSR) naiLength() (uint16, error) {
 		return uint16(8), nil
 	case NAITypeSRIPv6AdjacencyGlobal:
 		return uint16(32), nil
+	case NAITypeSRUnnumberedAdjacency:
+		return uint16(16), nil
+	case NAITypeSRIPv6AdjacencyLinkLocal:
+		return uint16(40), nil
 	default:
 		return uint16(0), errors.New("unsupported naitype")
 	}
 }
 
 func (o *SREroSubobject) Len() (uint16, error) {
-	length := uint16(8)
+	length := uint16(4)
+	if !o.SFlag {
+		length += 4
+	}
 	if o.FFlag {
 		return length, nil
 	}
@@ -1400,30 +1420,27 @@ func (o *SRv6EroSubobject) Len() (uint16, error) {
 
 func NewSRv6EroSubobject(seg table.SegmentSRv6) (*SRv6EroSubobject, error) {
 	subo := &SRv6EroSubobject{
-		LFlag:         false,
 		SubobjectType: SubobjectTypeEROSRv6,
-		VFlag:         false,
-		SFlag:         false, // SID is absent
 		Segment:       seg,
 	}
 
-	if seg.Structure != nil {
-		subo.TFlag = true // the SID Structure value in the subobject body is present
-	} else {
-		subo.TFlag = false
-	}
+	subo.TFlag = seg.Structure != nil
+
 	if seg.LocalAddr.IsValid() {
-		subo.FFlag = false // NAI is present
+		// Link-local adjacencies require NAITypeSRv6IPv6AdjacencyLinkLocal
+		// (RFC 9603 §4.3.1), which is not yet supported for encoding.
+		if seg.LocalAddr.IsLinkLocalUnicast() || seg.RemoteAddr.IsLinkLocalUnicast() {
+			return nil, errors.New("SegmentSRv6: link-local IPv6 adjacency NAI is unsupported")
+		}
+		subo.FFlag = false
 
 		if seg.RemoteAddr.IsValid() {
-			// End.X or uA
 			subo.NAIType = NAITypeSRv6IPv6AdjacencyGlobal
 		} else {
-			// End or uN
 			subo.NAIType = NAITypeSRv6IPv6Node
 		}
 	} else {
-		subo.FFlag = true // SID is absent
+		subo.FFlag = true
 		subo.NAIType = NAITypeSRv6Absent
 	}
 
