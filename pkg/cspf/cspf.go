@@ -13,6 +13,31 @@ import (
 	"github.com/nttcom/pola/pkg/table"
 )
 
+// InvalidInputError indicates that path computation failed due to invalid input.
+type InvalidInputError struct {
+	Err error
+}
+
+func (e *InvalidInputError) Error() string { return e.Err.Error() }
+func (e *InvalidInputError) Unwrap() error { return e.Err }
+
+func invalidInputf(format string, a ...any) error {
+	return &InvalidInputError{Err: fmt.Errorf(format, a...)}
+}
+
+// TopologyLimitationError indicates that path computation failed due to the current TED.
+type TopologyLimitationError struct {
+	Err    error
+	Reason string
+}
+
+func (e *TopologyLimitationError) Error() string { return e.Err.Error() }
+func (e *TopologyLimitationError) Unwrap() error { return e.Err }
+
+func topologyLimitationf(reason, format string, a ...any) error {
+	return &TopologyLimitationError{Err: fmt.Errorf(format, a...), Reason: reason}
+}
+
 type node struct {
 	id          string
 	calculated  bool
@@ -29,13 +54,27 @@ func newNode(id string, cost uint32, nodeSeg table.Segment) *node {
 	}
 }
 
+// validateMetricType rejects metric types that cannot be used for path computation.
+func validateMetricType(metric table.MetricType) error {
+	if !metric.IsValid() {
+		return invalidInputf("unsupported metric type %d", int(metric))
+	}
+	if metric == table.UnspecifiedMetric {
+		return invalidInputf("metric type must be specified for path computation")
+	}
+	return nil
+}
+
+// CSPF computes the shortest path from srcRouterID to dstRouterID using the given metric.
 func CSPF(srcRouterID string, dstRouterID string, metric table.MetricType, ted *table.LsTED) ([]table.Segment, error) {
 	if ted == nil {
 		return nil, errors.New("ted is nil")
 	}
-	network := ted.Nodes
-	// TODO: update network information according to constraints
-	segmentList, err := spf(srcRouterID, dstRouterID, metric, network)
+	if err := validateMetricType(metric); err != nil {
+		return nil, err
+	}
+
+	segmentList, err := spf(srcRouterID, dstRouterID, metric, ted.Nodes)
 	if err != nil {
 		return nil, err
 	}
@@ -53,11 +92,14 @@ func CSPFWithLooseSourceRouting(
 	if ted == nil {
 		return nil, errors.New("ted is nil")
 	}
+	if err := validateMetricType(metric); err != nil {
+		return nil, err
+	}
 
 	// Validate waypoints before computing any section.
 	for _, wp := range waypoints {
 		if _, ok := nodeInTED(ted.Nodes, wp.RouterID); !ok {
-			return nil, fmt.Errorf("waypoint router %s not found in TED", wp.RouterID)
+			return nil, invalidInputf("waypoint router %s not found in TED", wp.RouterID)
 		}
 	}
 
@@ -94,7 +136,7 @@ func buildSectionSegments(prev string, wp table.Waypoint, metric table.MetricTyp
 	// Lookup the node from TED
 	node, ok := nodeInTED(ted.Nodes, wp.RouterID)
 	if !ok {
-		return nil, nil, fmt.Errorf("waypoint router %s not found in TED", wp.RouterID)
+		return nil, nil, invalidInputf("waypoint router %s not found in TED", wp.RouterID)
 	}
 
 	// Build the segment (SRv6 or SR-MPLS)
@@ -111,7 +153,7 @@ func buildWaypointSegment(node *table.LsNode, explicitSID string) (table.Segment
 	if explicitSID != "" {
 		addr, err := netip.ParseAddr(explicitSID)
 		if err != nil {
-			return nil, fmt.Errorf("invalid explicit SID %q: %w", explicitSID, err)
+			return nil, invalidInputf("invalid explicit SID %q: %w", explicitSID, err)
 		}
 		return table.NewSegmentSRv6WithNodeInfo(addr, node)
 	}
@@ -141,7 +183,7 @@ func spf(srcRouterID string, dstRouterID string, metricType table.MetricType, ne
 	}
 
 	if _, ok := nodeInTED(network, dstRouterID); !ok {
-		return nil, fmt.Errorf("destination router %s not found in TED", dstRouterID)
+		return nil, invalidInputf("destination router %s not found in TED", dstRouterID)
 	}
 
 	// Keep calculating the shortest path until the destination node is reached.
@@ -177,11 +219,11 @@ func nodeInTED(network map[string]*table.LsNode, routerID string) (*table.LsNode
 func initNodeMap(srcRouterID string, network map[string]*table.LsNode) (map[string]*node, error) {
 	srcNode, ok := nodeInTED(network, srcRouterID)
 	if !ok {
-		return nil, fmt.Errorf("source router %s not found in TED", srcRouterID)
+		return nil, invalidInputf("source router %s not found in TED", srcRouterID)
 	}
 	startNodeSeg, err := srcNode.NodeSegment()
 	if err != nil {
-		return nil, err
+		return nil, topologyLimitationf("TED_DATA_INCOMPLETE", "%w", err)
 	}
 	startNode := newNode(srcRouterID, 0, startNodeSeg)
 	startNode.calculated = false
@@ -192,7 +234,7 @@ func initNodeMap(srcRouterID string, network map[string]*table.LsNode) (map[stri
 func updateNeighborCosts(calcNodeID string, calculatingNodes map[string]*node, network map[string]*table.LsNode, metricType table.MetricType) error {
 	calcNode, ok := nodeInTED(network, calcNodeID)
 	if !ok {
-		return fmt.Errorf("router %s not found in TED", calcNodeID)
+		return topologyLimitationf("TED_DATA_INCOMPLETE", "router %s not found in TED", calcNodeID)
 	}
 
 	for _, link := range calcNode.Links {
@@ -205,7 +247,7 @@ func updateNeighborCosts(calcNodeID string, calculatingNodes map[string]*node, n
 
 		metric, err := link.Metric(metricType)
 		if err != nil {
-			return err
+			return topologyLimitationf("METRIC_NOT_CARRIED", "%w", err)
 		}
 
 		if remoteNode, exists := calculatingNodes[link.RemoteNode.RouterID]; exists {
@@ -216,7 +258,7 @@ func updateNeighborCosts(calcNodeID string, calculatingNodes map[string]*node, n
 		} else {
 			remoteNodeSeg, err := link.RemoteNode.NodeSegment()
 			if err != nil {
-				return err
+				return topologyLimitationf("TED_DATA_INCOMPLETE", "%w", err)
 			}
 			remoteNode := newNode(link.RemoteNode.RouterID, calculatingNodes[calcNodeID].cost+metric, remoteNodeSeg)
 			remoteNode.prevNode = calcNodeID
@@ -253,7 +295,7 @@ func nextNode(calculatingNodes map[string]*node) (string, error) {
 		}
 	}
 	if nextNodeID == "" {
-		return "", errors.New("next node not found")
+		return "", topologyLimitationf("DESTINATION_UNREACHABLE", "next node not found")
 	}
 	return nextNodeID, nil
 }

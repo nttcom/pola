@@ -365,6 +365,27 @@ func TestNewMetric(t *testing.T) {
 	assert.Equal(t, &Metric{Type: IGPMetric, Value: 10}, NewMetric(IGPMetric, 10))
 }
 
+func TestMetricTypeIsValid(t *testing.T) {
+	tests := []struct {
+		name string
+		m    MetricType
+		want bool
+	}{
+		{"unspecified", UnspecifiedMetric, true},
+		{"IGP", IGPMetric, true},
+		{"TE", TEMetric, true},
+		{"delay", DelayMetric, true},
+		{"hopcount", HopcountMetric, true},
+		{"above the defined range", MetricType(99), false},
+		{"negative", MetricType(-1), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, tt.m.IsValid())
+		})
+	}
+}
+
 func TestMetricTypeString(t *testing.T) {
 	tests := []struct {
 		name string

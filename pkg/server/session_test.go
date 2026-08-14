@@ -294,7 +294,7 @@ func TestSendSRPolicyRequest_ForgetsIntentOnSendFailure(t *testing.T) {
 		DisablePathCompute: true,
 	}
 
-	err := sendSRPolicyRequest(apiServer, req, nil, netip.MustParseAddr("10.255.0.1"), dstAddr, true)
+	err := sendSRPolicyRequest(apiServer, req, nil, netip.MustParseAddr("10.255.0.1"), dstAddr, true, table.UnspecifiedMetric)
 	require.Error(t, err, "expected sendSRPolicyRequest to fail once the connection is closed")
 
 	_, ok := ss.takeSRPolicyIntent(wantSRPID)
@@ -1660,4 +1660,20 @@ func TestRequestAllSRPolicyDeleted(t *testing.T) {
 
 	require.NoError(t, ss.RequestAllSRPolicyDeleted())
 	require.NoError(t, readPCEPMessage(client))
+}
+
+func TestSelectMetricType_AlwaysUsableForCSPF(t *testing.T) {
+	for _, metricType := range []uint8{0, 1, 2, 3, 255} {
+		ss := &Session{}
+		sr := pcep.StateReport{MetricObjects: []*pcep.MetricObject{{MetricType: metricType}}}
+		got := ss.selectMetricType(sr)
+		assert.Truef(t, got.IsValid() && got != table.UnspecifiedMetric,
+			"PCEP metric type %d mapped to a metric CSPF rejects: %v", metricType, got)
+	}
+	for _, pccType := range []pcep.PccType{pcep.CiscoLegacy, pcep.JuniperLegacy, pcep.RFCCompliant} {
+		ss := &Session{pccType: pccType}
+		got := ss.selectMetricType(pcep.StateReport{})
+		assert.Truef(t, got.IsValid() && got != table.UnspecifiedMetric,
+			"pccType %v with no METRIC object mapped to a metric CSPF rejects: %v", pccType, got)
+	}
 }

@@ -402,6 +402,16 @@ const (
 	HopcountMetric
 )
 
+// IsValid reports whether m is a defined MetricType.
+func (m MetricType) IsValid() bool {
+	switch m {
+	case UnspecifiedMetric, IGPMetric, TEMetric, DelayMetric, HopcountMetric:
+		return true
+	default:
+		return false
+	}
+}
+
 func (m MetricType) String() string {
 	switch m {
 	case IGPMetric:

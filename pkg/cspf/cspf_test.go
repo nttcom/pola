@@ -6,6 +6,7 @@
 package cspf
 
 import (
+	"errors"
 	"net/netip"
 	"testing"
 
@@ -288,6 +289,123 @@ func TestCSPF_Errors(t *testing.T) {
 			got, err := CSPF(tt.src, tt.dst, tt.metric, ted)
 			assert.Nil(t, got)
 			assert.EqualError(t, err, tt.wantErr)
+		})
+	}
+}
+
+func TestCSPF_MetricValidation(t *testing.T) {
+	linked := func() *table.LsTED {
+		a, b := srMPLSNode("A", 0), srMPLSNode("B", 1)
+		connect(a, b, 1)
+		return buildTED(a, b)
+	}
+
+	t.Run("an unrecognized metric type is rejected", func(t *testing.T) {
+		_, err := CSPF("A", "B", table.MetricType(99), linked())
+		assert.EqualError(t, err, "unsupported metric type 99")
+	})
+
+	t.Run("the unspecified metric is rejected", func(t *testing.T) {
+		_, err := CSPF("A", "B", table.UnspecifiedMetric, linked())
+		assert.EqualError(t, err, "metric type must be specified for path computation")
+	})
+
+	t.Run("an unrecognized metric is rejected even when source equals destination", func(t *testing.T) {
+		_, err := CSPF("A", "A", table.MetricType(99), linked())
+		assert.EqualError(t, err, "unsupported metric type 99")
+	})
+
+	t.Run("loose source routing rejects the metric before checking waypoints", func(t *testing.T) {
+		waypoints := []table.Waypoint{{RouterID: "GHOST"}}
+		_, err := CSPFWithLooseSourceRouting("A", "B", waypoints, table.MetricType(99), linked())
+		assert.EqualError(t, err, "unsupported metric type 99")
+	})
+
+	t.Run("a nil TED is reported before the metric", func(t *testing.T) {
+		_, err := CSPF("A", "B", table.MetricType(99), nil)
+		assert.EqualError(t, err, "ted is nil")
+	})
+}
+
+func TestCSPF_InvalidInputClassification(t *testing.T) {
+	linear := func() *table.LsTED {
+		a, b := srMPLSNode("A", 0), srMPLSNode("B", 1)
+		connect(a, b, 1)
+		return buildTED(a, b)
+	}
+
+	tests := []struct {
+		name        string
+		run         func() error
+		wantInvalid bool
+	}{
+		{"unknown source router is caller input", func() error { _, err := CSPF("Z", "B", table.IGPMetric, linear()); return err }, true},
+		{"unknown destination router is caller input", func() error { _, err := CSPF("A", "Z", table.IGPMetric, linear()); return err }, true},
+		{"unknown waypoint is caller input", func() error {
+			_, err := CSPFWithLooseSourceRouting("A", "B", []table.Waypoint{{RouterID: "Z"}}, table.IGPMetric, linear())
+			return err
+		}, true},
+		{"malformed explicit waypoint SID is caller input", func() error {
+			_, err := CSPFWithLooseSourceRouting("A", "B", []table.Waypoint{{RouterID: "B", SID: "not-an-address"}}, table.IGPMetric, linear())
+			return err
+		}, true},
+		{"unusable metric is caller input", func() error { _, err := CSPF("A", "B", table.UnspecifiedMetric, linear()); return err }, true},
+		{"an unreachable destination is not caller input", func() error {
+			_, err := CSPF("A", "B", table.IGPMetric, buildTED(srMPLSNode("A", 0), srMPLSNode("B", 1)))
+			return err
+		}, false},
+		{"a metric absent from a traversed link is not caller input", func() error { _, err := CSPF("A", "B", table.TEMetric, linear()); return err }, false},
+		{"a node without a Node SID is not caller input", func() error {
+			a, b := nodeWithoutSID("A"), srMPLSNode("B", 0)
+			connect(a, b, 1)
+			_, err := CSPF("A", "B", table.IGPMetric, buildTED(a, b))
+			return err
+		}, false},
+		{"a nil TED is not classified as caller input", func() error { _, err := CSPF("A", "B", table.IGPMetric, nil); return err }, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.run()
+			require.Error(t, err)
+			var invalidInput *InvalidInputError
+			assert.Equal(t, tt.wantInvalid, errors.As(err, &invalidInput))
+		})
+	}
+}
+
+func TestCSPF_TopologyLimitationClassification(t *testing.T) {
+	linear := func() *table.LsTED {
+		a, b := srMPLSNode("A", 0), srMPLSNode("B", 1)
+		connect(a, b, 1)
+		return buildTED(a, b)
+	}
+
+	tests := []struct {
+		name       string
+		run        func() error
+		wantReason string
+	}{
+		{"an unreachable destination", func() error {
+			_, err := CSPF("A", "B", table.IGPMetric, buildTED(srMPLSNode("A", 0), srMPLSNode("B", 1)))
+			return err
+		}, "DESTINATION_UNREACHABLE"},
+		{"a metric absent from a traversed link", func() error { _, err := CSPF("A", "B", table.TEMetric, linear()); return err }, "METRIC_NOT_CARRIED"},
+		{"a node without a Node SID", func() error {
+			a, b := nodeWithoutSID("A"), srMPLSNode("B", 0)
+			connect(a, b, 1)
+			_, err := CSPF("A", "B", table.IGPMetric, buildTED(a, b))
+			return err
+		}, "TED_DATA_INCOMPLETE"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.run()
+			require.Error(t, err)
+			var topoLimit *TopologyLimitationError
+			require.True(t, errors.As(err, &topoLimit))
+			assert.Equal(t, tt.wantReason, topoLimit.Reason)
 		})
 	}
 }
