@@ -133,11 +133,8 @@ func buildSectionSegments(prev string, wp table.Waypoint, metric table.MetricTyp
 	// Remove first segment if it duplicates the last segment of the previous sections
 	sectionSegs = removeDuplicateFirst(fullList, sectionSegs)
 
-	// Lookup the node from TED
-	node, ok := nodeInTED(ted.Nodes, wp.RouterID)
-	if !ok {
-		return nil, nil, invalidInputf("waypoint router %s not found in TED", wp.RouterID)
-	}
+	// Lookup the node from TED; existence is already guaranteed by the CSPF call above.
+	node, _ := nodeInTED(ted.Nodes, wp.RouterID)
 
 	// Build the segment (SRv6 or SR-MPLS)
 	seg, err := buildWaypointSegment(node, wp.SID)

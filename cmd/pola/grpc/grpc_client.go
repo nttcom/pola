@@ -451,8 +451,9 @@ func segmentFromPB(s *pb.Segment) (table.Segment, error) {
 			return nil, fmt.Errorf("invalid SR-MPLS remote address %q: %w", s.GetRemoteAddr(), err)
 		}
 		return v, nil
+	default:
+		return nil, fmt.Errorf("unsupported segment type for SID %q", s.GetSid())
 	}
-	return seg, nil
 }
 
 // parseOptionalAddr parses an IP address, treating an empty string as unset.
@@ -560,10 +561,7 @@ func addLsNode(ted *table.LsTED, node *pb.LsNode) error {
 	}
 
 	for _, srv6SID := range node.LsSrv6Sids {
-		lsSrv6SID, err := createSrv6SID(ted.Nodes[node.GetRouterId()], srv6SID)
-		if err != nil {
-			return err
-		}
+		lsSrv6SID := createSrv6SID(ted.Nodes[node.GetRouterId()], srv6SID)
 		ted.Nodes[node.GetRouterId()].SRv6SIDs = append(ted.Nodes[node.GetRouterId()].SRv6SIDs, lsSrv6SID)
 	}
 
@@ -608,11 +606,7 @@ func createLsLink(localNode, remoteNode *table.LsNode, link *pb.LsLink) (*table.
 		lsLink.Metrics = append(lsLink.Metrics, metric)
 	}
 	if link.GetSrv6EndXSid() != nil {
-		srv6EndXSID, err := createSrv6EndXSID(link.GetSrv6EndXSid())
-		if err != nil {
-			return nil, err
-		}
-		lsLink.Srv6EndXSID = srv6EndXSID
+		lsLink.Srv6EndXSID = createSrv6EndXSID(link.GetSrv6EndXSid())
 	}
 	return lsLink, nil
 }
@@ -632,7 +626,7 @@ func createMetric(metricInfo *pb.Metric) (*table.Metric, error) {
 	}
 }
 
-func createSrv6EndXSID(srv6EndXSID *pb.Srv6EndXSID) (*table.Srv6EndXSID, error) {
+func createSrv6EndXSID(srv6EndXSID *pb.Srv6EndXSID) *table.Srv6EndXSID {
 	lsSrv6EndXSID := &table.Srv6EndXSID{
 		EndpointBehavior: uint16(srv6EndXSID.EndpointBehavior),
 		Sids:             []string{},
@@ -648,10 +642,10 @@ func createSrv6EndXSID(srv6EndXSID *pb.Srv6EndXSID) (*table.Srv6EndXSID, error) 
 		lsSrv6EndXSID.Sids = append(lsSrv6EndXSID.Sids, sid.GetSid())
 	}
 
-	return lsSrv6EndXSID, nil
+	return lsSrv6EndXSID
 }
 
-func createSrv6SID(lsNode *table.LsNode, srv6SID *pb.LsSrv6SID) (*table.LsSrv6SID, error) {
+func createSrv6SID(lsNode *table.LsNode, srv6SID *pb.LsSrv6SID) *table.LsSrv6SID {
 	lsSrv6SID := table.NewLsSrv6SID(lsNode)
 
 	for _, sid := range srv6SID.GetSids() {
@@ -670,5 +664,5 @@ func createSrv6SID(lsNode *table.LsNode, srv6SID *pb.LsSrv6SID) (*table.LsSrv6SI
 	lsSrv6SID.SIDStructure.LocalFunc = uint8(srv6SID.GetSidStructure().GetLocalFunc())
 	lsSrv6SID.SIDStructure.LocalArg = uint8(srv6SID.GetSidStructure().GetLocalArg())
 
-	return lsSrv6SID, nil
+	return lsSrv6SID
 }
