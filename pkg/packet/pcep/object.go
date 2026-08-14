@@ -296,7 +296,7 @@ type MetricObject struct {
 	CFlag       bool
 	BFlag       bool
 	MetricType  uint8
-	MetricValue uint32
+	MetricValue float32
 }
 
 func (o *MetricObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
@@ -309,7 +309,7 @@ func (o *MetricObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error
 	o.BFlag = (objectBody[2] & 0x01) != 0
 	o.MetricType = objectBody[3]
 	// RFC 5440 §7.8 specifies metric-value as a 32-bit IEEE floating-point value.
-	o.MetricValue = uint32(math.Float32frombits(binary.BigEndian.Uint32(objectBody[4:8])))
+	o.MetricValue = math.Float32frombits(binary.BigEndian.Uint32(objectBody[4:8]))
 	return nil
 }
 
@@ -325,8 +325,7 @@ func (o *MetricObject) Serialize() []uint8 {
 		buf[2] = buf[2] | 0x01
 	}
 	buf[3] = o.MetricType
-	tmpMetVal := math.Float32bits(float32(o.MetricValue))
-	binary.BigEndian.PutUint32(buf[4:8], tmpMetVal)
+	binary.BigEndian.PutUint32(buf[4:8], math.Float32bits(o.MetricValue))
 	byteMetricObject := AppendByteSlices(byteMetricObjectHeader, buf)
 	return byteMetricObject
 }
@@ -340,7 +339,7 @@ func NewMetricObject() *MetricObject {
 	return &MetricObject{
 		ObjectType:  ObjectType(1),
 		MetricType:  uint8(2),
-		MetricValue: uint32(30),
+		MetricValue: float32(30),
 	}
 }
 
