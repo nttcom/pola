@@ -11,7 +11,6 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// Reason values for google.rpc.ErrorInfo.Reason, in the "pola" domain.
 const (
 	errorInfoDomain = "pola"
 
@@ -22,11 +21,12 @@ const (
 	ReasonDestinationUnreachable = "DESTINATION_UNREACHABLE"
 	ReasonMetricNotCarried       = "METRIC_NOT_CARRIED"
 	ReasonPCEPSessionNotSynced   = "PCEP_SESSION_NOT_SYNCED"
+	ReasonPCEPSessionNotFound    = "PCEP_SESSION_NOT_FOUND"
 	ReasonSIDValidationFailed    = "SID_VALIDATION_FAILED"
 	ReasonSRPolicyNotFound       = "SR_POLICY_NOT_FOUND"
+	ReasonPCEPRequestFailed      = "PCEP_REQUEST_FAILED"
 )
 
-// newStatus builds a gRPC status with a machine-readable ErrorInfo.Reason.
 func newStatus(code codes.Code, reason, format string, a ...any) error {
 	st := status.Newf(code, format, a...)
 	withDetails, err := st.WithDetails(&errdetails.ErrorInfo{
@@ -34,8 +34,8 @@ func newStatus(code codes.Code, reason, format string, a ...any) error {
 		Domain: errorInfoDomain,
 	})
 	if err != nil {
-		// Fall back to the status without details.
-		return status.Errorf(code, format, a...)
+		// WithDetails only fails for codes.OK, whose status.Errorf would return nil.
+		return st.Err()
 	}
 	return withDetails.Err()
 }

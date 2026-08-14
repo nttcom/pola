@@ -1844,6 +1844,7 @@ func TestDeleteSRPolicy(t *testing.T) {
 		resp, err := s.DeleteSRPolicy(context.Background(), &pb.DeleteSRPolicyRequest{SrPolicy: validPolicy()})
 		require.Error(t, err)
 		assert.False(t, resp.GetIsSuccess())
+		assert.Equal(t, ReasonPCEPRequestFailed, errInfoReason(t, err))
 	})
 
 	t.Run("success with explicit segment list", func(t *testing.T) {
@@ -2066,6 +2067,106 @@ func TestSendSRPolicyRequest_UpdateSendFailure(t *testing.T) {
 
 	err := sendSRPolicyRequest(s, req, segmentList, netip.MustParseAddr("10.255.0.1"), dstAddr, false, table.UnspecifiedMetric)
 	assert.ErrorContains(t, err, "failed to send PC update")
+	assert.Equal(t, ReasonPCEPRequestFailed, errInfoReason(t, err))
+}
+
+func TestSendSRPolicyRequest_CreateSendFailure(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() {
+		assert.NoError(t, client.Close(), "failed to close client connection")
+	})
+
+	peerAddr := netip.MustParseAddr("10.0.255.1")
+	dstAddr := netip.MustParseAddr("10.255.0.2")
+	ss := NewSession(1, peerAddr, server, zap.NewNop(), nil, 0)
+	ss.isSynced = true
+	require.NoError(t, server.Close(), "failed to close server connection")
+
+	s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: zap.NewNop()}
+	req := &pb.CreateSRPolicyRequest{SrPolicy: &pb.SRPolicy{PcepSessionAddr: peerAddr.AsSlice(), Color: 100, Type: pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT}}
+	segmentList := []table.Segment{table.NewSegmentSRMPLS(16003)}
+
+	err := sendSRPolicyRequest(s, req, segmentList, netip.MustParseAddr("10.255.0.1"), dstAddr, false, table.UnspecifiedMetric)
+	assert.ErrorContains(t, err, "failed to request SR policy creation")
+	assert.Equal(t, ReasonPCEPRequestFailed, errInfoReason(t, err))
+}
+
+func TestGetSRPolicyList_InvalidFilterAddrReason(t *testing.T) {
+	s := &APIServer{logger: zap.NewNop()}
+	_, err := s.GetSRPolicyList(context.Background(), &pb.GetSRPolicyListRequest{SessionAddr: []byte{1, 2, 3}})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "invalid session filter address")
+	assert.Equal(t, ReasonInvalidRequest, errInfoReason(t, err))
+}
+
+func errInfoReason(t *testing.T, err error) string {
+	t.Helper()
+	st, ok := status.FromError(err)
+	require.True(t, ok, "expected a gRPC status error")
+	for _, d := range st.Details() {
+		if info, ok := d.(*errdetails.ErrorInfo); ok {
+			return info.GetReason()
+		}
+	}
+	t.Fatal("status has no ErrorInfo details")
+	return ""
+}
+
+func TestWrapStatusError(t *testing.T) {
+	tests := []struct {
+		name       string
+		err        error
+		wantNil    bool
+		wantCode   codes.Code
+		wantMsg    string
+		wantReason string
+	}{
+		{
+			name:    "non-status error is wrapped with a plain message",
+			err:     fmt.Errorf("boom"),
+			wantMsg: "context: boom",
+		},
+		{
+			name:     "status error without details keeps its code and gets a prefixed message",
+			err:      status.Errorf(codes.NotFound, "not found"),
+			wantCode: codes.NotFound,
+			wantMsg:  "context: not found",
+		},
+		{
+			name:       "status error with ErrorInfo details preserves the Reason",
+			err:        newStatus(codes.InvalidArgument, ReasonInvalidRequest, "bad input"),
+			wantCode:   codes.InvalidArgument,
+			wantMsg:    "context: bad input",
+			wantReason: ReasonInvalidRequest,
+		},
+		{
+			name:    "nil error stays nil",
+			err:     nil,
+			wantNil: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := wrapStatusError(tt.err, "context")
+
+			if tt.wantNil {
+				assert.NoError(t, got)
+				return
+			}
+			require.Error(t, got)
+
+			if st, ok := status.FromError(got); ok && tt.wantCode != codes.OK {
+				assert.Equal(t, tt.wantCode, st.Code())
+				assert.Equal(t, tt.wantMsg, st.Message())
+			} else {
+				assert.EqualError(t, got, tt.wantMsg)
+			}
+			if tt.wantReason != "" {
+				assert.Equal(t, tt.wantReason, errInfoReason(t, got))
+			}
+		})
+	}
 }
 
 func TestBuildCapability(t *testing.T) {
@@ -2279,12 +2380,14 @@ func TestDeleteSession(t *testing.T) {
 		s := &APIServer{pce: &Server{}, logger: zap.NewNop()}
 		_, err := s.DeleteSession(context.Background(), &pb.DeleteSessionRequest{Addr: []byte{1, 2, 3}})
 		assert.ErrorContains(t, err, "invalid address")
+		assert.Equal(t, ReasonInvalidRequest, errInfoReason(t, err))
 	})
 
 	t.Run("no such session", func(t *testing.T) {
 		s := &APIServer{pce: &Server{}, logger: zap.NewNop()}
 		_, err := s.DeleteSession(context.Background(), &pb.DeleteSessionRequest{Addr: netip.MustParseAddr("10.0.255.1").AsSlice()})
 		assert.ErrorContains(t, err, "no session with address")
+		assert.Equal(t, ReasonPCEPSessionNotFound, errInfoReason(t, err))
 	})
 
 	t.Run("close message send failure", func(t *testing.T) {
@@ -2301,6 +2404,7 @@ func TestDeleteSession(t *testing.T) {
 		resp, err := s.DeleteSession(context.Background(), &pb.DeleteSessionRequest{Addr: peerAddr.AsSlice()})
 		require.Error(t, err)
 		assert.False(t, resp.GetIsSuccess())
+		assert.Equal(t, ReasonPCEPRequestFailed, errInfoReason(t, err))
 	})
 
 	t.Run("success closes and removes the session", func(t *testing.T) {

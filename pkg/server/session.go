@@ -625,6 +625,7 @@ func (ss *Session) selectMetricType(sr pcep.StateReport) table.MetricType {
 		case 3:
 			return table.HopcountMetric
 		default:
+			ss.logger.Warn("unsupported METRIC type, falling back to TE", zap.Int("metricType", int(sr.MetricObjects[0].MetricType)))
 			return table.TEMetric
 		}
 	}

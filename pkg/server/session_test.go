@@ -1726,14 +1726,14 @@ func TestRequestAllSRPolicyDeleted(t *testing.T) {
 
 func TestSelectMetricType_AlwaysUsableForCSPF(t *testing.T) {
 	for _, metricType := range []uint8{0, 1, 2, 3, 255} {
-		ss := &Session{}
+		ss := &Session{logger: zap.NewNop()}
 		sr := pcep.StateReport{MetricObjects: []*pcep.MetricObject{{MetricType: metricType}}}
 		got := ss.selectMetricType(sr)
 		assert.Truef(t, got.IsValid() && got != table.UnspecifiedMetric,
 			"PCEP metric type %d mapped to a metric CSPF rejects: %v", metricType, got)
 	}
 	for _, pccType := range []pcep.PccType{pcep.CiscoLegacy, pcep.JuniperLegacy, pcep.RFCCompliant} {
-		ss := &Session{pccType: pccType}
+		ss := &Session{logger: zap.NewNop(), pccType: pccType}
 		got := ss.selectMetricType(pcep.StateReport{})
 		assert.Truef(t, got.IsValid() && got != table.UnspecifiedMetric,
 			"pccType %v with no METRIC object mapped to a metric CSPF rejects: %v", pccType, got)

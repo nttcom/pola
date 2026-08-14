@@ -7,7 +7,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -197,18 +196,22 @@ func newEnrichedSegment(segment *pb.Segment, usidMode bool) (table.Segment, erro
 	if err != nil {
 		return nil, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "invalid SID %q: %v", segment.GetSid(), err)
 	}
-	if v, ok := seg.(table.SegmentSRv6); ok {
+	switch v := seg.(type) {
+	case table.SegmentSRv6:
 		enriched, err := enrichSRv6Segment(v, segment, usidMode)
 		if err != nil {
 			return nil, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "%s", err.Error())
 		}
 		return enriched, nil
+	case table.SegmentSRMPLS:
+		enriched, err := enrichSRMPLSSegment(v, segment)
+		if err != nil {
+			return nil, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "%s", err.Error())
+		}
+		return enriched, nil
+	default:
+		return nil, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "unsupported segment type for SID %q", segment.GetSid())
 	}
-	enriched, err := enrichSRMPLSSegment(seg.(table.SegmentSRMPLS), segment)
-	if err != nil {
-		return nil, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "%s", err.Error())
-	}
-	return enriched, nil
 }
 
 // buildSegmentList returns the segment list and the metric type used for path computation.
@@ -329,12 +332,12 @@ func sendSRPolicyRequest(s *APIServer, input *pb.CreateSRPolicyRequest, segmentL
 		s.logger.Debug("Request to update SR Policy", zap.Uint32("plspID", id))
 		srPolicy.PlspID = id
 		if err := pcepSession.SendPCUpdate(srPolicy); err != nil {
-			return status.Errorf(codes.Internal, "failed to send PC update: %v", err)
+			return newStatus(codes.Internal, ReasonPCEPRequestFailed, "failed to send PC update: %v", err)
 		}
 	} else {
 		s.logger.Debug("Request to create SR Policy")
 		if err := pcepSession.RequestSRPolicyCreated(srPolicy); err != nil {
-			return status.Errorf(codes.Internal, "failed to request SR policy creation: %v", err)
+			return newStatus(codes.Internal, ReasonPCEPRequestFailed, "failed to request SR policy creation: %v", err)
 		}
 	}
 
@@ -456,12 +459,8 @@ func (s *APIServer) DeleteSRPolicy(ctx context.Context, input *pb.DeleteSRPolicy
 		segmentList = append(segmentList, seg)
 	}
 
-	inputJSON, err := json.Marshal(input)
-	if err != nil {
-		return nil, err
-	}
 	s.logger.Info("Received DeleteSRPolicy API request")
-	s.logger.Debug("Received parameter", zap.String("input", string(inputJSON)))
+	s.logger.Debug("Received parameter", zap.Any("input", input))
 
 	pcepSession, err := getSyncedPCEPSession(s.pce, inputSRPolicy.GetPcepSessionAddr())
 	if err != nil {
@@ -482,7 +481,7 @@ func (s *APIServer) DeleteSRPolicy(ctx context.Context, input *pb.DeleteSRPolicy
 		srPolicy.PlspID = id
 
 		if err := pcepSession.RequestSRPolicyDeleted(srPolicy); err != nil {
-			return &pb.DeleteSRPolicyResponse{IsSuccess: false}, status.Errorf(codes.Internal, "failed to send PC delete: %v", err)
+			return &pb.DeleteSRPolicyResponse{IsSuccess: false}, newStatus(codes.Internal, ReasonPCEPRequestFailed, "failed to send PC delete: %v", err)
 		}
 	} else {
 		return &pb.DeleteSRPolicyResponse{IsSuccess: false}, newStatus(codes.NotFound, ReasonSRPolicyNotFound, "requested SR Policy not found")
@@ -797,7 +796,7 @@ func (s *APIServer) GetSRPolicyList(ctx context.Context, req *pb.GetSRPolicyList
 		var ok bool
 		filterAddr, ok = netip.AddrFromSlice(raw)
 		if !ok {
-			return nil, status.Errorf(codes.InvalidArgument, "invalid session filter address %v", raw)
+			return nil, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "invalid session filter address %v", raw)
 		}
 	}
 
@@ -1165,17 +1164,17 @@ func convertSrv6EndXSID(sid *table.Srv6EndXSID) *pb.Srv6EndXSID {
 func (s *APIServer) DeleteSession(ctx context.Context, req *pb.DeleteSessionRequest) (*pb.DeleteSessionResponse, error) {
 	ssAddr, ok := netip.AddrFromSlice(req.GetAddr())
 	if !ok {
-		return nil, fmt.Errorf("invalid address: %v", req.GetAddr())
+		return nil, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "invalid address: %v", req.GetAddr())
 	}
 
 	pce := s.pce
 	ss := pce.SearchSession(ssAddr, false)
 	if ss == nil {
-		return nil, fmt.Errorf("no session with address %s found", ssAddr)
+		return nil, newStatus(codes.NotFound, ReasonPCEPSessionNotFound, "no session with address %s found", ssAddr)
 	}
 
 	if err := ss.SendClose(pcep.CloseReasonNoExplanationProvided); err != nil {
-		return &pb.DeleteSessionResponse{IsSuccess: false}, fmt.Errorf("failed to send close message: %v", err)
+		return &pb.DeleteSessionResponse{IsSuccess: false}, newStatus(codes.Internal, ReasonPCEPRequestFailed, "failed to send close message: %v", err)
 	}
 
 	// Remove session info from PCE server
