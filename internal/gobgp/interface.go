@@ -322,9 +322,17 @@ func convertByNlriType(nlri *api.LsAddrPrefix, lsAttr *api.Attribute_Ls, path *a
 	case api.LsNLRIType_LS_NLRI_TYPE_LINK:
 		return convertLink(nlri, lsAttr)
 	case api.LsNLRIType_LS_NLRI_TYPE_PREFIX_V4, api.LsNLRIType_LS_NLRI_TYPE_PREFIX_V6:
-		return convertPrefix(nlri, lsAttr, path)
+		nlris, err := mpReachNlris(path)
+		if err != nil {
+			return nil, err
+		}
+		return convertPrefix(lsAttr, nlris)
 	case api.LsNLRIType_LS_NLRI_TYPE_SRV6_SID:
-		return convertSrv6SID(nlri, lsAttr, path)
+		nlris, err := mpReachNlris(path)
+		if err != nil {
+			return nil, err
+		}
+		return convertSrv6SID(lsAttr, nlris)
 	default:
 		return nil, fmt.Errorf("invalid LS NLRI type: %s", nlri.GetType().String())
 	}
@@ -354,18 +362,13 @@ func convertLink(nlri *api.LsAddrPrefix, lsAttr *api.Attribute_Ls) ([]table.TEDE
 	return []table.TEDElem{lsLink}, nil
 }
 
-func convertPrefix(nlri *api.LsAddrPrefix, lsAttr *api.Attribute_Ls, path *api.Path) ([]table.TEDElem, error) {
+func convertPrefix(lsAttr *api.Attribute_Ls, nlris []*api.NLRI) ([]table.TEDElem, error) {
 	prefixAttr := lsAttr.Ls.GetPrefix()
 	if prefixAttr == nil {
 		return nil, fmt.Errorf("LS Prefix Attribute is nil")
 	}
 
-	mpReach := findMpReach(path)
-	if mpReach == nil {
-		return nil, errors.New("MP-REACH NLRI Attribute is nil")
-	}
-
-	lsPrefixList, err := getLsPrefixList(mpReach.GetNlris(), prefixAttr)
+	lsPrefixList, err := getLsPrefixList(nlris, prefixAttr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to process LS Prefix NLRI: %w", err)
 	}
@@ -373,18 +376,13 @@ func convertPrefix(nlri *api.LsAddrPrefix, lsAttr *api.Attribute_Ls, path *api.P
 	return lsPrefixList, nil
 }
 
-func convertSrv6SID(nlri *api.LsAddrPrefix, lsAttr *api.Attribute_Ls, path *api.Path) ([]table.TEDElem, error) {
+func convertSrv6SID(lsAttr *api.Attribute_Ls, nlris []*api.NLRI) ([]table.TEDElem, error) {
 	srv6Attr := lsAttr.Ls.GetSrv6Sid()
 	if srv6Attr == nil {
 		return nil, fmt.Errorf("LS SRv6 SID Attribute is nil")
 	}
 
-	mpReach := findMpReach(path)
-	if mpReach == nil {
-		return nil, errors.New("MP-REACH NLRI Attribute is nil")
-	}
-
-	lsSrv6List, err := getLsSrv6SIDList(mpReach.GetNlris(), srv6Attr)
+	lsSrv6List, err := getLsSrv6SIDList(nlris, srv6Attr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to process LS SRv6 SID NLRI: %w", err)
 	}
@@ -399,6 +397,14 @@ func findMpReach(path *api.Path) *api.MpReachNLRIAttribute {
 		}
 	}
 	return nil
+}
+
+func mpReachNlris(path *api.Path) ([]*api.NLRI, error) {
+	mpReach := findMpReach(path)
+	if mpReach == nil {
+		return nil, errors.New("MP-REACH NLRI Attribute is nil")
+	}
+	return mpReach.GetNlris(), nil
 }
 
 func formatIsisAreaID(isisArea []byte) string {

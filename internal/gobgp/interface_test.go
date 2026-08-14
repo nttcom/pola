@@ -554,33 +554,19 @@ func TestGetLsSrv6SIDList(t *testing.T) {
 	})
 }
 
-func TestConvertSrv6SID_MissingMpReach(t *testing.T) {
-	nlri := &api.LsAddrPrefix{
-		Nlri: &api.LsAddrPrefix_LsNLRI{Nlri: &api.LsAddrPrefix_LsNLRI_Srv6Sid{
-			Srv6Sid: &api.LsSrv6SIDNLRI{
-				LocalNode:          &api.LsNodeDescriptor{Asn: 65000, IgpRouterId: "0000.0000.0001"},
-				Srv6SidInformation: &api.LsSrv6SIDInformation{Sids: []string{"2001:db8:1::"}},
-			},
-		}},
-	}
+func TestMpReachNlris_MissingMpReach(t *testing.T) {
 	lsAttr := &api.Attribute_Ls{Ls: &api.LsAttribute{Srv6Sid: &api.LsAttributeSrv6SID{}}}
 	path := &api.Path{Pattrs: []*api.Attribute{{Attr: lsAttr}}}
 
-	_, err := convertSrv6SID(nlri, lsAttr, path)
+	_, err := mpReachNlris(path)
 	assert.EqualError(t, err, "MP-REACH NLRI Attribute is nil")
 }
 
 func TestConvertSrv6SID_InvalidNLRIInMpReach(t *testing.T) {
 	lsAttr := &api.Attribute_Ls{Ls: &api.LsAttribute{Srv6Sid: &api.LsAttributeSrv6SID{}}}
-	mpReach := &api.MpReachNLRIAttribute{
-		Nlris: []*api.NLRI{{Nlri: &api.NLRI_Prefix{Prefix: &api.IPAddressPrefix{}}}},
-	}
-	path := &api.Path{Pattrs: []*api.Attribute{
-		{Attr: lsAttr},
-		{Attr: &api.Attribute_MpReach{MpReach: mpReach}},
-	}}
+	nlris := []*api.NLRI{{Nlri: &api.NLRI_Prefix{Prefix: &api.IPAddressPrefix{}}}}
 
-	_, err := convertSrv6SID(nil, lsAttr, path)
+	_, err := convertSrv6SID(lsAttr, nlris)
 	assert.Error(t, err)
 }
 
