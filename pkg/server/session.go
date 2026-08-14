@@ -27,6 +27,11 @@ const (
 	defaultSRPolicyIntentTTL = 60 * time.Second
 	// defaultSRPolicyIntentSweepInterval is the sweep interval for expired intents.
 	defaultSRPolicyIntentSweepInterval = 10 * time.Second
+	// defaultMaxUnknownMsgs is the number of unrecognized PCEP messages tolerated
+	// within defaultUnknownMsgWindow (RFC 5440 §6.9).
+	defaultMaxUnknownMsgs = 5
+	// defaultUnknownMsgWindow is the rolling window used to rate-limit unrecognized messages.
+	defaultUnknownMsgWindow = 1 * time.Minute
 )
 
 // pcepConn abstracts the transport used by Session, allowing tests to inject
@@ -56,6 +61,11 @@ type Session struct {
 	sweepMu                 sync.Mutex
 	sweepStop               chan struct{}
 	sweepDone               chan struct{}
+	unknownMsgMu            sync.Mutex // guards unknownMsgCount and unknownMsgWindowStart.
+	unknownMsgCount         uint32
+	unknownMsgWindowStart   time.Time
+	maxUnknownMsgs          uint32
+	unknownMsgWindow        time.Duration
 	logger                  *zap.Logger
 	keepAlive               uint8
 	pccType                 pcep.PccType
@@ -188,6 +198,8 @@ func NewSession(sessionID uint8, peerAddr netip.Addr, tcpConn pcepConn, logger *
 		srpIDMax:          math.MaxUint32,
 		srPolicyIntentTTL: defaultSRPolicyIntentTTL,
 		sweepInterval:     defaultSRPolicyIntentSweepInterval,
+		maxUnknownMsgs:    defaultMaxUnknownMsgs,
+		unknownMsgWindow:  defaultUnknownMsgWindow,
 		logger:            logger.With(zap.String("server", "pcep"), zap.String("session", peerAddr.String())),
 		pccType:           pcep.RFCCompliant,
 		peerAddr:          peerAddr,
@@ -350,8 +362,8 @@ func (ss *Session) ReceivePCEPMessage() error {
 				return err
 			}
 		case pcep.MessageTypeError:
-			bytePCErrMessageBody := make([]uint8, commonHeader.MessageLength-pcep.CommonHeaderLength)
-			if _, err := io.ReadFull(ss.tcpConn, bytePCErrMessageBody); err != nil {
+			bytePCErrMessageBody, err := ss.readMessageBody(commonHeader.MessageLength)
+			if err != nil {
 				return err
 			}
 			pcerrMessage := &pcep.PCErrMessage{}
@@ -360,8 +372,8 @@ func (ss *Session) ReceivePCEPMessage() error {
 			}
 			ss.handlePCErr(pcerrMessage)
 		case pcep.MessageTypeClose:
-			byteCloseMessageBody := make([]uint8, commonHeader.MessageLength-pcep.CommonHeaderLength)
-			if _, err := io.ReadFull(ss.tcpConn, byteCloseMessageBody); err != nil {
+			byteCloseMessageBody, err := ss.readMessageBody(commonHeader.MessageLength)
+			if err != nil {
 				return err
 			}
 			closeMessage := &pcep.CloseMessage{}
@@ -371,11 +383,22 @@ func (ss *Session) ReceivePCEPMessage() error {
 			ss.logger.Debug("Received Close",
 				zap.String("reason", closeMessage.CloseObject.Reason.String()),
 				zap.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#close-object-reason-field"))
-			// Close session if get Close Message
 			return nil
 		default:
+			// Consume the body to keep the next common header correctly aligned.
+			if _, err := ss.readMessageBody(commonHeader.MessageLength); err != nil {
+				return err
+			}
 			ss.logger.Debug("Received unsupported MessageType",
 				zap.String("MessageType", commonHeader.MessageType.String()))
+
+			// RFC 5440 §6.9: close the session if unrecognized messages arrive too fast.
+			if ss.recordUnknownMessage() {
+				if err := ss.SendClose(pcep.CloseReasonTooManyUnrecognizedPCEPMessages); err != nil {
+					ss.logger.Debug("ERROR! Send Close Message", zap.Error(err))
+				}
+				return fmt.Errorf("too many unrecognized PCEP messages received within %s", ss.unknownMsgWindow)
+			}
 		}
 	}
 }
@@ -392,6 +415,32 @@ func (ss *Session) readCommonHeader() (*pcep.CommonHeader, error) {
 	}
 
 	return commonHeader, nil
+}
+
+// readMessageBody reads the body following the common header.
+func (ss *Session) readMessageBody(messageLength uint16) ([]uint8, error) {
+	body := make([]uint8, messageLength-pcep.CommonHeaderLength)
+	if _, err := io.ReadFull(ss.tcpConn, body); err != nil {
+		return nil, err
+	}
+	return body, nil
+}
+
+// recordUnknownMessage counts an unrecognized PCEP message received in the
+// current rate-limiting window and reports whether the count has exceeded
+// maxUnknownMsgs (RFC 5440 §6.9).
+func (ss *Session) recordUnknownMessage() bool {
+	ss.unknownMsgMu.Lock()
+	defer ss.unknownMsgMu.Unlock()
+
+	now := time.Now()
+	if now.Sub(ss.unknownMsgWindowStart) > ss.unknownMsgWindow {
+		ss.unknownMsgWindowStart = now
+		ss.unknownMsgCount = 0
+	}
+	ss.unknownMsgCount++
+
+	return ss.unknownMsgCount > ss.maxUnknownMsgs
 }
 
 // handlePCErr logs the error and forgets intents for the reported SRP-IDs.
@@ -412,8 +461,8 @@ func (ss *Session) handlePCErr(pcerrMessage *pcep.PCErrMessage) {
 func (ss *Session) handlePCRpt(length uint16) error {
 	ss.logger.Debug("Received PCRpt Message")
 
-	messageBodyBytes := make([]uint8, length-pcep.CommonHeaderLength)
-	if _, err := io.ReadFull(ss.tcpConn, messageBodyBytes); err != nil {
+	messageBodyBytes, err := ss.readMessageBody(length)
+	if err != nil {
 		return err
 	}
 
@@ -607,7 +656,7 @@ func (ss *Session) extractSrcDstRouterIDs(sr pcep.StateReport) (string, string, 
 }
 
 func (ss *Session) findRouterIDFromAddress(addrIndex map[netip.Addr]string, addr netip.Addr) (string, error) {
-	if node, ok := ss.ted.Nodes[addr.String()]; ok {
+	if node, ok := tedNode(ss.ted, addr.String()); ok {
 		return node.RouterID, nil
 	}
 	if routerID, ok := addrIndex[addr]; ok {

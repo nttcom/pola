@@ -89,6 +89,9 @@ func (h *CommonHeader) DecodeFromBytes(header []uint8) error {
 	if h.MessageLength < CommonHeaderLength {
 		return fmt.Errorf("invalid PCEP message length %d", h.MessageLength)
 	}
+	if h.MessageType == MessageTypeKeepalive && h.MessageLength != CommonHeaderLength {
+		return fmt.Errorf("invalid Keepalive message length %d, must be %d", h.MessageLength, CommonHeaderLength)
+	}
 	return nil
 }
 

@@ -508,6 +508,18 @@ func TestBuildWaypointSegment(t *testing.T) {
 			explicitSID: "2001:db8::ffff",
 			wantErr:     "no SRv6 SIDs available",
 		},
+		{
+			name:        "IPv4 explicit SID is rejected",
+			node:        srv6Node("A", "2001:db8::a"),
+			explicitSID: "10.0.0.1",
+			wantErr:     `explicit SID "10.0.0.1" must be an IPv6 SRv6 SID`,
+		},
+		{
+			name:        "IPv4-mapped explicit SID is rejected",
+			node:        srv6Node("A", "2001:db8::a"),
+			explicitSID: "::ffff:10.0.0.1",
+			wantErr:     `explicit SID "::ffff:10.0.0.1" must be an IPv6 SRv6 SID`,
+		},
 	}
 
 	for _, tt := range tests {

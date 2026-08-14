@@ -1322,7 +1322,7 @@ func TestGetLoopbackAddr(t *testing.T) {
 		RouterID: "r2",
 		Prefixes: []*table.LsPrefix{{Prefix: netip.MustParsePrefix("10.0.0.0/24")}},
 	}
-	ted := &table.LsTED{Nodes: map[string]*table.LsNode{node.RouterID: node, noLoopbackNode.RouterID: noLoopbackNode}}
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{node.RouterID: node, noLoopbackNode.RouterID: noLoopbackNode, "r3": nil}}
 
 	addr, err := getLoopbackAddr(ted, "r1")
 	require.NoError(t, err)
@@ -1333,6 +1333,12 @@ func TestGetLoopbackAddr(t *testing.T) {
 
 	_, err = getLoopbackAddr(ted, "r2")
 	assert.Error(t, err, "expected an error for a node without a loopback address")
+
+	_, err = getLoopbackAddr(ted, "r3")
+	assert.ErrorContains(t, err, "no node with router ID r3")
+
+	_, err = getLoopbackAddr(nil, "r1")
+	assert.ErrorContains(t, err, "no node with router ID r1")
 }
 
 func TestGetSyncedPCEPSession(t *testing.T) {
@@ -1458,6 +1464,19 @@ func TestBuildSegmentList_PathCompute(t *testing.T) {
 		req.Asn = 1
 		_, _, _, _, err := buildSegmentList(s, req, false)
 		assert.ErrorContains(t, err, "does not match ted ASN")
+	})
+
+	t.Run("nil TED entry is skipped by the ASN check", func(t *testing.T) {
+		nodes := map[string]*table.LsNode{srcNode.RouterID: srcNode, dstNode.RouterID: dstNode, "r0": nil}
+		s := newTestAPIServer(&table.LsTED{Nodes: nodes})
+		_, _, _, _, err := buildSegmentList(s, explicitReq(), false)
+		require.NoError(t, err)
+	})
+
+	t.Run("TED holding only nil entries", func(t *testing.T) {
+		s := newTestAPIServer(&table.LsTED{Nodes: map[string]*table.LsNode{"r0": nil}})
+		_, _, _, _, err := buildSegmentList(s, explicitReq(), false)
+		assert.ErrorContains(t, err, "no node with router ID r1")
 	})
 
 	t.Run("unknown source router ID", func(t *testing.T) {

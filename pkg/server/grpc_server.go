@@ -236,6 +236,9 @@ func buildSegmentList(s *APIServer, input *pb.CreateSRPolicyRequest, disablePath
 
 		// Check the ASN against the first TED node; all nodes are expected to share the same ASN.
 		for _, node := range ted.Nodes {
+			if node == nil {
+				continue
+			}
 			if node.ASN != input.GetAsn() {
 				return nil, netip.Addr{}, netip.Addr{}, table.UnspecifiedMetric, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "request ASN %d does not match ted ASN %d", input.GetAsn(), node.ASN)
 			}
@@ -582,8 +585,20 @@ func getSyncedPCEPSession(pce *Server, addr []byte) (*Session, error) {
 	return pcepSession, nil
 }
 
-func getLoopbackAddr(ted *table.LsTED, routerID string) (netip.Addr, error) {
+// tedNode returns the non-nil node for routerID.
+func tedNode(ted *table.LsTED, routerID string) (*table.LsNode, bool) {
+	if ted == nil {
+		return nil, false
+	}
 	node, ok := ted.Nodes[routerID]
+	if !ok || node == nil {
+		return nil, false
+	}
+	return node, true
+}
+
+func getLoopbackAddr(ted *table.LsTED, routerID string) (netip.Addr, error) {
+	node, ok := tedNode(ted, routerID)
 	if !ok {
 		return netip.Addr{}, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "no node with router ID %s", routerID)
 	}

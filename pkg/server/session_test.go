@@ -841,6 +841,7 @@ func TestFindRouterIDFromAddress(t *testing.T) {
 	// No prefixes: only matchable by Router ID.
 	idNode := table.NewLsNode(0, "198.51.100.1")
 	ted.Nodes[idNode.RouterID] = idNode
+	ted.Nodes["198.51.100.2"] = nil
 
 	ss := &Session{ted: ted}
 	addrIndex := buildAddressRouterIDIndex(ted)
@@ -855,6 +856,7 @@ func TestFindRouterIDFromAddress(t *testing.T) {
 		{"ipv6 prefix", netip.MustParseAddr("2001:db8::1"), "router-v6", false},
 		{"non-host prefix network address", netip.MustParseAddr("192.0.2.0"), "router-subnet", false},
 		{"router id match", netip.MustParseAddr("198.51.100.1"), "198.51.100.1", false},
+		{"nil node entry", netip.MustParseAddr("198.51.100.2"), "", true},
 		{"not found", netip.MustParseAddr("203.0.113.5"), "", true},
 	}
 	for _, tc := range cases {
@@ -933,7 +935,6 @@ func writeMessage(t *testing.T, w io.Writer, message pcep.Message) {
 }
 
 // writeStateReportMessage writes sr as an unsolicited PCRpt.
-// LSPObject fields populated by decode must be mirrored into TLVs for the wire round trip.
 func writeStateReportMessage(t *testing.T, w io.Writer, sr *pcep.StateReport) {
 	t.Helper()
 	sr.LSPObject.TLVs = append(sr.LSPObject.TLVs,
@@ -1341,6 +1342,112 @@ func TestReceivePCEPMessage_ShortMessageLengthIsRejected(t *testing.T) {
 			assert.Error(t, ss.ReceivePCEPMessage())
 		})
 	}
+}
+
+// RFC 5440 §6.3: a Keepalive message consists of the common header only.
+func TestReceivePCEPMessage_KeepaliveWithBodyIsRejected(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() {
+		assert.NoError(t, server.Close(), "failed to close server connection")
+	})
+	t.Cleanup(func() {
+		assert.NoError(t, client.Close(), "failed to close client connection")
+	})
+
+	header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeKeepalive, MessageLength: pcep.CommonHeaderLength + 4}
+	_, err := client.Write(append(header.Serialize(), 0x00, 0x00, 0x00, 0x00))
+	require.NoError(t, err, "failed to write keepalive with body")
+
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	assert.Error(t, ss.ReceivePCEPMessage())
+}
+
+func TestReceivePCEPMessage_UnsupportedMessageBodyIsConsumed(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() {
+		assert.NoError(t, server.Close(), "failed to close server connection")
+	})
+	t.Cleanup(func() {
+		assert.NoError(t, client.Close(), "failed to close client connection")
+	})
+
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+
+	// Use a valid Close message as the body to catch framing bugs: without consuming
+	// the body, it would be parsed as the next message and stop before the PCRpt.
+	trap, err := pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided).Serialize()
+	require.NoError(t, err, "failed to serialize the message body")
+	writeRawPCEPMessage(t, client, pcep.MessageType(0x63), trap)
+
+	writeStateReportMessage(t, client, newTestStateReport(t, 5, 0))
+	writeMessage(t, client, pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided))
+
+	require.NoError(t, ss.ReceivePCEPMessage())
+
+	_, found := ss.SearchSRPolicy(5)
+	assert.True(t, found, "the PCRpt following an unsupported message was not processed")
+}
+
+// RFC 5440 §6.9: close the session when unrecognized messages exceed the allowed rate.
+func TestReceivePCEPMessage_TooManyUnknownMessagesClosesSession(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() {
+		assert.NoError(t, server.Close(), "failed to close server connection")
+	})
+	t.Cleanup(func() {
+		assert.NoError(t, client.Close(), "failed to close client connection")
+	})
+
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+
+	for i := uint32(0); i <= ss.maxUnknownMsgs; i++ {
+		writeRawPCEPMessage(t, client, pcep.MessageType(0x63), nil)
+	}
+
+	err := ss.ReceivePCEPMessage()
+	require.Error(t, err, "exceeding maxUnknownMsgs must terminate the receive loop")
+
+	closeMessage := readCloseMessage(t, client)
+	assert.Equal(t, pcep.CloseReasonTooManyUnrecognizedPCEPMessages, closeMessage.CloseObject.Reason)
+}
+
+func TestReceivePCEPMessage_FewUnknownMessagesToleratedWithinWindow(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() {
+		assert.NoError(t, server.Close(), "failed to close server connection")
+	})
+	t.Cleanup(func() {
+		assert.NoError(t, client.Close(), "failed to close client connection")
+	})
+
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+
+	for i := uint32(0); i < ss.maxUnknownMsgs; i++ {
+		writeRawPCEPMessage(t, client, pcep.MessageType(0x63), nil)
+	}
+	writeMessage(t, client, pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided))
+
+	require.NoError(t, ss.ReceivePCEPMessage(), "unrecognized messages within the threshold must not close the session")
+}
+
+func readCloseMessage(t *testing.T, r io.Reader) *pcep.CloseMessage {
+	t.Helper()
+
+	headerBytes := make([]byte, pcep.CommonHeaderLength)
+	_, err := io.ReadFull(r, headerBytes)
+	require.NoError(t, err, "failed to read common header")
+
+	header := &pcep.CommonHeader{}
+	require.NoError(t, header.DecodeFromBytes(headerBytes), "failed to decode common header")
+	require.Equal(t, pcep.MessageTypeClose, header.MessageType, "expected a Close message")
+
+	body := make([]byte, header.MessageLength-pcep.CommonHeaderLength)
+	_, err = io.ReadFull(r, body)
+	require.NoError(t, err, "failed to read close message body")
+
+	closeMessage := &pcep.CloseMessage{}
+	require.NoError(t, closeMessage.DecodeFromBytes(body), "failed to decode close message")
+	return closeMessage
 }
 
 func TestIsSynced_ConcurrentAccess(t *testing.T) {

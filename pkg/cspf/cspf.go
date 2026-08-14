@@ -152,6 +152,11 @@ func buildWaypointSegment(node *table.LsNode, explicitSID string) (table.Segment
 		if err != nil {
 			return nil, invalidInputf("invalid explicit SID %q: %w", explicitSID, err)
 		}
+		// Explicit SID must be an IPv6 address.
+		addr = addr.Unmap()
+		if !addr.Is6() {
+			return nil, invalidInputf("explicit SID %q must be an IPv6 SRv6 SID", explicitSID)
+		}
 		return table.NewSegmentSRv6WithNodeInfo(addr, node)
 	}
 	return node.NodeSegment()

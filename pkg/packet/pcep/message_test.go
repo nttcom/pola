@@ -270,6 +270,7 @@ func TestCommonHeader_DecodeFromBytes_Errors(t *testing.T) {
 		"TooShort":                       {0x20, 0x01, 0x00},
 		"MessageLengthZero":              {0x20, 0x01, 0x00, 0x00},
 		"MessageLengthBelowCommonHeader": {0x20, 0x01, 0x00, 0x03},
+		"KeepaliveWithBody":              {0x20, uint8(MessageTypeKeepalive), 0x00, 0x08},
 	}
 
 	for name, body := range cases {
