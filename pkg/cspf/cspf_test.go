@@ -426,6 +426,14 @@ func TestInvalidInputError_Unwrap(t *testing.T) {
 	assert.True(t, errors.Is(err, sentinel))
 }
 
+func TestTopologyLimitationError_Unwrap(t *testing.T) {
+	sentinel := errors.New("sentinel")
+	err := &TopologyLimitationError{Err: sentinel}
+
+	assert.Same(t, sentinel, errors.Unwrap(err))
+	assert.True(t, errors.Is(err, sentinel))
+}
+
 func TestUpdateNeighborCosts_UnknownCalcNode(t *testing.T) {
 	err := updateNeighborCosts("Z", map[string]*node{}, map[string]*table.LsNode{}, table.IGPMetric)
 	assert.EqualError(t, err, "router Z not found in TED")
