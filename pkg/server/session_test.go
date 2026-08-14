@@ -592,6 +592,50 @@ func TestAllocateSRPID_SkipsInUseIDsOnWraparound(t *testing.T) {
 	assert.True(t, ok, "allocateSRPID must register an intent for the SRP-ID it returns")
 }
 
+func TestAllocateSRPID_ErrorsWhenExhausted(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	ss.srpIDMax = 3 // valid range is [1, 2]; 0 and 3 are reserved.
+	ss.rememberSRPolicyIntent(1, table.PolicyTypeDynamic, table.TEMetric)
+	ss.rememberSRPolicyIntent(2, table.PolicyTypeDynamic, table.TEMetric)
+
+	_, err := ss.allocateSRPID(table.PolicyTypeDynamic, table.TEMetric)
+	assert.Error(t, err, "expected an error when every non-reserved SRP-ID is in use")
+}
+
+func TestSendPCInitiate_ErrorsWhenSRPIDExhausted(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	ss.srpIDMax = 3
+	ss.rememberSRPolicyIntent(1, table.PolicyTypeDynamic, table.TEMetric)
+	ss.rememberSRPolicyIntent(2, table.PolicyTypeDynamic, table.TEMetric)
+
+	srPolicy := table.SRPolicy{
+		Name:    "srp-id-exhausted",
+		SrcAddr: netip.MustParseAddr("10.255.0.1"),
+		DstAddr: netip.MustParseAddr("10.255.0.2"),
+		Type:    table.PolicyTypeDynamic,
+		Metric:  table.TEMetric,
+	}
+
+	assert.Error(t, ss.SendPCInitiate(srPolicy, false))
+}
+
+func TestSendPCUpdate_ErrorsWhenSRPIDExhausted(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	ss.srpIDMax = 3
+	ss.rememberSRPolicyIntent(1, table.PolicyTypeDynamic, table.TEMetric)
+	ss.rememberSRPolicyIntent(2, table.PolicyTypeDynamic, table.TEMetric)
+
+	srPolicy := table.SRPolicy{
+		Name:    "srp-id-exhausted",
+		SrcAddr: netip.MustParseAddr("10.255.0.1"),
+		DstAddr: netip.MustParseAddr("10.255.0.2"),
+		Type:    table.PolicyTypeDynamic,
+		Metric:  table.TEMetric,
+	}
+
+	assert.Error(t, ss.SendPCUpdate(srPolicy))
+}
+
 // concurrentSendCase defines a PCEP message send used by the concurrent-send test.
 type concurrentSendCase struct {
 	name string

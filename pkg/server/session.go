@@ -41,6 +41,7 @@ type Session struct {
 	isSynced                bool
 	srpIDMu                 sync.Mutex   // guards SRP-ID allocation and intent registration.
 	srpIDHead               uint32       // 0x00000000 and 0xFFFFFFFF are reserved.
+	srpIDMax                uint32       // upper bound for SRP-ID allocation.
 	srPoliciesMu            sync.RWMutex // guards srPolicies.
 	srPolicies              []*table.SRPolicy
 	srPolicyIntentsMu       sync.Mutex
@@ -179,6 +180,7 @@ func NewSession(sessionID uint8, peerAddr netip.Addr, tcpConn *net.TCPConn, logg
 		sessionID:         sessionID,
 		isSynced:          false,
 		srpIDHead:         uint32(1),
+		srpIDMax:          math.MaxUint32,
 		srPolicyIntentTTL: defaultSRPolicyIntentTTL,
 		sweepInterval:     defaultSRPolicyIntentSweepInterval,
 		logger:            logger.With(zap.String("server", "pcep"), zap.String("session", peerAddr.String())),
@@ -702,7 +704,7 @@ func (ss *Session) allocateSRPID(polType table.PolicyType, metric table.MetricTy
 	ss.srpIDMu.Lock()
 	defer ss.srpIDMu.Unlock()
 
-	srpID, nextHead, err := nextUnusedSRPID(ss.srpIDHead, math.MaxUint32, ss.srPolicyIntentExists)
+	srpID, nextHead, err := nextUnusedSRPID(ss.srpIDHead, ss.srpIDMax, ss.srPolicyIntentExists)
 	if err != nil {
 		return 0, err
 	}
