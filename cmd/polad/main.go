@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"go.uber.org/zap"
 
@@ -77,12 +79,16 @@ func main() {
 		logger.Panic("TED is enabled but Global.TED.ASN is missing or invalid")
 	}
 
+	// Handle SIGINT/SIGTERM for graceful shutdown.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	// Prepare TED update tools
 	var tedElemsChan chan []table.TEDElem
 	if c.Global.TED.Enable {
 		switch c.Global.TED.Source {
 		case "gobgp":
-			tedElemsChan = startGoBGPUpdate(context.Background(), &c, logger)
+			tedElemsChan = startGoBGPUpdate(ctx, &c, logger)
 			if tedElemsChan == nil {
 				logger.Panic("GoBGP update channel is nil")
 			}
@@ -101,7 +107,7 @@ func main() {
 		USidMode:  c.Global.USidMode,
 		ASN:       c.Global.TED.ASN,
 	}
-	if serverErr := server.NewPCE(o, logger, tedElemsChan); serverErr.Error != nil {
+	if serverErr := server.NewPCE(ctx, o, logger, tedElemsChan); serverErr.Error != nil {
 		logger.Panic("Failed to start new server", zap.String("server", serverErr.Server), zap.Error(serverErr.Error))
 	}
 }
