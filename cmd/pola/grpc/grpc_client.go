@@ -425,46 +425,62 @@ func segmentFromPB(s *pb.Segment) (table.Segment, error) {
 	}
 	switch v := seg.(type) {
 	case table.SegmentSRv6:
-		if la, err := netip.ParseAddr(s.GetLocalAddr()); err == nil {
-			v.LocalAddr = la
+		v.LocalAddr, err = parseOptionalAddr(s.GetLocalAddr())
+		if err != nil {
+			return nil, fmt.Errorf("invalid SRv6 local address %q: %w", s.GetLocalAddr(), err)
 		}
-		if ra, err := netip.ParseAddr(s.GetRemoteAddr()); err == nil {
-			v.RemoteAddr = ra
+		v.RemoteAddr, err = parseOptionalAddr(s.GetRemoteAddr())
+		if err != nil {
+			return nil, fmt.Errorf("invalid SRv6 remote address %q: %w", s.GetRemoteAddr(), err)
 		}
-		if structure := parseSidStructure(s.GetSidStructure()); structure != nil {
+		structure, err := parseSidStructure(s.GetSidStructure())
+		if err != nil {
+			return nil, fmt.Errorf("invalid SID structure %q: %w", s.GetSidStructure(), err)
+		}
+		if structure != nil {
 			v.Structure = table.SIDStructureBytes(structure)
 		}
 		return v, nil
 	case table.SegmentSRMPLS:
-		if la, err := netip.ParseAddr(s.GetLocalAddr()); err == nil {
-			v.LocalAddr = la
+		v.LocalAddr, err = parseOptionalAddr(s.GetLocalAddr())
+		if err != nil {
+			return nil, fmt.Errorf("invalid SR-MPLS local address %q: %w", s.GetLocalAddr(), err)
 		}
-		if ra, err := netip.ParseAddr(s.GetRemoteAddr()); err == nil {
-			v.RemoteAddr = ra
+		v.RemoteAddr, err = parseOptionalAddr(s.GetRemoteAddr())
+		if err != nil {
+			return nil, fmt.Errorf("invalid SR-MPLS remote address %q: %w", s.GetRemoteAddr(), err)
 		}
 		return v, nil
 	}
 	return seg, nil
 }
 
-// parseSidStructure parses a comma-separated SID structure string (e.g. "32,16,0,80"), returning nil if malformed.
-func parseSidStructure(s string) []uint8 {
+// parseOptionalAddr parses an IP address, treating an empty string as unset.
+func parseOptionalAddr(s string) (netip.Addr, error) {
 	if s == "" {
-		return nil
+		return netip.Addr{}, nil
+	}
+	return netip.ParseAddr(s)
+}
+
+// parseSidStructure parses a comma-separated SID structure string and treats an empty string as unset.
+func parseSidStructure(s string) ([]uint8, error) {
+	if s == "" {
+		return nil, nil
 	}
 	parts := strings.Split(s, ",")
 	if len(parts) != 4 {
-		return nil
+		return nil, fmt.Errorf("expected 4 comma-separated values, got %d", len(parts))
 	}
 	result := make([]uint8, 4)
 	for i, p := range parts {
 		v, err := strconv.ParseUint(strings.TrimSpace(p), 10, 8)
 		if err != nil {
-			return nil
+			return nil, fmt.Errorf("part %d: %w", i, err)
 		}
 		result[i] = uint8(v)
 	}
-	return result
+	return result, nil
 }
 
 func CreateSRPolicy(client pb.PCEServiceClient, req *pb.CreateSRPolicyRequest) error {

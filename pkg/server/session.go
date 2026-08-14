@@ -513,7 +513,12 @@ func (ss *Session) handleSRPolicyWithPLSPID(sr *pcep.StateReport) error {
 		ss.logger.Error("Failed to compute path from TED", zap.Error(err))
 		return err
 	}
-	sr.EroObject = createEroFromSegmentList(computedSegmentList)
+	eroObject, err := createEroFromSegmentList(computedSegmentList)
+	if err != nil {
+		ss.logger.Error("Failed to create ERO from computed segment list", zap.Error(err))
+		return err
+	}
+	sr.EroObject = eroObject
 
 	if err := ss.RegisterSRPolicy(*sr); err != nil {
 		ss.logger.Error("Failed to register SR Policy", zap.Error(err), zap.Uint32("plspID", sr.LSPObject.PlspID))
@@ -634,7 +639,7 @@ func (ss *Session) selectMetricType(sr pcep.StateReport) table.MetricType {
 	}
 }
 
-func createEroFromSegmentList(segmentList []table.Segment) *pcep.EroObject {
+func createEroFromSegmentList(segmentList []table.Segment) (*pcep.EroObject, error) {
 	eroObject := &pcep.EroObject{
 		ObjectType:    pcep.ObjectTypeEROExplicitRoute,
 		EroSubobjects: make([]pcep.EroSubobject, 0),
@@ -644,18 +649,20 @@ func createEroFromSegmentList(segmentList []table.Segment) *pcep.EroObject {
 		switch seg := segment.(type) {
 		case table.SegmentSRMPLS:
 			subobj, err := pcep.NewSREroSubobject(seg)
-			if err == nil {
-				eroObject.EroSubobjects = append(eroObject.EroSubobjects, subobj)
+			if err != nil {
+				return nil, fmt.Errorf("failed to build SR-MPLS ERO subobject: %w", err)
 			}
+			eroObject.EroSubobjects = append(eroObject.EroSubobjects, subobj)
 		case table.SegmentSRv6:
 			subobj, err := pcep.NewSRv6EroSubobject(seg)
-			if err == nil {
-				eroObject.EroSubobjects = append(eroObject.EroSubobjects, subobj)
+			if err != nil {
+				return nil, fmt.Errorf("failed to build SRv6 ERO subobject: %w", err)
 			}
+			eroObject.EroSubobjects = append(eroObject.EroSubobjects, subobj)
 		}
 	}
 
-	return eroObject
+	return eroObject, nil
 }
 
 func (ss *Session) RequestAllSRPolicyDeleted() error {

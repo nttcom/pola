@@ -173,24 +173,70 @@ func TestSegmentFromPB_InvalidSID(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestSegmentFromPB_InvalidAddr(t *testing.T) {
+	tests := []struct {
+		name    string
+		segment *pb.Segment
+	}{
+		{
+			name:    "SRv6 invalid local address",
+			segment: &pb.Segment{Sid: "2001:db8:1005::", LocalAddr: "not-an-addr", RemoteAddr: "2001:db8::6"},
+		},
+		{
+			name:    "SRv6 invalid remote address",
+			segment: &pb.Segment{Sid: "2001:db8:1005::", LocalAddr: "2001:db8::5", RemoteAddr: "not-an-addr"},
+		},
+		{
+			name:    "SR-MPLS invalid local address",
+			segment: &pb.Segment{Sid: "16003", LocalAddr: "not-an-addr", RemoteAddr: "192.0.2.2"},
+		},
+		{
+			name:    "SR-MPLS invalid remote address",
+			segment: &pb.Segment{Sid: "16003", LocalAddr: "192.0.2.1", RemoteAddr: "not-an-addr"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := segmentFromPB(tt.segment)
+			require.Error(t, err)
+		})
+	}
+}
+
 func TestParseSidStructure(t *testing.T) {
 	tests := []struct {
-		name string
-		in   string
-		want []uint8
+		name    string
+		in      string
+		want    []uint8
+		wantErr bool
 	}{
-		{"empty returns nil", "", nil},
-		{"valid", "32,16,0,80", []uint8{32, 16, 0, 80}},
-		{"wrong part count", "32,16,0", nil},
-		{"non-numeric part", "32,16,0,xx", nil},
-		{"value out of uint8 range", "32,16,0,256", nil},
-		{"whitespace around parts is trimmed", " 32 , 16 , 0 , 80 ", []uint8{32, 16, 0, 80}},
+		{name: "empty returns nil", in: "", want: nil},
+		{name: "valid", in: "32,16,0,80", want: []uint8{32, 16, 0, 80}},
+		{name: "wrong part count", in: "32,16,0", wantErr: true},
+		{name: "non-numeric part", in: "32,16,0,xx", wantErr: true},
+		{name: "value out of uint8 range", in: "32,16,0,256", wantErr: true},
+		{name: "whitespace around parts is trimmed", in: " 32 , 16 , 0 , 80 ", want: []uint8{32, 16, 0, 80}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, parseSidStructure(tt.in))
+			got, err := parseSidStructure(tt.in)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestSegmentFromPB_InvalidSidStructure(t *testing.T) {
+	_, err := segmentFromPB(&pb.Segment{
+		Sid:          "2001:db8:1005::",
+		SidStructure: "32,16,0",
+	})
+	require.Error(t, err)
 }
 
 func TestGetSessions_NoCapabilitiesIsEmptySlice(t *testing.T) {

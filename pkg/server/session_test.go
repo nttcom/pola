@@ -1645,7 +1645,8 @@ func TestUpdateOrCreatePolicy_StaleLSPIDIsIgnored(t *testing.T) {
 func TestCreateEroFromSegmentList_SRv6(t *testing.T) {
 	seg := table.NewSegmentSRv6(netip.MustParseAddr("2001:db8:1::1"))
 
-	ero := createEroFromSegmentList([]table.Segment{seg})
+	ero, err := createEroFromSegmentList([]table.Segment{seg})
+	require.NoError(t, err)
 
 	require.Len(t, ero.EroSubobjects, 1)
 	srv6Subobj, ok := ero.EroSubobjects[0].(*pcep.SRv6EroSubobject)
@@ -1653,6 +1654,14 @@ func TestCreateEroFromSegmentList_SRv6(t *testing.T) {
 	assert.Equal(t, seg, srv6Subobj.ToSegment())
 	assert.True(t, srv6Subobj.FFlag, "F-Flag must be set when the segment has no NAI")
 	assert.Equal(t, pcep.NAITypeSRv6Absent, srv6Subobj.NAIType)
+}
+
+func TestCreateEroFromSegmentList_InvalidSegmentReturnsError(t *testing.T) {
+	seg := table.NewSegmentSRMPLS(16002)
+	seg.RemoteAddr = netip.MustParseAddr("10.255.0.2") // RemoteAddr without LocalAddr is invalid.
+
+	_, err := createEroFromSegmentList([]table.Segment{seg})
+	require.Error(t, err)
 }
 
 type failingMessage struct{}

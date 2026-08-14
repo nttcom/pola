@@ -124,7 +124,8 @@ func TestCreateEroFromSegmentListWithNAI(t *testing.T) {
 	seg := table.NewSegmentSRMPLS(16002)
 	seg.LocalAddr = netip.MustParseAddr("10.255.0.2")
 
-	ero := createEroFromSegmentList([]table.Segment{seg})
+	ero, err := createEroFromSegmentList([]table.Segment{seg})
+	require.NoError(t, err)
 	require.Len(t, ero.EroSubobjects, 1)
 
 	raw, err := ero.EroSubobjects[0].Serialize()
