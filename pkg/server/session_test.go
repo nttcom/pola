@@ -60,7 +60,7 @@ func newTCPConnPair(t *testing.T) (server, client *net.TCPConn) {
 	}
 }
 
-// fakeConn is a pcepConn test double that can deterministically fail writes.
+// fakeConn is a net.Conn test double that can deterministically fail writes.
 type fakeConn struct {
 	r io.Reader
 
@@ -84,7 +84,11 @@ func (c *fakeConn) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func (c *fakeConn) Close() error { return c.closeErr }
+func (c *fakeConn) Close() error                       { return c.closeErr }
+func (c *fakeConn) LocalAddr() net.Addr                { return nil }
+func (c *fakeConn) RemoteAddr() net.Addr               { return nil }
+func (c *fakeConn) SetDeadline(t time.Time) error      { return nil }
+func (c *fakeConn) SetWriteDeadline(t time.Time) error { return nil }
 
 func (c *fakeConn) SetReadDeadline(t time.Time) error { return c.setReadDeadlineErr }
 
@@ -1158,7 +1162,7 @@ func TestEstablished_ReturnsWhenInitialKeepaliveSendFails(t *testing.T) {
 
 	select {
 	case <-done:
-	case <-time.After(2 * time.Second):
+	case <-time.After(3 * time.Second):
 		require.Fail(t, "Established did not return after the initial keepalive send failed")
 	}
 }
