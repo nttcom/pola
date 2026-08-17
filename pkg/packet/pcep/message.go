@@ -16,6 +16,8 @@ import (
 
 const CommonHeaderLength uint16 = 4
 
+const PCEPVersion uint8 = 1
+
 // PCEP Message-Type (1 byte)
 type MessageType uint8
 
@@ -85,6 +87,9 @@ func (h *CommonHeader) DecodeFromBytes(header []uint8) error {
 	h.MessageType = MessageType(header[1])
 	h.MessageLength = binary.BigEndian.Uint16(header[2:4])
 
+	if h.Version != PCEPVersion {
+		return fmt.Errorf("unsupported PCEP version %d", h.Version)
+	}
 	// RFC 5440 §6.1 requires Message-Length to include the common header.
 	if h.MessageLength < CommonHeaderLength {
 		return fmt.Errorf("invalid PCEP message length %d", h.MessageLength)
@@ -106,7 +111,7 @@ func (h *CommonHeader) Serialize() []uint8 {
 
 func NewCommonHeader(messageType MessageType, messageLength uint16) *CommonHeader {
 	h := &CommonHeader{
-		Version:       uint8(1),
+		Version:       PCEPVersion,
 		Flag:          uint8(0),
 		MessageType:   messageType,
 		MessageLength: messageLength,
@@ -158,6 +163,9 @@ func (m *OpenMessage) DecodeFromBytes(messageBody []uint8) error {
 	body, err := objectBody(messageBody, &commonObjectHeader)
 	if err != nil {
 		return fmt.Errorf("open: %w", err)
+	}
+	if int(commonObjectHeader.ObjectLength) != len(messageBody) {
+		return fmt.Errorf("open: %d trailing bytes after OPEN object", len(messageBody)-int(commonObjectHeader.ObjectLength))
 	}
 
 	openObject := &OpenObject{}
@@ -298,6 +306,9 @@ func (m *CloseMessage) DecodeFromBytes(messageBody []uint8) error {
 	body, err := objectBody(messageBody, &commonObjectHeader)
 	if err != nil {
 		return fmt.Errorf("close: %w", err)
+	}
+	if int(commonObjectHeader.ObjectLength) != len(messageBody) {
+		return fmt.Errorf("close: %d trailing bytes after CLOSE object", len(messageBody)-int(commonObjectHeader.ObjectLength))
 	}
 	closeObject := &CloseObject{}
 	if err := closeObject.DecodeFromBytes(commonObjectHeader.ObjectType, body); err != nil {

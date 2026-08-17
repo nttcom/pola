@@ -33,7 +33,6 @@ const (
 	pcepErrorTypeCapabilityNotSupported uint8 = 2
 	pcepErrorValueUnassigned            uint8 = 0
 
-	// Maximum time to wait for a peer response when Keepalive is unavailable.
 	defaultDeadTimer = 120 * time.Second
 
 	// RFC 5440 recommends a DeadTimer of at least 4x the Keepalive interval.
@@ -285,27 +284,37 @@ func (ss *Session) Open() error {
 	return ss.SendOpen()
 }
 
-// readDeadline returns the maximum time a read may block.
-// It follows RFC 5440's DeadTimer guidance based on the negotiated Keepalive.
+// readDeadline returns the DeadTimer based on the negotiated Keepalive.
+// Keepalive == 0 disables the read deadline.
 func (ss *Session) readDeadline() time.Duration {
 	if ss.keepAlive == 0 {
-		return defaultDeadTimer
+		return 0
 	}
 	return deadTimerKeepaliveMultiplier * time.Duration(ss.keepAlive) * time.Second
 }
 
-// readFull reads exactly len(buf) bytes with a read deadline.
-func (ss *Session) readFull(buf []uint8) error {
-	if err := ss.tcpConn.SetReadDeadline(time.Now().Add(ss.readDeadline())); err != nil {
+func (ss *Session) readFullWithDeadline(buf []uint8, deadline time.Time) error {
+	if err := ss.tcpConn.SetReadDeadline(deadline); err != nil {
 		return err
 	}
 	_, err := io.ReadFull(ss.tcpConn, buf)
 	return err
 }
 
+func (ss *Session) readFull(buf []uint8) error {
+	var deadline time.Time
+	if d := ss.readDeadline(); d > 0 {
+		deadline = time.Now().Add(d)
+	}
+	return ss.readFullWithDeadline(buf, deadline)
+}
+
 func (ss *Session) parseOpenMessage() (*pcep.OpenMessage, error) {
+	// Keepalive is not negotiated yet, so use the default DeadTimer for the handshake.
+	deadline := time.Now().Add(defaultDeadTimer)
+
 	byteOpenHeader := make([]uint8, pcep.CommonHeaderLength)
-	if err := ss.readFull(byteOpenHeader); err != nil {
+	if err := ss.readFullWithDeadline(byteOpenHeader, deadline); err != nil {
 		return nil, err
 	}
 
@@ -314,15 +323,12 @@ func (ss *Session) parseOpenMessage() (*pcep.OpenMessage, error) {
 		return nil, err
 	}
 
-	if openHeader.Version != 1 {
-		return nil, fmt.Errorf("PCEP version mismatch (receive version: %d)", openHeader.Version)
-	}
 	if openHeader.MessageType != pcep.MessageTypeOpen {
 		return nil, fmt.Errorf("this peer has not been opened (messageType: %s)", openHeader.MessageType.String())
 	}
 
 	byteOpenObject := make([]uint8, openHeader.MessageLength-pcep.CommonHeaderLength)
-	if err := ss.readFull(byteOpenObject); err != nil {
+	if err := ss.readFullWithDeadline(byteOpenObject, deadline); err != nil {
 		return nil, err
 	}
 

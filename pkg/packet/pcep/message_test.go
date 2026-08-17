@@ -251,6 +251,11 @@ func TestOpenMessage_DecodeFromBytes_Errors(t *testing.T) {
 			[]uint8{0x20, 0x1e, 0x78, 0x01}, // version/flags, keepalive, deadtime, sid
 			[]uint8{0x00, 0x27, 0x00, 0x04}, // TLV header advertising a value longer than available
 		),
+		"TrailingBytes": AppendByteSlices(
+			NewCommonObjectHeader(ObjectClassOpen, ObjectTypeOpenOpen, 8).Serialize(),
+			[]uint8{0x20, 0x1e, 0x78, 0x01}, // version/flags, keepalive, deadtime, sid
+			[]uint8{0xff},                   // trailing byte past the declared OPEN object length
+		),
 	}
 
 	for name, body := range cases {
@@ -279,6 +284,33 @@ func TestCommonHeader_DecodeFromBytes_Errors(t *testing.T) {
 
 			var h CommonHeader
 			assert.Error(t, h.DecodeFromBytes(body))
+		})
+	}
+}
+
+func TestCommonHeader_DecodeFromBytes_Version(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		header  []uint8
+		wantErr bool
+	}{
+		"Version1":           {[]uint8{0x20, uint8(MessageTypeKeepalive), 0x00, 0x04}, false},
+		"UnsupportedVersion": {[]uint8{0x40, uint8(MessageTypeKeepalive), 0x00, 0x04}, true},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var h CommonHeader
+			err := h.DecodeFromBytes(tt.header)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, PCEPVersion, h.Version)
+			}
 		})
 	}
 }
@@ -657,6 +689,11 @@ func TestCloseMessage_DecodeFromBytes_Errors(t *testing.T) {
 		"PartialBody": AppendByteSlices(
 			NewCommonObjectHeader(ObjectClassClose, ObjectTypeCloseClose, commonObjectHeaderLength+2).Serialize(),
 			make([]uint8, 2),
+		),
+		"TrailingBytes": AppendByteSlices(
+			NewCommonObjectHeader(ObjectClassClose, ObjectTypeCloseClose, commonObjectHeaderLength+4).Serialize(),
+			make([]uint8, 4),
+			[]uint8{0xff}, // trailing byte past the declared CLOSE object length
 		),
 	}
 
