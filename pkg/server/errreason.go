@@ -25,6 +25,7 @@ const (
 	ReasonSIDValidationFailed    = "SID_VALIDATION_FAILED"
 	ReasonSRPolicyNotFound       = "SR_POLICY_NOT_FOUND"
 	ReasonPCEPRequestFailed      = "PCEP_REQUEST_FAILED"
+	ReasonPathComputationFailed  = "PATH_COMPUTATION_FAILED"
 )
 
 func newStatus(code codes.Code, reason, format string, a ...any) error {

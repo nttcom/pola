@@ -441,11 +441,12 @@ func TestUpdateNeighborCosts_UnknownCalcNode(t *testing.T) {
 
 func TestBuildWaypointSegment(t *testing.T) {
 	tests := []struct {
-		name        string
-		node        *table.LsNode
-		explicitSID string
-		want        table.Segment
-		wantErr     string
+		name           string
+		node           *table.LsNode
+		explicitSID    string
+		want           table.Segment
+		wantErr        string
+		wantTopoReason string
 	}{
 		{
 			name:        "empty SID falls back to the node's default SR-MPLS segment",
@@ -460,10 +461,11 @@ func TestBuildWaypointSegment(t *testing.T) {
 			want:        srv6DefaultSeg("2001:db8::a"),
 		},
 		{
-			name:        "empty SID returns an error when the node has no Node SID",
-			node:        nodeWithoutSID("A"),
-			explicitSID: "",
-			wantErr:     "node doesn't have a Node SID",
+			name:           "empty SID returns an error when the node has no Node SID",
+			node:           nodeWithoutSID("A"),
+			explicitSID:    "",
+			wantErr:        "node doesn't have a Node SID",
+			wantTopoReason: "TED_DATA_INCOMPLETE",
 		},
 		{
 			name:        "explicit SID overrides the SID but keeps the node's SID structure",
@@ -503,10 +505,11 @@ func TestBuildWaypointSegment(t *testing.T) {
 			wantErr:     `invalid explicit SID "not-an-address": ParseAddr("not-an-address"): unable to parse IP`,
 		},
 		{
-			name:        "explicit SID on a node without any SRv6 SIDs returns an error",
-			node:        srMPLSNode("A", 0),
-			explicitSID: "2001:db8::ffff",
-			wantErr:     "no SRv6 SIDs available",
+			name:           "explicit SID on a node without any SRv6 SIDs returns an error",
+			node:           srMPLSNode("A", 0),
+			explicitSID:    "2001:db8::ffff",
+			wantErr:        "no SRv6 SIDs available",
+			wantTopoReason: "TED_DATA_INCOMPLETE",
 		},
 		{
 			name:        "IPv4 explicit SID is rejected",
@@ -528,6 +531,14 @@ func TestBuildWaypointSegment(t *testing.T) {
 			if tt.wantErr != "" {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.wantErr)
+				if tt.wantTopoReason != "" {
+					var topoErr *TopologyLimitationError
+					require.ErrorAs(t, err, &topoErr)
+					assert.Equal(t, tt.wantTopoReason, topoErr.Reason)
+				} else {
+					var inputErr *InvalidInputError
+					assert.ErrorAs(t, err, &inputErr)
+				}
 				return
 			}
 			require.NoError(t, err)

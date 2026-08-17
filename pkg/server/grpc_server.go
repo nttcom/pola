@@ -67,7 +67,9 @@ func statusFromCSPFError(err error) error {
 	if errors.As(err, &topoLimit) {
 		return newStatus(codes.FailedPrecondition, topoLimit.Reason, "%s", err.Error())
 	}
-	return err
+	// Unexpected CSPF errors indicate an internal invariant break; keep ErrorInfo
+	// attached rather than letting them surface as codes.Unknown.
+	return newStatus(codes.Internal, ReasonPathComputationFailed, "%s", err.Error())
 }
 
 type APIServer struct {

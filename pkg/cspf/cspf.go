@@ -157,9 +157,17 @@ func buildWaypointSegment(node *table.LsNode, explicitSID string) (table.Segment
 		if !addr.Is6() {
 			return nil, invalidInputf("explicit SID %q must be an IPv6 SRv6 SID", explicitSID)
 		}
-		return table.NewSegmentSRv6WithNodeInfo(addr, node)
+		seg, err := table.NewSegmentSRv6WithNodeInfo(addr, node)
+		if err != nil {
+			return nil, topologyLimitationf("TED_DATA_INCOMPLETE", "%w", err)
+		}
+		return seg, nil
 	}
-	return node.NodeSegment()
+	seg, err := node.NodeSegment()
+	if err != nil {
+		return nil, topologyLimitationf("TED_DATA_INCOMPLETE", "%w", err)
+	}
+	return seg, nil
 }
 
 // removeDuplicateFirst removes the first segment of section if it equals the last of fullList.

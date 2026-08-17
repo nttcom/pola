@@ -67,14 +67,12 @@ func TestStatusFromCSPFError(t *testing.T) {
 		assert.ErrorContains(t, err, "no path")
 	})
 
-	t.Run("an unclassified error is returned unchanged and surfaces as codes.Unknown", func(t *testing.T) {
-		raw := errors.New("ted is nil")
-		got := statusFromCSPFError(raw)
-		assert.Same(t, raw, got)
-
-		st, ok := status.FromError(got)
-		assert.False(t, ok, "a plain error carries no gRPC status of its own")
-		assert.Equal(t, codes.Unknown, st.Code())
+	t.Run("an unclassified error maps to Internal with ErrorInfo", func(t *testing.T) {
+		got := statusFromCSPFError(errors.New("ted is nil"))
+		code, reason := reasonOf(t, got)
+		assert.Equal(t, codes.Internal, code)
+		assert.Equal(t, ReasonPathComputationFailed, reason)
+		assert.ErrorContains(t, got, "ted is nil")
 	})
 }
 
@@ -1410,6 +1408,40 @@ func TestNewEnrichedSegmentSRv6_Errors(t *testing.T) {
 		{name: "malformed SID structure", segment: &pb.Segment{Sid: "2001:db8:1005::", SidStructure: "1,2,3"}},
 		{name: "malformed localAddr", segment: &pb.Segment{Sid: "2001:db8:1005::", LocalAddr: "not-an-addr"}},
 		{name: "malformed remoteAddr", segment: &pb.Segment{Sid: "2001:db8:1005::", LocalAddr: "2001:db8::5", RemoteAddr: "not-an-addr"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := newEnrichedSegment(tt.segment, false)
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestNewEnrichedSegmentSRv6_SubobjectValidationErrors(t *testing.T) {
+	tests := []struct {
+		name    string
+		segment *pb.Segment
+	}{
+		{name: "IPv4 LocalAddr on SRv6 segment", segment: &pb.Segment{Sid: "2001:db8:1005::", LocalAddr: "10.0.0.1"}},
+		{name: "RemoteAddr without LocalAddr", segment: &pb.Segment{Sid: "2001:db8:1005::", RemoteAddr: "2001:db8::6"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := newEnrichedSegment(tt.segment, false)
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestNewEnrichedSegmentSRMPLS_SubobjectValidationErrors(t *testing.T) {
+	tests := []struct {
+		name    string
+		segment *pb.Segment
+	}{
+		{name: "RemoteAddr without LocalAddr", segment: &pb.Segment{Sid: "16001", RemoteAddr: "10.0.0.2"}},
+		{name: "mismatched address families", segment: &pb.Segment{Sid: "16001", LocalAddr: "10.0.0.1", RemoteAddr: "2001:db8::1"}},
 	}
 
 	for _, tt := range tests {
