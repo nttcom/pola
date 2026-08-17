@@ -12,7 +12,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"google.golang.org/grpc/codes"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/status"
 	yaml "gopkg.in/yaml.v2"
 
@@ -132,10 +132,29 @@ func translateCreateSRPolicyError(err error) error {
 	if !ok {
 		return err
 	}
-	if st.Code() == codes.FailedPrecondition {
-		return fmt.Errorf("%s\n  hint: use --no-sid-validate to provision without validation", st.Message())
+
+	msg := st.Message()
+	for _, d := range st.Details() {
+		info, ok := d.(*errdetails.ErrorInfo)
+		if !ok {
+			continue
+		}
+		switch info.Reason {
+		case reasonSIDValidationFailed:
+			return fmt.Errorf("%s\n  hint: use --no-sid-validate to provision without validation", msg)
+		case reasonTEDDisabled:
+			return fmt.Errorf("%s\n  hint: enable TED sync on the PCE", msg)
+		case reasonTEDNotSynced:
+			return fmt.Errorf("%s\n  hint: the PCE has not finished syncing the TED yet; retry shortly", msg)
+		case reasonPCEPSessionNotSynced:
+			return fmt.Errorf("%s\n  hint: check that a PCEP session to the target PCC is established and synced", msg)
+		case reasonDestinationUnreach:
+			return fmt.Errorf("%s\n  hint: no path exists to the destination in the current topology", msg)
+		case reasonMetricNotCarried:
+			return fmt.Errorf("%s\n  hint: the requested metric type is not advertised on this topology", msg)
+		}
 	}
-	return errors.New(st.Message())
+	return errors.New(msg)
 }
 
 func addSRPolicyWithEndpointAddr(input InputFormat, noSIDValidate bool) error {
@@ -368,6 +387,8 @@ func parseMetric(metric string) (pb.MetricType, error) {
 		return pb.MetricType_METRIC_TYPE_DELAY, nil
 	case "te":
 		return pb.MetricType_METRIC_TYPE_TE, nil
+	case "hopcount":
+		return pb.MetricType_METRIC_TYPE_HOPCOUNT, nil
 	default:
 		return 0, fmt.Errorf("invalid input `metric`")
 	}

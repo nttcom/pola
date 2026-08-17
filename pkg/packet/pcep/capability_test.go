@@ -6,8 +6,9 @@
 package pcep
 
 import (
-	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestPolaCapability(t *testing.T) {
@@ -95,10 +96,22 @@ func TestPolaCapability(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := PolaCapability(tt.input)
-			if !reflect.DeepEqual(result, tt.expected) {
-				t.Fatalf("%s: expected %+v, got %+v", tt.name, tt.expected, result)
-			}
+			assert.Equal(t, tt.expected, PolaCapability(tt.input))
 		})
+	}
+}
+
+func TestPolaCapability_OutputAlwaysSerializes(t *testing.T) {
+	caps := []CapabilityInterface{
+		&StatefulPCECapability{LSPUpdateCapability: true},
+		&SRPCECapability{MaximumSidDepth: 16},
+		&PathSetupTypeCapability{PathSetupTypes: Psts{PathSetupTypeSRTE}},
+		&AssocTypeList{AssocTypes: []AssocType{AssocTypeSRPolicyAssociation}},
+		&LSPDBVersion{VersionNumber: 1},
+	}
+
+	for _, cap := range PolaCapability(caps) {
+		_, err := cap.Serialize()
+		assert.NoError(t, err, "PolaCapability output must always serialize: %T", cap)
 	}
 }

@@ -8,6 +8,7 @@ package pcep
 import (
 	"encoding/binary"
 	"fmt"
+	"math"
 )
 
 func decodeTLVLength(data []byte, allowPadding bool) (int, error) {
@@ -53,6 +54,13 @@ func paddedLength(n int, align int) int {
 		return n
 	}
 	return n + (align - (n % align))
+}
+
+func tlvValueLength(n int) (uint16, error) {
+	if n > math.MaxUint16 {
+		return 0, fmt.Errorf("PCEP TLV value length %d exceeds %d", n, math.MaxUint16)
+	}
+	return uint16(n), nil
 }
 
 const (

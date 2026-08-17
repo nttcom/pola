@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
-	"strconv"
 )
 
 type LsTED struct {
@@ -182,12 +181,14 @@ func (n *LsNode) NodeSegment() (Segment, error) {
 	// for SR-MPLS Segment
 	for _, prefix := range n.Prefixes {
 		if prefix.HasPrefixSID() {
-			sid := strconv.Itoa(int(n.SrgbBegin + prefix.SidIndex))
-			seg, err := NewSegment(sid)
-			if err != nil {
-				return nil, err
+			if n.SrgbBegin == 0 {
+				return nil, fmt.Errorf("cannot resolve prefix-SID index %d without an SRGB", prefix.SidIndex)
 			}
-			return seg, nil
+			label, ok := srgbLabel(n, prefix.SidIndex)
+			if !ok {
+				return nil, fmt.Errorf("prefix-SID index %d is out of range for SRGB [%d, %d)", prefix.SidIndex, n.SrgbBegin, n.SrgbEnd)
+			}
+			return NewSegmentSRMPLS(label), nil
 		}
 	}
 	// for SRv6 Segment
@@ -197,11 +198,10 @@ func (n *LsNode) NodeSegment() (Segment, error) {
 			if err != nil {
 				return nil, err
 			}
-			seg, err := NewSegmentSRv6WithNodeInfo(addr, n)
-			if err != nil {
-				return nil, err
+			if !addr.Is6() || addr.Is4In6() {
+				return nil, fmt.Errorf("SRv6 SID %q is not a valid IPv6 address", srv6SID.Sids[FirstSIDIndex])
 			}
-			return seg, nil
+			return NewSegmentSRv6WithNodeInfo(addr, n)
 		}
 	}
 
@@ -263,6 +263,11 @@ func NewLsLink(localNode *LsNode, remoteNode *LsNode) *LsLink {
 }
 
 func (l *LsLink) Metric(metricType MetricType) (uint32, error) {
+	// Hop count is implicit: each link counts as one hop.
+	if metricType == HopcountMetric {
+		return 1, nil
+	}
+
 	for _, metric := range l.Metrics {
 		if metric.Type == metricType {
 			return metric.Value, nil
@@ -402,6 +407,16 @@ const (
 	DelayMetric
 	HopcountMetric
 )
+
+// IsValid reports whether m is a defined MetricType.
+func (m MetricType) IsValid() bool {
+	switch m {
+	case UnspecifiedMetric, IGPMetric, TEMetric, DelayMetric, HopcountMetric:
+		return true
+	default:
+		return false
+	}
+}
 
 func (m MetricType) String() string {
 	switch m {

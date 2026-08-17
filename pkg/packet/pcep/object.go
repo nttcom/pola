@@ -195,6 +195,17 @@ func NewCommonObjectHeader(objectClass ObjectClass, objectType ObjectType, messa
 	return h
 }
 
+func objectLength(body ...[]uint8) (uint16, error) {
+	total := int(commonObjectHeaderLength)
+	for _, b := range body {
+		total += len(b)
+	}
+	if total > math.MaxUint16 {
+		return 0, fmt.Errorf("PCEP object length %d exceeds %d", total, math.MaxUint16)
+	}
+	return uint16(total), nil
+}
+
 // OPEN Object (RFC5440 7.3)
 const (
 	ObjectTypeOpenOpen ObjectType = 0x01
@@ -211,8 +222,15 @@ type OpenObject struct {
 }
 
 func (o *OpenObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
+	if len(objectBody) < 4 {
+		return fmt.Errorf("OPEN object body too short: got %d bytes, need at least 4", len(objectBody))
+	}
+
 	o.ObjectType = typ
 	o.Version = uint8(objectBody[0] >> 5)
+	if o.Version != PCEPVersion {
+		return fmt.Errorf("unsupported PCEP version %d in OPEN object", o.Version)
+	}
 	o.Flag = uint8(objectBody[0] & 0x1f)
 	o.Keepalive = uint8(objectBody[1])
 	o.Deadtime = uint8(objectBody[2])
@@ -230,9 +248,7 @@ func (o *OpenObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
 	return nil
 }
 
-func (o *OpenObject) Serialize() []uint8 {
-	openObjectHeader := NewCommonObjectHeader(ObjectClassOpen, o.ObjectType, o.Len())
-	byteOpenObjectHeader := openObjectHeader.Serialize()
+func (o *OpenObject) Serialize() ([]uint8, error) {
 	buf := make([]uint8, 4)
 	buf[0] = (o.Version << 5) | (o.Flag & 0x1f)
 	buf[1] = o.Keepalive
@@ -241,34 +257,53 @@ func (o *OpenObject) Serialize() []uint8 {
 
 	byteTLVs := []uint8{}
 	for _, cap := range o.Caps {
-		byteTLVs = append(byteTLVs, cap.Serialize()...)
+		b, err := cap.Serialize()
+		if err != nil {
+			return nil, err
+		}
+		byteTLVs = append(byteTLVs, b...)
 	}
 
-	byteOpenObject := AppendByteSlices(byteOpenObjectHeader, buf, byteTLVs)
-	return byteOpenObject
+	length, err := objectLength(buf, byteTLVs)
+	if err != nil {
+		return nil, err
+	}
+	openObjectHeader := NewCommonObjectHeader(ObjectClassOpen, o.ObjectType, length)
+
+	return AppendByteSlices(openObjectHeader.Serialize(), buf, byteTLVs), nil
 }
 
-func (o *OpenObject) Len() uint16 {
-	tlvsByteLength := uint16(0)
+func (o *OpenObject) Len() int {
+	tlvsByteLength := 0
 	for _, cap := range o.Caps {
 		tlvsByteLength += cap.Len()
 	}
-	// TODO: Calculate TLV length and record in open_object_length
 	// CommonObjectHeader(4byte) + openObject(4byte) + tlvslength(valiable)
-	return commonObjectHeaderLength + 4 + tlvsByteLength
+	return int(commonObjectHeaderLength) + 4 + tlvsByteLength
 }
 
-func NewOpenObject(sessionID uint8, keepalive uint8, capabilities []CapabilityInterface) (*OpenObject, error) {
-	o := &OpenObject{
+func NewOpenObject(sessionID uint8, keepalive uint8, capabilities []CapabilityInterface) *OpenObject {
+	return &OpenObject{
 		ObjectType: ObjectTypeOpenOpen,
 		Version:    uint8(1), // PCEP version. Current version is 1
 		Flag:       uint8(0),
 		Keepalive:  keepalive,
-		Deadtime:   keepalive * 4,
+		Deadtime:   DeadTimerFor(keepalive),
 		Sid:        sessionID,
 		Caps:       capabilities,
 	}
-	return o, nil
+}
+
+const deadTimerMultiplier = 4
+
+// DeadTimerFor returns the DeadTimer for the given Keepalive, clamped to the
+// OPEN object's one-octet field.
+func DeadTimerFor(keepalive uint8) uint8 {
+	d := int(keepalive) * deadTimerMultiplier
+	if d > math.MaxUint8 {
+		return math.MaxUint8
+	}
+	return uint8(d)
 }
 
 // BANDWIDTH Object (RFC5440 7.7)
@@ -278,6 +313,10 @@ type BandwidthObject struct {
 }
 
 func (o *BandwidthObject) DecodeFromBytes(objectType ObjectType, objectBody []uint8) error {
+	if len(objectBody) < 4 {
+		return fmt.Errorf("BANDWIDTH object body too short: got %d bytes, need at least 4", len(objectBody))
+	}
+
 	o.ObjectType = objectType
 	o.Bandwidth = binary.BigEndian.Uint32(objectBody[:])
 	return nil
@@ -289,15 +328,20 @@ type MetricObject struct {
 	CFlag       bool
 	BFlag       bool
 	MetricType  uint8
-	MetricValue uint32
+	MetricValue float32
 }
 
 func (o *MetricObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
+	if len(objectBody) < 8 {
+		return fmt.Errorf("METRIC object body too short: got %d bytes, need at least 8", len(objectBody))
+	}
+
 	o.ObjectType = typ
 	o.CFlag = (objectBody[2] & 0x02) != 0
 	o.BFlag = (objectBody[2] & 0x01) != 0
 	o.MetricType = objectBody[3]
-	o.MetricValue = binary.BigEndian.Uint32(objectBody[4:8])
+	// RFC 5440 §7.8 specifies metric-value as a 32-bit IEEE floating-point value.
+	o.MetricValue = math.Float32frombits(binary.BigEndian.Uint32(objectBody[4:8]))
 	return nil
 }
 
@@ -313,8 +357,7 @@ func (o *MetricObject) Serialize() []uint8 {
 		buf[2] = buf[2] | 0x01
 	}
 	buf[3] = o.MetricType
-	tmpMetVal := math.Float32bits(float32(o.MetricValue))
-	binary.BigEndian.PutUint32(buf[4:8], tmpMetVal)
+	binary.BigEndian.PutUint32(buf[4:8], math.Float32bits(o.MetricValue))
 	byteMetricObject := AppendByteSlices(byteMetricObjectHeader, buf)
 	return byteMetricObject
 }
@@ -324,13 +367,12 @@ func (o *MetricObject) Len() uint16 {
 	return commonObjectHeaderLength + 8
 }
 
-func NewMetricObject() (*MetricObject, error) {
-	o := &MetricObject{
+func NewMetricObject() *MetricObject {
+	return &MetricObject{
 		ObjectType:  ObjectType(1),
 		MetricType:  uint8(2),
-		MetricValue: uint32(30),
+		MetricValue: float32(30),
 	}
-	return o, nil
 }
 
 // LSPA Object (RFC5440 7.11)
@@ -345,6 +387,10 @@ type LSPAObject struct {
 }
 
 func (o *LSPAObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
+	if len(objectBody) < 15 {
+		return fmt.Errorf("LSPA object body too short: got %d bytes, need at least 15", len(objectBody))
+	}
+
 	o.ObjectType = typ
 	o.ExcludeAny = binary.BigEndian.Uint32(objectBody[0:4])
 	o.IncludeAny = binary.BigEndian.Uint32(objectBody[4:8])
@@ -378,14 +424,13 @@ func (o *LSPAObject) Len() uint16 {
 	return commonObjectHeaderLength + 16
 }
 
-func NewLSPAObject() (*LSPAObject, error) {
-	o := &LSPAObject{
+func NewLSPAObject() *LSPAObject {
+	return &LSPAObject{
 		ObjectType:      ObjectType(1),
 		SetupPriority:   uint8(7),
 		HoldingPriority: uint8(7),
 		LFlag:           true,
 	}
-	return o, nil
 }
 
 // PCEP Error Object (RFC5440 7.15)
@@ -417,10 +462,7 @@ func (o *PCEPErrorObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) er
 	return nil
 }
 
-func (o *PCEPErrorObject) Serialize() []uint8 {
-	pcepErrorObjectHeader := NewCommonObjectHeader(ObjectClassPCEPError, o.ObjectType, o.Len())
-	bytePCEPErrorObjectHeader := pcepErrorObjectHeader.Serialize()
-
+func (o *PCEPErrorObject) Serialize() ([]uint8, error) {
 	buf := make([]uint8, 4)
 
 	buf[2] = o.ErrorType
@@ -428,30 +470,38 @@ func (o *PCEPErrorObject) Serialize() []uint8 {
 
 	byteTlvs := []uint8{}
 	for _, tlv := range o.Tlvs {
-		byteTlvs = append(byteTlvs, tlv.Serialize()...)
+		b, err := tlv.Serialize()
+		if err != nil {
+			return nil, err
+		}
+		byteTlvs = append(byteTlvs, b...)
 	}
 
-	bytePCEPErrorObject := AppendByteSlices(bytePCEPErrorObjectHeader, buf, byteTlvs)
-	return bytePCEPErrorObject
+	length, err := objectLength(buf, byteTlvs)
+	if err != nil {
+		return nil, err
+	}
+	pcepErrorObjectHeader := NewCommonObjectHeader(ObjectClassPCEPError, o.ObjectType, length)
+
+	return AppendByteSlices(pcepErrorObjectHeader.Serialize(), buf, byteTlvs), nil
 }
 
-func (o *PCEPErrorObject) Len() uint16 {
-	tlvsByteLength := uint16(0)
+func (o *PCEPErrorObject) Len() int {
+	tlvsByteLength := 0
 	for _, tlv := range o.Tlvs {
 		tlvsByteLength += tlv.Len()
 	}
 	// CommonObjectHeader(4byte) + Flags,Error-Type,Error-value(4byte) + tlvslength(valiable)
-	return commonObjectHeaderLength + 4 + tlvsByteLength
+	return int(commonObjectHeaderLength) + 4 + tlvsByteLength
 }
 
-func NewPCEPErrorObject(errorType uint8, errorValue uint8, tlvs []TLVInterface) (*PCEPErrorObject, error) {
-	o := &PCEPErrorObject{
+func NewPCEPErrorObject(errorType uint8, errorValue uint8, tlvs []TLVInterface) *PCEPErrorObject {
+	return &PCEPErrorObject{
 		ObjectType: ObjectTypeErrorError,
 		ErrorType:  errorType,
 		ErrorValue: errorValue,
 		Tlvs:       tlvs,
 	}
-	return o, nil
 }
 
 // Close Object (RFC5440 7.17)
@@ -500,6 +550,10 @@ type CloseObject struct {
 }
 
 func (o *CloseObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
+	if len(objectBody) < 4 {
+		return fmt.Errorf("CLOSE object body too short: got %d bytes, need at least 4", len(objectBody))
+	}
+
 	o.ObjectType = typ
 	o.Reason = CloseReason(objectBody[3])
 	return nil
@@ -521,12 +575,11 @@ func (o *CloseObject) Len() uint16 {
 	return commonObjectHeaderLength + 4
 }
 
-func NewCloseObject(reason CloseReason) (*CloseObject, error) {
-	o := &CloseObject{
+func NewCloseObject(reason CloseReason) *CloseObject {
+	return &CloseObject{
 		ObjectType: ObjectTypeCloseClose,
 		Reason:     reason,
 	}
-	return o, nil
 }
 
 // SRP Object (RFC8231 7.2)
@@ -564,10 +617,7 @@ func (o *SrpObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
 	return nil
 }
 
-func (o *SrpObject) Serialize() []uint8 {
-	srpObjectHeader := NewCommonObjectHeader(ObjectClassSRP, o.ObjectType, o.Len())
-	byteSrpObjectHeader := srpObjectHeader.Serialize()
-
+func (o *SrpObject) Serialize() ([]uint8, error) {
 	byteFlags := make([]uint8, 4)
 	if o.RFlag {
 		byteFlags[3] = byteFlags[3] | 0x01
@@ -577,19 +627,29 @@ func (o *SrpObject) Serialize() []uint8 {
 
 	byteTLVs := []uint8{}
 	for _, tlv := range o.TLVs {
-		byteTLVs = append(byteTLVs, tlv.Serialize()...)
+		b, err := tlv.Serialize()
+		if err != nil {
+			return nil, err
+		}
+		byteTLVs = append(byteTLVs, b...)
 	}
-	byteSrpObject := AppendByteSlices(byteSrpObjectHeader, byteFlags, byteSrpID, byteTLVs)
-	return byteSrpObject
+
+	length, err := objectLength(byteFlags, byteSrpID, byteTLVs)
+	if err != nil {
+		return nil, err
+	}
+	srpObjectHeader := NewCommonObjectHeader(ObjectClassSRP, o.ObjectType, length)
+
+	return AppendByteSlices(srpObjectHeader.Serialize(), byteFlags, byteSrpID, byteTLVs), nil
 }
 
-func (o *SrpObject) Len() uint16 {
-	tlvsByteLength := uint16(0)
+func (o *SrpObject) Len() int {
+	tlvsByteLength := 0
 	for _, tlv := range o.TLVs {
 		tlvsByteLength += tlv.Len()
 	}
 	// CommonObjectHeader(4byte) + Flags, SRP-ID(8byte)
-	return commonObjectHeaderLength + 8 + tlvsByteLength
+	return int(commonObjectHeaderLength) + 8 + tlvsByteLength
 }
 
 func NewSrpObject(segs []table.Segment, srpID uint32, isRemove bool) (*SrpObject, error) {
@@ -634,6 +694,10 @@ type LSPObject struct {
 }
 
 func (o *LSPObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
+	if len(objectBody) < 4 {
+		return fmt.Errorf("LSP object body too short: got %d bytes, need at least 4", len(objectBody))
+	}
+
 	o.ObjectType = typ
 	o.PlspID = uint32(binary.BigEndian.Uint32(objectBody[0:4]) >> 12) // 20 bits from top
 	o.CFlag = (objectBody[3] & 0x80) != 0
@@ -669,12 +733,9 @@ func (o *LSPObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
 	return nil
 }
 
-func (o *LSPObject) Serialize() []uint8 {
-	lspObjectHeader := NewCommonObjectHeader(ObjectClassLSP, o.ObjectType, o.Len())
-	byteLSPObjectHeader := lspObjectHeader.Serialize()
-
+func (o *LSPObject) Serialize() ([]uint8, error) {
 	buf := make([]uint8, 4)
-	binary.BigEndian.PutUint32(buf, uint32(o.PlspID<<12)+uint32(o.OFlag<<4))
+	binary.BigEndian.PutUint32(buf, (o.PlspID&0xFFFFF)<<12|uint32(o.OFlag&0x07)<<4)
 	if o.CFlag {
 		buf[3] = buf[3] | 0x80
 	}
@@ -692,25 +753,34 @@ func (o *LSPObject) Serialize() []uint8 {
 	}
 	byteTLVs := []uint8{}
 	for _, tlv := range o.TLVs {
-		byteTLVs = AppendByteSlices(byteTLVs, tlv.Serialize())
+		b, err := tlv.Serialize()
+		if err != nil {
+			return nil, err
+		}
+		byteTLVs = AppendByteSlices(byteTLVs, b)
 	}
 
-	byteLSPObject := AppendByteSlices(byteLSPObjectHeader, buf, byteTLVs)
-	return byteLSPObject
+	length, err := objectLength(buf, byteTLVs)
+	if err != nil {
+		return nil, err
+	}
+	lspObjectHeader := NewCommonObjectHeader(ObjectClassLSP, o.ObjectType, length)
+
+	return AppendByteSlices(lspObjectHeader.Serialize(), buf, byteTLVs), nil
 }
 
-func (o *LSPObject) Len() uint16 {
-	tlvsByteLength := uint16(0)
+func (o *LSPObject) Len() int {
+	tlvsByteLength := 0
 	for _, tlv := range o.TLVs {
 		tlvsByteLength += tlv.Len()
 	}
 	// Flags, SRP-ID (4byte)
-	lspObjectBodyLength := uint16(4) + tlvsByteLength
+	lspObjectBodyLength := 4 + tlvsByteLength
 	// CommonObjectHeader(4byte) + Flags, SRP-ID
-	return uint16(commonObjectHeaderLength) + lspObjectBodyLength
+	return int(commonObjectHeaderLength) + lspObjectBodyLength
 }
 
-func NewLSPObject(lspName string, color *uint32, plspID uint32) (*LSPObject, error) {
+func NewLSPObject(lspName string, color *uint32, plspID uint32) *LSPObject {
 	o := &LSPObject{
 		ObjectType: ObjectTypeLSPLSP,
 		Name:       lspName,
@@ -738,7 +808,7 @@ func NewLSPObject(lspName string, color *uint32, plspID uint32) (*LSPObject, err
 	if colorTLV != nil {
 		o.TLVs = append(o.TLVs, TLVInterface(colorTLV))
 	}
-	return o, nil
+	return o
 }
 
 // (I.D.draft-ietf-pce-pcep-color-12)
@@ -783,49 +853,53 @@ func (o *EroObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
 			return err
 		}
 		o.EroSubobjects = append(o.EroSubobjects, eroSubobj)
-		if objByteLength, err := eroSubobj.Len(); err != nil {
+		// DecodeFromBytes validates the subobject length before advancing objectBody.
+		objByteLength, err := eroSubobj.Len()
+		if err != nil {
 			return err
-		} else if int(objByteLength) < len(objectBody) {
-			objectBody = objectBody[objByteLength:]
-		} else if int(objByteLength) == len(objectBody) {
-			break
-		} else {
-			return errors.New("srerosubobject parse error")
 		}
+		if int(objByteLength) == len(objectBody) {
+			break
+		}
+		objectBody = objectBody[objByteLength:]
 	}
 	return nil
 }
 
 func (o EroObject) Serialize() ([]uint8, error) {
-	eroObjectLength, err := o.Len()
-	if err != nil {
-		return nil, err
-	}
-	eroObjectHeader := NewCommonObjectHeader(ObjectClassERO, o.ObjectType, eroObjectLength)
-	byteEroObjectHeader := eroObjectHeader.Serialize()
-
-	byteEroObject := byteEroObjectHeader
+	byteEroSubobjects := []uint8{}
 	for _, eroSubobject := range o.EroSubobjects {
+		// Len() also validates flag/NAI-type combinations that Serialize() does not check itself.
+		if _, err := eroSubobject.Len(); err != nil {
+			return nil, err
+		}
 		buf, err := eroSubobject.Serialize()
 		if err != nil {
 			return nil, fmt.Errorf("failed to serialize subobject: %w", err)
 		}
-		byteEroObject = append(byteEroObject, buf...)
+		byteEroSubobjects = append(byteEroSubobjects, buf...)
 	}
-	return byteEroObject, nil
+
+	length, err := objectLength(byteEroSubobjects)
+	if err != nil {
+		return nil, err
+	}
+	eroObjectHeader := NewCommonObjectHeader(ObjectClassERO, o.ObjectType, length)
+
+	return AppendByteSlices(eroObjectHeader.Serialize(), byteEroSubobjects), nil
 }
 
-func (o EroObject) Len() (uint16, error) {
-	eroSubobjByteLength := uint16(0)
+func (o EroObject) Len() (int, error) {
+	eroSubobjByteLength := 0
 	for _, eroSubObj := range o.EroSubobjects {
 		objByteLength, err := eroSubObj.Len()
 		if err != nil {
 			return 0, err
 		}
-		eroSubobjByteLength += objByteLength
+		eroSubobjByteLength += int(objByteLength)
 	}
 	// CommonObjectHeader(4byte) + eroSubobjects(valiable)
-	return uint16(commonObjectHeaderLength) + eroSubobjByteLength, nil
+	return int(commonObjectHeaderLength) + eroSubobjByteLength, nil
 }
 
 func NewEroObject(segmentList []table.Segment) (*EroObject, error) {
@@ -948,7 +1022,7 @@ type SREroSubobject struct {
 }
 
 func (o *SREroSubobject) DecodeFromBytes(subobject []uint8) error {
-	if len(subobject) < 8 {
+	if len(subobject) < 4 {
 		return errors.New("SREroSubobject: subobject too short")
 	}
 
@@ -961,36 +1035,70 @@ func (o *SREroSubobject) DecodeFromBytes(subobject []uint8) error {
 	o.CFlag = (subobject[3] & 0x02) != 0
 	o.MFlag = (subobject[3] & 0x01) != 0
 
+	if o.SFlag && o.FFlag {
+		return errors.New("SREroSubobject: both SID and NAI are absent")
+	}
+	// Bound reads to the declared length to prevent consuming the next subobject.
+	if int(o.Length) < 4 || len(subobject) < int(o.Length) {
+		return errors.New("SREroSubobject: invalid subobject length")
+	}
+	subobject = subobject[:o.Length]
+
+	off, err := o.decodeSID(subobject)
+	if err != nil {
+		return err
+	}
+
+	off, err = o.decodeNAI(subobject, off)
+	if err != nil {
+		return err
+	}
+
+	if off != len(subobject) {
+		return errors.New("SREroSubobject: declared length does not match S/F flags")
+	}
+	return nil
+}
+
+func (o *SREroSubobject) decodeSID(subobject []uint8) (int, error) {
+	if o.SFlag {
+		o.Segment = table.SegmentSRMPLS{}
+		return 4, nil
+	}
+	if len(subobject) < 8 {
+		return 0, errors.New("SREroSubobject: subobject too short")
+	}
 	sidWord := binary.BigEndian.Uint32(subobject[4:8])
-	sid := sidWord >> 12
-	o.Segment = table.NewSegmentSRMPLS(sid)
+	o.Segment = table.NewSegmentSRMPLS(sidWord >> 12)
 	if o.CFlag {
 		// Per RFC 8664 §4.3.1: when C=1, TC/S/TTL of the MPLS LSE are set by the PCE.
 		o.Segment.TC = uint8((sidWord >> 9) & 0x07)
 		o.Segment.S = (sidWord & (uint32(1) << 8)) != 0
 		o.Segment.TTL = uint8(sidWord & 0xFF)
 	}
+	return 8, nil
+}
 
-	// The NAI follows the SID and is present only when F=0 (RFC8664 4.3.1).
-	if !o.FFlag {
-		const off = 8
-		naiLength, err := o.NAIType.naiLength()
-		if err != nil {
-			return err
-		}
-		if naiLength > 0 && len(subobject) < off+int(naiLength) {
-			return fmt.Errorf("SREroSubobject: truncated NAI (%s)", o.NAIType)
-		}
-		switch o.NAIType {
-		case NAITypeSRIPv4Node, NAITypeSRIPv6Node:
-			o.Segment.LocalAddr, _ = netip.AddrFromSlice(subobject[off : off+int(naiLength)])
-		case NAITypeSRIPv4Adjacency, NAITypeSRIPv6AdjacencyGlobal:
-			half := off + int(naiLength)/2
-			o.Segment.LocalAddr, _ = netip.AddrFromSlice(subobject[off:half])
-			o.Segment.RemoteAddr, _ = netip.AddrFromSlice(subobject[half : off+int(naiLength)])
-		}
+func (o *SREroSubobject) decodeNAI(subobject []uint8, off int) (int, error) {
+	if o.FFlag {
+		return off, nil
 	}
-	return nil
+	naiLength, err := o.NAIType.naiLength()
+	if err != nil {
+		return 0, err
+	}
+	if naiLength > 0 && len(subobject) < off+int(naiLength) {
+		return 0, fmt.Errorf("SREroSubobject: truncated NAI (%s)", o.NAIType)
+	}
+	switch o.NAIType {
+	case NAITypeSRIPv4Node, NAITypeSRIPv6Node:
+		o.Segment.LocalAddr, _ = netip.AddrFromSlice(subobject[off : off+int(naiLength)])
+	case NAITypeSRIPv4Adjacency, NAITypeSRIPv6AdjacencyGlobal:
+		half := off + int(naiLength)/2
+		o.Segment.LocalAddr, _ = netip.AddrFromSlice(subobject[off:half])
+		o.Segment.RemoteAddr, _ = netip.AddrFromSlice(subobject[half : off+int(naiLength)])
+	}
+	return off + int(naiLength), nil
 }
 
 // serializeNAI encodes the NAI following the SID, or nil when it is absent.
@@ -1049,17 +1157,19 @@ func (o *SREroSubobject) Serialize() ([]uint8, error) {
 		buf[3] |= 0x01
 	}
 
-	sidWord := (o.Segment.Sid & 0xFFFFF) << 12
-	if o.CFlag {
-		sidWord |= uint32(o.Segment.TC&0x07) << 9
-		if o.Segment.S {
-			sidWord |= uint32(1) << 8
+	var byteSid []uint8
+	if !o.SFlag {
+		sidWord := (o.Segment.Sid & 0xFFFFF) << 12
+		if o.CFlag {
+			sidWord |= uint32(o.Segment.TC&0x07) << 9
+			if o.Segment.S {
+				sidWord |= uint32(1) << 8
+			}
+			sidWord |= uint32(o.Segment.TTL)
 		}
-		sidWord |= uint32(o.Segment.TTL)
+		byteSid = make([]uint8, 4)
+		binary.BigEndian.PutUint32(byteSid, sidWord)
 	}
-
-	byteSid := make([]uint8, 4)
-	binary.BigEndian.PutUint32(byteSid, sidWord)
 
 	byteNAI, err := o.serializeNAI()
 	if err != nil {
@@ -1072,22 +1182,26 @@ func (o *SREroSubobject) Serialize() ([]uint8, error) {
 func (nt NAITypeSR) naiLength() (uint16, error) {
 	switch nt {
 	case NAITypeSRAbsent:
-		return uint16(0), nil
+		return 0, nil
 	case NAITypeSRIPv4Node:
-		return uint16(4), nil
+		return 4, nil
 	case NAITypeSRIPv6Node:
-		return uint16(16), nil
+		return 16, nil
 	case NAITypeSRIPv4Adjacency:
-		return uint16(8), nil
+		return 8, nil
 	case NAITypeSRIPv6AdjacencyGlobal:
-		return uint16(32), nil
+		return 32, nil
 	default:
-		return uint16(0), errors.New("unsupported naitype")
+		// Unnumbered and link-local adjacency NAIs are not supported by the decoder.
+		return 0, errors.New("unsupported naitype")
 	}
 }
 
 func (o *SREroSubobject) Len() (uint16, error) {
-	length := uint16(8)
+	length := uint16(4)
+	if !o.SFlag {
+		length += 4
+	}
 	if o.FFlag {
 		return length, nil
 	}
@@ -1218,44 +1332,26 @@ func (o *SRv6EroSubobject) DecodeFromBytes(subobject []uint8) error {
 	o.FFlag = (subobject[3] & 0x02) != 0
 	o.SFlag = (subobject[3] & 0x01) != 0
 
+	if o.SFlag && o.FFlag {
+		return errors.New("SRv6EroSubobject: both SID and NAI are absent")
+	}
+	// Bound reads to the declared length to prevent consuming the next subobject.
+	if int(o.Length) < 8 || len(subobject) < int(o.Length) {
+		return errors.New("SRv6EroSubobject: invalid subobject length")
+	}
+	subobject = subobject[:o.Length]
+
 	behavior := binary.BigEndian.Uint16(subobject[6:8])
 
-	off := 8
-	if !o.SFlag {
-		if len(subobject) < off+16 {
-			return errors.New("SRv6EroSubobject: truncated SID")
-		}
-		sid, _ := netip.AddrFromSlice(subobject[off : off+16])
-		o.Segment = table.NewSegmentSRv6(sid)
-		off += 16
-	} else {
-		o.Segment = table.SegmentSRv6{}
+	off, err := o.decodeSID(subobject, 8)
+	if err != nil {
+		return err
 	}
 
 	if !o.FFlag {
-		switch o.NAIType {
-		case NAITypeSRv6IPv6Node:
-			if len(subobject) < off+16 {
-				return errors.New("SRv6EroSubobject: truncated NAI (Node)")
-			}
-			o.Segment.LocalAddr, _ = netip.AddrFromSlice(subobject[off : off+16])
-			off += 16
-		case NAITypeSRv6IPv6AdjacencyGlobal:
-			if len(subobject) < off+32 {
-				return errors.New("SRv6EroSubobject: truncated NAI (AdjGlobal)")
-			}
-			o.Segment.LocalAddr, _ = netip.AddrFromSlice(subobject[off : off+16])
-			o.Segment.RemoteAddr, _ = netip.AddrFromSlice(subobject[off+16 : off+32])
-			off += 32
-		case NAITypeSRv6IPv6AdjacencyLinkLocal:
-			if len(subobject) < off+40 {
-				return errors.New("SRv6EroSubobject: truncated NAI (AdjLinkLocal)")
-			}
-			o.Segment.LocalAddr, _ = netip.AddrFromSlice(subobject[off : off+16])
-			// subobject[off+16 : off+20] — Local Interface ID (not parsed)
-			o.Segment.RemoteAddr, _ = netip.AddrFromSlice(subobject[off+20 : off+36])
-			// subobject[off+36 : off+40] — Remote Interface ID (not parsed)
-			off += 40
+		off, err = o.decodeNAI(subobject, off)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -1269,13 +1365,63 @@ func (o *SRv6EroSubobject) DecodeFromBytes(subobject []uint8) error {
 			subobject[off+2],
 			subobject[off+3],
 		}
+		if err := o.Segment.Structure.Validate(); err != nil {
+			return err
+		}
+		off += 8
 	}
 
-	if behavior == table.BehaviorUN || behavior == table.BehaviorUA {
+	if off != len(subobject) {
+		return errors.New("SRv6EroSubobject: declared length does not match V/T/F/S flags")
+	}
+
+	if table.IsUSidBehavior(behavior) {
 		o.Segment.USid = true
 	}
 
 	return nil
+}
+
+func (o *SRv6EroSubobject) decodeSID(subobject []uint8, off int) (int, error) {
+	if o.SFlag {
+		o.Segment = table.SegmentSRv6{}
+		return off, nil
+	}
+	if len(subobject) < off+16 {
+		return off, errors.New("SRv6EroSubobject: truncated SID")
+	}
+	sid, _ := netip.AddrFromSlice(subobject[off : off+16])
+	o.Segment = table.NewSegmentSRv6(sid)
+	return off + 16, nil
+}
+
+func (o *SRv6EroSubobject) decodeNAI(subobject []uint8, off int) (int, error) {
+	switch o.NAIType {
+	case NAITypeSRv6IPv6Node:
+		if len(subobject) < off+16 {
+			return off, errors.New("SRv6EroSubobject: truncated NAI (Node)")
+		}
+		o.Segment.LocalAddr, _ = netip.AddrFromSlice(subobject[off : off+16])
+		return off + 16, nil
+	case NAITypeSRv6IPv6AdjacencyGlobal:
+		if len(subobject) < off+32 {
+			return off, errors.New("SRv6EroSubobject: truncated NAI (AdjGlobal)")
+		}
+		o.Segment.LocalAddr, _ = netip.AddrFromSlice(subobject[off : off+16])
+		o.Segment.RemoteAddr, _ = netip.AddrFromSlice(subobject[off+16 : off+32])
+		return off + 32, nil
+	case NAITypeSRv6IPv6AdjacencyLinkLocal:
+		if len(subobject) < off+40 {
+			return off, errors.New("SRv6EroSubobject: truncated NAI (AdjLinkLocal)")
+		}
+		o.Segment.LocalAddr, _ = netip.AddrFromSlice(subobject[off : off+16])
+		// subobject[off+16 : off+20] — Local Interface ID (not parsed)
+		o.Segment.RemoteAddr, _ = netip.AddrFromSlice(subobject[off+20 : off+36])
+		// subobject[off+36 : off+40] — Remote Interface ID (not parsed)
+		return off + 40, nil
+	default:
+		return off, nil
+	}
 }
 
 func (o *SRv6EroSubobject) Serialize() ([]uint8, error) {
@@ -1301,11 +1447,7 @@ func (o *SRv6EroSubobject) Serialize() ([]uint8, error) {
 
 	reserved := make([]uint8, 2)
 
-	behavior, err := o.Segment.Behavior()
-	if err != nil {
-		return nil, err
-	}
-	behaviorBytes := Uint16ToByteSlice(behavior)
+	behaviorBytes := Uint16ToByteSlice(o.Segment.Behavior())
 
 	byteSid := o.Segment.Sid.AsSlice()
 
@@ -1357,31 +1499,40 @@ func (o *SRv6EroSubobject) Len() (uint16, error) {
 
 func NewSRv6EroSubobject(seg table.SegmentSRv6) (*SRv6EroSubobject, error) {
 	subo := &SRv6EroSubobject{
-		LFlag:         false,
 		SubobjectType: SubobjectTypeEROSRv6,
-		VFlag:         false,
-		SFlag:         false, // SID is absent
 		Segment:       seg,
 	}
 
-	if seg.Structure != nil {
-		subo.TFlag = true // the SID Structure value in the subobject body is present
-	} else {
-		subo.TFlag = false
+	if err := seg.Structure.Validate(); err != nil {
+		return nil, fmt.Errorf("SegmentSRv6: invalid SID structure: %w", err)
 	}
-	if seg.LocalAddr.IsValid() {
-		subo.FFlag = false // NAI is present
+	if len(seg.Structure) == 0 {
+		subo.Segment.Structure = nil
+	}
+	subo.TFlag = len(subo.Segment.Structure) > 0
 
-		if seg.RemoteAddr.IsValid() {
-			// End.X or uA
-			subo.NAIType = NAITypeSRv6IPv6AdjacencyGlobal
-		} else {
-			// End or uN
-			subo.NAIType = NAITypeSRv6IPv6Node
+	local, remote := seg.LocalAddr.Unmap(), seg.RemoteAddr.Unmap()
+	switch {
+	case !local.IsValid():
+		if remote.IsValid() {
+			return nil, errors.New("SegmentSRv6: RemoteAddr requires LocalAddr")
 		}
-	} else {
-		subo.FFlag = true // SID is absent
+		subo.FFlag = true
 		subo.NAIType = NAITypeSRv6Absent
+	case !local.Is6():
+		return nil, errors.New("SegmentSRv6: NAI LocalAddr must be IPv6")
+	case remote.IsValid() && !remote.Is6():
+		return nil, errors.New("SegmentSRv6: NAI RemoteAddr must be IPv6")
+	case local.IsLinkLocalUnicast() || remote.IsLinkLocalUnicast():
+		// Link-local adjacencies require NAITypeSRv6IPv6AdjacencyLinkLocal
+		// (RFC 9603 §4.3.1), which is not yet supported for encoding.
+		return nil, errors.New("SegmentSRv6: link-local IPv6 adjacency NAI is unsupported")
+	case remote.IsValid():
+		subo.FFlag = false
+		subo.NAIType = NAITypeSRv6IPv6AdjacencyGlobal
+	default:
+		subo.FFlag = false
+		subo.NAIType = NAITypeSRv6IPv6Node
 	}
 
 	length, err := subo.Len()
@@ -1397,7 +1548,7 @@ func (o *SRv6EroSubobject) ToSegment() table.Segment {
 }
 
 const (
-	// RSVP IPv4 Prefix ERO Subobject (RFC3209 4.3.3.1)
+	// SubobjectTypeEROIPv4Prefix is the RSVP IPv4 Prefix ERO Subobject (RFC 3209 §4.3.3.1).
 	SubobjectTypeEROIPv4Prefix SubobjectType = 0x01
 
 	// rsvpIPv4PrefixEroSubobjectLength is the fixed on-wire length of the
@@ -1421,9 +1572,8 @@ func (o *RSVPIPv4PrefixEroSubobject) DecodeFromBytes(subobject []uint8) error {
 		return fmt.Errorf("RSVPIPv4PrefixEroSubobject: subobject too short: %d", len(subobject))
 	}
 
-	// Per RFC3209 4.3.3.1 the Length field carries the total length of the
-	// subobject in bytes; for an IPv4 prefix hop it is fixed at 8. Validate it
-	// so a malformed subobject does not desync the enclosing ERO decode loop.
+	// RFC 3209 §4.3.3.1 defines a fixed length of 8 bytes for this subobject.
+	// Validate it to prevent malformed input from desynchronizing the ERO decode loop.
 	if subobject[1] != rsvpIPv4PrefixEroSubobjectLength {
 		return fmt.Errorf("RSVPIPv4PrefixEroSubobject: invalid length field: %d", subobject[1])
 	}
@@ -1598,6 +1748,10 @@ type AssociationObject struct {
 }
 
 func (o *AssociationObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
+	if len(objectBody) < 8 {
+		return fmt.Errorf("ASSOCIATION object body too short: got %d bytes, need at least 8", len(objectBody))
+	}
+
 	o.ObjectType = typ
 	o.RFlag = (objectBody[3] & 0x01) != 0
 	o.AssocType = AssocType(binary.BigEndian.Uint16(objectBody[4:6]))
@@ -1605,6 +1759,9 @@ func (o *AssociationObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) 
 
 	switch o.ObjectType {
 	case ObjectTypeAssociationIPv4:
+		if len(objectBody) < 12 {
+			return fmt.Errorf("ASSOCIATION (IPv4) object body too short: got %d bytes, need at least 12", len(objectBody))
+		}
 		assocSrcBytes, _ := netip.AddrFromSlice(objectBody[8:12])
 		o.AssocSrc = assocSrcBytes
 		if len(objectBody) > 12 {
@@ -1615,6 +1772,9 @@ func (o *AssociationObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) 
 			}
 		}
 	case ObjectTypeAssociationIPv6:
+		if len(objectBody) < 24 {
+			return fmt.Errorf("ASSOCIATION (IPv6) object body too short: got %d bytes, need at least 24", len(objectBody))
+		}
 		o.AssocSrc, _ = netip.AddrFromSlice(objectBody[8:24])
 		if len(objectBody) > 24 {
 			byteTLVs := objectBody[24:]
@@ -1631,13 +1791,9 @@ func (o *AssociationObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) 
 }
 
 func (o *AssociationObject) Serialize() ([]uint8, error) {
-	associationObjectLength, err := o.Len()
-	if err != nil {
-		return nil, err
+	if !o.AssocSrc.Is4() && !o.AssocSrc.Is6() {
+		return nil, errors.New("invalid association source address (Serialize)")
 	}
-	associationObjectHeader := NewCommonObjectHeader(ObjectClassAssociation, o.ObjectType, associationObjectLength)
-
-	byteAssociationObjectHeader := associationObjectHeader.Serialize()
 
 	buf := make([]uint8, 4)
 
@@ -1647,34 +1803,44 @@ func (o *AssociationObject) Serialize() ([]uint8, error) {
 
 	assocType := Uint16ToByteSlice(o.AssocType)
 	assocID := Uint16ToByteSlice(o.AssocID)
+	assocSrc := o.AssocSrc.AsSlice()
 
 	byteTLVs := []uint8{}
 	for _, tlv := range o.TLVs {
-		byteTLVs = append(byteTLVs, tlv.Serialize()...)
+		b, err := tlv.Serialize()
+		if err != nil {
+			return nil, err
+		}
+		byteTLVs = append(byteTLVs, b...)
 	}
 
-	byteAssociationObject := AppendByteSlices(
-		byteAssociationObjectHeader, buf, assocType, assocID, o.AssocSrc.AsSlice(), byteTLVs,
-	)
-	return byteAssociationObject, nil
+	length, err := objectLength(buf, assocType, assocID, assocSrc, byteTLVs)
+	if err != nil {
+		return nil, err
+	}
+	associationObjectHeader := NewCommonObjectHeader(ObjectClassAssociation, o.ObjectType, length)
+
+	return AppendByteSlices(
+		associationObjectHeader.Serialize(), buf, assocType, assocID, assocSrc, byteTLVs,
+	), nil
 }
 
-func (o AssociationObject) Len() (uint16, error) {
-	tlvsByteLength := uint16(0)
+func (o AssociationObject) Len() (int, error) {
+	tlvsByteLength := 0
 	for _, tlv := range o.TLVs {
 		tlvsByteLength += tlv.Len()
 	}
-	var associationObjectBodyLength uint16
+	var associationObjectBodyLength int
 	if o.AssocSrc.Is4() {
 		// Reserved(2byte) + Flags(2byte) + Assoc Type(2byte) + Assoc ID(2byte) + IPv4 Assoc Src(4byte)
-		associationObjectBodyLength = uint16(12) + tlvsByteLength
+		associationObjectBodyLength = 12 + tlvsByteLength
 	} else if o.AssocSrc.Is6() {
 		// Reserved(2byte) + Flags(2byte) + Assoc Type(2byte) + Assoc ID(2byte) + IPv6 Assoc Src(16byte)
-		associationObjectBodyLength = uint16(24) + tlvsByteLength
+		associationObjectBodyLength = 24 + tlvsByteLength
 	} else {
-		return uint16(0), errors.New("invalid association source address (Len())")
+		return 0, errors.New("invalid association source address (Len())")
 	}
-	return (commonObjectHeaderLength + associationObjectBodyLength), nil
+	return int(commonObjectHeaderLength) + associationObjectBodyLength, nil
 }
 
 func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, preference uint32, opt ...Opt) (*AssociationObject, error) {
@@ -1687,9 +1853,9 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 	}
 	var objectType ObjectType
 	if dstAddr.Is4() && srcAddr.Is4() {
-		objectType = ObjectTypeEndpointIPv4
+		objectType = ObjectTypeAssociationIPv4
 	} else if dstAddr.Is6() && srcAddr.Is6() {
-		objectType = ObjectTypeEndpointIPv6
+		objectType = ObjectTypeAssociationIPv6
 	} else {
 		return nil, fmt.Errorf("invalid endpoints address (NewAssociationObject): src=%v dst=%v", srcAddr, dstAddr)
 	}
@@ -1831,30 +1997,34 @@ func (o *VendorInformationObject) DecodeFromBytes(typ ObjectType, objectBody []u
 	return nil
 }
 
-func (o *VendorInformationObject) Serialize() []uint8 {
-	vendorInformationObjectHeader := NewCommonObjectHeader(ObjectClassVendorInformation, o.ObjectType, o.Len())
-	byteVendorInformationObjectHeader := vendorInformationObjectHeader.Serialize()
-
+func (o *VendorInformationObject) Serialize() ([]uint8, error) {
 	enterpriseNumber := Uint32ToByteSlice(uint32(o.EnterpriseNumber))
 
 	byteTLVs := []uint8{}
 	for _, tlv := range o.TLVs {
-		byteTLVs = append(byteTLVs, tlv.Serialize()...)
+		b, err := tlv.Serialize()
+		if err != nil {
+			return nil, err
+		}
+		byteTLVs = append(byteTLVs, b...)
 	}
 
-	byteVendorInformationObject := AppendByteSlices(
-		byteVendorInformationObjectHeader, enterpriseNumber, byteTLVs,
-	)
-	return byteVendorInformationObject
+	length, err := objectLength(enterpriseNumber, byteTLVs)
+	if err != nil {
+		return nil, err
+	}
+	vendorInformationObjectHeader := NewCommonObjectHeader(ObjectClassVendorInformation, o.ObjectType, length)
+
+	return AppendByteSlices(vendorInformationObjectHeader.Serialize(), enterpriseNumber, byteTLVs), nil
 }
 
-func (o *VendorInformationObject) Len() uint16 {
-	tlvsByteLength := uint16(0)
+func (o *VendorInformationObject) Len() int {
+	tlvsByteLength := 0
 	for _, tlv := range o.TLVs {
 		tlvsByteLength += tlv.Len()
 	}
 	// CommonObjectHeader(4byte) + Enterprise Number (4byte) + TLVs (variable)
-	return commonObjectHeaderLength + EnterpriseNumberLength + tlvsByteLength
+	return int(commonObjectHeaderLength) + int(EnterpriseNumberLength) + tlvsByteLength
 }
 
 func NewVendorInformationObject(vendor PccType, color uint32, preference uint32) (*VendorInformationObject, error) {
@@ -1866,14 +2036,12 @@ func NewVendorInformationObject(vendor PccType, color uint32, preference uint32)
 		o.EnterpriseNumber = EnterpriseNumberCisco
 		vendorInformationObjectTLVs := []TLVInterface{
 			&UnknownTLV{
-				Typ:    SubTLVColorCisco,
-				Length: SubTLVColorCiscoValueLength, // TODO: 20 if ipv6 endpoint
-				Value:  Uint32ToByteSlice(color),
+				Typ:   SubTLVColorCisco,
+				Value: Uint32ToByteSlice(color), // TODO: 20 if ipv6 endpoint
 			},
 			&UnknownTLV{
-				Typ:    SubTLVPreferenceCisco,
-				Length: SubTLVPreferenceCiscoValueLength,
-				Value:  Uint32ToByteSlice(preference),
+				Typ:   SubTLVPreferenceCisco,
+				Value: Uint32ToByteSlice(preference),
 			},
 		}
 		o.TLVs = append(o.TLVs, vendorInformationObjectTLVs...)

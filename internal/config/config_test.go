@@ -8,16 +8,16 @@ package config
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func writeConfig(t *testing.T, content string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "polad.yaml")
-	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
-		t.Fatalf("failed to write config file: %v", err)
-	}
+	require.NoError(t, os.WriteFile(path, []byte(content), 0600))
 	return path
 }
 
@@ -47,18 +47,10 @@ func TestReadConfigFile_Valid(t *testing.T) {
 	path := writeConfig(t, validConfig)
 
 	c, err := ReadConfigFile(path)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if c.Global.GRPCServer.Address != "127.0.0.1" || c.Global.GRPCServer.Port != "50052" {
-		t.Errorf("unexpected GRPCServer: %+v", c.Global.GRPCServer)
-	}
-	if c.Global.TED == nil || !c.Global.TED.Enable || c.Global.TED.ASN != 65000 {
-		t.Errorf("unexpected TED: %+v", c.Global.TED)
-	}
-	if err := c.Validate(); err != nil {
-		t.Errorf("unexpected validation error: %v", err)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, GRPCServer{Address: "127.0.0.1", Port: "50052"}, c.Global.GRPCServer)
+	assert.Equal(t, &TED{Enable: true, Source: "gobgp", ASN: 65000}, c.Global.TED)
+	assert.NoError(t, c.Validate())
 }
 
 // Regression test: v1.3.0 configs used kebab-case keys (grpc-server, usid-mode,
@@ -81,19 +73,22 @@ global:
 	path := writeConfig(t, legacyConfig)
 
 	_, err := ReadConfigFile(path)
-	if err == nil {
-		t.Fatal("expected error for legacy kebab-case config, got nil")
-	}
-	if !strings.Contains(err.Error(), "grpc-server") {
-		t.Errorf("expected error to mention the offending key \"grpc-server\", got: %v", err)
-	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "grpc-server")
+}
+
+func TestReadConfigFile_FileNotFound(t *testing.T) {
+	_, err := ReadConfigFile(filepath.Join(t.TempDir(), "does-not-exist.yaml"))
+	require.Error(t, err)
+	assert.True(t, os.IsNotExist(err))
 }
 
 func TestConfig_Validate(t *testing.T) {
 	tests := []struct {
-		name    string
-		config  string
-		wantErr bool
+		name        string
+		config      string
+		wantErr     bool
+		errContains string
 	}{
 		{
 			name:   "valid, TED enabled",
@@ -183,22 +178,136 @@ global:
 `,
 			wantErr: true,
 		},
+		{
+			name: "missing pcep.address",
+			config: `
+global:
+  pcep:
+    port: 4189
+  grpcServer:
+    address: "127.0.0.1"
+    port: 50052
+  log:
+    path: "/var/log/pola/"
+    name: "polad.log"
+  ted:
+    enable: false
+`,
+			wantErr:     true,
+			errContains: "global.pcep.address is required",
+		},
+		{
+			name: "missing pcep.port",
+			config: `
+global:
+  pcep:
+    address: "127.0.0.1"
+  grpcServer:
+    address: "127.0.0.1"
+    port: 50052
+  log:
+    path: "/var/log/pola/"
+    name: "polad.log"
+  ted:
+    enable: false
+`,
+			wantErr:     true,
+			errContains: "global.pcep.port is required",
+		},
+		{
+			name: "missing log.path",
+			config: `
+global:
+  pcep:
+    address: "127.0.0.1"
+    port: 4189
+  grpcServer:
+    address: "127.0.0.1"
+    port: 50052
+  log:
+    name: "polad.log"
+  ted:
+    enable: false
+`,
+			wantErr:     true,
+			errContains: "global.log.path is required",
+		},
+		{
+			name: "missing log.name",
+			config: `
+global:
+  pcep:
+    address: "127.0.0.1"
+    port: 4189
+  grpcServer:
+    address: "127.0.0.1"
+    port: 50052
+  log:
+    path: "/var/log/pola/"
+  ted:
+    enable: false
+`,
+			wantErr:     true,
+			errContains: "global.log.name is required",
+		},
+		{
+			name: "ted enabled without source",
+			config: `
+global:
+  pcep:
+    address: "127.0.0.1"
+    port: 4189
+  grpcServer:
+    address: "127.0.0.1"
+    port: 50052
+  log:
+    path: "/var/log/pola/"
+    name: "polad.log"
+  ted:
+    enable: true
+    asn: 65000
+`,
+			wantErr:     true,
+			errContains: "global.ted.source is required when global.ted.enable is true",
+		},
+		{
+			name: "ted enabled with unsupported source",
+			config: `
+global:
+  pcep:
+    address: "127.0.0.1"
+    port: 4189
+  grpcServer:
+    address: "127.0.0.1"
+    port: 50052
+  log:
+    path: "/var/log/pola/"
+    name: "polad.log"
+  ted:
+    enable: true
+    source: "bmp"
+    asn: 65000
+`,
+			wantErr:     true,
+			errContains: `global.ted.source "bmp" is not supported`,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			path := writeConfig(t, tt.config)
 			c, err := ReadConfigFile(path)
-			if err != nil {
-				t.Fatalf("unexpected read error: %v", err)
-			}
+			require.NoError(t, err)
+
 			err = c.Validate()
-			if tt.wantErr && err == nil {
-				t.Error("expected validation error, got nil")
+			if tt.wantErr {
+				assert.Error(t, err)
+				if tt.errContains != "" {
+					assert.ErrorContains(t, err, tt.errContains)
+				}
+				return
 			}
-			if !tt.wantErr && err != nil {
-				t.Errorf("unexpected validation error: %v", err)
-			}
+			require.NoError(t, err)
 		})
 	}
 }
@@ -209,10 +318,6 @@ func TestReadConfigFile_UnquotedIntegerPort(t *testing.T) {
 	path := writeConfig(t, validConfig)
 
 	c, err := ReadConfigFile(path)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if c.Global.GRPCServer.Port != "50052" {
-		t.Errorf("expected Port %q, got %q", "50052", c.Global.GRPCServer.Port)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "50052", c.Global.GRPCServer.Port)
 }

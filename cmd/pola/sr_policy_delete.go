@@ -12,6 +12,7 @@ import (
 
 	pb "github.com/nttcom/pola/api/pola/v1"
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc/status"
 	yaml "gopkg.in/yaml.v2"
 
 	"github.com/nttcom/pola/cmd/pola/grpc"
@@ -80,6 +81,9 @@ func deleteSRPolicy(input InputFormat, jsonFlag bool) error {
 		Asn:      input.ASN,
 	}
 	if err := grpc.DeleteSRPolicy(client, inputData); err != nil {
+		if st, ok := status.FromError(err); ok {
+			return fmt.Errorf("gRPC Server Error: %s", st.Message())
+		}
 		return fmt.Errorf("gRPC Server Error: %s", err.Error())
 	}
 

@@ -19,6 +19,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
 	pb "github.com/nttcom/pola/api/pola/v1"
@@ -97,9 +99,7 @@ func serve(t *testing.T, f *fakeServer) string {
 	t.Helper()
 
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("listen: %v", err)
-	}
+	require.NoError(t, err)
 	s := grpc.NewServer()
 	pb.RegisterPCEServiceServer(s, f)
 	go func() {
@@ -251,37 +251,25 @@ func run(t *testing.T, name, addr string) (string, int) {
 func wantOutput(t *testing.T, out string, code int, want ...string) {
 	t.Helper()
 
-	if code != 0 {
-		t.Errorf("exit code = %d, want 0\noutput:\n%s", code, out)
-	}
+	assert.Equal(t, 0, code, "output:\n%s", out)
 	for _, w := range want {
-		if !strings.Contains(out, w) {
-			t.Errorf("output does not contain %q\noutput:\n%s", w, out)
-		}
+		assert.Contains(t, out, w)
 	}
 }
 
 func wantFailure(t *testing.T, out string, code int, wantPrefix string) {
 	t.Helper()
 
-	if code == 0 {
-		t.Errorf("exit code = 0, want non-zero\noutput:\n%s", out)
-	}
-	if !strings.Contains(out, wantPrefix) {
-		t.Errorf("output does not contain %q\noutput:\n%s", wantPrefix, out)
-	}
-	if !strings.Contains(out, errFake.Error()) {
-		t.Errorf("output does not surface the server error\noutput:\n%s", out)
-	}
+	assert.NotEqual(t, 0, code, "output:\n%s", out)
+	assert.Contains(t, out, wantPrefix)
+	assert.Contains(t, out, errFake.Error(), "output does not surface the server error")
 }
 
 func addrBytes(t *testing.T, s string) []byte {
 	t.Helper()
 
 	ip := net.ParseIP(s)
-	if ip == nil {
-		t.Fatalf("bad test address %q", s)
-	}
+	require.NotNil(t, ip, "bad test address %q", s)
 	if v4 := ip.To4(); v4 != nil {
 		return v4
 	}
@@ -294,12 +282,8 @@ func TestInvalidServerAddress(t *testing.T) {
 	for _, dir := range exampleDirs {
 		t.Run(dir, func(t *testing.T) {
 			out, code := run(t, dir, "%%")
-			if code == 0 {
-				t.Errorf("exit code = 0, want non-zero\noutput:\n%s", out)
-			}
-			if !strings.Contains(out, "unable to connect to %%") {
-				t.Errorf("output does not report the dial failure\noutput:\n%s", out)
-			}
+			assert.NotEqual(t, 0, code, "output:\n%s", out)
+			assert.Contains(t, out, "unable to connect to %%")
 		})
 	}
 }
@@ -311,31 +295,15 @@ func TestSRPolicyCreateDynamic(t *testing.T) {
 		wantOutput(t, out, code, "success: isSuccess=true")
 
 		req := f.createReq
-		if req == nil {
-			t.Fatal("server received no request")
-		}
+		require.NotNil(t, req, "server received no request")
 		// Dynamic policies require TED-based path computation.
-		if req.GetDisablePathCompute() {
-			t.Error("DisablePathCompute = true, want false")
-		}
-		if got := req.GetSrPolicy().GetType(); got != pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC {
-			t.Errorf("Type = %v, want DYNAMIC", got)
-		}
-		if got := req.GetAsn(); got == 0 {
-			t.Error("Asn = 0, want the TED ASN")
-		}
-		if got := req.GetSrPolicy().GetSrcRouterId(); got == "" {
-			t.Error("SrcRouterId is empty")
-		}
-		if got := len(req.GetSrPolicy().GetWaypoints()); got != 1 {
-			t.Errorf("len(Waypoints) = %d, want 1", got)
-		}
-		if got := req.GetSrPolicy().GetMetric(); got != pb.MetricType_METRIC_TYPE_TE {
-			t.Errorf("Metric = %v, want TE", got)
-		}
-		if req.GetNoSidValidate() {
-			t.Error("NoSidValidate = true, want false")
-		}
+		assert.False(t, req.GetDisablePathCompute())
+		assert.Equal(t, pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC, req.GetSrPolicy().GetType())
+		assert.NotZero(t, req.GetAsn(), "want the TED ASN")
+		assert.NotEmpty(t, req.GetSrPolicy().GetSrcRouterId())
+		assert.Len(t, req.GetSrPolicy().GetWaypoints(), 1)
+		assert.Equal(t, pb.MetricType_METRIC_TYPE_TE, req.GetSrPolicy().GetMetric())
+		assert.False(t, req.GetNoSidValidate())
 	})
 
 	t.Run("rpc error", func(t *testing.T) {
@@ -351,21 +319,11 @@ func TestSRPolicyCreateExplicit(t *testing.T) {
 		wantOutput(t, out, code, "success: isSuccess=true")
 
 		req := f.createReq
-		if req == nil {
-			t.Fatal("server received no request")
-		}
-		if req.GetDisablePathCompute() {
-			t.Error("DisablePathCompute = true, want false")
-		}
-		if got := req.GetSrPolicy().GetType(); got != pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT {
-			t.Errorf("Type = %v, want EXPLICIT", got)
-		}
-		if got := len(req.GetSrPolicy().GetSegmentList()); got == 0 {
-			t.Error("SegmentList is empty")
-		}
-		if req.GetNoSidValidate() {
-			t.Error("NoSidValidate = true, want false")
-		}
+		require.NotNil(t, req, "server received no request")
+		assert.False(t, req.GetDisablePathCompute())
+		assert.Equal(t, pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT, req.GetSrPolicy().GetType())
+		assert.NotEmpty(t, req.GetSrPolicy().GetSegmentList())
+		assert.False(t, req.GetNoSidValidate())
 	})
 
 	t.Run("rpc error", func(t *testing.T) {
@@ -381,27 +339,13 @@ func TestSRPolicyCreateNoSIDValidate(t *testing.T) {
 		wantOutput(t, out, code, "success: isSuccess=true")
 
 		req := f.createReq
-		if req == nil {
-			t.Fatal("server received no request")
-		}
-		if !req.GetDisablePathCompute() {
-			t.Error("DisablePathCompute = false, want true")
-		}
-		if got := req.GetSrPolicy().GetType(); got != pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT {
-			t.Errorf("Type = %v, want EXPLICIT", got)
-		}
-		if len(req.GetSrPolicy().GetSrcAddr()) == 0 {
-			t.Error("SrcAddr is empty")
-		}
-		if len(req.GetSrPolicy().GetDstAddr()) == 0 {
-			t.Error("DstAddr is empty")
-		}
-		if got := len(req.GetSrPolicy().GetSegmentList()); got == 0 {
-			t.Error("SegmentList is empty")
-		}
-		if !req.GetNoSidValidate() {
-			t.Error("NoSidValidate = false, want true")
-		}
+		require.NotNil(t, req, "server received no request")
+		assert.True(t, req.GetDisablePathCompute())
+		assert.Equal(t, pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT, req.GetSrPolicy().GetType())
+		assert.NotEmpty(t, req.GetSrPolicy().GetSrcAddr())
+		assert.NotEmpty(t, req.GetSrPolicy().GetDstAddr())
+		assert.NotEmpty(t, req.GetSrPolicy().GetSegmentList())
+		assert.True(t, req.GetNoSidValidate())
 	})
 
 	t.Run("rpc error", func(t *testing.T) {
@@ -417,21 +361,13 @@ func TestSRPolicyCreateSRv6(t *testing.T) {
 		wantOutput(t, out, code, "success: isSuccess=true")
 
 		req := f.createReq
-		if req == nil {
-			t.Fatal("server received no request")
-		}
+		require.NotNil(t, req, "server received no request")
 		// SRv6 segments require LocalAddr and SidStructure.
 		for _, seg := range req.GetSrPolicy().GetSegmentList() {
-			if seg.GetLocalAddr() == "" {
-				t.Errorf("segment %s: LocalAddr is empty", seg.GetSid())
-			}
-			if seg.GetSidStructure() == "" {
-				t.Errorf("segment %s: SidStructure is empty", seg.GetSid())
-			}
+			assert.NotEmpty(t, seg.GetLocalAddr(), "segment %s", seg.GetSid())
+			assert.NotEmpty(t, seg.GetSidStructure(), "segment %s", seg.GetSid())
 		}
-		if !req.GetNoSidValidate() {
-			t.Error("NoSidValidate = false, want true")
-		}
+		assert.True(t, req.GetNoSidValidate())
 	})
 
 	t.Run("rpc error", func(t *testing.T) {
@@ -447,22 +383,12 @@ func TestSRPolicyDelete(t *testing.T) {
 		wantOutput(t, out, code, "success: isSuccess=true")
 
 		req := f.deleteReq
-		if req == nil {
-			t.Fatal("server received no request")
-		}
+		require.NotNil(t, req, "server received no request")
 		// polad identifies the policy by these four fields, so all must be set.
-		if len(req.GetSrPolicy().GetPcepSessionAddr()) == 0 {
-			t.Error("PcepSessionAddr is empty")
-		}
-		if len(req.GetSrPolicy().GetDstAddr()) == 0 {
-			t.Error("DstAddr is empty")
-		}
-		if req.GetSrPolicy().GetColor() == 0 {
-			t.Error("Color = 0")
-		}
-		if req.GetSrPolicy().GetPolicyName() == "" {
-			t.Error("PolicyName is empty")
-		}
+		assert.NotEmpty(t, req.GetSrPolicy().GetPcepSessionAddr())
+		assert.NotEmpty(t, req.GetSrPolicy().GetDstAddr())
+		assert.NotZero(t, req.GetSrPolicy().GetColor())
+		assert.NotEmpty(t, req.GetSrPolicy().GetPolicyName())
 	})
 
 	t.Run("rpc error", func(t *testing.T) {
@@ -477,12 +403,8 @@ func TestSessionDelete(t *testing.T) {
 		out, code := run(t, "session-delete", serve(t, f))
 		wantOutput(t, out, code, "success: isSuccess=true")
 
-		if f.sessionReq == nil {
-			t.Fatal("server received no request")
-		}
-		if got, want := f.sessionReq.GetAddr(), addrBytes(t, "192.0.2.1"); string(got) != string(want) {
-			t.Errorf("Addr = %v, want %v", got, want)
-		}
+		require.NotNil(t, f.sessionReq, "server received no request")
+		assert.Equal(t, addrBytes(t, "192.0.2.1"), f.sessionReq.GetAddr())
 	})
 
 	t.Run("rpc error", func(t *testing.T) {
@@ -514,9 +436,7 @@ func TestSessionList(t *testing.T) {
 			"isSynced: true",
 			"invalid address for session 1",
 		)
-		if strings.Contains(out, "sessionAddr(1)") {
-			t.Errorf("the invalid session was printed anyway\noutput:\n%s", out)
-		}
+		assert.NotContains(t, out, "sessionAddr(1)", "the invalid session was printed anyway")
 	})
 
 	t.Run("rpc error", func(t *testing.T) {

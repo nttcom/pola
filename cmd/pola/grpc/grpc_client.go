@@ -425,46 +425,66 @@ func segmentFromPB(s *pb.Segment) (table.Segment, error) {
 	}
 	switch v := seg.(type) {
 	case table.SegmentSRv6:
-		if la, err := netip.ParseAddr(s.GetLocalAddr()); err == nil {
-			v.LocalAddr = la
+		v.LocalAddr, err = parseOptionalAddr(s.GetLocalAddr())
+		if err != nil {
+			return nil, fmt.Errorf("invalid SRv6 local address %q: %w", s.GetLocalAddr(), err)
 		}
-		if ra, err := netip.ParseAddr(s.GetRemoteAddr()); err == nil {
-			v.RemoteAddr = ra
+		v.RemoteAddr, err = parseOptionalAddr(s.GetRemoteAddr())
+		if err != nil {
+			return nil, fmt.Errorf("invalid SRv6 remote address %q: %w", s.GetRemoteAddr(), err)
 		}
-		if structure := parseSidStructure(s.GetSidStructure()); structure != nil {
+		structure, err := parseSidStructure(s.GetSidStructure())
+		if err != nil {
+			return nil, fmt.Errorf("invalid SID structure %q: %w", s.GetSidStructure(), err)
+		}
+		if structure != nil {
 			v.Structure = table.SIDStructureBytes(structure)
 		}
 		return v, nil
 	case table.SegmentSRMPLS:
-		if la, err := netip.ParseAddr(s.GetLocalAddr()); err == nil {
-			v.LocalAddr = la
+		v.LocalAddr, err = parseOptionalAddr(s.GetLocalAddr())
+		if err != nil {
+			return nil, fmt.Errorf("invalid SR-MPLS local address %q: %w", s.GetLocalAddr(), err)
 		}
-		if ra, err := netip.ParseAddr(s.GetRemoteAddr()); err == nil {
-			v.RemoteAddr = ra
+		v.RemoteAddr, err = parseOptionalAddr(s.GetRemoteAddr())
+		if err != nil {
+			return nil, fmt.Errorf("invalid SR-MPLS remote address %q: %w", s.GetRemoteAddr(), err)
 		}
 		return v, nil
+	default:
+		return nil, fmt.Errorf("unsupported segment type for SID %q", s.GetSid())
 	}
-	return seg, nil
 }
 
-// parseSidStructure parses a comma-separated SID structure string (e.g. "32,16,0,80"), returning nil if malformed.
-func parseSidStructure(s string) []uint8 {
+// parseOptionalAddr parses an IP address, treating an empty string as unset.
+func parseOptionalAddr(s string) (netip.Addr, error) {
 	if s == "" {
-		return nil
+		return netip.Addr{}, nil
+	}
+	return netip.ParseAddr(s)
+}
+
+// parseSidStructure parses a comma-separated SID structure string and treats an empty string as unset.
+func parseSidStructure(s string) ([]uint8, error) {
+	if s == "" {
+		return nil, nil
 	}
 	parts := strings.Split(s, ",")
 	if len(parts) != 4 {
-		return nil
+		return nil, fmt.Errorf("expected 4 comma-separated values, got %d", len(parts))
 	}
 	result := make([]uint8, 4)
 	for i, p := range parts {
 		v, err := strconv.ParseUint(strings.TrimSpace(p), 10, 8)
 		if err != nil {
-			return nil
+			return nil, fmt.Errorf("part %d: %w", i, err)
 		}
 		result[i] = uint8(v)
 	}
-	return result
+	if err := table.SIDStructureBytes(result).Validate(); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func CreateSRPolicy(client pb.PCEServiceClient, req *pb.CreateSRPolicyRequest) error {
@@ -493,7 +513,7 @@ func GetTED(client pb.PCEServiceClient) (*table.LsTED, error) {
 	}
 
 	if !ret.GetEnable() {
-		return nil, errors.New("ted is disabled")
+		return nil, nil
 	}
 
 	ted := &table.LsTED{
@@ -544,10 +564,7 @@ func addLsNode(ted *table.LsTED, node *pb.LsNode) error {
 	}
 
 	for _, srv6SID := range node.LsSrv6Sids {
-		lsSrv6SID, err := createSrv6SID(ted.Nodes[node.GetRouterId()], srv6SID)
-		if err != nil {
-			return err
-		}
+		lsSrv6SID := createSrv6SID(ted.Nodes[node.GetRouterId()], srv6SID)
 		ted.Nodes[node.GetRouterId()].SRv6SIDs = append(ted.Nodes[node.GetRouterId()].SRv6SIDs, lsSrv6SID)
 	}
 
@@ -592,11 +609,7 @@ func createLsLink(localNode, remoteNode *table.LsNode, link *pb.LsLink) (*table.
 		lsLink.Metrics = append(lsLink.Metrics, metric)
 	}
 	if link.GetSrv6EndXSid() != nil {
-		srv6EndXSID, err := createSrv6EndXSID(link.GetSrv6EndXSid())
-		if err != nil {
-			return nil, err
-		}
-		lsLink.Srv6EndXSID = srv6EndXSID
+		lsLink.Srv6EndXSID = createSrv6EndXSID(link.GetSrv6EndXSid())
 	}
 	return lsLink, nil
 }
@@ -616,7 +629,7 @@ func createMetric(metricInfo *pb.Metric) (*table.Metric, error) {
 	}
 }
 
-func createSrv6EndXSID(srv6EndXSID *pb.Srv6EndXSID) (*table.Srv6EndXSID, error) {
+func createSrv6EndXSID(srv6EndXSID *pb.Srv6EndXSID) *table.Srv6EndXSID {
 	lsSrv6EndXSID := &table.Srv6EndXSID{
 		EndpointBehavior: uint16(srv6EndXSID.EndpointBehavior),
 		Sids:             []string{},
@@ -632,10 +645,10 @@ func createSrv6EndXSID(srv6EndXSID *pb.Srv6EndXSID) (*table.Srv6EndXSID, error) 
 		lsSrv6EndXSID.Sids = append(lsSrv6EndXSID.Sids, sid.GetSid())
 	}
 
-	return lsSrv6EndXSID, nil
+	return lsSrv6EndXSID
 }
 
-func createSrv6SID(lsNode *table.LsNode, srv6SID *pb.LsSrv6SID) (*table.LsSrv6SID, error) {
+func createSrv6SID(lsNode *table.LsNode, srv6SID *pb.LsSrv6SID) *table.LsSrv6SID {
 	lsSrv6SID := table.NewLsSrv6SID(lsNode)
 
 	for _, sid := range srv6SID.GetSids() {
@@ -654,5 +667,5 @@ func createSrv6SID(lsNode *table.LsNode, srv6SID *pb.LsSrv6SID) (*table.LsSrv6SI
 	lsSrv6SID.SIDStructure.LocalFunc = uint8(srv6SID.GetSidStructure().GetLocalFunc())
 	lsSrv6SID.SIDStructure.LocalArg = uint8(srv6SID.GetSidStructure().GetLocalArg())
 
-	return lsSrv6SID, nil
+	return lsSrv6SID
 }

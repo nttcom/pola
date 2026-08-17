@@ -6,8 +6,10 @@
 package pcep
 
 import (
+	"encoding/binary"
 	"fmt"
 	"net/netip"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -97,7 +99,8 @@ func runTLVSerializeTests(t *testing.T, cases map[string]struct {
 }) {
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
-			actual := tt.input.Serialize()
+			actual, err := tt.input.Serialize()
+			require.NoError(t, err, "unexpected error for '%s'", name)
 			assert.Equal(t, tt.expected, actual, "serialized value mismatch for '%s'", name)
 		})
 	}
@@ -126,9 +129,18 @@ func runTLVLenTests(t *testing.T, cases map[string]struct {
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
 			actual := tt.input.Len()
-			assert.Equal(t, tt.expected, actual, "length mismatch for '%s'", name)
+			assert.Equal(t, int(tt.expected), actual, "length mismatch for '%s'", name)
 		})
 	}
+}
+
+// mustSerializeTLV serializes a TLV for use in test fixtures.
+func mustSerializeTLV(tlv TLVInterface) []byte {
+	b, err := tlv.Serialize()
+	if err != nil {
+		panic(err)
+	}
+	return b
 }
 
 func tlvHeader(tlvType TLVType, length uint16) []byte {
@@ -237,6 +249,28 @@ func TestVendorInformation_Len(t *testing.T) {
 	runTLVLenTests(t, cases)
 }
 
+func TestVendorInformation_Serialize_LengthBoundary(t *testing.T) {
+	t.Parallel()
+
+	t.Run("AtLimit", func(t *testing.T) {
+		t.Parallel()
+
+		tlv := &VendorInformation{EnterpriseSpecificInformation: make([]byte, 65531)}
+		raw, err := tlv.Serialize()
+		require.NoError(t, err)
+		assert.Equal(t, tlv.Len(), len(raw), "Len() must match serialized size")
+		assert.Equal(t, uint16(65535), binary.BigEndian.Uint16(raw[TLVLengthOffset:TLVValueOffset]))
+	})
+
+	t.Run("ExceedsLimit", func(t *testing.T) {
+		t.Parallel()
+
+		tlv := &VendorInformation{EnterpriseSpecificInformation: make([]byte, 65532)}
+		_, err := tlv.Serialize()
+		assert.ErrorContains(t, err, "exceeds")
+	})
+}
+
 func TestVendorInformation_CapStrings(t *testing.T) {
 	cases := map[string]struct {
 		input    CapStringsInterface
@@ -262,8 +296,9 @@ func TestVendorInformation_RoundTrip(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			data := original.Serialize()
-			require.Equal(t, int(original.Len()), len(data), "Len() must match serialized size")
+			data, err := original.Serialize()
+			require.NoError(t, err, "Serialize failed")
+			require.Equal(t, original.Len(), len(data), "Len() must match serialized size")
 
 			decoded, err := DecodeTLV(data)
 			require.NoError(t, err, "DecodeTLV failed")
@@ -273,7 +308,9 @@ func TestVendorInformation_RoundTrip(t *testing.T) {
 			assert.Equal(t, original, got, "round-trip value mismatch")
 
 			// Serialize again and verify bytes are identical (stability check).
-			assert.Equal(t, data, got.Serialize(), "re-serialized bytes differ")
+			gotData, err := got.Serialize()
+			require.NoError(t, err, "Serialize failed")
+			assert.Equal(t, data, gotData, "re-serialized bytes differ")
 		})
 	}
 }
@@ -435,6 +472,28 @@ func TestSymbolicPathName_Len(t *testing.T) {
 		"Padded": {testSymbolicPathNameWithPadding, TLVValueOffset + 4}, // "ABC" + 1 padding
 	}
 	runTLVLenTests(t, cases)
+}
+
+func TestSymbolicPathName_Serialize_LengthBoundary(t *testing.T) {
+	t.Parallel()
+
+	t.Run("AtLimit", func(t *testing.T) {
+		t.Parallel()
+
+		tlv := &SymbolicPathName{Name: strings.Repeat("a", 65535)}
+		raw, err := tlv.Serialize()
+		require.NoError(t, err)
+		assert.Equal(t, tlv.Len(), len(raw), "Len() must match serialized size")
+		assert.Equal(t, uint16(65535), binary.BigEndian.Uint16(raw[TLVLengthOffset:TLVValueOffset]))
+	})
+
+	t.Run("ExceedsLimit", func(t *testing.T) {
+		t.Parallel()
+
+		tlv := &SymbolicPathName{Name: strings.Repeat("a", 65536)}
+		_, err := tlv.Serialize()
+		assert.ErrorContains(t, err, "exceeds")
+	})
 }
 
 // Test data for IPv4LSPIdentifiers.
@@ -895,7 +954,7 @@ var (
 		0x00, 0x15, 0x00, 0x04,
 	}
 	// Invalid input for PathSetupType (too long).
-	testPathSetupTypeTooLong = append(NewPathSetupType(PathSetupTypeSRTE).Serialize(), 0x00, 0x00)
+	testPathSetupTypeTooLong = append(mustSerializeTLV(NewPathSetupType(PathSetupTypeSRTE)), 0x00, 0x00)
 	// Invalid input for PathSetupType (value length mismatch)
 	testPathSetupTypeInvalidLength = []byte{
 		byte(TLVPathSetupType >> 8), byte(TLVPathSetupType & 0xff),
@@ -1117,7 +1176,7 @@ func TestPathSetupTypeCapability_MarshalLogObject(t *testing.T) {
 }
 
 func TestPathSetupTypeCapability_Len(t *testing.T) {
-	var subTLVLen uint16
+	var subTLVLen int
 	for _, s := range testPathSetupTypeCapabilityWithSubTLV.SubTLVs {
 		subTLVLen += s.Len()
 	}
@@ -1126,10 +1185,48 @@ func TestPathSetupTypeCapability_Len(t *testing.T) {
 		input    TLVInterface
 		expected uint16
 	}{
-		"Basic":   {input: testPathSetupTypeCapabilityBasic, expected: TLVValueOffset + PathSetupTypeCapabilityFixedPartLength + testPathSetupTypeCapabilityBasic.paddedPSTLength()},
-		"WithSub": {input: testPathSetupTypeCapabilityWithSubTLV, expected: TLVValueOffset + PathSetupTypeCapabilityFixedPartLength + testPathSetupTypeCapabilityWithSubTLV.paddedPSTLength() + subTLVLen},
+		"Basic":   {input: testPathSetupTypeCapabilityBasic, expected: uint16(TLVValueOffset + PathSetupTypeCapabilityFixedPartLength + testPathSetupTypeCapabilityBasic.paddedPSTLength())},
+		"WithSub": {input: testPathSetupTypeCapabilityWithSubTLV, expected: uint16(TLVValueOffset + PathSetupTypeCapabilityFixedPartLength + testPathSetupTypeCapabilityWithSubTLV.paddedPSTLength() + subTLVLen)},
 	}
 	runTLVLenTests(t, cases)
+}
+
+func TestPathSetupTypeCapability_Serialize_SubTLVLengthBoundary(t *testing.T) {
+	t.Parallel()
+
+	newSubTLVs := func(n int) []TLVInterface {
+		subTLVs := make([]TLVInterface, n)
+		for i := range subTLVs {
+			subTLVs[i] = &SRPCECapability{}
+		}
+		return subTLVs
+	}
+
+	t.Run("AtLimit", func(t *testing.T) {
+		t.Parallel()
+
+		tlv := &PathSetupTypeCapability{SubTLVs: newSubTLVs(8191)}
+		raw, err := tlv.Serialize()
+		require.NoError(t, err)
+		assert.Equal(t, tlv.Len(), len(raw), "Len() must match serialized size")
+		assert.Equal(t, uint16(65532), binary.BigEndian.Uint16(raw[TLVLengthOffset:TLVValueOffset]))
+	})
+
+	t.Run("ExceedsLimit", func(t *testing.T) {
+		t.Parallel()
+
+		tlv := &PathSetupTypeCapability{SubTLVs: newSubTLVs(8192)}
+		_, err := tlv.Serialize()
+		assert.ErrorContains(t, err, "exceeds")
+	})
+}
+
+func TestPathSetupTypeCapability_Serialize_SubTLVError(t *testing.T) {
+	t.Parallel()
+
+	tlv := &PathSetupTypeCapability{SubTLVs: []TLVInterface{&UnknownTLV{Value: make([]byte, 65536)}}}
+	_, err := tlv.Serialize()
+	assert.ErrorContains(t, err, "exceeds")
 }
 
 func TestPathSetupTypeCapability_CapStrings(t *testing.T) {
@@ -1227,7 +1324,8 @@ func TestExtendedAssociationID_Serialize(t *testing.T) {
 
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
-			actual := tt.input.Serialize()
+			actual, err := tt.input.Serialize()
+			require.NoError(t, err)
 			assert.Equal(t, tt.expected, actual)
 		})
 	}
@@ -1314,7 +1412,7 @@ func TestExtendedAssociationIDIPv4Juniper_Len(t *testing.T) {
 	}{
 		"IPv4": {
 			&ExtendedAssociationIDIPv4Juniper{ExtendedAssociationID: *testIPv4ExtendedAssociationID},
-			testIPv4ExtendedAssociationID.Len(),
+			uint16(testIPv4ExtendedAssociationID.Len()),
 		},
 		"IPv6Rejected": {
 			&ExtendedAssociationIDIPv4Juniper{ExtendedAssociationID: *testIPv6ExtendedAssociationID},
@@ -1362,6 +1460,11 @@ func TestExtendedAssociationIDIPv4Juniper_DecodeFromBytes(t *testing.T) {
 		},
 		"IPv6Rejected": {
 			testExtendedAssociationIDIPv4JuniperIPv6Bytes,
+			nil,
+			true,
+		},
+		"TooShort": {
+			[]byte{0xff, 0xe3, 0x00},
 			nil,
 			true,
 		},
@@ -1502,6 +1605,28 @@ func TestAssocTypeList_Len(t *testing.T) {
 		"EmptyLen":       {testAssocTypeListEmpty, TLVValueOffset + 0},  // 0 entries = 0 bytes
 	}
 	runTLVLenTests(t, cases)
+}
+
+func TestAssocTypeList_Serialize_LengthBoundary(t *testing.T) {
+	t.Parallel()
+
+	t.Run("AtLimit", func(t *testing.T) {
+		t.Parallel()
+
+		tlv := &AssocTypeList{AssocTypes: make([]AssocType, 32767)}
+		raw, err := tlv.Serialize()
+		require.NoError(t, err)
+		assert.Equal(t, tlv.Len(), len(raw), "Len() must match serialized size")
+		assert.Equal(t, uint16(65534), binary.BigEndian.Uint16(raw[TLVLengthOffset:TLVValueOffset]))
+	})
+
+	t.Run("ExceedsLimit", func(t *testing.T) {
+		t.Parallel()
+
+		tlv := &AssocTypeList{AssocTypes: make([]AssocType, 32768)}
+		_, err := tlv.Serialize()
+		assert.ErrorContains(t, err, "exceeds")
+	})
 }
 
 func TestAssocTypeList_CapStrings(t *testing.T) {
@@ -1690,7 +1815,9 @@ func TestSRPolicyCandidatePathIdentifier_ProtocolOriginRoundTrip(t *testing.T) {
 			require.NoError(t, got.DecodeFromBytes(raw), "DecodeFromBytes failed")
 			assert.Equal(t, origin, got.ProtocolOrigin, "ProtocolOrigin not preserved on decode")
 
-			assert.Equal(t, raw, got.Serialize(), "re-serialized bytes differ")
+			gotData, err := got.Serialize()
+			require.NoError(t, err)
+			assert.Equal(t, raw, gotData, "re-serialized bytes differ")
 		})
 	}
 }
@@ -1710,7 +1837,9 @@ func TestSRPolicyCandidatePathIdentifierJuniper_Serialize(t *testing.T) {
 	expected := append([]byte(nil), testSRPolicyCPathIDIPv4Bytes...)
 	expected[0], expected[1] = 0xff, 0xe4 // type=0xffe4, value layout unchanged
 
-	assert.Equal(t, expected, tlv.Serialize())
+	actual, err := tlv.Serialize()
+	require.NoError(t, err)
+	assert.Equal(t, expected, actual)
 }
 
 func TestSRPolicyCandidatePathIdentifierJuniper_Len(t *testing.T) {
@@ -1828,7 +1957,9 @@ func TestSRPolicyCandidatePathPreferenceJuniper_Serialize(t *testing.T) {
 	expected := append([]byte(nil), testSRPolicyCPathPreferenceBytes...)
 	expected[0], expected[1] = 0xff, 0xe5 // type=0xffe5, value layout unchanged
 
-	assert.Equal(t, expected, tlv.Serialize())
+	actual, err := tlv.Serialize()
+	require.NoError(t, err)
+	assert.Equal(t, expected, actual)
 }
 
 func TestSRPolicyCandidatePathPreferenceJuniper_Len(t *testing.T) {
@@ -1954,15 +2085,13 @@ func TestColor_Len(t *testing.T) {
 var (
 	// Standard 4-byte UnknownTLV
 	testUnknownTLV = &UnknownTLV{
-		Typ:    TLVType(0xffff),
-		Length: 4,
-		Value:  []byte{0xde, 0xad, 0xbe, 0xef},
+		Typ:   TLVType(0xffff),
+		Value: []byte{0xde, 0xad, 0xbe, 0xef},
 	}
 	// 3-byte value (odd → 1 byte padding required)
 	testUnknownTLVOddLength = &UnknownTLV{
-		Typ:    TLVType(0xffff),
-		Length: 3,
-		Value:  []byte{0x01, 0x02, 0x03},
+		Typ:   TLVType(0xffff),
+		Value: []byte{0x01, 0x02, 0x03},
 	}
 
 	// Serialized TLV bytes
@@ -1992,6 +2121,27 @@ func TestUnknownTLV_Serialize(t *testing.T) {
 	runTLVSerializeTests(t, cases)
 }
 
+func TestUnknownTLV_Serialize_LengthBoundary(t *testing.T) {
+	t.Parallel()
+
+	t.Run("AtLimit", func(t *testing.T) {
+		t.Parallel()
+
+		tlv := &UnknownTLV{Value: make([]byte, 65535)}
+		raw, err := tlv.Serialize()
+		require.NoError(t, err)
+		assert.Equal(t, uint16(65535), binary.BigEndian.Uint16(raw[TLVLengthOffset:TLVValueOffset]))
+	})
+
+	t.Run("ExceedsLimit", func(t *testing.T) {
+		t.Parallel()
+
+		tlv := &UnknownTLV{Value: make([]byte, 65536)}
+		_, err := tlv.Serialize()
+		assert.ErrorContains(t, err, "exceeds")
+	})
+}
+
 func TestUnknownTLV_MarshalLogObject(t *testing.T) {
 	cases := map[string]struct {
 		input    *UnknownTLV
@@ -2001,14 +2151,14 @@ func TestUnknownTLV_MarshalLogObject(t *testing.T) {
 			testUnknownTLV,
 			map[string]any{
 				"type":   "0xffff",
-				"length": testUnknownTLV.Length,
+				"length": len(testUnknownTLV.Value),
 			},
 		},
 		"OddLength": {
 			testUnknownTLVOddLength,
 			map[string]any{
 				"type":   "0xffff",
-				"length": testUnknownTLVOddLength.Length,
+				"length": len(testUnknownTLVOddLength.Value),
 			},
 		},
 		"NilTLV": {
@@ -2078,10 +2228,9 @@ func TestUnknownTLV_CapStrings(t *testing.T) {
 	runCapStringsTests(t, cases)
 }
 
-func TestUnknownTLV_SetLength(t *testing.T) {
+func TestUnknownTLV_Len_DerivedFromValue(t *testing.T) {
 	tlv := &UnknownTLV{Value: []byte{0x01, 0x02, 0x03}}
-	tlv.SetLength()
-	assert.Equal(t, uint16(3), tlv.Length, "SetLength() should set Length to len(Value)")
+	assert.Equal(t, TLVValueOffset+4, tlv.Len(), "Len() must reflect len(Value) plus padding")
 }
 
 // Test data for DecodeTLV / DecodeTLVs.
@@ -2298,8 +2447,9 @@ func TestSRv6PCECapability_RoundTrip(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			data := original.Serialize()
-			require.Equal(t, int(original.Len()), len(data), "Len() must match serialized size")
+			data, err := original.Serialize()
+			require.NoError(t, err, "Serialize failed")
+			require.Equal(t, original.Len(), len(data), "Len() must match serialized size")
 
 			decoded, err := DecodeTLV(data)
 			require.NoError(t, err, "DecodeTLV failed")
@@ -2309,7 +2459,9 @@ func TestSRv6PCECapability_RoundTrip(t *testing.T) {
 			assert.Equal(t, original, got, "round-trip value mismatch")
 
 			// Serialize again and verify bytes are identical (stability check).
-			assert.Equal(t, data, got.Serialize(), "re-serialized bytes differ")
+			gotData, err := got.Serialize()
+			require.NoError(t, err, "Serialize failed")
+			assert.Equal(t, data, gotData, "re-serialized bytes differ")
 		})
 	}
 }
@@ -2424,8 +2576,9 @@ func TestMultipathCapability_RoundTrip(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			data := original.Serialize()
-			require.Equal(t, int(original.Len()), len(data), "Len() must match serialized size")
+			data, err := original.Serialize()
+			require.NoError(t, err, "Serialize failed")
+			require.Equal(t, original.Len(), len(data), "Len() must match serialized size")
 
 			decoded, err := DecodeTLV(data)
 			require.NoError(t, err, "DecodeTLV failed")
@@ -2435,7 +2588,9 @@ func TestMultipathCapability_RoundTrip(t *testing.T) {
 			assert.Equal(t, original, got, "round-trip value mismatch")
 
 			// Serialize again and verify bytes are identical (stability check).
-			assert.Equal(t, data, got.Serialize(), "re-serialized bytes differ")
+			gotData, err := got.Serialize()
+			require.NoError(t, err, "Serialize failed")
+			assert.Equal(t, data, gotData, "re-serialized bytes differ")
 		})
 	}
 }

@@ -6,6 +6,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -69,13 +70,11 @@ func main() {
 	defer func() {
 		if err := logger.Sync(); err != nil {
 			logger.Panic("Failed to sync logger", zap.Error(err))
-			log.Panicf("failed to sync logger: %v", err)
 		}
 	}()
 
 	if c.Global.TED.Enable && c.Global.TED.ASN == 0 {
 		logger.Panic("TED is enabled but Global.TED.ASN is missing or invalid")
-		log.Panic("TED is enabled but Global.TED.ASN is missing or invalid")
 	}
 
 	// Prepare TED update tools
@@ -83,14 +82,12 @@ func main() {
 	if c.Global.TED.Enable {
 		switch c.Global.TED.Source {
 		case "gobgp":
-			tedElemsChan = startGoBGPUpdate(&c, logger)
+			tedElemsChan = startGoBGPUpdate(context.Background(), &c, logger)
 			if tedElemsChan == nil {
 				logger.Panic("GoBGP update channel is nil")
-				log.Panic("GoBGP update channel is nil")
 			}
 		default:
 			logger.Panic("Specified TED source is not defined")
-			log.Panic("specified TED source is not defined")
 		}
 	}
 
@@ -106,11 +103,10 @@ func main() {
 	}
 	if serverErr := server.NewPCE(o, logger, tedElemsChan); serverErr.Error != nil {
 		logger.Panic("Failed to start new server", zap.String("server", serverErr.Server), zap.Error(serverErr.Error))
-		log.Panicf("failed to start new server: %v", serverErr.Error)
 	}
 }
 
-func startGoBGPUpdate(c *config.Config, logger *zap.Logger) chan []table.TEDElem {
+func startGoBGPUpdate(ctx context.Context, c *config.Config, logger *zap.Logger) chan []table.TEDElem {
 	if c.Global.TED == nil {
 		logger.Error("TED does not exist")
 		return nil
@@ -118,6 +114,7 @@ func startGoBGPUpdate(c *config.Config, logger *zap.Logger) chan []table.TEDElem
 	tedElemsChan := make(chan []table.TEDElem)
 
 	go gobgp.MonitorBGPLsEvents(
+		ctx,
 		c.Global.GoBGP.GRPCClient.Address,
 		c.Global.GoBGP.GRPCClient.Port,
 		tedElemsChan,

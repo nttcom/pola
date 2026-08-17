@@ -79,7 +79,7 @@ func NewPCE(o *PCEOptions, logger *zap.Logger, tedElemsChan chan []table.TEDElem
 
 	errChan := make(chan Error)
 	go func() {
-		if err := s.Serve(o.PCEPAddr, o.PCEPPort, o.USidMode); err != nil {
+		if err := s.Serve(o.PCEPAddr, o.PCEPPort); err != nil {
 			errChan <- Error{
 				Server: "pcep",
 				Error:  err,
@@ -103,7 +103,7 @@ func NewPCE(o *PCEOptions, logger *zap.Logger, tedElemsChan chan []table.TEDElem
 	return serverError
 }
 
-func (s *Server) Serve(address string, port string, usidMode bool) error {
+func (s *Server) Serve(address string, port string) error {
 	a, err := netip.ParseAddr(address)
 	if err != nil {
 		return fmt.Errorf("failed to parse address %s: %w", address, err)
