@@ -14,7 +14,7 @@ COVER_PKGS    := ./cmd/... ./internal/... ./pkg/...
 COVER_PROFILE := coverage.out
 # Branch that test-coverage-diff compares against; its merge base with HEAD is
 # used, so the comparison covers only what this branch introduced.
-DIFF_BASE      ?= origin/main
+DIFF_BASE      ?= origin/develop
 DIFF_COVER_MIN ?= 90
 
 # External dependencies

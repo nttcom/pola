@@ -96,7 +96,7 @@ Then use `make test-coverage-html` to see those lines in context.
 
 Notes:
 
-* Comparison starts at the merge base of your branch and `DIFF_BASE` (default `origin/main`) — the same changes a PR shows under "Files changed".
+* Comparison starts at the merge base of your branch and `DIFF_BASE` (default `origin/develop`) — the same changes a PR shows under "Files changed".
 * Coverage is measured against your working tree, not `HEAD`, so uncommitted changes to tracked files are included. Untracked files must be staged with `git add` to be included.
 * Only instrumented lines count (Go skips declarations, comments, blanks, closing braces).
 * Threshold is `DIFF_COVER_MIN` (default `90`). Override with `make test-coverage-diff DIFF_BASE=origin/develop DIFF_COVER_MIN=85`.
