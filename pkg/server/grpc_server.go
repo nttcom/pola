@@ -110,7 +110,10 @@ func (s *APIServer) Serve(address string, port string) error {
 		return fmt.Errorf("failed to listen on gRPC port %s: %w", localAddr.String(), err)
 	}
 	s.logger.Info("Start listening on gRPC port", zap.String("listenInfo", grpcListener.Addr().String()))
-	return s.grpcServer.Serve(grpcListener)
+	if err := s.grpcServer.Serve(grpcListener); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+		return err
+	}
+	return nil
 }
 
 func validateCreateSRPolicy(req *pb.CreateSRPolicyRequest, disablePathCompute bool) error {

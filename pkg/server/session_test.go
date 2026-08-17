@@ -69,6 +69,7 @@ type fakeConn struct {
 	failAfter          int // number of successful writes before writeErr is returned; ignored if writeErr is nil.
 	writeErr           error
 	setReadDeadlineErr error
+	closeErr           error
 }
 
 func (c *fakeConn) Read(p []byte) (int, error) { return c.r.Read(p) }
@@ -83,7 +84,7 @@ func (c *fakeConn) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func (c *fakeConn) Close() error { return nil }
+func (c *fakeConn) Close() error { return c.closeErr }
 
 func (c *fakeConn) SetReadDeadline(t time.Time) error { return c.setReadDeadlineErr }
 

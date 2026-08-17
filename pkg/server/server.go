@@ -6,6 +6,7 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -14,20 +15,36 @@ import (
 	"slices"
 	"strconv"
 	"sync"
+	"time"
 
 	"go.uber.org/zap"
 	grpc "google.golang.org/grpc"
 
+	"github.com/nttcom/pola/pkg/packet/pcep"
 	"github.com/nttcom/pola/pkg/table"
 )
 
+// Maximum time to wait for the PCEP Close message during shutdown.
+const defaultShutdownSendCloseTimeout = 2 * time.Second
+
 type Server struct {
-	sessionMu   sync.RWMutex // guards sessionList; written from the PCEP accept/close goroutines, read from gRPC handler goroutines.
+	sessionMu   sync.RWMutex // guards sessionList
 	sessionList []*Session
-	tedMu       sync.RWMutex // guards ted; written from the TED-update goroutine, read from gRPC handler goroutines.
+	tedMu       sync.RWMutex // guards ted
 	ted         *table.LsTED
 	logger      *zap.Logger
 	asn         uint32
+
+	listenerMu sync.Mutex // guards listener and closed
+	listener   tcpListener
+	closed     bool // set by Shutdown; suppresses Serve/AcceptTCP errors
+
+	shutdownSendCloseTimeout time.Duration // zero uses the default
+}
+
+type tcpListener interface {
+	AcceptTCP() (*net.TCPConn, error)
+	Close() error
 }
 
 // TED returns the current TED snapshot. Safe for concurrent use with setTED.
@@ -53,7 +70,12 @@ type PCEOptions struct {
 	ASN       uint32
 }
 
-func NewPCE(o *PCEOptions, logger *zap.Logger, tedElemsChan chan []table.TEDElem) Error {
+// NewPCE starts the PCEP and gRPC servers and blocks until they stop.
+// It returns an error if either server exits with a failure.
+func NewPCE(ctx context.Context, o *PCEOptions, logger *zap.Logger, tedElemsChan chan []table.TEDElem) Error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	s := &Server{
 		logger: logger,
 		asn:    o.ASN,
@@ -62,45 +84,61 @@ func NewPCE(o *PCEOptions, logger *zap.Logger, tedElemsChan chan []table.TEDElem
 		s.setTED(&table.LsTED{
 			Nodes: map[string]*table.LsNode{},
 		})
-
-		// Update TED
-		go func() {
-			for {
-				tedElems := <-tedElemsChan
-				ted := &table.LsTED{
-					Nodes: map[string]*table.LsNode{},
-				}
-				ted.Update(tedElems, o.ASN)
-				s.setTED(ted)
-				logger.Debug("Update TED")
-			}
-		}()
+		go s.syncTEDLoop(ctx, tedElemsChan, o.ASN, logger)
 	}
 
-	errChan := make(chan Error)
+	grpcServer := grpc.NewServer()
+	apiServer := NewAPIServer(s, grpcServer, o.USidMode, logger)
+
+	type result struct {
+		server string
+		err    error
+	}
+	resultChan := make(chan result, 2)
+
 	go func() {
-		if err := s.Serve(o.PCEPAddr, o.PCEPPort); err != nil {
-			errChan <- Error{
-				Server: "pcep",
-				Error:  err,
-			}
-		}
+		resultChan <- result{server: "pcep", err: s.Serve(o.PCEPAddr, o.PCEPPort)}
 	}()
 
 	go func() {
-		grpcServer := grpc.NewServer()
-		apiServer := NewAPIServer(s, grpcServer, o.USidMode, logger)
-		if err := apiServer.Serve(o.GRPCAddr, o.GRPCPort); err != nil {
-			errChan <- Error{
-				Server: "grpc",
-				Error:  err,
-			}
-		}
+		resultChan <- result{server: "grpc", err: apiServer.Serve(o.GRPCAddr, o.GRPCPort)}
 	}()
 
-	serverError := <-errChan
-	logger.Error("Server encountered an error", zap.String("server", serverError.Server), zap.Error(serverError.Error))
-	return serverError
+	go s.awaitShutdown(ctx, logger, grpcServer.GracefulStop)
+
+	// Wait for both servers to stop before returning the first error.
+	var firstErr Error
+	for range 2 {
+		r := <-resultChan
+		if r.err == nil {
+			continue
+		}
+		logger.Error("Server encountered an error", zap.String("server", r.server), zap.Error(r.err))
+		if firstErr.Error == nil {
+			firstErr = Error{Server: r.server, Error: r.err}
+			cancel()
+		}
+	}
+	return firstErr
+}
+
+func (s *Server) syncTEDLoop(ctx context.Context, tedElemsChan <-chan []table.TEDElem, asn uint32, logger *zap.Logger) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case tedElems, ok := <-tedElemsChan:
+			if !ok {
+				return
+			}
+			ted := &table.LsTED{
+				Nodes: map[string]*table.LsNode{},
+			}
+			ted.Update(tedElems, asn)
+			s.setTED(ted)
+			logger.Debug("Update TED")
+		}
+	}
 }
 
 func (s *Server) Serve(address string, port string) error {
@@ -122,8 +160,21 @@ func (s *Server) Serve(address string, port string) error {
 	if err != nil {
 		return fmt.Errorf("failed to listen on PCEP port %s: %w", localAddr.String(), err)
 	}
+
+	s.listenerMu.Lock()
+	if s.closed {
+		// Shutdown ran before Serve started listening; don't accept anything.
+		s.listenerMu.Unlock()
+		return l.Close()
+	}
+	s.listener = l
+	s.listenerMu.Unlock()
+
 	defer func() {
-		if err := l.Close(); err != nil {
+		s.listenerMu.Lock()
+		s.listener = nil
+		s.listenerMu.Unlock()
+		if err := l.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
 			s.logger.Warn("failed to close PCEP listener", zap.Error(err))
 		}
 	}()
@@ -132,34 +183,116 @@ func (s *Server) Serve(address string, port string) error {
 	for {
 		tcpConn, err := l.AcceptTCP()
 		if err != nil {
+			if errors.Is(err, net.ErrClosed) {
+				return nil
+			}
 			return fmt.Errorf("failed to accept TCP connection: %w", err)
 		}
 		peerAddrPort, err := netip.ParseAddrPort(tcpConn.RemoteAddr().String())
 		if err != nil {
 			return fmt.Errorf("failed to parse remote address %s: %w", tcpConn.RemoteAddr().String(), err)
 		}
-		ss := NewSession(sessionID, peerAddrPort.Addr(), tcpConn, s.logger, s.TED(), s.asn)
-		ss.logger.Info("start PCEP session")
 
-		s.sessionMu.Lock()
-		s.sessionList = append(s.sessionList, ss)
-		s.sessionMu.Unlock()
+		ss := s.registerSession(tcpConn, sessionID, peerAddrPort.Addr())
+		sessionID++
+		if ss == nil {
+			continue
+		}
+		ss.logger.Info("start PCEP session")
 		go func() {
 			ss.Established()
 			s.closeSession(ss)
 			ss.logger.Info("close PCEP session")
 		}()
-		sessionID++
 	}
 }
 
+func (s *Server) registerSession(tcpConn *net.TCPConn, sessionID uint8, peerAddr netip.Addr) *Session {
+	s.listenerMu.Lock()
+	defer s.listenerMu.Unlock()
+
+	if s.closed {
+		if err := tcpConn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			s.logger.Warn("failed to close TCP connection accepted after shutdown", zap.Error(err))
+		}
+		return nil
+	}
+
+	ss := NewSession(sessionID, peerAddr, tcpConn, s.logger, s.TED(), s.asn)
+	s.sessionMu.Lock()
+	s.sessionList = append(s.sessionList, ss)
+	s.sessionMu.Unlock()
+	return ss
+}
+
+func (s *Server) awaitShutdown(ctx context.Context, logger *zap.Logger, stopGRPC func()) {
+	<-ctx.Done()
+	logger.Info("shutdown requested, stopping PCE server")
+	if err := s.Shutdown(); err != nil {
+		logger.Warn("failed to shut down PCEP server", zap.Error(err))
+	}
+	stopGRPC()
+}
+
+// Shutdown stops accepting connections and gracefully closes established sessions.
+func (s *Server) Shutdown() error {
+	s.listenerMu.Lock()
+	s.closed = true
+	l := s.listener
+	s.sessionMu.RLock()
+	sessions := slices.Clone(s.sessionList)
+	s.sessionMu.RUnlock()
+	s.listenerMu.Unlock()
+
+	var err error
+	if l != nil {
+		if err = l.Close(); errors.Is(err, net.ErrClosed) {
+			err = nil
+		}
+	}
+
+	var wg sync.WaitGroup
+	for _, ss := range sessions {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.gracefulCloseSession(ss)
+		}()
+	}
+	wg.Wait()
+
+	return err
+}
+
+// Sends a PCEP Close message with a bounded wait before force-closing the session.
+func (s *Server) gracefulCloseSession(ss *Session) {
+	sendDone := make(chan struct{})
+	go func() {
+		defer close(sendDone)
+		if sendErr := ss.SendClose(pcep.CloseReasonNoExplanationProvided); sendErr != nil {
+			s.logger.Warn("failed to send PCEP close message during shutdown", zap.Error(sendErr))
+		}
+	}()
+
+	timeout := s.shutdownSendCloseTimeout
+	if timeout <= 0 {
+		timeout = defaultShutdownSendCloseTimeout
+	}
+	select {
+	case <-sendDone:
+	case <-time.After(timeout):
+		s.logger.Warn("timed out sending PCEP close message during shutdown", zap.String("session", ss.peerAddr.String()))
+	}
+
+	s.closeSession(ss)
+}
+
 func (s *Server) closeSession(session *Session) {
-	if err := session.tcpConn.Close(); err != nil {
+	if err := session.tcpConn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
 		s.logger.Warn("failed to close TCP connection", zap.Error(err))
 	}
 	session.clearSRPolicyIntents()
 
-	// Remove Session List
 	s.sessionMu.Lock()
 	for i, v := range s.sessionList {
 		if v.sessionID == session.sessionID {
