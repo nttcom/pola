@@ -377,6 +377,39 @@ func TestSREroSubobject_DecodeFromBytes_SIDAbsent(t *testing.T) {
 	}
 }
 
+func TestSREroSubobject_DecodeFromBytes_TruncatedAfterHeader(t *testing.T) {
+
+	t.Parallel()
+
+	cases := map[string][]uint8{
+		"SIDWordCutShort": {0x24, 0x04, 0x00, 0x00},
+	}
+	for name, raw := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var subo SREroSubobject
+			assert.Error(t, subo.DecodeFromBytes(raw))
+		})
+	}
+
+	t.Run("NAICutShortAfterSID", func(t *testing.T) {
+		t.Parallel()
+
+		raw := []uint8{0x24, 0x0a, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+		var subo SREroSubobject
+		assert.ErrorContains(t, subo.DecodeFromBytes(raw), "truncated NAI")
+	})
+
+	t.Run("TrailingByteAfterSID", func(t *testing.T) {
+		t.Parallel()
+
+		raw := []uint8{0x24, 0x09, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00}
+		var subo SREroSubobject
+		assert.EqualError(t, subo.DecodeFromBytes(raw), "SREroSubobject: declared length does not match S/F flags")
+	})
+}
+
 func TestSRv6EroSubobject_RoundTrip(t *testing.T) {
 	t.Parallel()
 
@@ -2422,7 +2455,7 @@ func TestSRv6EroSubobject_DecodeFromBytes_LinkLocalAdjacency(t *testing.T) {
 	remote := netip.MustParseAddr("2001:db8::2")
 
 	raw := AppendByteSlices(
-		[]uint8{0x28, 0x00, uint8(NAITypeSRv6IPv6AdjacencyLinkLocal) << 4, 0x00},
+		[]uint8{0x28, 8 + 16 + 40, uint8(NAITypeSRv6IPv6AdjacencyLinkLocal) << 4, 0x00},
 		make([]uint8, 4),
 		netip.MustParseAddr("fc00:0:1::").AsSlice(),
 		local.AsSlice(), make([]uint8, 4),
@@ -2437,6 +2470,83 @@ func TestSRv6EroSubobject_DecodeFromBytes_LinkLocalAdjacency(t *testing.T) {
 	l, err := o.Len()
 	require.NoError(t, err)
 	assert.Equal(t, uint16(8+16+40), l)
+}
+
+func TestSRv6EroSubobject_DecodeFromBytes_TruncatedAfterHeader(t *testing.T) {
+	t.Parallel()
+
+	t.Run("SIDCutShort", func(t *testing.T) {
+		t.Parallel()
+
+		raw := []uint8{0x28, 10, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+		var o SRv6EroSubobject
+		assert.EqualError(t, o.DecodeFromBytes(raw), "SRv6EroSubobject: truncated SID")
+	})
+
+	t.Run("NodeNAICutShort", func(t *testing.T) {
+		t.Parallel()
+
+		raw := []uint8{0x28, 10, uint8(NAITypeSRv6IPv6Node) << 4, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+		var o SRv6EroSubobject
+		assert.EqualError(t, o.DecodeFromBytes(raw), "SRv6EroSubobject: truncated NAI (Node)")
+	})
+
+	t.Run("AdjGlobalNAICutShort", func(t *testing.T) {
+		t.Parallel()
+
+		raw := []uint8{0x28, 10, uint8(NAITypeSRv6IPv6AdjacencyGlobal) << 4, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+		var o SRv6EroSubobject
+		assert.EqualError(t, o.DecodeFromBytes(raw), "SRv6EroSubobject: truncated NAI (AdjGlobal)")
+	})
+
+	t.Run("AdjLinkLocalNAICutShort", func(t *testing.T) {
+		t.Parallel()
+
+		raw := []uint8{0x28, 10, uint8(NAITypeSRv6IPv6AdjacencyLinkLocal) << 4, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+		var o SRv6EroSubobject
+		assert.EqualError(t, o.DecodeFromBytes(raw), "SRv6EroSubobject: truncated NAI (AdjLinkLocal)")
+	})
+
+	t.Run("SIDStructureCutShort", func(t *testing.T) {
+		t.Parallel()
+
+		raw := AppendByteSlices(
+			[]uint8{0x28, 26, 0x00, 0x06},
+			make([]uint8, 4),
+			netip.MustParseAddr("fc00:0:1::").AsSlice(),
+			make([]uint8, 2),
+		)
+		var o SRv6EroSubobject
+		assert.EqualError(t, o.DecodeFromBytes(raw), "SRv6EroSubobject: truncated SID-Structure")
+	})
+
+	t.Run("SIDStructureInvalidSum", func(t *testing.T) {
+		t.Parallel()
+
+		// The SID-Structure field is complete, but its four lengths sum to 800 bits.
+		raw := AppendByteSlices(
+			[]uint8{0x28, 32, 0x00, 0x06},
+			make([]uint8, 4),
+			netip.MustParseAddr("fc00:0:1::").AsSlice(),
+			[]uint8{200, 200, 200, 200},
+			make([]uint8, 4),
+		)
+		var o SRv6EroSubobject
+		assert.ErrorContains(t, o.DecodeFromBytes(raw), "exceeds")
+	})
+
+	t.Run("TrailingByteAfterNAI", func(t *testing.T) {
+		t.Parallel()
+
+		raw := AppendByteSlices(
+			[]uint8{0x28, 25, uint8(NAITypeSRv6IPv6Node) << 4, 0x01},
+			make([]uint8, 4),
+			netip.MustParseAddr("2001:db8::1").AsSlice(),
+			make([]uint8, 1),
+		)
+		var o SRv6EroSubobject
+		assert.EqualError(t, o.DecodeFromBytes(raw), "SRv6EroSubobject: declared length does not match V/T/F/S flags")
+	})
 }
 
 func TestNewSRv6EroSubobject_NAIFromSegment(t *testing.T) {

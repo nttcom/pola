@@ -983,44 +983,67 @@ func (o *SREroSubobject) DecodeFromBytes(subobject []uint8) error {
 	if o.SFlag && o.FFlag {
 		return errors.New("SREroSubobject: both SID and NAI are absent")
 	}
+	// Bound reads to the declared length to prevent consuming the next subobject.
+	if int(o.Length) < 4 || len(subobject) < int(o.Length) {
+		return errors.New("SREroSubobject: invalid subobject length")
+	}
+	subobject = subobject[:o.Length]
 
-	off := 4
-	if !o.SFlag {
-		if len(subobject) < 8 {
-			return errors.New("SREroSubobject: subobject too short")
-		}
-		sidWord := binary.BigEndian.Uint32(subobject[4:8])
-		sid := sidWord >> 12
-		o.Segment = table.NewSegmentSRMPLS(sid)
-		if o.CFlag {
-			// Per RFC 8664 §4.3.1: when C=1, TC/S/TTL of the MPLS LSE are set by the PCE.
-			o.Segment.TC = uint8((sidWord >> 9) & 0x07)
-			o.Segment.S = (sidWord & (uint32(1) << 8)) != 0
-			o.Segment.TTL = uint8(sidWord & 0xFF)
-		}
-		off = 8
-	} else {
-		o.Segment = table.SegmentSRMPLS{}
+	off, err := o.decodeSID(subobject)
+	if err != nil {
+		return err
 	}
 
-	if !o.FFlag {
-		naiLength, err := o.NAIType.naiLength()
-		if err != nil {
-			return err
-		}
-		if naiLength > 0 && len(subobject) < off+int(naiLength) {
-			return fmt.Errorf("SREroSubobject: truncated NAI (%s)", o.NAIType)
-		}
-		switch o.NAIType {
-		case NAITypeSRIPv4Node, NAITypeSRIPv6Node:
-			o.Segment.LocalAddr, _ = netip.AddrFromSlice(subobject[off : off+int(naiLength)])
-		case NAITypeSRIPv4Adjacency, NAITypeSRIPv6AdjacencyGlobal:
-			half := off + int(naiLength)/2
-			o.Segment.LocalAddr, _ = netip.AddrFromSlice(subobject[off:half])
-			o.Segment.RemoteAddr, _ = netip.AddrFromSlice(subobject[half : off+int(naiLength)])
-		}
+	off, err = o.decodeNAI(subobject, off)
+	if err != nil {
+		return err
+	}
+
+	if off != len(subobject) {
+		return errors.New("SREroSubobject: declared length does not match S/F flags")
 	}
 	return nil
+}
+
+func (o *SREroSubobject) decodeSID(subobject []uint8) (int, error) {
+	if o.SFlag {
+		o.Segment = table.SegmentSRMPLS{}
+		return 4, nil
+	}
+	if len(subobject) < 8 {
+		return 0, errors.New("SREroSubobject: subobject too short")
+	}
+	sidWord := binary.BigEndian.Uint32(subobject[4:8])
+	o.Segment = table.NewSegmentSRMPLS(sidWord >> 12)
+	if o.CFlag {
+		// Per RFC 8664 §4.3.1: when C=1, TC/S/TTL of the MPLS LSE are set by the PCE.
+		o.Segment.TC = uint8((sidWord >> 9) & 0x07)
+		o.Segment.S = (sidWord & (uint32(1) << 8)) != 0
+		o.Segment.TTL = uint8(sidWord & 0xFF)
+	}
+	return 8, nil
+}
+
+func (o *SREroSubobject) decodeNAI(subobject []uint8, off int) (int, error) {
+	if o.FFlag {
+		return off, nil
+	}
+	naiLength, err := o.NAIType.naiLength()
+	if err != nil {
+		return 0, err
+	}
+	if naiLength > 0 && len(subobject) < off+int(naiLength) {
+		return 0, fmt.Errorf("SREroSubobject: truncated NAI (%s)", o.NAIType)
+	}
+	switch o.NAIType {
+	case NAITypeSRIPv4Node, NAITypeSRIPv6Node:
+		o.Segment.LocalAddr, _ = netip.AddrFromSlice(subobject[off : off+int(naiLength)])
+	case NAITypeSRIPv4Adjacency, NAITypeSRIPv6AdjacencyGlobal:
+		half := off + int(naiLength)/2
+		o.Segment.LocalAddr, _ = netip.AddrFromSlice(subobject[off:half])
+		o.Segment.RemoteAddr, _ = netip.AddrFromSlice(subobject[half : off+int(naiLength)])
+	}
+	return off + int(naiLength), nil
 }
 
 // serializeNAI encodes the NAI following the SID, or nil when it is absent.
@@ -1257,6 +1280,11 @@ func (o *SRv6EroSubobject) DecodeFromBytes(subobject []uint8) error {
 	if o.SFlag && o.FFlag {
 		return errors.New("SRv6EroSubobject: both SID and NAI are absent")
 	}
+	// Bound reads to the declared length to prevent consuming the next subobject.
+	if int(o.Length) < 8 || len(subobject) < int(o.Length) {
+		return errors.New("SRv6EroSubobject: invalid subobject length")
+	}
+	subobject = subobject[:o.Length]
 
 	behavior := binary.BigEndian.Uint16(subobject[6:8])
 
@@ -1285,6 +1313,11 @@ func (o *SRv6EroSubobject) DecodeFromBytes(subobject []uint8) error {
 		if err := o.Segment.Structure.Validate(); err != nil {
 			return err
 		}
+		off += 8
+	}
+
+	if off != len(subobject) {
+		return errors.New("SRv6EroSubobject: declared length does not match V/T/F/S flags")
 	}
 
 	if table.IsUSidBehavior(behavior) {
@@ -1415,10 +1448,13 @@ func NewSRv6EroSubobject(seg table.SegmentSRv6) (*SRv6EroSubobject, error) {
 		Segment:       seg,
 	}
 
-	subo.TFlag = len(seg.Structure) > 0
 	if err := seg.Structure.Validate(); err != nil {
 		return nil, fmt.Errorf("SegmentSRv6: invalid SID structure: %w", err)
 	}
+	if len(seg.Structure) == 0 {
+		subo.Segment.Structure = nil
+	}
+	subo.TFlag = len(subo.Segment.Structure) > 0
 
 	local, remote := seg.LocalAddr.Unmap(), seg.RemoteAddr.Unmap()
 	switch {

@@ -64,10 +64,11 @@ func newTCPConnPair(t *testing.T) (server, client *net.TCPConn) {
 type fakeConn struct {
 	r io.Reader
 
-	mu         sync.Mutex
-	writeCount int
-	failAfter  int // writes beyond this count return writeErr; 0 disables.
-	writeErr   error
+	mu                 sync.Mutex
+	writeCount         int
+	failAfter          int // number of successful writes before writeErr is returned; ignored if writeErr is nil.
+	writeErr           error
+	setReadDeadlineErr error
 }
 
 func (c *fakeConn) Read(p []byte) (int, error) { return c.r.Read(p) }
@@ -76,7 +77,7 @@ func (c *fakeConn) Write(p []byte) (int, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.writeCount++
-	if c.failAfter > 0 && c.writeCount > c.failAfter {
+	if c.writeErr != nil && c.writeCount > c.failAfter {
 		return 0, c.writeErr
 	}
 	return len(p), nil
@@ -84,7 +85,7 @@ func (c *fakeConn) Write(p []byte) (int, error) {
 
 func (c *fakeConn) Close() error { return nil }
 
-func (c *fakeConn) SetReadDeadline(t time.Time) error { return nil }
+func (c *fakeConn) SetReadDeadline(t time.Time) error { return c.setReadDeadlineErr }
 
 // newTestStateReport builds a PCRpt state report for an SR-MPLS policy with an explicit path.
 func newTestStateReport(t *testing.T, plspID uint32, srpID uint32) *pcep.StateReport {
@@ -819,6 +820,33 @@ func TestSendPCEPMessage_UnlocksAfterSendFailure(t *testing.T) {
 	}
 }
 
+func TestSearchPlspID_FindsByColorAndEndpoint(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	endpoint := netip.MustParseAddr("10.255.0.2")
+	ss.srPolicies = append(ss.srPolicies,
+		table.NewSRPolicy(1, "pe01-policy1", nil, netip.MustParseAddr("10.255.0.1"), endpoint, 100, 0, 0, table.PolicyUp),
+		table.NewSRPolicy(2, "pe01-policy2", nil, netip.MustParseAddr("10.255.0.1"), netip.MustParseAddr("10.255.0.3"), 200, 0, 0, table.PolicyUp),
+	)
+
+	plspID, found := ss.SearchPlspID(100, endpoint)
+	require.True(t, found, "SR Policy matching color and endpoint was not found")
+	assert.Equal(t, uint32(1), plspID)
+}
+
+func TestSearchPlspID_NotFoundWhenColorOrEndpointDiffer(t *testing.T) {
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	endpoint := netip.MustParseAddr("10.255.0.2")
+	ss.srPolicies = append(ss.srPolicies,
+		table.NewSRPolicy(1, "pe01-policy1", nil, netip.MustParseAddr("10.255.0.1"), endpoint, 100, 0, 0, table.PolicyUp),
+	)
+
+	_, found := ss.SearchPlspID(999, endpoint)
+	assert.False(t, found, "must not match on endpoint alone when the color differs")
+
+	_, found = ss.SearchPlspID(100, netip.MustParseAddr("10.255.0.9"))
+	assert.False(t, found, "must not match on color alone when the endpoint differs")
+}
+
 func TestFindRouterIDFromAddress(t *testing.T) {
 	ted := &table.LsTED{Nodes: map[string]*table.LsNode{}}
 
@@ -1103,6 +1131,33 @@ func TestEstablished_ReturnsWhenPeriodicKeepaliveSendFails(t *testing.T) {
 	}
 }
 
+func TestEstablished_ReturnsWhenInitialKeepaliveSendFails(t *testing.T) {
+	openMessage := pcep.NewOpenMessage(1, 30, nil)
+	openBytes, err := openMessage.Serialize()
+	require.NoError(t, err)
+
+	// The Open reply (write #1) succeeds; the initial Keepalive (write #2) fails.
+	conn := &fakeConn{
+		r:         bytes.NewReader(openBytes),
+		failAfter: 1,
+		writeErr:  errors.New("write: broken pipe"),
+	}
+
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+
+	done := make(chan struct{})
+	go func() {
+		ss.Established()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		require.Fail(t, "Established did not return after the initial keepalive send failed")
+	}
+}
+
 func TestReceiveOpen_MalformedOpenMessage(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -1237,6 +1292,16 @@ func TestReadCommonHeader_TimesOutOnStalledPeer(t *testing.T) {
 
 	require.Error(t, err, "a stalled peer must not block the read indefinitely")
 	assert.Less(t, elapsed, 10*time.Second, "read should time out near the negotiated dead timer, not hang")
+}
+
+func TestReadFull_SetReadDeadlineErrorIsPropagated(t *testing.T) {
+	wantErr := errors.New("use of closed network connection")
+	conn := &fakeConn{r: bytes.NewReader(nil), setReadDeadlineErr: wantErr}
+
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+
+	err := ss.readFull(make([]byte, pcep.CommonHeaderLength))
+	assert.ErrorIs(t, err, wantErr, "readFull must surface a failure to set the read deadline instead of attempting the read")
 }
 
 func TestReceivePCEPMessage_StateReportHandlingErrorIsLoggedNotFatal(t *testing.T) {
@@ -1412,6 +1477,34 @@ func TestReceivePCEPMessage_UnsupportedMessageBodyIsConsumed(t *testing.T) {
 
 	_, found := ss.SearchSRPolicy(5)
 	assert.True(t, found, "the PCRpt following an unsupported message was not processed")
+}
+
+func TestHandleUnsupportedMessage_ReadBodyErrorIsReturned(t *testing.T) {
+	conn := &fakeConn{r: bytes.NewReader(nil)}
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+
+	header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageType(0x63), MessageLength: pcep.CommonHeaderLength + 4}
+	assert.Error(t, ss.handleUnsupportedMessage(header), "a truncated unsupported message body must be reported")
+}
+
+func TestHandleUnsupportedMessage_SendPCErrFailureIsLoggedNotFatal(t *testing.T) {
+	conn := &fakeConn{r: bytes.NewReader(nil), writeErr: errors.New("write: broken pipe")}
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+
+	header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageType(0x63), MessageLength: pcep.CommonHeaderLength}
+	err := ss.handleUnsupportedMessage(header)
+	assert.NoError(t, err, "a single unsupported message must not close the session even if the PCErr reply fails to send")
+}
+
+func TestHandleUnsupportedMessage_SendCloseFailureStillReturnsError(t *testing.T) {
+	conn := &fakeConn{r: bytes.NewReader(nil), writeErr: errors.New("write: broken pipe")}
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss.maxUnknownMsgs = 0
+
+	header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageType(0x63), MessageLength: pcep.CommonHeaderLength}
+	err := ss.handleUnsupportedMessage(header)
+	assert.ErrorContains(t, err, "too many unrecognized PCEP messages",
+		"the too-many-unknown-messages error must surface even when sending the Close message fails")
 }
 
 // RFC 5440 §6.9: close the session when unrecognized messages exceed the allowed rate.
