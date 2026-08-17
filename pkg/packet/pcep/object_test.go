@@ -650,6 +650,13 @@ func TestOpenObject_DecodeFromBytes_TooShort(t *testing.T) {
 	}
 }
 
+func TestOpenObject_DecodeFromBytes_UnsupportedVersion(t *testing.T) {
+	t.Parallel()
+
+	var o OpenObject
+	assert.Error(t, o.DecodeFromBytes(ObjectTypeOpenOpen, []uint8{0x40, 0x1e, 0x78, 0x01}))
+}
+
 func TestLSPAObject_RoundTrip(t *testing.T) {
 	t.Parallel()
 
@@ -1625,6 +1632,31 @@ func TestNewOpenObject(t *testing.T) {
 		Caps:       caps,
 	}
 	assert.Equal(t, want, o)
+}
+
+func TestNewOpenObject_DeadtimeClampsInsteadOfWrapping(t *testing.T) {
+	t.Parallel()
+
+	o := NewOpenObject(7, 65, nil)
+	assert.Equal(t, uint8(math.MaxUint8), o.Deadtime)
+}
+
+func TestDeadTimerFor(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		keepalive uint8
+		want      uint8
+	}{
+		{0, 0},
+		{30, 120},
+		{63, 252},
+		{64, math.MaxUint8},
+		{255, math.MaxUint8},
+	}
+	for _, tt := range tests {
+		assert.Equal(t, tt.want, DeadTimerFor(tt.keepalive))
+	}
 }
 
 func TestBandwidthObject_DecodeFromBytes(t *testing.T) {

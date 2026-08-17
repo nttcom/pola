@@ -30,6 +30,9 @@ import (
 
 // wrapStatusError adds context while preserving gRPC status details.
 func wrapStatusError(err error, format string, a ...any) error {
+	if err == nil {
+		return nil
+	}
 	prefix := fmt.Sprintf(format, a...)
 	if st, ok := status.FromError(err); ok {
 		wrapped := status.New(st.Code(), prefix+": "+st.Message())
@@ -202,10 +205,16 @@ func newEnrichedSegment(segment *pb.Segment, usidMode bool) (table.Segment, erro
 		if err != nil {
 			return nil, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "%s", err.Error())
 		}
+		if _, err := pcep.NewSRv6EroSubobject(enriched); err != nil {
+			return nil, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "%s", err.Error())
+		}
 		return enriched, nil
 	case table.SegmentSRMPLS:
 		enriched, err := enrichSRMPLSSegment(v, segment)
 		if err != nil {
+			return nil, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "%s", err.Error())
+		}
+		if _, err := pcep.NewSREroSubobject(enriched); err != nil {
 			return nil, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "%s", err.Error())
 		}
 		return enriched, nil

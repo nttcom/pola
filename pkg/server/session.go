@@ -34,9 +34,6 @@ const (
 	pcepErrorValueUnassigned            uint8 = 0
 
 	defaultDeadTimer = 120 * time.Second
-
-	// RFC 5440 recommends a DeadTimer of at least 4x the Keepalive interval.
-	deadTimerKeepaliveMultiplier = 4
 )
 
 // pcepConn abstracts the transport used by Session, allowing tests to inject
@@ -284,13 +281,12 @@ func (ss *Session) Open() error {
 	return ss.SendOpen()
 }
 
-// readDeadline returns the DeadTimer based on the negotiated Keepalive.
 // Keepalive == 0 disables the read deadline.
 func (ss *Session) readDeadline() time.Duration {
 	if ss.keepAlive == 0 {
 		return 0
 	}
-	return deadTimerKeepaliveMultiplier * time.Duration(ss.keepAlive) * time.Second
+	return time.Duration(pcep.DeadTimerFor(ss.keepAlive)) * time.Second
 }
 
 func (ss *Session) readFullWithDeadline(buf []uint8, deadline time.Time) error {

@@ -217,6 +217,9 @@ func (o *OpenObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
 
 	o.ObjectType = typ
 	o.Version = uint8(objectBody[0] >> 5)
+	if o.Version != PCEPVersion {
+		return fmt.Errorf("unsupported PCEP version %d in OPEN object", o.Version)
+	}
 	o.Flag = uint8(objectBody[0] & 0x1f)
 	o.Keepalive = uint8(objectBody[1])
 	o.Deadtime = uint8(objectBody[2])
@@ -268,10 +271,22 @@ func NewOpenObject(sessionID uint8, keepalive uint8, capabilities []CapabilityIn
 		Version:    uint8(1), // PCEP version. Current version is 1
 		Flag:       uint8(0),
 		Keepalive:  keepalive,
-		Deadtime:   keepalive * 4,
+		Deadtime:   DeadTimerFor(keepalive),
 		Sid:        sessionID,
 		Caps:       capabilities,
 	}
+}
+
+const deadTimerMultiplier = 4
+
+// DeadTimerFor returns the DeadTimer for the given Keepalive, clamped to the
+// OPEN object's one-octet field.
+func DeadTimerFor(keepalive uint8) uint8 {
+	d := int(keepalive) * deadTimerMultiplier
+	if d > math.MaxUint8 {
+		return math.MaxUint8
+	}
+	return uint8(d)
 }
 
 // BANDWIDTH Object (RFC5440 7.7)

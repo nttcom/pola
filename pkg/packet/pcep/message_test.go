@@ -518,8 +518,15 @@ func TestPCRptMessage_DecodeFromBytes(t *testing.T) {
 	t.Run("Errors", func(t *testing.T) {
 		t.Parallel()
 
+		ep, err := NewEndpointsObject(netip.MustParseAddr("192.0.2.2"), netip.MustParseAddr("192.0.2.1"))
+		require.NoError(t, err)
+		epRaw, err := ep.Serialize()
+		require.NoError(t, err)
+
 		cases := map[string][]uint8{
-			"TruncatedObjectHeader": {0x01, 0x02},
+			"TruncatedObjectHeader":       {0x01, 0x02},
+			"EmptyBody":                   {},
+			"OnlyUnregisteredObjectClass": epRaw,
 			"MalformedSRPBody": AppendByteSlices(
 				NewCommonObjectHeader(ObjectClassSRP, ObjectTypeSRPSRP, commonObjectHeaderLength+4).Serialize(),
 				make([]uint8, 4),

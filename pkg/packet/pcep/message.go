@@ -423,6 +423,7 @@ var decodeFuncs = map[ObjectClass]func(*StateReport, ObjectType, []uint8) error{
 func (m *PCRptMessage) DecodeFromBytes(messageBody []uint8) error {
 	var previousObjectClass ObjectClass
 	var sr *StateReport
+	var lspDecoded bool
 	for len(messageBody) > 0 {
 		var commonObjectHeader CommonObjectHeader
 		if err := commonObjectHeader.DecodeFromBytes(messageBody); err != nil {
@@ -440,10 +441,14 @@ func (m *PCRptMessage) DecodeFromBytes(messageBody []uint8) error {
 		}
 		if (previousObjectClass != ObjectClassSRP && commonObjectHeader.ObjectClass == ObjectClassLSP) || commonObjectHeader.ObjectClass == ObjectClassSRP {
 			if sr != nil {
+				if !lspDecoded {
+					return fmt.Errorf("PCRpt: state report missing LSP object")
+				}
 				m.StateReports = append(m.StateReports, sr)
 			}
 
 			sr = NewStateReport()
+			lspDecoded = false
 		}
 		if sr == nil {
 			return fmt.Errorf("PCRpt: object class %d received before SRP/LSP object", commonObjectHeader.ObjectClass)
@@ -451,12 +456,19 @@ func (m *PCRptMessage) DecodeFromBytes(messageBody []uint8) error {
 		if err := decodeFunc(sr, commonObjectHeader.ObjectType, body); err != nil {
 			return err
 		}
+		if commonObjectHeader.ObjectClass == ObjectClassLSP {
+			lspDecoded = true
+		}
 		previousObjectClass = commonObjectHeader.ObjectClass
 		messageBody = messageBody[commonObjectHeader.ObjectLength:]
 	}
-	if sr != nil {
-		m.StateReports = append(m.StateReports, sr)
+	if sr == nil {
+		return fmt.Errorf("PCRpt: no state report")
 	}
+	if !lspDecoded {
+		return fmt.Errorf("PCRpt: state report missing LSP object")
+	}
+	m.StateReports = append(m.StateReports, sr)
 
 	return nil
 }

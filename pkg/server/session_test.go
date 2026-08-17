@@ -1294,6 +1294,21 @@ func TestReadCommonHeader_TimesOutOnStalledPeer(t *testing.T) {
 	assert.Less(t, elapsed, 10*time.Second, "read should time out near the negotiated dead timer, not hang")
 }
 
+func TestReadDeadline_MatchesAdvertisedDeadTimer(t *testing.T) {
+	tests := []struct {
+		keepAlive uint8
+		want      time.Duration
+	}{
+		{0, 0},
+		{30, 120 * time.Second},
+		{65, time.Duration(math.MaxUint8) * time.Second},
+	}
+	for _, tt := range tests {
+		ss := &Session{keepAlive: tt.keepAlive}
+		assert.Equal(t, tt.want, ss.readDeadline())
+	}
+}
+
 func TestReadFull_SetReadDeadlineErrorIsPropagated(t *testing.T) {
 	wantErr := errors.New("use of closed network connection")
 	conn := &fakeConn{r: bytes.NewReader(nil), setReadDeadlineErr: wantErr}
