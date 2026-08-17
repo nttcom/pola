@@ -9,8 +9,10 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"net"
 	"net/netip"
+	"sync"
 	"testing"
 	"time"
 
@@ -102,8 +104,12 @@ func TestServer_Shutdown_ClosesListenerAndStopsServe(t *testing.T) {
 	go func() { serveErrCh <- s.Serve(addr, port) }()
 
 	require.Eventually(t, func() bool {
-		_, dialErr := net.DialTimeout("tcp", net.JoinHostPort(addr, port), 100*time.Millisecond)
-		return dialErr == nil
+		conn, dialErr := net.DialTimeout("tcp", net.JoinHostPort(addr, port), 100*time.Millisecond)
+		if dialErr != nil {
+			return false
+		}
+		_ = conn.Close()
+		return true
 	}, 2*time.Second, 10*time.Millisecond, "expected the PCEP listener to accept connections before shutdown")
 
 	require.NoError(t, s.Shutdown(), "Shutdown should close the listener without error")
@@ -254,15 +260,17 @@ func TestNewPCE_TEDEnabledUpdatesTEDOnElemsReceived(t *testing.T) {
 	core, logs := observer.New(zap.DebugLevel)
 	tedElemsChan := make(chan []table.TEDElem, 1)
 	o := &PCEOptions{
-		PCEPAddr:  "not-an-ip", // fail before listening
+		PCEPAddr:  "127.0.0.1",
 		PCEPPort:  "0",
 		GRPCAddr:  "127.0.0.1",
 		GRPCPort:  "0",
 		TEDEnable: true,
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+
 	errCh := make(chan Error, 1)
-	go func() { errCh <- NewPCE(context.Background(), o, zap.New(core), tedElemsChan) }()
+	go func() { errCh <- NewPCE(ctx, o, zap.New(core), tedElemsChan) }()
 
 	tedElemsChan <- []table.TEDElem{}
 
@@ -270,11 +278,45 @@ func TestNewPCE_TEDEnabledUpdatesTEDOnElemsReceived(t *testing.T) {
 		return len(logs.FilterMessage("Update TED").All()) > 0
 	}, 2*time.Second, 10*time.Millisecond, "expected the TED update goroutine to run")
 
+	cancel()
+
+	select {
+	case err := <-errCh:
+		assert.Empty(t, err.Server)
+		assert.NoError(t, err.Error)
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for NewPCE to shut down after context cancellation")
+	}
+}
+
+// TestNewPCE_WaitsForBothServersBeforeReturning ensures NewPCE waits for both servers to stop before returning.
+func TestNewPCE_WaitsForBothServersBeforeReturning(t *testing.T) {
+	grpcLn, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err, "failed to reserve a port")
+	grpcAddr, grpcPort, err := net.SplitHostPort(grpcLn.Addr().String())
+	require.NoError(t, err)
+	require.NoError(t, grpcLn.Close(), "failed to release the reserved port")
+
+	o := &PCEOptions{
+		PCEPAddr: "not-an-ip", // fails before listening, well before gRPC would stop on its own
+		PCEPPort: "0",
+		GRPCAddr: grpcAddr,
+		GRPCPort: grpcPort,
+	}
+
+	errCh := make(chan Error, 1)
+	go func() { errCh <- NewPCE(context.Background(), o, zap.NewNop(), make(chan []table.TEDElem)) }()
+
 	select {
 	case err := <-errCh:
 		assert.Equal(t, "pcep", err.Server)
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for NewPCE to report an error")
+	}
+
+	ln, err := net.Listen("tcp", net.JoinHostPort(grpcAddr, grpcPort))
+	if assert.NoError(t, err, "expected the gRPC listener to be released by the time NewPCE returns") {
+		assert.NoError(t, ln.Close())
 	}
 }
 
@@ -393,4 +435,79 @@ func TestServer_SyncTEDLoop_ExitsWhenChannelClosed(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for syncTEDLoop to return after the channel closed")
 	}
+}
+
+func TestServer_RegisterSession_ClosesConnWhenAlreadyShutdown(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() { _ = client.Close() })
+
+	s := &Server{logger: zap.NewNop(), closed: true}
+	ss := s.registerSession(server, 1, netip.MustParseAddr("10.0.255.1"))
+
+	assert.Nil(t, ss, "expected registerSession to reject a connection accepted after Shutdown")
+	assert.Empty(t, s.Sessions())
+
+	require.NoError(t, client.SetReadDeadline(time.Now().Add(2*time.Second)))
+	_, err := client.Read(make([]byte, 1))
+	assert.ErrorIs(t, err, io.EOF, "expected the connection accepted after shutdown to be closed immediately")
+}
+
+func TestServer_RegisterSession_AppendsWhenNotShutdown(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() { assert.NoError(t, client.Close()) })
+
+	s := &Server{logger: zap.NewNop()}
+	ss := s.registerSession(server, 1, netip.MustParseAddr("10.0.255.1"))
+
+	require.NotNil(t, ss)
+	assert.Equal(t, []*Session{ss}, s.Sessions())
+
+	s.closeSession(ss)
+}
+
+// blockingWriteConn simulates a peer that stopped reading.
+type blockingWriteConn struct {
+	r       io.Reader
+	unblock chan struct{}
+	once    sync.Once
+}
+
+func (c *blockingWriteConn) Read(p []byte) (int, error) { return c.r.Read(p) }
+
+func (c *blockingWriteConn) Write(p []byte) (int, error) {
+	<-c.unblock
+	return 0, net.ErrClosed
+}
+
+func (c *blockingWriteConn) Close() error {
+	c.once.Do(func() { close(c.unblock) })
+	return nil
+}
+
+func (c *blockingWriteConn) SetReadDeadline(time.Time) error { return nil }
+
+func TestServer_Shutdown_BoundsBlockedSendClose(t *testing.T) {
+	conn := &blockingWriteConn{r: bytes.NewReader(nil), unblock: make(chan struct{})}
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	core, logs := observer.New(zap.WarnLevel)
+	s := &Server{
+		sessionList:              []*Session{ss},
+		logger:                   zap.New(core),
+		shutdownSendCloseTimeout: 50 * time.Millisecond,
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		assert.NoError(t, s.Shutdown())
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Shutdown did not return after the SendClose timeout elapsed, despite the blocked write")
+	}
+
+	assert.Len(t, logs.FilterMessage("timed out sending PCEP close message during shutdown").All(), 1)
+	assert.Empty(t, s.Sessions(), "expected the session to be force-closed and untracked despite the blocked write")
 }

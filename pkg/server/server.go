@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strconv"
 	"sync"
+	"time"
 
 	"go.uber.org/zap"
 	grpc "google.golang.org/grpc"
@@ -23,17 +24,22 @@ import (
 	"github.com/nttcom/pola/pkg/table"
 )
 
+// Maximum time to wait for the PCEP Close message during shutdown.
+const defaultShutdownSendCloseTimeout = 2 * time.Second
+
 type Server struct {
-	sessionMu   sync.RWMutex // guards sessionList; written from the PCEP accept/close goroutines, read from gRPC handler goroutines.
+	sessionMu   sync.RWMutex // guards sessionList
 	sessionList []*Session
-	tedMu       sync.RWMutex // guards ted; written from the TED-update goroutine, read from gRPC handler goroutines.
+	tedMu       sync.RWMutex // guards ted
 	ted         *table.LsTED
 	logger      *zap.Logger
 	asn         uint32
 
-	listenerMu sync.Mutex // guards listener and closed.
+	listenerMu sync.Mutex // guards listener and closed
 	listener   tcpListener
-	closed     bool // set by Shutdown; makes Serve and AcceptTCP errors resolve without error.
+	closed     bool // set by Shutdown; suppresses Serve/AcceptTCP errors
+
+	shutdownSendCloseTimeout time.Duration // zero uses the default
 }
 
 type tcpListener interface {
@@ -100,14 +106,20 @@ func NewPCE(ctx context.Context, o *PCEOptions, logger *zap.Logger, tedElemsChan
 
 	go s.awaitShutdown(ctx, logger, grpcServer.GracefulStop)
 
+	// Wait for both servers to stop before returning the first error.
+	var firstErr Error
 	for range 2 {
 		r := <-resultChan
-		if r.err != nil {
-			logger.Error("Server encountered an error", zap.String("server", r.server), zap.Error(r.err))
-			return Error{Server: r.server, Error: r.err}
+		if r.err == nil {
+			continue
+		}
+		logger.Error("Server encountered an error", zap.String("server", r.server), zap.Error(r.err))
+		if firstErr.Error == nil {
+			firstErr = Error{Server: r.server, Error: r.err}
+			cancel()
 		}
 	}
-	return Error{}
+	return firstErr
 }
 
 func (s *Server) syncTEDLoop(ctx context.Context, tedElemsChan <-chan []table.TEDElem, asn uint32, logger *zap.Logger) {
@@ -180,19 +192,37 @@ func (s *Server) Serve(address string, port string) error {
 		if err != nil {
 			return fmt.Errorf("failed to parse remote address %s: %w", tcpConn.RemoteAddr().String(), err)
 		}
-		ss := NewSession(sessionID, peerAddrPort.Addr(), tcpConn, s.logger, s.TED(), s.asn)
-		ss.logger.Info("start PCEP session")
 
-		s.sessionMu.Lock()
-		s.sessionList = append(s.sessionList, ss)
-		s.sessionMu.Unlock()
+		ss := s.registerSession(tcpConn, sessionID, peerAddrPort.Addr())
+		sessionID++
+		if ss == nil {
+			continue
+		}
+		ss.logger.Info("start PCEP session")
 		go func() {
 			ss.Established()
 			s.closeSession(ss)
 			ss.logger.Info("close PCEP session")
 		}()
-		sessionID++
 	}
+}
+
+func (s *Server) registerSession(tcpConn *net.TCPConn, sessionID uint8, peerAddr netip.Addr) *Session {
+	s.listenerMu.Lock()
+	defer s.listenerMu.Unlock()
+
+	if s.closed {
+		if err := tcpConn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			s.logger.Warn("failed to close TCP connection accepted after shutdown", zap.Error(err))
+		}
+		return nil
+	}
+
+	ss := NewSession(sessionID, peerAddr, tcpConn, s.logger, s.TED(), s.asn)
+	s.sessionMu.Lock()
+	s.sessionList = append(s.sessionList, ss)
+	s.sessionMu.Unlock()
+	return ss
 }
 
 func (s *Server) awaitShutdown(ctx context.Context, logger *zap.Logger, stopGRPC func()) {
@@ -209,6 +239,9 @@ func (s *Server) Shutdown() error {
 	s.listenerMu.Lock()
 	s.closed = true
 	l := s.listener
+	s.sessionMu.RLock()
+	sessions := slices.Clone(s.sessionList)
+	s.sessionMu.RUnlock()
 	s.listenerMu.Unlock()
 
 	var err error
@@ -218,14 +251,40 @@ func (s *Server) Shutdown() error {
 		}
 	}
 
-	for _, ss := range s.Sessions() {
+	var wg sync.WaitGroup
+	for _, ss := range sessions {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.gracefulCloseSession(ss)
+		}()
+	}
+	wg.Wait()
+
+	return err
+}
+
+// Sends a PCEP Close message with a bounded wait before force-closing the session.
+func (s *Server) gracefulCloseSession(ss *Session) {
+	sendDone := make(chan struct{})
+	go func() {
+		defer close(sendDone)
 		if sendErr := ss.SendClose(pcep.CloseReasonNoExplanationProvided); sendErr != nil {
 			s.logger.Warn("failed to send PCEP close message during shutdown", zap.Error(sendErr))
 		}
-		s.closeSession(ss)
+	}()
+
+	timeout := s.shutdownSendCloseTimeout
+	if timeout <= 0 {
+		timeout = defaultShutdownSendCloseTimeout
+	}
+	select {
+	case <-sendDone:
+	case <-time.After(timeout):
+		s.logger.Warn("timed out sending PCEP close message during shutdown", zap.String("session", ss.peerAddr.String()))
 	}
 
-	return err
+	s.closeSession(ss)
 }
 
 func (s *Server) closeSession(session *Session) {

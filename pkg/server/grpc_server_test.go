@@ -422,6 +422,14 @@ func TestServe_ListenFailure(t *testing.T) {
 	require.ErrorContains(t, s.Serve(addr, port), "failed to listen on gRPC port", "expected the already-bound port to be rejected")
 }
 
+func TestServe_ReturnsNilWhenAlreadyStoppedBeforeServing(t *testing.T) {
+	grpcServer := grpc.NewServer()
+	grpcServer.GracefulStop() // simulate ctx cancellation winning the startup race against Serve
+
+	s := &APIServer{grpcServer: grpcServer, logger: zap.NewNop()}
+	assert.NoError(t, s.Serve("127.0.0.1", "0"), "grpc.ErrServerStopped from the startup race should not be reported as a failure")
+}
+
 func TestServe_ListensAndLogsActualAddr(t *testing.T) {
 	core, logs := observer.New(zap.InfoLevel)
 	s := &APIServer{grpcServer: grpc.NewServer(), logger: zap.New(core)}
