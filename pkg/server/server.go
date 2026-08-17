@@ -32,8 +32,13 @@ type Server struct {
 	asn         uint32
 
 	listenerMu sync.Mutex // guards listener and closed.
-	listener   *net.TCPListener
+	listener   tcpListener
 	closed     bool // set by Shutdown; makes Serve and AcceptTCP errors resolve without error.
+}
+
+type tcpListener interface {
+	AcceptTCP() (*net.TCPConn, error)
+	Close() error
 }
 
 // TED returns the current TED snapshot. Safe for concurrent use with setTED.
@@ -62,6 +67,9 @@ type PCEOptions struct {
 // NewPCE starts the PCEP and gRPC servers and blocks until they stop.
 // It returns an error if either server exits with a failure.
 func NewPCE(ctx context.Context, o *PCEOptions, logger *zap.Logger, tedElemsChan chan []table.TEDElem) Error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	s := &Server{
 		logger: logger,
 		asn:    o.ASN,
@@ -70,19 +78,7 @@ func NewPCE(ctx context.Context, o *PCEOptions, logger *zap.Logger, tedElemsChan
 		s.setTED(&table.LsTED{
 			Nodes: map[string]*table.LsNode{},
 		})
-
-		// Update TED
-		go func() {
-			for {
-				tedElems := <-tedElemsChan
-				ted := &table.LsTED{
-					Nodes: map[string]*table.LsNode{},
-				}
-				ted.Update(tedElems, o.ASN)
-				s.setTED(ted)
-				logger.Debug("Update TED")
-			}
-		}()
+		go s.syncTEDLoop(ctx, tedElemsChan, o.ASN, logger)
 	}
 
 	grpcServer := grpc.NewServer()
@@ -102,14 +98,7 @@ func NewPCE(ctx context.Context, o *PCEOptions, logger *zap.Logger, tedElemsChan
 		resultChan <- result{server: "grpc", err: apiServer.Serve(o.GRPCAddr, o.GRPCPort)}
 	}()
 
-	go func() {
-		<-ctx.Done()
-		logger.Info("shutdown requested, stopping PCE server")
-		if err := s.Shutdown(); err != nil {
-			logger.Warn("failed to shut down PCEP server", zap.Error(err))
-		}
-		grpcServer.GracefulStop()
-	}()
+	go s.awaitShutdown(ctx, logger, grpcServer.GracefulStop)
 
 	for range 2 {
 		r := <-resultChan
@@ -119,6 +108,25 @@ func NewPCE(ctx context.Context, o *PCEOptions, logger *zap.Logger, tedElemsChan
 		}
 	}
 	return Error{}
+}
+
+func (s *Server) syncTEDLoop(ctx context.Context, tedElemsChan <-chan []table.TEDElem, asn uint32, logger *zap.Logger) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case tedElems, ok := <-tedElemsChan:
+			if !ok {
+				return
+			}
+			ted := &table.LsTED{
+				Nodes: map[string]*table.LsNode{},
+			}
+			ted.Update(tedElems, asn)
+			s.setTED(ted)
+			logger.Debug("Update TED")
+		}
+	}
 }
 
 func (s *Server) Serve(address string, port string) error {
@@ -187,6 +195,15 @@ func (s *Server) Serve(address string, port string) error {
 	}
 }
 
+func (s *Server) awaitShutdown(ctx context.Context, logger *zap.Logger, stopGRPC func()) {
+	<-ctx.Done()
+	logger.Info("shutdown requested, stopping PCE server")
+	if err := s.Shutdown(); err != nil {
+		logger.Warn("failed to shut down PCEP server", zap.Error(err))
+	}
+	stopGRPC()
+}
+
 // Shutdown stops accepting connections and gracefully closes established sessions.
 func (s *Server) Shutdown() error {
 	s.listenerMu.Lock()
@@ -196,7 +213,9 @@ func (s *Server) Shutdown() error {
 
 	var err error
 	if l != nil {
-		err = l.Close()
+		if err = l.Close(); errors.Is(err, net.ErrClosed) {
+			err = nil
+		}
 	}
 
 	for _, ss := range s.Sessions() {
@@ -210,12 +229,11 @@ func (s *Server) Shutdown() error {
 }
 
 func (s *Server) closeSession(session *Session) {
-	if err := session.tcpConn.Close(); err != nil {
+	if err := session.tcpConn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
 		s.logger.Warn("failed to close TCP connection", zap.Error(err))
 	}
 	session.clearSRPolicyIntents()
 
-	// Remove Session List
 	s.sessionMu.Lock()
 	for i, v := range s.sessionList {
 		if v.sessionID == session.sessionID {

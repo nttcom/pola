@@ -6,7 +6,9 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"net"
 	"net/netip"
 	"testing"
@@ -133,6 +135,18 @@ func TestServer_Shutdown_BeforeServeStillReturnsCleanly(t *testing.T) {
 	assert.Error(t, dialErr, "expected Serve not to accept connections after an earlier Shutdown")
 }
 
+func TestServer_Shutdown_LogsWarnOnSendCloseFailure(t *testing.T) {
+	conn := &fakeConn{r: bytes.NewReader(nil), writeErr: errors.New("write: broken pipe")}
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	core, logs := observer.New(zap.WarnLevel)
+	s := &Server{sessionList: []*Session{ss}, logger: zap.New(core)}
+
+	require.NoError(t, s.Shutdown())
+
+	assert.Len(t, logs.FilterMessage("failed to send PCEP close message during shutdown").All(), 1)
+	assert.Empty(t, s.Sessions())
+}
+
 func TestServer_Shutdown_ClosesActiveSessions(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err, "failed to reserve a port")
@@ -163,7 +177,7 @@ func TestServer_Shutdown_ClosesActiveSessions(t *testing.T) {
 	assert.Empty(t, s.Sessions(), "expected Shutdown to close and untrack the active session")
 }
 
-func TestServer_CloseSession_LogsWarnOnCloseFailure(t *testing.T) {
+func TestServer_CloseSession_SuppressesWarnOnAlreadyClosedConnection(t *testing.T) {
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		assert.NoError(t, client.Close(), "failed to close client connection")
@@ -171,6 +185,19 @@ func TestServer_CloseSession_LogsWarnOnCloseFailure(t *testing.T) {
 	require.NoError(t, server.Close(), "failed to pre-close server connection")
 
 	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	core, logs := observer.New(zap.WarnLevel)
+	s := &Server{sessionList: []*Session{ss}, logger: zap.New(core)}
+
+	s.closeSession(ss)
+
+	assert.Empty(t, logs.FilterMessage("failed to close TCP connection").All(),
+		"a double close (Shutdown racing the session's own close) should not be logged as a failure")
+	assert.Empty(t, s.Sessions())
+}
+
+func TestServer_CloseSession_LogsWarnOnOtherCloseFailure(t *testing.T) {
+	conn := &fakeConn{r: bytes.NewReader(nil), closeErr: errors.New("boom")}
+	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
 	core, logs := observer.New(zap.WarnLevel)
 	s := &Server{sessionList: []*Session{ss}, logger: zap.New(core)}
 
@@ -274,5 +301,96 @@ func TestNewPCE_ContextCancelShutsDownCleanly(t *testing.T) {
 		assert.NoError(t, err.Error)
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for NewPCE to shut down after context cancellation")
+	}
+}
+
+type fakeListener struct {
+	closeErr error
+}
+
+func (l *fakeListener) AcceptTCP() (*net.TCPConn, error) { <-make(chan struct{}); return nil, nil }
+func (l *fakeListener) Close() error                     { return l.closeErr }
+
+func TestServer_Shutdown_TreatsRepeatCloseAsNoError(t *testing.T) {
+	s := &Server{logger: zap.NewNop(), listener: &fakeListener{closeErr: net.ErrClosed}}
+
+	assert.NoError(t, s.Shutdown(), "a listener already closed elsewhere should not fail Shutdown")
+}
+
+func TestServer_Shutdown_PropagatesOtherListenerCloseError(t *testing.T) {
+	wantErr := errors.New("boom")
+	s := &Server{logger: zap.NewNop(), listener: &fakeListener{closeErr: wantErr}}
+
+	assert.ErrorIs(t, s.Shutdown(), wantErr)
+}
+
+func TestServer_AwaitShutdown_LogsWarnOnShutdownError(t *testing.T) {
+	wantErr := errors.New("boom")
+	core, logs := observer.New(zap.WarnLevel)
+	s := &Server{logger: zap.NewNop(), listener: &fakeListener{closeErr: wantErr}}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	stopped := false
+	done := make(chan struct{})
+	go func() {
+		s.awaitShutdown(ctx, zap.New(core), func() { stopped = true })
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for awaitShutdown to return")
+	}
+
+	assert.Len(t, logs.FilterMessage("failed to shut down PCEP server").All(), 1)
+	assert.True(t, stopped, "expected the gRPC server to be stopped even when Shutdown fails")
+}
+
+func TestServer_SyncTEDLoop_AppliesReceivedElems(t *testing.T) {
+	s := &Server{}
+	core, logs := observer.New(zap.DebugLevel)
+	tedElemsChan := make(chan []table.TEDElem, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan struct{})
+	go func() {
+		s.syncTEDLoop(ctx, tedElemsChan, 65000, zap.New(core))
+		close(done)
+	}()
+
+	tedElemsChan <- []table.TEDElem{}
+
+	require.Eventually(t, func() bool {
+		return len(logs.FilterMessage("Update TED").All()) > 0
+	}, 2*time.Second, 10*time.Millisecond, "expected the received TED elements to be applied")
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for syncTEDLoop to return after context cancellation")
+	}
+}
+
+func TestServer_SyncTEDLoop_ExitsWhenChannelClosed(t *testing.T) {
+	s := &Server{}
+	tedElemsChan := make(chan []table.TEDElem)
+
+	done := make(chan struct{})
+	go func() {
+		s.syncTEDLoop(context.Background(), tedElemsChan, 65000, zap.NewNop())
+		close(done)
+	}()
+
+	close(tedElemsChan)
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for syncTEDLoop to return after the channel closed")
 	}
 }
