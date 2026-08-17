@@ -1291,7 +1291,7 @@ func TestReadCommonHeader_TimesOutOnStalledPeer(t *testing.T) {
 	require.NoError(t, err)
 
 	start := time.Now()
-	_, err = ss.readCommonHeader()
+	_, _, err = ss.readCommonHeader()
 	elapsed := time.Since(start)
 
 	require.Error(t, err, "a stalled peer must not block the read indefinitely")
@@ -1313,14 +1313,14 @@ func TestReadDeadline_MatchesAdvertisedDeadTimer(t *testing.T) {
 	}
 }
 
-func TestReadFull_SetReadDeadlineErrorIsPropagated(t *testing.T) {
+func TestReadFullWithDeadline_SetReadDeadlineErrorIsPropagated(t *testing.T) {
 	wantErr := errors.New("use of closed network connection")
 	conn := &fakeConn{r: bytes.NewReader(nil), setReadDeadlineErr: wantErr}
 
 	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
 
-	err := ss.readFull(make([]byte, pcep.CommonHeaderLength))
-	assert.ErrorIs(t, err, wantErr, "readFull must surface a failure to set the read deadline instead of attempting the read")
+	err := ss.readFullWithDeadline(make([]byte, pcep.CommonHeaderLength), ss.messageDeadline())
+	assert.ErrorIs(t, err, wantErr, "readFullWithDeadline must surface a failure to set the read deadline instead of attempting the read")
 }
 
 func TestReceivePCEPMessage_StateReportHandlingErrorIsLoggedNotFatal(t *testing.T) {
@@ -1507,7 +1507,7 @@ func TestHandleUnsupportedMessage_ReadBodyErrorIsReturned(t *testing.T) {
 	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
 
 	header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageType(0x63), MessageLength: pcep.CommonHeaderLength + 4}
-	assert.Error(t, ss.handleUnsupportedMessage(header), "a truncated unsupported message body must be reported")
+	assert.Error(t, ss.handleUnsupportedMessage(header, ss.messageDeadline()), "a truncated unsupported message body must be reported")
 }
 
 func TestHandleUnsupportedMessage_SendPCErrFailureIsLoggedNotFatal(t *testing.T) {
@@ -1515,7 +1515,7 @@ func TestHandleUnsupportedMessage_SendPCErrFailureIsLoggedNotFatal(t *testing.T)
 	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
 
 	header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageType(0x63), MessageLength: pcep.CommonHeaderLength}
-	err := ss.handleUnsupportedMessage(header)
+	err := ss.handleUnsupportedMessage(header, ss.messageDeadline())
 	assert.NoError(t, err, "a single unsupported message must not close the session even if the PCErr reply fails to send")
 }
 
@@ -1525,7 +1525,7 @@ func TestHandleUnsupportedMessage_SendCloseFailureStillReturnsError(t *testing.T
 	ss.maxUnknownMsgs = 0
 
 	header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageType(0x63), MessageLength: pcep.CommonHeaderLength}
-	err := ss.handleUnsupportedMessage(header)
+	err := ss.handleUnsupportedMessage(header, ss.messageDeadline())
 	assert.ErrorContains(t, err, "too many unrecognized PCEP messages",
 		"the too-many-unknown-messages error must surface even when sending the Close message fails")
 }

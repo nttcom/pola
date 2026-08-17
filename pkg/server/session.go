@@ -297,12 +297,12 @@ func (ss *Session) readFullWithDeadline(buf []uint8, deadline time.Time) error {
 	return err
 }
 
-func (ss *Session) readFull(buf []uint8) error {
+func (ss *Session) messageDeadline() time.Time {
 	var deadline time.Time
 	if d := ss.readDeadline(); d > 0 {
 		deadline = time.Now().Add(d)
 	}
-	return ss.readFullWithDeadline(buf, deadline)
+	return deadline
 }
 
 func (ss *Session) parseOpenMessage() (*pcep.OpenMessage, error) {
@@ -383,7 +383,7 @@ func (ss *Session) SendPCErr(errorType, errorValue uint8) error {
 
 func (ss *Session) ReceivePCEPMessage() error {
 	for {
-		commonHeader, err := ss.readCommonHeader()
+		commonHeader, deadline, err := ss.readCommonHeader()
 		if err != nil {
 			return err
 		}
@@ -394,25 +394,25 @@ func (ss *Session) ReceivePCEPMessage() error {
 		case pcep.MessageTypeKeepalive:
 			ss.logger.Debug("Received Keepalive")
 		case pcep.MessageTypeReport:
-			if err := ss.handlePCRpt(commonHeader.MessageLength); err != nil {
+			if err := ss.handlePCRpt(commonHeader.MessageLength, deadline); err != nil {
 				return err
 			}
 		case pcep.MessageTypeError:
-			if err := ss.receivePCErr(commonHeader.MessageLength); err != nil {
+			if err := ss.receivePCErr(commonHeader.MessageLength, deadline); err != nil {
 				return err
 			}
 		case pcep.MessageTypeClose:
-			return ss.receiveClose(commonHeader.MessageLength)
+			return ss.receiveClose(commonHeader.MessageLength, deadline)
 		default:
-			if err := ss.handleUnsupportedMessage(commonHeader); err != nil {
+			if err := ss.handleUnsupportedMessage(commonHeader, deadline); err != nil {
 				return err
 			}
 		}
 	}
 }
 
-func (ss *Session) receivePCErr(messageLength uint16) error {
-	bytePCErrMessageBody, err := ss.readMessageBody(messageLength)
+func (ss *Session) receivePCErr(messageLength uint16, deadline time.Time) error {
+	bytePCErrMessageBody, err := ss.readMessageBody(messageLength, deadline)
 	if err != nil {
 		return err
 	}
@@ -424,8 +424,8 @@ func (ss *Session) receivePCErr(messageLength uint16) error {
 	return nil
 }
 
-func (ss *Session) receiveClose(messageLength uint16) error {
-	byteCloseMessageBody, err := ss.readMessageBody(messageLength)
+func (ss *Session) receiveClose(messageLength uint16, deadline time.Time) error {
+	byteCloseMessageBody, err := ss.readMessageBody(messageLength, deadline)
 	if err != nil {
 		return err
 	}
@@ -439,8 +439,8 @@ func (ss *Session) receiveClose(messageLength uint16) error {
 	return nil
 }
 
-func (ss *Session) handleUnsupportedMessage(commonHeader *pcep.CommonHeader) error {
-	if _, err := ss.readMessageBody(commonHeader.MessageLength); err != nil {
+func (ss *Session) handleUnsupportedMessage(commonHeader *pcep.CommonHeader, deadline time.Time) error {
+	if _, err := ss.readMessageBody(commonHeader.MessageLength, deadline); err != nil {
 		return err
 	}
 	ss.logger.Debug("Received unsupported MessageType",
@@ -459,24 +459,25 @@ func (ss *Session) handleUnsupportedMessage(commonHeader *pcep.CommonHeader) err
 	return nil
 }
 
-func (ss *Session) readCommonHeader() (*pcep.CommonHeader, error) {
+func (ss *Session) readCommonHeader() (*pcep.CommonHeader, time.Time, error) {
+	deadline := ss.messageDeadline()
+
 	commonHeaderBytes := make([]uint8, pcep.CommonHeaderLength)
-	if err := ss.readFull(commonHeaderBytes); err != nil {
-		return nil, err
+	if err := ss.readFullWithDeadline(commonHeaderBytes, deadline); err != nil {
+		return nil, time.Time{}, err
 	}
 
 	commonHeader := &pcep.CommonHeader{}
 	if err := commonHeader.DecodeFromBytes(commonHeaderBytes); err != nil {
-		return nil, err
+		return nil, time.Time{}, err
 	}
 
-	return commonHeader, nil
+	return commonHeader, deadline, nil
 }
 
-// readMessageBody reads the body following the common header.
-func (ss *Session) readMessageBody(messageLength uint16) ([]uint8, error) {
+func (ss *Session) readMessageBody(messageLength uint16, deadline time.Time) ([]uint8, error) {
 	body := make([]uint8, messageLength-pcep.CommonHeaderLength)
-	if err := ss.readFull(body); err != nil {
+	if err := ss.readFullWithDeadline(body, deadline); err != nil {
 		return nil, err
 	}
 	return body, nil
@@ -516,10 +517,10 @@ func (ss *Session) handlePCErr(pcerrMessage *pcep.PCErrMessage) {
 	}
 }
 
-func (ss *Session) handlePCRpt(length uint16) error {
+func (ss *Session) handlePCRpt(length uint16, deadline time.Time) error {
 	ss.logger.Debug("Received PCRpt Message")
 
-	messageBodyBytes, err := ss.readMessageBody(length)
+	messageBodyBytes, err := ss.readMessageBody(length, deadline)
 	if err != nil {
 		return err
 	}
