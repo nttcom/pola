@@ -8,6 +8,8 @@ package main
 import (
 	"bytes"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -146,13 +148,19 @@ func TestParseProfileLine(t *testing.T) {
 		{
 			name: "valid",
 			line: "github.com/nttcom/pola/pkg/table/table.go:12.34,56.7 8 9",
-			want: block{file: "github.com/nttcom/pola/pkg/table/table.go", start: 12, end: 56, count: 9},
+			want: block{file: "github.com/nttcom/pola/pkg/table/table.go", start: 12, startCol: 34, end: 56, endCol: 7, count: 9},
 			ok:   true,
 		},
 		{
 			name: "zero count",
 			line: "m/a.go:1.1,2.2 1 0",
-			want: block{file: "m/a.go", start: 1, end: 2, count: 0},
+			want: block{file: "m/a.go", start: 1, startCol: 1, end: 2, endCol: 2, count: 0},
+			ok:   true,
+		},
+		{
+			name: "zero stmts",
+			line: "m/a.go:1.1,2.2 0 1",
+			want: block{file: "m/a.go", start: 1, startCol: 1, end: 2, endCol: 2, count: 1},
 			ok:   true,
 		},
 		{name: "mode preamble", line: "mode: set"},
@@ -163,6 +171,9 @@ func TestParseProfileLine(t *testing.T) {
 		{name: "no column", line: "m/a.go:1,2 1 2"},
 		{name: "non-numeric line", line: "m/a.go:x.1,2.2 1 2"},
 		{name: "non-numeric count", line: "m/a.go:1.1,2.2 1 x"},
+		{name: "non-numeric stmts", line: "m/a.go:1.1,2.2 x 2"},
+		{name: "negative count", line: "m/a.go:1.1,2.2 1 -2"},
+		{name: "negative stmts", line: "m/a.go:1.1,2.2 -1 2"},
 		{name: "end before start", line: "m/a.go:9.1,2.2 1 2"},
 		{name: "zero line", line: "m/a.go:0.1,2.2 1 2"},
 	}
@@ -272,6 +283,104 @@ func TestParseProfile(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// withSourceFile writes src to name in a temporary directory and changes
+// the working directory for the duration of the test.
+func withSourceFile(t *testing.T, name, src string) {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(cwd) })
+}
+
+func TestParseProfileSkipsDeclarationAndClosingBraceLines(t *testing.T) {
+	src := "package p\n\nfunc Foo(x int) int {\n\tif x < 0 {\n\t\treturn 0\n\t}\n\treturn x\n}\n"
+	withSourceFile(t, "a.go", src)
+
+	profile := "mode: set\n" +
+		module + "/a.go:3.21,4.11 1 1\n" +
+		module + "/a.go:4.11,6.3 1 1\n" +
+		module + "/a.go:7.2,7.10 1 1\n"
+	changed := changedLines{"a.go": {3: true, 4: true, 5: true, 6: true, 7: true, 8: true}}
+
+	res, err := parseProfile(strings.NewReader(profile), module, changed)
+	if err != nil {
+		t.Fatalf("parseProfile() error = %v", err)
+	}
+	if res.total != 3 || res.covered != 3 {
+		t.Errorf("total/covered = %d/%d, want 3/3 (lines 4, 5, 7 only)", res.total, res.covered)
+	}
+	for _, fr := range res.files {
+		if len(fr.uncovered) > 0 {
+			t.Errorf("unexpected uncovered lines %v", fr.uncovered)
+		}
+	}
+}
+
+func TestParseProfileSkipsCommentOnlyInteriorLines(t *testing.T) {
+	src := "package p\n\nfunc Foo(x int) int {\n\t// entry comment\n\tif x < 0 {\n\t\treturn 0\n\t}\n\treturn x\n}\n"
+	withSourceFile(t, "a.go", src)
+
+	profile := "mode: set\n" +
+		module + "/a.go:3.21,5.11 1 0\n" +
+		module + "/a.go:5.11,7.3 1 0\n" +
+		module + "/a.go:8.2,8.10 1 0\n"
+	changed := changedLines{"a.go": {3: true, 4: true, 5: true, 6: true, 7: true, 8: true}}
+
+	res, err := parseProfile(strings.NewReader(profile), module, changed)
+	if err != nil {
+		t.Fatalf("parseProfile() error = %v", err)
+	}
+	if res.total != 3 || res.covered != 0 {
+		t.Errorf("total/covered = %d/%d, want 3/0", res.total, res.covered)
+	}
+	for _, fr := range res.files {
+		if !equalInts(fr.uncovered, []int{5, 6, 8}) {
+			t.Errorf("uncovered = %v, want [5 6 8]", fr.uncovered)
+		}
+	}
+}
+
+func TestParseProfileFallsBackWhenSourceIsUnavailable(t *testing.T) {
+	profile := "mode: set\n" + module + "/missing.go:1.1,3.2 1 1\n"
+	changed := changedLines{"missing.go": {1: true, 2: true, 3: true}}
+
+	res, err := parseProfile(strings.NewReader(profile), module, changed)
+	if err != nil {
+		t.Fatalf("parseProfile() error = %v", err)
+	}
+	if res.total != 3 || res.covered != 3 {
+		t.Errorf("total/covered = %d/%d, want 3/3", res.total, res.covered)
+	}
+}
+
+func TestParseProfileRejectsEmptyProfile(t *testing.T) {
+	if _, err := parseProfile(strings.NewReader(""), module, changedLines{}); err == nil {
+		t.Fatal("parseProfile() error = nil, want error for profile without mode header")
+	}
+}
+
+func TestParseProfileHandlesHugeBlockRange(t *testing.T) {
+	profile := "mode: set\n" + module + "/missing.go:1.1,9223372036854775807.1 1 1\n"
+	changed := changedLines{"missing.go": {2: true}}
+
+	res, err := parseProfile(strings.NewReader(profile), module, changed)
+	if err != nil {
+		t.Fatalf("parseProfile() error = %v", err)
+	}
+	if res.total != 1 || res.covered != 1 {
+		t.Errorf("total/covered = %d/%d, want 1/1", res.total, res.covered)
 	}
 }
 

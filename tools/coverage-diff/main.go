@@ -12,11 +12,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"go/scanner"
+	"go/token"
 	"io"
 	"os"
 	"os/exec"
 	"regexp"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -238,22 +241,40 @@ func mark(m map[string]lineSet, file string, line int) {
 }
 
 type block struct {
-	file  string
-	start int
-	end   int
-	count int
+	file     string
+	start    int
+	startCol int
+	end      int
+	endCol   int
+	count    int
 }
+
+// supportedModes lists the coverage modes supported by go test.
+var supportedModes = []string{"set", "count", "atomic"}
 
 func parseProfile(r io.Reader, module string, changed changedLines) (*result, error) {
 	seen := map[string]lineSet{}
 	covered := map[string]lineSet{}
+	src := newSourceIndex()
 
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64*1024), maxLine)
+	sawMode := false
 	for sc.Scan() {
 		line := sc.Text()
 		if strings.HasPrefix(line, "mode: ") {
+			if sawMode {
+				return nil, fmt.Errorf("duplicate coverage mode header: %q", line)
+			}
+			mode := strings.TrimPrefix(line, "mode: ")
+			if !slices.Contains(supportedModes, mode) {
+				return nil, fmt.Errorf("unsupported coverage mode: %q", mode)
+			}
+			sawMode = true
 			continue
+		}
+		if !sawMode {
+			return nil, fmt.Errorf("coverage profile missing mode header")
 		}
 		b, ok := parseProfileLine(line)
 		if !ok {
@@ -264,8 +285,8 @@ func parseProfile(r io.Reader, module string, changed changedLines) (*result, er
 		if added == nil {
 			continue
 		}
-		for ln := b.start; ln <= b.end; ln++ {
-			if !added[ln] {
+		for ln := range added {
+			if ln < b.start || ln > b.end || !src.hasStatement(file, b, ln) {
 				continue
 			}
 			mark(seen, file, ln)
@@ -276,6 +297,9 @@ func parseProfile(r io.Reader, module string, changed changedLines) (*result, er
 	}
 	if err := sc.Err(); err != nil {
 		return nil, err
+	}
+	if !sawMode {
+		return nil, fmt.Errorf("coverage profile missing mode header")
 	}
 	return summarize(seen, covered), nil
 }
@@ -294,29 +318,110 @@ func parseProfileLine(s string) (block, bool) {
 	if len(spans) != 2 {
 		return block{}, false
 	}
-	start, ok1 := lineOf(spans[0])
-	end, ok2 := lineOf(spans[1])
-	count, err := strconv.Atoi(fields[2])
-	if !ok1 || !ok2 || err != nil || end < start {
+	startLine, startCol, ok1 := posOf(spans[0])
+	endLine, endCol, ok2 := posOf(spans[1])
+	stmts, stmtsErr := strconv.Atoi(fields[1])
+	count, countErr := strconv.Atoi(fields[2])
+	if !ok1 || !ok2 || stmtsErr != nil || countErr != nil || stmts < 0 || count < 0 {
 		return block{}, false
 	}
-	return block{file: fields[0][:colon], start: start, end: end, count: count}, true
+	if endLine < startLine || (endLine == startLine && endCol < startCol) {
+		return block{}, false
+	}
+	return block{file: fields[0][:colon], start: startLine, startCol: startCol, end: endLine, endCol: endCol, count: count}, true
 }
 
-func lineOf(pos string) (int, bool) {
+// posOf parses a "<line>.<col>" coverage profile position.
+func posOf(pos string) (line, col int, ok bool) {
 	dot := strings.IndexByte(pos, '.')
 	if dot < 0 {
-		return 0, false
+		return 0, 0, false
 	}
-	n, err := strconv.Atoi(pos[:dot])
-	if err != nil || n < 1 {
-		return 0, false
+	line, err := strconv.Atoi(pos[:dot])
+	if err != nil || line < 1 {
+		return 0, 0, false
 	}
-	return n, true
+	col, err = strconv.Atoi(pos[dot+1:])
+	if err != nil || col < 1 {
+		return 0, 0, false
+	}
+	return line, col, true
 }
 
 func stripModule(name, module string) string {
 	return strings.TrimPrefix(name, module+"/")
+}
+
+// sourceIndex tokenizes source files to identify code positions within
+// coverage block ranges.
+type sourceIndex struct {
+	fset  *token.FileSet
+	files map[string]*token.File
+	code  map[string][]token.Pos // positions of non-brace tokens, ascending
+	fail  map[string]bool
+}
+
+func newSourceIndex() *sourceIndex {
+	return &sourceIndex{
+		fset:  token.NewFileSet(),
+		files: map[string]*token.File{},
+		code:  map[string][]token.Pos{},
+		fail:  map[string]bool{},
+	}
+}
+
+func (idx *sourceIndex) ensure(file string) {
+	if _, ok := idx.files[file]; ok || idx.fail[file] {
+		return
+	}
+	src, err := os.ReadFile(file)
+	if err != nil {
+		idx.fail[file] = true
+		return
+	}
+	tf := idx.fset.AddFile(file, -1, len(src))
+	var sc scanner.Scanner
+	sc.Init(tf, src, nil, 0) // mode 0: comments are skipped, not returned as tokens
+	var code []token.Pos
+	for {
+		pos, tok, _ := sc.Scan()
+		if tok == token.EOF {
+			break
+		}
+		if tok == token.LBRACE || tok == token.RBRACE {
+			continue
+		}
+		code = append(code, pos)
+	}
+	idx.files[file] = tf
+	idx.code[file] = code
+}
+
+// hasStatement reports whether the block range on line ln contains code.
+// If the source can't be read, it conservatively treats the line as code.
+func (idx *sourceIndex) hasStatement(file string, b block, ln int) bool {
+	idx.ensure(file)
+	if idx.fail[file] {
+		return true
+	}
+	tf := idx.files[file]
+	if ln < 1 || ln > tf.LineCount() {
+		return true
+	}
+	segStart := tf.LineStart(ln)
+	if ln == b.start {
+		segStart += token.Pos(b.startCol - 1)
+	}
+	segEnd := token.Pos(tf.Base() + tf.Size())
+	if ln == b.end {
+		segEnd = tf.LineStart(ln) + token.Pos(b.endCol-1)
+	} else if ln < tf.LineCount() {
+		segEnd = tf.LineStart(ln + 1)
+	}
+
+	code := idx.code[file]
+	i := sort.Search(len(code), func(i int) bool { return code[i] >= segStart })
+	return i < len(code) && code[i] < segEnd
 }
 
 type fileResult struct {
