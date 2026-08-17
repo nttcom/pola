@@ -100,3 +100,18 @@ func TestPolaCapability(t *testing.T) {
 		})
 	}
 }
+
+func TestPolaCapability_OutputAlwaysSerializes(t *testing.T) {
+	caps := []CapabilityInterface{
+		&StatefulPCECapability{LSPUpdateCapability: true},
+		&SRPCECapability{MaximumSidDepth: 16},
+		&PathSetupTypeCapability{PathSetupTypes: Psts{PathSetupTypeSRTE}},
+		&AssocTypeList{AssocTypes: []AssocType{AssocTypeSRPolicyAssociation}},
+		&LSPDBVersion{VersionNumber: 1},
+	}
+
+	for _, cap := range PolaCapability(caps) {
+		_, err := cap.Serialize()
+		assert.NoError(t, err, "PolaCapability output must always serialize: %T", cap)
+	}
+}

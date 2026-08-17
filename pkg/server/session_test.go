@@ -971,9 +971,13 @@ func writeStateReportMessage(t *testing.T, w io.Writer, sr *pcep.StateReport) {
 		&pcep.SymbolicPathName{Name: sr.LSPObject.Name},
 		pcep.NewIPv4LSPIdentifiers(sr.LSPObject.SrcAddr, sr.LSPObject.DstAddr, sr.LSPObject.LSPID, 0, 0),
 	)
+	byteSrp, err := sr.SrpObject.Serialize()
+	require.NoError(t, err, "failed to serialize SrpObject")
+	byteLsp, err := sr.LSPObject.Serialize()
+	require.NoError(t, err, "failed to serialize LSPObject")
 	byteEro, err := sr.EroObject.Serialize()
 	require.NoError(t, err, "failed to serialize EroObject")
-	body := append(append(sr.SrpObject.Serialize(), sr.LSPObject.Serialize()...), byteEro...)
+	body := append(append(byteSrp, byteLsp...), byteEro...)
 	writeRawPCEPMessage(t, w, pcep.MessageTypeReport, body)
 }
 
@@ -1331,7 +1335,11 @@ func TestReceivePCEPMessage_StateReportHandlingErrorIsLoggedNotFatal(t *testing.
 	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
 
 	sr := newTestStateReport(t, 7, 0)
-	body := append(sr.SrpObject.Serialize(), sr.LSPObject.Serialize()...) // no ERO object
+	byteSrp, err := sr.SrpObject.Serialize()
+	require.NoError(t, err, "failed to serialize SrpObject")
+	byteLsp, err := sr.LSPObject.Serialize()
+	require.NoError(t, err, "failed to serialize LSPObject")
+	body := append(byteSrp, byteLsp...) // no ERO object
 	writeRawPCEPMessage(t, client, pcep.MessageTypeReport, body)
 
 	closeMessage := pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided)

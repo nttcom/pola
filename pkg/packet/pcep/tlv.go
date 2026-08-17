@@ -232,18 +232,12 @@ const (
 	SubTLVPreferenceCisco TLVType = 0x03
 )
 
-// Cisco specific SubTLV length
-const (
-	SubTLVColorCiscoValueLength      uint16 = 4
-	SubTLVPreferenceCiscoValueLength uint16 = 4
-)
-
 type TLVInterface interface {
 	DecodeFromBytes(data []byte) error
-	Serialize() []byte
+	Serialize() ([]byte, error)
 	MarshalLogObject(enc zapcore.ObjectEncoder) error
 	Type() TLVType
-	Len() uint16 // Total length of Type, Length, and Value
+	Len() int // Total serialized length of Type, Length, and Value.
 }
 
 var tlvMap = map[TLVType]func() TLVInterface{
@@ -300,16 +294,21 @@ func (tlv *VendorInformation) DecodeFromBytes(data []byte) error {
 	return nil
 }
 
-func (tlv *VendorInformation) Serialize() []byte {
+func (tlv *VendorInformation) Serialize() ([]byte, error) {
+	length, err := tlvValueLength(tlv.valueLength())
+	if err != nil {
+		return nil, fmt.Errorf("VendorInformation: %w", err)
+	}
+
 	value := make([]byte, tlv.paddedValueLength())
 	binary.BigEndian.PutUint32(value[:TLVVendorInformationMinValueLength], uint32(tlv.EnterpriseNumber))
 	copy(value[TLVVendorInformationMinValueLength:], tlv.EnterpriseSpecificInformation)
 
 	return AppendByteSlices(
 		Uint16ToByteSlice(tlv.Type()),
-		Uint16ToByteSlice(tlv.valueLength()),
+		Uint16ToByteSlice(length),
 		value,
-	)
+	), nil
 }
 
 func (tlv *VendorInformation) MarshalLogObject(enc zapcore.ObjectEncoder) error {
@@ -331,7 +330,7 @@ func (tlv *VendorInformation) Type() TLVType {
 	return TLVVendorInformation
 }
 
-func (tlv *VendorInformation) Len() uint16 {
+func (tlv *VendorInformation) Len() int {
 	return TLVValueOffset + tlv.paddedValueLength()
 }
 
@@ -339,12 +338,12 @@ func (tlv *VendorInformation) CapStrings() []string {
 	return []string{"Vendor-Info(" + tlv.EnterpriseNumber.capLabel() + ")"}
 }
 
-func (tlv *VendorInformation) valueLength() uint16 {
-	return TLVVendorInformationMinValueLength + uint16(len(tlv.EnterpriseSpecificInformation))
+func (tlv *VendorInformation) valueLength() int {
+	return int(TLVVendorInformationMinValueLength) + len(tlv.EnterpriseSpecificInformation)
 }
 
-func (tlv *VendorInformation) paddedValueLength() uint16 {
-	return uint16(paddedLength(int(tlv.valueLength()), TLVAlignment))
+func (tlv *VendorInformation) paddedValueLength() int {
+	return paddedLength(tlv.valueLength(), TLVAlignment)
 }
 
 func NewVendorInformation(enterpriseNumber EnterpriseNumber, enterpriseSpecificInformation []byte) *VendorInformation {
@@ -416,14 +415,14 @@ func (tlv *StatefulPCECapability) DecodeFromBytes(data []byte) error {
 	return nil
 }
 
-func (tlv *StatefulPCECapability) Serialize() []byte {
+func (tlv *StatefulPCECapability) Serialize() ([]byte, error) {
 	flags := tlv.SetFlags() & definedStatefulPCEFlagsMask
 
 	return AppendByteSlices(
 		Uint16ToByteSlice(tlv.Type()),
 		Uint16ToByteSlice(TLVStatefulPCECapabilityValueLength),
 		Uint32ToByteSlice(flags),
-	)
+	), nil
 }
 
 func (tlv *StatefulPCECapability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
@@ -446,8 +445,8 @@ func (tlv *StatefulPCECapability) Type() TLVType {
 	return TLVStatefulPCECapability
 }
 
-func (tlv *StatefulPCECapability) Len() uint16 {
-	return TLVValueOffset + TLVStatefulPCECapabilityValueLength
+func (tlv *StatefulPCECapability) Len() int {
+	return int(TLVValueOffset + TLVStatefulPCECapabilityValueLength)
 }
 
 func (tlv *StatefulPCECapability) ExtractCapabilities(flags uint32) {
@@ -527,7 +526,12 @@ func (tlv *SymbolicPathName) DecodeFromBytes(data []byte) error {
 	return nil
 }
 
-func (tlv *SymbolicPathName) Serialize() []byte {
+func (tlv *SymbolicPathName) Serialize() ([]byte, error) {
+	length, err := tlvValueLength(len(tlv.Name))
+	if err != nil {
+		return nil, fmt.Errorf("SymbolicPathName: %w", err)
+	}
+
 	value := []byte(tlv.Name)
 
 	padding := (TLVAlignment - (len(value) % TLVAlignment)) % TLVAlignment
@@ -535,17 +539,17 @@ func (tlv *SymbolicPathName) Serialize() []byte {
 
 	return AppendByteSlices(
 		Uint16ToByteSlice(tlv.Type()),
-		Uint16ToByteSlice(uint16(len(tlv.Name))),
+		Uint16ToByteSlice(length),
 		value,
-	)
+	), nil
 }
 
 func (tlv *SymbolicPathName) Type() TLVType {
 	return TLVSymbolicPathName
 }
 
-func (tlv *SymbolicPathName) Len() uint16 {
-	length := uint16(len(tlv.Name))
+func (tlv *SymbolicPathName) Len() int {
+	length := len(tlv.Name)
 	padding := (TLVAlignment - (length % TLVAlignment)) % TLVAlignment
 
 	return TLVValueOffset + length + padding
@@ -607,7 +611,7 @@ func (tlv *IPv4LSPIdentifiers) DecodeFromBytes(data []byte) error {
 	return nil
 }
 
-func (tlv *IPv4LSPIdentifiers) Serialize() []byte {
+func (tlv *IPv4LSPIdentifiers) Serialize() ([]byte, error) {
 	value := make([]byte, TLVIPv4LSPIdentifiersValueLength)
 
 	copy(value[IPv4SenderOffset:IPv4LSPIDOffset], tlv.IPv4TunnelSenderAddress.AsSlice())
@@ -620,7 +624,7 @@ func (tlv *IPv4LSPIdentifiers) Serialize() []byte {
 		Uint16ToByteSlice(tlv.Type()),
 		Uint16ToByteSlice(TLVIPv4LSPIdentifiersValueLength),
 		value,
-	)
+	), nil
 }
 
 func (tlv *IPv4LSPIdentifiers) MarshalLogObject(enc zapcore.ObjectEncoder) error {
@@ -646,8 +650,8 @@ func (tlv *IPv4LSPIdentifiers) Type() TLVType {
 	return TLVIPv4LSPIdentifiers
 }
 
-func (tlv *IPv4LSPIdentifiers) Len() uint16 {
-	return TLVValueOffset + TLVIPv4LSPIdentifiersValueLength
+func (tlv *IPv4LSPIdentifiers) Len() int {
+	return int(TLVValueOffset + TLVIPv4LSPIdentifiersValueLength)
 }
 
 func NewIPv4LSPIdentifiers(senderAddr, endpointAddr netip.Addr, lspID, tunnelID uint16, extendedTunnelID uint32) *IPv4LSPIdentifiers {
@@ -704,7 +708,7 @@ func (tlv *IPv6LSPIdentifiers) DecodeFromBytes(data []byte) error {
 	return nil
 }
 
-func (tlv *IPv6LSPIdentifiers) Serialize() []byte {
+func (tlv *IPv6LSPIdentifiers) Serialize() ([]byte, error) {
 	value := make([]byte, TLVIPv6LSPIdentifiersValueLength)
 
 	copy(value[IPv6SenderOffset:IPv6SenderOffset+IPv6AddrLen], tlv.IPv6TunnelSenderAddress.AsSlice())
@@ -717,7 +721,7 @@ func (tlv *IPv6LSPIdentifiers) Serialize() []byte {
 		Uint16ToByteSlice(tlv.Type()),
 		Uint16ToByteSlice(TLVIPv6LSPIdentifiersValueLength),
 		value,
-	)
+	), nil
 }
 
 func (tlv *IPv6LSPIdentifiers) MarshalLogObject(enc zapcore.ObjectEncoder) error {
@@ -743,8 +747,8 @@ func (tlv *IPv6LSPIdentifiers) Type() TLVType {
 	return TLVIPv6LSPIdentifiers
 }
 
-func (tlv *IPv6LSPIdentifiers) Len() uint16 {
-	return TLVValueOffset + TLVIPv6LSPIdentifiersValueLength
+func (tlv *IPv6LSPIdentifiers) Len() int {
+	return int(TLVValueOffset + TLVIPv6LSPIdentifiersValueLength)
 }
 
 func NewIPv6LSPIdentifiers(senderAddr, endpointAddr netip.Addr, lspID, tunnelID uint16, extendedTunnelID [16]byte) *IPv6LSPIdentifiers {
@@ -777,7 +781,7 @@ func (tlv *LSPDBVersion) DecodeFromBytes(data []byte) error {
 	return nil
 }
 
-func (tlv *LSPDBVersion) Serialize() []byte {
+func (tlv *LSPDBVersion) Serialize() ([]byte, error) {
 	value := make([]byte, TLVLSPDBVersionValueLength)
 
 	binary.BigEndian.PutUint64(value, tlv.VersionNumber)
@@ -786,7 +790,7 @@ func (tlv *LSPDBVersion) Serialize() []byte {
 		Uint16ToByteSlice(tlv.Type()),
 		Uint16ToByteSlice(TLVLSPDBVersionValueLength),
 		value,
-	)
+	), nil
 }
 
 func (tlv *LSPDBVersion) MarshalLogObject(enc zapcore.ObjectEncoder) error {
@@ -802,8 +806,8 @@ func (tlv *LSPDBVersion) Type() TLVType {
 	return TLVLSPDBVersion
 }
 
-func (tlv *LSPDBVersion) Len() uint16 {
-	return TLVValueOffset + TLVLSPDBVersionValueLength
+func (tlv *LSPDBVersion) Len() int {
+	return int(TLVValueOffset + TLVLSPDBVersionValueLength)
 }
 
 func (tlv *LSPDBVersion) CapStrings() []string {
@@ -852,7 +856,7 @@ func (tlv *SRPCECapability) DecodeFromBytes(data []byte) error {
 	return nil
 }
 
-func (tlv *SRPCECapability) Serialize() []byte {
+func (tlv *SRPCECapability) Serialize() ([]byte, error) {
 	value := make([]byte, TLVSRPCECapabilityValueLength)
 
 	value[SRPCECapabilityFlagsOffset] = SetBit(value[SRPCECapabilityFlagsOffset], UnlimitedMaximumSIDDepthFlag, tlv.HasUnlimitedMaxSIDDepth)
@@ -863,7 +867,7 @@ func (tlv *SRPCECapability) Serialize() []byte {
 		Uint16ToByteSlice(tlv.Type()),
 		Uint16ToByteSlice(TLVSRPCECapabilityValueLength),
 		value,
-	)
+	), nil
 }
 
 func (tlv *SRPCECapability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
@@ -881,8 +885,8 @@ func (tlv *SRPCECapability) Type() TLVType {
 	return TLVSRPCECapability
 }
 
-func (tlv *SRPCECapability) Len() uint16 {
-	return TLVValueOffset + TLVSRPCECapabilityValueLength
+func (tlv *SRPCECapability) Len() int {
+	return int(TLVValueOffset + TLVSRPCECapabilityValueLength)
 }
 
 func (tlv *SRPCECapability) CapStrings() []string {
@@ -935,7 +939,7 @@ func (tlv *SRv6PCECapability) DecodeFromBytes(data []byte) error {
 	return nil
 }
 
-func (tlv *SRv6PCECapability) Serialize() []byte {
+func (tlv *SRv6PCECapability) Serialize() ([]byte, error) {
 	value := make([]byte, TLVSRv6PCECapabilityValueLength)
 	// value[0:2] reserved, must be zero.
 	var flags uint16
@@ -948,7 +952,7 @@ func (tlv *SRv6PCECapability) Serialize() []byte {
 		Uint16ToByteSlice(tlv.Type()),
 		Uint16ToByteSlice(TLVSRv6PCECapabilityValueLength),
 		value,
-	)
+	), nil
 }
 
 func (tlv *SRv6PCECapability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
@@ -964,8 +968,8 @@ func (tlv *SRv6PCECapability) Type() TLVType {
 	return TLVSRv6PCECapability
 }
 
-func (tlv *SRv6PCECapability) Len() uint16 {
-	return TLVValueOffset + TLVSRv6PCECapabilityValueLength
+func (tlv *SRv6PCECapability) Len() int {
+	return int(TLVValueOffset + TLVSRv6PCECapabilityValueLength)
 }
 
 func (tlv *SRv6PCECapability) CapStrings() []string {
@@ -1025,7 +1029,7 @@ func (tlv *MultipathCapability) DecodeFromBytes(data []byte) error {
 	return nil
 }
 
-func (tlv *MultipathCapability) Serialize() []byte {
+func (tlv *MultipathCapability) Serialize() ([]byte, error) {
 	value := make([]byte, TLVMultipathCapValueLength)
 
 	binary.BigEndian.PutUint16(value[MultipathCapMaxMultipathsOffset:MultipathCapMaxMultipathsOffset+2], tlv.MaxMultipaths)
@@ -1049,7 +1053,7 @@ func (tlv *MultipathCapability) Serialize() []byte {
 		Uint16ToByteSlice(tlv.Type()),
 		Uint16ToByteSlice(TLVMultipathCapValueLength),
 		value,
-	)
+	), nil
 }
 
 func (tlv *MultipathCapability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
@@ -1069,8 +1073,8 @@ func (tlv *MultipathCapability) Type() TLVType {
 	return TLVMultipathCap
 }
 
-func (tlv *MultipathCapability) Len() uint16 {
-	return TLVValueOffset + TLVMultipathCapValueLength
+func (tlv *MultipathCapability) Len() int {
+	return int(TLVValueOffset + TLVMultipathCapValueLength)
 }
 
 func (tlv *MultipathCapability) CapStrings() []string {
@@ -1168,7 +1172,7 @@ func (tlv *PathSetupType) DecodeFromBytes(data []byte) error {
 	return nil
 }
 
-func (tlv *PathSetupType) Serialize() []byte {
+func (tlv *PathSetupType) Serialize() ([]byte, error) {
 	value := make([]byte, TLVPathSetupTypeValueLength)
 
 	value[PathSetupTypeValueOffset] = byte(tlv.PathSetupType)
@@ -1177,7 +1181,7 @@ func (tlv *PathSetupType) Serialize() []byte {
 		Uint16ToByteSlice(tlv.Type()),
 		Uint16ToByteSlice(TLVPathSetupTypeValueLength),
 		value,
-	)
+	), nil
 }
 
 func (tlv *PathSetupType) MarshalLogObject(enc zapcore.ObjectEncoder) error {
@@ -1193,8 +1197,8 @@ func (tlv *PathSetupType) Type() TLVType {
 	return TLVPathSetupType
 }
 
-func (tlv *PathSetupType) Len() uint16 {
-	return TLVValueOffset + TLVPathSetupTypeValueLength
+func (tlv *PathSetupType) Len() int {
+	return int(TLVValueOffset + TLVPathSetupTypeValueLength)
 }
 
 func NewPathSetupType(pst Pst) *PathSetupType {
@@ -1244,8 +1248,8 @@ func (tlv *ExtendedAssociationID) DecodeFromBytes(data []byte) error {
 	return nil
 }
 
-func (tlv *ExtendedAssociationID) Serialize() []byte {
-	return tlv.serialize(tlv.Type())
+func (tlv *ExtendedAssociationID) Serialize() ([]byte, error) {
+	return tlv.serialize(tlv.Type()), nil
 }
 
 func (tlv *ExtendedAssociationID) serialize(typ TLVType) []byte {
@@ -1295,11 +1299,11 @@ func (tlv *ExtendedAssociationID) Type() TLVType {
 	return TLVExtendedAssociationID
 }
 
-func (tlv *ExtendedAssociationID) Len() uint16 {
+func (tlv *ExtendedAssociationID) Len() int {
 	if tlv.Endpoint.Is4() {
-		return TLVValueOffset + TLVExtendedAssociationIDIPv4ValueLength
+		return int(TLVValueOffset + TLVExtendedAssociationIDIPv4ValueLength)
 	} else if tlv.Endpoint.Is6() {
-		return TLVValueOffset + TLVExtendedAssociationIDIPv6ValueLength
+		return int(TLVValueOffset + TLVExtendedAssociationIDIPv6ValueLength)
 	}
 	return 0
 
@@ -1333,24 +1337,24 @@ func (tlv *ExtendedAssociationIDIPv4Juniper) DecodeFromBytes(data []byte) error 
 	return tlv.ExtendedAssociationID.DecodeFromBytes(data)
 }
 
-func (tlv *ExtendedAssociationIDIPv4Juniper) Serialize() []byte {
+func (tlv *ExtendedAssociationIDIPv4Juniper) Serialize() ([]byte, error) {
 	if !tlv.Endpoint.Is4() {
-		return nil
+		return nil, nil
 	}
 
-	return tlv.serialize(tlv.Type())
+	return tlv.serialize(tlv.Type()), nil
 }
 
 func (tlv *ExtendedAssociationIDIPv4Juniper) Type() TLVType {
 	return TLVExtendedAssociationIDIPv4Juniper
 }
 
-func (tlv *ExtendedAssociationIDIPv4Juniper) Len() uint16 {
+func (tlv *ExtendedAssociationIDIPv4Juniper) Len() int {
 	if !tlv.Endpoint.Is4() {
 		return 0
 	}
 
-	return TLVValueOffset + TLVExtendedAssociationIDIPv4ValueLength
+	return int(TLVValueOffset + TLVExtendedAssociationIDIPv4ValueLength)
 }
 
 type PathSetupTypeCapability struct {
@@ -1371,8 +1375,8 @@ func (tlv *PathSetupTypeCapability) pstCount() int {
 	return len(tlv.PathSetupTypes)
 }
 
-func (tlv *PathSetupTypeCapability) paddedPSTLength() uint16 {
-	return uint16(paddedLength(tlv.pstCount(), TLVAlignment))
+func (tlv *PathSetupTypeCapability) paddedPSTLength() int {
+	return paddedLength(tlv.pstCount(), TLVAlignment)
 }
 
 func (tlv *PathSetupTypeCapability) DecodeFromBytes(data []byte) error {
@@ -1416,19 +1420,10 @@ func (tlv *PathSetupTypeCapability) DecodeFromBytes(data []byte) error {
 	return nil
 }
 
-func (tlv *PathSetupTypeCapability) Serialize() []byte {
+func (tlv *PathSetupTypeCapability) Serialize() ([]byte, error) {
 	pstCount := tlv.pstCount()
 
-	pstPaddedLen := paddedLength(pstCount, TLVAlignment)
-
-	fixedPartLen := uint16(PathSetupTypeCapabilityFixedPartLength) + uint16(pstPaddedLen)
-
-	subTLVsLen := uint16(0)
-	for _, subTLV := range tlv.SubTLVs {
-		subTLVsLen += subTLV.Len()
-	}
-
-	totalLen := fixedPartLen + subTLVsLen
+	fixedPartLen := PathSetupTypeCapabilityFixedPartLength + tlv.paddedPSTLength()
 
 	value := make([]byte, fixedPartLen)
 	value[PathSetupTypeCapabilityPSTCountOffset] = byte(pstCount)
@@ -1440,7 +1435,17 @@ func (tlv *PathSetupTypeCapability) Serialize() []byte {
 
 	subTLVsBytes := []byte{}
 	for _, subTLV := range tlv.SubTLVs {
-		subTLVsBytes = append(subTLVsBytes, subTLV.Serialize()...)
+		b, err := subTLV.Serialize()
+		if err != nil {
+			return nil, fmt.Errorf("PathSetupTypeCapability: %w", err)
+		}
+		subTLVsBytes = append(subTLVsBytes, b...)
+	}
+
+	// Validate before converting the serialized length to uint16.
+	totalLen, err := tlvValueLength(fixedPartLen + len(subTLVsBytes))
+	if err != nil {
+		return nil, fmt.Errorf("PathSetupTypeCapability: %w", err)
 	}
 
 	return AppendByteSlices(
@@ -1448,7 +1453,7 @@ func (tlv *PathSetupTypeCapability) Serialize() []byte {
 		Uint16ToByteSlice(totalLen),
 		value,
 		subTLVsBytes,
-	)
+	), nil
 }
 
 func (tlv *PathSetupTypeCapability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
@@ -1486,8 +1491,8 @@ func (tlv *PathSetupTypeCapability) Type() TLVType {
 	return TLVPathSetupTypeCapability
 }
 
-func (tlv *PathSetupTypeCapability) Len() uint16 {
-	length := uint16(PathSetupTypeCapabilityFixedPartLength)
+func (tlv *PathSetupTypeCapability) Len() int {
+	length := PathSetupTypeCapabilityFixedPartLength
 	length += tlv.paddedPSTLength()
 
 	for _, subTLV := range tlv.SubTLVs {
@@ -1566,12 +1571,17 @@ func (tlv *AssocTypeList) DecodeFromBytes(data []byte) error {
 	return nil
 }
 
-func (tlv *AssocTypeList) Serialize() []byte {
-	valueLen := uint16(len(tlv.AssocTypes)) * 2
+func (tlv *AssocTypeList) Serialize() ([]byte, error) {
+	valueLenInt := len(tlv.AssocTypes) * 2
 
-	padding := (TLVAlignment - (valueLen % TLVAlignment)) % TLVAlignment
+	valueLen, err := tlvValueLength(valueLenInt)
+	if err != nil {
+		return nil, fmt.Errorf("AssocTypeList: %w", err)
+	}
 
-	value := make([]byte, valueLen+padding)
+	padding := (TLVAlignment - (valueLenInt % TLVAlignment)) % TLVAlignment
+
+	value := make([]byte, valueLenInt+padding)
 
 	offset := 0
 	for _, at := range tlv.AssocTypes {
@@ -1583,7 +1593,7 @@ func (tlv *AssocTypeList) Serialize() []byte {
 		Uint16ToByteSlice(tlv.Type()),
 		Uint16ToByteSlice(valueLen),
 		value,
-	)
+	), nil
 }
 
 func (tlv *AssocTypeList) MarshalLogObject(enc zapcore.ObjectEncoder) error {
@@ -1605,9 +1615,9 @@ func (tlv *AssocTypeList) Type() TLVType {
 	return TLVAssocTypeList
 }
 
-func (tlv *AssocTypeList) Len() uint16 {
-	length := uint16(len(tlv.AssocTypes)) * 2
-	padding := uint16(0)
+func (tlv *AssocTypeList) Len() int {
+	length := len(tlv.AssocTypes) * 2
+	padding := 0
 	if length%4 != 0 {
 		padding = 2
 	}
@@ -1676,8 +1686,8 @@ func (tlv *SRPolicyCandidatePathIdentifier) DecodeFromBytes(data []byte) error {
 	return nil
 }
 
-func (tlv *SRPolicyCandidatePathIdentifier) Serialize() []byte {
-	return tlv.serialize(tlv.Type())
+func (tlv *SRPolicyCandidatePathIdentifier) Serialize() ([]byte, error) {
+	return tlv.serialize(tlv.Type()), nil
 }
 
 func (tlv *SRPolicyCandidatePathIdentifier) serialize(typ TLVType) []byte {
@@ -1742,8 +1752,8 @@ func (tlv *SRPolicyCandidatePathIdentifier) Type() TLVType {
 	return TLVSRPolicyCPathID
 }
 
-func (tlv *SRPolicyCandidatePathIdentifier) Len() uint16 {
-	return TLVValueOffset + TLVSRPolicyCPathIDValueLength
+func (tlv *SRPolicyCandidatePathIdentifier) Len() int {
+	return int(TLVValueOffset + TLVSRPolicyCPathIDValueLength)
 }
 
 // SRPolicyCandidatePathIdentifierJuniper is the Juniper vendor-specific
@@ -1752,8 +1762,8 @@ type SRPolicyCandidatePathIdentifierJuniper struct {
 	SRPolicyCandidatePathIdentifier
 }
 
-func (tlv *SRPolicyCandidatePathIdentifierJuniper) Serialize() []byte {
-	return tlv.serialize(tlv.Type())
+func (tlv *SRPolicyCandidatePathIdentifierJuniper) Serialize() ([]byte, error) {
+	return tlv.serialize(tlv.Type()), nil
 }
 
 func (tlv *SRPolicyCandidatePathIdentifierJuniper) Type() TLVType {
@@ -1780,8 +1790,8 @@ func (tlv *SRPolicyCandidatePathPreference) DecodeFromBytes(data []byte) error {
 	return nil
 }
 
-func (tlv *SRPolicyCandidatePathPreference) Serialize() []byte {
-	return tlv.serialize(tlv.Type())
+func (tlv *SRPolicyCandidatePathPreference) Serialize() ([]byte, error) {
+	return tlv.serialize(tlv.Type()), nil
 }
 
 func (tlv *SRPolicyCandidatePathPreference) serialize(typ TLVType) []byte {
@@ -1812,8 +1822,8 @@ func (tlv *SRPolicyCandidatePathPreference) Type() TLVType {
 	return TLVSRPolicyCPathPreference
 }
 
-func (tlv *SRPolicyCandidatePathPreference) Len() uint16 {
-	return TLVValueOffset + TLVSRPolicyCPathPreferenceValueLength
+func (tlv *SRPolicyCandidatePathPreference) Len() int {
+	return int(TLVValueOffset + TLVSRPolicyCPathPreferenceValueLength)
 }
 
 // SRPolicyCandidatePathPreferenceJuniper is the Juniper vendor-specific
@@ -1822,8 +1832,8 @@ type SRPolicyCandidatePathPreferenceJuniper struct {
 	SRPolicyCandidatePathPreference
 }
 
-func (tlv *SRPolicyCandidatePathPreferenceJuniper) Serialize() []byte {
-	return tlv.serialize(tlv.Type())
+func (tlv *SRPolicyCandidatePathPreferenceJuniper) Serialize() ([]byte, error) {
+	return tlv.serialize(tlv.Type()), nil
 }
 
 func (tlv *SRPolicyCandidatePathPreferenceJuniper) Type() TLVType {
@@ -1850,7 +1860,7 @@ func (tlv *Color) DecodeFromBytes(data []byte) error {
 	return nil
 }
 
-func (tlv *Color) Serialize() []byte {
+func (tlv *Color) Serialize() ([]byte, error) {
 	value := make([]byte, TLVColorValueLength)
 
 	binary.BigEndian.PutUint32(
@@ -1862,7 +1872,7 @@ func (tlv *Color) Serialize() []byte {
 		Uint16ToByteSlice(tlv.Type()),
 		Uint16ToByteSlice(TLVColorValueLength),
 		value,
-	)
+	), nil
 }
 
 func (tlv *Color) MarshalLogObject(enc zapcore.ObjectEncoder) error {
@@ -1878,14 +1888,13 @@ func (tlv *Color) Type() TLVType {
 	return TLVColor
 }
 
-func (tlv *Color) Len() uint16 {
-	return TLVValueOffset + TLVColorValueLength
+func (tlv *Color) Len() int {
+	return int(TLVValueOffset + TLVColorValueLength)
 }
 
 type UnknownTLV struct {
-	Typ    TLVType
-	Length uint16
-	Value  []byte
+	Typ   TLVType
+	Value []byte
 }
 
 func (tlv *UnknownTLV) DecodeFromBytes(data []byte) error {
@@ -1895,21 +1904,24 @@ func (tlv *UnknownTLV) DecodeFromBytes(data []byte) error {
 	}
 
 	tlv.Typ = TLVType(binary.BigEndian.Uint16(data[TLVTypeOffset:TLVLengthOffset]))
-	tlv.Length = uint16(valueLen)
 	tlv.Value = data[TLVValueOffset : TLVValueOffset+valueLen]
 
 	return nil
 }
 
-func (tlv *UnknownTLV) Serialize() []byte {
-	padding := (TLVAlignment - (tlv.Length % TLVAlignment)) % TLVAlignment
+func (tlv *UnknownTLV) Serialize() ([]byte, error) {
+	length, err := tlvValueLength(len(tlv.Value))
+	if err != nil {
+		return nil, fmt.Errorf("UnknownTLV: %w", err)
+	}
+	padding := paddedLength(len(tlv.Value), TLVAlignment) - len(tlv.Value)
 
 	return AppendByteSlices(
 		Uint16ToByteSlice(uint16(tlv.Typ)),
-		Uint16ToByteSlice(tlv.Length),
+		Uint16ToByteSlice(length),
 		tlv.Value,
 		make([]byte, padding),
-	)
+	), nil
 }
 
 func (tlv *UnknownTLV) MarshalLogObject(enc zapcore.ObjectEncoder) error {
@@ -1918,7 +1930,7 @@ func (tlv *UnknownTLV) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	}
 
 	enc.AddString("type", fmt.Sprintf("0x%04x", uint16(tlv.Typ)))
-	enc.AddUint16("length", tlv.Length)
+	enc.AddInt("length", len(tlv.Value))
 	return nil
 }
 
@@ -1926,12 +1938,8 @@ func (tlv *UnknownTLV) Type() TLVType {
 	return tlv.Typ
 }
 
-func (tlv *UnknownTLV) Len() uint16 {
-	padding := uint16(0)
-	if tlv.Length%4 != 0 {
-		padding = (4 - tlv.Length%4)
-	}
-	return TLVValueOffset + tlv.Length + padding
+func (tlv *UnknownTLV) Len() int {
+	return TLVValueOffset + paddedLength(len(tlv.Value), TLVAlignment)
 }
 
 // Registered TLVs are reported with their identifier and name.
@@ -1941,10 +1949,6 @@ func (tlv *UnknownTLV) CapStrings() []string {
 	}
 	capStr := "unknown_type_" + strconv.FormatInt(int64(tlv.Typ), 10)
 	return []string{capStr}
-}
-
-func (tlv *UnknownTLV) SetLength() {
-	tlv.Length = uint16(len(tlv.Value))
 }
 
 func DecodeTLV(data []byte) (TLVInterface, error) {

@@ -544,8 +544,9 @@ func TestSrpObject_RoundTrip(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			raw := want.Serialize()
-			require.Equal(t, int(want.Len()), len(raw), "Len() must match serialized size")
+			raw, err := want.Serialize()
+			require.NoError(t, err, "Serialize failed")
+			require.Equal(t, want.Len(), len(raw), "Len() must match serialized size")
 
 			// DecodeFromBytes expects the object body without the CommonObjectHeader.
 			var got SrpObject
@@ -555,9 +556,28 @@ func TestSrpObject_RoundTrip(t *testing.T) {
 			)
 			assert.Equal(t, want, got, "round-trip value mismatch")
 
-			assert.Equal(t, raw, got.Serialize(), "re-serialized bytes differ")
+			raw2, err := got.Serialize()
+			require.NoError(t, err, "re-Serialize failed")
+			assert.Equal(t, raw, raw2, "re-serialized bytes differ")
 		})
 	}
+}
+
+func TestSrpObject_Serialize_Error(t *testing.T) {
+	t.Parallel()
+
+	o := SrpObject{TLVs: []TLVInterface{&UnknownTLV{Value: make([]byte, 65536)}}}
+	_, err := o.Serialize()
+	assert.Error(t, err)
+}
+
+func TestSrpObject_Serialize_ObjectLengthBoundary(t *testing.T) {
+	t.Parallel()
+
+	// 4(header) + 8(fixed SRP fields) + TLVValueOffset(4)+65531(value) = 65547: exceeds the 16-bit Object-Length field.
+	o := SrpObject{TLVs: []TLVInterface{&UnknownTLV{Value: make([]byte, 65531)}}}
+	_, err := o.Serialize()
+	assert.ErrorContains(t, err, "exceeds")
 }
 
 func TestOpenObject_RoundTrip(t *testing.T) {
@@ -616,8 +636,9 @@ func TestOpenObject_RoundTrip(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			raw := want.Serialize()
-			require.Equal(t, int(want.Len()), len(raw), "Len() must match serialized size")
+			raw, err := want.Serialize()
+			require.NoError(t, err, "Serialize failed")
+			require.Equal(t, want.Len(), len(raw), "Len() must match serialized size")
 
 			var got OpenObject
 			require.NoError(t,
@@ -626,7 +647,9 @@ func TestOpenObject_RoundTrip(t *testing.T) {
 			)
 			assert.Equal(t, want, got, "round-trip value mismatch")
 
-			assert.Equal(t, raw, got.Serialize(), "re-serialized bytes differ")
+			raw2, err := got.Serialize()
+			require.NoError(t, err, "re-Serialize failed")
+			assert.Equal(t, raw, raw2, "re-serialized bytes differ")
 		})
 	}
 }
@@ -655,6 +678,22 @@ func TestOpenObject_DecodeFromBytes_UnsupportedVersion(t *testing.T) {
 
 	var o OpenObject
 	assert.Error(t, o.DecodeFromBytes(ObjectTypeOpenOpen, []uint8{0x40, 0x1e, 0x78, 0x01}))
+}
+
+func TestOpenObject_Serialize_Error(t *testing.T) {
+	t.Parallel()
+
+	o := OpenObject{Caps: []CapabilityInterface{&UnknownTLV{Value: make([]byte, 65536)}}}
+	_, err := o.Serialize()
+	assert.Error(t, err)
+}
+
+func TestOpenObject_Serialize_ObjectLengthBoundary(t *testing.T) {
+	t.Parallel()
+
+	o := OpenObject{Caps: []CapabilityInterface{&UnknownTLV{Value: make([]byte, 65531)}}}
+	_, err := o.Serialize()
+	assert.ErrorContains(t, err, "exceeds")
 }
 
 func TestLSPAObject_RoundTrip(t *testing.T) {
@@ -750,8 +789,9 @@ func TestPCEPErrorObject_RoundTrip(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			raw := want.Serialize()
-			require.Equal(t, int(want.Len()), len(raw), "Len() must match serialized size")
+			raw, err := want.Serialize()
+			require.NoError(t, err, "Serialize failed")
+			require.Equal(t, want.Len(), len(raw), "Len() must match serialized size")
 
 			var got PCEPErrorObject
 			require.NoError(t,
@@ -760,9 +800,28 @@ func TestPCEPErrorObject_RoundTrip(t *testing.T) {
 			)
 			assert.Equal(t, want, got, "round-trip value mismatch")
 
-			assert.Equal(t, raw, got.Serialize(), "re-serialized bytes differ")
+			raw2, err := got.Serialize()
+			require.NoError(t, err, "re-Serialize failed")
+			assert.Equal(t, raw, raw2, "re-serialized bytes differ")
 		})
 	}
+}
+
+func TestPCEPErrorObject_Serialize_Error(t *testing.T) {
+	t.Parallel()
+
+	o := PCEPErrorObject{Tlvs: []TLVInterface{&UnknownTLV{Value: make([]byte, 65536)}}}
+	_, err := o.Serialize()
+	assert.Error(t, err)
+}
+
+func TestPCEPErrorObject_Serialize_ObjectLengthBoundary(t *testing.T) {
+	t.Parallel()
+
+	// 4(header) + 4(fixed error fields) + TLVValueOffset(4)+65531(value) = 65543: exceeds the 16-bit Object-Length field.
+	o := PCEPErrorObject{Tlvs: []TLVInterface{&UnknownTLV{Value: make([]byte, 65531)}}}
+	_, err := o.Serialize()
+	assert.ErrorContains(t, err, "exceeds")
 }
 
 func TestCloseObject_RoundTrip(t *testing.T) {
@@ -918,8 +977,9 @@ func TestLSPObject_RoundTrip(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			raw := want.Serialize()
-			require.Equal(t, int(want.Len()), len(raw), "Len() must match serialized size")
+			raw, err := want.Serialize()
+			require.NoError(t, err, "Serialize failed")
+			require.Equal(t, want.Len(), len(raw), "Len() must match serialized size")
 
 			var got LSPObject
 			require.NoError(t,
@@ -928,9 +988,28 @@ func TestLSPObject_RoundTrip(t *testing.T) {
 			)
 			assert.Equal(t, want, got, "round-trip value mismatch")
 
-			assert.Equal(t, raw, got.Serialize(), "re-serialized bytes differ")
+			raw2, err := got.Serialize()
+			require.NoError(t, err, "re-Serialize failed")
+			assert.Equal(t, raw, raw2, "re-serialized bytes differ")
 		})
 	}
+}
+
+func TestLSPObject_Serialize_Error(t *testing.T) {
+	t.Parallel()
+
+	o := LSPObject{TLVs: []TLVInterface{&UnknownTLV{Value: make([]byte, 65536)}}}
+	_, err := o.Serialize()
+	assert.Error(t, err)
+}
+
+func TestLSPObject_Serialize_ObjectLengthBoundary(t *testing.T) {
+	t.Parallel()
+
+	// 4(header) + 4(fixed LSP fields) + TLVValueOffset(4)+65531(value) = 65543: exceeds the 16-bit Object-Length field.
+	o := LSPObject{TLVs: []TLVInterface{&UnknownTLV{Value: make([]byte, 65531)}}}
+	_, err := o.Serialize()
+	assert.ErrorContains(t, err, "exceeds")
 }
 
 func TestEroObject_RoundTrip(t *testing.T) {
@@ -1353,8 +1432,8 @@ func TestNewVendorInformationObject(t *testing.T) {
 			ObjectType:       ObjectTypeVendorSpecificConstraints,
 			EnterpriseNumber: EnterpriseNumberCisco,
 			TLVs: []TLVInterface{
-				&UnknownTLV{Typ: SubTLVColorCisco, Length: SubTLVColorCiscoValueLength, Value: Uint32ToByteSlice(100)},
-				&UnknownTLV{Typ: SubTLVPreferenceCisco, Length: SubTLVPreferenceCiscoValueLength, Value: Uint32ToByteSlice(200)},
+				&UnknownTLV{Typ: SubTLVColorCisco, Value: Uint32ToByteSlice(100)},
+				&UnknownTLV{Typ: SubTLVPreferenceCisco, Value: Uint32ToByteSlice(200)},
 			},
 		}
 		assert.Equal(t, want, got, "unexpected VendorInformationObject")
@@ -1391,7 +1470,7 @@ func TestVendorInformationObject_DecodeFromBytes(t *testing.T) {
 				ObjectType:       ObjectTypeVendorSpecificConstraints,
 				EnterpriseNumber: EnterpriseNumberCisco,
 				TLVs: []TLVInterface{
-					&UnknownTLV{Typ: SubTLVColorCisco, Length: 4, Value: []uint8{0x00, 0x00, 0x00, 0x64}},
+					&UnknownTLV{Typ: SubTLVColorCisco, Value: []uint8{0x00, 0x00, 0x00, 0x64}},
 				},
 			},
 		},
@@ -1403,7 +1482,7 @@ func TestVendorInformationObject_DecodeFromBytes(t *testing.T) {
 				ObjectType:       ObjectTypeVendorSpecificConstraints,
 				EnterpriseNumber: EnterpriseNumberCisco,
 				TLVs: []TLVInterface{
-					&UnknownTLV{Typ: TLVVendorInformation, Length: 2, Value: []uint8{0xde, 0xad}},
+					&UnknownTLV{Typ: TLVVendorInformation, Value: []uint8{0xde, 0xad}},
 				},
 			},
 		},
@@ -1445,8 +1524,8 @@ func TestVendorInformationObject_ColorPreference(t *testing.T) {
 			object: &VendorInformationObject{
 				EnterpriseNumber: EnterpriseNumberCisco,
 				TLVs: []TLVInterface{
-					&UnknownTLV{Typ: SubTLVColorCisco, Length: 4, Value: Uint32ToByteSlice(100)},
-					&UnknownTLV{Typ: SubTLVPreferenceCisco, Length: 4, Value: Uint32ToByteSlice(200)},
+					&UnknownTLV{Typ: SubTLVColorCisco, Value: Uint32ToByteSlice(100)},
+					&UnknownTLV{Typ: SubTLVPreferenceCisco, Value: Uint32ToByteSlice(200)},
 				},
 			},
 			wantColor: 100, wantPreference: 200,
@@ -1456,8 +1535,8 @@ func TestVendorInformationObject_ColorPreference(t *testing.T) {
 			object: &VendorInformationObject{
 				EnterpriseNumber: EnterpriseNumberCisco,
 				TLVs: []TLVInterface{
-					&UnknownTLV{Typ: SubTLVColorCisco, Length: 0, Value: []uint8{}},
-					&UnknownTLV{Typ: SubTLVPreferenceCisco, Length: 2, Value: []uint8{0x00, 0x01}},
+					&UnknownTLV{Typ: SubTLVColorCisco, Value: []uint8{}},
+					&UnknownTLV{Typ: SubTLVPreferenceCisco, Value: []uint8{0x00, 0x01}},
 				},
 			},
 			wantColor: 0, wantPreference: 0,
@@ -1487,9 +1566,8 @@ func TestVendorInformationObject_RoundTrip(t *testing.T) {
 			EnterpriseNumber: EnterpriseNumberCisco,
 			TLVs: []TLVInterface{
 				&UnknownTLV{
-					Typ:    SubTLVColorCisco,
-					Length: SubTLVColorCiscoValueLength,
-					Value:  Uint32ToByteSlice(100),
+					Typ:   SubTLVColorCisco,
+					Value: Uint32ToByteSlice(100),
 				},
 			},
 		},
@@ -1498,14 +1576,12 @@ func TestVendorInformationObject_RoundTrip(t *testing.T) {
 			EnterpriseNumber: EnterpriseNumberCisco,
 			TLVs: []TLVInterface{
 				&UnknownTLV{
-					Typ:    SubTLVColorCisco,
-					Length: SubTLVColorCiscoValueLength,
-					Value:  Uint32ToByteSlice(100),
+					Typ:   SubTLVColorCisco,
+					Value: Uint32ToByteSlice(100),
 				},
 				&UnknownTLV{
-					Typ:    SubTLVPreferenceCisco,
-					Length: SubTLVPreferenceCiscoValueLength,
-					Value:  Uint32ToByteSlice(200),
+					Typ:   SubTLVPreferenceCisco,
+					Value: Uint32ToByteSlice(200),
 				},
 			},
 		},
@@ -1514,14 +1590,12 @@ func TestVendorInformationObject_RoundTrip(t *testing.T) {
 			EnterpriseNumber: EnterpriseNumberCisco,
 			TLVs: []TLVInterface{
 				&UnknownTLV{
-					Typ:    SubTLVColorCisco,
-					Length: SubTLVColorCiscoValueLength,
-					Value:  Uint32ToByteSlice(0),
+					Typ:   SubTLVColorCisco,
+					Value: Uint32ToByteSlice(0),
 				},
 				&UnknownTLV{
-					Typ:    SubTLVPreferenceCisco,
-					Length: SubTLVPreferenceCiscoValueLength,
-					Value:  Uint32ToByteSlice(0),
+					Typ:   SubTLVPreferenceCisco,
+					Value: Uint32ToByteSlice(0),
 				},
 			},
 		},
@@ -1531,8 +1605,9 @@ func TestVendorInformationObject_RoundTrip(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			raw := want.Serialize()
-			require.Equal(t, int(want.Len()), len(raw), "Len() must match serialized size")
+			raw, err := want.Serialize()
+			require.NoError(t, err, "Serialize failed")
+			require.Equal(t, want.Len(), len(raw), "Len() must match serialized size")
 
 			var got VendorInformationObject
 			require.NoError(t,
@@ -1541,9 +1616,27 @@ func TestVendorInformationObject_RoundTrip(t *testing.T) {
 			)
 			assert.Equal(t, want, got, "round-trip value mismatch")
 
-			assert.Equal(t, raw, got.Serialize(), "re-serialized bytes differ")
+			raw2, err := got.Serialize()
+			require.NoError(t, err, "re-Serialize failed")
+			assert.Equal(t, raw, raw2, "re-serialized bytes differ")
 		})
 	}
+}
+
+func TestVendorInformationObject_Serialize_Error(t *testing.T) {
+	t.Parallel()
+
+	o := VendorInformationObject{TLVs: []TLVInterface{&UnknownTLV{Value: make([]byte, 65536)}}}
+	_, err := o.Serialize()
+	assert.Error(t, err)
+}
+
+func TestVendorInformationObject_Serialize_ObjectLengthBoundary(t *testing.T) {
+	t.Parallel()
+
+	o := VendorInformationObject{TLVs: []TLVInterface{&UnknownTLV{Value: make([]byte, 65531)}}}
+	_, err := o.Serialize()
+	assert.ErrorContains(t, err, "exceeds")
 }
 
 func TestObjectClass_String(t *testing.T) {
@@ -1957,6 +2050,54 @@ func TestEroObject_Serialize_Error(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestObjectLength_Boundary(t *testing.T) {
+	t.Parallel()
+
+	length, err := objectLength(make([]uint8, 65531))
+	require.NoError(t, err, "65535 total bytes must fit the Object-Length field")
+	assert.Equal(t, uint16(65535), length)
+
+	_, err = objectLength(make([]uint8, 65532))
+	assert.ErrorContains(t, err, "exceeds", "65536 total bytes must be rejected")
+}
+
+func TestEroObject_Serialize_ObjectLengthBoundary(t *testing.T) {
+	t.Parallel()
+
+	newSubobjects := func(n int) []EroSubobject {
+		subobjects := make([]EroSubobject, n)
+		for i := range subobjects {
+			subobjects[i] = &SREroSubobject{
+				SubobjectType: SubobjectTypeEROSR,
+				NAIType:       NAITypeSRAbsent,
+				Segment:       table.NewSegmentSRMPLS(16001),
+			}
+		}
+		return subobjects
+	}
+
+	t.Run("AtObjectLengthLimit", func(t *testing.T) {
+		t.Parallel()
+
+		ero := &EroObject{ObjectType: ObjectTypeEROExplicitRoute, EroSubobjects: newSubobjects(8191)}
+		raw, err := ero.Serialize()
+		require.NoError(t, err)
+		assert.Len(t, raw, 65532)
+
+		var header CommonObjectHeader
+		require.NoError(t, header.DecodeFromBytes(raw))
+		assert.Equal(t, uint16(65532), header.ObjectLength)
+	})
+
+	t.Run("ExceedsObjectLengthLimit", func(t *testing.T) {
+		t.Parallel()
+
+		ero := &EroObject{ObjectType: ObjectTypeEROExplicitRoute, EroSubobjects: newSubobjects(8192)}
+		_, err := ero.Serialize()
+		assert.ErrorContains(t, err, "exceeds")
+	})
+}
+
 func TestNewEroObject_InvalidSegment(t *testing.T) {
 	t.Parallel()
 
@@ -2285,6 +2426,28 @@ func TestAssociationObject_Serialize_Error(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestAssociationObject_Serialize_TLVError(t *testing.T) {
+	t.Parallel()
+
+	o := AssociationObject{
+		AssocSrc: netip.MustParseAddr("192.0.2.1"),
+		TLVs:     []TLVInterface{&UnknownTLV{Value: make([]byte, 65536)}},
+	}
+	_, err := o.Serialize()
+	assert.Error(t, err)
+}
+
+func TestAssociationObject_Serialize_ObjectLengthBoundary(t *testing.T) {
+	t.Parallel()
+
+	o := AssociationObject{
+		AssocSrc: netip.MustParseAddr("192.0.2.1"),
+		TLVs:     []TLVInterface{&UnknownTLV{Value: make([]byte, 65531)}},
+	}
+	_, err := o.Serialize()
+	assert.ErrorContains(t, err, "exceeds")
+}
+
 func TestNewAssociationObject_MismatchedFamilies(t *testing.T) {
 	t.Parallel()
 
@@ -2378,7 +2541,8 @@ func TestLSPObject_Serialize_MasksPlspIDAndOFlag(t *testing.T) {
 		TLVs:       []TLVInterface{},
 	}
 
-	raw := o.Serialize()
+	raw, err := o.Serialize()
+	require.NoError(t, err)
 	body := raw[commonObjectHeaderLength:]
 	require.Len(t, body, 4)
 	assert.False(t, body[3]&0x80 != 0, "PLSP-ID/OFlag overflow must not set the C flag")

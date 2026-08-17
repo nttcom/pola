@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"net/netip"
 
 	"github.com/nttcom/pola/pkg/table"
@@ -119,6 +120,19 @@ func NewCommonHeader(messageType MessageType, messageLength uint16) *CommonHeade
 	return h
 }
 
+// messageLength returns the total PCEP message length, which must fit in the
+// 16-bit Message-Length field.
+func messageLength(objects ...[]uint8) (uint16, error) {
+	total := int(CommonHeaderLength)
+	for _, o := range objects {
+		total += len(o)
+	}
+	if total > math.MaxUint16 {
+		return 0, fmt.Errorf("PCEP message length %d exceeds %d", total, math.MaxUint16)
+	}
+	return uint16(total), nil
+}
+
 type Message interface {
 	Serialize() ([]uint8, error)
 }
@@ -178,8 +192,14 @@ func (m *OpenMessage) DecodeFromBytes(messageBody []uint8) error {
 }
 
 func (m *OpenMessage) Serialize() ([]uint8, error) {
-	byteOpenObject := m.OpenObject.Serialize()
-	openMessageLength := CommonHeaderLength + m.OpenObject.Len()
+	byteOpenObject, err := m.OpenObject.Serialize()
+	if err != nil {
+		return nil, err
+	}
+	openMessageLength, err := messageLength(byteOpenObject)
+	if err != nil {
+		return nil, err
+	}
 	openHeader := NewCommonHeader(MessageTypeOpen, openMessageLength)
 	byteOpenHeader := openHeader.Serialize()
 	byteOpenMessage := AppendByteSlices(byteOpenHeader, byteOpenObject)
@@ -252,21 +272,29 @@ func (m *PCErrMessage) DecodeFromBytes(messageBody []uint8) error {
 }
 
 func (m *PCErrMessage) Serialize() ([]uint8, error) {
-	length := CommonHeaderLength
+	objects := make([][]uint8, 0, len(m.SRPs)+len(m.Errors))
 	for _, srp := range m.SRPs {
-		length += srp.Len()
+		b, err := srp.Serialize()
+		if err != nil {
+			return nil, err
+		}
+		objects = append(objects, b)
 	}
 	for _, errObj := range m.Errors {
-		length += errObj.Len()
+		b, err := errObj.Serialize()
+		if err != nil {
+			return nil, err
+		}
+		objects = append(objects, b)
 	}
-	buf := NewCommonHeader(MessageTypeError, length).Serialize()
-	for _, srp := range m.SRPs {
-		buf = AppendByteSlices(buf, srp.Serialize())
+	length, err := messageLength(objects...)
+	if err != nil {
+		return nil, err
 	}
-	for _, errObj := range m.Errors {
-		buf = AppendByteSlices(buf, errObj.Serialize())
-	}
-	return buf, nil
+	parts := make([][]uint8, 0, len(objects)+1)
+	parts = append(parts, NewCommonHeader(MessageTypeError, length).Serialize())
+	parts = append(parts, objects...)
+	return AppendByteSlices(parts...), nil
 }
 
 // SRPIDs returns the SRP-IDs in wire order.
@@ -319,10 +347,13 @@ func (m *CloseMessage) DecodeFromBytes(messageBody []uint8) error {
 }
 
 func (m *CloseMessage) Serialize() ([]uint8, error) {
-	closeMessageLength := CommonHeaderLength + m.CloseObject.Len()
+	byteCloseObject := m.CloseObject.Serialize()
+	closeMessageLength, err := messageLength(byteCloseObject)
+	if err != nil {
+		return nil, err
+	}
 	closeHeader := NewCommonHeader(MessageTypeClose, closeMessageLength)
 	byteCloseHeader := closeHeader.Serialize()
-	byteCloseObject := m.CloseObject.Serialize()
 	byteCloseMessage := AppendByteSlices(byteCloseHeader, byteCloseObject)
 	return byteCloseMessage, nil
 }
@@ -490,10 +521,14 @@ type PCInitiateMessage struct {
 }
 
 func (m *PCInitiateMessage) Serialize() ([]uint8, error) {
-	var err error
-
-	byteSrpObject := m.SrpObject.Serialize()
-	byteLSPObject := m.LSPObject.Serialize()
+	byteSrpObject, err := m.SrpObject.Serialize()
+	if err != nil {
+		return nil, err
+	}
+	byteLSPObject, err := m.LSPObject.Serialize()
+	if err != nil {
+		return nil, err
+	}
 
 	var byteEndpointsObject []uint8
 	if m.EndpointsObject != nil {
@@ -516,18 +551,17 @@ func (m *PCInitiateMessage) Serialize() ([]uint8, error) {
 	}
 	var byteVendorInformationObject []uint8
 	if m.VendorInformationObject != nil {
-		byteVendorInformationObject = m.VendorInformationObject.Serialize()
+		if byteVendorInformationObject, err = m.VendorInformationObject.Serialize(); err != nil {
+			return nil, err
+		}
 	}
 
-	// Use the serialized lengths to keep the message length consistent with
-	// the bytes appended below.
-	pcinitiateMessageLength := CommonHeaderLength +
-		m.SrpObject.Len() +
-		m.LSPObject.Len() +
-		uint16(len(byteEndpointsObject)) +
-		uint16(len(byteEroObject)) +
-		uint16(len(byteAssociationObject)) +
-		uint16(len(byteVendorInformationObject))
+	pcinitiateMessageLength, err := messageLength(
+		byteSrpObject, byteLSPObject, byteEndpointsObject, byteEroObject, byteAssociationObject, byteVendorInformationObject,
+	)
+	if err != nil {
+		return nil, err
+	}
 
 	pcinitiateHeader := NewCommonHeader(MessageTypeLSPInitReq, pcinitiateMessageLength)
 	bytePCInitiateHeader := pcinitiateHeader.Serialize()
@@ -597,16 +631,23 @@ type PCUpdMessage struct {
 }
 
 func (m *PCUpdMessage) Serialize() ([]uint8, error) {
-	byteSrpObject := m.SrpObject.Serialize()
-	byteLSPObject := m.LSPObject.Serialize()
+	byteSrpObject, err := m.SrpObject.Serialize()
+	if err != nil {
+		return nil, err
+	}
+	byteLSPObject, err := m.LSPObject.Serialize()
+	if err != nil {
+		return nil, err
+	}
 	byteEroObject, err := m.EroObject.Serialize()
 	if err != nil {
 		return nil, err
 	}
 
-	// Use the serialized lengths to keep the message length consistent with
-	// the bytes appended below.
-	pcupdMessageLength := CommonHeaderLength + m.SrpObject.Len() + m.LSPObject.Len() + uint16(len(byteEroObject))
+	pcupdMessageLength, err := messageLength(byteSrpObject, byteLSPObject, byteEroObject)
+	if err != nil {
+		return nil, err
+	}
 	pcupdHeader := NewCommonHeader(MessageTypeUpdate, pcupdMessageLength)
 	bytePCUpdHeader := pcupdHeader.Serialize()
 	bytePCUpdMessage := AppendByteSlices(bytePCUpdHeader, byteSrpObject, byteLSPObject, byteEroObject)

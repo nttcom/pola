@@ -73,6 +73,34 @@ func TestPCErrMessage_RoundTrip(t *testing.T) {
 	}
 }
 
+func TestPCErrMessage_Serialize_Errors(t *testing.T) {
+	t.Parallel()
+
+	t.Run("SRPSerializeError", func(t *testing.T) {
+		t.Parallel()
+
+		m := PCErrMessage{SRPs: []*SrpObject{{TLVs: []TLVInterface{&UnknownTLV{Value: make([]byte, 65536)}}}}}
+		_, err := m.Serialize()
+		assert.Error(t, err)
+	})
+
+	t.Run("ErrorObjectSerializeError", func(t *testing.T) {
+		t.Parallel()
+
+		m := PCErrMessage{Errors: []*PCEPErrorObject{{Tlvs: []TLVInterface{&UnknownTLV{Value: make([]byte, 65536)}}}}}
+		_, err := m.Serialize()
+		assert.Error(t, err)
+	})
+
+	t.Run("MessageLengthOverflow", func(t *testing.T) {
+		t.Parallel()
+
+		m := PCErrMessage{Errors: []*PCEPErrorObject{{Tlvs: []TLVInterface{&UnknownTLV{Value: make([]byte, 65520)}}}}}
+		_, err := m.Serialize()
+		assert.ErrorContains(t, err, "exceeds")
+	})
+}
+
 // Verify OriginatorASN is propagated to the SRPOLICY-CPATH-ID TLV.
 func TestNewPCInitiateMessage_OriginatorASNReachesWire(t *testing.T) {
 	t.Parallel()
@@ -268,6 +296,24 @@ func TestOpenMessage_DecodeFromBytes_Errors(t *testing.T) {
 	}
 }
 
+func TestOpenMessage_Serialize_Error(t *testing.T) {
+	t.Parallel()
+
+	m := OpenMessage{OpenObject: &OpenObject{Caps: []CapabilityInterface{&UnknownTLV{Value: make([]byte, 65536)}}}}
+	_, err := m.Serialize()
+	assert.Error(t, err)
+}
+
+func TestOpenMessage_Serialize_MessageLengthOverflow(t *testing.T) {
+	t.Parallel()
+
+	m := OpenMessage{OpenObject: &OpenObject{Caps: []CapabilityInterface{
+		&UnknownTLV{Value: make([]byte, 65520)},
+	}}}
+	_, err := m.Serialize()
+	assert.ErrorContains(t, err, "exceeds")
+}
+
 func TestCommonHeader_DecodeFromBytes_Errors(t *testing.T) {
 	t.Parallel()
 
@@ -413,9 +459,13 @@ func TestPCRptMessage_DecodeFromBytes(t *testing.T) {
 	ero := &EroObject{ObjectType: ObjectTypeEROExplicitRoute}
 	eroRaw, err := ero.Serialize()
 	require.NoError(t, err)
+	srpRaw, err := srp.Serialize()
+	require.NoError(t, err)
+	lspRaw, err := lsp.Serialize()
+	require.NoError(t, err)
 
 	baseReport := func() []uint8 {
-		return AppendByteSlices(srp.Serialize(), lsp.Serialize(), eroRaw)
+		return AppendByteSlices(srpRaw, lspRaw, eroRaw)
 	}
 
 	newBaseStateReport := func() *StateReport {
@@ -437,7 +487,7 @@ func TestPCRptMessage_DecodeFromBytes(t *testing.T) {
 		t.Parallel()
 
 		var m PCRptMessage
-		require.NoError(t, m.DecodeFromBytes(AppendByteSlices(lsp.Serialize(), eroRaw)))
+		require.NoError(t, m.DecodeFromBytes(AppendByteSlices(lspRaw, eroRaw)))
 
 		want := newBaseStateReport()
 		want.SrpObject = &SrpObject{}
@@ -449,8 +499,12 @@ func TestPCRptMessage_DecodeFromBytes(t *testing.T) {
 
 		srp2 := &SrpObject{ObjectType: ObjectTypeSRPSRP, SrpID: 2}
 		lsp2 := &LSPObject{ObjectType: ObjectTypeLSPLSP, PlspID: 6, OFlag: 1, AFlag: true, DFlag: true}
+		srp2Raw, err := srp2.Serialize()
+		require.NoError(t, err)
+		lsp2Raw, err := lsp2.Serialize()
+		require.NoError(t, err)
 
-		raw := AppendByteSlices(baseReport(), srp2.Serialize(), lsp2.Serialize(), eroRaw)
+		raw := AppendByteSlices(baseReport(), srp2Raw, lsp2Raw, eroRaw)
 
 		var m PCRptMessage
 		require.NoError(t, m.DecodeFromBytes(raw))
@@ -470,7 +524,7 @@ func TestPCRptMessage_DecodeFromBytes(t *testing.T) {
 		epRaw, err := ep.Serialize()
 		require.NoError(t, err)
 
-		raw := AppendByteSlices(srp.Serialize(), epRaw, lsp.Serialize(), eroRaw)
+		raw := AppendByteSlices(srpRaw, epRaw, lspRaw, eroRaw)
 
 		var m PCRptMessage
 		require.NoError(t, m.DecodeFromBytes(raw))
@@ -491,14 +545,16 @@ func TestPCRptMessage_DecodeFromBytes(t *testing.T) {
 
 		assocRaw, err := assoc.Serialize()
 		require.NoError(t, err)
+		vendorInfoRaw, err := vendorInfo.Serialize()
+		require.NoError(t, err)
 
 		raw := AppendByteSlices(
-			srp.Serialize(), lsp.Serialize(),
+			srpRaw, lspRaw,
 			metric1.Serialize(), metric2.Serialize(),
 			rawBandwidth(1000),
 			lspa.Serialize(),
 			assocRaw,
-			vendorInfo.Serialize(),
+			vendorInfoRaw,
 			eroRaw,
 		)
 
@@ -533,6 +589,9 @@ func TestPCRptMessage_DecodeFromBytes(t *testing.T) {
 			),
 			"MalformedBandwidthBody": NewCommonObjectHeader(ObjectClassBandwidth, ObjectType(1), commonObjectHeaderLength).Serialize(),
 			"MalformedMetricBody":    NewCommonObjectHeader(ObjectClassMetric, ObjectType(1), commonObjectHeaderLength).Serialize(),
+			// An SRP in a state report must be followed by an LSP.
+			"SRPWithNoLSP":       srpRaw,
+			"TwoSRPsInARowNoLSP": AppendByteSlices(srpRaw, srpRaw),
 		}
 
 		for name, body := range cases {
@@ -551,7 +610,11 @@ func TestPCRptMessage_DecodeFromBytes_MalformedNestedObjectBody(t *testing.T) {
 
 	srp := &SrpObject{ObjectType: ObjectTypeSRPSRP, SrpID: 1}
 	lsp := &LSPObject{ObjectType: ObjectTypeLSPLSP, PlspID: 5, OFlag: 1, AFlag: true, DFlag: true}
-	prefix := AppendByteSlices(srp.Serialize(), lsp.Serialize())
+	srpRaw, err := srp.Serialize()
+	require.NoError(t, err)
+	lspRaw, err := lsp.Serialize()
+	require.NoError(t, err)
+	prefix := AppendByteSlices(srpRaw, lspRaw)
 
 	cases := map[string][]uint8{
 		"TruncatedBandwidthBody": AppendByteSlices(prefix, NewCommonObjectHeader(ObjectClassBandwidth, ObjectType(1), commonObjectHeaderLength).Serialize()),
@@ -683,6 +746,54 @@ func TestPCUpdMessage_Serialize_Error(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestPCUpdMessage_Serialize_SrpAndLSPObjectErrors(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]*PCUpdMessage{
+		"SrpObjectSerializeError": {
+			SrpObject: &SrpObject{TLVs: []TLVInterface{&UnknownTLV{Value: make([]byte, 65536)}}},
+			LSPObject: &LSPObject{},
+			EroObject: &EroObject{},
+		},
+		"LSPObjectSerializeError": {
+			SrpObject: &SrpObject{},
+			LSPObject: &LSPObject{TLVs: []TLVInterface{&UnknownTLV{Value: make([]byte, 65536)}}},
+			EroObject: &EroObject{},
+		},
+	}
+
+	for name, m := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := m.Serialize()
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestMessage_Serialize_RejectsOversizedMessage(t *testing.T) {
+	t.Parallel()
+
+	subobjects := make([]EroSubobject, 8192)
+	for i := range subobjects {
+		subobjects[i] = &SREroSubobject{
+			SubobjectType: SubobjectTypeEROSR,
+			NAIType:       NAITypeSRAbsent,
+			Segment:       table.NewSegmentSRMPLS(16001),
+		}
+	}
+	ero := &EroObject{ObjectType: ObjectTypeEROExplicitRoute, EroSubobjects: subobjects}
+
+	pcupd := &PCUpdMessage{SrpObject: &SrpObject{}, LSPObject: &LSPObject{}, EroObject: ero}
+	_, err := pcupd.Serialize()
+	assert.ErrorContains(t, err, "exceeds")
+
+	pcinitiate := &PCInitiateMessage{SrpObject: &SrpObject{}, LSPObject: &LSPObject{}, EroObject: ero}
+	_, err = pcinitiate.Serialize()
+	assert.ErrorContains(t, err, "exceeds")
+}
+
 func TestCloseMessage_DecodeFromBytes_Errors(t *testing.T) {
 	t.Parallel()
 
@@ -717,7 +828,8 @@ func TestCloseMessage_DecodeFromBytes_Errors(t *testing.T) {
 func TestPCErrMessage_DecodeFromBytes_Errors(t *testing.T) {
 	t.Parallel()
 
-	validSRP := (&SrpObject{ObjectType: ObjectTypeSRPSRP, SrpID: 1}).Serialize()
+	validSRP, err := (&SrpObject{ObjectType: ObjectTypeSRPSRP, SrpID: 1}).Serialize()
+	require.NoError(t, err)
 
 	cases := map[string][]uint8{
 		"TruncatedObjectHeader":        {0x01, 0x02},
@@ -763,6 +875,12 @@ func TestPCInitiateMessage_Serialize_Errors(t *testing.T) {
 	}
 
 	cases := map[string]*PCInitiateMessage{
+		"SrpObjectSerializeError": {
+			SrpObject: &SrpObject{TLVs: []TLVInterface{&UnknownTLV{Value: make([]byte, 65536)}}}, LSPObject: &LSPObject{},
+		},
+		"LSPObjectSerializeError": {
+			SrpObject: &SrpObject{}, LSPObject: &LSPObject{TLVs: []TLVInterface{&UnknownTLV{Value: make([]byte, 65536)}}},
+		},
 		"EroObjectUnsupportedNAIError": {
 			SrpObject: &SrpObject{}, LSPObject: &LSPObject{},
 			EroObject: &EroObject{EroSubobjects: []EroSubobject{badLenSubo}},
@@ -789,6 +907,18 @@ func TestPCInitiateMessage_Serialize_Errors(t *testing.T) {
 			assert.Error(t, err)
 		})
 	}
+}
+
+func TestPCInitiateMessage_Serialize_MessageLengthBoundary(t *testing.T) {
+	t.Parallel()
+
+	m := &PCInitiateMessage{
+		SrpObject: &SrpObject{TLVs: []TLVInterface{&UnknownTLV{Value: make([]byte, 65516)}}},
+		LSPObject: &LSPObject{},
+	}
+	raw, err := m.Serialize()
+	require.Nil(t, raw)
+	assert.ErrorContains(t, err, "exceeds")
 }
 
 func TestNewPCInitiateMessage_LSPDelete(t *testing.T) {

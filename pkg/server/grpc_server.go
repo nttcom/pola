@@ -710,7 +710,12 @@ func (s *APIServer) GetSessionList(ctx context.Context, _ *pb.GetSessionListRequ
 		}
 		seenCapabilities := make(map[string]struct{})
 		for _, cap := range pcepSession.AdvertisedCapabilities() {
-			capabilityKey := fmt.Sprintf("%d:%s", cap.Type(), cap.Serialize())
+			b, err := cap.Serialize()
+			if err != nil {
+				s.logger.Warn("failed to serialize advertised capability", zap.Error(err))
+				continue
+			}
+			capabilityKey := fmt.Sprintf("%d:%s", cap.Type(), b)
 			if _, ok := seenCapabilities[capabilityKey]; ok {
 				continue
 			}
