@@ -1111,6 +1111,7 @@ func TestDebouncerTrigger(t *testing.T) {
 	t.Run("keeps looping when a trigger arrives while the context ends during a successful fetch", testDebouncerTriggerKeepsLoopingOnContextEndDuringSuccessfulFetch)
 	t.Run("keeps looping when a trigger arrives while the context ends during the cooldown wait", testDebouncerTriggerKeepsLoopingOnContextEndDuringCooldownWait)
 	t.Run("does not lose the last trigger when the worker completes", testDebouncerTriggerDoesNotLoseLastTrigger)
+	t.Run("releases the worker lock if fetch panics", testDebouncerRunReleasesLockOnPanic)
 }
 
 func testDebouncerTriggerFetchesOnceAfterCooldown(t *testing.T) {
@@ -1320,6 +1321,7 @@ func testDebouncerTriggerKeepsLoopingOnContextEndDuringSuccessfulFetch(t *testin
 func testDebouncerTriggerKeepsLoopingOnContextEndDuringCooldownWait(t *testing.T) {
 	d := NewDebouncer(time.Hour)
 	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
 
 	var fetchCalled atomic.Bool
 	fetch := func() ([]table.TEDElem, error) {
@@ -1329,28 +1331,19 @@ func testDebouncerTriggerKeepsLoopingOnContextEndDuringCooldownWait(t *testing.T
 	deliver := func([]table.TEDElem) {}
 	logger := zap.NewNop()
 
-	d.Trigger(ctx, fetch, deliver, logger)
-	time.Sleep(10 * time.Millisecond) // let the worker settle into the cooldown wait
-	cancel()
+	// Set a pending cooldown deterministically to exercise the ctx.Done() path.
+	d.mu.Lock()
+	d.active = true
+	d.last = time.Now().Add(50 * time.Millisecond)
+	d.mu.Unlock()
 
-	stop := make(chan struct{})
-	go func() {
-		for {
-			select {
-			case <-stop:
-				return
-			default:
-				d.Trigger(ctx, fetch, deliver, logger)
-			}
-		}
-	}()
+	go d.run(ctx, fetch, deliver, logger)
 
 	require.Eventually(t, func() bool {
 		d.mu.Lock()
 		defer d.mu.Unlock()
 		return !d.active
 	}, time.Second, time.Millisecond)
-	close(stop)
 
 	assert.False(t, fetchCalled.Load(), "fetch should not run once the context is canceled")
 }
@@ -1378,6 +1371,28 @@ func testDebouncerTriggerDoesNotLoseLastTrigger(t *testing.T) {
 		return observedGen.Load() == rounds
 	}, 5*time.Second, time.Millisecond,
 		"the last trigger before the worker went idle was lost")
+}
+
+func testDebouncerRunReleasesLockOnPanic(t *testing.T) {
+	d := NewDebouncer(time.Millisecond)
+	d.active = true
+
+	panicked := func() (recovered bool) {
+		defer func() {
+			if r := recover(); r != nil {
+				recovered = true
+			}
+		}()
+		fetch := func() ([]table.TEDElem, error) { panic("boom") }
+		d.run(context.Background(), fetch, func([]table.TEDElem) {}, zap.NewNop())
+		return false
+	}()
+	require.True(t, panicked, "expected run to panic")
+
+	d.mu.Lock()
+	active := d.active
+	d.mu.Unlock()
+	require.False(t, active, "expected active to be reset to false after panic")
 }
 
 // testGoBGPServer implements api.GoBgpServiceServer for MonitorBGPLsEvents integration tests.
