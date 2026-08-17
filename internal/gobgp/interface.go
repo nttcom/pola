@@ -83,16 +83,14 @@ func monitorBGPLsEvents(ctx context.Context, serverAddr string, serverPort strin
 	// Debounce consecutive events to avoid fetching TED for every event.
 	for {
 		res, err := stream.Recv()
-		if errors.Is(err, io.EOF) {
-			return
-		}
 		if err != nil {
-			logger.Error("error receiving BGP-LS event", zap.Error(err))
-			if !waitForRetry(ctx, opts.retryInterval) {
-				return
+			if errors.Is(err, io.EOF) {
+				logger.Info("BGP-LS watch stream closed by peer, reconnecting")
+			} else {
+				logger.Error("error receiving BGP-LS event", zap.Error(err))
 			}
 
-			stream, ok = establishWatchStream(ctx, client, req, opts.retryInterval, logger)
+			stream, ok = reconnectWatchStream(ctx, client, req, opts.retryInterval, logger, debouncer, fetch, deliver)
 			if !ok {
 				return
 			}
@@ -103,6 +101,30 @@ func monitorBGPLsEvents(ctx context.Context, serverAddr string, serverPort strin
 			debouncer.Trigger(ctx, fetch, deliver, logger)
 		}
 	}
+}
+
+func reconnectWatchStream(
+	ctx context.Context,
+	client api.GoBgpServiceClient,
+	req *api.WatchEventRequest,
+	retryInterval time.Duration,
+	logger *zap.Logger,
+	debouncer *Debouncer,
+	fetch func() ([]table.TEDElem, error),
+	deliver func([]table.TEDElem),
+) (grpc.ServerStreamingClient[api.WatchEventResponse], bool) {
+	if !waitForRetry(ctx, retryInterval) {
+		return nil, false
+	}
+
+	stream, ok := establishWatchStream(ctx, client, req, retryInterval, logger)
+	if !ok {
+		return nil, false
+	}
+
+	debouncer.Trigger(ctx, fetch, deliver, logger)
+
+	return stream, true
 }
 
 func establishWatchStream(
@@ -191,54 +213,84 @@ func (d *Debouncer) Trigger(
 	d.active = true
 	d.mu.Unlock()
 
-	go func() {
-		defer func() {
-			d.mu.Lock()
-			d.active = false
-			d.mu.Unlock()
-		}()
+	go d.run(ctx, fetch, deliver, logger)
+}
 
-		// Re-run the cycle if a trigger arrives while fetch() is running.
+func (d *Debouncer) run(
+	ctx context.Context,
+	fetch func() ([]table.TEDElem, error),
+	deliver func([]table.TEDElem),
+	logger *zap.Logger,
+) {
+	released := false
+	defer func() {
+		if released {
+			return
+		}
+		d.mu.Lock()
+		d.active = false
+		d.mu.Unlock()
+	}()
+
+	// finish checks for a pending trigger and releases the worker atomically.
+	finish := func(cycleStart time.Time) (pending bool) {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		if d.last.After(cycleStart) {
+			return true
+		}
+		d.active = false
+		released = true
+		return false
+	}
+
+outer:
+	for {
 		for {
-			for {
-				d.mu.Lock()
-				remaining := d.cooldown - time.Since(d.last)
-				d.mu.Unlock()
-
-				if remaining <= 0 {
-					break
-				}
-
-				timer := time.NewTimer(remaining)
-				select {
-				case <-timer.C:
-				case <-ctx.Done():
-					timer.Stop()
-					return
-				}
-			}
-
-			fetchStart := time.Now()
-			tedElems, err := fetch()
-			if err != nil {
-				logger.Error("failed to get TED info", zap.Error(err))
-				return
-			}
-
-			if ctx.Err() != nil {
-				logger.Debug("deliver aborted due to context cancel")
-				return
-			}
-			deliver(tedElems)
-
 			d.mu.Lock()
-			pending := d.last.After(fetchStart)
+			remaining := d.cooldown - time.Since(d.last)
 			d.mu.Unlock()
-			if !pending {
+
+			if remaining <= 0 {
+				break
+			}
+
+			timer := time.NewTimer(remaining)
+			select {
+			case <-timer.C:
+			case <-ctx.Done():
+				timer.Stop()
+				if finish(time.Now()) {
+					continue outer
+				}
 				return
 			}
 		}
-	}()
+
+		fetchStart := time.Now()
+		tedElems, err := fetch()
+		if err != nil {
+			logger.Error("failed to get TED info", zap.Error(err))
+			if finish(fetchStart) {
+				continue outer
+			}
+			return
+		}
+
+		if ctx.Err() != nil {
+			logger.Debug("deliver aborted due to context cancel")
+			if finish(fetchStart) {
+				continue outer
+			}
+			return
+		}
+		deliver(tedElems)
+
+		if finish(fetchStart) {
+			continue outer
+		}
+		return
+	}
 }
 
 func newWatchRequest() *api.WatchEventRequest {

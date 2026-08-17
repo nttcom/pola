@@ -11,6 +11,7 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -1044,127 +1045,362 @@ func TestInitialSync(t *testing.T) {
 		require.Equal(t, 1, logs.Len())
 		assert.Equal(t, "failed to get initial TED info", logs.All()[0].Message)
 	})
+
+	t.Run("returns without blocking when the context ends before delivery", func(t *testing.T) {
+		client := &fakeGoBGPClient{listPathResp: []*api.ListPathResponse{
+			{Destination: testNodeDestination(t, 65000, "0000.0000.0001", "r1")},
+		}}
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		tedChan := make(chan []table.TEDElem) // unbuffered with no receiver
+
+		done := make(chan struct{})
+		go func() {
+			initialSync(ctx, client, tedChan, zap.NewNop())
+			close(done)
+		}()
+
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatal("initialSync blocked instead of returning when the context was already done")
+		}
+	})
+}
+
+func TestReconnectWatchStream_GivesUpOnContextCancel(t *testing.T) {
+	client := &fakeGoBGPClient{watchEventErr: errors.New("watch unavailable")}
+	ctx, cancel := context.WithCancel(context.Background())
+	d := NewDebouncer(time.Hour)
+	fetch := func() ([]table.TEDElem, error) { return nil, nil }
+	deliver := func([]table.TEDElem) {}
+
+	type result struct {
+		stream grpc.ServerStreamingClient[api.WatchEventResponse]
+		ok     bool
+	}
+	done := make(chan result, 1)
+	go func() {
+		stream, ok := reconnectWatchStream(ctx, client, newWatchRequest(), 5*time.Millisecond, zap.NewNop(), d, fetch, deliver)
+		done <- result{stream, ok}
+	}()
+
+	// Let a few retries happen before giving up via cancellation.
+	require.Eventually(t, func() bool {
+		return client.watchEventCalls.Load() >= 2
+	}, time.Second, time.Millisecond)
+	cancel()
+
+	select {
+	case r := <-done:
+		assert.False(t, r.ok)
+		assert.Nil(t, r.stream)
+	case <-time.After(time.Second):
+		t.Fatal("reconnectWatchStream did not return after the context was canceled")
+	}
 }
 
 func TestDebouncerTrigger(t *testing.T) {
-	t.Run("fetches once after the cooldown and delivers", func(t *testing.T) {
-		d := NewDebouncer(20 * time.Millisecond)
+	t.Run("fetches once after the cooldown and delivers", testDebouncerTriggerFetchesOnceAfterCooldown)
+	t.Run("collapses triggers within the cooldown window into one fetch", testDebouncerTriggerCollapsesTriggersWithinCooldown)
+	t.Run("stops without fetching when the context is canceled first", testDebouncerTriggerStopsWithoutFetchingOnCancelFirst)
+	t.Run("logs and skips delivery when the fetch fails", testDebouncerTriggerLogsAndSkipsOnFetchFailure)
+	t.Run("skips delivery when the context ends during the fetch", testDebouncerTriggerSkipsDeliveryOnContextEndDuringFetch)
+	t.Run("handles a trigger during delivery", testDebouncerTriggerHandlesTriggerDuringDelivery)
+	t.Run("retries after a fetch failure when a trigger arrived during the fetch", testDebouncerTriggerRetriesAfterFetchFailure)
+	t.Run("keeps looping when a trigger arrives while the context ends during a successful fetch", testDebouncerTriggerKeepsLoopingOnContextEndDuringSuccessfulFetch)
+	t.Run("keeps looping when a trigger arrives while the context ends during the cooldown wait", testDebouncerTriggerKeepsLoopingOnContextEndDuringCooldownWait)
+	t.Run("does not lose the last trigger when the worker completes", testDebouncerTriggerDoesNotLoseLastTrigger)
+}
 
-		want := []table.TEDElem{table.NewLsNode(1, "r1")}
-		var fetchCount atomic.Int32
-		fetch := func() ([]table.TEDElem, error) {
-			fetchCount.Add(1)
-			return want, nil
+func testDebouncerTriggerFetchesOnceAfterCooldown(t *testing.T) {
+	d := NewDebouncer(20 * time.Millisecond)
+
+	want := []table.TEDElem{table.NewLsNode(1, "r1")}
+	var fetchCount atomic.Int32
+	fetch := func() ([]table.TEDElem, error) {
+		fetchCount.Add(1)
+		return want, nil
+	}
+	delivered := make(chan []table.TEDElem, 1)
+
+	d.Trigger(t.Context(), fetch, func(elems []table.TEDElem) { delivered <- elems }, zap.NewNop())
+
+	select {
+	case got := <-delivered:
+		assert.Equal(t, want, got)
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for delivery")
+	}
+	assert.EqualValues(t, 1, fetchCount.Load())
+}
+
+func testDebouncerTriggerCollapsesTriggersWithinCooldown(t *testing.T) {
+	d := NewDebouncer(50 * time.Millisecond)
+	ctx := t.Context()
+
+	var fetchCount atomic.Int32
+	fetch := func() ([]table.TEDElem, error) {
+		fetchCount.Add(1)
+		return nil, nil
+	}
+	delivered := make(chan []table.TEDElem, 1)
+	deliver := func(elems []table.TEDElem) { delivered <- elems }
+	logger := zap.NewNop()
+
+	d.Trigger(ctx, fetch, deliver, logger)
+	time.Sleep(10 * time.Millisecond)
+	d.Trigger(ctx, fetch, deliver, logger)
+
+	select {
+	case <-delivered:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for delivery")
+	}
+	assert.EqualValues(t, 1, fetchCount.Load())
+}
+
+func testDebouncerTriggerStopsWithoutFetchingOnCancelFirst(t *testing.T) {
+	d := NewDebouncer(time.Hour)
+	ctx, cancel := context.WithCancel(t.Context())
+
+	var fetchCalled atomic.Int32
+	fetch := func() ([]table.TEDElem, error) {
+		fetchCalled.Store(1)
+		return nil, nil
+	}
+	deliver := func([]table.TEDElem) { t.Fatal("deliver should not be called") }
+
+	d.Trigger(ctx, fetch, deliver, zap.NewNop())
+	cancel()
+
+	require.Eventually(t, func() bool {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return !d.active
+	}, time.Second, time.Millisecond)
+	assert.EqualValues(t, 0, fetchCalled.Load())
+}
+
+func testDebouncerTriggerLogsAndSkipsOnFetchFailure(t *testing.T) {
+	d := NewDebouncer(10 * time.Millisecond)
+
+	core, logs := observer.New(zap.ErrorLevel)
+	fetch := func() ([]table.TEDElem, error) { return nil, errors.New("fetch failed") }
+	deliver := func([]table.TEDElem) { t.Fatal("deliver should not be called") }
+
+	d.Trigger(t.Context(), fetch, deliver, zap.New(core))
+
+	require.Eventually(t, func() bool { return logs.Len() > 0 }, time.Second, time.Millisecond)
+	assert.Equal(t, "failed to get TED info", logs.All()[0].Message)
+}
+
+func testDebouncerTriggerSkipsDeliveryOnContextEndDuringFetch(t *testing.T) {
+	d := NewDebouncer(10 * time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	core, logs := observer.New(zap.DebugLevel)
+	fetch := func() ([]table.TEDElem, error) {
+		cancel() // simulate the context ending while the fetch is in flight
+		return []table.TEDElem{table.NewLsNode(1, "r1")}, nil
+	}
+	deliver := func([]table.TEDElem) { t.Fatal("deliver should not be called") }
+
+	d.Trigger(ctx, fetch, deliver, zap.New(core))
+
+	require.Eventually(t, func() bool { return logs.Len() > 0 }, time.Second, time.Millisecond)
+	assert.Equal(t, "deliver aborted due to context cancel", logs.All()[0].Message)
+}
+
+func testDebouncerTriggerHandlesTriggerDuringDelivery(t *testing.T) {
+	d := NewDebouncer(5 * time.Millisecond)
+	ctx := t.Context()
+
+	var fetchCount atomic.Int32
+	fetch := func() ([]table.TEDElem, error) {
+		fetchCount.Add(1)
+		return nil, nil
+	}
+
+	var firstDeliver atomic.Bool
+	firstDeliver.Store(true)
+	deliverStarted := make(chan struct{})
+	releaseDeliver := make(chan struct{})
+	delivered := make(chan struct{}, 2)
+	deliver := func([]table.TEDElem) {
+		if firstDeliver.CompareAndSwap(true, false) {
+			close(deliverStarted)
+			<-releaseDeliver
 		}
-		delivered := make(chan []table.TEDElem, 1)
+		delivered <- struct{}{}
+	}
+	logger := zap.NewNop()
 
-		d.Trigger(t.Context(), fetch, func(elems []table.TEDElem) { delivered <- elems }, zap.NewNop())
+	d.Trigger(ctx, fetch, deliver, logger)
 
-		select {
-		case got := <-delivered:
-			assert.Equal(t, want, got)
-		case <-time.After(time.Second):
-			t.Fatal("timed out waiting for delivery")
-		}
-		assert.EqualValues(t, 1, fetchCount.Load())
-	})
+	<-deliverStarted
+	d.Trigger(ctx, fetch, deliver, logger)
+	close(releaseDeliver)
 
-	t.Run("collapses triggers within the cooldown window into one fetch", func(t *testing.T) {
-		d := NewDebouncer(50 * time.Millisecond)
-		ctx := t.Context()
-
-		var fetchCount atomic.Int32
-		fetch := func() ([]table.TEDElem, error) {
-			fetchCount.Add(1)
-			return nil, nil
-		}
-		delivered := make(chan []table.TEDElem, 1)
-		deliver := func(elems []table.TEDElem) { delivered <- elems }
-		logger := zap.NewNop()
-
-		d.Trigger(ctx, fetch, deliver, logger)
-		time.Sleep(10 * time.Millisecond)
-		d.Trigger(ctx, fetch, deliver, logger)
-
+	for range 2 {
 		select {
 		case <-delivered:
 		case <-time.After(time.Second):
-			t.Fatal("timed out waiting for delivery")
+			t.Fatal("timed out waiting for both delivery cycles")
 		}
-		assert.EqualValues(t, 1, fetchCount.Load())
-	})
+	}
 
-	t.Run("stops without fetching when the context is canceled first", func(t *testing.T) {
-		d := NewDebouncer(time.Hour)
-		ctx, cancel := context.WithCancel(t.Context())
+	require.Eventually(t, func() bool {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return !d.active
+	}, time.Second, time.Millisecond)
+	assert.EqualValues(t, 2, fetchCount.Load())
+}
 
-		var fetchCalled atomic.Int32
-		fetch := func() ([]table.TEDElem, error) {
-			fetchCalled.Store(1)
-			return nil, nil
+func testDebouncerTriggerRetriesAfterFetchFailure(t *testing.T) {
+	d := NewDebouncer(5 * time.Millisecond)
+	ctx := t.Context()
+
+	fetchStarted := make(chan struct{})
+	releaseFetch := make(chan struct{})
+	var fetchCount atomic.Int32
+	fetch := func() ([]table.TEDElem, error) {
+		if fetchCount.Add(1) == 1 {
+			close(fetchStarted)
+			<-releaseFetch
+			return nil, errors.New("boom")
 		}
-		deliver := func([]table.TEDElem) { t.Fatal("deliver should not be called") }
+		return []table.TEDElem{table.NewLsNode(1, "r1")}, nil
+	}
+	delivered := make(chan []table.TEDElem, 1)
+	deliver := func(elems []table.TEDElem) { delivered <- elems }
+	core, logs := observer.New(zap.ErrorLevel)
+	logger := zap.New(core)
 
-		d.Trigger(ctx, fetch, deliver, zap.NewNop())
-		cancel()
+	d.Trigger(ctx, fetch, deliver, logger)
+	<-fetchStarted
+	d.Trigger(ctx, fetch, deliver, logger) // arrives while the failing fetch is in flight
+	close(releaseFetch)
 
-		require.Eventually(t, func() bool {
-			d.mu.Lock()
-			defer d.mu.Unlock()
-			return !d.active
-		}, time.Second, time.Millisecond)
-		assert.EqualValues(t, 0, fetchCalled.Load())
-	})
+	select {
+	case got := <-delivered:
+		assert.Len(t, got, 1)
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for the retried fetch to deliver")
+	}
+	require.Eventually(t, func() bool { return logs.Len() > 0 }, time.Second, time.Millisecond)
+	assert.Equal(t, "failed to get TED info", logs.All()[0].Message)
+}
 
-	t.Run("logs and skips delivery when the fetch fails", func(t *testing.T) {
-		d := NewDebouncer(10 * time.Millisecond)
+func testDebouncerTriggerKeepsLoopingOnContextEndDuringSuccessfulFetch(t *testing.T) {
+	d := NewDebouncer(5 * time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
 
-		core, logs := observer.New(zap.ErrorLevel)
-		fetch := func() ([]table.TEDElem, error) { return nil, errors.New("fetch failed") }
-		deliver := func([]table.TEDElem) { t.Fatal("deliver should not be called") }
-
-		d.Trigger(t.Context(), fetch, deliver, zap.New(core))
-
-		require.Eventually(t, func() bool { return logs.Len() > 0 }, time.Second, time.Millisecond)
-		assert.Equal(t, "failed to get TED info", logs.All()[0].Message)
-	})
-
-	t.Run("skips delivery when the context ends during the fetch", func(t *testing.T) {
-		d := NewDebouncer(10 * time.Millisecond)
-		ctx, cancel := context.WithCancel(context.Background())
-
-		core, logs := observer.New(zap.DebugLevel)
-		fetch := func() ([]table.TEDElem, error) {
-			cancel() // simulate the context ending while the fetch is in flight
-			return []table.TEDElem{table.NewLsNode(1, "r1")}, nil
+	var fetchCount atomic.Int32
+	fetch := func() ([]table.TEDElem, error) {
+		if fetchCount.Add(1) == 1 {
+			cancel()
+			d.Trigger(ctx, nil, nil, nil) // arrives before the context-cancel check runs
 		}
-		deliver := func([]table.TEDElem) { t.Fatal("deliver should not be called") }
+		return []table.TEDElem{table.NewLsNode(1, "r1")}, nil
+	}
+	deliver := func([]table.TEDElem) { t.Fatal("deliver should not be called") }
 
-		d.Trigger(ctx, fetch, deliver, zap.New(core))
+	d.Trigger(ctx, fetch, deliver, zap.NewNop())
 
-		require.Eventually(t, func() bool { return logs.Len() > 0 }, time.Second, time.Millisecond)
-		assert.Equal(t, "deliver aborted due to context cancel", logs.All()[0].Message)
-	})
+	require.Eventually(t, func() bool {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return !d.active
+	}, time.Second, time.Millisecond)
+	assert.EqualValues(t, 1, fetchCount.Load())
+}
+
+func testDebouncerTriggerKeepsLoopingOnContextEndDuringCooldownWait(t *testing.T) {
+	d := NewDebouncer(time.Hour)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	var fetchCalled atomic.Bool
+	fetch := func() ([]table.TEDElem, error) {
+		fetchCalled.Store(true)
+		return nil, nil
+	}
+	deliver := func([]table.TEDElem) {}
+	logger := zap.NewNop()
+
+	d.Trigger(ctx, fetch, deliver, logger)
+	time.Sleep(10 * time.Millisecond) // let the worker settle into the cooldown wait
+	cancel()
+
+	stop := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				d.Trigger(ctx, fetch, deliver, logger)
+			}
+		}
+	}()
+
+	require.Eventually(t, func() bool {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return !d.active
+	}, time.Second, time.Millisecond)
+	close(stop)
+
+	assert.False(t, fetchCalled.Load(), "fetch should not run once the context is canceled")
+}
+
+func testDebouncerTriggerDoesNotLoseLastTrigger(t *testing.T) {
+	d := NewDebouncer(time.Millisecond)
+	ctx := t.Context()
+
+	var generation atomic.Int64
+	var observedGen atomic.Int64
+	fetch := func() ([]table.TEDElem, error) {
+		observedGen.Store(generation.Load())
+		return nil, nil
+	}
+	deliver := func([]table.TEDElem) {}
+	logger := zap.NewNop()
+
+	const rounds = 500
+	for i := int64(1); i <= rounds; i++ {
+		generation.Store(i)
+		d.Trigger(ctx, fetch, deliver, logger)
+	}
+
+	require.Eventually(t, func() bool {
+		return observedGen.Load() == rounds
+	}, 5*time.Second, time.Millisecond,
+		"the last trigger before the worker went idle was lost")
 }
 
 // testGoBGPServer implements api.GoBgpServiceServer for MonitorBGPLsEvents integration tests.
-// Only ListPath and WatchEvent are exercised by the code under test.
 type testGoBGPServer struct {
 	api.UnimplementedGoBgpServiceServer
-	listPathResp []*api.ListPathResponse
-	watchEvents  []*api.WatchEventResponse
-	// Keeps the WatchEvent stream open after sending watchEvents so the
-	// debounced fetch has time to run before the stream ends.
-	watchEventHold time.Duration
-	// Errors returned by successive WatchEvent calls.
-	watchEventErrs  []error
-	listPathCalls   atomic.Int32
-	watchEventCalls atomic.Int32
+	listPathResp       []*api.ListPathResponse
+	listPathResps      [][]*api.ListPathResponse
+	watchEvents        []*api.WatchEventResponse
+	watchEventsPerCall [][]*api.WatchEventResponse
+	watchEventHold     time.Duration
+	watchEventHolds    []time.Duration
+	watchEventErrs     []error
+	listPathCalls      atomic.Int32
+	watchEventCalls    atomic.Int32
 }
 
 func (s *testGoBGPServer) ListPath(_ *api.ListPathRequest, stream grpc.ServerStreamingServer[api.ListPathResponse]) error {
-	s.listPathCalls.Add(1)
-	for _, r := range s.listPathResp {
+	call := int(s.listPathCalls.Add(1)) - 1
+	resp := s.listPathResp
+	if s.listPathResps != nil {
+		resp = s.listPathResps[min(call, len(s.listPathResps)-1)]
+	}
+	for _, r := range resp {
 		if err := stream.Send(r); err != nil {
 			return err
 		}
@@ -1177,12 +1413,20 @@ func (s *testGoBGPServer) WatchEvent(_ *api.WatchEventRequest, stream grpc.Serve
 	if call < len(s.watchEventErrs) && s.watchEventErrs[call] != nil {
 		return s.watchEventErrs[call]
 	}
-	for _, e := range s.watchEvents {
+	events := s.watchEvents
+	if s.watchEventsPerCall != nil {
+		events = s.watchEventsPerCall[min(call, len(s.watchEventsPerCall)-1)]
+	}
+	for _, e := range events {
 		if err := stream.Send(e); err != nil {
 			return err
 		}
 	}
-	time.Sleep(s.watchEventHold)
+	hold := s.watchEventHold
+	if s.watchEventHolds != nil {
+		hold = s.watchEventHolds[min(call, len(s.watchEventHolds)-1)]
+	}
+	time.Sleep(hold)
 	return nil
 }
 
@@ -1205,11 +1449,12 @@ func startTestGoBGPServer(t *testing.T, server *testGoBGPServer) (string, string
 
 func TestMonitorBGPLsEvents(t *testing.T) {
 	t.Run("returns immediately when the gRPC client cannot be created", testMonitorBGPLsEventsUnusableAddress)
-	t.Run("syncs the TED and processes watch events until the stream ends", testMonitorBGPLsEventsUntilStreamEnds)
+	t.Run("reconnects and keeps monitoring after the watch stream ends", testMonitorBGPLsEventsReconnectsAfterStreamEnd)
 	t.Run("returns when the caller's context is canceled", testMonitorBGPLsEventsContextCanceled)
 	t.Run("returns immediately when the context is already canceled", testMonitorBGPLsEventsAlreadyCanceledContext)
 	t.Run("triggers a debounced fetch and delivers the refreshed TED", testMonitorBGPLsEventsDebouncedFetch)
 	t.Run("re-establishes the watch stream after a receive error", testMonitorBGPLsEventsReestablishesStream)
+	t.Run("triggers a forced resync after reconnecting", testMonitorBGPLsEventsResyncsAfterReconnect)
 }
 
 func testMonitorBGPLsEventsAlreadyCanceledContext(t *testing.T) {
@@ -1250,36 +1495,81 @@ func testMonitorBGPLsEventsUnusableAddress(t *testing.T) {
 	assert.Equal(t, "failed to create gRPC client", logs.All()[0].Message)
 }
 
-func testMonitorBGPLsEventsUntilStreamEnds(t *testing.T) {
-	host, port := startTestGoBGPServer(t, &testGoBGPServer{
-		listPathResp: []*api.ListPathResponse{
-			{Destination: testNodeDestination(t, 65000, "0000.0000.0001", "r1")},
-		},
-		watchEvents: []*api.WatchEventResponse{
-			{},
-			{Event: &api.WatchEventResponse_Table{Table: &api.WatchEventResponse_TableEvent{}}},
-		},
-	})
+func testMonitorBGPLsEventsReconnectsAfterStreamEnd(t *testing.T) {
+	respInitial := []*api.ListPathResponse{
+		{Destination: testNodeDestination(t, 65000, "0000.0000.0001", "r0")},
+	}
+	respStream1 := []*api.ListPathResponse{
+		{Destination: testNodeDestination(t, 65000, "0000.0000.0001", "r1")},
+		{Destination: testNodeDestination(t, 65000, "0000.0000.0002", "r2")},
+	}
+	respStream2 := []*api.ListPathResponse{
+		{Destination: testNodeDestination(t, 65000, "0000.0000.0001", "r1")},
+		{Destination: testNodeDestination(t, 65000, "0000.0000.0002", "r2")},
+		{Destination: testNodeDestination(t, 65000, "0000.0000.0003", "r3")},
+	}
+	tableEvent := &api.WatchEventResponse{Event: &api.WatchEventResponse_Table{Table: &api.WatchEventResponse_TableEvent{}}}
 
-	tedChan := make(chan []table.TEDElem, 2)
-	done := make(chan struct{})
+	server := &testGoBGPServer{
+		listPathResp:  respInitial,
+		listPathResps: [][]*api.ListPathResponse{respInitial, respStream1, respStream2},
+		watchEventsPerCall: [][]*api.WatchEventResponse{
+			{tableEvent},
+			{tableEvent},
+		},
+		watchEventHold: 200 * time.Millisecond,
+	}
+	host, port := startTestGoBGPServer(t, server)
 
+	ctx, cancel := context.WithCancel(context.Background())
+	tedChan := make(chan []table.TEDElem, 32)
+
+	var mu sync.Mutex
+	var deliveries [][]table.TEDElem
 	go func() {
-		MonitorBGPLsEvents(context.Background(), host, port, tedChan, zap.NewNop())
+		for elems := range tedChan {
+			mu.Lock()
+			deliveries = append(deliveries, elems)
+			mu.Unlock()
+		}
+	}()
+	hasDelivery := func(length int) bool {
+		mu.Lock()
+		defer mu.Unlock()
+		for _, d := range deliveries {
+			if len(d) == length {
+				return true
+			}
+		}
+		return false
+	}
+
+	done := make(chan struct{})
+	go func() {
+		monitorBGPLsEvents(ctx, host, port, tedChan, zap.NewNop(), monitorOptions{
+			debounceCooldown: 10 * time.Millisecond,
+			retryInterval:    10 * time.Millisecond,
+		})
 		close(done)
 	}()
 
-	select {
-	case got := <-tedChan:
-		assert.Len(t, got, 1) // initial TED sync
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for the initial TED sync")
-	}
+	require.Eventually(t, func() bool { return hasDelivery(len(respInitial)) },
+		5*time.Second, time.Millisecond, "the initial TED sync was not delivered")
 
+	require.Eventually(t, func() bool { return hasDelivery(len(respStream1)) },
+		5*time.Second, time.Millisecond, "stream #1's table event was not processed")
+
+	require.Eventually(t, func() bool { return server.watchEventCalls.Load() >= 2 },
+		5*time.Second, time.Millisecond, "the watch stream was not re-established after stream #1 ended")
+
+	require.Eventually(t, func() bool { return hasDelivery(len(respStream2)) },
+		5*time.Second, time.Millisecond, "stream #2's table event was not processed")
+
+	cancel()
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		t.Fatal("MonitorBGPLsEvents did not return after the watch stream ended")
+		t.Fatal("monitorBGPLsEvents did not return after the context was canceled")
 	}
 }
 
@@ -1327,11 +1617,12 @@ func testMonitorBGPLsEventsDebouncedFetch(t *testing.T) {
 	}
 	host, port := startTestGoBGPServer(t, server)
 
-	tedChan := make(chan []table.TEDElem, 2)
+	ctx, cancel := context.WithCancel(context.Background())
+	tedChan := make(chan []table.TEDElem, 4)
 	done := make(chan struct{})
 
 	go func() {
-		monitorBGPLsEvents(context.Background(), host, port, tedChan, zap.NewNop(), monitorOptions{
+		monitorBGPLsEvents(ctx, host, port, tedChan, zap.NewNop(), monitorOptions{
 			debounceCooldown: 20 * time.Millisecond,
 			retryInterval:    10 * time.Millisecond,
 		})
@@ -1353,10 +1644,11 @@ func testMonitorBGPLsEventsDebouncedFetch(t *testing.T) {
 	}
 	assert.GreaterOrEqual(t, server.listPathCalls.Load(), int32(2))
 
+	cancel()
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		t.Fatal("monitorBGPLsEvents did not return after the watch stream ended")
+		t.Fatal("monitorBGPLsEvents did not return after the context was canceled")
 	}
 }
 
@@ -1374,11 +1666,12 @@ func testMonitorBGPLsEventsReestablishesStream(t *testing.T) {
 	host, port := startTestGoBGPServer(t, server)
 
 	core, logs := observer.New(zap.ErrorLevel)
-	tedChan := make(chan []table.TEDElem, 2)
+	ctx, cancel := context.WithCancel(context.Background())
+	tedChan := make(chan []table.TEDElem, 4)
 	done := make(chan struct{})
 
 	go func() {
-		monitorBGPLsEvents(context.Background(), host, port, tedChan, zap.New(core), monitorOptions{
+		monitorBGPLsEvents(ctx, host, port, tedChan, zap.New(core), monitorOptions{
 			debounceCooldown: 20 * time.Millisecond,
 			retryInterval:    10 * time.Millisecond,
 		})
@@ -1398,13 +1691,93 @@ func testMonitorBGPLsEventsReestablishesStream(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for the re-established stream to deliver")
 	}
-	assert.EqualValues(t, 2, server.watchEventCalls.Load())
+	assert.GreaterOrEqual(t, server.watchEventCalls.Load(), int32(2))
 	require.GreaterOrEqual(t, logs.Len(), 1)
 	assert.Equal(t, "error receiving BGP-LS event", logs.All()[0].Message)
 
+	cancel()
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		t.Fatal("monitorBGPLsEvents did not return after the watch stream ended")
+		t.Fatal("monitorBGPLsEvents did not return after the context was canceled")
+	}
+}
+
+func testMonitorBGPLsEventsResyncsAfterReconnect(t *testing.T) {
+	respInitial := []*api.ListPathResponse{
+		{Destination: testNodeDestination(t, 65000, "0000.0000.0001", "r0")},
+	}
+	respStream1 := []*api.ListPathResponse{
+		{Destination: testNodeDestination(t, 65000, "0000.0000.0001", "r1")},
+		{Destination: testNodeDestination(t, 65000, "0000.0000.0002", "r2")},
+	}
+	respResync := []*api.ListPathResponse{
+		{Destination: testNodeDestination(t, 65000, "0000.0000.0001", "r1")},
+		{Destination: testNodeDestination(t, 65000, "0000.0000.0002", "r2")},
+		{Destination: testNodeDestination(t, 65000, "0000.0000.0003", "r3")},
+	}
+	tableEvent := &api.WatchEventResponse{Event: &api.WatchEventResponse_Table{Table: &api.WatchEventResponse_TableEvent{}}}
+
+	server := &testGoBGPServer{
+		listPathResp:  respInitial,
+		listPathResps: [][]*api.ListPathResponse{respInitial, respStream1, respResync},
+		watchEventsPerCall: [][]*api.WatchEventResponse{
+			{tableEvent},
+			{}, // No event on the reconnected stream; resync must be triggered explicitly.
+		},
+		watchEventHolds: []time.Duration{200 * time.Millisecond, 5 * time.Second},
+	}
+	host, port := startTestGoBGPServer(t, server)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	tedChan := make(chan []table.TEDElem, 16)
+
+	var mu sync.Mutex
+	var deliveries [][]table.TEDElem
+	go func() {
+		for elems := range tedChan {
+			mu.Lock()
+			deliveries = append(deliveries, elems)
+			mu.Unlock()
+		}
+	}()
+	hasDelivery := func(length int) bool {
+		mu.Lock()
+		defer mu.Unlock()
+		for _, d := range deliveries {
+			if len(d) == length {
+				return true
+			}
+		}
+		return false
+	}
+
+	done := make(chan struct{})
+	go func() {
+		monitorBGPLsEvents(ctx, host, port, tedChan, zap.NewNop(), monitorOptions{
+			debounceCooldown: 10 * time.Millisecond,
+			retryInterval:    10 * time.Millisecond,
+		})
+		close(done)
+	}()
+
+	require.Eventually(t, func() bool { return hasDelivery(len(respInitial)) },
+		5*time.Second, time.Millisecond, "the initial TED sync was not delivered")
+
+	require.Eventually(t, func() bool { return hasDelivery(len(respStream1)) },
+		5*time.Second, time.Millisecond, "stream #1's table event did not trigger a fetch")
+
+	require.Eventually(t, func() bool { return server.watchEventCalls.Load() >= 2 },
+		5*time.Second, time.Millisecond, "the watch stream was not re-established after stream #1 ended")
+
+	require.Eventually(t, func() bool { return hasDelivery(len(respResync)) },
+		5*time.Second, time.Millisecond,
+		"reconnecting did not trigger a forced resync although stream #2 sent no table event")
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("monitorBGPLsEvents did not return after the context was canceled")
 	}
 }
