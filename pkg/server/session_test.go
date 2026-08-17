@@ -1145,9 +1145,13 @@ func TestEstablished_ReturnsWhenInitialKeepaliveSendFails(t *testing.T) {
 	openBytes, err := openMessage.Serialize()
 	require.NoError(t, err)
 
-	// The Open reply (write #1) succeeds; the initial Keepalive (write #2) fails.
+	pr, pw := io.Pipe()
+	t.Cleanup(func() {
+		assert.NoError(t, pw.Close(), "failed to close pipe writer")
+	})
+
 	conn := &fakeConn{
-		r:         bytes.NewReader(openBytes),
+		r:         io.MultiReader(bytes.NewReader(openBytes), pr),
 		failAfter: 1,
 		writeErr:  errors.New("write: broken pipe"),
 	}
