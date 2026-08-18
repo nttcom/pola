@@ -72,8 +72,8 @@ func TestNewSRPolicyDeleteCmd_RunE(t *testing.T) {
 }
 
 func TestDeleteSRPolicy(t *testing.T) {
-	validPolicy := func() SRPolicy {
-		return SRPolicy{
+	validPolicy := func() srPolicy {
+		return srPolicy{
 			PCEPSessionAddr: netip.MustParseAddr("192.0.2.1"),
 			DstAddr:         netip.MustParseAddr("192.0.2.2"),
 			Color:           100,
@@ -82,7 +82,7 @@ func TestDeleteSRPolicy(t *testing.T) {
 	}
 
 	t.Run("missing mandatory fields", func(t *testing.T) {
-		err := deleteSRPolicy(InputFormat{}, false)
+		err := deleteSRPolicy(inputFormat{}, false)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid input")
 	})
@@ -91,7 +91,7 @@ func TestDeleteSRPolicy(t *testing.T) {
 		fake := &fakePCEServiceClient{}
 		client = fake
 		out := captureStdout(t, func() {
-			require.NoError(t, deleteSRPolicy(InputFormat{ASN: 65000, SRPolicy: validPolicy()}, false))
+			require.NoError(t, deleteSRPolicy(inputFormat{ASN: 65000, SRPolicy: validPolicy()}, false))
 		})
 		assert.Equal(t, "success!\n", out)
 
@@ -106,21 +106,21 @@ func TestDeleteSRPolicy(t *testing.T) {
 	t.Run("json output on success", func(t *testing.T) {
 		client = &fakePCEServiceClient{}
 		out := captureStdout(t, func() {
-			require.NoError(t, deleteSRPolicy(InputFormat{ASN: 65000, SRPolicy: validPolicy()}, true))
+			require.NoError(t, deleteSRPolicy(inputFormat{ASN: 65000, SRPolicy: validPolicy()}, true))
 		})
 		assert.Equal(t, "{\"status\": \"success\"}\n", out)
 	})
 
 	t.Run("grpc status error is unwrapped to its message", func(t *testing.T) {
 		client = &fakePCEServiceClient{deleteSRPolicyErr: status.Error(codes.NotFound, "SR policy not found")}
-		err := deleteSRPolicy(InputFormat{ASN: 65000, SRPolicy: validPolicy()}, false)
+		err := deleteSRPolicy(inputFormat{ASN: 65000, SRPolicy: validPolicy()}, false)
 		require.Error(t, err)
 		assert.Equal(t, "gRPC Server Error: SR policy not found", err.Error())
 	})
 
 	t.Run("plain grpc error falls back to Error()", func(t *testing.T) {
 		client = &fakePCEServiceClient{deleteSRPolicyErr: assert.AnError}
-		err := deleteSRPolicy(InputFormat{ASN: 65000, SRPolicy: validPolicy()}, false)
+		err := deleteSRPolicy(inputFormat{ASN: 65000, SRPolicy: validPolicy()}, false)
 		require.Error(t, err)
 		assert.Equal(t, "gRPC Server Error: "+assert.AnError.Error(), err.Error())
 	})
