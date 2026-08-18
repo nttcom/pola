@@ -37,36 +37,36 @@ type fakeClient struct {
 	tedErr  error
 }
 
-func (f *fakeClient) GetSessionList(ctx context.Context, in *pb.GetSessionListRequest, opts ...grpc.CallOption) (*pb.GetSessionListResponse, error) {
+func (f *fakeClient) GetSessionList(_ context.Context, _ *pb.GetSessionListRequest, _ ...grpc.CallOption) (*pb.GetSessionListResponse, error) {
 	return f.sessionListResp, f.sessionListErr
 }
 
-func (f *fakeClient) DeleteSession(ctx context.Context, in *pb.DeleteSessionRequest, opts ...grpc.CallOption) (*pb.DeleteSessionResponse, error) {
+func (f *fakeClient) DeleteSession(_ context.Context, _ *pb.DeleteSessionRequest, _ ...grpc.CallOption) (*pb.DeleteSessionResponse, error) {
 	if f.deleteSessionErr != nil {
 		return nil, f.deleteSessionErr
 	}
 	return &pb.DeleteSessionResponse{}, nil
 }
 
-func (f *fakeClient) GetSRPolicyList(ctx context.Context, in *pb.GetSRPolicyListRequest, opts ...grpc.CallOption) (*pb.GetSRPolicyListResponse, error) {
+func (f *fakeClient) GetSRPolicyList(_ context.Context, _ *pb.GetSRPolicyListRequest, _ ...grpc.CallOption) (*pb.GetSRPolicyListResponse, error) {
 	return f.srPolicyListResp, f.srPolicyListErr
 }
 
-func (f *fakeClient) CreateSRPolicy(ctx context.Context, in *pb.CreateSRPolicyRequest, opts ...grpc.CallOption) (*pb.CreateSRPolicyResponse, error) {
+func (f *fakeClient) CreateSRPolicy(_ context.Context, _ *pb.CreateSRPolicyRequest, _ ...grpc.CallOption) (*pb.CreateSRPolicyResponse, error) {
 	if f.createSRPolicyErr != nil {
 		return nil, f.createSRPolicyErr
 	}
 	return &pb.CreateSRPolicyResponse{IsSuccess: true}, nil
 }
 
-func (f *fakeClient) DeleteSRPolicy(ctx context.Context, in *pb.DeleteSRPolicyRequest, opts ...grpc.CallOption) (*pb.DeleteSRPolicyResponse, error) {
+func (f *fakeClient) DeleteSRPolicy(_ context.Context, _ *pb.DeleteSRPolicyRequest, _ ...grpc.CallOption) (*pb.DeleteSRPolicyResponse, error) {
 	if f.deleteSRPolicyErr != nil {
 		return nil, f.deleteSRPolicyErr
 	}
 	return &pb.DeleteSRPolicyResponse{IsSuccess: true}, nil
 }
 
-func (f *fakeClient) GetTED(ctx context.Context, in *pb.GetTEDRequest, opts ...grpc.CallOption) (*pb.GetTEDResponse, error) {
+func (f *fakeClient) GetTED(_ context.Context, _ *pb.GetTEDRequest, _ ...grpc.CallOption) (*pb.GetTEDResponse, error) {
 	return f.tedResp, f.tedErr
 }
 

@@ -14,18 +14,30 @@ import (
 const (
 	errorInfoDomain = "pola"
 
-	ReasonInvalidRequest         = "INVALID_REQUEST"
-	ReasonTEDDisabled            = "TED_DISABLED"
-	ReasonTEDNotSynced           = "TED_NOT_SYNCED"
-	ReasonTEDDataIncomplete      = "TED_DATA_INCOMPLETE"
+	// ReasonInvalidRequest indicates an invalid request.
+	ReasonInvalidRequest = "INVALID_REQUEST"
+	// ReasonTEDDisabled indicates the TED is disabled.
+	ReasonTEDDisabled = "TED_DISABLED"
+	// ReasonTEDNotSynced indicates the TED has not been synchronized.
+	ReasonTEDNotSynced = "TED_NOT_SYNCED"
+	// ReasonTEDDataIncomplete indicates the TED data is incomplete.
+	ReasonTEDDataIncomplete = "TED_DATA_INCOMPLETE"
+	// ReasonDestinationUnreachable indicates the destination is unreachable.
 	ReasonDestinationUnreachable = "DESTINATION_UNREACHABLE"
-	ReasonMetricNotCarried       = "METRIC_NOT_CARRIED"
-	ReasonPCEPSessionNotSynced   = "PCEP_SESSION_NOT_SYNCED"
-	ReasonPCEPSessionNotFound    = "PCEP_SESSION_NOT_FOUND"
-	ReasonSIDValidationFailed    = "SID_VALIDATION_FAILED"
-	ReasonSRPolicyNotFound       = "SR_POLICY_NOT_FOUND"
-	ReasonPCEPRequestFailed      = "PCEP_REQUEST_FAILED"
-	ReasonPathComputationFailed  = "PATH_COMPUTATION_FAILED"
+	// ReasonMetricNotCarried indicates the metric is not carried.
+	ReasonMetricNotCarried = "METRIC_NOT_CARRIED"
+	// ReasonPCEPSessionNotSynced indicates the PCEP session has not been synchronized.
+	ReasonPCEPSessionNotSynced = "PCEP_SESSION_NOT_SYNCED"
+	// ReasonPCEPSessionNotFound indicates the PCEP session was not found.
+	ReasonPCEPSessionNotFound = "PCEP_SESSION_NOT_FOUND"
+	// ReasonSIDValidationFailed indicates SID validation failed.
+	ReasonSIDValidationFailed = "SID_VALIDATION_FAILED"
+	// ReasonSRPolicyNotFound indicates the SR Policy was not found.
+	ReasonSRPolicyNotFound = "SR_POLICY_NOT_FOUND"
+	// ReasonPCEPRequestFailed indicates a PCEP request failed.
+	ReasonPCEPRequestFailed = "PCEP_REQUEST_FAILED"
+	// ReasonPathComputationFailed indicates path computation failed.
+	ReasonPathComputationFailed = "PATH_COMPUTATION_FAILED"
 )
 
 func newStatus(code codes.Code, reason, format string, a ...any) error {

@@ -111,7 +111,7 @@ func TestSREroSubobject_RoundTrip(t *testing.T) {
 
 			raw, err := want.Serialize()
 			require.NoError(t, err, "Serialize failed")
-			require.Equal(t, int(l), len(raw), "Len() must match serialized size")
+			require.Len(t, raw, int(l), "Len() must match serialized size")
 
 			var got SREroSubobject
 			require.NoError(t, got.DecodeFromBytes(raw), "DecodeFromBytes failed")
@@ -190,7 +190,7 @@ func TestNewSREroSubobject_NAIFromSegment(t *testing.T) {
 
 			raw, err := subo.Serialize()
 			require.NoError(t, err, "Serialize failed")
-			assert.Equal(t, int(tc.wantLength), len(raw), "serialized size")
+			assert.Len(t, raw, int(tc.wantLength), "serialized size")
 		})
 	}
 }
@@ -361,7 +361,7 @@ func TestSREroSubobject_DecodeFromBytes_SIDAbsent(t *testing.T) {
 
 			raw, err := subo.Serialize()
 			require.NoError(t, err)
-			require.Equal(t, int(l), len(raw), "Serialize() size must match Len()")
+			require.Len(t, raw, int(l), "Serialize() size must match Len()")
 
 			var got SREroSubobject
 			require.NoError(t, got.DecodeFromBytes(raw))
@@ -462,7 +462,7 @@ func TestSRv6EroSubobject_RoundTrip(t *testing.T) {
 
 			raw, err := want.Serialize()
 			require.NoError(t, err, "Serialize failed")
-			require.Equal(t, int(l), len(raw), "Len() must match serialized size")
+			require.Len(t, raw, int(l), "Len() must match serialized size")
 
 			var got SRv6EroSubobject
 			require.NoError(t, got.DecodeFromBytes(raw), "DecodeFromBytes failed")
@@ -507,7 +507,7 @@ func TestRSVPIPv4PrefixEroSubobject_RoundTrip(t *testing.T) {
 
 			raw, err := want.Serialize()
 			require.NoError(t, err, "Serialize failed")
-			require.Equal(t, int(l), len(raw), "Len() must match serialized size")
+			require.Len(t, raw, int(l), "Len() must match serialized size")
 
 			var got RSVPIPv4PrefixEroSubobject
 			require.NoError(t, got.DecodeFromBytes(raw), "DecodeFromBytes failed")
@@ -546,7 +546,7 @@ func TestSrpObject_RoundTrip(t *testing.T) {
 
 			raw, err := want.Serialize()
 			require.NoError(t, err, "Serialize failed")
-			require.Equal(t, want.Len(), len(raw), "Len() must match serialized size")
+			require.Len(t, raw, want.Len(), "Len() must match serialized size")
 
 			// DecodeFromBytes expects the object body without the CommonObjectHeader.
 			var got SrpObject
@@ -638,7 +638,7 @@ func TestOpenObject_RoundTrip(t *testing.T) {
 
 			raw, err := want.Serialize()
 			require.NoError(t, err, "Serialize failed")
-			require.Equal(t, want.Len(), len(raw), "Len() must match serialized size")
+			require.Len(t, raw, want.Len(), "Len() must match serialized size")
 
 			var got OpenObject
 			require.NoError(t,
@@ -724,7 +724,7 @@ func TestLSPAObject_RoundTrip(t *testing.T) {
 			t.Parallel()
 
 			raw := want.Serialize()
-			require.Equal(t, int(want.Len()), len(raw), "Len() must match serialized size")
+			require.Len(t, raw, int(want.Len()), "Len() must match serialized size")
 
 			var got LSPAObject
 			require.NoError(t,
@@ -756,10 +756,10 @@ func TestLSPAObject_DecodeFromBytes_TooShort(t *testing.T) {
 	}
 }
 
-func TestPCEPErrorObject_RoundTrip(t *testing.T) {
+func TestErrorObject_RoundTrip(t *testing.T) {
 	t.Parallel()
 
-	cases := map[string]PCEPErrorObject{
+	cases := map[string]ErrorObject{
 		"SessionFailure": {
 			ObjectType: ObjectTypeErrorError,
 			ErrorType:  1,
@@ -791,9 +791,9 @@ func TestPCEPErrorObject_RoundTrip(t *testing.T) {
 
 			raw, err := want.Serialize()
 			require.NoError(t, err, "Serialize failed")
-			require.Equal(t, want.Len(), len(raw), "Len() must match serialized size")
+			require.Len(t, raw, want.Len(), "Len() must match serialized size")
 
-			var got PCEPErrorObject
+			var got ErrorObject
 			require.NoError(t,
 				got.DecodeFromBytes(ObjectTypeErrorError, raw[commonObjectHeaderLength:]),
 				"DecodeFromBytes failed",
@@ -807,19 +807,19 @@ func TestPCEPErrorObject_RoundTrip(t *testing.T) {
 	}
 }
 
-func TestPCEPErrorObject_Serialize_Error(t *testing.T) {
+func TestErrorObject_Serialize_Error(t *testing.T) {
 	t.Parallel()
 
-	o := PCEPErrorObject{Tlvs: []TLVInterface{&UnknownTLV{Value: make([]byte, 65536)}}}
+	o := ErrorObject{Tlvs: []TLVInterface{&UnknownTLV{Value: make([]byte, 65536)}}}
 	_, err := o.Serialize()
 	assert.Error(t, err)
 }
 
-func TestPCEPErrorObject_Serialize_ObjectLengthBoundary(t *testing.T) {
+func TestErrorObject_Serialize_ObjectLengthBoundary(t *testing.T) {
 	t.Parallel()
 
 	// 4(header) + 4(fixed error fields) + TLVValueOffset(4)+65531(value) = 65543: exceeds the 16-bit Object-Length field.
-	o := PCEPErrorObject{Tlvs: []TLVInterface{&UnknownTLV{Value: make([]byte, 65531)}}}
+	o := ErrorObject{Tlvs: []TLVInterface{&UnknownTLV{Value: make([]byte, 65531)}}}
 	_, err := o.Serialize()
 	assert.ErrorContains(t, err, "exceeds")
 }
@@ -851,7 +851,7 @@ func TestCloseObject_RoundTrip(t *testing.T) {
 			t.Parallel()
 
 			raw := want.Serialize()
-			require.Equal(t, int(want.Len()), len(raw), "Len() must match serialized size")
+			require.Len(t, raw, int(want.Len()), "Len() must match serialized size")
 
 			var got CloseObject
 			require.NoError(t, got.DecodeFromBytes(ObjectTypeCloseClose, raw[commonObjectHeaderLength:]))
@@ -979,7 +979,7 @@ func TestLSPObject_RoundTrip(t *testing.T) {
 
 			raw, err := want.Serialize()
 			require.NoError(t, err, "Serialize failed")
-			require.Equal(t, want.Len(), len(raw), "Len() must match serialized size")
+			require.Len(t, raw, want.Len(), "Len() must match serialized size")
 
 			var got LSPObject
 			require.NoError(t,
@@ -1075,7 +1075,7 @@ func TestEroObject_RoundTrip(t *testing.T) {
 
 			l, err := want.Len()
 			require.NoError(t, err, "Len failed")
-			require.Equal(t, int(l), len(raw), "Len() must match serialized size")
+			require.Len(t, raw, l, "Len() must match serialized size")
 
 			var got EroObject
 			require.NoError(t,
@@ -1106,20 +1106,20 @@ func TestAssociationObject_RoundTrip(t *testing.T) {
 	cases := map[string]AssociationObject{
 		"IPv4_NoTLVs": {
 			ObjectType: ObjectTypeAssociationIPv4,
-			AssocType:  AssocType(AssociationTypeSRPolicyAssociation),
+			AssocType:  AssociationTypeSRPolicyAssociation,
 			AssocID:    1,
 			AssocSrc:   v4,
 		},
 		"IPv4_RFlag": {
 			ObjectType: ObjectTypeAssociationIPv4,
 			RFlag:      true,
-			AssocType:  AssocType(AssociationTypeSRPolicyAssociation),
+			AssocType:  AssociationTypeSRPolicyAssociation,
 			AssocID:    1,
 			AssocSrc:   v4,
 		},
 		"IPv4_WithSRPolicyTLVs": {
 			ObjectType: ObjectTypeAssociationIPv4,
-			AssocType:  AssocType(AssociationTypeSRPolicyAssociation),
+			AssocType:  AssociationTypeSRPolicyAssociation,
 			AssocID:    1,
 			AssocSrc:   v4,
 			TLVs: []TLVInterface{
@@ -1140,13 +1140,13 @@ func TestAssociationObject_RoundTrip(t *testing.T) {
 		},
 		"IPv6_NoTLVs": {
 			ObjectType: ObjectTypeAssociationIPv6,
-			AssocType:  AssocType(AssociationTypeSRPolicyAssociation),
+			AssocType:  AssociationTypeSRPolicyAssociation,
 			AssocID:    1,
 			AssocSrc:   v6,
 		},
 		"IPv6_WithExtendedAssociationID": {
 			ObjectType: ObjectTypeAssociationIPv6,
-			AssocType:  AssocType(AssociationTypeSRPolicyAssociation),
+			AssocType:  AssociationTypeSRPolicyAssociation,
 			AssocID:    1,
 			AssocSrc:   v6,
 			TLVs: []TLVInterface{
@@ -1167,7 +1167,7 @@ func TestAssociationObject_RoundTrip(t *testing.T) {
 
 			l, err := want.Len()
 			require.NoError(t, err, "Len failed")
-			require.Equal(t, int(l), len(raw), "Len() must match serialized size")
+			require.Len(t, raw, l, "Len() must match serialized size")
 
 			var got AssociationObject
 			require.NoError(t,
@@ -1607,7 +1607,7 @@ func TestVendorInformationObject_RoundTrip(t *testing.T) {
 
 			raw, err := want.Serialize()
 			require.NoError(t, err, "Serialize failed")
-			require.Equal(t, want.Len(), len(raw), "Len() must match serialized size")
+			require.Len(t, raw, want.Len(), "Len() must match serialized size")
 
 			var got VendorInformationObject
 			require.NoError(t,
@@ -1856,19 +1856,19 @@ func TestNewLSPAObject(t *testing.T) {
 	assert.Equal(t, &LSPAObject{ObjectType: ObjectType(1), SetupPriority: 7, HoldingPriority: 7, LFlag: true}, o)
 }
 
-func TestPCEPErrorObject_DecodeFromBytes_TooShort(t *testing.T) {
+func TestErrorObject_DecodeFromBytes_TooShort(t *testing.T) {
 	t.Parallel()
 
-	var o PCEPErrorObject
+	var o ErrorObject
 	assert.Error(t, o.DecodeFromBytes(ObjectTypeErrorError, []uint8{0x00, 0x00, 0x01}))
 }
 
-func TestNewPCEPErrorObject(t *testing.T) {
+func TestNewErrorObject(t *testing.T) {
 	t.Parallel()
 
 	tlvs := []TLVInterface{&SymbolicPathName{Name: "err"}}
-	o := NewPCEPErrorObject(6, 1, tlvs)
-	assert.Equal(t, &PCEPErrorObject{ObjectType: ObjectTypeErrorError, ErrorType: 6, ErrorValue: 1, Tlvs: tlvs}, o)
+	o := NewErrorObject(6, 1, tlvs)
+	assert.Equal(t, &ErrorObject{ObjectType: ObjectTypeErrorError, ErrorType: 6, ErrorValue: 1, Tlvs: tlvs}, o)
 }
 
 func TestCloseReason_String(t *testing.T) {
@@ -2259,7 +2259,7 @@ func TestSRv6EroSubobject_Len_Errors(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string]*SRv6EroSubobject{
-		// RFC9603 §4.3.1: when NAI Type is 0 (absent), F MUST be 1.
+		// RFC 9603 §4.3.1: when NAI Type is 0 (absent), F MUST be 1.
 		"AbsentNAIWithoutFFlag": {NAIType: NAITypeSRv6Absent, FFlag: false},
 		"UnsupportedNAIType":    {NAIType: NAITypeSRv6(0x01), FFlag: false},
 	}
@@ -2545,7 +2545,7 @@ func TestLSPObject_Serialize_MasksPlspIDAndOFlag(t *testing.T) {
 	require.NoError(t, err)
 	body := raw[commonObjectHeaderLength:]
 	require.Len(t, body, 4)
-	assert.False(t, body[3]&0x80 != 0, "PLSP-ID/OFlag overflow must not set the C flag")
+	assert.Zero(t, body[3]&0x80, "PLSP-ID/OFlag overflow must not set the C flag")
 
 	var got LSPObject
 	require.NoError(t, got.DecodeFromBytes(o.ObjectType, body))

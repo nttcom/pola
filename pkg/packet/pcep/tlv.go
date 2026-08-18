@@ -7,6 +7,7 @@ package pcep
 
 import (
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+// TLVType is a PCEP TLV type code.
 type TLVType uint16
 
 // PCEP TLV types
@@ -173,12 +175,12 @@ var tlvDescriptions = map[TLVType]struct {
 	TLVIPv4SrP2MPInstanceID:               {"IPV4-SR-P2MP-INSTANCE-ID", "draft-ietf-pce-sr-p2mp-policy-11"},
 	TLVIPv6SrP2MPInstanceID:               {"IPV6-SR-P2MP-INSTANCE-ID", "draft-ietf-pce-sr-p2mp-policy-11"},
 
-	// Juniper vendor-specific TLVs used by the JuniperLegacy PCC type.
 	TLVExtendedAssociationIDIPv4Juniper: {"EXTENDED-ASSOCIATION-ID (Juniper)", "vendor-specific"},
 	TLVSRPolicyCPathIDJuniper:           {"SRPOLICY-CPATH-ID (Juniper)", "vendor-specific"},
 	TLVSRPolicyCPathPreferenceJuniper:   {"SRPOLICY-CPATH-PREFERENCE (Juniper)", "vendor-specific"},
 }
 
+// String returns a human-readable representation of the TLV type.
 func (t TLVType) String() string {
 	if desc, ok := tlvDescriptions[t]; ok {
 		return fmt.Sprintf("%s (%s)", desc.Description, desc.Reference)
@@ -186,19 +188,21 @@ func (t TLVType) String() string {
 	return fmt.Sprintf("Unknown TLV (0x%04x)", uint16(t))
 }
 
-// IP Length
-const (
-	IPv4AddrLen = 4
-	IPv6AddrLen = 16
-)
+// IPv4AddrLen is the byte length of an IPv4 address.
+const IPv4AddrLen = 4
 
+// IPv6AddrLen is the byte length of an IPv6 address.
+const IPv6AddrLen = 16
+
+// Byte offsets of the fields of a PCEP TLV. TLVValueOffset doubles as the
+// length of the TLV header, since the value starts right after it.
 const (
 	TLVTypeOffset   = 0
 	TLVLengthOffset = 2
 	TLVValueOffset  = 4
 )
 
-// TLV Alignment (4 bytes)
+// TLVAlignment is the alignment boundary for PCEP TLVs (4 bytes).
 const TLVAlignment = 4
 
 // TLV value lengths, excluding the 4-byte TLV header (type + length)
@@ -232,6 +236,7 @@ const (
 	SubTLVPreferenceCisco TLVType = 0x03
 )
 
+// TLVInterface is implemented by every decodable PCEP TLV.
 type TLVInterface interface {
 	DecodeFromBytes(data []byte) error
 	Serialize() ([]byte, error)
@@ -264,13 +269,14 @@ var tlvMap = map[TLVType]func() TLVInterface{
 	TLVSRPolicyCPathPreferenceJuniper:   func() TLVInterface { return &SRPolicyCandidatePathPreferenceJuniper{} },
 }
 
-// VendorInformation represents the VENDOR-INFORMATION TLV (RFC7470 4).
-// The Enterprise-Specific Information is opaque, so it is kept as raw bytes.
+// VendorInformation represents the VENDOR-INFORMATION TLV (RFC 7470 §4).
+// Enterprise-Specific Information is opaque and kept as raw bytes.
 type VendorInformation struct {
 	EnterpriseNumber              EnterpriseNumber
 	EnterpriseSpecificInformation []byte
 }
 
+// DecodeFromBytes decodes the given bytes into the receiver.
 func (tlv *VendorInformation) DecodeFromBytes(data []byte) error {
 	valueLen, err := decodeTLVLength(data, true)
 	if err != nil {
@@ -294,6 +300,7 @@ func (tlv *VendorInformation) DecodeFromBytes(data []byte) error {
 	return nil
 }
 
+// Serialize encodes the receiver into bytes.
 func (tlv *VendorInformation) Serialize() ([]byte, error) {
 	length, err := tlvValueLength(tlv.valueLength())
 	if err != nil {
@@ -311,6 +318,7 @@ func (tlv *VendorInformation) Serialize() ([]byte, error) {
 	), nil
 }
 
+// MarshalLogObject marshals the receiver into a log object.
 func (tlv *VendorInformation) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	if tlv == nil {
 		return nil
@@ -320,20 +328,23 @@ func (tlv *VendorInformation) MarshalLogObject(enc zapcore.ObjectEncoder) error 
 	enc.AddString("enterprise", tlv.EnterpriseNumber.String())
 
 	if len(tlv.EnterpriseSpecificInformation) > 0 {
-		enc.AddString("enterpriseSpecificInformation", fmt.Sprintf("%x", tlv.EnterpriseSpecificInformation))
+		enc.AddString("enterpriseSpecificInformation", hex.EncodeToString(tlv.EnterpriseSpecificInformation))
 	}
 
 	return nil
 }
 
+// Type returns the TLV type of the receiver.
 func (tlv *VendorInformation) Type() TLVType {
 	return TLVVendorInformation
 }
 
+// Len returns the wire length of the receiver.
 func (tlv *VendorInformation) Len() int {
 	return TLVValueOffset + tlv.paddedValueLength()
 }
 
+// CapStrings returns capability strings for the receiver.
 func (tlv *VendorInformation) CapStrings() []string {
 	return []string{"Vendor-Info(" + tlv.EnterpriseNumber.capLabel() + ")"}
 }
@@ -346,6 +357,7 @@ func (tlv *VendorInformation) paddedValueLength() int {
 	return paddedLength(tlv.valueLength(), TLVAlignment)
 }
 
+// NewVendorInformation creates and returns a new VendorInformation.
 func NewVendorInformation(enterpriseNumber EnterpriseNumber, enterpriseSpecificInformation []byte) *VendorInformation {
 	return &VendorInformation{
 		EnterpriseNumber:              enterpriseNumber,
@@ -353,6 +365,8 @@ func NewVendorInformation(enterpriseNumber EnterpriseNumber, enterpriseSpecificI
 	}
 }
 
+// StatefulPCECapability represents the STATEFUL-PCE-CAPABILITY TLV and its
+// supported stateful PCE operations (RFC 8231 §7.1.1 and its extensions).
 type StatefulPCECapability struct {
 	LSPUpdateCapability            bool
 	IncludeDBVersion               bool
@@ -371,6 +385,9 @@ type StatefulPCECapability struct {
 	Relax                          bool
 }
 
+// Flag bits of the STATEFUL-PCE-CAPABILITY TLV, as masks against the 32-bit
+// Flags field. Trailing comments give the bit position and defining document;
+// RFC bit positions are numbered from the most significant bit.
 const (
 	LSPUpdateCapabilityBit         uint32 = 1 << 0  // bit 31 (RFC 8231)
 	IncludeDBVersionCapabilityBit  uint32 = 1 << 1  // bit 30 (RFC 8232)
@@ -397,6 +414,7 @@ const definedStatefulPCEFlagsMask uint32 = LSPUpdateCapabilityBit |
 	TriggeredInitialSyncBit |
 	ColorCapabilityBit
 
+// DecodeFromBytes decodes the given bytes into the receiver.
 func (tlv *StatefulPCECapability) DecodeFromBytes(data []byte) error {
 	valueLen, err := decodeTLVLength(data, false)
 	if err != nil {
@@ -415,6 +433,7 @@ func (tlv *StatefulPCECapability) DecodeFromBytes(data []byte) error {
 	return nil
 }
 
+// Serialize encodes the receiver into bytes.
 func (tlv *StatefulPCECapability) Serialize() ([]byte, error) {
 	flags := tlv.SetFlags() & definedStatefulPCEFlagsMask
 
@@ -425,6 +444,7 @@ func (tlv *StatefulPCECapability) Serialize() ([]byte, error) {
 	), nil
 }
 
+// MarshalLogObject marshals the receiver into a log object.
 func (tlv *StatefulPCECapability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	if tlv == nil {
 		return nil
@@ -441,14 +461,17 @@ func (tlv *StatefulPCECapability) MarshalLogObject(enc zapcore.ObjectEncoder) er
 	return nil
 }
 
+// Type returns the TLV type of the receiver.
 func (tlv *StatefulPCECapability) Type() TLVType {
 	return TLVStatefulPCECapability
 }
 
+// Len returns the wire length of the receiver.
 func (tlv *StatefulPCECapability) Len() int {
 	return int(TLVValueOffset + TLVStatefulPCECapabilityValueLength)
 }
 
+// ExtractCapabilities extracts capabilities from the given flags.
 func (tlv *StatefulPCECapability) ExtractCapabilities(flags uint32) {
 	tlv.LSPUpdateCapability = flags&LSPUpdateCapabilityBit != 0
 	tlv.IncludeDBVersion = flags&IncludeDBVersionCapabilityBit != 0
@@ -459,6 +482,7 @@ func (tlv *StatefulPCECapability) ExtractCapabilities(flags uint32) {
 	tlv.ColorCapability = flags&ColorCapabilityBit != 0
 }
 
+// SetFlags sets and returns flags from the receiver's fields.
 func (tlv *StatefulPCECapability) SetFlags() uint32 {
 	var flags uint32
 	flags = SetBit(flags, LSPUpdateCapabilityBit, tlv.LSPUpdateCapability)
@@ -472,6 +496,7 @@ func (tlv *StatefulPCECapability) SetFlags() uint32 {
 	return flags
 }
 
+// CapStrings returns capability strings for the receiver.
 func (tlv *StatefulPCECapability) CapStrings() []string {
 	ret := []string{"Stateful"}
 
@@ -500,16 +525,19 @@ func (tlv *StatefulPCECapability) CapStrings() []string {
 	return ret
 }
 
+// NewStatefulPCECapability creates and returns a new StatefulPCECapability.
 func NewStatefulPCECapability(flags uint32) *StatefulPCECapability {
 	tlv := &StatefulPCECapability{}
 	tlv.ExtractCapabilities(flags)
 	return tlv
 }
 
+// SymbolicPathName represents the SYMBOLIC-PATH-NAME TLV carrying the operator-visible name of an LSP (RFC 8231 §7.3.2).
 type SymbolicPathName struct {
 	Name string
 }
 
+// DecodeFromBytes decodes the given bytes into the receiver.
 func (tlv *SymbolicPathName) DecodeFromBytes(data []byte) error {
 	valueLen, err := decodeTLVLength(data, true)
 	if err != nil {
@@ -519,13 +547,14 @@ func (tlv *SymbolicPathName) DecodeFromBytes(data []byte) error {
 	value := data[TLVValueOffset : TLVValueOffset+valueLen]
 
 	if !utf8.Valid(value) {
-		return fmt.Errorf("SymbolicPathName: invalid UTF-8")
+		return errors.New("SymbolicPathName: invalid UTF-8")
 	}
 
 	tlv.Name = string(value)
 	return nil
 }
 
+// Serialize encodes the receiver into bytes.
 func (tlv *SymbolicPathName) Serialize() ([]byte, error) {
 	length, err := tlvValueLength(len(tlv.Name))
 	if err != nil {
@@ -544,10 +573,12 @@ func (tlv *SymbolicPathName) Serialize() ([]byte, error) {
 	), nil
 }
 
+// Type returns the TLV type of the receiver.
 func (tlv *SymbolicPathName) Type() TLVType {
 	return TLVSymbolicPathName
 }
 
+// Len returns the wire length of the receiver.
 func (tlv *SymbolicPathName) Len() int {
 	length := len(tlv.Name)
 	padding := (TLVAlignment - (length % TLVAlignment)) % TLVAlignment
@@ -555,6 +586,7 @@ func (tlv *SymbolicPathName) Len() int {
 	return TLVValueOffset + length + padding
 }
 
+// MarshalLogObject marshals the receiver into a log object.
 func (tlv *SymbolicPathName) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	if tlv == nil {
 		return nil
@@ -564,10 +596,13 @@ func (tlv *SymbolicPathName) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	return nil
 }
 
+// NewSymbolicPathName creates and returns a new SymbolicPathName.
 func NewSymbolicPathName(name string) *SymbolicPathName {
 	return &SymbolicPathName{Name: name}
 }
 
+// IPv4LSPIdentifiers represents the IPV4-LSP-IDENTIFIERS TLV, identifying
+// an LSP by its IPv4 tunnel endpoints and IDs (RFC 8231 §7.3.1).
 type IPv4LSPIdentifiers struct {
 	IPv4TunnelSenderAddress   netip.Addr
 	IPv4TunnelEndpointAddress netip.Addr
@@ -576,6 +611,7 @@ type IPv4LSPIdentifiers struct {
 	ExtendedTunnelID          uint32
 }
 
+// Byte offsets of the fields within the IPV4-LSP-IDENTIFIERS TLV value.
 const (
 	IPv4SenderOffset      = 0
 	IPv4LSPIDOffset       = 4
@@ -584,6 +620,7 @@ const (
 	IPv4TunnelEPOffset    = 12
 )
 
+// DecodeFromBytes decodes the given bytes into the receiver.
 func (tlv *IPv4LSPIdentifiers) DecodeFromBytes(data []byte) error {
 	valueLen, err := decodeTLVLength(data, false)
 	if err != nil {
@@ -611,6 +648,7 @@ func (tlv *IPv4LSPIdentifiers) DecodeFromBytes(data []byte) error {
 	return nil
 }
 
+// Serialize encodes the receiver into bytes.
 func (tlv *IPv4LSPIdentifiers) Serialize() ([]byte, error) {
 	value := make([]byte, TLVIPv4LSPIdentifiersValueLength)
 
@@ -627,6 +665,7 @@ func (tlv *IPv4LSPIdentifiers) Serialize() ([]byte, error) {
 	), nil
 }
 
+// MarshalLogObject marshals the receiver into a log object.
 func (tlv *IPv4LSPIdentifiers) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	if tlv == nil {
 		return nil
@@ -646,14 +685,17 @@ func (tlv *IPv4LSPIdentifiers) MarshalLogObject(enc zapcore.ObjectEncoder) error
 	return nil
 }
 
+// Type returns the TLV type of the receiver.
 func (tlv *IPv4LSPIdentifiers) Type() TLVType {
 	return TLVIPv4LSPIdentifiers
 }
 
+// Len returns the wire length of the receiver.
 func (tlv *IPv4LSPIdentifiers) Len() int {
 	return int(TLVValueOffset + TLVIPv4LSPIdentifiersValueLength)
 }
 
+// NewIPv4LSPIdentifiers creates and returns a new IPv4LSPIdentifiers.
 func NewIPv4LSPIdentifiers(senderAddr, endpointAddr netip.Addr, lspID, tunnelID uint16, extendedTunnelID uint32) *IPv4LSPIdentifiers {
 	return &IPv4LSPIdentifiers{
 		IPv4TunnelSenderAddress:   senderAddr,
@@ -664,6 +706,8 @@ func NewIPv4LSPIdentifiers(senderAddr, endpointAddr netip.Addr, lspID, tunnelID 
 	}
 }
 
+// IPv6LSPIdentifiers represents the IPV6-LSP-IDENTIFIERS TLV, identifying
+// an LSP by its IPv6 tunnel endpoints and IDs (RFC 8231 §7.3.1).
 type IPv6LSPIdentifiers struct {
 	IPv6TunnelSenderAddress   netip.Addr
 	IPv6TunnelEndpointAddress netip.Addr
@@ -672,8 +716,8 @@ type IPv6LSPIdentifiers struct {
 	ExtendedTunnelID          [16]byte
 }
 
+// Byte offsets of the fields within the IPV6-LSP-IDENTIFIERS TLV value.
 const (
-	// IPv6 LSP Identifiers
 	IPv6SenderOffset           = 0
 	IPv6LSPIDOffset            = 16
 	IPv6TunnelIDOffset         = 18
@@ -681,6 +725,7 @@ const (
 	IPv6TunnelEPOffset         = 36
 )
 
+// DecodeFromBytes decodes the given bytes into the receiver.
 func (tlv *IPv6LSPIdentifiers) DecodeFromBytes(data []byte) error {
 	valueLen, err := decodeTLVLength(data, false)
 	if err != nil {
@@ -708,6 +753,7 @@ func (tlv *IPv6LSPIdentifiers) DecodeFromBytes(data []byte) error {
 	return nil
 }
 
+// Serialize encodes the receiver into bytes.
 func (tlv *IPv6LSPIdentifiers) Serialize() ([]byte, error) {
 	value := make([]byte, TLVIPv6LSPIdentifiersValueLength)
 
@@ -724,6 +770,7 @@ func (tlv *IPv6LSPIdentifiers) Serialize() ([]byte, error) {
 	), nil
 }
 
+// MarshalLogObject marshals the receiver into a log object.
 func (tlv *IPv6LSPIdentifiers) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	if tlv == nil {
 		return nil
@@ -738,19 +785,22 @@ func (tlv *IPv6LSPIdentifiers) MarshalLogObject(enc zapcore.ObjectEncoder) error
 
 	enc.AddUint16("lspID", tlv.LSPID)
 	enc.AddUint16("tunnelID", tlv.TunnelID)
-	enc.AddString("extendedTunnelID", fmt.Sprintf("%x", tlv.ExtendedTunnelID[:]))
+	enc.AddString("extendedTunnelID", hex.EncodeToString(tlv.ExtendedTunnelID[:]))
 
 	return nil
 }
 
+// Type returns the TLV type of the receiver.
 func (tlv *IPv6LSPIdentifiers) Type() TLVType {
 	return TLVIPv6LSPIdentifiers
 }
 
+// Len returns the wire length of the receiver.
 func (tlv *IPv6LSPIdentifiers) Len() int {
 	return int(TLVValueOffset + TLVIPv6LSPIdentifiersValueLength)
 }
 
+// NewIPv6LSPIdentifiers creates and returns a new IPv6LSPIdentifiers.
 func NewIPv6LSPIdentifiers(senderAddr, endpointAddr netip.Addr, lspID, tunnelID uint16, extendedTunnelID [16]byte) *IPv6LSPIdentifiers {
 	return &IPv6LSPIdentifiers{
 		IPv6TunnelSenderAddress:   senderAddr,
@@ -761,10 +811,13 @@ func NewIPv6LSPIdentifiers(senderAddr, endpointAddr netip.Addr, lspID, tunnelID 
 	}
 }
 
+// LSPDBVersion represents the LSP-DB-VERSION TLV, carrying the LSP state
+// database version number used for state synchronization (RFC 8232).
 type LSPDBVersion struct {
 	VersionNumber uint64
 }
 
+// DecodeFromBytes decodes the given bytes into the receiver.
 func (tlv *LSPDBVersion) DecodeFromBytes(data []byte) error {
 	valueLen, err := decodeTLVLength(data, false)
 	if err != nil {
@@ -781,6 +834,7 @@ func (tlv *LSPDBVersion) DecodeFromBytes(data []byte) error {
 	return nil
 }
 
+// Serialize encodes the receiver into bytes.
 func (tlv *LSPDBVersion) Serialize() ([]byte, error) {
 	value := make([]byte, TLVLSPDBVersionValueLength)
 
@@ -793,6 +847,7 @@ func (tlv *LSPDBVersion) Serialize() ([]byte, error) {
 	), nil
 }
 
+// MarshalLogObject marshals the receiver into a log object.
 func (tlv *LSPDBVersion) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	if tlv == nil {
 		return nil
@@ -802,40 +857,52 @@ func (tlv *LSPDBVersion) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	return nil
 }
 
+// Type returns the TLV type of the receiver.
 func (tlv *LSPDBVersion) Type() TLVType {
 	return TLVLSPDBVersion
 }
 
+// Len returns the wire length of the receiver.
 func (tlv *LSPDBVersion) Len() int {
 	return int(TLVValueOffset + TLVLSPDBVersionValueLength)
 }
 
+// CapStrings returns capability strings for the receiver.
 func (tlv *LSPDBVersion) CapStrings() []string {
 	return []string{"LSP-DB-VERSION"}
 }
 
+// NewLSPDBVersion creates and returns a new LSPDBVersion.
 func NewLSPDBVersion(version uint64) *LSPDBVersion {
 	return &LSPDBVersion{
 		VersionNumber: version,
 	}
 }
 
+// SRPCECapability represents the SR-PCE-CAPABILITY TLV, advertising the
+// maximum SID depth (MSD) for SR-MPLS paths and NAI support (RFC 8664).
 type SRPCECapability struct {
 	HasUnlimitedMaxSIDDepth bool
 	IsNAISupported          bool
 	MaximumSidDepth         uint8
 }
 
+// Flag bits of the SR-PCE-CAPABILITY TLV, as masks against its Flags byte.
 const (
+	// UnlimitedMaximumSIDDepthFlag means the speaker imposes no MSD limit, so
+	// the Maximum SID Depth field must be ignored.
 	UnlimitedMaximumSIDDepthFlag byte = 0x01
-	NAISupportedFlag             byte = 0x02
+	// NAISupportedFlag means the speaker can resolve a NAI in an SR-ERO subobject.
+	NAISupportedFlag byte = 0x02
 )
 
+// Byte offsets of the fields within the SR-PCE-CAPABILITY TLV value.
 const (
 	SRPCECapabilityFlagsOffset = 0
 	SRPCECapabilityMSDOffset   = 1
 )
 
+// DecodeFromBytes decodes the given bytes into the receiver.
 func (tlv *SRPCECapability) DecodeFromBytes(data []byte) error {
 	valueLen, err := decodeTLVLength(data, false)
 	if err != nil {
@@ -856,6 +923,7 @@ func (tlv *SRPCECapability) DecodeFromBytes(data []byte) error {
 	return nil
 }
 
+// Serialize encodes the receiver into bytes.
 func (tlv *SRPCECapability) Serialize() ([]byte, error) {
 	value := make([]byte, TLVSRPCECapabilityValueLength)
 
@@ -870,6 +938,7 @@ func (tlv *SRPCECapability) Serialize() ([]byte, error) {
 	), nil
 }
 
+// MarshalLogObject marshals the receiver into a log object.
 func (tlv *SRPCECapability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	if tlv == nil {
 		return nil
@@ -881,14 +950,17 @@ func (tlv *SRPCECapability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	return nil
 }
 
+// Type returns the TLV type of the receiver.
 func (tlv *SRPCECapability) Type() TLVType {
 	return TLVSRPCECapability
 }
 
+// Len returns the wire length of the receiver.
 func (tlv *SRPCECapability) Len() int {
 	return int(TLVValueOffset + TLVSRPCECapabilityValueLength)
 }
 
+// CapStrings returns capability strings for the receiver.
 func (tlv *SRPCECapability) CapStrings() []string {
 	ret := []string{"SR"}
 	if tlv.HasUnlimitedMaxSIDDepth {
@@ -902,6 +974,7 @@ func (tlv *SRPCECapability) CapStrings() []string {
 	return ret
 }
 
+// NewSRPCECapability creates and returns a new SRPCECapability.
 func NewSRPCECapability(hasUnlimitedMaxSIDDepth bool, isNAISupported bool, maximumSidDepth uint8) *SRPCECapability {
 	return &SRPCECapability{
 		HasUnlimitedMaxSIDDepth: hasUnlimitedMaxSIDDepth,
@@ -910,17 +983,23 @@ func NewSRPCECapability(hasUnlimitedMaxSIDDepth bool, isNAISupported bool, maxim
 	}
 }
 
+// SRv6PCECapability represents the SRv6-PCE-CAPABILITY TLV, advertising SRv6
+// path setup support (RFC 9603).
 type SRv6PCECapability struct {
 	IsNAISupported bool
 }
 
+// SRv6NAISupportedFlag is the SRv6-PCE-CAPABILITY Flags bit indicating NAI
+// support in SRv6-ERO subobjects.
 const SRv6NAISupportedFlag uint16 = 0x0002
 
+// Byte offsets of the fields within the SRv6-PCE-CAPABILITY TLV value.
 const (
 	SRv6PCECapabilityReservedOffset = 0
 	SRv6PCECapabilityFlagsOffset    = 2
 )
 
+// DecodeFromBytes decodes the given bytes into the receiver.
 func (tlv *SRv6PCECapability) DecodeFromBytes(data []byte) error {
 	valueLen, err := decodeTLVLength(data, false)
 	if err != nil {
@@ -939,6 +1018,7 @@ func (tlv *SRv6PCECapability) DecodeFromBytes(data []byte) error {
 	return nil
 }
 
+// Serialize encodes the receiver into bytes.
 func (tlv *SRv6PCECapability) Serialize() ([]byte, error) {
 	value := make([]byte, TLVSRv6PCECapabilityValueLength)
 	// value[0:2] reserved, must be zero.
@@ -955,6 +1035,7 @@ func (tlv *SRv6PCECapability) Serialize() ([]byte, error) {
 	), nil
 }
 
+// MarshalLogObject marshals the receiver into a log object.
 func (tlv *SRv6PCECapability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	if tlv == nil {
 		return nil
@@ -964,14 +1045,17 @@ func (tlv *SRv6PCECapability) MarshalLogObject(enc zapcore.ObjectEncoder) error 
 	return nil
 }
 
+// Type returns the TLV type of the receiver.
 func (tlv *SRv6PCECapability) Type() TLVType {
 	return TLVSRv6PCECapability
 }
 
+// Len returns the wire length of the receiver.
 func (tlv *SRv6PCECapability) Len() int {
 	return int(TLVValueOffset + TLVSRv6PCECapabilityValueLength)
 }
 
+// CapStrings returns capability strings for the receiver.
 func (tlv *SRv6PCECapability) CapStrings() []string {
 	ret := []string{"SRv6"}
 	if tlv.IsNAISupported {
@@ -980,12 +1064,16 @@ func (tlv *SRv6PCECapability) CapStrings() []string {
 	return ret
 }
 
+// NewSRv6PCECapability creates and returns a new SRv6PCECapability.
 func NewSRv6PCECapability(isNAISupported bool) *SRv6PCECapability {
 	return &SRv6PCECapability{
 		IsNAISupported: isNAISupported,
 	}
 }
 
+// MultipathCapability represents the MULTIPATH-CAP TLV, advertising the
+// maximum number of paths the speaker can return and its supported multipath
+// attributes (draft-ietf-pce-multipath).
 type MultipathCapability struct {
 	MaxMultipaths            uint16
 	IsWeightedSupported      bool
@@ -994,19 +1082,22 @@ type MultipathCapability struct {
 	IsCompositePathSupported bool
 }
 
+// Flag bits of the MULTIPATH-CAP TLV, as masks against its 16-bit Flags field.
+// 0x0002 is unassigned.
 const (
-	MultipathFlagW uint16 = 0x0001
-	// 0x0002: unassigned
-	MultipathFlagO uint16 = 0x0004
-	MultipathFlagF uint16 = 0x0008
-	MultipathFlagC uint16 = 0x0010
+	MultipathFlagW uint16 = 0x0001 // weighted paths
+	MultipathFlagO uint16 = 0x0004 // opposite-direction paths
+	MultipathFlagF uint16 = 0x0008 // forward class
+	MultipathFlagC uint16 = 0x0010 // composite paths
 )
 
+// Byte offsets of the fields within the MULTIPATH-CAP TLV value.
 const (
 	MultipathCapMaxMultipathsOffset = 0
 	MultipathCapFlagsOffset         = 2
 )
 
+// DecodeFromBytes decodes the given bytes into the receiver.
 func (tlv *MultipathCapability) DecodeFromBytes(data []byte) error {
 	valueLen, err := decodeTLVLength(data, false)
 	if err != nil {
@@ -1029,6 +1120,7 @@ func (tlv *MultipathCapability) DecodeFromBytes(data []byte) error {
 	return nil
 }
 
+// Serialize encodes the receiver into bytes.
 func (tlv *MultipathCapability) Serialize() ([]byte, error) {
 	value := make([]byte, TLVMultipathCapValueLength)
 
@@ -1056,6 +1148,7 @@ func (tlv *MultipathCapability) Serialize() ([]byte, error) {
 	), nil
 }
 
+// MarshalLogObject marshals the receiver into a log object.
 func (tlv *MultipathCapability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	if tlv == nil {
 		return nil
@@ -1069,14 +1162,17 @@ func (tlv *MultipathCapability) MarshalLogObject(enc zapcore.ObjectEncoder) erro
 	return nil
 }
 
+// Type returns the TLV type of the receiver.
 func (tlv *MultipathCapability) Type() TLVType {
 	return TLVMultipathCap
 }
 
+// Len returns the wire length of the receiver.
 func (tlv *MultipathCapability) Len() int {
 	return int(TLVValueOffset + TLVMultipathCapValueLength)
 }
 
+// CapStrings returns capability strings for the receiver.
 func (tlv *MultipathCapability) CapStrings() []string {
 	ret := []string{"Multipath", fmt.Sprintf("MaxMultipaths=%d", tlv.MaxMultipaths)}
 	if tlv.IsWeightedSupported {
@@ -1094,6 +1190,7 @@ func (tlv *MultipathCapability) CapStrings() []string {
 	return ret
 }
 
+// NewMultipathCapability creates and returns a new MultipathCapability.
 func NewMultipathCapability(maxMultipaths uint16, isWeightedSupported, isOppositeDirSupported, isForwardClassSupported, isCompositePathSupported bool) *MultipathCapability {
 	return &MultipathCapability{
 		MaxMultipaths:            maxMultipaths,
@@ -1104,8 +1201,12 @@ func NewMultipathCapability(maxMultipaths uint16, isWeightedSupported, isOpposit
 	}
 }
 
+// Pst is a Path Setup Type identifying the signaling method used to set up a
+// path (RFC 8408).
 type Pst uint8
 
+// Path Setup Types. pathSetupDescriptions holds their descriptions and
+// defining documents.
 const (
 	PathSetupTypeRSVPTE  Pst = 0x00
 	PathSetupTypeSRTE    Pst = 0x01
@@ -1132,8 +1233,12 @@ func (pst Pst) String() string {
 	return fmt.Sprintf("Unknown PathSetupType (0x%02x)", uint16(pst))
 }
 
+// Psts is a list of Path Setup Types advertised in the
+// PATH-SETUP-TYPE-CAPABILITY TLV.
 type Psts []Pst
 
+// MarshalJSON encodes the list as a JSON array of numeric Path Setup Type
+// values, or as null when the list itself is nil.
 func (ts Psts) MarshalJSON() ([]byte, error) {
 	if ts == nil {
 		return []byte("null"), nil
@@ -1150,12 +1255,17 @@ func (ts Psts) MarshalJSON() ([]byte, error) {
 	return json.Marshal(values)
 }
 
+// PathSetupType represents the PATH-SETUP-TYPE TLV, stating the setup type
+// of a single path (RFC 8408).
 type PathSetupType struct {
 	PathSetupType Pst
 }
 
+// PathSetupTypeValueOffset is the byte offset of the PST field within the
+// PATH-SETUP-TYPE TLV value; the preceding 3 bytes are reserved.
 const PathSetupTypeValueOffset = 3
 
+// DecodeFromBytes decodes the given bytes into the receiver.
 func (tlv *PathSetupType) DecodeFromBytes(data []byte) error {
 	valueLen, err := decodeTLVLength(data, false)
 	if err != nil {
@@ -1172,6 +1282,7 @@ func (tlv *PathSetupType) DecodeFromBytes(data []byte) error {
 	return nil
 }
 
+// Serialize encodes the receiver into bytes.
 func (tlv *PathSetupType) Serialize() ([]byte, error) {
 	value := make([]byte, TLVPathSetupTypeValueLength)
 
@@ -1184,6 +1295,7 @@ func (tlv *PathSetupType) Serialize() ([]byte, error) {
 	), nil
 }
 
+// MarshalLogObject marshals the receiver into a log object.
 func (tlv *PathSetupType) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	if tlv == nil {
 		return nil
@@ -1193,30 +1305,37 @@ func (tlv *PathSetupType) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	return nil
 }
 
+// Type returns the TLV type of the receiver.
 func (tlv *PathSetupType) Type() TLVType {
 	return TLVPathSetupType
 }
 
+// Len returns the wire length of the receiver.
 func (tlv *PathSetupType) Len() int {
 	return int(TLVValueOffset + TLVPathSetupTypeValueLength)
 }
 
+// NewPathSetupType creates and returns a new PathSetupType.
 func NewPathSetupType(pst Pst) *PathSetupType {
 	return &PathSetupType{
 		PathSetupType: pst,
 	}
 }
 
+// ExtendedAssociationID represents the EXTENDED-ASSOCIATION-ID TLV (RFC 8697),
+// carrying the SR Policy color and endpoint.
 type ExtendedAssociationID struct {
 	Color    uint32
 	Endpoint netip.Addr
 }
 
+// Byte offsets of the fields within the EXTENDED-ASSOCIATION-ID TLV value.
 const (
 	ExtendedAssociationIDColorOffset    = 0
 	ExtendedAssociationIDEndpointOffset = 4
 )
 
+// DecodeFromBytes decodes the given bytes into the receiver.
 func (tlv *ExtendedAssociationID) DecodeFromBytes(data []byte) error {
 	valueLen, err := decodeTLVLength(data, false)
 	if err != nil {
@@ -1248,6 +1367,7 @@ func (tlv *ExtendedAssociationID) DecodeFromBytes(data []byte) error {
 	return nil
 }
 
+// Serialize encodes the receiver into bytes.
 func (tlv *ExtendedAssociationID) Serialize() ([]byte, error) {
 	return tlv.serialize(tlv.Type()), nil
 }
@@ -1277,6 +1397,7 @@ func (tlv *ExtendedAssociationID) serialize(typ TLVType) []byte {
 	)
 }
 
+// MarshalLogObject marshals the receiver into a log object.
 func (tlv *ExtendedAssociationID) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	if tlv == nil {
 		return nil
@@ -1295,10 +1416,12 @@ func (tlv *ExtendedAssociationID) MarshalLogObject(enc zapcore.ObjectEncoder) er
 	return nil
 }
 
+// Type returns the TLV type of the receiver.
 func (tlv *ExtendedAssociationID) Type() TLVType {
 	return TLVExtendedAssociationID
 }
 
+// Len returns the wire length of the receiver.
 func (tlv *ExtendedAssociationID) Len() int {
 	if tlv.Endpoint.Is4() {
 		return int(TLVValueOffset + TLVExtendedAssociationIDIPv4ValueLength)
@@ -1309,6 +1432,7 @@ func (tlv *ExtendedAssociationID) Len() int {
 
 }
 
+// NewExtendedAssociationID creates and returns a new ExtendedAssociationID.
 func NewExtendedAssociationID(color uint32, endpoint netip.Addr) *ExtendedAssociationID {
 	return &ExtendedAssociationID{
 		Color:    color,
@@ -1324,6 +1448,7 @@ type ExtendedAssociationIDIPv4Juniper struct {
 	ExtendedAssociationID
 }
 
+// DecodeFromBytes decodes the given bytes into the receiver.
 func (tlv *ExtendedAssociationIDIPv4Juniper) DecodeFromBytes(data []byte) error {
 	valueLen, err := decodeTLVLength(data, false)
 	if err != nil {
@@ -1337,6 +1462,7 @@ func (tlv *ExtendedAssociationIDIPv4Juniper) DecodeFromBytes(data []byte) error 
 	return tlv.ExtendedAssociationID.DecodeFromBytes(data)
 }
 
+// Serialize encodes the receiver into bytes.
 func (tlv *ExtendedAssociationIDIPv4Juniper) Serialize() ([]byte, error) {
 	if !tlv.Endpoint.Is4() {
 		return nil, nil
@@ -1345,10 +1471,12 @@ func (tlv *ExtendedAssociationIDIPv4Juniper) Serialize() ([]byte, error) {
 	return tlv.serialize(tlv.Type()), nil
 }
 
+// Type returns the TLV type of the receiver.
 func (tlv *ExtendedAssociationIDIPv4Juniper) Type() TLVType {
 	return TLVExtendedAssociationIDIPv4Juniper
 }
 
+// Len returns the wire length of the receiver.
 func (tlv *ExtendedAssociationIDIPv4Juniper) Len() int {
 	if !tlv.Endpoint.Is4() {
 		return 0
@@ -1357,15 +1485,23 @@ func (tlv *ExtendedAssociationIDIPv4Juniper) Len() int {
 	return int(TLVValueOffset + TLVExtendedAssociationIDIPv4ValueLength)
 }
 
+// PathSetupTypeCapability represents the PATH-SETUP-TYPE-CAPABILITY TLV, which
+// lists the path setup types the speaker supports together with any
+// per-setup-type sub-TLVs (RFC 8408).
 type PathSetupTypeCapability struct {
 	PathSetupTypes Psts
 	SubTLVs        []TLVInterface
 }
 
 const (
+	// PathSetupTypeCapabilityFixedPartLength is the length of the reserved and
+	// number of PSTs fields, after which the PST list starts.
 	PathSetupTypeCapabilityFixedPartLength = 4
-	PathSetupTypeCapabilityPSTCountOffset  = 3
-	MaxPathSetupTypes                      = 255
+	// PathSetupTypeCapabilityPSTCountOffset is the byte offset of the number of
+	// PSTs field within the TLV value.
+	PathSetupTypeCapabilityPSTCountOffset = 3
+	// MaxPathSetupTypes is the largest PST count the 1-byte field can express.
+	MaxPathSetupTypes = 255
 )
 
 func (tlv *PathSetupTypeCapability) pstCount() int {
@@ -1379,6 +1515,7 @@ func (tlv *PathSetupTypeCapability) paddedPSTLength() int {
 	return paddedLength(tlv.pstCount(), TLVAlignment)
 }
 
+// DecodeFromBytes decodes the given bytes into the receiver.
 func (tlv *PathSetupTypeCapability) DecodeFromBytes(data []byte) error {
 	valueLen, err := decodeTLVLength(data, false)
 	if err != nil {
@@ -1388,7 +1525,7 @@ func (tlv *PathSetupTypeCapability) DecodeFromBytes(data []byte) error {
 	value := data[TLVValueOffset : TLVValueOffset+valueLen]
 
 	if len(value) < PathSetupTypeCapabilityFixedPartLength {
-		return fmt.Errorf("PathSetupTypeCapability: value too short for fixed part")
+		return errors.New("PathSetupTypeCapability: value too short for fixed part")
 	}
 
 	pstNum := int(value[PathSetupTypeCapabilityPSTCountOffset])
@@ -1397,16 +1534,16 @@ func (tlv *PathSetupTypeCapability) DecodeFromBytes(data []byte) error {
 	for i := range pstNum {
 		offset := PathSetupTypeCapabilityFixedPartLength + i
 		if offset >= len(value) {
-			return fmt.Errorf("PathSetupTypeCapability: value too short for PathSetupTypes entries")
+			return errors.New("PathSetupTypeCapability: value too short for PathSetupTypes entries")
 		}
 		tlv.PathSetupTypes = append(tlv.PathSetupTypes, Pst(value[offset]))
 	}
 
-	padded := paddedLength(int(pstNum), TLVAlignment)
-	subTLVOffset := PathSetupTypeCapabilityFixedPartLength + int(padded)
+	padded := paddedLength(pstNum, TLVAlignment)
+	subTLVOffset := PathSetupTypeCapabilityFixedPartLength + padded
 
 	if subTLVOffset > len(value) {
-		return fmt.Errorf("PathSetupTypeCapability: value too short for subTLVs")
+		return errors.New("PathSetupTypeCapability: value too short for subTLVs")
 	}
 	subTLVData := value[subTLVOffset:]
 	tlv.SubTLVs, err = DecodeTLVs(subTLVData)
@@ -1420,6 +1557,7 @@ func (tlv *PathSetupTypeCapability) DecodeFromBytes(data []byte) error {
 	return nil
 }
 
+// Serialize encodes the receiver into bytes.
 func (tlv *PathSetupTypeCapability) Serialize() ([]byte, error) {
 	pstCount := tlv.pstCount()
 
@@ -1442,7 +1580,6 @@ func (tlv *PathSetupTypeCapability) Serialize() ([]byte, error) {
 		subTLVsBytes = append(subTLVsBytes, b...)
 	}
 
-	// Validate before converting the serialized length to uint16.
 	totalLen, err := tlvValueLength(fixedPartLen + len(subTLVsBytes))
 	if err != nil {
 		return nil, fmt.Errorf("PathSetupTypeCapability: %w", err)
@@ -1456,6 +1593,7 @@ func (tlv *PathSetupTypeCapability) Serialize() ([]byte, error) {
 	), nil
 }
 
+// MarshalLogObject marshals the receiver into a log object.
 func (tlv *PathSetupTypeCapability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	if tlv == nil {
 		return nil
@@ -1487,10 +1625,12 @@ func (tlv *PathSetupTypeCapability) MarshalLogObject(enc zapcore.ObjectEncoder) 
 	return nil
 }
 
+// Type returns the TLV type of the receiver.
 func (tlv *PathSetupTypeCapability) Type() TLVType {
 	return TLVPathSetupTypeCapability
 }
 
+// Len returns the wire length of the receiver.
 func (tlv *PathSetupTypeCapability) Len() int {
 	length := PathSetupTypeCapabilityFixedPartLength
 	length += tlv.paddedPSTLength()
@@ -1502,6 +1642,7 @@ func (tlv *PathSetupTypeCapability) Len() int {
 	return TLVValueOffset + length
 }
 
+// CapStrings returns capability strings for the receiver.
 func (tlv *PathSetupTypeCapability) CapStrings() []string {
 	ret := []string{}
 
@@ -1517,8 +1658,11 @@ func (tlv *PathSetupTypeCapability) CapStrings() []string {
 	return ret
 }
 
+// AssocType is the association type of an ASSOCIATION object, identifying
+// what the associated LSPs have in common (RFC 8697).
 type AssocType uint16
 
+// IANA-assigned association types. assocTypeNames holds their names.
 const (
 	AssocTypePathProtectionAssociation              AssocType = 0x01
 	AssocTypeDisjointAssociation                    AssocType = 0x02
@@ -1529,6 +1673,7 @@ const (
 	AssocTypeVnAssociationType                      AssocType = 0x07
 )
 
+//nolint:gosec // G101: these are RFC 8697 association-type display names, not credentials.
 var assocTypeNames = map[AssocType]string{
 	AssocTypePathProtectionAssociation:              "Path Protection Association",
 	AssocTypeDisjointAssociation:                    "Disjoint Association",
@@ -1546,10 +1691,13 @@ func (at AssocType) String() string {
 	return fmt.Sprintf("Unknown AssocType (0x%04x)", uint16(at))
 }
 
+// AssocTypeList represents the ASSOC-TYPE-LIST TLV, advertising the
+// association types supported by the speaker (RFC 8697).
 type AssocTypeList struct {
 	AssocTypes []AssocType
 }
 
+// DecodeFromBytes decodes the given bytes into the receiver.
 func (tlv *AssocTypeList) DecodeFromBytes(data []byte) error {
 	valueLen, err := decodeTLVLength(data, true)
 	if err != nil {
@@ -1559,7 +1707,7 @@ func (tlv *AssocTypeList) DecodeFromBytes(data []byte) error {
 	value := data[TLVValueOffset : TLVValueOffset+valueLen]
 
 	if len(value)%2 != 0 {
-		return fmt.Errorf("AssocTypeList: value length not even, cannot contain 16-bit AssocType entries")
+		return errors.New("AssocTypeList: value length not even, cannot contain 16-bit AssocType entries")
 	}
 
 	assocNum := len(value) / 2
@@ -1571,6 +1719,7 @@ func (tlv *AssocTypeList) DecodeFromBytes(data []byte) error {
 	return nil
 }
 
+// Serialize encodes the receiver into bytes.
 func (tlv *AssocTypeList) Serialize() ([]byte, error) {
 	valueLenInt := len(tlv.AssocTypes) * 2
 
@@ -1596,6 +1745,7 @@ func (tlv *AssocTypeList) Serialize() ([]byte, error) {
 	), nil
 }
 
+// MarshalLogObject marshals the receiver into a log object.
 func (tlv *AssocTypeList) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	if tlv == nil {
 		return nil
@@ -1611,10 +1761,12 @@ func (tlv *AssocTypeList) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	return nil
 }
 
+// Type returns the TLV type of the receiver.
 func (tlv *AssocTypeList) Type() TLVType {
 	return TLVAssocTypeList
 }
 
+// Len returns the wire length of the receiver.
 func (tlv *AssocTypeList) Len() int {
 	length := len(tlv.AssocTypes) * 2
 	padding := 0
@@ -1624,6 +1776,7 @@ func (tlv *AssocTypeList) Len() int {
 	return TLVValueOffset + length + padding
 }
 
+// CapStrings returns capability strings for the receiver.
 func (tlv *AssocTypeList) CapStrings() []string {
 	ret := make([]string, 0, len(tlv.AssocTypes))
 	for _, at := range tlv.AssocTypes {
@@ -1632,6 +1785,9 @@ func (tlv *AssocTypeList) CapStrings() []string {
 	return ret
 }
 
+// SRPolicyCandidatePathIdentifier represents the SRPOLICY-CPATH-ID TLV,
+// identifying an SR Policy candidate path by its originator and discriminator
+// (draft-ietf-pce-segment-routing-policy-cp).
 type SRPolicyCandidatePathIdentifier struct {
 	ProtocolOrigin uint8 // Protocol that originated the candidate path.
 	OriginatorASN  uint32
@@ -1639,6 +1795,9 @@ type SRPolicyCandidatePathIdentifier struct {
 	Discriminator  uint32
 }
 
+// Byte offsets and field lengths within the SRPOLICY-CPATH-ID TLV value. The
+// Originator Address field is always 16 bytes; an IPv4 address is carried in
+// its last 4 bytes.
 const (
 	SRPolicyCPathIDProtocolOriginOffset = 0
 	SRPolicyCPathIDASNOffset            = 4
@@ -1647,9 +1806,13 @@ const (
 	SRPolicyCPathIDDiscriminatorOffset  = 24
 	SRPolicyCPathIDASNLen               = 4
 	SRPolicyCPathIDDiscriminatorLen     = 4
-	ProtocolOriginPCEP                  = 0x0a
 )
 
+// ProtocolOriginPCEP is the Protocol-Origin value meaning the candidate path
+// was signaled by PCEP.
+const ProtocolOriginPCEP = 0x0a
+
+// DecodeFromBytes decodes the given bytes into the receiver.
 func (tlv *SRPolicyCandidatePathIdentifier) DecodeFromBytes(data []byte) error {
 	valueLen, err := decodeTLVLength(data, false)
 	if err != nil {
@@ -1686,6 +1849,7 @@ func (tlv *SRPolicyCandidatePathIdentifier) DecodeFromBytes(data []byte) error {
 	return nil
 }
 
+// Serialize encodes the receiver into bytes.
 func (tlv *SRPolicyCandidatePathIdentifier) Serialize() ([]byte, error) {
 	return tlv.serialize(tlv.Type()), nil
 }
@@ -1736,6 +1900,7 @@ func (tlv *SRPolicyCandidatePathIdentifier) serialize(typ TLVType) []byte {
 	)
 }
 
+// MarshalLogObject marshals the receiver into a log object.
 func (tlv *SRPolicyCandidatePathIdentifier) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	if tlv == nil {
 		return nil
@@ -1748,10 +1913,12 @@ func (tlv *SRPolicyCandidatePathIdentifier) MarshalLogObject(enc zapcore.ObjectE
 	return nil
 }
 
+// Type returns the TLV type of the receiver.
 func (tlv *SRPolicyCandidatePathIdentifier) Type() TLVType {
 	return TLVSRPolicyCPathID
 }
 
+// Len returns the wire length of the receiver.
 func (tlv *SRPolicyCandidatePathIdentifier) Len() int {
 	return int(TLVValueOffset + TLVSRPolicyCPathIDValueLength)
 }
@@ -1762,18 +1929,24 @@ type SRPolicyCandidatePathIdentifierJuniper struct {
 	SRPolicyCandidatePathIdentifier
 }
 
+// Serialize encodes the receiver into bytes.
 func (tlv *SRPolicyCandidatePathIdentifierJuniper) Serialize() ([]byte, error) {
 	return tlv.serialize(tlv.Type()), nil
 }
 
+// Type returns the TLV type of the receiver.
 func (tlv *SRPolicyCandidatePathIdentifierJuniper) Type() TLVType {
 	return TLVSRPolicyCPathIDJuniper
 }
 
+// SRPolicyCandidatePathPreference represents the SRPOLICY-CPATH-PREFERENCE TLV,
+// carrying the preference used to select among an SR Policy's candidate paths
+// (draft-ietf-pce-segment-routing-policy-cp).
 type SRPolicyCandidatePathPreference struct {
 	Preference uint32
 }
 
+// DecodeFromBytes decodes the given bytes into the receiver.
 func (tlv *SRPolicyCandidatePathPreference) DecodeFromBytes(data []byte) error {
 	valueLen, err := decodeTLVLength(data, false)
 	if err != nil {
@@ -1790,6 +1963,7 @@ func (tlv *SRPolicyCandidatePathPreference) DecodeFromBytes(data []byte) error {
 	return nil
 }
 
+// Serialize encodes the receiver into bytes.
 func (tlv *SRPolicyCandidatePathPreference) Serialize() ([]byte, error) {
 	return tlv.serialize(tlv.Type()), nil
 }
@@ -1809,6 +1983,7 @@ func (tlv *SRPolicyCandidatePathPreference) serialize(typ TLVType) []byte {
 	)
 }
 
+// MarshalLogObject marshals the receiver into a log object.
 func (tlv *SRPolicyCandidatePathPreference) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	if tlv == nil {
 		return nil
@@ -1818,10 +1993,12 @@ func (tlv *SRPolicyCandidatePathPreference) MarshalLogObject(enc zapcore.ObjectE
 	return nil
 }
 
+// Type returns the TLV type of the receiver.
 func (tlv *SRPolicyCandidatePathPreference) Type() TLVType {
 	return TLVSRPolicyCPathPreference
 }
 
+// Len returns the wire length of the receiver.
 func (tlv *SRPolicyCandidatePathPreference) Len() int {
 	return int(TLVValueOffset + TLVSRPolicyCPathPreferenceValueLength)
 }
@@ -1832,18 +2009,23 @@ type SRPolicyCandidatePathPreferenceJuniper struct {
 	SRPolicyCandidatePathPreference
 }
 
+// Serialize encodes the receiver into bytes.
 func (tlv *SRPolicyCandidatePathPreferenceJuniper) Serialize() ([]byte, error) {
 	return tlv.serialize(tlv.Type()), nil
 }
 
+// Type returns the TLV type of the receiver.
 func (tlv *SRPolicyCandidatePathPreferenceJuniper) Type() TLVType {
 	return TLVSRPolicyCPathPreferenceJuniper
 }
 
+// Color represents the Color TLV, carrying the color of the SR Policy to which
+// an LSP belongs (RFC 9863).
 type Color struct {
 	Color uint32
 }
 
+// DecodeFromBytes decodes the given bytes into the receiver.
 func (tlv *Color) DecodeFromBytes(data []byte) error {
 	valueLen, err := decodeTLVLength(data, false)
 	if err != nil {
@@ -1860,6 +2042,7 @@ func (tlv *Color) DecodeFromBytes(data []byte) error {
 	return nil
 }
 
+// Serialize encodes the receiver into bytes.
 func (tlv *Color) Serialize() ([]byte, error) {
 	value := make([]byte, TLVColorValueLength)
 
@@ -1875,6 +2058,7 @@ func (tlv *Color) Serialize() ([]byte, error) {
 	), nil
 }
 
+// MarshalLogObject marshals the receiver into a log object.
 func (tlv *Color) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	if tlv == nil {
 		return nil
@@ -1884,19 +2068,24 @@ func (tlv *Color) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	return nil
 }
 
+// Type returns the TLV type of the receiver.
 func (tlv *Color) Type() TLVType {
 	return TLVColor
 }
 
+// Len returns the wire length of the receiver.
 func (tlv *Color) Len() int {
 	return int(TLVValueOffset + TLVColorValueLength)
 }
 
+// UnknownTLV holds a TLV without a typed implementation, preserving its type
+// and raw value for logging and unchanged re-serialization.
 type UnknownTLV struct {
 	Typ   TLVType
 	Value []byte
 }
 
+// DecodeFromBytes decodes the given bytes into the receiver.
 func (tlv *UnknownTLV) DecodeFromBytes(data []byte) error {
 	valueLen, err := decodeTLVLength(data, true)
 	if err != nil {
@@ -1909,6 +2098,7 @@ func (tlv *UnknownTLV) DecodeFromBytes(data []byte) error {
 	return nil
 }
 
+// Serialize encodes the receiver into bytes.
 func (tlv *UnknownTLV) Serialize() ([]byte, error) {
 	length, err := tlvValueLength(len(tlv.Value))
 	if err != nil {
@@ -1924,6 +2114,7 @@ func (tlv *UnknownTLV) Serialize() ([]byte, error) {
 	), nil
 }
 
+// MarshalLogObject marshals the receiver into a log object.
 func (tlv *UnknownTLV) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	if tlv == nil {
 		return nil
@@ -1934,15 +2125,17 @@ func (tlv *UnknownTLV) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	return nil
 }
 
+// Type returns the TLV type of the receiver.
 func (tlv *UnknownTLV) Type() TLVType {
 	return tlv.Typ
 }
 
+// Len returns the wire length of the receiver.
 func (tlv *UnknownTLV) Len() int {
 	return TLVValueOffset + paddedLength(len(tlv.Value), TLVAlignment)
 }
 
-// Registered TLVs are reported with their identifier and name.
+// CapStrings returns the capability strings for the UnknownTLV.
 func (tlv *UnknownTLV) CapStrings() []string {
 	if _, ok := tlvDescriptions[tlv.Typ]; ok {
 		return []string{fmt.Sprintf("0x%04x (%s)", uint16(tlv.Typ), tlv.Typ)}
@@ -1951,6 +2144,8 @@ func (tlv *UnknownTLV) CapStrings() []string {
 	return []string{capStr}
 }
 
+// DecodeTLV decodes a single TLV from data, selecting the implementation from
+// its type field and falling back to UnknownTLV for unhandled types.
 func DecodeTLV(data []byte) (TLVInterface, error) {
 	if len(data) < 2 {
 		return nil, errors.New("insufficient data to read TLV type")
@@ -1999,7 +2194,7 @@ func decodeTLVSequence(data []byte, decode func([]byte, TLVType) (TLVInterface, 
 
 	for len(data) > 0 {
 		if len(data) < int(TLVValueOffset) {
-			return nil, fmt.Errorf("truncated TLV header")
+			return nil, errors.New("truncated TLV header")
 		}
 
 		valueLen := int(binary.BigEndian.Uint16(data[TLVLengthOffset:TLVValueOffset]))
@@ -2022,7 +2217,6 @@ func decodeTLVSequence(data []byte, decode func([]byte, TLVType) (TLVInterface, 
 			return nil, fmt.Errorf("truncated TLV padding (type=0x%x)", tlvType)
 		}
 
-		// Validate that padding bytes between TLVs are zero-filled.
 		for i := totalLen; i < paddedLen; i++ {
 			if data[i] != 0 {
 				return nil, fmt.Errorf("invalid TLV padding (expected zero bytes) (type=0x%x)", tlvType)

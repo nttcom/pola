@@ -11,7 +11,7 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-// Implements zapcore.ObjectMarshaler interface for SRPolicy
+// MarshalLogObject implements zapcore.ObjectMarshaler for SRPolicy.
 func (x *SRPolicy) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	// Convert IP address slices to netip.Addr
 	ssAddr, _ := netip.AddrFromSlice(x.GetPcepSessionAddr())
@@ -41,7 +41,7 @@ func (x *SRPolicy) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	return nil
 }
 
-// Implements zapcore.ObjectMarshaler interface for Segment
+// MarshalLogObject implements zapcore.ObjectMarshaler for Segment.
 func (x *Segment) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	enc.AddString("SID", x.GetSid())
 	return nil

@@ -33,6 +33,7 @@ type StatefulCapability struct {
 	Color                bool
 }
 
+// Strings returns the human-readable flags for this capability.
 func (c StatefulCapability) Strings() []string {
 	ret := []string{"Stateful"}
 	if c.LSPUpdate {
@@ -66,6 +67,7 @@ type SRCapability struct {
 	MSD          uint32
 }
 
+// Strings returns the human-readable flags for this capability.
 func (c SRCapability) Strings() []string {
 	ret := []string{"SR"}
 	if c.UnlimitedMSD {
@@ -84,6 +86,7 @@ type SRv6Capability struct {
 	NAISupported bool
 }
 
+// Strings returns the human-readable flags for this capability.
 func (c SRv6Capability) Strings() []string {
 	ret := []string{"SRv6"}
 	if c.NAISupported {
@@ -97,6 +100,7 @@ type PathSetupTypeCapability struct {
 	PathSetupTypes []uint32
 }
 
+// Strings returns the human-readable flags for this capability.
 func (c PathSetupTypeCapability) Strings() []string {
 	var ret []string
 	for _, pst := range c.PathSetupTypes {
@@ -115,6 +119,7 @@ type AssocTypeListCapability struct {
 	AssocTypes []uint32
 }
 
+// Strings returns the human-readable flags for this capability.
 func (c AssocTypeListCapability) Strings() []string {
 	ret := make([]string, 0, len(c.AssocTypes))
 	for _, at := range c.AssocTypes {
@@ -128,11 +133,13 @@ type LSPDBVersionCapability struct {
 	VersionNumber uint64
 }
 
+// Strings returns the human-readable flags for this capability.
 func (c LSPDBVersionCapability) Strings() []string {
 	return []string{"LSP-DB-VERSION"}
 }
 
-// MultipathCapability holds the RFC 8751 multipath capability flags.
+// MultipathCapability holds the multipath capability flags
+// (draft-ietf-pce-multipath).
 type MultipathCapability struct {
 	MaxMultipaths uint32
 	Weighted      bool
@@ -141,6 +148,7 @@ type MultipathCapability struct {
 	CompositePath bool
 }
 
+// Strings returns the human-readable flags for this capability.
 func (c MultipathCapability) Strings() []string {
 	ret := []string{"Multipath", fmt.Sprintf("MaxMultipaths=%d", c.MaxMultipaths)}
 	if c.Weighted {
@@ -163,6 +171,7 @@ type VendorInformationCapability struct {
 	EnterpriseNumber uint32
 }
 
+// Strings returns the human-readable flags for this capability.
 func (c VendorInformationCapability) Strings() []string {
 	return []string{fmt.Sprintf("Vendor-Info(%d)", c.EnterpriseNumber)}
 }
@@ -172,6 +181,7 @@ type UnknownCapability struct {
 	TLVType uint32
 }
 
+// Strings returns the human-readable flags for this capability.
 func (c UnknownCapability) Strings() []string {
 	return []string{fmt.Sprintf("unknown_type_%d", c.TLVType)}
 }
@@ -181,6 +191,7 @@ type capabilityDetail interface {
 	Strings() []string
 }
 
+// Capability represents a PCEP capability with optional detailed information.
 type Capability struct {
 	Type   string
 	Detail capabilityDetail
@@ -194,6 +205,7 @@ func (c Capability) Strings() []string {
 	return c.Detail.Strings()
 }
 
+// Session represents a PCEP session with its capabilities and synchronization state.
 type Session struct {
 	Addr         netip.Addr
 	State        string
@@ -254,6 +266,7 @@ func capabilityFromPB(c *pb.Capability) Capability {
 	return cap
 }
 
+// GetSessions retrieves the list of PCEP sessions from the PCE server.
 func GetSessions(client pb.PCEServiceClient) ([]Session, error) {
 	ctx, cancel := withTimeout()
 	defer cancel()
@@ -285,6 +298,7 @@ func GetSessions(client pb.PCEServiceClient) ([]Session, error) {
 	return sessions, nil
 }
 
+// DeleteSession sends a delete session request to the PCE server.
 func DeleteSession(client pb.PCEServiceClient, req *pb.DeleteSessionRequest) error {
 	ctx, cancel := withTimeout()
 	defer cancel()
@@ -487,6 +501,7 @@ func parseSidStructure(s string) ([]uint8, error) {
 	return result, nil
 }
 
+// CreateSRPolicy sends a create SR policy request to the PCE server.
 func CreateSRPolicy(client pb.PCEServiceClient, req *pb.CreateSRPolicyRequest) error {
 	ctx, cancel := withTimeout()
 	defer cancel()
@@ -495,6 +510,7 @@ func CreateSRPolicy(client pb.PCEServiceClient, req *pb.CreateSRPolicyRequest) e
 	return err
 }
 
+// DeleteSRPolicy sends a delete SR policy request to the PCE server.
 func DeleteSRPolicy(client pb.PCEServiceClient, req *pb.DeleteSRPolicyRequest) error {
 	ctx, cancel := withTimeout()
 	defer cancel()
@@ -503,6 +519,7 @@ func DeleteSRPolicy(client pb.PCEServiceClient, req *pb.DeleteSRPolicyRequest) e
 	return err
 }
 
+// GetTED retrieves the Traffic Engineering Database (TED) from the PCE server.
 func GetTED(client pb.PCEServiceClient) (*table.LsTED, error) {
 	ctx, cancel := withTimeout()
 	defer cancel()

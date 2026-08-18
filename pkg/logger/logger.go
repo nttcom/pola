@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+// LogInit initializes a logger that writes to both a file and stdout.
 func LogInit(fp *os.File, dbg bool) *zap.Logger {
 	pe := zap.NewProductionEncoderConfig()
 	fileEncoder := zapcore.NewJSONEncoder(pe)

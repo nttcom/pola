@@ -16,7 +16,7 @@ import (
 func newTEDCmd() *cobra.Command {
 	return &cobra.Command{
 		Use: "ted",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, _ []string) error {
 			if err := printTED(jsonFmt); err != nil {
 				return err
 			}

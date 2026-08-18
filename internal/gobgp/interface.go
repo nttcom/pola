@@ -39,6 +39,7 @@ var defaultMonitorOptions = monitorOptions{
 	retryInterval:    defaultRetryInterval,
 }
 
+// MonitorBGPLsEvents monitors BGP-LS events and sends updates to the TED channel.
 func MonitorBGPLsEvents(ctx context.Context, serverAddr string, serverPort string, tedChan chan []table.TEDElem, logger *zap.Logger) {
 	monitorBGPLsEvents(ctx, serverAddr, serverPort, tedChan, logger, defaultMonitorOptions)
 }
@@ -186,6 +187,7 @@ func initialSync(ctx context.Context, client api.GoBgpServiceClient, tedChan cha
 	}
 }
 
+// Debouncer debounces consecutive events to avoid excessive TED fetches.
 type Debouncer struct {
 	mu       sync.Mutex
 	active   bool
@@ -193,11 +195,12 @@ type Debouncer struct {
 	cooldown time.Duration
 }
 
+// NewDebouncer creates a new Debouncer with the specified cooldown duration.
 func NewDebouncer(cd time.Duration) *Debouncer {
 	return &Debouncer{cooldown: cd}
 }
 
-// Debounce consecutive events before retrieving TED.
+// Trigger debounces consecutive events before retrieving TED.
 func (d *Debouncer) Trigger(
 	ctx context.Context,
 	fetch func() ([]table.TEDElem, error),
@@ -306,6 +309,7 @@ func newWatchRequest() *api.WatchEventRequest {
 	}
 }
 
+// GetBGPlsNLRIs retrieves BGP-LS NLRIs from the GoBGP server and converts them to TEDElem format.
 func GetBGPlsNLRIs(ctx context.Context, client api.GoBgpServiceClient) ([]table.TEDElem, error) {
 	req := &api.ListPathRequest{
 		TableType: api.TableType_TABLE_TYPE_GLOBAL,
@@ -343,7 +347,7 @@ func GetBGPlsNLRIs(ctx context.Context, client api.GoBgpServiceClient) ([]table.
 	return tedElems, nil
 }
 
-// ConvertToTEDElem converts an api.Destination to TEDElem(s).
+// ConvertToTEDElem converts a BGP-LS destination to TEDElem format.
 func ConvertToTEDElem(dst *api.Destination) ([]table.TEDElem, error) {
 	if len(dst.GetPaths()) != 1 {
 		return nil, errors.New("invalid path length: expected 1 path")
@@ -403,7 +407,7 @@ func convertByNlriType(nlri *api.LsAddrPrefix, lsAttr *api.Attribute_Ls, path *a
 func convertNode(nlri *api.LsAddrPrefix, lsAttr *api.Attribute_Ls) ([]table.TEDElem, error) {
 	nodeAttr := lsAttr.Ls.GetNode()
 	if nodeAttr == nil {
-		return nil, fmt.Errorf("LS Node Attribute is nil")
+		return nil, errors.New("LS Node Attribute is nil")
 	}
 	lsNode, err := getLsNode(nlri, nodeAttr)
 	if err != nil {
@@ -415,7 +419,7 @@ func convertNode(nlri *api.LsAddrPrefix, lsAttr *api.Attribute_Ls) ([]table.TEDE
 func convertLink(nlri *api.LsAddrPrefix, lsAttr *api.Attribute_Ls) ([]table.TEDElem, error) {
 	linkAttr := lsAttr.Ls.GetLink()
 	if linkAttr == nil {
-		return nil, fmt.Errorf("LS Link Attribute is nil")
+		return nil, errors.New("LS Link Attribute is nil")
 	}
 	lsLink, err := getLsLink(nlri, linkAttr)
 	if err != nil {
@@ -427,7 +431,7 @@ func convertLink(nlri *api.LsAddrPrefix, lsAttr *api.Attribute_Ls) ([]table.TEDE
 func convertPrefix(lsAttr *api.Attribute_Ls, nlris []*api.NLRI) ([]table.TEDElem, error) {
 	prefixAttr := lsAttr.Ls.GetPrefix()
 	if prefixAttr == nil {
-		return nil, fmt.Errorf("LS Prefix Attribute is nil")
+		return nil, errors.New("LS Prefix Attribute is nil")
 	}
 
 	lsPrefixList, err := getLsPrefixList(nlris, prefixAttr)
@@ -441,7 +445,7 @@ func convertPrefix(lsAttr *api.Attribute_Ls, nlris []*api.NLRI) ([]table.TEDElem
 func convertSrv6SID(lsAttr *api.Attribute_Ls, nlris []*api.NLRI) ([]table.TEDElem, error) {
 	srv6Attr := lsAttr.Ls.GetSrv6Sid()
 	if srv6Attr == nil {
-		return nil, fmt.Errorf("LS SRv6 SID Attribute is nil")
+		return nil, errors.New("LS SRv6 SID Attribute is nil")
 	}
 
 	lsSrv6List, err := getLsSrv6SIDList(nlris, srv6Attr)
@@ -512,32 +516,34 @@ func getLsLink(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrLink *api.LsAttribute
 
 	var err error
 	var localIP netip.Addr
-	if lsLinkNLRI.GetLinkDescriptor().GetInterfaceAddrIpv4() != "" {
+	switch {
+	case lsLinkNLRI.GetLinkDescriptor().GetInterfaceAddrIpv4() != "":
 		localIP, err = netip.ParseAddr(lsLinkNLRI.GetLinkDescriptor().GetInterfaceAddrIpv4())
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse local IPv4 address: %v", err)
+			return nil, fmt.Errorf("failed to parse local IPv4 address: %w", err)
 		}
-	} else if lsLinkNLRI.GetLinkDescriptor().GetInterfaceAddrIpv6() != "" {
+	case lsLinkNLRI.GetLinkDescriptor().GetInterfaceAddrIpv6() != "":
 		localIP, err = netip.ParseAddr(lsLinkNLRI.GetLinkDescriptor().GetInterfaceAddrIpv6())
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse local IPv6 address: %v", err)
+			return nil, fmt.Errorf("failed to parse local IPv6 address: %w", err)
 		}
-	} else {
+	default:
 		localIP = netip.Addr{}
 	}
 
 	var remoteIP netip.Addr
-	if lsLinkNLRI.GetLinkDescriptor().GetNeighborAddrIpv4() != "" {
+	switch {
+	case lsLinkNLRI.GetLinkDescriptor().GetNeighborAddrIpv4() != "":
 		remoteIP, err = netip.ParseAddr(lsLinkNLRI.GetLinkDescriptor().GetNeighborAddrIpv4())
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse remote IPv4 address: %v", err)
+			return nil, fmt.Errorf("failed to parse remote IPv4 address: %w", err)
 		}
-	} else if lsLinkNLRI.GetLinkDescriptor().GetNeighborAddrIpv6() != "" {
+	case lsLinkNLRI.GetLinkDescriptor().GetNeighborAddrIpv6() != "":
 		remoteIP, err = netip.ParseAddr(lsLinkNLRI.GetLinkDescriptor().GetNeighborAddrIpv6())
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse remote IPv6 address: %v", err)
+			return nil, fmt.Errorf("failed to parse remote IPv6 address: %w", err)
 		}
-	} else {
+	default:
 		remoteIP = netip.Addr{}
 	}
 
@@ -545,17 +551,17 @@ func getLsLink(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrLink *api.LsAttribute
 	lsLink.LocalIP = localIP
 	lsLink.RemoteIP = remoteIP
 
-	lsLink.Metrics = append(lsLink.Metrics, table.NewMetric(table.MetricType(table.IGPMetric), lsAttrLink.GetIgpMetric()))
+	lsLink.Metrics = append(lsLink.Metrics, table.NewMetric(table.IGPMetric, lsAttrLink.GetIgpMetric()))
 
 	teMetric := lsAttrLink.GetDefaultTeMetric()
 	if teMetric != 0 {
-		lsLink.Metrics = append(lsLink.Metrics, table.NewMetric(table.MetricType(table.TEMetric), teMetric))
+		lsLink.Metrics = append(lsLink.Metrics, table.NewMetric(table.TEMetric, teMetric))
 	}
 
 	if delay := lsAttrLink.GetUnidirectionalLinkDelay(); delay != 0 {
 		lsLink.Metrics = append(
 			lsLink.Metrics,
-			table.NewMetric(table.MetricType(table.DelayMetric), delay),
+			table.NewMetric(table.DelayMetric, delay),
 		)
 	}
 
@@ -586,7 +592,7 @@ func getLsPrefixList(nlris []*api.NLRI, lsAttrPrefix *api.LsAttributePrefix) ([]
 
 		lsPrefix, err := getLsPrefix(lsAddrPrefix, lsAttrPrefix)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get LS Prefix: %v", err)
+			return nil, fmt.Errorf("failed to get LS Prefix: %w", err)
 		}
 		lsPrefixList = append(lsPrefixList, lsPrefix)
 	}
@@ -646,7 +652,7 @@ func getLsPrefix(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrPrefix *api.LsAttri
 	var err error
 	lsPrefix.Prefix, err = netip.ParsePrefix(prefix[0])
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse prefix: %v", err)
+		return nil, fmt.Errorf("failed to parse prefix: %w", err)
 	}
 
 	return lsPrefix, nil
@@ -660,7 +666,7 @@ func getLsSrv6SIDList(nlris []*api.NLRI, lsAttrSrv6SID *api.LsAttributeSrv6SID) 
 
 		lsPrefix, err := getLsSrv6SID(lsAddrPrefix, lsAttrSrv6SID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get LS Prefix: %v", err)
+			return nil, fmt.Errorf("failed to get LS Prefix: %w", err)
 		}
 		lsSrv6SIDList = append(lsSrv6SIDList, lsPrefix)
 	}

@@ -317,7 +317,7 @@ func TestCSPF_MetricValidation(t *testing.T) {
 
 	t.Run("loose source routing rejects the metric before checking waypoints", func(t *testing.T) {
 		waypoints := []table.Waypoint{{RouterID: "GHOST"}}
-		_, err := CSPFWithLooseSourceRouting("A", "B", waypoints, table.MetricType(99), linked())
+		_, err := WithLooseSourceRouting("A", "B", waypoints, table.MetricType(99), linked())
 		assert.EqualError(t, err, "unsupported metric type 99")
 	})
 
@@ -342,11 +342,11 @@ func TestCSPF_InvalidInputClassification(t *testing.T) {
 		{"unknown source router is caller input", func() error { _, err := CSPF("Z", "B", table.IGPMetric, linear()); return err }, true},
 		{"unknown destination router is caller input", func() error { _, err := CSPF("A", "Z", table.IGPMetric, linear()); return err }, true},
 		{"unknown waypoint is caller input", func() error {
-			_, err := CSPFWithLooseSourceRouting("A", "B", []table.Waypoint{{RouterID: "Z"}}, table.IGPMetric, linear())
+			_, err := WithLooseSourceRouting("A", "B", []table.Waypoint{{RouterID: "Z"}}, table.IGPMetric, linear())
 			return err
 		}, true},
 		{"malformed explicit waypoint SID is caller input", func() error {
-			_, err := CSPFWithLooseSourceRouting("A", "B", []table.Waypoint{{RouterID: "B", SID: "not-an-address"}}, table.IGPMetric, linear())
+			_, err := WithLooseSourceRouting("A", "B", []table.Waypoint{{RouterID: "B", SID: "not-an-address"}}, table.IGPMetric, linear())
 			return err
 		}, true},
 		{"unusable metric is caller input", func() error { _, err := CSPF("A", "B", table.UnspecifiedMetric, linear()); return err }, true},
@@ -404,7 +404,7 @@ func TestCSPF_TopologyLimitationClassification(t *testing.T) {
 			err := tt.run()
 			require.Error(t, err)
 			var topoLimit *TopologyLimitationError
-			require.True(t, errors.As(err, &topoLimit))
+			require.ErrorAs(t, err, &topoLimit)
 			assert.Equal(t, tt.wantReason, topoLimit.Reason)
 		})
 	}
@@ -412,9 +412,9 @@ func TestCSPF_TopologyLimitationClassification(t *testing.T) {
 
 func TestCSPF_NilTED(t *testing.T) {
 	_, err := CSPF("A", "B", table.IGPMetric, nil)
-	assert.EqualError(t, err, "ted is nil")
+	require.EqualError(t, err, "ted is nil")
 
-	_, err = CSPFWithLooseSourceRouting("A", "B", nil, table.IGPMetric, nil)
+	_, err = WithLooseSourceRouting("A", "B", nil, table.IGPMetric, nil)
 	assert.EqualError(t, err, "ted is nil")
 }
 
@@ -423,7 +423,7 @@ func TestInvalidInputError_Unwrap(t *testing.T) {
 	err := &InvalidInputError{Err: sentinel}
 
 	assert.Same(t, sentinel, errors.Unwrap(err))
-	assert.True(t, errors.Is(err, sentinel))
+	assert.ErrorIs(t, err, sentinel)
 }
 
 func TestTopologyLimitationError_Unwrap(t *testing.T) {
@@ -431,7 +431,7 @@ func TestTopologyLimitationError_Unwrap(t *testing.T) {
 	err := &TopologyLimitationError{Err: sentinel}
 
 	assert.Same(t, sentinel, errors.Unwrap(err))
-	assert.True(t, errors.Is(err, sentinel))
+	assert.ErrorIs(t, err, sentinel)
 }
 
 func TestUpdateNeighborCosts_UnknownCalcNode(t *testing.T) {
@@ -537,7 +537,7 @@ func TestBuildWaypointSegment(t *testing.T) {
 					assert.Equal(t, tt.wantTopoReason, topoErr.Reason)
 				} else {
 					var inputErr *InvalidInputError
-					assert.ErrorAs(t, err, &inputErr)
+					require.ErrorAs(t, err, &inputErr)
 				}
 				return
 			}
@@ -627,7 +627,7 @@ func TestAppendIfNotDuplicate(t *testing.T) {
 	}
 }
 
-func TestCSPFWithLooseSourceRouting(t *testing.T) {
+func TestWithLooseSourceRouting(t *testing.T) {
 	linearChain := func() *table.LsTED {
 		s, w1, m, w2, d := srMPLSNode("S", 0), srMPLSNode("W1", 1), srMPLSNode("M", 2), srMPLSNode("W2", 3), srMPLSNode("D", 4)
 		connect(s, w1, 1)
@@ -639,21 +639,21 @@ func TestCSPFWithLooseSourceRouting(t *testing.T) {
 	fullChainSegs := []table.Segment{mplsSeg(1), mplsSeg(2), mplsSeg(3), mplsSeg(4)}
 
 	t.Run("no waypoints behaves like a direct CSPF call", func(t *testing.T) {
-		got, err := CSPFWithLooseSourceRouting("S", "D", nil, table.IGPMetric, linearChain())
+		got, err := WithLooseSourceRouting("S", "D", nil, table.IGPMetric, linearChain())
 		require.NoError(t, err)
 		assert.Equal(t, fullChainSegs, got)
 	})
 
 	t.Run("a waypoint already on the shortest path does not duplicate its segment", func(t *testing.T) {
 		waypoints := []table.Waypoint{{RouterID: "W1"}}
-		got, err := CSPFWithLooseSourceRouting("S", "D", waypoints, table.IGPMetric, linearChain())
+		got, err := WithLooseSourceRouting("S", "D", waypoints, table.IGPMetric, linearChain())
 		require.NoError(t, err)
 		assert.Equal(t, fullChainSegs, got)
 	})
 
 	t.Run("multiple ordered waypoints route through each waypoint in sequence", func(t *testing.T) {
 		waypoints := []table.Waypoint{{RouterID: "W1"}, {RouterID: "W2"}}
-		got, err := CSPFWithLooseSourceRouting("S", "D", waypoints, table.IGPMetric, linearChain())
+		got, err := WithLooseSourceRouting("S", "D", waypoints, table.IGPMetric, linearChain())
 		require.NoError(t, err)
 		assert.Equal(t, fullChainSegs, got)
 	})
@@ -665,7 +665,7 @@ func TestCSPFWithLooseSourceRouting(t *testing.T) {
 		ted := buildTED(s2, w, d2)
 
 		waypoints := []table.Waypoint{{RouterID: "W", SID: "2001:db8::2ff"}}
-		got, err := CSPFWithLooseSourceRouting("S2", "D2", waypoints, table.IGPMetric, ted)
+		got, err := WithLooseSourceRouting("S2", "D2", waypoints, table.IGPMetric, ted)
 		require.NoError(t, err)
 
 		want := []table.Segment{
@@ -682,7 +682,7 @@ func TestCSPFWithLooseSourceRouting(t *testing.T) {
 
 	t.Run("a leg computation failure is wrapped with the router pair", func(t *testing.T) {
 		ted := buildTED(srMPLSNode("S3", 0))
-		got, err := CSPFWithLooseSourceRouting("S3", "D3", nil, table.IGPMetric, ted)
+		got, err := WithLooseSourceRouting("S3", "D3", nil, table.IGPMetric, ted)
 		assert.Nil(t, got)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "CSPF failed between S3 and D3")
@@ -696,7 +696,7 @@ func TestCSPFWithLooseSourceRouting(t *testing.T) {
 		ted := buildTED(s4)
 
 		waypoints := []table.Waypoint{{RouterID: "GHOST"}}
-		got, err := CSPFWithLooseSourceRouting("S4", "GHOST", waypoints, table.IGPMetric, ted)
+		got, err := WithLooseSourceRouting("S4", "GHOST", waypoints, table.IGPMetric, ted)
 		assert.Nil(t, got)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "waypoint router GHOST not found in TED")
@@ -704,7 +704,7 @@ func TestCSPFWithLooseSourceRouting(t *testing.T) {
 
 	t.Run("an unknown waypoint is rejected even when the destination is reachable", func(t *testing.T) {
 		waypoints := []table.Waypoint{{RouterID: "GHOST"}}
-		got, err := CSPFWithLooseSourceRouting("S", "D", waypoints, table.IGPMetric, linearChain())
+		got, err := WithLooseSourceRouting("S", "D", waypoints, table.IGPMetric, linearChain())
 		assert.Nil(t, got)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "waypoint router GHOST not found in TED")
@@ -712,7 +712,7 @@ func TestCSPFWithLooseSourceRouting(t *testing.T) {
 
 	t.Run("an invalid explicit waypoint SID is wrapped with the router", func(t *testing.T) {
 		waypoints := []table.Waypoint{{RouterID: "W1", SID: "not-an-address"}}
-		got, err := CSPFWithLooseSourceRouting("S", "D", waypoints, table.IGPMetric, linearChain())
+		got, err := WithLooseSourceRouting("S", "D", waypoints, table.IGPMetric, linearChain())
 		assert.Nil(t, got)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to build segment for waypoint W1")

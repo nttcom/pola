@@ -82,8 +82,8 @@ func CSPF(srcRouterID string, dstRouterID string, metric table.MetricType, ted *
 	return segmentList, nil
 }
 
-// CSPFWithLooseSourceRouting computes a path with optional waypoints using loose source routing.
-func CSPFWithLooseSourceRouting(
+// WithLooseSourceRouting computes a path with optional waypoints using loose source routing.
+func WithLooseSourceRouting(
 	src, dst string,
 	waypoints []table.Waypoint,
 	metric table.MetricType,

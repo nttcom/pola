@@ -72,6 +72,7 @@ func statusFromCSPFError(err error) error {
 	return newStatus(codes.Internal, ReasonPathComputationFailed, "%s", err.Error())
 }
 
+// APIServer serves gRPC requests for PCE operations.
 type APIServer struct {
 	pce        *Server
 	grpcServer *grpc.Server
@@ -80,6 +81,7 @@ type APIServer struct {
 	pb.UnimplementedPCEServiceServer
 }
 
+// NewAPIServer creates and registers a new gRPC API server for PCE operations.
 func NewAPIServer(pce *Server, grpcServer *grpc.Server, usidMode bool, logger *zap.Logger) *APIServer {
 	s := &APIServer{
 		pce:        pce,
@@ -91,6 +93,7 @@ func NewAPIServer(pce *Server, grpcServer *grpc.Server, usidMode bool, logger *z
 	return s
 }
 
+// Serve starts the gRPC server on the specified address and port.
 func (s *APIServer) Serve(address string, port string) error {
 	a, err := netip.ParseAddr(address)
 	if err != nil {
@@ -361,7 +364,8 @@ func sendSRPolicyRequest(s *APIServer, input *pb.CreateSRPolicyRequest, segmentL
 	return nil
 }
 
-func (s *APIServer) CreateSRPolicy(ctx context.Context, req *pb.CreateSRPolicyRequest) (*pb.CreateSRPolicyResponse, error) {
+// CreateSRPolicy creates a new SR Policy.
+func (s *APIServer) CreateSRPolicy(_ context.Context, req *pb.CreateSRPolicyRequest) (*pb.CreateSRPolicyResponse, error) {
 	disablePathCompute := req.GetDisablePathCompute()
 	if err := validateCreateSRPolicy(req, disablePathCompute); err != nil {
 		return nil, wrapStatusError(err, "failed to validate SR policy creation")
@@ -441,7 +445,8 @@ func (s *APIServer) validateSIDs(req *pb.CreateSRPolicyRequest, segmentList []ta
 		"SID validation failed, the following SIDs are not found in TED: %s", strings.Join(descriptions, ", "))
 }
 
-func (s *APIServer) DeleteSRPolicy(ctx context.Context, input *pb.DeleteSRPolicyRequest) (*pb.DeleteSRPolicyResponse, error) {
+// DeleteSRPolicy deletes an existing SR Policy.
+func (s *APIServer) DeleteSRPolicy(_ context.Context, input *pb.DeleteSRPolicyRequest) (*pb.DeleteSRPolicyResponse, error) {
 	err := validate(input.GetSrPolicy(), input.GetAsn(), ValidationDelete)
 	if err != nil {
 		return &pb.DeleteSRPolicyResponse{IsSuccess: false}, err
@@ -525,16 +530,20 @@ func validate(inputSRPolicy *pb.SRPolicy, asn uint32, validationKind ValidationK
 	return nil
 }
 
+// ValidationKind specifies the type of validation to perform on an SR Policy.
 type ValidationKind string
 
 const (
-	ValidationAdd                   ValidationKind = "Add"
+	// ValidationAdd validates an SR Policy for creation.
+	ValidationAdd ValidationKind = "Add"
+	// ValidationAddDisablePathCompute validates an SR Policy for creation with path computation disabled.
 	ValidationAddDisablePathCompute ValidationKind = "AddDisablePathCompute"
-	ValidationDelete                ValidationKind = "Delete"
+	// ValidationDelete validates an SR Policy for deletion.
+	ValidationDelete ValidationKind = "Delete"
 )
 
 var validator = map[ValidationKind]func(policy *pb.SRPolicy, asn uint32) error{
-	ValidationAdd: func(policy *pb.SRPolicy, asn uint32) error {
+	ValidationAdd: func(policy *pb.SRPolicy, _ uint32) error {
 		if policy.PcepSessionAddr == nil {
 			return errors.New("policy.PCEP session address must not be nil")
 		}
@@ -550,7 +559,7 @@ var validator = map[ValidationKind]func(policy *pb.SRPolicy, asn uint32) error{
 		return nil
 	},
 
-	ValidationAddDisablePathCompute: func(policy *pb.SRPolicy, asn uint32) error {
+	ValidationAddDisablePathCompute: func(policy *pb.SRPolicy, _ uint32) error {
 		if policy.PcepSessionAddr == nil {
 			return errors.New("policy.PCEP session address must not be nil")
 		}
@@ -569,7 +578,7 @@ var validator = map[ValidationKind]func(policy *pb.SRPolicy, asn uint32) error{
 		return nil
 	},
 
-	ValidationDelete: func(policy *pb.SRPolicy, asn uint32) error {
+	ValidationDelete: func(policy *pb.SRPolicy, _ uint32) error {
 		if policy.PcepSessionAddr == nil {
 			return errors.New("policy.PCEP session address must not be nil")
 		}
@@ -655,7 +664,7 @@ func getSegmentList(inputSRPolicy *pb.SRPolicy, ted *table.LsTED, usidMode bool)
 				})
 			}
 
-			segs, err := cspf.CSPFWithLooseSourceRouting(
+			segs, err := cspf.WithLooseSourceRouting(
 				inputSRPolicy.GetSrcRouterId(),
 				inputSRPolicy.GetDstRouterId(),
 				waypoints,
@@ -666,18 +675,18 @@ func getSegmentList(inputSRPolicy *pb.SRPolicy, ted *table.LsTED, usidMode bool)
 				return nil, table.UnspecifiedMetric, statusFromCSPFError(err)
 			}
 			return segs, metricType, nil
-		} else {
-			segs, err := cspf.CSPF(
-				inputSRPolicy.GetSrcRouterId(),
-				inputSRPolicy.GetDstRouterId(),
-				metricType,
-				ted,
-			)
-			if err != nil {
-				return nil, table.UnspecifiedMetric, statusFromCSPFError(err)
-			}
-			return segs, metricType, nil
 		}
+
+		segs, err := cspf.CSPF(
+			inputSRPolicy.GetSrcRouterId(),
+			inputSRPolicy.GetDstRouterId(),
+			metricType,
+			ted,
+		)
+		if err != nil {
+			return nil, table.UnspecifiedMetric, statusFromCSPFError(err)
+		}
+		return segs, metricType, nil
 	default:
 		return nil, table.UnspecifiedMetric, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "undefined SR Policy type")
 	}
@@ -700,7 +709,8 @@ func getMetricType(metricType pb.MetricType) (table.MetricType, error) {
 	}
 }
 
-func (s *APIServer) GetSessionList(ctx context.Context, _ *pb.GetSessionListRequest) (*pb.GetSessionListResponse, error) {
+// GetSessionList returns a list of PCEP sessions.
+func (s *APIServer) GetSessionList(_ context.Context, _ *pb.GetSessionListRequest) (*pb.GetSessionListResponse, error) {
 	s.logger.Info("Received GetSessionList API request")
 
 	pcepSessions := s.pce.Sessions()
@@ -822,7 +832,8 @@ func capabilityType(t pcep.TLVType) pb.CapabilityType {
 	}
 }
 
-func (s *APIServer) GetSRPolicyList(ctx context.Context, req *pb.GetSRPolicyListRequest) (*pb.GetSRPolicyListResponse, error) {
+// GetSRPolicyList returns a list of SR Policies registered with PCEP sessions.
+func (s *APIServer) GetSRPolicyList(_ context.Context, req *pb.GetSRPolicyListRequest) (*pb.GetSRPolicyListResponse, error) {
 	s.logger.Info("Received GetSRPolicyList API request")
 
 	var filterAddr netip.Addr
@@ -1009,7 +1020,7 @@ func convertSegment(seg table.Segment) *pb.Segment {
 }
 
 // GetTED returns the TED information in a structured way.
-func (s *APIServer) GetTED(ctx context.Context, req *pb.GetTEDRequest) (*pb.GetTEDResponse, error) {
+func (s *APIServer) GetTED(_ context.Context, _ *pb.GetTEDRequest) (*pb.GetTEDResponse, error) {
 	s.logger.Info("Received GetTED API request")
 
 	ret := &pb.GetTEDResponse{Enable: true}
@@ -1195,7 +1206,8 @@ func convertSrv6EndXSID(sid *table.Srv6EndXSID) *pb.Srv6EndXSID {
 	return pbSID
 }
 
-func (s *APIServer) DeleteSession(ctx context.Context, req *pb.DeleteSessionRequest) (*pb.DeleteSessionResponse, error) {
+// DeleteSession deletes a PCEP session.
+func (s *APIServer) DeleteSession(_ context.Context, req *pb.DeleteSessionRequest) (*pb.DeleteSessionResponse, error) {
 	ssAddr, ok := netip.AddrFromSlice(req.GetAddr())
 	if !ok {
 		return nil, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "invalid address: %v", req.GetAddr())

@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net/netip"
+	"slices"
 	"strings"
 	"testing"
 
@@ -86,7 +87,7 @@ func runTLVDecodeTests(t *testing.T, cases map[string]TLVTestCase, constructor f
 			if tt.wantErr {
 				assert.Error(t, err, "expected error for '%s' but got none", name)
 			} else {
-				assert.NoError(t, err, "unexpected error for '%s'", name)
+				require.NoError(t, err, "unexpected error for '%s'", name)
 				assert.Equal(t, tt.expected, tlv, "decoded value mismatch for '%s'", name)
 			}
 		})
@@ -231,7 +232,7 @@ func TestVendorInformation_MarshalLogObject(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			enc := zapcore.NewMapObjectEncoder()
 			err := tt.input.MarshalLogObject(enc)
-			assert.NoError(t, err, "unexpected error during MarshalLogObject for '%s'", name)
+			require.NoError(t, err, "unexpected error during MarshalLogObject for '%s'", name)
 			assert.Equal(t, tt.expected, enc.Fields, "unexpected fields for '%s'", name)
 		})
 	}
@@ -258,7 +259,7 @@ func TestVendorInformation_Serialize_LengthBoundary(t *testing.T) {
 		tlv := &VendorInformation{EnterpriseSpecificInformation: make([]byte, 65531)}
 		raw, err := tlv.Serialize()
 		require.NoError(t, err)
-		assert.Equal(t, tlv.Len(), len(raw), "Len() must match serialized size")
+		assert.Len(t, raw, tlv.Len(), "Len() must match serialized size")
 		assert.Equal(t, uint16(65535), binary.BigEndian.Uint16(raw[TLVLengthOffset:TLVValueOffset]))
 	})
 
@@ -298,7 +299,7 @@ func TestVendorInformation_RoundTrip(t *testing.T) {
 
 			data, err := original.Serialize()
 			require.NoError(t, err, "Serialize failed")
-			require.Equal(t, original.Len(), len(data), "Len() must match serialized size")
+			require.Len(t, data, original.Len(), "Len() must match serialized size")
 
 			decoded, err := DecodeTLV(data)
 			require.NoError(t, err, "DecodeTLV failed")
@@ -367,7 +368,7 @@ func TestStatefulPCECapability_MarshalLogObject(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			enc := zapcore.NewMapObjectEncoder()
 			err := tt.input.MarshalLogObject(enc)
-			assert.NoError(t, err, "unexpected error for '%s'", name)
+			require.NoError(t, err, "unexpected error for '%s'", name)
 
 			got, ok := enc.Fields["lspUpdateCapability"]
 			if tt.input == nil {
@@ -451,7 +452,7 @@ func TestSymbolicPathName_MarshalLogObject(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			enc := zapcore.NewMapObjectEncoder()
 			err := tt.input.MarshalLogObject(enc)
-			assert.NoError(t, err, "unexpected error for '%s'", name)
+			require.NoError(t, err, "unexpected error for '%s'", name)
 
 			if tt.input == nil {
 				_, ok := enc.Fields["symbolicPathName"]
@@ -483,7 +484,7 @@ func TestSymbolicPathName_Serialize_LengthBoundary(t *testing.T) {
 		tlv := &SymbolicPathName{Name: strings.Repeat("a", 65535)}
 		raw, err := tlv.Serialize()
 		require.NoError(t, err)
-		assert.Equal(t, tlv.Len(), len(raw), "Len() must match serialized size")
+		assert.Len(t, raw, tlv.Len(), "Len() must match serialized size")
 		assert.Equal(t, uint16(65535), binary.BigEndian.Uint16(raw[TLVLengthOffset:TLVValueOffset]))
 	})
 
@@ -584,7 +585,7 @@ func TestIPv4LSPIdentifiers_MarshalLogObject(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			enc := zapcore.NewMapObjectEncoder()
 			err := tt.input.MarshalLogObject(enc)
-			assert.NoError(t, err, "unexpected error for '%s'", name)
+			require.NoError(t, err, "unexpected error for '%s'", name)
 			assert.Equal(t, tt.expected, enc.Fields, "unexpected fields for '%s'", name)
 		})
 	}
@@ -690,7 +691,7 @@ func TestIPv6LSPIdentifiers_MarshalLogObject(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			enc := zapcore.NewMapObjectEncoder()
 			err := tt.input.MarshalLogObject(enc)
-			assert.NoError(t, err, "unexpected error for '%s'", name)
+			require.NoError(t, err, "unexpected error for '%s'", name)
 			assert.Equal(t, tt.expected, enc.Fields, "unexpected fields for '%s'", name)
 		})
 	}
@@ -760,7 +761,7 @@ func TestLSPDBVersion_MarshalLogObject(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			enc := zapcore.NewMapObjectEncoder()
 			err := tt.input.MarshalLogObject(enc)
-			assert.NoError(t, err, "unexpected error for '%s'", name)
+			require.NoError(t, err, "unexpected error for '%s'", name)
 			assert.Equal(t, tt.expected, enc.Fields, "unexpected fields for '%s'", name)
 		})
 	}
@@ -865,7 +866,7 @@ func TestSRPCECapability_MarshalLogObject(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			enc := zapcore.NewMapObjectEncoder()
 			err := tt.input.MarshalLogObject(enc)
-			assert.NoError(t, err, "unexpected error for '%s'", name)
+			require.NoError(t, err, "unexpected error for '%s'", name)
 			assert.Equal(t, tt.expected, enc.Fields, "unexpected fields for '%s'", name)
 		})
 	}
@@ -925,7 +926,7 @@ func TestPsts_MarshalJSON(t *testing.T) {
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
 			actual, err := tt.input.MarshalJSON()
-			assert.NoError(t, err, "unexpected error for '%s'", name)
+			require.NoError(t, err, "unexpected error for '%s'", name)
 			assert.Equal(t, tt.expected, string(actual), "MarshalJSON output mismatch for '%s'", name)
 		})
 	}
@@ -1016,7 +1017,7 @@ func TestPathSetupType_MarshalLogObject(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			enc := zapcore.NewMapObjectEncoder()
 			err := tt.input.MarshalLogObject(enc)
-			assert.NoError(t, err, "unexpected error for '%s'", name)
+			require.NoError(t, err, "unexpected error for '%s'", name)
 			assert.Equal(t, tt.expected, enc.Fields, "unexpected fields for '%s'", name)
 		})
 	}
@@ -1169,7 +1170,7 @@ func TestPathSetupTypeCapability_MarshalLogObject(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			enc := zapcore.NewMapObjectEncoder()
 			err := tt.input.MarshalLogObject(enc)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.expected, enc.Fields)
 		})
 	}
@@ -1208,7 +1209,7 @@ func TestPathSetupTypeCapability_Serialize_SubTLVLengthBoundary(t *testing.T) {
 		tlv := &PathSetupTypeCapability{SubTLVs: newSubTLVs(8191)}
 		raw, err := tlv.Serialize()
 		require.NoError(t, err)
-		assert.Equal(t, tlv.Len(), len(raw), "Len() must match serialized size")
+		assert.Len(t, raw, tlv.Len(), "Len() must match serialized size")
 		assert.Equal(t, uint16(65532), binary.BigEndian.Uint16(raw[TLVLengthOffset:TLVValueOffset]))
 	})
 
@@ -1360,7 +1361,7 @@ func TestExtendedAssociationID_MarshalLogObject(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			enc := zapcore.NewMapObjectEncoder()
 			err := tt.input.MarshalLogObject(enc)
-			assert.NoError(t, err, "unexpected error during MarshalLogObject for '%s'", name)
+			require.NoError(t, err, "unexpected error during MarshalLogObject for '%s'", name)
 			assert.Equal(t, tt.expected, enc.Fields, "unexpected fields for '%s'", name)
 		})
 	}
@@ -1430,7 +1431,7 @@ func TestExtendedAssociationIDIPv4Juniper_MarshalLogObject(t *testing.T) {
 
 	enc := zapcore.NewMapObjectEncoder()
 	err := tlv.MarshalLogObject(enc)
-	assert.NoError(t, err, "unexpected error during MarshalLogObject")
+	require.NoError(t, err, "unexpected error during MarshalLogObject")
 	assert.Equal(t, map[string]any{
 		"color":    testIPv4ExtendedAssociationID.Color,
 		"ipv4Addr": testIPv4ExtendedAssociationID.Endpoint.String(),
@@ -1588,7 +1589,7 @@ func TestAssocTypeList_MarshalLogObject(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			enc := zapcore.NewMapObjectEncoder()
 			err := tt.input.MarshalLogObject(enc)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.expected, enc.Fields)
 		})
 	}
@@ -1616,7 +1617,7 @@ func TestAssocTypeList_Serialize_LengthBoundary(t *testing.T) {
 		tlv := &AssocTypeList{AssocTypes: make([]AssocType, 32767)}
 		raw, err := tlv.Serialize()
 		require.NoError(t, err)
-		assert.Equal(t, tlv.Len(), len(raw), "Len() must match serialized size")
+		assert.Len(t, raw, tlv.Len(), "Len() must match serialized size")
 		assert.Equal(t, uint16(65534), binary.BigEndian.Uint16(raw[TLVLengthOffset:TLVValueOffset]))
 	})
 
@@ -1784,7 +1785,7 @@ func TestSRPolicyCandidatePathIdentifier_MarshalLogObject(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			enc := zapcore.NewMapObjectEncoder()
 			err := tt.input.MarshalLogObject(enc)
-			assert.NoError(t, err, "unexpected error during MarshalLogObject for '%s'", name)
+			require.NoError(t, err, "unexpected error during MarshalLogObject for '%s'", name)
 			assert.Equal(t, tt.expected, enc.Fields, "unexpected fields for '%s'", name)
 		})
 	}
@@ -1857,7 +1858,7 @@ func TestSRPolicyCandidatePathIdentifierJuniper_MarshalLogObject(t *testing.T) {
 
 	enc := zapcore.NewMapObjectEncoder()
 	err := tlv.MarshalLogObject(enc)
-	assert.NoError(t, err, "unexpected error during MarshalLogObject")
+	require.NoError(t, err, "unexpected error during MarshalLogObject")
 	assert.Equal(t, map[string]any{
 		"protocolOrigin": testSRPolicyCPathIDIPv4.ProtocolOrigin,
 		"originatorAsn":  testSRPolicyCPathIDIPv4.OriginatorASN,
@@ -1926,7 +1927,7 @@ func TestSRPolicyCandidatePathPreference_MarshalLogObject(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			enc := zapcore.NewMapObjectEncoder()
 			err := tt.input.MarshalLogObject(enc)
-			assert.NoError(t, err, "unexpected error during MarshalLogObject for '%s'", name)
+			require.NoError(t, err, "unexpected error during MarshalLogObject for '%s'", name)
 			assert.Equal(t, tt.expected, enc.Fields, "unexpected fields for '%s'", name)
 		})
 	}
@@ -1977,7 +1978,7 @@ func TestSRPolicyCandidatePathPreferenceJuniper_MarshalLogObject(t *testing.T) {
 
 	enc := zapcore.NewMapObjectEncoder()
 	err := tlv.MarshalLogObject(enc)
-	assert.NoError(t, err, "unexpected error during MarshalLogObject")
+	require.NoError(t, err, "unexpected error during MarshalLogObject")
 	assert.Equal(t, map[string]any{
 		"preference": testSRPolicyCPathPreference.Preference,
 	}, enc.Fields)
@@ -2065,7 +2066,7 @@ func TestColor_MarshalLogObject(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			enc := zapcore.NewMapObjectEncoder()
 			err := tt.input.MarshalLogObject(enc)
-			assert.NoError(t, err, "unexpected error during MarshalLogObject for '%s'", name)
+			require.NoError(t, err, "unexpected error during MarshalLogObject for '%s'", name)
 			assert.Equal(t, tt.expected, enc.Fields, "unexpected fields for '%s'", name)
 		})
 	}
@@ -2171,7 +2172,7 @@ func TestUnknownTLV_MarshalLogObject(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			enc := zapcore.NewMapObjectEncoder()
 			err := tt.input.MarshalLogObject(enc)
-			assert.NoError(t, err, "unexpected error during MarshalLogObject for '%s'", name)
+			require.NoError(t, err, "unexpected error during MarshalLogObject for '%s'", name)
 			assert.Equal(t, tt.expected, enc.Fields, "unexpected fields for '%s'", name)
 		})
 	}
@@ -2181,14 +2182,14 @@ func TestUnknownTLV_MarshalLogObject(t *testing.T) {
 func TestMarshalLogObject_TLVTypeHexFormatting(t *testing.T) {
 	enc := zapcore.NewMapObjectEncoder()
 	err := testPathSetupTypeCapabilityWithSubTLV.MarshalLogObject(enc)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	subTLVs, ok := enc.Fields["subTLVs"].([]any)
 	assert.True(t, ok)
 	assert.Equal(t, []any{"0x001a (SR-PCE-CAPABILITY (RFC8664))"}, subTLVs)
 
 	enc = zapcore.NewMapObjectEncoder()
 	err = testUnknownTLV.MarshalLogObject(enc)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "0xffff", enc.Fields["type"])
 }
 
@@ -2279,7 +2280,7 @@ func TestDecodeTLVs(t *testing.T) {
 		valueLen := 5
 		header := tlvHeader(0xFFFF, uint16(valueLen))
 		body := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
-		tlv := append(header, body...)
+		tlv := slices.Concat(header, body)
 		tlv = append(tlv, 0xFF, 0x00, 0x00) // invalid padding (should be 0x00)
 		return tlv
 	}()
@@ -2325,10 +2326,9 @@ func TestDecodeTLVs_SubTLV(t *testing.T) {
 	fixedPart[PathSetupTypeCapabilityPSTCountOffset] = 0x01 // Set PST count in fixed part
 	pathSetupType := []byte{0x00}
 	subTLV := append(tlvHeader(TLVStatefulPCECapability, 4), 0x01, 0x02)
-	value := append(fixedPart, pathSetupType...)
-	value = append(value, subTLV...)
+	value := slices.Concat(fixedPart, pathSetupType, subTLV)
 	header := tlvHeader(TLVPathSetupTypeCapability, uint16(len(value)))
-	data := append(header, value...)
+	data := slices.Concat(header, value)
 
 	cases := map[string]struct {
 		input   []byte
@@ -2408,7 +2408,7 @@ func TestSRv6PCECapability_MarshalLogObject(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			enc := zapcore.NewMapObjectEncoder()
 			err := tt.input.MarshalLogObject(enc)
-			assert.NoError(t, err, "unexpected error for '%s'", name)
+			require.NoError(t, err, "unexpected error for '%s'", name)
 			assert.Equal(t, tt.expected, enc.Fields, "unexpected fields for '%s'", name)
 		})
 	}
@@ -2449,7 +2449,7 @@ func TestSRv6PCECapability_RoundTrip(t *testing.T) {
 
 			data, err := original.Serialize()
 			require.NoError(t, err, "Serialize failed")
-			require.Equal(t, original.Len(), len(data), "Len() must match serialized size")
+			require.Len(t, data, original.Len(), "Len() must match serialized size")
 
 			decoded, err := DecodeTLV(data)
 			require.NoError(t, err, "DecodeTLV failed")
@@ -2532,7 +2532,7 @@ func TestMultipathCapability_MarshalLogObject(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			enc := zapcore.NewMapObjectEncoder()
 			err := tt.input.MarshalLogObject(enc)
-			assert.NoError(t, err, "unexpected error for '%s'", name)
+			require.NoError(t, err, "unexpected error for '%s'", name)
 			assert.Equal(t, tt.expected, enc.Fields, "unexpected fields for '%s'", name)
 		})
 	}
@@ -2578,7 +2578,7 @@ func TestMultipathCapability_RoundTrip(t *testing.T) {
 
 			data, err := original.Serialize()
 			require.NoError(t, err, "Serialize failed")
-			require.Equal(t, original.Len(), len(data), "Len() must match serialized size")
+			require.Len(t, data, original.Len(), "Len() must match serialized size")
 
 			decoded, err := DecodeTLV(data)
 			require.NoError(t, err, "DecodeTLV failed")

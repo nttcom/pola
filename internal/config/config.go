@@ -13,37 +13,44 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// PCEP holds the configuration for PCEP protocol settings.
 type PCEP struct {
 	Address string `yaml:"address"`
 	Port    string `yaml:"port"`
 }
 
+// GRPCServer holds the configuration for the gRPC server.
 type GRPCServer struct {
 	Address string `yaml:"address"`
 	Port    string `yaml:"port"`
 }
 
+// GRPCClient holds the configuration for the gRPC client.
 type GRPCClient struct {
 	Address string `yaml:"address"`
 	Port    string `yaml:"port"`
 }
 
+// Log holds the configuration for logging.
 type Log struct {
 	Path  string `yaml:"path"`
 	Name  string `yaml:"name"`
 	Debug bool   `yaml:"debug"`
 }
 
+// GoBGP holds the configuration for GoBGP.
 type GoBGP struct {
 	GRPCClient GRPCClient `yaml:"grpcClient"`
 }
 
+// TED holds the configuration for TED (Traffic Engineering Database).
 type TED struct {
 	Enable bool   `yaml:"enable"`
 	ASN    uint32 `yaml:"asn"`
 	Source string `yaml:"source"`
 }
 
+// Global holds the global configuration section.
 type Global struct {
 	PCEP       PCEP       `yaml:"pcep"`
 	GRPCServer GRPCServer `yaml:"grpcServer"`
@@ -53,13 +60,16 @@ type Global struct {
 	USidMode   bool       `yaml:"usidMode"`
 }
 
+// Config holds the entire configuration.
 type Config struct {
 	Global Global `yaml:"global"`
 }
 
+// ReadConfigFile reads and parses the config file.
 func ReadConfigFile(configFile string) (Config, error) {
 	c := &Config{}
 
+	//nolint:gosec // G304: configFile is chosen by the operator.
 	f, err := os.Open(configFile)
 	if err != nil {
 		return *c, err

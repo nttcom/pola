@@ -35,13 +35,13 @@ func newRootCmd() *cobra.Command {
 	return rootCmd
 }
 
-func persistentPreRunE(cmd *cobra.Command, args []string) error {
+func persistentPreRunE(cmd *cobra.Command, _ []string) error {
 	conn, err := grpc.NewClient(
 		net.JoinHostPort(cmd.Flag("host").Value.String(), cmd.Flag("port").Value.String()),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
-		return fmt.Errorf("failed to dial polad connection: %v", err)
+		return fmt.Errorf("failed to dial polad connection: %w", err)
 	}
 
 	client = pb.NewPCEServiceClient(conn)

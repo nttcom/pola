@@ -5,6 +5,7 @@
 
 package server
 
+// Error represents an error from a PCE server component.
 type Error struct {
 	Error  error
 	Server string

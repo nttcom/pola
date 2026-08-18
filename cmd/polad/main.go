@@ -7,9 +7,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -24,42 +24,60 @@ import (
 	"github.com/nttcom/pola/pkg/table"
 )
 
-const TEDUpdateInterval = 1 // (min)
-
 type flags struct {
 	configFile string
 }
 
+type monitorBGPLsEventsFunc func(ctx context.Context, serverAddr string, serverPort string, tedChan chan []table.TEDElem, logger *zap.Logger)
+
+type newPCEFunc func(ctx context.Context, o *server.PCEOptions, logger *zap.Logger, tedElemsChan chan []table.TEDElem) server.Error
+
+type runDeps struct {
+	newPCE     newPCEFunc
+	monitorBGP monitorBGPLsEventsFunc
+}
+
+func defaultRunDeps() runDeps {
+	return runDeps{
+		newPCE:     server.NewPCE,
+		monitorBGP: gobgp.MonitorBGPLsEvents,
+	}
+}
+
 func main() {
-	// Check if --version flag was passed
-	if len(os.Args) > 1 && os.Args[1] == "--version" {
+	os.Exit(mainRun(os.Args[1:]))
+}
+
+func mainRun(args []string) int {
+	if err := run(args, defaultRunDeps()); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+
+	return 0
+}
+
+func run(args []string, deps runDeps) error {
+	if len(args) > 0 && args[0] == "--version" {
 		fmt.Println("polad " + version.Version())
-		return
+		return nil
 	}
 
-	// Parse flags
+	fs := flag.NewFlagSet("polad", flag.ContinueOnError)
 	f := &flags{}
-	flag.StringVar(&f.configFile, "f", "polad.yaml", "Specify a configuration file")
-	flag.Parse()
+	fs.StringVar(&f.configFile, "f", "polad.yaml", "Specify a configuration file")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
 
-	// Read configuration file
-	c, err := config.ReadConfigFile(f.configFile)
+	c, err := loadConfig(f.configFile)
 	if err != nil {
-		log.Panicf("failed to read config file: %v", err)
-	}
-	if err := c.Validate(); err != nil {
-		log.Panicf("invalid config file: %v", err)
+		return err
 	}
 
-	// Create log directory if it does not exist
-	if err := os.MkdirAll(c.Global.Log.Path, 0755); err != nil {
-		log.Panicf("failed to create log directory: %v", err)
-	}
-
-	// Open log file
-	fp, err := os.OpenFile(c.Global.Log.Path+c.Global.Log.Name, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	fp, err := openLogFile(&c)
 	if err != nil {
-		log.Panicf("failed to open log file: %v", err)
+		return err
 	}
 	defer func() {
 		if err := fp.Close(); err != nil {
@@ -67,37 +85,21 @@ func main() {
 		}
 	}()
 
-	// Initialize logger
 	logger := logger.LogInit(fp, c.Global.Log.Debug)
 	defer func() {
 		if err := logger.Sync(); err != nil {
-			logger.Panic("Failed to sync logger", zap.Error(err))
+			fmt.Fprintf(os.Stderr, "warning: failed to sync logger: %v\n", err)
 		}
 	}()
 
-	if c.Global.TED.Enable && c.Global.TED.ASN == 0 {
-		logger.Panic("TED is enabled but Global.TED.ASN is missing or invalid")
-	}
-
-	// Handle SIGINT/SIGTERM for graceful shutdown.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Prepare TED update tools
-	var tedElemsChan chan []table.TEDElem
-	if c.Global.TED.Enable {
-		switch c.Global.TED.Source {
-		case "gobgp":
-			tedElemsChan = startGoBGPUpdate(ctx, &c, logger)
-			if tedElemsChan == nil {
-				logger.Panic("GoBGP update channel is nil")
-			}
-		default:
-			logger.Panic("Specified TED source is not defined")
-		}
+	tedElemsChan, err := newTEDElemsChan(ctx, &c, logger, deps.monitorBGP)
+	if err != nil {
+		return err
 	}
 
-	// Start PCE server
 	o := &server.PCEOptions{
 		PCEPAddr:  c.Global.PCEP.Address,
 		PCEPPort:  c.Global.PCEP.Port,
@@ -107,19 +109,57 @@ func main() {
 		USidMode:  c.Global.USidMode,
 		ASN:       c.Global.TED.ASN,
 	}
-	if serverErr := server.NewPCE(ctx, o, logger, tedElemsChan); serverErr.Error != nil {
-		logger.Panic("Failed to start new server", zap.String("server", serverErr.Server), zap.Error(serverErr.Error))
+	if serverErr := deps.newPCE(ctx, o, logger, tedElemsChan); serverErr.Error != nil {
+		return fmt.Errorf("server %q failed: %w", serverErr.Server, serverErr.Error)
 	}
+
+	return nil
 }
 
-func startGoBGPUpdate(ctx context.Context, c *config.Config, logger *zap.Logger) chan []table.TEDElem {
-	if c.Global.TED == nil {
-		logger.Error("TED does not exist")
-		return nil
+func loadConfig(configFile string) (config.Config, error) {
+	c, err := config.ReadConfigFile(configFile)
+	if err != nil {
+		return c, fmt.Errorf("failed to read config file: %w", err)
 	}
+	if err := c.Validate(); err != nil {
+		return c, fmt.Errorf("invalid config file: %w", err)
+	}
+
+	return c, nil
+}
+
+func openLogFile(c *config.Config) (*os.File, error) {
+	if err := os.MkdirAll(c.Global.Log.Path, 0750); err != nil {
+		return nil, fmt.Errorf("failed to create log directory: %w", err)
+	}
+
+	fp, err := os.OpenFile(c.Global.Log.Path+c.Global.Log.Name, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0600)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open log file: %w", err)
+	}
+	// OpenFile's mode does not apply to existing files.
+	if err := fp.Chmod(0600); err != nil {
+		_ = fp.Close()
+		return nil, fmt.Errorf("failed to restrict log file permissions: %w", err)
+	}
+
+	return fp, nil
+}
+
+func newTEDElemsChan(ctx context.Context, c *config.Config, logger *zap.Logger, monitorBGP monitorBGPLsEventsFunc) (chan []table.TEDElem, error) {
+	if c.Global.TED == nil || !c.Global.TED.Enable {
+		return nil, nil
+	}
+	if c.Global.TED.ASN == 0 {
+		return nil, errors.New("TED is enabled but Global.TED.ASN is missing or invalid")
+	}
+	if c.Global.TED.Source != "gobgp" {
+		return nil, fmt.Errorf("specified TED source %q is not defined", c.Global.TED.Source)
+	}
+
 	tedElemsChan := make(chan []table.TEDElem)
 
-	go gobgp.MonitorBGPLsEvents(
+	go monitorBGP(
 		ctx,
 		c.Global.GoBGP.GRPCClient.Address,
 		c.Global.GoBGP.GRPCClient.Port,
@@ -127,5 +167,5 @@ func startGoBGPUpdate(ctx context.Context, c *config.Config, logger *zap.Logger)
 		logger,
 	)
 
-	return tedElemsChan
+	return tedElemsChan, nil
 }

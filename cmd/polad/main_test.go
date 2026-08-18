@@ -7,47 +7,315 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
 	"github.com/nttcom/pola/internal/config"
+	"github.com/nttcom/pola/pkg/server"
+	"github.com/nttcom/pola/pkg/table"
 )
 
-func TestStartGoBGPUpdate(t *testing.T) {
-	t.Run("returns nil when TED is not configured", func(t *testing.T) {
-		c := &config.Config{
-			Global: config.Global{},
+func validConfig(t *testing.T) config.Config {
+	t.Helper()
+
+	return config.Config{
+		Global: config.Global{
+			PCEP:       config.PCEP{Address: "127.0.0.1", Port: "4189"},
+			GRPCServer: config.GRPCServer{Address: "127.0.0.1", Port: "50051"},
+			Log: config.Log{
+				Path: t.TempDir() + string(filepath.Separator),
+				Name: "polad.log",
+			},
+			TED: &config.TED{Enable: false},
+		},
+	}
+}
+
+func writeConfigFile(t *testing.T, c config.Config) string {
+	t.Helper()
+
+	tedBlock := "  ted:\n    enable: false\n"
+	if c.Global.TED != nil && c.Global.TED.Enable {
+		tedBlock = fmt.Sprintf("  ted:\n    enable: true\n    asn: %d\n    source: %q\n", c.Global.TED.ASN, c.Global.TED.Source)
+	}
+
+	content := fmt.Sprintf(`global:
+  pcep:
+    address: %q
+    port: %q
+  grpcServer:
+    address: %q
+    port: %q
+  log:
+    path: %q
+    name: %q
+%s`,
+		c.Global.PCEP.Address, c.Global.PCEP.Port,
+		c.Global.GRPCServer.Address, c.Global.GRPCServer.Port,
+		c.Global.Log.Path, c.Global.Log.Name,
+		tedBlock,
+	)
+
+	path := filepath.Join(t.TempDir(), "polad.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(content), 0600))
+
+	return path
+}
+
+func TestLoadConfig(t *testing.T) {
+	t.Run("returns an error when the config file does not exist", func(t *testing.T) {
+		_, err := loadConfig(filepath.Join(t.TempDir(), "missing.yaml"))
+
+		require.ErrorContains(t, err, "failed to read config file")
+	})
+
+	t.Run("returns an error when required fields are missing", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "polad.yaml")
+		require.NoError(t, os.WriteFile(path, []byte("global:\n  pcep:\n    address: \"127.0.0.1\"\n"), 0600))
+
+		_, err := loadConfig(path)
+
+		require.ErrorContains(t, err, "invalid config file")
+	})
+
+	t.Run("returns an error when TED is enabled without a source", func(t *testing.T) {
+		c := validConfig(t)
+		c.Global.TED = &config.TED{Enable: true, ASN: 65000}
+		path := writeConfigFile(t, c)
+
+		_, err := loadConfig(path)
+
+		require.ErrorContains(t, err, "invalid config file")
+		require.ErrorContains(t, err, "global.ted.source is required")
+	})
+
+	t.Run("succeeds for a valid config", func(t *testing.T) {
+		c := validConfig(t)
+		path := writeConfigFile(t, c)
+
+		got, err := loadConfig(path)
+
+		require.NoError(t, err)
+		require.Equal(t, c.Global.PCEP, got.Global.PCEP)
+	})
+}
+
+func TestOpenLogFile(t *testing.T) {
+	t.Run("returns an error when the log directory cannot be created", func(t *testing.T) {
+		blocker := filepath.Join(t.TempDir(), "blocker")
+		require.NoError(t, os.WriteFile(blocker, []byte("x"), 0600))
+
+		c := &config.Config{Global: config.Global{Log: config.Log{
+			Path: filepath.Join(blocker, "nested") + string(filepath.Separator),
+			Name: "polad.log",
+		}}}
+
+		_, err := openLogFile(c)
+
+		require.ErrorContains(t, err, "failed to create log directory")
+	})
+
+	t.Run("returns an error when the log file cannot be opened", func(t *testing.T) {
+		if os.Geteuid() == 0 {
+			t.Skip("running as root; directory permissions are not enforced")
 		}
 
-		ch := startGoBGPUpdate(context.Background(), c, zap.NewNop())
+		dir := t.TempDir()
+		require.NoError(t, os.Chmod(dir, 0500))
+		t.Cleanup(func() { _ = os.Chmod(dir, 0700) })
 
+		c := &config.Config{Global: config.Global{Log: config.Log{
+			Path: dir + string(filepath.Separator),
+			Name: "polad.log",
+		}}}
+
+		_, err := openLogFile(c)
+
+		require.ErrorContains(t, err, "failed to open log file")
+	})
+
+	t.Run("succeeds and restricts the file permissions", func(t *testing.T) {
+		dir := t.TempDir()
+		c := &config.Config{Global: config.Global{Log: config.Log{
+			Path: dir + string(filepath.Separator),
+			Name: "polad.log",
+		}}}
+
+		fp, err := openLogFile(c)
+		require.NoError(t, err)
+		defer func() { _ = fp.Close() }()
+
+		info, err := fp.Stat()
+		require.NoError(t, err)
+		require.Equal(t, os.FileMode(0600), info.Mode().Perm())
+	})
+}
+
+func TestNewTEDElemsChan(t *testing.T) {
+	t.Run("returns nil when TED is not configured", func(t *testing.T) {
+		c := &config.Config{Global: config.Global{}}
+
+		ch, err := newTEDElemsChan(context.Background(), c, zap.NewNop(), nil)
+
+		require.NoError(t, err)
 		require.Nil(t, ch)
 	})
 
-	t.Run("returns channel when TED is configured", func(t *testing.T) {
+	t.Run("returns nil when TED is disabled", func(t *testing.T) {
+		c := &config.Config{Global: config.Global{TED: &config.TED{Enable: false}}}
+
+		ch, err := newTEDElemsChan(context.Background(), c, zap.NewNop(), nil)
+
+		require.NoError(t, err)
+		require.Nil(t, ch)
+	})
+
+	t.Run("returns an error when ASN is missing", func(t *testing.T) {
+		c := &config.Config{Global: config.Global{TED: &config.TED{Enable: true, Source: "gobgp"}}}
+
+		ch, err := newTEDElemsChan(context.Background(), c, zap.NewNop(), nil)
+
+		require.ErrorContains(t, err, "Global.TED.ASN")
+		require.Nil(t, ch)
+	})
+
+	t.Run("returns an error when the source is not supported", func(t *testing.T) {
+		c := &config.Config{Global: config.Global{TED: &config.TED{Enable: true, ASN: 65000, Source: "unknown"}}}
+
+		ch, err := newTEDElemsChan(context.Background(), c, zap.NewNop(), nil)
+
+		require.ErrorContains(t, err, "not defined")
+		require.Nil(t, ch)
+	})
+
+	t.Run("starts the configured monitor and returns a channel", func(t *testing.T) {
 		c := &config.Config{
 			Global: config.Global{
-				TED: &config.TED{
-					Enable: true,
-					ASN:    65000,
-					Source: "gobgp",
-				},
+				TED: &config.TED{Enable: true, ASN: 65000, Source: "gobgp"},
 				GoBGP: config.GoBGP{
-					GRPCClient: config.GRPCClient{
-						Address: "127.0.0.1",
-						Port:    "0",
-					},
+					GRPCClient: config.GRPCClient{Address: "127.0.0.1", Port: "0"},
 				},
 			},
 		}
+		called := make(chan struct{})
+		monitor := func(_ context.Context, addr, port string, _ chan []table.TEDElem, _ *zap.Logger) {
+			require.Equal(t, "127.0.0.1", addr)
+			require.Equal(t, "0", port)
+			close(called)
+		}
 
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ch, err := newTEDElemsChan(context.Background(), c, zap.NewNop(), monitor)
 
-		ch := startGoBGPUpdate(ctx, c, zap.NewNop())
-
+		require.NoError(t, err)
 		require.NotNil(t, ch)
+		<-called
+	})
+}
+
+func TestRun(t *testing.T) {
+	t.Run("prints the version and exits without touching config", func(t *testing.T) {
+		err := run([]string{"--version"}, runDeps{})
+
+		require.NoError(t, err)
+	})
+
+	t.Run("returns an error for an unrecognized flag", func(t *testing.T) {
+		err := run([]string{"-nonexistent-flag"}, defaultRunDeps())
+
+		require.Error(t, err)
+	})
+
+	t.Run("returns an error when the config file cannot be loaded", func(t *testing.T) {
+		err := run([]string{"-f", filepath.Join(t.TempDir(), "missing.yaml")}, defaultRunDeps())
+
+		require.ErrorContains(t, err, "failed to read config file")
+	})
+
+	t.Run("returns an error when the log file cannot be opened", func(t *testing.T) {
+		if os.Geteuid() == 0 {
+			t.Skip("running as root; directory permissions are not enforced")
+		}
+
+		c := validConfig(t)
+		blockedDir := filepath.Join(t.TempDir(), "blocked")
+		require.NoError(t, os.Mkdir(blockedDir, 0700))
+		require.NoError(t, os.Chmod(blockedDir, 0500))
+		t.Cleanup(func() { _ = os.Chmod(blockedDir, 0700) })
+		c.Global.Log.Path = filepath.Join(blockedDir, "nested") + string(filepath.Separator)
+		path := writeConfigFile(t, c)
+
+		err := run([]string{"-f", path}, defaultRunDeps())
+
+		require.ErrorContains(t, err, "failed to create log directory")
+	})
+
+	t.Run("returns an error when the config is invalid", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "polad.yaml")
+		require.NoError(t, os.WriteFile(path, []byte("global:\n  pcep:\n    address: \"127.0.0.1\"\n"), 0600))
+
+		err := run([]string{"-f", path}, defaultRunDeps())
+
+		require.ErrorContains(t, err, "invalid config file")
+	})
+
+	t.Run("returns an error when TED is misconfigured", func(t *testing.T) {
+		c := validConfig(t)
+		c.Global.TED = &config.TED{Enable: true, ASN: 65000, Source: "unsupported"}
+		path := writeConfigFile(t, c)
+
+		err := run([]string{"-f", path}, defaultRunDeps())
+
+		require.ErrorContains(t, err, "invalid config file")
+	})
+
+	t.Run("propagates the server error", func(t *testing.T) {
+		path := writeConfigFile(t, validConfig(t))
+		wantErr := errors.New("boom")
+		deps := runDeps{
+			newPCE: func(context.Context, *server.PCEOptions, *zap.Logger, chan []table.TEDElem) server.Error {
+				return server.Error{Server: "pcep", Error: wantErr}
+			},
+		}
+
+		err := run([]string{"-f", path}, deps)
+
+		require.ErrorContains(t, err, "pcep")
+		require.ErrorIs(t, err, wantErr)
+	})
+
+	t.Run("starts the server for a valid config", func(t *testing.T) {
+		path := writeConfigFile(t, validConfig(t))
+		called := make(chan struct{})
+		deps := runDeps{
+			newPCE: func(context.Context, *server.PCEOptions, *zap.Logger, chan []table.TEDElem) server.Error {
+				close(called)
+				return server.Error{}
+			},
+		}
+
+		err := run([]string{"-f", path}, deps)
+
+		require.NoError(t, err)
+		select {
+		case <-called:
+		default:
+			t.Fatal("expected newPCE to be called")
+		}
+	})
+}
+
+func TestMainRun(t *testing.T) {
+	t.Run("returns 0 on success", func(t *testing.T) {
+		require.Equal(t, 0, mainRun([]string{"--version"}))
+	})
+
+	t.Run("returns 1 when run fails", func(t *testing.T) {
+		require.Equal(t, 1, mainRun([]string{"-f", filepath.Join(t.TempDir(), "missing.yaml")}))
 	})
 }

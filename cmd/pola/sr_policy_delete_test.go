@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
@@ -18,6 +19,13 @@ import (
 )
 
 func TestNewSRPolicyDeleteCmd_RunE(t *testing.T) {
+	t.Run("file flag not registered", func(t *testing.T) {
+		cmd := newSRPolicyDeleteCmd()
+		err := cmd.RunE(&cobra.Command{}, []string{})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "'file' flag")
+	})
+
 	t.Run("missing file flag", func(t *testing.T) {
 		cmd := newSRPolicyDeleteCmd()
 		err := cmd.RunE(cmd, []string{})
@@ -72,8 +80,8 @@ func TestNewSRPolicyDeleteCmd_RunE(t *testing.T) {
 }
 
 func TestDeleteSRPolicy(t *testing.T) {
-	validPolicy := func() SRPolicy {
-		return SRPolicy{
+	validPolicy := func() srPolicy {
+		return srPolicy{
 			PCEPSessionAddr: netip.MustParseAddr("192.0.2.1"),
 			DstAddr:         netip.MustParseAddr("192.0.2.2"),
 			Color:           100,
@@ -82,7 +90,7 @@ func TestDeleteSRPolicy(t *testing.T) {
 	}
 
 	t.Run("missing mandatory fields", func(t *testing.T) {
-		err := deleteSRPolicy(InputFormat{}, false)
+		err := deleteSRPolicy(inputFormat{}, false)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid input")
 	})
@@ -91,7 +99,7 @@ func TestDeleteSRPolicy(t *testing.T) {
 		fake := &fakePCEServiceClient{}
 		client = fake
 		out := captureStdout(t, func() {
-			require.NoError(t, deleteSRPolicy(InputFormat{ASN: 65000, SRPolicy: validPolicy()}, false))
+			require.NoError(t, deleteSRPolicy(inputFormat{ASN: 65000, SRPolicy: validPolicy()}, false))
 		})
 		assert.Equal(t, "success!\n", out)
 
@@ -106,21 +114,21 @@ func TestDeleteSRPolicy(t *testing.T) {
 	t.Run("json output on success", func(t *testing.T) {
 		client = &fakePCEServiceClient{}
 		out := captureStdout(t, func() {
-			require.NoError(t, deleteSRPolicy(InputFormat{ASN: 65000, SRPolicy: validPolicy()}, true))
+			require.NoError(t, deleteSRPolicy(inputFormat{ASN: 65000, SRPolicy: validPolicy()}, true))
 		})
-		assert.Equal(t, "{\"status\": \"success\"}\n", out)
+		assert.JSONEq(t, "{\"status\": \"success\"}\n", out)
 	})
 
 	t.Run("grpc status error is unwrapped to its message", func(t *testing.T) {
 		client = &fakePCEServiceClient{deleteSRPolicyErr: status.Error(codes.NotFound, "SR policy not found")}
-		err := deleteSRPolicy(InputFormat{ASN: 65000, SRPolicy: validPolicy()}, false)
+		err := deleteSRPolicy(inputFormat{ASN: 65000, SRPolicy: validPolicy()}, false)
 		require.Error(t, err)
 		assert.Equal(t, "gRPC Server Error: SR policy not found", err.Error())
 	})
 
 	t.Run("plain grpc error falls back to Error()", func(t *testing.T) {
 		client = &fakePCEServiceClient{deleteSRPolicyErr: assert.AnError}
-		err := deleteSRPolicy(InputFormat{ASN: 65000, SRPolicy: validPolicy()}, false)
+		err := deleteSRPolicy(inputFormat{ASN: 65000, SRPolicy: validPolicy()}, false)
 		require.Error(t, err)
 		assert.Equal(t, "gRPC Server Error: "+assert.AnError.Error(), err.Error())
 	})

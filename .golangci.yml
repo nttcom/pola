@@ -1,8 +1,65 @@
 version: "2"
 
 linters:
+  default: standard
   enable:
+    - copyloopvar
+    - errorlint
+    - gocritic
     - gocyclo
+    - gosec
+    - intrange
+    - misspell
+    - nilerr
+    - nolintlint
+    - perfsprint
+    - revive
+    - testifylint
+    - unconvert
+    - usestdlibvars
+    - wastedassign
   settings:
     gocyclo:
       min-complexity: 15
+    gosec:
+      excludes:
+        # TODO: Remove after validating integer narrowing conversions.
+        - G115
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    revive:
+      rules:
+        - name: error-naming
+        - name: error-strings
+        - name: exported
+        - name: indent-error-flow
+        - name: receiver-naming
+        - name: unused-parameter
+        - name: unreachable-code
+        - name: var-naming
+  exclusions:
+    generated: lax
+    presets:
+      - std-error-handling
+    rules:
+      - path: _test\.go$
+        linters:
+          - gosec
+      - path: ^tools/coverage-diff/
+        linters:
+          - gosec
+      - path: ^examples/
+        text: exitAfterDefer
+        linters:
+          - gocritic
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  uniq-by-line: false
