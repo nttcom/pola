@@ -24,7 +24,7 @@ import (
 	"github.com/nttcom/pola/pkg/table"
 )
 
-const TEDUpdateInterval = 1 // (min)
+const tedUpdateInterval = 1 // (min)
 
 type flags struct {
 	configFile string

@@ -40,7 +40,7 @@ func newSRPolicyDeleteCmd() *cobra.Command {
 				}
 			}()
 
-			var inputData InputFormat
+			var inputData inputFormat
 			if err := yaml.NewDecoder(f).Decode(&inputData); err != nil {
 				return fmt.Errorf("YAML syntax error in file \"%s\": %v", filepath, err)
 			}
@@ -57,7 +57,7 @@ func newSRPolicyDeleteCmd() *cobra.Command {
 	return srPolicyDeleteCmd
 }
 
-func deleteSRPolicy(input InputFormat, jsonFlag bool) error {
+func deleteSRPolicy(input inputFormat, jsonFlag bool) error {
 	if !input.SRPolicy.PCEPSessionAddr.IsValid() || input.SRPolicy.Color == 0 || !input.SRPolicy.DstAddr.IsValid() || input.SRPolicy.Name == "" {
 		sampleInput := "srPolicy:\n" +
 			"  pcepSessionAddr: 192.0.2.1\n" +
