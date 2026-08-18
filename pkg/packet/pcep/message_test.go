@@ -20,12 +20,12 @@ func TestPCErrMessage_RoundTrip(t *testing.T) {
 
 	cases := map[string]*PCErrMessage{
 		"SingleError": {
-			Errors: []*PCEPErrorObject{
+			Errors: []*ErrorObject{
 				{ObjectType: ObjectTypeErrorError, ErrorType: 6, ErrorValue: 1},
 			},
 		},
 		"MultipleErrors": {
-			Errors: []*PCEPErrorObject{
+			Errors: []*ErrorObject{
 				{ObjectType: ObjectTypeErrorError, ErrorType: 6, ErrorValue: 1},
 				{ObjectType: ObjectTypeErrorError, ErrorType: 19, ErrorValue: 1},
 			},
@@ -34,7 +34,7 @@ func TestPCErrMessage_RoundTrip(t *testing.T) {
 			SRPs: []*SrpObject{
 				{ObjectType: ObjectTypeSRPSRP, SrpID: 42},
 			},
-			Errors: []*PCEPErrorObject{
+			Errors: []*ErrorObject{
 				{ObjectType: ObjectTypeErrorError, ErrorType: 24, ErrorValue: 1},
 			},
 		},
@@ -43,7 +43,7 @@ func TestPCErrMessage_RoundTrip(t *testing.T) {
 				{ObjectType: ObjectTypeSRPSRP, SrpID: 1},
 				{ObjectType: ObjectTypeSRPSRP, RFlag: true, SrpID: 2},
 			},
-			Errors: []*PCEPErrorObject{
+			Errors: []*ErrorObject{
 				{ObjectType: ObjectTypeErrorError, ErrorType: 6, ErrorValue: 8},
 				{ObjectType: ObjectTypeErrorError, ErrorType: 6, ErrorValue: 9},
 			},
@@ -87,7 +87,7 @@ func TestPCErrMessage_Serialize_Errors(t *testing.T) {
 	t.Run("ErrorObjectSerializeError", func(t *testing.T) {
 		t.Parallel()
 
-		m := PCErrMessage{Errors: []*PCEPErrorObject{{Tlvs: []TLVInterface{&UnknownTLV{Value: make([]byte, 65536)}}}}}
+		m := PCErrMessage{Errors: []*ErrorObject{{Tlvs: []TLVInterface{&UnknownTLV{Value: make([]byte, 65536)}}}}}
 		_, err := m.Serialize()
 		assert.Error(t, err)
 	})
@@ -95,7 +95,7 @@ func TestPCErrMessage_Serialize_Errors(t *testing.T) {
 	t.Run("MessageLengthOverflow", func(t *testing.T) {
 		t.Parallel()
 
-		m := PCErrMessage{Errors: []*PCEPErrorObject{{Tlvs: []TLVInterface{&UnknownTLV{Value: make([]byte, 65520)}}}}}
+		m := PCErrMessage{Errors: []*ErrorObject{{Tlvs: []TLVInterface{&UnknownTLV{Value: make([]byte, 65520)}}}}}
 		_, err := m.Serialize()
 		assert.ErrorContains(t, err, "exceeds")
 	})
@@ -435,7 +435,7 @@ func TestNewPCErrMessage(t *testing.T) {
 	m := NewPCErrMessage(6, 1, tlvs)
 
 	want := &PCErrMessage{
-		Errors: []*PCEPErrorObject{{ObjectType: ObjectTypeErrorError, ErrorType: 6, ErrorValue: 1, Tlvs: tlvs}},
+		Errors: []*ErrorObject{{ObjectType: ObjectTypeErrorError, ErrorType: 6, ErrorValue: 1, Tlvs: tlvs}},
 	}
 	assert.Equal(t, want, m)
 }

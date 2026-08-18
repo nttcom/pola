@@ -5,6 +5,7 @@
 
 package pcep
 
+// CapabilityInterface is a common interface for PCEP capability TLVs.
 type CapabilityInterface interface {
 	TLVInterface
 	CapStrings() []string

@@ -19,8 +19,11 @@ const EnterpriseNumberLength uint16 = 4
 
 // Enterprise Numbers of vendors whose PCEP implementation has been verified against pola.
 const (
-	EnterpriseNumberCisco   EnterpriseNumber = 9
-	EnterpriseNumberHuawei  EnterpriseNumber = 2011
+	// EnterpriseNumberCisco is the IANA enterprise number for Cisco.
+	EnterpriseNumberCisco EnterpriseNumber = 9
+	// EnterpriseNumberHuawei is the IANA enterprise number for Huawei.
+	EnterpriseNumberHuawei EnterpriseNumber = 2011
+	// EnterpriseNumberJuniper is the IANA enterprise number for Juniper.
 	EnterpriseNumberJuniper EnterpriseNumber = 2636
 )
 
@@ -31,6 +34,7 @@ var enterpriseNumberNames = map[EnterpriseNumber]string{
 	EnterpriseNumberJuniper: "Juniper",
 }
 
+// String returns a human-readable representation of the enterprise number.
 func (en EnterpriseNumber) String() string {
 	if name, ok := enterpriseNumberNames[en]; ok {
 		return fmt.Sprintf("%s (%d)", name, uint32(en))

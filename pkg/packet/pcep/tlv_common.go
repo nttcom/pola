@@ -63,6 +63,7 @@ func tlvValueLength(n int) (uint16, error) {
 	return uint16(n), nil
 }
 
+// IPv4InIPv6Offset is the byte offset of the embedded IPv4 address within an IPv4-mapped IPv6 address.
 const (
 	IPv4InIPv6Offset = 12
 )

@@ -756,10 +756,10 @@ func TestLSPAObject_DecodeFromBytes_TooShort(t *testing.T) {
 	}
 }
 
-func TestPCEPErrorObject_RoundTrip(t *testing.T) {
+func TestErrorObject_RoundTrip(t *testing.T) {
 	t.Parallel()
 
-	cases := map[string]PCEPErrorObject{
+	cases := map[string]ErrorObject{
 		"SessionFailure": {
 			ObjectType: ObjectTypeErrorError,
 			ErrorType:  1,
@@ -793,7 +793,7 @@ func TestPCEPErrorObject_RoundTrip(t *testing.T) {
 			require.NoError(t, err, "Serialize failed")
 			require.Equal(t, want.Len(), len(raw), "Len() must match serialized size")
 
-			var got PCEPErrorObject
+			var got ErrorObject
 			require.NoError(t,
 				got.DecodeFromBytes(ObjectTypeErrorError, raw[commonObjectHeaderLength:]),
 				"DecodeFromBytes failed",
@@ -807,19 +807,19 @@ func TestPCEPErrorObject_RoundTrip(t *testing.T) {
 	}
 }
 
-func TestPCEPErrorObject_Serialize_Error(t *testing.T) {
+func TestErrorObject_Serialize_Error(t *testing.T) {
 	t.Parallel()
 
-	o := PCEPErrorObject{Tlvs: []TLVInterface{&UnknownTLV{Value: make([]byte, 65536)}}}
+	o := ErrorObject{Tlvs: []TLVInterface{&UnknownTLV{Value: make([]byte, 65536)}}}
 	_, err := o.Serialize()
 	assert.Error(t, err)
 }
 
-func TestPCEPErrorObject_Serialize_ObjectLengthBoundary(t *testing.T) {
+func TestErrorObject_Serialize_ObjectLengthBoundary(t *testing.T) {
 	t.Parallel()
 
 	// 4(header) + 4(fixed error fields) + TLVValueOffset(4)+65531(value) = 65543: exceeds the 16-bit Object-Length field.
-	o := PCEPErrorObject{Tlvs: []TLVInterface{&UnknownTLV{Value: make([]byte, 65531)}}}
+	o := ErrorObject{Tlvs: []TLVInterface{&UnknownTLV{Value: make([]byte, 65531)}}}
 	_, err := o.Serialize()
 	assert.ErrorContains(t, err, "exceeds")
 }
@@ -1856,19 +1856,19 @@ func TestNewLSPAObject(t *testing.T) {
 	assert.Equal(t, &LSPAObject{ObjectType: ObjectType(1), SetupPriority: 7, HoldingPriority: 7, LFlag: true}, o)
 }
 
-func TestPCEPErrorObject_DecodeFromBytes_TooShort(t *testing.T) {
+func TestErrorObject_DecodeFromBytes_TooShort(t *testing.T) {
 	t.Parallel()
 
-	var o PCEPErrorObject
+	var o ErrorObject
 	assert.Error(t, o.DecodeFromBytes(ObjectTypeErrorError, []uint8{0x00, 0x00, 0x01}))
 }
 
-func TestNewPCEPErrorObject(t *testing.T) {
+func TestNewErrorObject(t *testing.T) {
 	t.Parallel()
 
 	tlvs := []TLVInterface{&SymbolicPathName{Name: "err"}}
-	o := NewPCEPErrorObject(6, 1, tlvs)
-	assert.Equal(t, &PCEPErrorObject{ObjectType: ObjectTypeErrorError, ErrorType: 6, ErrorValue: 1, Tlvs: tlvs}, o)
+	o := NewErrorObject(6, 1, tlvs)
+	assert.Equal(t, &ErrorObject{ObjectType: ObjectTypeErrorError, ErrorType: 6, ErrorValue: 1, Tlvs: tlvs}, o)
 }
 
 func TestCloseReason_String(t *testing.T) {

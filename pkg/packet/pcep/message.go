@@ -15,13 +15,16 @@ import (
 	"github.com/nttcom/pola/pkg/table"
 )
 
+// CommonHeaderLength is the wire length of a PCEP common header.
 const CommonHeaderLength uint16 = 4
 
+// PCEPVersion is the current PCEP protocol version.
 const PCEPVersion uint8 = 1
 
-// PCEP Message-Type (1 byte)
+// MessageType is a PCEP message type code.
 type MessageType uint8
 
+// PCEP message types.
 const (
 	MessageTypeOpen         MessageType = 0x01
 	MessageTypeKeepalive    MessageType = 0x02
@@ -64,6 +67,7 @@ func (t MessageType) String() string {
 	return fmt.Sprintf("Unknown MessageType (0x%02x)", uint8(t))
 }
 
+// StringWithReference returns a human-readable representation of the message type with reference.
 func (t MessageType) StringWithReference() string {
 	if desc, ok := messageTypeDescriptions[t]; ok {
 		return fmt.Sprintf("%s (0x%02x) [%s]", desc.Description, uint8(t), desc.Reference)
@@ -71,7 +75,7 @@ func (t MessageType) StringWithReference() string {
 	return fmt.Sprintf("Unknown MessageType (0x%02x)", uint8(t))
 }
 
-// Common header of PCEP Message
+// CommonHeader is the common header of a PCEP message (RFC5440 6.1).
 type CommonHeader struct { // RFC5440 6.1
 	Version       uint8 // Current version is 1
 	Flag          uint8
@@ -79,6 +83,7 @@ type CommonHeader struct { // RFC5440 6.1
 	MessageLength uint16
 }
 
+// DecodeFromBytes decodes the given bytes into the CommonHeader.
 func (h *CommonHeader) DecodeFromBytes(header []uint8) error {
 	if len(header) < int(CommonHeaderLength) {
 		return fmt.Errorf("PCEP common header too short: got %d bytes, need %d", len(header), CommonHeaderLength)
@@ -101,6 +106,7 @@ func (h *CommonHeader) DecodeFromBytes(header []uint8) error {
 	return nil
 }
 
+// Serialize encodes the CommonHeader into bytes.
 func (h *CommonHeader) Serialize() []uint8 {
 	buf := make([]uint8, 0, 4)
 	verFlag := uint8(h.Version<<5 | h.Flag)
@@ -110,6 +116,7 @@ func (h *CommonHeader) Serialize() []uint8 {
 	return buf
 }
 
+// NewCommonHeader creates a new CommonHeader.
 func NewCommonHeader(messageType MessageType, messageLength uint16) *CommonHeader {
 	h := &CommonHeader{
 		Version:       PCEPVersion,
@@ -133,6 +140,7 @@ func messageLength(objects ...[]uint8) (uint16, error) {
 	return uint16(total), nil
 }
 
+// Message is a common interface for all PCEP messages.
 type Message interface {
 	Serialize() ([]uint8, error)
 }
@@ -156,11 +164,12 @@ func objectBody(messageBody []uint8, h *CommonObjectHeader) ([]uint8, error) {
 	return messageBody[commonObjectHeaderLength:h.ObjectLength], nil
 }
 
-// Open Message
+// OpenMessage is a PCEP Open message.
 type OpenMessage struct {
 	OpenObject *OpenObject
 }
 
+// DecodeFromBytes decodes the given bytes into the OpenMessage.
 func (m *OpenMessage) DecodeFromBytes(messageBody []uint8) error {
 	var commonObjectHeader CommonObjectHeader
 	if err := commonObjectHeader.DecodeFromBytes(messageBody); err != nil {
@@ -191,6 +200,7 @@ func (m *OpenMessage) DecodeFromBytes(messageBody []uint8) error {
 	return nil
 }
 
+// Serialize encodes the OpenMessage into bytes.
 func (m *OpenMessage) Serialize() ([]uint8, error) {
 	byteOpenObject, err := m.OpenObject.Serialize()
 	if err != nil {
@@ -206,16 +216,18 @@ func (m *OpenMessage) Serialize() ([]uint8, error) {
 	return byteOpenMessage, nil
 }
 
+// NewOpenMessage creates a new OpenMessage.
 func NewOpenMessage(sessionID uint8, keepalive uint8, capabilities []CapabilityInterface) *OpenMessage {
 	return &OpenMessage{
 		OpenObject: NewOpenObject(sessionID, keepalive, capabilities),
 	}
 }
 
-// Keepalive Message
+// KeepaliveMessage is a PCEP Keepalive message.
 type KeepaliveMessage struct {
 }
 
+// Serialize encodes the KeepaliveMessage into bytes.
 func (m *KeepaliveMessage) Serialize() ([]uint8, error) {
 	keepaliveMessageLength := CommonHeaderLength
 	keepaliveHeader := NewCommonHeader(MessageTypeKeepalive, keepaliveMessageLength)
@@ -224,16 +236,18 @@ func (m *KeepaliveMessage) Serialize() ([]uint8, error) {
 	return byteKeepaliveMessage, nil
 }
 
+// NewKeepaliveMessage creates a new KeepaliveMessage.
 func NewKeepaliveMessage() *KeepaliveMessage {
 	return &KeepaliveMessage{}
 }
 
-// PCErr Message
+// PCErrMessage represents a PCEP Error message containing error objects and SRP objects.
 type PCErrMessage struct {
-	Errors []*PCEPErrorObject
+	Errors []*ErrorObject
 	SRPs   []*SrpObject
 }
 
+// DecodeFromBytes decodes the given bytes into the PCErrMessage.
 func (m *PCErrMessage) DecodeFromBytes(messageBody []uint8) error {
 	for offset := 0; offset < len(messageBody); {
 		if len(messageBody)-offset < int(commonObjectHeaderLength) {
@@ -250,7 +264,7 @@ func (m *PCErrMessage) DecodeFromBytes(messageBody []uint8) error {
 
 		switch commonObjectHeader.ObjectClass {
 		case ObjectClassPCEPError:
-			errObj := &PCEPErrorObject{}
+			errObj := &ErrorObject{}
 			if err := errObj.DecodeFromBytes(commonObjectHeader.ObjectType, body); err != nil {
 				return err
 			}
@@ -271,6 +285,7 @@ func (m *PCErrMessage) DecodeFromBytes(messageBody []uint8) error {
 	return nil
 }
 
+// Serialize encodes the PCErrMessage into bytes.
 func (m *PCErrMessage) Serialize() ([]uint8, error) {
 	objects := make([][]uint8, 0, len(m.SRPs)+len(m.Errors))
 	for _, srp := range m.SRPs {
@@ -309,17 +324,19 @@ func (m *PCErrMessage) SRPIDs() []uint32 {
 	return ids
 }
 
+// NewPCErrMessage creates a new PCErrMessage.
 func NewPCErrMessage(errorType uint8, errorValue uint8, tlvs []TLVInterface) *PCErrMessage {
 	return &PCErrMessage{
-		Errors: []*PCEPErrorObject{NewPCEPErrorObject(errorType, errorValue, tlvs)},
+		Errors: []*ErrorObject{NewErrorObject(errorType, errorValue, tlvs)},
 	}
 }
 
-// Close Message
+// CloseMessage is a PCEP Close message.
 type CloseMessage struct {
 	CloseObject *CloseObject
 }
 
+// DecodeFromBytes decodes the given bytes into the CloseMessage.
 func (m *CloseMessage) DecodeFromBytes(messageBody []uint8) error {
 	var commonObjectHeader CommonObjectHeader
 	if err := commonObjectHeader.DecodeFromBytes(messageBody); err != nil {
@@ -346,6 +363,7 @@ func (m *CloseMessage) DecodeFromBytes(messageBody []uint8) error {
 	return nil
 }
 
+// Serialize encodes the CloseMessage into bytes.
 func (m *CloseMessage) Serialize() ([]uint8, error) {
 	byteCloseObject := m.CloseObject.Serialize()
 	closeMessageLength, err := messageLength(byteCloseObject)
@@ -358,12 +376,14 @@ func (m *CloseMessage) Serialize() ([]uint8, error) {
 	return byteCloseMessage, nil
 }
 
+// NewCloseMessage creates a new CloseMessage.
 func NewCloseMessage(reason CloseReason) *CloseMessage {
 	return &CloseMessage{
 		CloseObject: NewCloseObject(reason),
 	}
 }
 
+// StateReport is a state report carried in a PCRpt message.
 type StateReport struct {
 	SrpObject               *SrpObject
 	LSPObject               *LSPObject
@@ -375,6 +395,7 @@ type StateReport struct {
 	VendorInformationObject *VendorInformationObject
 }
 
+// NewStateReport creates a new StateReport.
 func NewStateReport() *StateReport {
 	return &StateReport{
 		SrpObject:               &SrpObject{},
@@ -435,7 +456,7 @@ func (r *StateReport) decodeVendorInformationObject(objectType ObjectType, objec
 	return r.VendorInformationObject.DecodeFromBytes(objectType, objectBody)
 }
 
-// PCRpt Message
+// PCRptMessage represents a PCEP Report message containing state reports.
 type PCRptMessage struct {
 	StateReports []*StateReport
 }
@@ -451,6 +472,7 @@ var decodeFuncs = map[ObjectClass]func(*StateReport, ObjectType, []uint8) error{
 	ObjectClassVendorInformation: (*StateReport).decodeVendorInformationObject,
 }
 
+// DecodeFromBytes decodes the given bytes into the PCRptMessage.
 func (m *PCRptMessage) DecodeFromBytes(messageBody []uint8) error {
 	var previousObjectClass ObjectClass
 	var sr *StateReport
@@ -504,13 +526,14 @@ func (m *PCRptMessage) DecodeFromBytes(messageBody []uint8) error {
 	return nil
 }
 
+// NewPCRptMessage creates a new PCRptMessage.
 func NewPCRptMessage() *PCRptMessage {
 	return &PCRptMessage{
 		StateReports: []*StateReport{},
 	}
 }
 
-// PCInitiate Message
+// PCInitiateMessage is a PCEP LSP Initiate Request message.
 type PCInitiateMessage struct {
 	SrpObject               *SrpObject
 	LSPObject               *LSPObject
@@ -520,6 +543,7 @@ type PCInitiateMessage struct {
 	VendorInformationObject *VendorInformationObject
 }
 
+// Serialize encodes the PCInitiateMessage into bytes.
 func (m *PCInitiateMessage) Serialize() ([]uint8, error) {
 	byteSrpObject, err := m.SrpObject.Serialize()
 	if err != nil {
@@ -571,6 +595,7 @@ func (m *PCInitiateMessage) Serialize() ([]uint8, error) {
 	return bytePCInitiateMessage, nil
 }
 
+// NewPCInitiateMessage creates a new PCInitiateMessage.
 func NewPCInitiateMessage(srpID uint32, lspName string, lspDelete bool, plspID uint32, segmentList []table.Segment, color uint32, preference uint32, srcAddr netip.Addr, dstAddr netip.Addr, opt ...Opt) (*PCInitiateMessage, error) {
 	opts := optParams{
 		pccType: RFCCompliant,
@@ -623,13 +648,14 @@ func NewPCInitiateMessage(srpID uint32, lspName string, lspDelete bool, plspID u
 	return m, nil
 }
 
-// PCUpdate Message
+// PCUpdMessage is a PCEP Update message.
 type PCUpdMessage struct {
 	SrpObject *SrpObject
 	LSPObject *LSPObject
 	EroObject *EroObject
 }
 
+// Serialize encodes the PCUpdMessage into bytes.
 func (m *PCUpdMessage) Serialize() ([]uint8, error) {
 	byteSrpObject, err := m.SrpObject.Serialize()
 	if err != nil {
@@ -654,6 +680,7 @@ func (m *PCUpdMessage) Serialize() ([]uint8, error) {
 	return bytePCUpdMessage, nil
 }
 
+// NewPCUpdMessage creates a new PCUpdMessage.
 func NewPCUpdMessage(srpID uint32, lspName string, plspID uint32, segmentList []table.Segment) (*PCUpdMessage, error) {
 	m := &PCUpdMessage{}
 	var err error
