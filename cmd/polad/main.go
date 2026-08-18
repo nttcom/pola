@@ -29,18 +29,15 @@ type flags struct {
 }
 
 func main() {
-	// Check if --version flag was passed
 	if len(os.Args) > 1 && os.Args[1] == "--version" {
 		fmt.Println("polad " + version.Version())
 		return
 	}
 
-	// Parse flags
 	f := &flags{}
 	flag.StringVar(&f.configFile, "f", "polad.yaml", "Specify a configuration file")
 	flag.Parse()
 
-	// Read configuration file
 	c, err := config.ReadConfigFile(f.configFile)
 	if err != nil {
 		log.Panicf("failed to read config file: %v", err)
@@ -49,16 +46,18 @@ func main() {
 		log.Panicf("invalid config file: %v", err)
 	}
 
-	// Create log directory if it does not exist. Logs can carry topology and
-	// peer details, so they stay readable only by the daemon's own user.
+	// Keep log files private because they may contain topology and peer details.
 	if err := os.MkdirAll(c.Global.Log.Path, 0750); err != nil {
 		log.Panicf("failed to create log directory: %v", err)
 	}
 
-	// Open log file
 	fp, err := os.OpenFile(c.Global.Log.Path+c.Global.Log.Name, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0600)
 	if err != nil {
 		log.Panicf("failed to open log file: %v", err)
+	}
+	// OpenFile's mode does not apply to existing files.
+	if err := fp.Chmod(0600); err != nil {
+		log.Panicf("failed to restrict log file permissions: %v", err)
 	}
 	defer func() {
 		if err := fp.Close(); err != nil {
@@ -66,7 +65,6 @@ func main() {
 		}
 	}()
 
-	// Initialize logger
 	logger := logger.LogInit(fp, c.Global.Log.Debug)
 	defer func() {
 		if err := logger.Sync(); err != nil {
@@ -78,11 +76,9 @@ func main() {
 		logger.Panic("TED is enabled but Global.TED.ASN is missing or invalid")
 	}
 
-	// Handle SIGINT/SIGTERM for graceful shutdown.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Prepare TED update tools
 	var tedElemsChan chan []table.TEDElem
 	if c.Global.TED.Enable {
 		switch c.Global.TED.Source {
@@ -96,7 +92,6 @@ func main() {
 		}
 	}
 
-	// Start PCE server
 	o := &server.PCEOptions{
 		PCEPAddr:  c.Global.PCEP.Address,
 		PCEPPort:  c.Global.PCEP.Port,

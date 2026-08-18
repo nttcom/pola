@@ -1238,7 +1238,7 @@ func (pst Pst) String() string {
 type Psts []Pst
 
 // MarshalJSON encodes the list as a JSON array of numeric Path Setup Type
-// values, or as null when the list itself is nil..
+// values, or as null when the list itself is nil.
 func (ts Psts) MarshalJSON() ([]byte, error) {
 	if ts == nil {
 		return []byte("null"), nil
