@@ -18,9 +18,13 @@ import (
 type PolicyState string
 
 const (
-	PolicyDown    = PolicyState("down")
-	PolicyUp      = PolicyState("up")
-	PolicyActive  = PolicyState("active")
+	// PolicyDown indicates that the SR Policy is down.
+	PolicyDown = PolicyState("down")
+	// PolicyUp indicates that the SR Policy is up.
+	PolicyUp = PolicyState("up")
+	// PolicyActive indicates that the SR Policy is active.
+	PolicyActive = PolicyState("active")
+	// PolicyUnknown indicates that the SR Policy state is unknown.
 	PolicyUnknown = PolicyState("unknown")
 )
 
@@ -29,10 +33,13 @@ const (
 type PolicyType string
 
 const (
+	// PolicyTypeExplicit indicates an explicit path SR Policy candidate path.
 	PolicyTypeExplicit = PolicyType("explicit")
-	PolicyTypeDynamic  = PolicyType("dynamic")
+	// PolicyTypeDynamic indicates a dynamic SR Policy candidate path.
+	PolicyTypeDynamic = PolicyType("dynamic")
 )
 
+// SRPolicy represents an SR Policy with its path and attributes.
 type SRPolicy struct {
 	PlspID      uint32      `json:"plspId,omitempty"`
 	Name        string      `json:"policyName"`
@@ -50,6 +57,7 @@ type SRPolicy struct {
 	Metric MetricType `json:"metric,omitempty"`
 }
 
+// NewSRPolicy creates a new SR Policy with the given attributes.
 func NewSRPolicy(
 	plspID uint32,
 	name string,
@@ -86,6 +94,7 @@ type PolicyDiff struct {
 	State       PolicyState
 }
 
+// Update modifies the SR Policy with the attributes specified in the diff.
 func (p *SRPolicy) Update(df PolicyDiff) {
 	p.State = df.State
 	p.LSPID = df.LSPID
@@ -103,8 +112,10 @@ func (p *SRPolicy) Update(df PolicyDiff) {
 	}
 }
 
+// SRv6SIDBitLength is the bit length of an SRv6 SID (128 bits).
 const SRv6SIDBitLength = 128
 
+// Segment is an interface for SR Policy segments (SRv6 or SR-MPLS).
 type Segment interface {
 	SidString() string
 }
@@ -120,6 +131,7 @@ func segmentFamily(segment Segment) SegmentFamily {
 	}
 }
 
+// NewSegment creates a Segment from a SID string, which can be either an IPv6 address (SRv6) or a number (SR-MPLS).
 func NewSegment(sid string) (Segment, error) {
 	addr, err := netip.ParseAddr(sid)
 	if err == nil && addr.Is6() {
@@ -135,15 +147,24 @@ func NewSegment(sid string) (Segment, error) {
 }
 
 const (
+	// BehaviorReserved is a reserved endpoint behavior value.
 	BehaviorReserved uint16 = 0x0000
-	BehaviorEND      uint16 = 0x0001
-	BehaviorENDX     uint16 = 0x0005
-	BehaviorUNFirst  uint16 = 0x002B
-	BehaviorUNLast   uint16 = 0x0032
-	BehaviorUAFirst  uint16 = 0x0034
-	BehaviorUALast   uint16 = 0x003B
-	BehaviorUN       uint16 = 0x0030
-	BehaviorUA       uint16 = 0x0039
+	// BehaviorEND is the END endpoint behavior.
+	BehaviorEND uint16 = 0x0001
+	// BehaviorENDX is the End.X endpoint behavior.
+	BehaviorENDX uint16 = 0x0005
+	// BehaviorUNFirst is the first uN endpoint behavior value.
+	BehaviorUNFirst uint16 = 0x002B
+	// BehaviorUNLast is the last uN endpoint behavior value.
+	BehaviorUNLast uint16 = 0x0032
+	// BehaviorUAFirst is the first uA endpoint behavior value.
+	BehaviorUAFirst uint16 = 0x0034
+	// BehaviorUALast is the last uA endpoint behavior value.
+	BehaviorUALast uint16 = 0x003B
+	// BehaviorUN is the uN endpoint behavior.
+	BehaviorUN uint16 = 0x0030
+	// BehaviorUA is the uA endpoint behavior.
+	BehaviorUA uint16 = 0x0039
 	// BehaviorOpaque represents an unknown endpoint behavior (RFC 9603 §4.3.1).
 	BehaviorOpaque uint16 = 0xFFFF
 )
@@ -154,6 +175,7 @@ func IsUSidBehavior(behavior uint16) bool {
 		(behavior >= BehaviorUAFirst && behavior <= BehaviorUALast)
 }
 
+// BehaviorToString returns the string representation of an endpoint behavior.
 func BehaviorToString(behavior uint16) string {
 	switch {
 	case behavior == BehaviorReserved:
@@ -171,12 +193,14 @@ func BehaviorToString(behavior uint16) string {
 	}
 }
 
-const FirstSIDIndex = 0 // Index for first SID in Sids array
+// FirstSIDIndex is the index for the first SID in the SRv6 SID array.
+const FirstSIDIndex = 0
 
 // SIDStructureBytes is the [LocalBlock, LocalNode, LocalFunc, LocalArg] length split of an SRv6 SID.
 // It marshals as a comma-separated string (e.g. "32,16,0,80").
 type SIDStructureBytes []uint8
 
+// MarshalJSON returns the JSON representation of SIDStructureBytes as a comma-separated string.
 func (s SIDStructureBytes) MarshalJSON() ([]byte, error) {
 	if len(s) == 0 {
 		return json.Marshal(nil)
@@ -203,6 +227,7 @@ func (s SIDStructureBytes) Validate() error {
 	return nil
 }
 
+// SegmentSRv6 represents an SRv6 segment.
 type SegmentSRv6 struct {
 	Sid        netip.Addr        `json:"sid"`
 	LocalAddr  netip.Addr        `json:"localAddr,omitzero"`
@@ -211,10 +236,12 @@ type SegmentSRv6 struct {
 	USid       bool              `json:"uSid,omitempty"`
 }
 
+// SidString returns the SRv6 SID as a string.
 func (seg SegmentSRv6) SidString() string {
 	return seg.Sid.String()
 }
 
+// Behavior returns the endpoint behavior of the SRv6 segment based on its attributes.
 func (seg SegmentSRv6) Behavior() uint16 {
 	if !seg.LocalAddr.IsValid() {
 		return BehaviorOpaque
@@ -231,12 +258,14 @@ func (seg SegmentSRv6) Behavior() uint16 {
 	return BehaviorEND
 }
 
+// NewSegmentSRv6 creates a new SRv6 segment with the given SID.
 func NewSegmentSRv6(sid netip.Addr) SegmentSRv6 {
 	return SegmentSRv6{
 		Sid: sid,
 	}
 }
 
+// NewSegmentSRv6WithNodeInfo creates a new SRv6 segment with the given SID and enriches it with node information from the TED.
 func NewSegmentSRv6WithNodeInfo(sid netip.Addr, n *LsNode) (SegmentSRv6, error) {
 	seg := SegmentSRv6{
 		Sid: sid,
@@ -269,6 +298,7 @@ func NewSegmentSRv6WithNodeInfo(sid netip.Addr, n *LsNode) (SegmentSRv6, error) 
 	return seg, nil
 }
 
+// SegmentSRMPLS represents an SR-MPLS segment.
 type SegmentSRMPLS struct {
 	Sid uint32 `json:"sid"`
 	TTL uint8  `json:"ttl,omitempty"`
@@ -279,26 +309,31 @@ type SegmentSRMPLS struct {
 	RemoteAddr netip.Addr `json:"remoteAddr,omitzero"`
 }
 
+// SidString returns the SR-MPLS SID as a string.
 func (seg SegmentSRMPLS) SidString() string {
 	return strconv.Itoa(int(seg.Sid))
 }
 
+// HasMPLSStackEntryAttrs reports whether the SR-MPLS segment has any MPLS stack entry attributes set.
 func (seg SegmentSRMPLS) HasMPLSStackEntryAttrs() bool {
 	return seg.TC != 0 || seg.S || seg.TTL != 0
 }
 
+// NewSegmentSRMPLS creates a new SR-MPLS segment with the given SID.
 func NewSegmentSRMPLS(sid uint32) SegmentSRMPLS {
 	return SegmentSRMPLS{
 		Sid: sid,
 	}
 }
 
+// Equal reports whether this SRv6 segment is equal to another.
 func (seg SegmentSRv6) Equal(other SegmentSRv6) bool {
 	return seg.Sid == other.Sid &&
 		seg.LocalAddr == other.LocalAddr &&
 		seg.RemoteAddr == other.RemoteAddr
 }
 
+// Equal reports whether this SR-MPLS segment is equal to another.
 func (seg SegmentSRMPLS) Equal(other SegmentSRMPLS) bool {
 	// Compare only the MPLS SID; the NAI does not change the hop.
 	return seg.Sid == other.Sid
@@ -325,10 +360,14 @@ type Waypoint struct {
 	SID      string // optional: fixed SID override
 }
 
+// SegmentFamily is an enumeration for segment types.
 type SegmentFamily int
 
 const (
+	// SegmentUnknown indicates an unknown segment type.
 	SegmentUnknown SegmentFamily = iota
+	// SegmentSRv6Family indicates an SRv6 segment type.
 	SegmentSRv6Family
+	// SegmentSRMPLSFamily indicates an SR-MPLS segment type.
 	SegmentSRMPLSFamily
 )

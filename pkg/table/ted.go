@@ -12,10 +12,12 @@ import (
 	"net/netip"
 )
 
+// LsTED represents a Traffic Engineering Database built from BGP-LS data.
 type LsTED struct {
 	Nodes map[string]*LsNode // {"NodeID1": node1, "NodeID2": node2}
 }
 
+// Update updates the TED with the given elements for the specified ASN.
 func (ted *LsTED) Update(tedElems []TEDElem, asn uint32) {
 	for _, tedElem := range tedElems {
 		tedElem.UpdateTED(ted, asn)
@@ -154,10 +156,12 @@ func printNodeSRv6SIDs(node *LsNode) {
 	}
 }
 
+// TEDElem is an interface for elements that can update the TED.
 type TEDElem interface {
 	UpdateTED(ted *LsTED, cfgASN uint32)
 }
 
+// LsNode represents a node in the BGP-LS TED.
 type LsNode struct {
 	ASN        uint32 // primary key, in MP_REACH_NLRI Attr
 	RouterID   string // primary key, in MP_REACH_NLRI Attr
@@ -170,6 +174,7 @@ type LsNode struct {
 	SRv6SIDs   []*LsSrv6SID
 }
 
+// NewLsNode creates a new BGP-LS node with the given ASN and router ID.
 func NewLsNode(asn uint32, nodeID string) *LsNode {
 	return &LsNode{
 		ASN:      asn,
@@ -177,6 +182,7 @@ func NewLsNode(asn uint32, nodeID string) *LsNode {
 	}
 }
 
+// NodeSegment returns a Segment for this node (either SR-MPLS or SRv6).
 func (n *LsNode) NodeSegment() (Segment, error) {
 	// for SR-MPLS Segment
 	for _, prefix := range n.Prefixes {
@@ -208,6 +214,7 @@ func (n *LsNode) NodeSegment() (Segment, error) {
 	return nil, errors.New("node doesn't have a Node SID")
 }
 
+// LoopbackAddr returns the loopback address of the node.
 func (n *LsNode) LoopbackAddr() (netip.Addr, error) {
 	for _, prefix := range n.Prefixes {
 		if prefix.Prefix.Addr().Is4() {
@@ -224,6 +231,7 @@ func (n *LsNode) LoopbackAddr() (netip.Addr, error) {
 	return netip.Addr{}, errors.New("node doesn't have a loopback address")
 }
 
+// UpdateTED updates the TED with this node's information.
 func (n *LsNode) UpdateTED(ted *LsTED, cfgASN uint32) {
 	nodes := ted.Nodes
 
@@ -241,10 +249,12 @@ func (n *LsNode) UpdateTED(ted *LsTED, cfgASN uint32) {
 	}
 }
 
+// AddLink adds a link to this node.
 func (n *LsNode) AddLink(link *LsLink) {
 	n.Links = append(n.Links, link)
 }
 
+// LsLink represents a link in the BGP-LS TED.
 type LsLink struct {
 	LocalNode   *LsNode      // Primary key, in MP_REACH_NLRI Attr
 	RemoteNode  *LsNode      // Primary key, in MP_REACH_NLRI Attr
@@ -255,6 +265,7 @@ type LsLink struct {
 	Srv6EndXSID *Srv6EndXSID // In BGP-LS Attr
 }
 
+// NewLsLink creates a new BGP-LS link between two nodes.
 func NewLsLink(localNode *LsNode, remoteNode *LsNode) *LsLink {
 	return &LsLink{
 		LocalNode:  localNode,
@@ -262,6 +273,7 @@ func NewLsLink(localNode *LsNode, remoteNode *LsNode) *LsLink {
 	}
 }
 
+// Metric returns the metric value of the given type for this link.
 func (l *LsLink) Metric(metricType MetricType) (uint32, error) {
 	// Hop count is implicit: each link counts as one hop.
 	if metricType == HopcountMetric {
@@ -277,6 +289,7 @@ func (l *LsLink) Metric(metricType MetricType) (uint32, error) {
 	return 0, fmt.Errorf("metric %s not defined", metricType)
 }
 
+// UpdateTED updates the TED with this link's information.
 func (l *LsLink) UpdateTED(ted *LsTED, cfgASN uint32) {
 	nodes := ted.Nodes
 
@@ -297,6 +310,7 @@ func (l *LsLink) UpdateTED(ted *LsTED, cfgASN uint32) {
 	l.LocalNode.AddLink(l)
 }
 
+// LsPrefix represents a prefix in the BGP-LS TED.
 type LsPrefix struct {
 	LocalNode *LsNode      // primary key, in MP_REACH_NLRI Attr
 	Prefix    netip.Prefix // in MP_REACH_NLRI Attr
@@ -310,12 +324,14 @@ func (lp *LsPrefix) HasPrefixSID() bool {
 	return lp != nil && lp.HasSidIndex
 }
 
+// NewLsPrefix creates a new BGP-LS prefix for the given node.
 func NewLsPrefix(localNode *LsNode) *LsPrefix {
 	return &LsPrefix{
 		LocalNode: localNode,
 	}
 }
 
+// UpdateTED updates the TED with this prefix's information.
 func (lp *LsPrefix) UpdateTED(ted *LsTED, cfgASN uint32) {
 	nodes := ted.Nodes
 
@@ -337,6 +353,7 @@ func (lp *LsPrefix) UpdateTED(ted *LsTED, cfgASN uint32) {
 	localNode.Prefixes = append(localNode.Prefixes, lp)
 }
 
+// SIDStructure represents the structure breakdown of an SRv6 SID.
 type SIDStructure struct {
 	LocalBlock uint8
 	LocalNode  uint8
@@ -344,12 +361,14 @@ type SIDStructure struct {
 	LocalArg   uint8
 }
 
+// EndpointBehavior represents the endpoint behavior attributes of an SRv6 SID.
 type EndpointBehavior struct {
 	Behavior  uint16
 	Flags     uint8
 	Algorithm uint8
 }
 
+// LsSrv6SID represents an SRv6 SID in the BGP-LS TED.
 type LsSrv6SID struct {
 	LocalNode        *LsNode          // primary key, in MP_REACH_NLRI Attr
 	Sids             []string         // in LsSrv6SID Attr
@@ -358,12 +377,14 @@ type LsSrv6SID struct {
 	MultiTopoIDs     []uint32         // in LsSrv6SID Attr
 }
 
+// NewLsSrv6SID creates a new SRv6 SID for the given node.
 func NewLsSrv6SID(node *LsNode) *LsSrv6SID {
 	return &LsSrv6SID{
 		LocalNode: node,
 	}
 }
 
+// UpdateTED updates the TED with this SRv6 SID's information.
 func (s *LsSrv6SID) UpdateTED(ted *LsTED, cfgASN uint32) {
 	nodes := ted.Nodes
 
@@ -380,15 +401,18 @@ func (s *LsSrv6SID) UpdateTED(ted *LsTED, cfgASN uint32) {
 	s.LocalNode.AddSrv6SID(s)
 }
 
+// AddSrv6SID adds an SRv6 SID to this node.
 func (n *LsNode) AddSrv6SID(s *LsSrv6SID) {
 	n.SRv6SIDs = append(n.SRv6SIDs, s)
 }
 
+// Metric represents a link metric with its type and value.
 type Metric struct {
 	Type  MetricType
 	Value uint32
 }
 
+// NewMetric creates a new Metric with the given type and value.
 func NewMetric(metricType MetricType, value uint32) *Metric {
 	return &Metric{
 		Type:  metricType,
@@ -396,15 +420,20 @@ func NewMetric(metricType MetricType, value uint32) *Metric {
 	}
 }
 
+// MetricType is an enumeration for link metric types.
 type MetricType int
 
 const (
 	// UnspecifiedMetric is the zero value: no optimization metric applies (e.g. an
 	// explicit SR Policy candidate path, which by definition has no objective function).
 	UnspecifiedMetric MetricType = iota
+	// IGPMetric is an IGP metric.
 	IGPMetric
+	// TEMetric is a TE metric.
 	TEMetric
+	// DelayMetric is a delay metric.
 	DelayMetric
+	// HopcountMetric is a hopcount metric.
 	HopcountMetric
 )
 
@@ -456,6 +485,7 @@ func (m MetricType) MarshalJSON() ([]byte, error) {
 	return json.Marshal(m.DisplayString())
 }
 
+// Srv6EndXSID represents an SRv6 End.X SID in the BGP-LS TED.
 type Srv6EndXSID struct {
 	EndpointBehavior uint16
 	Sids             []string
