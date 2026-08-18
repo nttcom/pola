@@ -327,7 +327,7 @@ func TestSendSRPolicyRequest_ForgetsIntentOnSendFailure(t *testing.T) {
 		DisablePathCompute: true,
 	}
 
-	err := sendSRPolicyRequest(apiServer, req, nil, netip.MustParseAddr("10.255.0.1"), dstAddr, true, table.UnspecifiedMetric)
+	err := sendSRPolicyRequest(apiServer, req, resolvedPath{SrcAddr: netip.MustParseAddr("10.255.0.1"), DstAddr: dstAddr, Metric: table.UnspecifiedMetric}, true)
 	require.Error(t, err, "expected sendSRPolicyRequest to fail once the connection is closed")
 
 	_, ok := ss.takeSRPolicyIntent(wantSRPID)

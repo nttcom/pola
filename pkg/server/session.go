@@ -840,7 +840,12 @@ func (ss *Session) SendPCInitiate(srPolicy table.SRPolicy, lspDelete bool) error
 		return err
 	}
 
-	pcinitiateMessage, err := pcep.NewPCInitiateMessage(srpID, srPolicy.Name, lspDelete, srPolicy.PlspID, srPolicy.SegmentList, srPolicy.Color, srPolicy.Preference, srPolicy.SrcAddr, srPolicy.DstAddr, pcep.VendorSpecific(ss.pccType), pcep.OriginatorASN(ss.asn))
+	var pcinitiateMessage *pcep.PCInitiateMessage
+	if lspDelete {
+		pcinitiateMessage, err = pcep.NewPCInitiateDeleteMessage(srpID, srPolicy)
+	} else {
+		pcinitiateMessage, err = pcep.NewPCInitiateMessage(srpID, srPolicy, pcep.VendorSpecific(ss.pccType), pcep.OriginatorASN(ss.asn))
+	}
 	if err != nil {
 		ss.forgetSRPolicyIntent(srpID)
 		return err
@@ -860,7 +865,7 @@ func (ss *Session) SendPCUpdate(srPolicy table.SRPolicy) error {
 		return err
 	}
 
-	pcupdateMessage, err := pcep.NewPCUpdMessage(srpID, srPolicy.Name, srPolicy.PlspID, srPolicy.SegmentList)
+	pcupdateMessage, err := pcep.NewPCUpdMessage(srpID, srPolicy)
 	if err != nil {
 		ss.forgetSRPolicyIntent(srpID)
 		return err
@@ -875,19 +880,14 @@ func (ss *Session) SendPCUpdate(srPolicy table.SRPolicy) error {
 
 // RegisterSRPolicy registers an SR Policy from a PCEP state report.
 func (ss *Session) RegisterSRPolicy(sr pcep.StateReport) error {
-	// Resolve color and preference for this SR Policy
 	color, preference := ss.resolveColorPreference(&sr)
-
-	// Determine the policy state based on O-Flag
 	state := resolvePolicyState(sr.LSPObject.OFlag)
 
-	// Validate Segment List
 	segmentList, err := validateSegmentList(sr)
 	if err != nil {
 		return err
 	}
 
-	// Update existing policy or create a new one
 	return ss.updateOrCreatePolicy(sr, segmentList, color, preference, state)
 }
 
@@ -974,7 +974,6 @@ func (ss *Session) updateOrCreatePolicy(sr pcep.StateReport, segmentList []table
 		return nil
 	}
 
-	// Create a new SR Policy
 	src := sr.LSPObject.SrcAddr
 	if !src.IsValid() {
 		src = sr.AssociationObject.AssocSrc
