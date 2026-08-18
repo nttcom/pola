@@ -39,6 +39,7 @@ var defaultMonitorOptions = monitorOptions{
 	retryInterval:    defaultRetryInterval,
 }
 
+// MonitorBGPLsEvents monitors BGP-LS events and sends updates to the TED channel.
 func MonitorBGPLsEvents(ctx context.Context, serverAddr string, serverPort string, tedChan chan []table.TEDElem, logger *zap.Logger) {
 	monitorBGPLsEvents(ctx, serverAddr, serverPort, tedChan, logger, defaultMonitorOptions)
 }
@@ -186,6 +187,7 @@ func initialSync(ctx context.Context, client api.GoBgpServiceClient, tedChan cha
 	}
 }
 
+// Debouncer debounces consecutive events to avoid excessive TED fetches.
 type Debouncer struct {
 	mu       sync.Mutex
 	active   bool
@@ -193,11 +195,12 @@ type Debouncer struct {
 	cooldown time.Duration
 }
 
+// NewDebouncer creates a new Debouncer with the specified cooldown duration.
 func NewDebouncer(cd time.Duration) *Debouncer {
 	return &Debouncer{cooldown: cd}
 }
 
-// Debounce consecutive events before retrieving TED.
+// Trigger debounces consecutive events before retrieving TED.
 func (d *Debouncer) Trigger(
 	ctx context.Context,
 	fetch func() ([]table.TEDElem, error),
@@ -306,6 +309,7 @@ func newWatchRequest() *api.WatchEventRequest {
 	}
 }
 
+// GetBGPlsNLRIs retrieves BGP-LS NLRIs from the GoBGP server and converts them to TEDElem format.
 func GetBGPlsNLRIs(ctx context.Context, client api.GoBgpServiceClient) ([]table.TEDElem, error) {
 	req := &api.ListPathRequest{
 		TableType: api.TableType_TABLE_TYPE_GLOBAL,
@@ -343,7 +347,7 @@ func GetBGPlsNLRIs(ctx context.Context, client api.GoBgpServiceClient) ([]table.
 	return tedElems, nil
 }
 
-// ConvertToTEDElem converts an api.Destination to TEDElem(s).
+// ConvertToTEDElem converts a BGP-LS destination to TEDElem format.
 func ConvertToTEDElem(dst *api.Destination) ([]table.TEDElem, error) {
 	if len(dst.GetPaths()) != 1 {
 		return nil, errors.New("invalid path length: expected 1 path")
