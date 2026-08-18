@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
@@ -92,6 +93,22 @@ func validEndpointInput() inputFormat {
 }
 
 func TestNewSRPolicyAddCmd_RunE(t *testing.T) {
+	t.Run("no-sid-validate flag not registered", func(t *testing.T) {
+		cmd := newSRPolicyAddCmd()
+		err := cmd.RunE(&cobra.Command{}, []string{})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no-sid-validate")
+	})
+
+	t.Run("file flag not registered", func(t *testing.T) {
+		cmd := newSRPolicyAddCmd()
+		bare := &cobra.Command{}
+		bare.Flags().Bool("no-sid-validate", false, "")
+		err := cmd.RunE(bare, []string{})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "'file' flag")
+	})
+
 	t.Run("missing file flag", func(t *testing.T) {
 		cmd := newSRPolicyAddCmd()
 		err := cmd.RunE(cmd, []string{})

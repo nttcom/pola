@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
@@ -18,6 +19,13 @@ import (
 )
 
 func TestNewSRPolicyDeleteCmd_RunE(t *testing.T) {
+	t.Run("file flag not registered", func(t *testing.T) {
+		cmd := newSRPolicyDeleteCmd()
+		err := cmd.RunE(&cobra.Command{}, []string{})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "'file' flag")
+	})
+
 	t.Run("missing file flag", func(t *testing.T) {
 		cmd := newSRPolicyDeleteCmd()
 		err := cmd.RunE(cmd, []string{})
