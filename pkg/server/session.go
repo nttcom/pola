@@ -37,6 +37,7 @@ const (
 	defaultDeadTimer = 120 * time.Second
 )
 
+// Session represents a PCEP session with a PCC.
 type Session struct {
 	sessionID               uint8
 	peerAddr                netip.Addr
@@ -184,6 +185,7 @@ func (ss *Session) clearSRPolicyIntents() {
 	ss.srPolicyIntents = nil
 }
 
+// NewSession creates a new PCEP session.
 func NewSession(sessionID uint8, peerAddr netip.Addr, tcpConn net.Conn, logger *zap.Logger, ted *table.LsTED, asn uint32) *Session {
 	return &Session{
 		sessionID:         sessionID,
@@ -203,6 +205,7 @@ func NewSession(sessionID uint8, peerAddr netip.Addr, tcpConn net.Conn, logger *
 	}
 }
 
+// Established establishes the PCEP session.
 func (ss *Session) Established() {
 	if err := ss.Open(); err != nil {
 		ss.logger.Debug("ERROR! PCEP OPEN", zap.Error(err))
@@ -265,6 +268,7 @@ func (ss *Session) sendPCEPMessage(message pcep.Message) error {
 	return err
 }
 
+// Open performs the PCEP open exchange with the peer.
 func (ss *Session) Open() error {
 	if err := ss.ReceiveOpen(); err != nil {
 		return err
@@ -328,6 +332,7 @@ func (ss *Session) parseOpenMessage() (*pcep.OpenMessage, error) {
 	return &openMessage, nil
 }
 
+// ReceiveOpen receives and processes a PCEP Open message from the peer.
 func (ss *Session) ReceiveOpen() error {
 	ss.logger.Debug("Receive Open Message")
 	openMessage, err := ss.parseOpenMessage()
@@ -347,12 +352,14 @@ func (ss *Session) ReceiveOpen() error {
 	return nil
 }
 
+// SendKeepalive sends a PCEP Keepalive message to the peer.
 func (ss *Session) SendKeepalive() error {
 	keepaliveMessage := pcep.NewKeepaliveMessage()
 	ss.logger.Debug("Send Keepalive Message")
 	return ss.sendPCEPMessage(keepaliveMessage)
 }
 
+// SendClose sends a PCEP Close message to the peer.
 func (ss *Session) SendClose(reason pcep.CloseReason) error {
 	closeMessage := pcep.NewCloseMessage(reason)
 
@@ -373,6 +380,7 @@ func (ss *Session) SendPCErr(errorType, errorValue uint8) error {
 	return ss.sendPCEPMessage(pcerrMessage)
 }
 
+// ReceivePCEPMessage receives and processes PCEP messages from the peer.
 func (ss *Session) ReceivePCEPMessage() error {
 	for {
 		commonHeader, deadline, err := ss.readCommonHeader()
@@ -769,19 +777,23 @@ func createEroFromSegmentList(segmentList []table.Segment) (*pcep.EroObject, err
 	return eroObject, nil
 }
 
+// RequestAllSRPolicyDeleted requests deletion of all SR Policies for this session.
 func (ss *Session) RequestAllSRPolicyDeleted() error {
 	var srPolicy table.SRPolicy
 	return ss.SendPCInitiate(srPolicy, true)
 }
 
+// RequestSRPolicyDeleted requests deletion of the given SR Policy.
 func (ss *Session) RequestSRPolicyDeleted(srPolicy table.SRPolicy) error {
 	return ss.SendPCInitiate(srPolicy, true)
 }
 
+// RequestSRPolicyCreated requests creation of the given SR Policy.
 func (ss *Session) RequestSRPolicyCreated(srPolicy table.SRPolicy) error {
 	return ss.SendPCInitiate(srPolicy, false)
 }
 
+// SendOpen sends a PCEP Open message to the peer.
 func (ss *Session) SendOpen() error {
 	openMessage := pcep.NewOpenMessage(ss.sessionID, ss.keepAlive, ss.AdvertisedCapabilities())
 	ss.logger.Debug("Send Open Message")
@@ -820,6 +832,7 @@ func (ss *Session) allocateSRPID(polType table.PolicyType, metric table.MetricTy
 	return srpID, nil
 }
 
+// SendPCInitiate sends a PCEP PC-Initiate message to request creation or deletion of an SR Policy.
 func (ss *Session) SendPCInitiate(srPolicy table.SRPolicy, lspDelete bool) error {
 	srpID, err := ss.allocateSRPID(srPolicy.Type, srPolicy.Metric)
 	if err != nil {
@@ -839,6 +852,7 @@ func (ss *Session) SendPCInitiate(srPolicy table.SRPolicy, lspDelete bool) error
 	return nil
 }
 
+// SendPCUpdate sends a PCEP PC-Update message to update an existing SR Policy.
 func (ss *Session) SendPCUpdate(srPolicy table.SRPolicy) error {
 	srpID, err := ss.allocateSRPID(srPolicy.Type, srPolicy.Metric)
 	if err != nil {
@@ -858,6 +872,7 @@ func (ss *Session) SendPCUpdate(srPolicy table.SRPolicy) error {
 	return nil
 }
 
+// RegisterSRPolicy registers an SR Policy from a PCEP state report.
 func (ss *Session) RegisterSRPolicy(sr pcep.StateReport) error {
 	// Resolve color and preference for this SR Policy
 	color, preference := ss.resolveColorPreference(&sr)
@@ -984,6 +999,7 @@ func (ss *Session) updateOrCreatePolicy(sr pcep.StateReport, segmentList []table
 	return nil
 }
 
+// DeleteSRPolicy deletes an SR Policy from the session.
 func (ss *Session) DeleteSRPolicy(sr pcep.StateReport) {
 	lspID := sr.LSPObject.LSPID
 
@@ -1011,6 +1027,7 @@ func (ss *Session) searchSRPolicyLocked(plspID uint32) (*table.SRPolicy, bool) {
 	return nil, false
 }
 
+// SearchSRPolicy searches for an SR Policy by PLSP-ID.
 func (ss *Session) SearchSRPolicy(plspID uint32) (*table.SRPolicy, bool) {
 	ss.srPoliciesMu.RLock()
 	defer ss.srPoliciesMu.RUnlock()

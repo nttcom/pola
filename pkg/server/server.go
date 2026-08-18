@@ -27,6 +27,7 @@ import (
 // Maximum time to wait for the PCEP Close message during shutdown.
 const defaultShutdownSendCloseTimeout = 2 * time.Second
 
+// Server manages PCEP sessions and server lifecycle.
 type Server struct {
 	sessionMu   sync.RWMutex // guards sessionList
 	sessionList []*Session
@@ -60,6 +61,7 @@ func (s *Server) setTED(ted *table.LsTED) {
 	s.ted = ted
 }
 
+// PCEOptions contains configuration options for the PCE server.
 type PCEOptions struct {
 	PCEPAddr  string
 	PCEPPort  string
@@ -141,6 +143,7 @@ func (s *Server) syncTEDLoop(ctx context.Context, tedElemsChan <-chan []table.TE
 	}
 }
 
+// Serve starts the PCEP server on the specified address and port.
 func (s *Server) Serve(address string, port string) error {
 	a, err := netip.ParseAddr(address)
 	if err != nil {
