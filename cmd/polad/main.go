@@ -92,6 +92,8 @@ func run(args []string, deps runDeps) error {
 		}
 	}()
 
+	// Cancelling ctx on SIGINT/SIGTERM is what drives graceful shutdown: it stops
+	// the PCE servers and the BGP-LS monitor goroutine.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -129,6 +131,8 @@ func loadConfig(configFile string) (config.Config, error) {
 }
 
 func openLogFile(c *config.Config) (*os.File, error) {
+	// Create the log directory if it does not exist. Logs can carry topology
+	// and peer details, so access is limited to the owner and group.
 	if err := os.MkdirAll(c.Global.Log.Path, 0750); err != nil {
 		return nil, fmt.Errorf("failed to create log directory: %w", err)
 	}

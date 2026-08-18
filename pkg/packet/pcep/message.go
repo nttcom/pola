@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"net/netip"
 
 	"github.com/nttcom/pola/pkg/table"
 )
@@ -595,8 +594,9 @@ func (m *PCInitiateMessage) Serialize() ([]uint8, error) {
 	return bytePCInitiateMessage, nil
 }
 
-// NewPCInitiateMessage creates a new PCInitiateMessage.
-func NewPCInitiateMessage(srpID uint32, lspName string, lspDelete bool, plspID uint32, segmentList []table.Segment, color uint32, preference uint32, srcAddr netip.Addr, dstAddr netip.Addr, opt ...Opt) (*PCInitiateMessage, error) {
+// NewPCInitiateMessage creates a PCInitiateMessage that instantiates srPolicy
+// as a new LSP. Use NewPCInitiateDeleteMessage to remove one.
+func NewPCInitiateMessage(srpID uint32, srPolicy table.SRPolicy, opt ...Opt) (*PCInitiateMessage, error) {
 	opts := optParams{
 		pccType: RFCCompliant,
 	}
@@ -608,37 +608,33 @@ func NewPCInitiateMessage(srpID uint32, lspName string, lspDelete bool, plspID u
 	m := &PCInitiateMessage{}
 	var err error
 
-	if m.SrpObject, err = NewSrpObject(segmentList, srpID, lspDelete); err != nil {
+	if m.SrpObject, err = NewSrpObject(srPolicy.SegmentList, srpID, false); err != nil {
 		return nil, err
 	}
 
-	if lspDelete {
-		m.LSPObject = NewLSPObject(lspName, &color, plspID)
-		return m, nil
-	}
-
-	m.LSPObject = NewLSPObject(lspName, &color, 0)
-	if m.EndpointsObject, err = NewEndpointsObject(dstAddr, srcAddr); err != nil {
+	// PLSP-ID is 0 on instantiation; the PCC assigns it (RFC 8281 §5.3.1).
+	m.LSPObject = NewLSPObject(srPolicy.Name, &srPolicy.Color, 0)
+	if m.EndpointsObject, err = NewEndpointsObject(srPolicy.DstAddr, srPolicy.SrcAddr); err != nil {
 		return nil, err
 	}
-	if m.EroObject, err = NewEroObject(segmentList); err != nil {
+	if m.EroObject, err = NewEroObject(srPolicy.SegmentList); err != nil {
 		return m, err
 	}
 
 	switch opts.pccType {
 	case JuniperLegacy:
-		if m.AssociationObject, err = NewAssociationObject(srcAddr, dstAddr, color, preference, VendorSpecific(opts.pccType), OriginatorASN(opts.originatorASN)); err != nil {
+		if m.AssociationObject, err = NewAssociationObject(srPolicy.SrcAddr, srPolicy.DstAddr, srPolicy.Color, srPolicy.Preference, VendorSpecific(opts.pccType), OriginatorASN(opts.originatorASN)); err != nil {
 			return nil, err
 		}
 	case CiscoLegacy:
-		if m.VendorInformationObject, err = NewVendorInformationObject(CiscoLegacy, color, preference); err != nil {
+		if m.VendorInformationObject, err = NewVendorInformationObject(CiscoLegacy, srPolicy.Color, srPolicy.Preference); err != nil {
 			return nil, err
 		}
 	case RFCCompliant:
-		if m.AssociationObject, err = NewAssociationObject(srcAddr, dstAddr, color, preference, OriginatorASN(opts.originatorASN)); err != nil {
+		if m.AssociationObject, err = NewAssociationObject(srPolicy.SrcAddr, srPolicy.DstAddr, srPolicy.Color, srPolicy.Preference, OriginatorASN(opts.originatorASN)); err != nil {
 			return nil, err
 		}
-		if m.VendorInformationObject, err = NewVendorInformationObject(CiscoLegacy, color, preference); err != nil {
+		if m.VendorInformationObject, err = NewVendorInformationObject(CiscoLegacy, srPolicy.Color, srPolicy.Preference); err != nil {
 			return nil, err
 		}
 	default:
@@ -646,6 +642,23 @@ func NewPCInitiateMessage(srpID uint32, lspName string, lspDelete bool, plspID u
 	}
 
 	return m, nil
+}
+
+// NewPCInitiateDeleteMessage creates a PCInitiateMessage that removes the LSP
+// identified by srPolicy.PlspID, flagged by the SRP R flag (RFC 8281 §5.2).
+// Deletion carries only the SRP and LSP objects, so srPolicy's endpoints and
+// vendor-specific attributes are not encoded; its segment list is still read to
+// derive the PATH-SETUP-TYPE TLV.
+func NewPCInitiateDeleteMessage(srpID uint32, srPolicy table.SRPolicy) (*PCInitiateMessage, error) {
+	srpObject, err := NewSrpObject(srPolicy.SegmentList, srpID, true)
+	if err != nil {
+		return nil, err
+	}
+
+	return &PCInitiateMessage{
+		SrpObject: srpObject,
+		LSPObject: NewLSPObject(srPolicy.Name, &srPolicy.Color, srPolicy.PlspID),
+	}, nil
 }
 
 // PCUpdMessage is a PCEP Update message.
@@ -680,16 +693,18 @@ func (m *PCUpdMessage) Serialize() ([]uint8, error) {
 	return bytePCUpdMessage, nil
 }
 
-// NewPCUpdMessage creates a new PCUpdMessage.
-func NewPCUpdMessage(srpID uint32, lspName string, plspID uint32, segmentList []table.Segment) (*PCUpdMessage, error) {
+// NewPCUpdMessage creates a PCUpdMessage that re-signals the LSP identified by
+// srPolicy.PlspID with srPolicy's segment list.
+func NewPCUpdMessage(srpID uint32, srPolicy table.SRPolicy) (*PCUpdMessage, error) {
 	m := &PCUpdMessage{}
 	var err error
 
-	if m.SrpObject, err = NewSrpObject(segmentList, srpID, false); err != nil {
+	if m.SrpObject, err = NewSrpObject(srPolicy.SegmentList, srpID, false); err != nil {
 		return nil, err
 	}
-	m.LSPObject = NewLSPObject(lspName, nil, plspID)
-	if m.EroObject, err = NewEroObject(segmentList); err != nil {
+	// A nil color omits the COLOR TLV, leaving the value set at instantiation.
+	m.LSPObject = NewLSPObject(srPolicy.Name, nil, srPolicy.PlspID)
+	if m.EroObject, err = NewEroObject(srPolicy.SegmentList); err != nil {
 		return nil, err
 	}
 	return m, nil

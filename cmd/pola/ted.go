@@ -10,6 +10,7 @@ import (
 	"fmt"
 
 	"github.com/nttcom/pola/cmd/pola/grpc"
+	"github.com/nttcom/pola/pkg/table"
 	"github.com/spf13/cobra"
 )
 
@@ -37,95 +38,94 @@ func printTED(jsonFlag bool) error {
 	}
 
 	if jsonFlag {
-		// Output JSON format
-		nodes := []map[string]any{}
-		for _, node := range ted.Nodes {
-			nodeMap := map[string]any{ // TODO: Fix format according to readme
-				"asn":        node.ASN,
-				"routerID":   node.RouterID,
-				"isisAreaID": node.IsisAreaID,
-				"hostname":   node.Hostname,
-				"srgbBegin":  node.SrgbBegin,
-				"srgbEnd":    node.SrgbEnd,
-				"prefixes":   []map[string]any{},
-				"links":      []map[string]any{},
-			}
-
-			links := []map[string]any{}
-			for _, link := range node.Links {
-				metrics := []map[string]any{}
-				for _, metric := range link.Metrics {
-					metricMap := map[string]any{
-						"type":  metric.Type.String(),
-						"value": metric.Value,
-					}
-					metrics = append(metrics, metricMap)
-				}
-
-				var localIP string
-				var remoteIP string
-				if link.LocalIP.IsValid() {
-					localIP = link.LocalIP.String()
-				} else {
-					localIP = "None"
-				}
-				if link.RemoteIP.IsValid() {
-					remoteIP = link.RemoteIP.String()
-				} else {
-					remoteIP = "None"
-				}
-
-				linkMap := map[string]any{
-					"localIP":    localIP,
-					"remoteIP":   remoteIP,
-					"remoteNode": link.RemoteNode.RouterID,
-					"metrics":    metrics,
-					"adjSid":     link.AdjSid,
-				}
-				links = append(links, linkMap)
-			}
-			nodeMap["links"] = links
-
-			prefixes := []map[string]any{}
-			for _, prefix := range node.Prefixes {
-				prefixMap := map[string]any{
-					"prefix": prefix.Prefix.String(),
-				}
-				if prefix.HasPrefixSID() {
-					prefixMap["sidIndex"] = prefix.SidIndex
-				}
-				prefixes = append(prefixes, prefixMap)
-			}
-			nodeMap["prefixes"] = prefixes
-
-			srv6SIDs := []map[string]any{}
-			for _, srv6SID := range node.SRv6SIDs {
-				srv6SIDMap := map[string]any{
-					"sids":             srv6SID.Sids,
-					"endpointBehavior": srv6SID.EndpointBehavior,
-					"multiTopoIDs":     srv6SID.MultiTopoIDs,
-				}
-				srv6SIDs = append(srv6SIDs, srv6SIDMap)
-			}
-			nodeMap["srv6SIDs"] = srv6SIDs
-
-			nodes = append(nodes, nodeMap)
-		}
-
-		outputMap := map[string]any{
-			"ted": nodes,
-		}
-
-		outputJSON, err := json.Marshal(outputMap)
+		outputJSON, err := json.Marshal(tedToJSONMap(ted))
 		if err != nil {
 			return err
 		}
 		fmt.Println(string(outputJSON))
-
 	} else {
-		// Output user-friendly format
 		ted.Print()
 	}
 
 	return nil
+}
+
+// tedToJSONMap converts ted into the map shape marshalled by printTED.
+func tedToJSONMap(ted *table.LsTED) map[string]any {
+	nodes := []map[string]any{}
+	for _, node := range ted.Nodes {
+		nodes = append(nodes, tedNodeToJSONMap(node))
+	}
+
+	return map[string]any{
+		"ted": nodes,
+	}
+}
+
+func tedNodeToJSONMap(node *table.LsNode) map[string]any {
+	links := []map[string]any{}
+	for _, link := range node.Links {
+		links = append(links, tedLinkToJSONMap(link))
+	}
+
+	prefixes := []map[string]any{}
+	for _, prefix := range node.Prefixes {
+		prefixMap := map[string]any{
+			"prefix": prefix.Prefix.String(),
+		}
+		if prefix.HasPrefixSID() {
+			prefixMap["sidIndex"] = prefix.SidIndex
+		}
+		prefixes = append(prefixes, prefixMap)
+	}
+
+	srv6SIDs := []map[string]any{}
+	for _, srv6SID := range node.SRv6SIDs {
+		srv6SIDs = append(srv6SIDs, map[string]any{
+			"sids":             srv6SID.Sids,
+			"endpointBehavior": srv6SID.EndpointBehavior,
+			"multiTopoIDs":     srv6SID.MultiTopoIDs,
+		})
+	}
+
+	return map[string]any{ // TODO: Fix format according to readme
+		"asn":        node.ASN,
+		"routerID":   node.RouterID,
+		"isisAreaID": node.IsisAreaID,
+		"hostname":   node.Hostname,
+		"srgbBegin":  node.SrgbBegin,
+		"srgbEnd":    node.SrgbEnd,
+		"prefixes":   prefixes,
+		"links":      links,
+		"srv6SIDs":   srv6SIDs,
+	}
+}
+
+func tedLinkToJSONMap(link *table.LsLink) map[string]any {
+	metrics := []map[string]any{}
+	for _, metric := range link.Metrics {
+		metrics = append(metrics, map[string]any{
+			"type":  metric.Type.String(),
+			"value": metric.Value,
+		})
+	}
+
+	// Links whose BGP-LS descriptor carried no interface address report "None",
+	// matching table.LsTED.Print.
+	localIP := "None"
+	if link.LocalIP.IsValid() {
+		localIP = link.LocalIP.String()
+	}
+	remoteIP := "None"
+	if link.RemoteIP.IsValid() {
+		remoteIP = link.RemoteIP.String()
+	}
+
+	return map[string]any{
+		"localIP":    localIP,
+		"remoteIP":   remoteIP,
+		"remoteNode": link.RemoteNode.RouterID,
+		"metrics":    metrics,
+		"adjSid":     link.AdjSid,
+	}
 }

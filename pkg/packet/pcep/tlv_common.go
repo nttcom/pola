@@ -19,7 +19,6 @@ func decodeTLVLength(data []byte, allowPadding bool) (int, error) {
 	length := int(binary.BigEndian.Uint16(data[TLVLengthOffset:TLVValueOffset]))
 	expected := TLVValueOffset + length
 
-	// Validate length and optional padding strictly.
 	if len(data) < expected {
 		return 0, fmt.Errorf("tlv: invalid length (expected at least %d bytes, got %d)", expected, len(data))
 	}
