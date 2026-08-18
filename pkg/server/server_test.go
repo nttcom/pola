@@ -484,7 +484,11 @@ func (c *blockingWriteConn) Close() error {
 	return nil
 }
 
-func (c *blockingWriteConn) SetReadDeadline(time.Time) error { return nil }
+func (c *blockingWriteConn) LocalAddr() net.Addr              { return nil }
+func (c *blockingWriteConn) RemoteAddr() net.Addr             { return nil }
+func (c *blockingWriteConn) SetDeadline(time.Time) error      { return nil }
+func (c *blockingWriteConn) SetReadDeadline(time.Time) error  { return nil }
+func (c *blockingWriteConn) SetWriteDeadline(time.Time) error { return nil }
 
 func TestServer_Shutdown_BoundsBlockedSendClose(t *testing.T) {
 	conn := &blockingWriteConn{r: bytes.NewReader(nil), unblock: make(chan struct{})}

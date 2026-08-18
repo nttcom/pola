@@ -352,6 +352,38 @@ func TestParseProfileSkipsCommentOnlyInteriorLines(t *testing.T) {
 	}
 }
 
+func TestParseProfileHandlesMultilineRawString(t *testing.T) {
+	src := "package p\n\nfunc Foo() string {\n\ts := `\na\n`\n\treturn s\n}\n"
+	withSourceFile(t, "a.go", src)
+
+	profile := "mode: set\n" + module + "/a.go:4.2,6.2 1 1\n"
+	changed := changedLines{"a.go": {4: true, 5: true, 6: true}}
+
+	res, err := parseProfile(strings.NewReader(profile), module, changed)
+	if err != nil {
+		t.Fatalf("parseProfile() error = %v", err)
+	}
+	if res.total != 3 || res.covered != 3 {
+		t.Errorf("total/covered = %d/%d, want 3/3 (raw string spans lines 4-6, including the closing backtick's own line)", res.total, res.covered)
+	}
+}
+
+func TestParseProfileHandlesMultilineRawStringCRLF(t *testing.T) {
+	src := "package p\r\n\r\nfunc Foo() string {\r\n\ts := `\r\na\r\n`\r\n\treturn s\r\n}\r\n"
+	withSourceFile(t, "a.go", src)
+
+	profile := "mode: set\n" + module + "/a.go:4.2,6.2 1 1\n"
+	changed := changedLines{"a.go": {4: true, 5: true, 6: true}}
+
+	res, err := parseProfile(strings.NewReader(profile), module, changed)
+	if err != nil {
+		t.Fatalf("parseProfile() error = %v", err)
+	}
+	if res.total != 3 || res.covered != 3 {
+		t.Errorf("total/covered = %d/%d, want 3/3 (scanner strips '\\r' from the raw string, so byte-length arithmetic must not be used to find the closing line)", res.total, res.covered)
+	}
+}
+
 func TestParseProfileFallsBackWhenSourceIsUnavailable(t *testing.T) {
 	profile := "mode: set\n" + module + "/missing.go:1.1,3.2 1 1\n"
 	changed := changedLines{"missing.go": {1: true, 2: true, 3: true}}
@@ -362,6 +394,22 @@ func TestParseProfileFallsBackWhenSourceIsUnavailable(t *testing.T) {
 	}
 	if res.total != 3 || res.covered != 3 {
 		t.Errorf("total/covered = %d/%d, want 3/3", res.total, res.covered)
+	}
+}
+
+func TestParseProfileFallsBackOnLineDirective(t *testing.T) {
+	src := "package p\n\n//line a.go:3\nfunc Foo(x int) int {\n\t// comment only\n\treturn x\n}\n"
+	withSourceFile(t, "a.go", src)
+
+	profile := "mode: set\n" + module + "/a.go:3.21,5.10 1 1\n"
+	changed := changedLines{"a.go": {4: true, 5: true}}
+
+	res, err := parseProfile(strings.NewReader(profile), module, changed)
+	if err != nil {
+		t.Fatalf("parseProfile() error = %v", err)
+	}
+	if res.total != 2 || res.covered != 2 {
+		t.Errorf("total/covered = %d/%d, want 2/2 (comment-only line counted conservatively)", res.total, res.covered)
 	}
 }
 

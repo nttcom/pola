@@ -381,24 +381,45 @@ func (idx *sourceIndex) ensure(file string) {
 	}
 	tf := idx.fset.AddFile(file, -1, len(src))
 	var sc scanner.Scanner
-	sc.Init(tf, src, nil, 0) // mode 0: comments are skipped, not returned as tokens
+	sc.Init(tf, src, nil, scanner.ScanComments)
 	var code []token.Pos
 	for {
-		pos, tok, _ := sc.Scan()
+		pos, tok, lit := sc.Scan()
 		if tok == token.EOF {
 			break
 		}
-		if tok == token.LBRACE || tok == token.RBRACE {
+		switch tok {
+		case token.COMMENT:
+			if isLineDirective(lit) {
+				idx.fail[file] = true
+				return
+			}
+			continue
+		case token.LBRACE, token.RBRACE:
 			continue
 		}
 		code = append(code, pos)
+		if tok == token.STRING {
+			if n := strings.Count(lit, "\n"); n > 0 {
+				startLine := tf.PositionFor(pos, false).Line
+				for line := startLine + 1; line <= startLine+n; line++ {
+					code = append(code, tf.LineStart(line))
+				}
+			}
+		}
 	}
+	sort.Slice(code, func(i, j int) bool { return code[i] < code[j] })
 	idx.files[file] = tf
 	idx.code[file] = code
 }
 
+// isLineDirective reports whether a comment may be a //line directive.
+func isLineDirective(lit string) bool {
+	return strings.HasPrefix(lit, "//line ") || strings.HasPrefix(lit, "/*line ")
+}
+
 // hasStatement reports whether the block range on line ln contains code.
-// If the source can't be read, it conservatively treats the line as code.
+// Unanalyzable files conservatively count the line as code.
 func (idx *sourceIndex) hasStatement(file string, b block, ln int) bool {
 	idx.ensure(file)
 	if idx.fail[file] {
