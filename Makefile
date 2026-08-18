@@ -8,12 +8,9 @@ PYTHON_DIRS  := test
 TEST_BIN_DIR := test/bin
 PYTEST_ARGS  ?= -s
 
-# Coverage. Generated protobuf code under api/ and the standalone programs under
-# examples/ are deliberately excluded.
+# Coverage
 COVER_PKGS    := ./cmd/... ./internal/... ./pkg/...
 COVER_PROFILE := coverage.out
-# Branch that test-coverage-diff compares against; its merge base with HEAD is
-# used, so the comparison covers only what this branch introduced.
 DIFF_BASE      ?= origin/develop
 DIFF_COVER_MIN ?= 90
 
@@ -22,14 +19,12 @@ GOBGP_CMDS    := gobgp gobgpd
 GOBGP_MODULE  := github.com/osrg/gobgp/v4
 GOBGP_VERSION := $(shell go list -m -f '{{.Version}}' $(GOBGP_MODULE))
 
-# Tool versions
-GO_VERSION            := $(shell go list -m -f '{{.GoVersion}}')
-GOLANGCI_LINT_VERSION ?= latest
-BUF_VERSION           ?= latest
-PINACT_VERSION        ?= latest
-GOCREDITS_VERSION     ?= latest
-MARKDOWNLINT_VERSION  ?= latest
-RUFF_VERSION          ?= latest
+# Go tools are pinned in go.mod.
+MARKDOWNLINT_VERSION ?= 0.49.1
+RUFF_VERSION         ?= 0.16.3
+
+LICENSES_TEMPLATE := licenses/report.md.tmpl
+LICENSES_OUTPUT   := licenses/THIRD_PARTY_LICENSES.md
 
 .PHONY: \
 	help \
@@ -37,6 +32,12 @@ RUFF_VERSION          ?= latest
 	fmt \
 	fix \
 	lint \
+	lint-go \
+	lint-proto \
+	lint-python \
+	lint-markdown \
+	lint-actions \
+	vuln \
 	proto \
 	check-proto \
 	build \
@@ -49,6 +50,7 @@ RUFF_VERSION          ?= latest
 	image \
 	image-debug \
 	licenses \
+	check-licenses \
 	fetch-gobgp \
 	test-deps \
 	test-scenario \
@@ -63,19 +65,18 @@ help: ## Show available targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | \
 	awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-22s\033[0m %s\n", $$1, $$2}'
 
+# Print a Makefile variable's value, e.g. `make print-RUFF_VERSION`.
+print-%:
+	@echo $($*)
+
 setup: ## Install development tools required by this Makefile
 	@command -v go >/dev/null || (echo "Go is required: https://go.dev/dl/"; exit 1)
 	@command -v npm >/dev/null || (echo "npm is required (tested with npm 11.17.0): https://nodejs.org/"; exit 1)
 	@command -v uv >/dev/null || (echo "uv is required (tested with uv 0.12.0): https://docs.astral.sh/uv/getting-started/installation/"; exit 1)
-	GOTOOLCHAIN=go$(GO_VERSION) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
-	GOTOOLCHAIN=go$(GO_VERSION) go install github.com/bufbuild/buf/cmd/buf@$(BUF_VERSION)
-	GOTOOLCHAIN=go$(GO_VERSION) go install github.com/suzuki-shunsuke/pinact/cmd/pinact@$(PINACT_VERSION)
-	GOTOOLCHAIN=go$(GO_VERSION) go install github.com/Songmu/gocredits/cmd/gocredits@$(GOCREDITS_VERSION)
 	npm install -g markdownlint-cli@$(MARKDOWNLINT_VERSION)
 	uv tool install ruff@$(RUFF_VERSION)
 	@echo ""
-	@echo "Setup complete. Make sure these are in your PATH:"
-	@echo "  $$(go env GOPATH)/bin"
+	@echo "Setup complete. Make sure this is in your PATH:"
 	@echo "  $$(npm config get prefix)/bin"
 	@echo ""
 	@echo "Also required but not installed by this target:"
@@ -83,30 +84,42 @@ setup: ## Install development tools required by this Makefile
 	@echo "  - containerlab (https://containerlab.dev/install/, for 'test-scenario')"
 
 fmt: ## Format Go and Python source code
-	go fmt ./...
+	go tool golangci-lint fmt
 	ruff format $(PYTHON_DIRS)
 
 fix: fmt ## Apply automatic fixes
-	golangci-lint run --fix --config=.golangci.yml
+	go tool golangci-lint run --fix --config=.golangci.yml
 	ruff check --fix $(PYTHON_DIRS)
-	pinact run -u
+	go tool pinact run -u
 
-lint: ## Run linters
-	test -z "$$(gofmt -l .)"
-	golangci-lint run --config=.golangci.yml
-	buf lint
+lint: lint-go lint-proto lint-python lint-markdown lint-actions ## Run every linter
+
+lint-go: ## Lint Go code
+	go tool golangci-lint run --config=.golangci.yml
+
+lint-proto: ## Lint protobuf definitions
+	go tool buf lint
+
+lint-python: ## Lint and format-check Python code
 	ruff check $(PYTHON_DIRS)
 	ruff format --check $(PYTHON_DIRS)
+
+lint-markdown: ## Lint Markdown
 	markdownlint '**/*.md' --ignore node_modules
-	pinact run
+
+# Verify SHA pins and their version comments without modifying workflows.
+lint-actions: ## Verify GitHub Actions are pinned to commit SHAs
+	go tool pinact run --check --verify
+
+vuln: ## Report known vulnerabilities in dependencies
+	go tool govulncheck ./...
 
 proto: ## Generate protobuf code
-	buf generate
+	go tool buf generate
 
 check-proto: proto ## Verify generated protobuf code is up to date
 	git diff --exit-code -- '*.pb.go' '*_grpc.pb.go'
 	test -z "$$(git ls-files --others --exclude-standard -- '*.pb.go' '*_grpc.pb.go')"
-
 
 build: ## Build Go binaries
 	mkdir -p bin
@@ -132,7 +145,7 @@ test-coverage: ## Run Go unit tests and print a coverage summary
 test-coverage-html: test-coverage ## Open the coverage report in a browser
 	go tool cover -html=$(COVER_PROFILE)
 
-test-coverage-diff: test-coverage ## Report added lines not covered by tests (DIFF_BASE, DIFF_COVER_MIN)
+test-coverage-diff: test-coverage ## Check coverage of changed lines
 	go run ./tools/coverage-diff \
 		-base=$(DIFF_BASE) \
 		-profile=$(COVER_PROFILE) \
@@ -153,8 +166,11 @@ image-debug: ## Build debug Docker image (adds a shell and network tools)
 		.
 
 licenses: ## Generate third-party license file
-	@echo "Generating third-party license file..."
-	gocredits . > THIRD_PARTY_LICENSES.md
+	go tool go-licenses report --include_tests --ignore $(shell go list -m) \
+		--template=$(LICENSES_TEMPLATE) ./... > $(LICENSES_OUTPUT)
+
+check-licenses: licenses ## Verify third-party license file is up to date
+	git diff --exit-code -- $(LICENSES_OUTPUT)
 
 fetch-gobgp: ## Fetch gobgp/gobgpd binaries into test/bin
 	mkdir -p $(TEST_BIN_DIR)
@@ -171,12 +187,11 @@ test-deps: build fetch-gobgp ## Stage all binaries required for scenario tests
 test-scenario: test-deps ## Run containerlab scenario tests
 	cd test && uv run pytest $(PYTEST_ARGS)
 
-# --dist loadgroup keeps every test that shares a lab on one worker, so the
-# same topology is never deployed by two workers at once.
+# Keep tests sharing a lab on the same worker.
 test-scenario-parallel: PYTEST_ARGS = -s -n 4 --dist loadgroup
 test-scenario-parallel: test-scenario ## Run containerlab scenario tests, one lab per worker
 
-ci: check-proto lint build test test-coverage-diff ## Run the same checks as CI
+ci: check-proto check-licenses lint build test test-coverage-diff ## Run the same checks as CI
 
 release: ## Cut a release: make release VERSION=X.Y.Z
 	@if [ -z "$(VERSION)" ]; then echo "Usage: make release VERSION=X.Y.Z"; exit 1; fi
@@ -199,5 +214,7 @@ release: ## Cut a release: make release VERSION=X.Y.Z
 	git push origin "v$(VERSION)"
 
 clean: ## Remove generated files
-	$(RM) -r bin $(TEST_BIN_DIR)
+	$(RM) -r bin
+	# Preserve the tracked .gitignore in TEST_BIN_DIR.
+	@find $(TEST_BIN_DIR) -type f ! -name .gitignore -delete 2>/dev/null || true
 	$(RM) $(COVER_PROFILE)

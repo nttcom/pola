@@ -13,12 +13,13 @@ name: CodeQL
 
 on:
   push:
-    branches: [ 'main' ]
+    branches: [ 'main', 'develop' ]
     paths:
       - "**.go"
+      - ".github/workflows/**"
   pull_request:
     # The branches below must be a subset of the branches above
-    branches: [ 'main' ]
+    branches: [ 'main', 'develop' ]
     types:
       - opened
       - reopened
@@ -26,8 +27,16 @@ on:
       - ready_for_review
     paths:
       - "**.go"
+      - ".github/workflows/**"
   schedule:
     - cron: '0 9 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   analyze:
@@ -42,13 +51,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [ 'go' ]
-        # CodeQL supports [ 'cpp', 'csharp', 'go', 'java', 'javascript', 'python', 'ruby' ]
+        # 'actions' analyses the workflow files themselves (injection via
+        # untrusted expressions, over-broad permissions, unpinned actions).
+        language: [ 'go', 'actions' ]
         # Learn more about CodeQL language support at https://aka.ms/codeql-docs/language-support
 
     steps:
     - name: Checkout repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
 
     # Initializes the CodeQL tools for scanning.
     - name: Initialize CodeQL

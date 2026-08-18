@@ -67,6 +67,9 @@ make proto
 # Verify generated protobuf code is up to date
 make check-proto
 
+# Regenerate the third-party license file (run after adding/updating dependencies)
+make licenses
+
 # Build Docker images
 make image
 make image-debug

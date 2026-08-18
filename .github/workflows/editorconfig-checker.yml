@@ -2,14 +2,21 @@ name: EditorConfig Checker
 
 on:
   push:
-    branches: [ 'main' ]
+    branches: [ 'main', 'develop' ]
   pull_request:
-    branches: [ 'main' ]
+    branches: [ 'main', 'develop' ]
     types:
       - opened
       - reopened
       - synchronize
       - ready_for_review
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   editorconfig:
@@ -17,5 +24,7 @@ jobs:
     if: github.event.pull_request.draft == false
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: editorconfig-checker/action-editorconfig-checker@840e866d93b8e032123c23bac69dece044d4d84c # v2.2.0
       - run: editorconfig-checker
