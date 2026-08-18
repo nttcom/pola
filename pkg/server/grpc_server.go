@@ -655,7 +655,7 @@ func getSegmentList(inputSRPolicy *pb.SRPolicy, ted *table.LsTED, usidMode bool)
 				})
 			}
 
-			segs, err := cspf.CSPFWithLooseSourceRouting(
+			segs, err := cspf.WithLooseSourceRouting(
 				inputSRPolicy.GetSrcRouterId(),
 				inputSRPolicy.GetDstRouterId(),
 				waypoints,
