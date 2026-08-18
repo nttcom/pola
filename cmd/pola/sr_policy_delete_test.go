@@ -108,7 +108,7 @@ func TestDeleteSRPolicy(t *testing.T) {
 		out := captureStdout(t, func() {
 			require.NoError(t, deleteSRPolicy(inputFormat{ASN: 65000, SRPolicy: validPolicy()}, true))
 		})
-		assert.Equal(t, "{\"status\": \"success\"}\n", out)
+		assert.JSONEq(t, "{\"status\": \"success\"}\n", out)
 	})
 
 	t.Run("grpc status error is unwrapped to its message", func(t *testing.T) {

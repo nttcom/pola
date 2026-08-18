@@ -138,7 +138,8 @@ func (c LSPDBVersionCapability) Strings() []string {
 	return []string{"LSP-DB-VERSION"}
 }
 
-// MultipathCapability holds the RFC 8751 multipath capability flags.
+// MultipathCapability holds the multipath capability flags
+// (draft-ietf-pce-multipath).
 type MultipathCapability struct {
 	MaxMultipaths uint32
 	Weighted      bool

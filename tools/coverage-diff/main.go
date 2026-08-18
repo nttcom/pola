@@ -274,7 +274,7 @@ func parseProfile(r io.Reader, module string, changed changedLines) (*result, er
 			continue
 		}
 		if !sawMode {
-			return nil, fmt.Errorf("coverage profile missing mode header")
+			return nil, errors.New("coverage profile missing mode header")
 		}
 		b, ok := parseProfileLine(line)
 		if !ok {
@@ -299,7 +299,7 @@ func parseProfile(r io.Reader, module string, changed changedLines) (*result, er
 		return nil, err
 	}
 	if !sawMode {
-		return nil, fmt.Errorf("coverage profile missing mode header")
+		return nil, errors.New("coverage profile missing mode header")
 	}
 	return summarize(seen, covered), nil
 }

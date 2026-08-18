@@ -303,7 +303,7 @@ global:
 			if tt.wantErr {
 				assert.Error(t, err)
 				if tt.errContains != "" {
-					assert.ErrorContains(t, err, tt.errContains)
+					require.ErrorContains(t, err, tt.errContains)
 				}
 				return
 			}

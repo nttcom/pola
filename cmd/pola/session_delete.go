@@ -6,6 +6,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net/netip"
 
@@ -19,13 +20,13 @@ func newSessionDeleteCmd() *cobra.Command {
 		Use:          "delete",
 		Aliases:      []string{"del"},
 		SilenceUsage: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			if len(args) < 1 {
-				return fmt.Errorf("requires session address\nUsage: pola session delete [session address]")
+				return errors.New("requires session address\nUsage: pola session delete [session address]")
 			}
 			ssAddr, err := netip.ParseAddr(args[0])
 			if err != nil {
-				return fmt.Errorf("invalid input\nUsage: pola session delete [session address]")
+				return errors.New("invalid input\nUsage: pola session delete [session address]")
 			}
 			if err := deleteSession(ssAddr, jsonFmt); err != nil {
 				return err

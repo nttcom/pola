@@ -69,6 +69,7 @@ type Config struct {
 func ReadConfigFile(configFile string) (Config, error) {
 	c := &Config{}
 
+	//nolint:gosec // G304: configFile is chosen by the operator.
 	f, err := os.Open(configFile)
 	if err != nil {
 		return *c, err

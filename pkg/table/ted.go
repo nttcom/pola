@@ -24,7 +24,7 @@ func (ted *LsTED) Update(tedElems []TEDElem, asn uint32) {
 	}
 }
 
-// Print outputs the TED in a structured way with low cyclomatic complexity.
+// Print prints the TED, listing each node with its prefixes, links and SRv6 SIDs.
 func (ted *LsTED) Print() {
 	if ted == nil || ted.Nodes == nil {
 		fmt.Println("TED is empty")

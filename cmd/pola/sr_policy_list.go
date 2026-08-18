@@ -25,10 +25,10 @@ func newSRPolicyListCmd() *cobra.Command {
 	return cmd
 }
 
-func showSRPolicyList(cmd *cobra.Command, args []string) error {
+func showSRPolicyList(cmd *cobra.Command, _ []string) error {
 	jsonFlag, err := cmd.Flags().GetBool("json")
 	if err != nil {
-		return fmt.Errorf("failed to retrieve 'json' flag: %v", err)
+		return fmt.Errorf("failed to retrieve 'json' flag: %w", err)
 	}
 
 	sessionAddr, err := sessionAddrFlag(cmd)
@@ -38,14 +38,14 @@ func showSRPolicyList(cmd *cobra.Command, args []string) error {
 
 	sessions, err := grpc.GetSRPolicyList(client, sessionAddr)
 	if err != nil {
-		return fmt.Errorf("failed to retrieve SR policy list: %v", err)
+		return fmt.Errorf("failed to retrieve SR policy list: %w", err)
 	}
 
 	if jsonFlag {
 		// Output in JSON format
 		outputJSON, err := json.Marshal(sessions)
 		if err != nil {
-			return fmt.Errorf("failed to marshal SR policy list to JSON: %v", err)
+			return fmt.Errorf("failed to marshal SR policy list to JSON: %w", err)
 		}
 		fmt.Println(string(outputJSON))
 	} else {
@@ -95,14 +95,14 @@ func showSRPolicyList(cmd *cobra.Command, args []string) error {
 func sessionAddrFlag(cmd *cobra.Command) (netip.Addr, error) {
 	flag, err := cmd.Flags().GetString("session")
 	if err != nil {
-		return netip.Addr{}, fmt.Errorf("failed to retrieve 'session' flag: %v", err)
+		return netip.Addr{}, fmt.Errorf("failed to retrieve 'session' flag: %w", err)
 	}
 	if flag == "" {
 		return netip.Addr{}, nil
 	}
 	addr, err := netip.ParseAddr(flag)
 	if err != nil {
-		return netip.Addr{}, fmt.Errorf("invalid --session address %q: %v", flag, err)
+		return netip.Addr{}, fmt.Errorf("invalid --session address %q: %w", flag, err)
 	}
 	return addr, nil
 }

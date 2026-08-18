@@ -34,11 +34,11 @@ type fakePCEServiceClient struct {
 	tedErr  error
 }
 
-func (f *fakePCEServiceClient) GetSessionList(ctx context.Context, in *pb.GetSessionListRequest, opts ...grpc.CallOption) (*pb.GetSessionListResponse, error) {
+func (f *fakePCEServiceClient) GetSessionList(_ context.Context, _ *pb.GetSessionListRequest, _ ...grpc.CallOption) (*pb.GetSessionListResponse, error) {
 	return f.sessionListResp, f.sessionListErr
 }
 
-func (f *fakePCEServiceClient) DeleteSession(ctx context.Context, in *pb.DeleteSessionRequest, opts ...grpc.CallOption) (*pb.DeleteSessionResponse, error) {
+func (f *fakePCEServiceClient) DeleteSession(_ context.Context, in *pb.DeleteSessionRequest, _ ...grpc.CallOption) (*pb.DeleteSessionResponse, error) {
 	f.deleteSessionReq = in
 	if f.deleteSessionErr != nil {
 		return nil, f.deleteSessionErr
@@ -46,11 +46,11 @@ func (f *fakePCEServiceClient) DeleteSession(ctx context.Context, in *pb.DeleteS
 	return &pb.DeleteSessionResponse{}, nil
 }
 
-func (f *fakePCEServiceClient) GetSRPolicyList(ctx context.Context, in *pb.GetSRPolicyListRequest, opts ...grpc.CallOption) (*pb.GetSRPolicyListResponse, error) {
+func (f *fakePCEServiceClient) GetSRPolicyList(_ context.Context, _ *pb.GetSRPolicyListRequest, _ ...grpc.CallOption) (*pb.GetSRPolicyListResponse, error) {
 	return f.srPolicyListResp, f.srPolicyListErr
 }
 
-func (f *fakePCEServiceClient) CreateSRPolicy(ctx context.Context, in *pb.CreateSRPolicyRequest, opts ...grpc.CallOption) (*pb.CreateSRPolicyResponse, error) {
+func (f *fakePCEServiceClient) CreateSRPolicy(_ context.Context, in *pb.CreateSRPolicyRequest, _ ...grpc.CallOption) (*pb.CreateSRPolicyResponse, error) {
 	f.createSRPolicyReq = in
 	if f.createSRPolicyErr != nil {
 		return nil, f.createSRPolicyErr
@@ -58,7 +58,7 @@ func (f *fakePCEServiceClient) CreateSRPolicy(ctx context.Context, in *pb.Create
 	return &pb.CreateSRPolicyResponse{IsSuccess: true}, nil
 }
 
-func (f *fakePCEServiceClient) DeleteSRPolicy(ctx context.Context, in *pb.DeleteSRPolicyRequest, opts ...grpc.CallOption) (*pb.DeleteSRPolicyResponse, error) {
+func (f *fakePCEServiceClient) DeleteSRPolicy(_ context.Context, in *pb.DeleteSRPolicyRequest, _ ...grpc.CallOption) (*pb.DeleteSRPolicyResponse, error) {
 	f.deleteSRPolicyReq = in
 	if f.deleteSRPolicyErr != nil {
 		return nil, f.deleteSRPolicyErr
@@ -66,6 +66,6 @@ func (f *fakePCEServiceClient) DeleteSRPolicy(ctx context.Context, in *pb.Delete
 	return &pb.DeleteSRPolicyResponse{IsSuccess: true}, nil
 }
 
-func (f *fakePCEServiceClient) GetTED(ctx context.Context, in *pb.GetTEDRequest, opts ...grpc.CallOption) (*pb.GetTEDResponse, error) {
+func (f *fakePCEServiceClient) GetTED(_ context.Context, _ *pb.GetTEDRequest, _ ...grpc.CallOption) (*pb.GetTEDResponse, error) {
 	return f.tedResp, f.tedErr
 }

@@ -75,8 +75,8 @@ func (t MessageType) StringWithReference() string {
 	return fmt.Sprintf("Unknown MessageType (0x%02x)", uint8(t))
 }
 
-// CommonHeader is the common header of a PCEP message (RFC5440 6.1).
-type CommonHeader struct { // RFC5440 6.1
+// CommonHeader is the common header of a PCEP message (RFC 5440 §6.1).
+type CommonHeader struct { // RFC 5440 §6.1
 	Version       uint8 // Current version is 1
 	Flag          uint8
 	MessageType   MessageType
@@ -88,8 +88,8 @@ func (h *CommonHeader) DecodeFromBytes(header []uint8) error {
 	if len(header) < int(CommonHeaderLength) {
 		return fmt.Errorf("PCEP common header too short: got %d bytes, need %d", len(header), CommonHeaderLength)
 	}
-	h.Version = uint8(header[0] >> 5)
-	h.Flag = uint8(header[0] & 0x1f)
+	h.Version = header[0] >> 5
+	h.Flag = header[0] & 0x1f
 	h.MessageType = MessageType(header[1])
 	h.MessageLength = binary.BigEndian.Uint16(header[2:4])
 
@@ -109,7 +109,7 @@ func (h *CommonHeader) DecodeFromBytes(header []uint8) error {
 // Serialize encodes the CommonHeader into bytes.
 func (h *CommonHeader) Serialize() []uint8 {
 	buf := make([]uint8, 0, 4)
-	verFlag := uint8(h.Version<<5 | h.Flag)
+	verFlag := h.Version<<5 | h.Flag
 	buf = append(buf, verFlag)
 	buf = append(buf, uint8(h.MessageType))
 	buf = append(buf, Uint16ToByteSlice(h.MessageLength)...)
@@ -495,7 +495,7 @@ func (m *PCRptMessage) DecodeFromBytes(messageBody []uint8) error {
 		if (previousObjectClass != ObjectClassSRP && commonObjectHeader.ObjectClass == ObjectClassLSP) || commonObjectHeader.ObjectClass == ObjectClassSRP {
 			if sr != nil {
 				if !lspDecoded {
-					return fmt.Errorf("PCRpt: state report missing LSP object")
+					return errors.New("PCRpt: state report missing LSP object")
 				}
 				m.StateReports = append(m.StateReports, sr)
 			}
@@ -516,10 +516,10 @@ func (m *PCRptMessage) DecodeFromBytes(messageBody []uint8) error {
 		messageBody = messageBody[commonObjectHeader.ObjectLength:]
 	}
 	if sr == nil {
-		return fmt.Errorf("PCRpt: no state report")
+		return errors.New("PCRpt: no state report")
 	}
 	if !lspDecoded {
-		return fmt.Errorf("PCRpt: state report missing LSP object")
+		return errors.New("PCRpt: state report missing LSP object")
 	}
 	m.StateReports = append(m.StateReports, sr)
 

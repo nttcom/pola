@@ -354,7 +354,7 @@ func TestCommonHeader_DecodeFromBytes_Version(t *testing.T) {
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, PCEPVersion, h.Version)
 			}
 		})
@@ -787,7 +787,7 @@ func TestMessage_Serialize_RejectsOversizedMessage(t *testing.T) {
 
 	pcupd := &PCUpdMessage{SrpObject: &SrpObject{}, LSPObject: &LSPObject{}, EroObject: ero}
 	_, err := pcupd.Serialize()
-	assert.ErrorContains(t, err, "exceeds")
+	require.ErrorContains(t, err, "exceeds")
 
 	pcinitiate := &PCInitiateMessage{SrpObject: &SrpObject{}, LSPObject: &LSPObject{}, EroObject: ero}
 	_, err = pcinitiate.Serialize()

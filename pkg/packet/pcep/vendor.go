@@ -10,7 +10,7 @@ import (
 	"strconv"
 )
 
-// EnterpriseNumber is an IANA Private Enterprise Number, used by the VENDOR-INFORMATION TLV and Object (RFC7470).
+// EnterpriseNumber is an IANA Private Enterprise Number, used by the VENDOR-INFORMATION TLV and Object (RFC 7470).
 // See https://www.iana.org/assignments/enterprise-numbers/
 type EnterpriseNumber uint32
 

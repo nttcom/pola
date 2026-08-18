@@ -116,7 +116,7 @@ func TestServer_Shutdown_ClosesListenerAndStopsServe(t *testing.T) {
 
 	select {
 	case err := <-serveErrCh:
-		assert.NoError(t, err, "Serve should return cleanly once the listener is closed")
+		require.NoError(t, err, "Serve should return cleanly once the listener is closed")
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for Serve to return after Shutdown closed the listener")
 	}
@@ -248,7 +248,7 @@ func TestNewPCE_ReturnsTaggedError(t *testing.T) {
 			select {
 			case err := <-errCh:
 				assert.Equal(t, tt.wantServer, err.Server)
-				assert.Error(t, err.Error)
+				require.Error(t, err.Error)
 			case <-time.After(2 * time.Second):
 				t.Fatal("timed out waiting for NewPCE to report an error")
 			}
@@ -283,7 +283,7 @@ func TestNewPCE_TEDEnabledUpdatesTEDOnElemsReceived(t *testing.T) {
 	select {
 	case err := <-errCh:
 		assert.Empty(t, err.Server)
-		assert.NoError(t, err.Error)
+		require.NoError(t, err.Error)
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for NewPCE to shut down after context cancellation")
 	}
@@ -340,7 +340,7 @@ func TestNewPCE_ContextCancelShutsDownCleanly(t *testing.T) {
 	select {
 	case err := <-errCh:
 		assert.Empty(t, err.Server)
-		assert.NoError(t, err.Error)
+		require.NoError(t, err.Error)
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for NewPCE to shut down after context cancellation")
 	}
@@ -474,7 +474,7 @@ type blockingWriteConn struct {
 
 func (c *blockingWriteConn) Read(p []byte) (int, error) { return c.r.Read(p) }
 
-func (c *blockingWriteConn) Write(p []byte) (int, error) {
+func (c *blockingWriteConn) Write(_ []byte) (int, error) {
 	<-c.unblock
 	return 0, net.ErrClosed
 }

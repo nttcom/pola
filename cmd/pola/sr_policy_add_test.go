@@ -175,7 +175,7 @@ func TestAddSRPolicy(t *testing.T) {
 		out := captureStdout(t, func() {
 			require.NoError(t, addSRPolicy(validEndpointInput(), true, false))
 		})
-		assert.Equal(t, "{\"status\": \"success\"}\n", out)
+		assert.JSONEq(t, "{\"status\": \"success\"}\n", out)
 	})
 
 	t.Run("plain text output on success", func(t *testing.T) {

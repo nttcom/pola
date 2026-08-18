@@ -24,8 +24,6 @@ import (
 	"github.com/nttcom/pola/pkg/table"
 )
 
-const tedUpdateInterval = 1 // (min)
-
 type flags struct {
 	configFile string
 }
@@ -51,13 +49,14 @@ func main() {
 		log.Panicf("invalid config file: %v", err)
 	}
 
-	// Create log directory if it does not exist
-	if err := os.MkdirAll(c.Global.Log.Path, 0755); err != nil {
+	// Create log directory if it does not exist. Logs can carry topology and
+	// peer details, so they stay readable only by the daemon's own user.
+	if err := os.MkdirAll(c.Global.Log.Path, 0750); err != nil {
 		log.Panicf("failed to create log directory: %v", err)
 	}
 
 	// Open log file
-	fp, err := os.OpenFile(c.Global.Log.Path+c.Global.Log.Name, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	fp, err := os.OpenFile(c.Global.Log.Path+c.Global.Log.Name, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0600)
 	if err != nil {
 		log.Panicf("failed to open log file: %v", err)
 	}

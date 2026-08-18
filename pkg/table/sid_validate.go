@@ -20,7 +20,8 @@ type SIDIndex struct {
 	srv6Locators map[netip.Prefix]struct{} // locator prefixes derived from SID structures
 }
 
-// MissingSegment identifies one segment the TED does not know about.
+// MissingSegment identifies one rejected segment by its position in the
+// segment list and its SID.
 type MissingSegment struct {
 	Hop int // 1-origin position in the segment list
 	SID string

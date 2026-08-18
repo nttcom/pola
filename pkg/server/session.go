@@ -497,6 +497,7 @@ func (ss *Session) recordUnknownMessage() bool {
 			live = append(live, t)
 		}
 	}
+	//nolint:gocritic // appendAssign: live aliases unknownMsgTimes[:0] for in-place filtering.
 	ss.unknownMsgTimes = append(live, now)
 
 	return uint32(len(ss.unknownMsgTimes)) > ss.maxUnknownMsgs
@@ -804,7 +805,7 @@ func (ss *Session) SendOpen() error {
 // It returns an error if all non-reserved IDs are in use.
 func nextUnusedSRPID(head, max uint32, used func(uint32) bool) (srpID uint32, nextHead uint32, err error) {
 	capacity := max - 1 // valid range is [1, max-1]; 0 and max are reserved.
-	for attempts := uint32(0); attempts < capacity; attempts++ {
+	for range capacity {
 		if head == 0 || head >= max {
 			head = 1
 		}

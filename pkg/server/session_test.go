@@ -13,6 +13,7 @@ import (
 	"math"
 	"net"
 	"net/netip"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -87,10 +88,10 @@ func (c *fakeConn) Write(p []byte) (int, error) {
 func (c *fakeConn) Close() error                       { return c.closeErr }
 func (c *fakeConn) LocalAddr() net.Addr                { return nil }
 func (c *fakeConn) RemoteAddr() net.Addr               { return nil }
-func (c *fakeConn) SetDeadline(t time.Time) error      { return nil }
-func (c *fakeConn) SetWriteDeadline(t time.Time) error { return nil }
+func (c *fakeConn) SetDeadline(_ time.Time) error      { return nil }
+func (c *fakeConn) SetWriteDeadline(_ time.Time) error { return nil }
 
-func (c *fakeConn) SetReadDeadline(t time.Time) error { return c.setReadDeadlineErr }
+func (c *fakeConn) SetReadDeadline(_ time.Time) error { return c.setReadDeadlineErr }
 
 // newTestStateReport builds a PCRpt state report for an SR-MPLS policy with an explicit path.
 func newTestStateReport(t *testing.T, plspID uint32, srpID uint32) *pcep.StateReport {
@@ -378,7 +379,7 @@ func TestConcurrentSRPolicyRequestsAllocateUniqueSRPIDs(t *testing.T) {
 	const goroutines = 20
 	var wg sync.WaitGroup
 	errCh := make(chan error, goroutines)
-	for i := 0; i < goroutines; i++ {
+	for i := range goroutines {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
@@ -403,7 +404,7 @@ func TestConcurrentSRPolicyRequestsAllocateUniqueSRPIDs(t *testing.T) {
 	close(errCh)
 
 	for err := range errCh {
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 
 	ss.srPolicyIntentsMu.Lock()
@@ -549,10 +550,10 @@ func TestStartIntentSweep_Idempotent(t *testing.T) {
 	ss.startIntentSweep()
 	defer ss.stopIntentSweep()
 
-	assert.True(t, firstStop == ss.sweepStop, "startIntentSweep must not replace an already-running sweeper's stop channel")
+	assert.Equal(t, firstStop, ss.sweepStop, "startIntentSweep must not replace an already-running sweeper's stop channel")
 }
 
-func TestStopIntentSweep_NoopWhenNeverStarted(t *testing.T) {
+func TestStopIntentSweep_NoopWhenNeverStarted(_ *testing.T) {
 	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
 	ss.stopIntentSweep()
 }
@@ -574,7 +575,7 @@ func TestIntentSweep_StopsCleanly(t *testing.T) {
 	}
 }
 
-func TestIntentSweep_ConcurrentWithIntentConsumption(t *testing.T) {
+func TestIntentSweep_ConcurrentWithIntentConsumption(_ *testing.T) {
 	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
 	ss.srPolicyIntentTTL = 5 * time.Millisecond
 	ss.sweepInterval = 2 * time.Millisecond
@@ -679,21 +680,21 @@ type concurrentSendCase struct {
 var concurrentSendCases = []concurrentSendCase{
 	{
 		name: "SendKeepalive",
-		send: func(ss *Session, i int) error { return ss.SendKeepalive() },
+		send: func(ss *Session, _ int) error { return ss.SendKeepalive() },
 	},
 	{
 		name: "SendOpen",
-		send: func(ss *Session, i int) error { return ss.SendOpen() },
+		send: func(ss *Session, _ int) error { return ss.SendOpen() },
 	},
 	{
 		name: "SendClose",
-		send: func(ss *Session, i int) error {
+		send: func(ss *Session, _ int) error {
 			return ss.SendClose(pcep.CloseReasonNoExplanationProvided)
 		},
 	},
 	{
 		name: "SendPCUpdate",
-		send: func(ss *Session, i int) error {
+		send: func(ss *Session, _ int) error {
 			return ss.SendPCUpdate(table.SRPolicy{
 				Name:    "concurrent-send-test",
 				SrcAddr: netip.MustParseAddr("10.255.0.1"),
@@ -724,7 +725,7 @@ func sendConcurrentPCEPMessages(t *testing.T, ss *Session, goroutines int) {
 	var wg sync.WaitGroup
 	errCh := make(chan error, goroutines)
 
-	for i := 0; i < goroutines; i++ {
+	for i := range goroutines {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
@@ -766,7 +767,7 @@ func startPCEPFramingValidator(r io.Reader, wantCount int) <-chan error {
 	result := make(chan error, 1)
 
 	go func() {
-		for i := 0; i < wantCount; i++ {
+		for range wantCount {
 			if err := readPCEPMessage(r); err != nil {
 				result <- err
 				return
@@ -1348,7 +1349,7 @@ func TestReceivePCEPMessage_StateReportHandlingErrorIsLoggedNotFatal(t *testing.
 	require.NoError(t, err, "failed to serialize SrpObject")
 	byteLsp, err := sr.LSPObject.Serialize()
 	require.NoError(t, err, "failed to serialize LSPObject")
-	body := append(byteSrp, byteLsp...) // no ERO object
+	body := slices.Concat(byteSrp, byteLsp) // no ERO object
 	writeRawPCEPMessage(t, client, pcep.MessageTypeReport, body)
 
 	closeMessage := pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided)
@@ -1447,7 +1448,7 @@ func TestReceivePCEPMessage_Errors(t *testing.T) {
 }
 
 func TestReceivePCEPMessage_ShortMessageLengthIsRejected(t *testing.T) {
-	for length := uint16(0); length < pcep.CommonHeaderLength; length++ {
+	for length := range pcep.CommonHeaderLength {
 		t.Run(fmt.Sprintf("MessageLength=%d", length), func(t *testing.T) {
 			server, client := newTCPConnPair(t)
 			t.Cleanup(func() {
@@ -1579,14 +1580,14 @@ func TestReceivePCEPMessage_FewUnknownMessagesToleratedWithinWindow(t *testing.T
 
 	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
 
-	for i := uint32(0); i < ss.maxUnknownMsgs; i++ {
+	for range ss.maxUnknownMsgs {
 		writeRawPCEPMessage(t, client, pcep.MessageType(0x63), nil)
 	}
 	writeMessage(t, client, pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided))
 
 	require.NoError(t, ss.ReceivePCEPMessage(), "unrecognized messages within the threshold must not close the session")
 
-	for i := uint32(0); i < ss.maxUnknownMsgs; i++ {
+	for range ss.maxUnknownMsgs {
 		readPCErrMessage(t, client)
 	}
 }
@@ -1631,18 +1632,18 @@ func readCloseMessage(t *testing.T, r io.Reader) *pcep.CloseMessage {
 	return closeMessage
 }
 
-func TestIsSynced_ConcurrentAccess(t *testing.T) {
+func TestIsSynced_ConcurrentAccess(_ *testing.T) {
 	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
 
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			ss.setSynced()
 		}
 	}()
 
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		ss.IsSynced()
 	}
 	<-done
@@ -1687,7 +1688,7 @@ func TestHandleStateReport_StatefulPCERequestRegistrationFailure(t *testing.T) {
 	sr := newTestStateReport(t, 1, 3) // non-zero SRP-ID uses handleStatefulPCERequest
 	sr.EroObject = nil
 
-	assert.Error(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
+	require.Error(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
 
 	_, found := ss.SearchSRPolicy(1)
 	assert.False(t, found)
@@ -1793,7 +1794,7 @@ func TestHandleSRPolicyWithPLSPID_CreateEroFromSegmentListErrorIsPropagated(t *t
 	sr.LSPObject.SrcAddr = srcAddr
 	sr.LSPObject.DstAddr = dstAddr
 
-	assert.Error(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
+	require.Error(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
 
 	_, found := ss.SearchSRPolicy(1)
 	assert.False(t, found, "SR Policy must not be registered when ERO construction fails")
@@ -1846,7 +1847,7 @@ func TestHandleSRPolicyWithPLSPID_EmptyComputedPathIsRejected(t *testing.T) {
 	sr.LSPObject.SrcAddr = selfAddr
 	sr.LSPObject.DstAddr = selfAddr
 
-	assert.Error(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
+	require.Error(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
 
 	_, found := ss.SearchSRPolicy(1)
 	assert.False(t, found)
@@ -1870,7 +1871,7 @@ func TestHandleSRPolicyWithPLSPID_SendPCUpdateFailureIsPropagated(t *testing.T) 
 	sr.LSPObject.SrcAddr = srcAddr
 	sr.LSPObject.DstAddr = dstAddr
 
-	assert.Error(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
+	require.Error(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
 
 	// The policy was registered before the PCUpd send failed.
 	_, found := ss.SearchSRPolicy(1)
@@ -2071,7 +2072,7 @@ func TestCreateEroFromSegmentList_SRv6InvalidSegmentReturnsError(t *testing.T) {
 type failingMessage struct{}
 
 func (failingMessage) Serialize() ([]uint8, error) {
-	return nil, fmt.Errorf("serialize failed")
+	return nil, errors.New("serialize failed")
 }
 
 func TestSendPCEPMessage_SerializeErrorIsPropagated(t *testing.T) {
@@ -2093,7 +2094,7 @@ func TestSendPCInitiate_InvalidSegmentTypeIsRejected(t *testing.T) {
 		SegmentList: []table.Segment{unknownSegment{}},
 	}
 
-	assert.Error(t, ss.SendPCInitiate(srPolicy, false))
+	require.Error(t, ss.SendPCInitiate(srPolicy, false))
 
 	_, ok := ss.takeSRPolicyIntent(wantSRPID)
 	assert.False(t, ok, "intent must be forgotten when message construction fails")
@@ -2107,7 +2108,7 @@ func TestSendPCUpdate_InvalidSegmentTypeIsRejected(t *testing.T) {
 		SegmentList: []table.Segment{unknownSegment{}},
 	}
 
-	assert.Error(t, ss.SendPCUpdate(srPolicy))
+	require.Error(t, ss.SendPCUpdate(srPolicy))
 
 	_, ok := ss.takeSRPolicyIntent(wantSRPID)
 	assert.False(t, ok, "intent must be forgotten when message construction fails")

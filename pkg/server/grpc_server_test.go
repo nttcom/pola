@@ -892,13 +892,13 @@ func TestConvertSegment_SRMPLS(t *testing.T) {
 	}
 }
 
-func TestTED_ConcurrentUpdate(t *testing.T) {
+func TestTED_ConcurrentUpdate(_ *testing.T) {
 	s := &Server{ted: &table.LsTED{Nodes: map[string]*table.LsNode{}}}
 
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			node := table.NewLsNode(1, "router")
 			prefix := table.NewLsPrefix(node)
 			prefix.Prefix = netip.MustParsePrefix("192.0.2.1/32")
@@ -907,20 +907,20 @@ func TestTED_ConcurrentUpdate(t *testing.T) {
 		}
 	}()
 
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		_ = buildRouterIDIndex(s.TED())
 	}
 	<-done
 }
 
-func TestSessionList_ConcurrentAccess(t *testing.T) {
+func TestSessionList_ConcurrentAccess(_ *testing.T) {
 	s := &Server{}
 	addr := netip.MustParseAddr("192.0.2.1")
 
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		for i := 0; i < 100; i++ {
+		for i := range 100 {
 			ss := &Session{sessionID: uint8(i), peerAddr: addr, isSynced: true}
 
 			s.sessionMu.Lock()
@@ -939,7 +939,7 @@ func TestSessionList_ConcurrentAccess(t *testing.T) {
 		}
 	}()
 
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		s.SearchSession(addr, false)
 		s.SRPolicies()
 		s.Sessions()
@@ -1335,13 +1335,13 @@ func TestGetLoopbackAddr(t *testing.T) {
 	assert.Equal(t, "10.0.0.1", addr.String())
 
 	_, err = getLoopbackAddr(ted, "missing")
-	assert.ErrorContains(t, err, "no node with router ID missing")
+	require.ErrorContains(t, err, "no node with router ID missing")
 
 	_, err = getLoopbackAddr(ted, "r2")
-	assert.Error(t, err, "expected an error for a node without a loopback address")
+	require.Error(t, err, "expected an error for a node without a loopback address")
 
 	_, err = getLoopbackAddr(ted, "r3")
-	assert.ErrorContains(t, err, "no node with router ID r3")
+	require.ErrorContains(t, err, "no node with router ID r3")
 
 	_, err = getLoopbackAddr(nil, "r1")
 	assert.ErrorContains(t, err, "no node with router ID r1")
@@ -1357,7 +1357,7 @@ func TestGetSyncedPCEPSession(t *testing.T) {
 	assert.Same(t, ss, got)
 
 	_, err = getSyncedPCEPSession(pce, []byte{1, 2, 3})
-	assert.Error(t, err, "expected an error for a malformed address")
+	require.Error(t, err, "expected an error for a malformed address")
 
 	_, err = getSyncedPCEPSession(pce, netip.MustParseAddr("10.0.255.2").AsSlice())
 	assert.Error(t, err, "expected an error when no synced session matches")
@@ -1887,7 +1887,7 @@ func TestDeleteSRPolicy(t *testing.T) {
 		policy := validPolicy()
 		policy.SrcAddr = []byte{1, 2, 3}
 		resp, err := s.DeleteSRPolicy(context.Background(), &pb.DeleteSRPolicyRequest{SrPolicy: policy})
-		assert.ErrorContains(t, err, "invalid source address")
+		require.ErrorContains(t, err, "invalid source address")
 		assert.False(t, resp.GetIsSuccess())
 	})
 
@@ -1896,7 +1896,7 @@ func TestDeleteSRPolicy(t *testing.T) {
 		policy := validPolicy()
 		policy.DstAddr = []byte{1, 2, 3}
 		resp, err := s.DeleteSRPolicy(context.Background(), &pb.DeleteSRPolicyRequest{SrPolicy: policy})
-		assert.ErrorContains(t, err, "invalid destination address")
+		require.ErrorContains(t, err, "invalid destination address")
 		assert.False(t, resp.GetIsSuccess())
 	})
 
@@ -1920,7 +1920,7 @@ func TestDeleteSRPolicy(t *testing.T) {
 		ss := &Session{peerAddr: peerAddr, isSynced: true}
 		s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: zap.NewNop()}
 		resp, err := s.DeleteSRPolicy(context.Background(), &pb.DeleteSRPolicyRequest{SrPolicy: validPolicy()})
-		assert.ErrorContains(t, err, "requested SR Policy not found")
+		require.ErrorContains(t, err, "requested SR Policy not found")
 		assert.False(t, resp.GetIsSuccess())
 
 		st, ok := status.FromError(err)
@@ -2172,7 +2172,7 @@ func TestSendSRPolicyRequest_UpdateSendFailure(t *testing.T) {
 	segmentList := []table.Segment{table.NewSegmentSRMPLS(16003)}
 
 	err := sendSRPolicyRequest(s, req, segmentList, netip.MustParseAddr("10.255.0.1"), dstAddr, false, table.UnspecifiedMetric)
-	assert.ErrorContains(t, err, "failed to send PC update")
+	require.ErrorContains(t, err, "failed to send PC update")
 	assert.Equal(t, ReasonPCEPRequestFailed, errInfoReason(t, err))
 }
 
@@ -2193,7 +2193,7 @@ func TestSendSRPolicyRequest_CreateSendFailure(t *testing.T) {
 	segmentList := []table.Segment{table.NewSegmentSRMPLS(16003)}
 
 	err := sendSRPolicyRequest(s, req, segmentList, netip.MustParseAddr("10.255.0.1"), dstAddr, false, table.UnspecifiedMetric)
-	assert.ErrorContains(t, err, "failed to request SR policy creation")
+	require.ErrorContains(t, err, "failed to request SR policy creation")
 	assert.Equal(t, ReasonPCEPRequestFailed, errInfoReason(t, err))
 }
 
@@ -2201,7 +2201,7 @@ func TestGetSRPolicyList_InvalidFilterAddrReason(t *testing.T) {
 	s := &APIServer{logger: zap.NewNop()}
 	_, err := s.GetSRPolicyList(context.Background(), &pb.GetSRPolicyListRequest{SessionAddr: []byte{1, 2, 3}})
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "invalid session filter address")
+	require.ErrorContains(t, err, "invalid session filter address")
 	assert.Equal(t, ReasonInvalidRequest, errInfoReason(t, err))
 }
 
@@ -2229,7 +2229,7 @@ func TestWrapStatusError(t *testing.T) {
 	}{
 		{
 			name:    "non-status error is wrapped with a plain message",
-			err:     fmt.Errorf("boom"),
+			err:     errors.New("boom"),
 			wantMsg: "context: boom",
 		},
 		{
@@ -2485,14 +2485,14 @@ func TestDeleteSession(t *testing.T) {
 	t.Run("malformed address", func(t *testing.T) {
 		s := &APIServer{pce: &Server{}, logger: zap.NewNop()}
 		_, err := s.DeleteSession(context.Background(), &pb.DeleteSessionRequest{Addr: []byte{1, 2, 3}})
-		assert.ErrorContains(t, err, "invalid address")
+		require.ErrorContains(t, err, "invalid address")
 		assert.Equal(t, ReasonInvalidRequest, errInfoReason(t, err))
 	})
 
 	t.Run("no such session", func(t *testing.T) {
 		s := &APIServer{pce: &Server{}, logger: zap.NewNop()}
 		_, err := s.DeleteSession(context.Background(), &pb.DeleteSessionRequest{Addr: netip.MustParseAddr("10.0.255.1").AsSlice()})
-		assert.ErrorContains(t, err, "no session with address")
+		require.ErrorContains(t, err, "no session with address")
 		assert.Equal(t, ReasonPCEPSessionNotFound, errInfoReason(t, err))
 	})
 

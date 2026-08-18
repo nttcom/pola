@@ -173,7 +173,7 @@ func setupAndRun(m *testing.M) (int, error) {
 func reportCoverage() error {
 	out, err := exec.Command("go", "tool", "covdata", "percent", "-i="+covDir).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("go tool covdata: %v\n%s", err, out)
+		return fmt.Errorf("go tool covdata: %w\n%s", err, out)
 	}
 
 	pcts := map[string]float64{}
@@ -219,7 +219,7 @@ func buildExamples() error {
 				"-o", filepath.Join(binDir, dir), pkg).CombinedOutput()
 			if err != nil {
 				mu.Lock()
-				errs = append(errs, fmt.Errorf("build %s: %v\n%s", dir, err, out))
+				errs = append(errs, fmt.Errorf("build %s: %w\n%s", dir, err, out))
 				mu.Unlock()
 			}
 		}()

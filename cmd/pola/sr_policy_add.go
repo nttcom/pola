@@ -23,23 +23,24 @@ import (
 func newSRPolicyAddCmd() *cobra.Command {
 	srPolicyAddCmd := &cobra.Command{
 		Use: "add",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			noSIDValidateFlag, err := cmd.Flags().GetBool("no-sid-validate")
 			if err != nil {
-				return fmt.Errorf("failed to retrieve 'no-sid-validate' flag: %v", err)
+				return fmt.Errorf("failed to retrieve 'no-sid-validate' flag: %w", err)
 			}
 
 			filepath, err := cmd.Flags().GetString("file")
 			if err != nil {
-				return fmt.Errorf("failed to retrieve 'file' flag: %v", err)
+				return fmt.Errorf("failed to retrieve 'file' flag: %w", err)
 			}
 			if filepath == "" {
-				return fmt.Errorf("file path option \"-f filepath\" is mandatory")
+				return errors.New("file path option \"-f filepath\" is mandatory")
 			}
 
+			//nolint:gosec // G304: the file path comes from the operator's -f flag.
 			f, err := os.Open(filepath)
 			if err != nil {
-				return fmt.Errorf("failed to open file \"%s\": %v", filepath, err)
+				return fmt.Errorf("failed to open file \"%s\": %w", filepath, err)
 			}
 			defer func() {
 				if err := f.Close(); err != nil {
@@ -49,11 +50,11 @@ func newSRPolicyAddCmd() *cobra.Command {
 
 			inputData := inputFormat{}
 			if err := yaml.NewDecoder(f).Decode(&inputData); err != nil {
-				return fmt.Errorf("YAML syntax error in file \"%s\": %v", filepath, err)
+				return fmt.Errorf("YAML syntax error in file \"%s\": %w", filepath, err)
 			}
 
 			if err := addSRPolicy(inputData, jsonFmt, noSIDValidateFlag); err != nil {
-				return fmt.Errorf("failed to add SR policy: %v", err)
+				return fmt.Errorf("failed to add SR policy: %w", err)
 			}
 			return nil
 		},
@@ -310,7 +311,7 @@ func buildPolicyByType(
 	case "dynamic":
 		return buildDynamicPolicy(input, sampleDynamic)
 	default:
-		return 0, 0, nil, nil, fmt.Errorf("invalid input `type`")
+		return 0, 0, nil, nil, errors.New("invalid input `type`")
 	}
 }
 
@@ -390,6 +391,6 @@ func parseMetric(metric string) (pb.MetricType, error) {
 	case "hopcount":
 		return pb.MetricType_METRIC_TYPE_HOPCOUNT, nil
 	default:
-		return 0, fmt.Errorf("invalid input `metric`")
+		return 0, errors.New("invalid input `metric`")
 	}
 }

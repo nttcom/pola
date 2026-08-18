@@ -404,7 +404,7 @@ func TestCSPF_TopologyLimitationClassification(t *testing.T) {
 			err := tt.run()
 			require.Error(t, err)
 			var topoLimit *TopologyLimitationError
-			require.True(t, errors.As(err, &topoLimit))
+			require.ErrorAs(t, err, &topoLimit)
 			assert.Equal(t, tt.wantReason, topoLimit.Reason)
 		})
 	}
@@ -412,7 +412,7 @@ func TestCSPF_TopologyLimitationClassification(t *testing.T) {
 
 func TestCSPF_NilTED(t *testing.T) {
 	_, err := CSPF("A", "B", table.IGPMetric, nil)
-	assert.EqualError(t, err, "ted is nil")
+	require.EqualError(t, err, "ted is nil")
 
 	_, err = WithLooseSourceRouting("A", "B", nil, table.IGPMetric, nil)
 	assert.EqualError(t, err, "ted is nil")
@@ -423,7 +423,7 @@ func TestInvalidInputError_Unwrap(t *testing.T) {
 	err := &InvalidInputError{Err: sentinel}
 
 	assert.Same(t, sentinel, errors.Unwrap(err))
-	assert.True(t, errors.Is(err, sentinel))
+	assert.ErrorIs(t, err, sentinel)
 }
 
 func TestTopologyLimitationError_Unwrap(t *testing.T) {
@@ -431,7 +431,7 @@ func TestTopologyLimitationError_Unwrap(t *testing.T) {
 	err := &TopologyLimitationError{Err: sentinel}
 
 	assert.Same(t, sentinel, errors.Unwrap(err))
-	assert.True(t, errors.Is(err, sentinel))
+	assert.ErrorIs(t, err, sentinel)
 }
 
 func TestUpdateNeighborCosts_UnknownCalcNode(t *testing.T) {
@@ -537,7 +537,7 @@ func TestBuildWaypointSegment(t *testing.T) {
 					assert.Equal(t, tt.wantTopoReason, topoErr.Reason)
 				} else {
 					var inputErr *InvalidInputError
-					assert.ErrorAs(t, err, &inputErr)
+					require.ErrorAs(t, err, &inputErr)
 				}
 				return
 			}
