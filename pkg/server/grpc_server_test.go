@@ -547,6 +547,39 @@ func TestGetSessionList_BuildsStructuredCapabilities(t *testing.T) {
 	assert.Equal(t, uint64(42), dbVersion.GetLspDbVersion().GetVersionNumber())
 }
 
+type failingCapability struct {
+	pcep.SRPCECapability
+}
+
+func (c *failingCapability) Serialize() ([]byte, error) {
+	return nil, errors.New("serialize failure")
+}
+
+func TestGetSessionList_SkipsCapabilityOnSerializeError(t *testing.T) {
+	core, logs := observer.New(zap.WarnLevel)
+	session := &Session{
+		peerAddr: netip.MustParseAddr("10.0.0.1"),
+		isSynced: true,
+		advertisedCapabilities: []pcep.CapabilityInterface{
+			&failingCapability{},
+			&pcep.SRv6PCECapability{IsNAISupported: true},
+		},
+	}
+	s := &APIServer{
+		pce:    &Server{sessionList: []*Session{session}},
+		logger: zap.New(core),
+	}
+
+	resp, err := s.GetSessionList(context.Background(), &pb.GetSessionListRequest{})
+	require.NoError(t, err)
+	require.Len(t, resp.Sessions, 1)
+	require.Len(t, resp.Sessions[0].Capabilities, 1, "the failing capability must be skipped")
+
+	srv6 := resp.Sessions[0].Capabilities[0]
+	assert.Equal(t, pb.CapabilityType_CAPABILITY_TYPE_SRV6, srv6.GetType())
+	assert.Len(t, logs.FilterMessage("failed to serialize advertised capability").All(), 1)
+}
+
 func TestGetSessionList_MultipathCapabilityDoesNotSetMsd(t *testing.T) {
 	session := &Session{
 		peerAddr: netip.MustParseAddr("10.0.0.1"),
@@ -640,68 +673,6 @@ func TestGetSRPolicyList_FillsMissingFieldsAndOrdersDeterministically(t *testing
 	assert.Equal(t, pb.SRPolicyState_SR_POLICY_STATE_ACTIVE, policy.GetState())
 	assert.Equal(t, "0000.0aff.0001", policy.GetSrcRouterId())
 	assert.Empty(t, policy.GetDstRouterId(), "no TED node owns the destination address")
-}
-
-func TestBuildRouterIDIndex(t *testing.T) {
-	ted := &table.LsTED{Nodes: map[string]*table.LsNode{}}
-
-	v4Node := table.NewLsNode(65000, "router-v4")
-	v4Prefix := table.NewLsPrefix(v4Node)
-	v4Prefix.Prefix = netip.MustParsePrefix("192.0.2.10/32")
-	v4Node.Prefixes = append(v4Node.Prefixes, v4Prefix)
-	ted.Nodes[v4Node.RouterID] = v4Node
-
-	v6Node := table.NewLsNode(65000, "router-v6")
-	v6Prefix := table.NewLsPrefix(v6Node)
-	v6Prefix.Prefix = netip.MustParsePrefix("2001:db8::1/128")
-	v6Node.Prefixes = append(v6Node.Prefixes, v6Prefix)
-	ted.Nodes[v6Node.RouterID] = v6Node
-
-	// A node without a loopback (host) prefix must not appear in the index.
-	noLoopbackNode := table.NewLsNode(65000, "router-no-loopback")
-	nonHostPrefix := table.NewLsPrefix(noLoopbackNode)
-	nonHostPrefix.Prefix = netip.MustParsePrefix("192.0.2.0/24")
-	noLoopbackNode.Prefixes = append(noLoopbackNode.Prefixes, nonHostPrefix)
-	ted.Nodes[noLoopbackNode.RouterID] = noLoopbackNode
-	ted.Nodes["router-nil"] = nil
-
-	index := buildRouterIDIndex(ted)
-	assert.Equal(t, "router-v4", index[netip.MustParseAddr("192.0.2.10")])
-	assert.Equal(t, "router-v6", index[netip.MustParseAddr("2001:db8::1")])
-	assert.Empty(t, index[netip.MustParseAddr("192.0.2.0")])
-
-	assert.Nil(t, buildRouterIDIndex(nil))
-}
-
-func TestBuildAddressRouterIDIndex(t *testing.T) {
-	ted := &table.LsTED{Nodes: map[string]*table.LsNode{}}
-
-	v4Node := table.NewLsNode(65000, "router-v4")
-	v4Prefix := table.NewLsPrefix(v4Node)
-	v4Prefix.Prefix = netip.MustParsePrefix("192.0.2.10/32")
-	v4Node.Prefixes = append(v4Node.Prefixes, v4Prefix)
-	ted.Nodes[v4Node.RouterID] = v4Node
-
-	v6Node := table.NewLsNode(65000, "router-v6")
-	v6Prefix := table.NewLsPrefix(v6Node)
-	v6Prefix.Prefix = netip.MustParsePrefix("2001:db8::1/128")
-	v6Node.Prefixes = append(v6Node.Prefixes, v6Prefix)
-	ted.Nodes[v6Node.RouterID] = v6Node
-
-	// Non-host prefixes are indexed too, by their network address.
-	subnetNode := table.NewLsNode(65000, "router-subnet")
-	subnetPrefix := table.NewLsPrefix(subnetNode)
-	subnetPrefix.Prefix = netip.MustParsePrefix("192.0.2.0/24")
-	subnetNode.Prefixes = append(subnetNode.Prefixes, subnetPrefix)
-	ted.Nodes[subnetNode.RouterID] = subnetNode
-	ted.Nodes["router-nil"] = nil
-
-	index := buildAddressRouterIDIndex(ted)
-	assert.Equal(t, "router-v4", index[netip.MustParseAddr("192.0.2.10")])
-	assert.Equal(t, "router-v6", index[netip.MustParseAddr("2001:db8::1")])
-	assert.Equal(t, "router-subnet", index[netip.MustParseAddr("192.0.2.0")])
-
-	assert.Nil(t, buildAddressRouterIDIndex(nil))
 }
 
 func TestGetSRPolicyList_FiltersBySessionAddr(t *testing.T) {
@@ -908,7 +879,7 @@ func TestTED_ConcurrentUpdate(_ *testing.T) {
 	}()
 
 	for range 100 {
-		_ = buildRouterIDIndex(s.TED())
+		_ = s.TED().RouterIDIndex()
 	}
 	<-done
 }

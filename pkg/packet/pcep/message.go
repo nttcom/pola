@@ -618,7 +618,7 @@ func NewPCInitiateMessage(srpID uint32, srPolicy table.SRPolicy, opt ...Opt) (*P
 		return nil, err
 	}
 	if m.EroObject, err = NewEroObject(srPolicy.SegmentList); err != nil {
-		return m, err
+		return nil, err
 	}
 
 	switch opts.pccType {

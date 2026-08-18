@@ -985,10 +985,11 @@ func TestNewPCInitiateMessage_Errors(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := NewPCInitiateMessage(1, table.SRPolicy{
+			m, err := NewPCInitiateMessage(1, table.SRPolicy{
 				Name: "policy1", SegmentList: tt.segmentList, Color: 100, Preference: 200, SrcAddr: tt.srcAddr, DstAddr: tt.dstAddr,
 			}, tt.opts...)
-			assert.Error(t, err)
+			require.Error(t, err)
+			assert.Nil(t, m)
 		})
 	}
 }

@@ -700,7 +700,7 @@ func (ss *Session) extractSrcDstRouterIDs(sr pcep.StateReport) (string, string, 
 		return "", "", errors.New("could not extract valid source and destination addresses")
 	}
 
-	addrIndex := buildAddressRouterIDIndex(ss.ted)
+	addrIndex := ss.ted.AddressRouterIDIndex()
 
 	srcRouterID, err := ss.findRouterIDFromAddress(addrIndex, srcAddr)
 	if err != nil {
