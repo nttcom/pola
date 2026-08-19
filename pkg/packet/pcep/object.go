@@ -1108,14 +1108,18 @@ func (o *SREroSubobject) DecodeFromBytes(subobject []uint8) error {
 	o.CFlag = (subobject[3] & 0x02) != 0
 	o.MFlag = (subobject[3] & 0x01) != 0
 
-	if o.SFlag && o.FFlag {
-		return errors.New("SREroSubobject: both SID and NAI are absent")
-	}
 	// Bound reads to the declared length to prevent consuming the next subobject.
 	if int(o.Length) < 4 || len(subobject) < int(o.Length) {
 		return errors.New("SREroSubobject: invalid subobject length")
 	}
 	subobject = subobject[:o.Length]
+
+	if o.SFlag && o.FFlag {
+		return errors.New("SREroSubobject: both SID and NAI are absent")
+	}
+	if o.SFlag && o.NAIType == NAITypeSRAbsent {
+		return errors.New("SREroSubobject: SID absent requires a non-absent NAI")
+	}
 
 	off, err := o.decodeSID(subobject)
 	if err != nil {
@@ -1135,7 +1139,7 @@ func (o *SREroSubobject) DecodeFromBytes(subobject []uint8) error {
 
 func (o *SREroSubobject) decodeSID(subobject []uint8) (int, error) {
 	if o.SFlag {
-		o.Segment = table.SegmentSRMPLS{}
+		o.Segment = table.SegmentSRMPLS{SidAbsent: true}
 		return 4, nil
 	}
 	if len(subobject) < 8 {
@@ -1321,13 +1325,21 @@ func NewSREroSubobject(seg table.SegmentSRMPLS) (*SREroSubobject, error) {
 	if err != nil {
 		return nil, err
 	}
+	if seg.SidAbsent {
+		if naiType == NAITypeSRAbsent {
+			return nil, errors.New("SREroSubobject: both SID and NAI are absent")
+		}
+		if seg.HasMPLSStackEntryAttrs() {
+			return nil, errors.New("SREroSubobject: MPLS stack entry attributes require a SID")
+		}
+	}
 
 	subo := &SREroSubobject{
 		LFlag:         false,
 		SubobjectType: SubobjectTypeEROSR,
 		NAIType:       naiType,
 		FFlag:         naiType == NAITypeSRAbsent, // F=1: NAI is absent
-		SFlag:         false,
+		SFlag:         seg.SidAbsent,
 		CFlag:         seg.HasMPLSStackEntryAttrs(),
 		MFlag:         true, // TODO: Determine either MPLS label or index
 		Segment:       seg,

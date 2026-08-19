@@ -23,6 +23,8 @@ message Segment {
   string sid_structure = 2;
   string local_addr = 3;
   string remote_addr = 4;
+  // sid_absent indicates that the SID is omitted and the NAI identifies the segment.
+  bool sid_absent = 5;
 }
 
 enum SRPolicyType {

@@ -49,16 +49,45 @@ func TestSegmentsEqual(t *testing.T) {
 			want: true,
 		},
 		{
-			// Same label with a different NAI is still the same hop.
 			name: "SR-MPLS same label with different NAI",
 			a:    newTestSegmentSRMPLS(16001, "10.0.0.1", ""),
 			b:    newTestSegmentSRMPLS(16001, "10.0.0.2", "10.0.0.3"),
-			want: true,
+			want: false,
 		},
 		{
 			name: "SR-MPLS different label",
 			a:    newTestSegmentSRMPLS(16001, "10.0.0.1", ""),
 			b:    newTestSegmentSRMPLS(16002, "10.0.0.1", ""),
+			want: false,
+		},
+		{
+			name: "SR-MPLS SID-absent vs label 0",
+			a:    SegmentSRMPLS{SidAbsent: true, LocalAddr: netip.MustParseAddr("10.0.0.1")},
+			b:    newTestSegmentSRMPLS(0, "10.0.0.1", ""),
+			want: false,
+		},
+		{
+			name: "SR-MPLS both SID-absent with same NAI",
+			a:    SegmentSRMPLS{SidAbsent: true, LocalAddr: netip.MustParseAddr("10.0.0.1")},
+			b:    SegmentSRMPLS{SidAbsent: true, LocalAddr: netip.MustParseAddr("10.0.0.1")},
+			want: true,
+		},
+		{
+			name: "SR-MPLS same label with different TTL",
+			a:    func() SegmentSRMPLS { s := newTestSegmentSRMPLS(16001, "", ""); s.TTL = 1; return s }(),
+			b:    func() SegmentSRMPLS { s := newTestSegmentSRMPLS(16001, "", ""); s.TTL = 2; return s }(),
+			want: false,
+		},
+		{
+			name: "SR-MPLS same label with different TC",
+			a:    func() SegmentSRMPLS { s := newTestSegmentSRMPLS(16001, "", ""); s.TC = 1; return s }(),
+			b:    func() SegmentSRMPLS { s := newTestSegmentSRMPLS(16001, "", ""); s.TC = 2; return s }(),
+			want: false,
+		},
+		{
+			name: "SR-MPLS same label with different S",
+			a:    func() SegmentSRMPLS { s := newTestSegmentSRMPLS(16001, "", ""); s.S = false; return s }(),
+			b:    func() SegmentSRMPLS { s := newTestSegmentSRMPLS(16001, "", ""); s.S = true; return s }(),
 			want: false,
 		},
 		{
@@ -71,6 +100,26 @@ func TestSegmentsEqual(t *testing.T) {
 			name: "SRv6 same SID with different NAI",
 			a:    newTestSegmentSRv6("fc00:0:1::", "2001:db8::1", ""),
 			b:    newTestSegmentSRv6("fc00:0:1::", "2001:db8::2", ""),
+			want: false,
+		},
+		{
+			name: "SRv6 same SID with different USid",
+			a:    func() SegmentSRv6 { s := newTestSegmentSRv6("fc00:0:1::", "", ""); s.USid = false; return s }(),
+			b:    func() SegmentSRv6 { s := newTestSegmentSRv6("fc00:0:1::", "", ""); s.USid = true; return s }(),
+			want: false,
+		},
+		{
+			name: "SRv6 same SID with different Structure",
+			a: func() SegmentSRv6 {
+				s := newTestSegmentSRv6("fc00:0:1::", "", "")
+				s.Structure = SIDStructureBytes{1, 2, 3, 4}
+				return s
+			}(),
+			b: func() SegmentSRv6 {
+				s := newTestSegmentSRv6("fc00:0:1::", "", "")
+				s.Structure = SIDStructureBytes{5, 6, 7, 8}
+				return s
+			}(),
 			want: false,
 		},
 		{

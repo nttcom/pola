@@ -863,6 +863,20 @@ func TestConvertSegment_SRMPLS(t *testing.T) {
 	}
 }
 
+func TestConvertSegment_SRMPLS_SidAbsent(t *testing.T) {
+	seg := table.SegmentSRMPLS{SidAbsent: true, LocalAddr: netip.MustParseAddr("192.0.2.1")}
+
+	pbSeg := convertSegment(seg)
+	assert.True(t, pbSeg.GetSidAbsent())
+
+	enriched, err := newEnrichedSegment(pbSeg, false)
+	require.NoError(t, err)
+	mplsSeg, ok := enriched.(table.SegmentSRMPLS)
+	require.True(t, ok)
+	assert.True(t, mplsSeg.SidAbsent)
+	assert.Equal(t, "192.0.2.1", mplsSeg.LocalAddr.String())
+}
+
 func TestTED_ConcurrentUpdate(_ *testing.T) {
 	s := &Server{ted: &table.LsTED{Nodes: map[string]*table.LsNode{}}}
 

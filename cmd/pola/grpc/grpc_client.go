@@ -464,6 +464,7 @@ func segmentFromPB(s *pb.Segment) (table.Segment, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid SR-MPLS remote address %q: %w", s.GetRemoteAddr(), err)
 		}
+		v.SidAbsent = s.GetSidAbsent()
 		return v, nil
 	default:
 		return nil, fmt.Errorf("unsupported segment type for SID %q", s.GetSid())

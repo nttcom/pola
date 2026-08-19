@@ -93,12 +93,6 @@ func TestSREroSubobject_RoundTrip(t *testing.T) {
 				return seg
 			}(),
 		},
-		"AbsentNAIType_FFlagFalse_SFlagTrue": {
-			SubobjectType: SubobjectTypeEROSR,
-			NAIType:       NAITypeSRAbsent,
-			SFlag:         true, MFlag: true,
-			Segment: table.SegmentSRMPLS{},
-		},
 	}
 
 	for name, want := range cases {
@@ -221,7 +215,17 @@ func TestSREroSubobject_DecodeErrors(t *testing.T) {
 func TestSREroSubobject_DecodeFromBytes_BothSIDAndNAIAbsent(t *testing.T) {
 	t.Parallel()
 
-	raw := []uint8{0x24, 0x08, 0x00, 0x0c} // S=1, F=1
+	raw := []uint8{0x24, 0x04, 0x00, 0x0c} // Length=4, S=1, F=1
+
+	var subo SREroSubobject
+	assert.EqualError(t, subo.DecodeFromBytes(raw), "SREroSubobject: both SID and NAI are absent")
+}
+
+// RFC 8664 §4.3.1 requires a non-absent NAI when S=1.
+func TestSREroSubobject_DecodeFromBytes_SIDAbsentWithoutNAI(t *testing.T) {
+	t.Parallel()
+
+	raw := []uint8{0x24, 0x04, 0x00, 0x04} // S=1, F=0, NAIType=Absent
 
 	var subo SREroSubobject
 	assert.Error(t, subo.DecodeFromBytes(raw))
@@ -375,6 +379,60 @@ func TestSREroSubobject_DecodeFromBytes_SIDAbsent(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSREroSubobject_TableRoundTrip_SIDAbsent(t *testing.T) {
+	t.Parallel()
+
+	seg := table.SegmentSRMPLS{SidAbsent: true, LocalAddr: netip.MustParseAddr("10.0.0.1")}
+	subo := &SREroSubobject{
+		SubobjectType: SubobjectTypeEROSR,
+		NAIType:       NAITypeSRIPv4Node,
+		SFlag:         true,
+		MFlag:         true,
+		Segment:       seg,
+	}
+	l, err := subo.Len()
+	require.NoError(t, err)
+	subo.Length = uint8(l)
+	raw, err := subo.Serialize()
+	require.NoError(t, err)
+
+	var decoded SREroSubobject
+	require.NoError(t, decoded.DecodeFromBytes(raw))
+	assert.True(t, decoded.SFlag)
+
+	tableSeg, ok := decoded.ToSegment().(table.SegmentSRMPLS)
+	require.True(t, ok)
+	assert.True(t, tableSeg.SidAbsent, "SID-absent must survive conversion to the table layer")
+	assert.Zero(t, tableSeg.Sid, "SID-absent must not be mistaken for label 0")
+
+	rebuilt, err := NewSREroSubobject(tableSeg)
+	require.NoError(t, err)
+	assert.True(t, rebuilt.SFlag, "NewSREroSubobject must restore S=1 from SidAbsent")
+
+	raw2, err := rebuilt.Serialize()
+	require.NoError(t, err)
+	assert.Equal(t, raw, raw2, "re-serialized bytes must match the original SID-absent encoding")
+}
+
+func TestNewSREroSubobject_SidAbsentWithoutNAI(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewSREroSubobject(table.SegmentSRMPLS{SidAbsent: true})
+	assert.Error(t, err)
+}
+
+func TestNewSREroSubobject_SidAbsentWithMPLSStackEntryAttrs(t *testing.T) {
+	t.Parallel()
+
+	seg := table.SegmentSRMPLS{
+		SidAbsent: true,
+		LocalAddr: netip.MustParseAddr("10.0.0.1"),
+		TTL:       1,
+	}
+	_, err := NewSREroSubobject(seg)
+	assert.Error(t, err, "MPLS stack entry attributes are unrepresentable without a SID")
 }
 
 func TestSREroSubobject_DecodeFromBytes_TruncatedAfterHeader(t *testing.T) {
