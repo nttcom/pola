@@ -189,6 +189,7 @@ func convertSegment(seg table.Segment) *pb.Segment {
 		if v.RemoteAddr.IsValid() {
 			pbSeg.RemoteAddr = v.RemoteAddr.String()
 		}
+		pbSeg.SidAbsent = v.SidAbsent
 	}
 	return pbSeg
 }

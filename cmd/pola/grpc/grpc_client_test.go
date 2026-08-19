@@ -151,6 +151,20 @@ func TestSegmentFromPB_SRMPLS(t *testing.T) {
 	}
 }
 
+func TestSegmentFromPB_SRMPLS_SidAbsent(t *testing.T) {
+	seg, err := segmentFromPB(&pb.Segment{
+		Sid:       "0",
+		LocalAddr: "192.0.2.1",
+		SidAbsent: true,
+	})
+	require.NoError(t, err)
+
+	mplsSeg, ok := seg.(table.SegmentSRMPLS)
+	require.Truef(t, ok, "segment type: got %T, want table.SegmentSRMPLS", seg)
+	assert.True(t, mplsSeg.SidAbsent)
+	assert.Equal(t, "192.0.2.1", mplsSeg.LocalAddr.String())
+}
+
 func TestSegmentFromPB_SRv6(t *testing.T) {
 	seg, err := segmentFromPB(&pb.Segment{
 		Sid:          "2001:db8:1005::",

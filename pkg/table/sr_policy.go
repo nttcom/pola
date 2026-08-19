@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -304,6 +305,8 @@ type SegmentSRMPLS struct {
 	TTL uint8  `json:"ttl,omitempty"`
 	TC  uint8  `json:"tc,omitempty"`
 	S   bool   `json:"s,omitempty"`
+	// SidAbsent indicates that the SID is omitted and the NAI identifies the segment.
+	SidAbsent bool `json:"sidAbsent,omitempty"`
 	// Optional NAI for SR-ERO encoding (RFC 8664 §4.3.1).
 	LocalAddr  netip.Addr `json:"localAddr,omitzero"`
 	RemoteAddr netip.Addr `json:"remoteAddr,omitzero"`
@@ -330,13 +333,21 @@ func NewSegmentSRMPLS(sid uint32) SegmentSRMPLS {
 func (seg SegmentSRv6) Equal(other SegmentSRv6) bool {
 	return seg.Sid == other.Sid &&
 		seg.LocalAddr == other.LocalAddr &&
-		seg.RemoteAddr == other.RemoteAddr
+		seg.RemoteAddr == other.RemoteAddr &&
+		seg.USid == other.USid &&
+		slices.Equal(seg.Structure, other.Structure)
 }
 
 // Equal reports whether this SR-MPLS segment is equal to another.
 func (seg SegmentSRMPLS) Equal(other SegmentSRMPLS) bool {
-	// Compare only the MPLS SID; the NAI does not change the hop.
-	return seg.Sid == other.Sid
+	if seg.SidAbsent != other.SidAbsent {
+		return false
+	}
+	if !seg.SidAbsent && seg.Sid != other.Sid {
+		return false
+	}
+	return seg.TTL == other.TTL && seg.TC == other.TC && seg.S == other.S &&
+		seg.LocalAddr == other.LocalAddr && seg.RemoteAddr == other.RemoteAddr
 }
 
 // SegmentsEqual reports whether two segments are equal.

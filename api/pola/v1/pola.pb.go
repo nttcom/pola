@@ -305,11 +305,13 @@ func (MetricType) EnumDescriptor() ([]byte, []int) {
 }
 
 type Segment struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Sid           string                 `protobuf:"bytes,1,opt,name=sid,proto3" json:"sid,omitempty"`
-	SidStructure  string                 `protobuf:"bytes,2,opt,name=sid_structure,json=sidStructure,proto3" json:"sid_structure,omitempty"`
-	LocalAddr     string                 `protobuf:"bytes,3,opt,name=local_addr,json=localAddr,proto3" json:"local_addr,omitempty"`
-	RemoteAddr    string                 `protobuf:"bytes,4,opt,name=remote_addr,json=remoteAddr,proto3" json:"remote_addr,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Sid          string                 `protobuf:"bytes,1,opt,name=sid,proto3" json:"sid,omitempty"`
+	SidStructure string                 `protobuf:"bytes,2,opt,name=sid_structure,json=sidStructure,proto3" json:"sid_structure,omitempty"`
+	LocalAddr    string                 `protobuf:"bytes,3,opt,name=local_addr,json=localAddr,proto3" json:"local_addr,omitempty"`
+	RemoteAddr   string                 `protobuf:"bytes,4,opt,name=remote_addr,json=remoteAddr,proto3" json:"remote_addr,omitempty"`
+	// sid_absent indicates that the SID is omitted and the NAI identifies the segment.
+	SidAbsent     bool `protobuf:"varint,5,opt,name=sid_absent,json=sidAbsent,proto3" json:"sid_absent,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -370,6 +372,13 @@ func (x *Segment) GetRemoteAddr() string {
 		return x.RemoteAddr
 	}
 	return ""
+}
+
+func (x *Segment) GetSidAbsent() bool {
+	if x != nil {
+		return x.SidAbsent
+	}
+	return false
 }
 
 type Waypoint struct {
@@ -2628,14 +2637,16 @@ var File_api_pola_v1_pola_proto protoreflect.FileDescriptor
 
 const file_api_pola_v1_pola_proto_rawDesc = "" +
 	"\n" +
-	"\x16api/pola/v1/pola.proto\x12\vapi.pola.v1\"\x80\x01\n" +
+	"\x16api/pola/v1/pola.proto\x12\vapi.pola.v1\"\x9f\x01\n" +
 	"\aSegment\x12\x10\n" +
 	"\x03sid\x18\x01 \x01(\tR\x03sid\x12#\n" +
 	"\rsid_structure\x18\x02 \x01(\tR\fsidStructure\x12\x1d\n" +
 	"\n" +
 	"local_addr\x18\x03 \x01(\tR\tlocalAddr\x12\x1f\n" +
 	"\vremote_addr\x18\x04 \x01(\tR\n" +
-	"remoteAddr\"9\n" +
+	"remoteAddr\x12\x1d\n" +
+	"\n" +
+	"sid_absent\x18\x05 \x01(\bR\tsidAbsent\"9\n" +
 	"\bWaypoint\x12\x1b\n" +
 	"\trouter_id\x18\x01 \x01(\tR\brouterId\x12\x10\n" +
 	"\x03sid\x18\x02 \x01(\tR\x03sid\"\xbb\x04\n" +

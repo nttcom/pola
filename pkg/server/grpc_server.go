@@ -198,6 +198,7 @@ func enrichSRMPLSSegment(mplsSeg table.SegmentSRMPLS, segment *pb.Segment) (tabl
 		}
 		mplsSeg.RemoteAddr = ra
 	}
+	mplsSeg.SidAbsent = segment.GetSidAbsent()
 	return mplsSeg, nil
 }
 
