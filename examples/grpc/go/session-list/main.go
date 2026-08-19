@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"log"
 	"net/netip"
+	"strconv"
 	"strings"
 	"time"
 
@@ -53,10 +54,32 @@ func main() {
 			continue
 		}
 		fmt.Printf("sessionAddr(%d): %v\n", i, addr)
+		fmt.Printf("  sessionID (Pola): %s, sessionID (PCC): %s\n",
+			optionalUint32(ss.LocalSessionId), optionalUint32(ss.PccSessionId))
 		fmt.Printf("  state: %s\n", ss.GetState())
-		fmt.Printf("  capabilities: %s\n", strings.Join(capStrings(ss.GetCapabilities()), ", "))
+		fmt.Printf("  advertised (Pola): %s\n", timersString(ss.GetLocalTimers()))
+		fmt.Printf("  advertised (PCC): %s\n", timersString(ss.GetPccTimers()))
+		fmt.Printf("  effective: keepalive: %d, deadTimer: %d\n",
+			ss.GetEffectiveTimers().GetKeepalive(), ss.GetEffectiveTimers().GetDeadTimer())
+		fmt.Printf("  pccType: %s\n", strings.TrimPrefix(ss.GetPccType().String(), "PCC_TYPE_"))
+		fmt.Printf("  capabilities (Pola): %s\n", strings.Join(capStrings(ss.GetCapabilities()), ", "))
+		fmt.Printf("  capabilities (PCC): %s\n", strings.Join(capStrings(ss.GetPccCapabilities()), ", "))
 		fmt.Printf("  isSynced: %t\n", ss.GetIsSynced())
 	}
+}
+
+func optionalUint32(v *uint32) string {
+	if v == nil {
+		return "-"
+	}
+	return strconv.FormatUint(uint64(*v), 10)
+}
+
+func timersString(timers *pb.SessionTimers) string {
+	if timers == nil {
+		return "-"
+	}
+	return fmt.Sprintf("keepalive: %d, deadTimer: %d", timers.GetKeepalive(), timers.GetDeadTimer())
 }
 
 func capStrings(capabilities []*pb.Capability) []string {

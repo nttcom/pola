@@ -103,13 +103,18 @@ func run(args []string, deps runDeps) error {
 	}
 
 	o := &server.PCEOptions{
-		PCEPAddr:  c.Global.PCEP.Address,
-		PCEPPort:  c.Global.PCEP.Port,
-		GRPCAddr:  c.Global.GRPCServer.Address,
-		GRPCPort:  c.Global.GRPCServer.Port,
-		TEDEnable: c.Global.TED.Enable,
-		USidMode:  c.Global.USidMode,
-		ASN:       c.Global.TED.ASN,
+		PCEPAddr:         c.Global.PCEP.Address,
+		PCEPPort:         c.Global.PCEP.Port,
+		GRPCAddr:         c.Global.GRPCServer.Address,
+		GRPCPort:         c.Global.GRPCServer.Port,
+		TEDEnable:        c.Global.TED.Enable,
+		USidMode:         c.Global.USidMode,
+		ASN:              c.Global.TED.ASN,
+		Keepalive:        c.Global.PCEP.Keepalive,
+		DeadTimer:        c.Global.PCEP.DeadTimer,
+		MinKeepalive:     c.Global.PCEP.MinKeepalive,
+		MaxKeepalive:     c.Global.PCEP.MaxKeepalive,
+		AllowNegotiation: c.Global.PCEP.AllowNegotiation,
 	}
 	if serverErr := deps.newPCE(ctx, o, logger, tedElemsChan); serverErr.Error != nil {
 		return fmt.Errorf("server %q failed: %w", serverErr.Server, serverErr.Error)

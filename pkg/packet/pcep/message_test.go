@@ -38,6 +38,12 @@ func TestPCErrMessage_RoundTrip(t *testing.T) {
 				{ObjectType: ObjectTypeErrorError, ErrorType: 24, ErrorValue: 1},
 			},
 		},
+		"SingleErrorWithOpen": {
+			Errors: []*ErrorObject{
+				{ObjectType: ObjectTypeErrorError, ErrorType: 1, ErrorValue: 4},
+			},
+			Open: &OpenObject{ObjectType: ObjectTypeOpenOpen, Version: 1, Keepalive: 10, Deadtime: 40},
+		},
 		"MultipleSRPsAndErrors": {
 			SRPs: []*SrpObject{
 				{ObjectType: ObjectTypeSRPSRP, SrpID: 1},
@@ -98,6 +104,17 @@ func TestPCErrMessage_Serialize_Errors(t *testing.T) {
 		m := PCErrMessage{Errors: []*ErrorObject{{Tlvs: []TLVInterface{&UnknownTLV{Value: make([]byte, 65520)}}}}}
 		_, err := m.Serialize()
 		assert.ErrorContains(t, err, "exceeds")
+	})
+
+	t.Run("OpenSerializeError", func(t *testing.T) {
+		t.Parallel()
+
+		m := PCErrMessage{
+			Errors: []*ErrorObject{{ObjectType: ObjectTypeErrorError, ErrorType: 1, ErrorValue: 4}},
+			Open:   &OpenObject{Caps: []CapabilityInterface{&UnknownTLV{Value: make([]byte, 65536)}}},
+		}
+		_, err := m.Serialize()
+		assert.Error(t, err)
 	})
 }
 
@@ -252,7 +269,7 @@ func TestMessageType_StringWithReference(t *testing.T) {
 func TestOpenMessage_RoundTrip(t *testing.T) {
 	t.Parallel()
 
-	want := NewOpenMessage(7, 30, []CapabilityInterface{
+	want := NewOpenMessage(7, 30, 120, []CapabilityInterface{
 		&SRPCECapability{MaximumSidDepth: 10},
 	})
 
@@ -440,6 +457,19 @@ func TestNewPCErrMessage(t *testing.T) {
 
 	want := &PCErrMessage{
 		Errors: []*ErrorObject{{ObjectType: ObjectTypeErrorError, ErrorType: 6, ErrorValue: 1, Tlvs: tlvs}},
+	}
+	assert.Equal(t, want, m)
+}
+
+func TestNewPCErrMessageWithOpen(t *testing.T) {
+	t.Parallel()
+
+	openObject := NewOpenObject(0, 10, 40, nil)
+	m := NewPCErrMessageWithOpen(1, 4, openObject)
+
+	want := &PCErrMessage{
+		Errors: []*ErrorObject{{ObjectType: ObjectTypeErrorError, ErrorType: 1, ErrorValue: 4}},
+		Open:   openObject,
 	}
 	assert.Equal(t, want, m)
 }
@@ -834,6 +864,8 @@ func TestPCErrMessage_DecodeFromBytes_Errors(t *testing.T) {
 
 	validSRP, err := (&SrpObject{ObjectType: ObjectTypeSRPSRP, SrpID: 1}).Serialize()
 	require.NoError(t, err)
+	validError, err := (&ErrorObject{ObjectType: ObjectTypeErrorError, ErrorType: 6, ErrorValue: 1}).Serialize()
+	require.NoError(t, err)
 
 	cases := map[string][]uint8{
 		"TruncatedObjectHeader":        {0x01, 0x02},
@@ -850,6 +882,11 @@ func TestPCErrMessage_DecodeFromBytes_Errors(t *testing.T) {
 		),
 		// RFC 5440 §6.7 requires at least one PCEP-ERROR object.
 		"NoErrorObjectPresent": validSRP,
+		"MalformedOpenBody": AppendByteSlices(
+			validError,
+			NewCommonObjectHeader(ObjectClassOpen, ObjectTypeOpenOpen, commonObjectHeaderLength+4).Serialize(),
+			[]uint8{0x40, 0x00, 0x00, 0x00}, // unsupported PCEP version (2) in the OPEN object
+		),
 	}
 
 	for name, body := range cases {

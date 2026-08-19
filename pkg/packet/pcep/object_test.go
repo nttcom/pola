@@ -1772,7 +1772,7 @@ func TestNewOpenObject(t *testing.T) {
 	t.Parallel()
 
 	caps := []CapabilityInterface{&SRPCECapability{MaximumSidDepth: 10}}
-	o := NewOpenObject(7, 30, caps)
+	o := NewOpenObject(7, 30, DeadTimerFor(30), caps)
 
 	want := &OpenObject{
 		ObjectType: ObjectTypeOpenOpen,
@@ -1785,11 +1785,11 @@ func TestNewOpenObject(t *testing.T) {
 	assert.Equal(t, want, o)
 }
 
-func TestNewOpenObject_DeadtimeClampsInsteadOfWrapping(t *testing.T) {
+func TestNewOpenObject_UsesGivenDeadtime(t *testing.T) {
 	t.Parallel()
 
-	o := NewOpenObject(7, 65, nil)
-	assert.Equal(t, uint8(math.MaxUint8), o.Deadtime)
+	o := NewOpenObject(7, 30, 0, nil)
+	assert.Zero(t, o.Deadtime)
 }
 
 func TestDeadTimerFor(t *testing.T) {

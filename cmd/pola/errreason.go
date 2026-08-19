@@ -11,5 +11,6 @@ const (
 	reasonDestinationUnreach   = "DESTINATION_UNREACHABLE"
 	reasonMetricNotCarried     = "METRIC_NOT_CARRIED"
 	reasonPCEPSessionNotSynced = "PCEP_SESSION_NOT_SYNCED"
+	reasonPCEPSessionNotFound  = "PCEP_SESSION_NOT_FOUND"
 	reasonSIDValidationFailed  = "SID_VALIDATION_FAILED"
 )

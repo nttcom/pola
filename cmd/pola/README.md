@@ -28,9 +28,9 @@ go install ./...
 
 ## Command Reference
 
-### pola session \[-j\]
+### pola session [-j]
 
-Displays the peer addresses of the active session, sorted by address.
+Displays PCEP sessions, sorted by peer address.
 
 JSON formatted response
 
@@ -38,7 +38,13 @@ JSON formatted response
 [
   {
     "Addr": "192.0.2.1",
-    "State": "SESSION_STATE_UP",
+    "State": "UP",
+    "LocalSessionID": 1,
+    "PccSessionID": 1,
+    "LocalTimers": { "Keepalive": 30, "DeadTimer": 120 },
+    "PccTimers": { "Keepalive": 10, "DeadTimer": 40 },
+    "EffectiveTimers": { "Keepalive": 30, "DeadTimer": 40 },
+    "PccType": "RFC_COMPLIANT",
     "Capabilities": [
       {
         "Type": "STATEFUL",
@@ -61,19 +67,40 @@ JSON formatted response
         }
       }
     ],
+    "PccCapabilities": [
+      {
+        "Type": "SR",
+        "Detail": {
+          "UnlimitedMSD": false,
+          "NAISupported": true,
+          "MSD": 16
+        }
+      }
+    ],
     "IsSynced": true
   }
 ]
 ```
 
-`Capabilities` is the list of advertised capability TLVs, one entry per TLV.
-`Type` identifies the TLV, and `Detail` carries its type-specific fields
-(e.g. `MSD` for the SR capability, `VersionNumber` for LSP-DB-Version); it is
-omitted for TLVs with no fields beyond their type.
+`State` is the current PCEP session state: `TCP_PENDING`, `OPEN_WAIT`,
+`KEEP_WAIT`, or `UP`.
 
-### pola session delete *Address* \[-j\]
+`LocalSessionID` and `PccSessionID` are the PCEP session IDs advertised by
+Pola and the PCC, respectively. They are omitted until the corresponding
+Open message is received.
 
-Deletes the specified session.
+`LocalTimers` and `PccTimers` show the PCEP timers advertised by Pola and the
+PCC. `EffectiveTimers` shows the timers currently applied by Pola. These
+fields are omitted while the session is in `TCP_PENDING` or `OPEN_WAIT`.
+
+`Capabilities` lists capabilities advertised by Pola, while `PccCapabilities`
+lists those advertised by the PCC. `PccType` is the PCC type detected from its
+capabilities. `IsSynced` indicates whether initial state synchronization has
+completed.
+
+### pola session delete *Address* [-j]
+
+Deletes the session with the specified peer address.
 
 JSON formatted response
 
@@ -83,19 +110,31 @@ JSON formatted response
 }
 ```
 
-### pola sr-policy list \[-j\] \[--session *address*\]
+### pola sr-policy list [-j] [--session *address*]
 
-Displays the SR Policies managed by polad, grouped by PCEP session and sorted
-by session address. Pass `--session` to only show policies on the session
-with that peer address.
+Displays SR Policies managed by polad, grouped by PCEP session and sorted by
+peer address. `--session` filters by peer address.
+
+All connected sessions are included. Use `IsSynced` to distinguish an
+unsynchronized session from a synced session with no SR Policies.
 
 JSON formatted response
 
 ```json
 [
   {
-    "peerAddr": "192.0.2.2",
-    "srPolicies": [
+    "Addr": "192.0.2.2",
+    "State": "UP",
+    "LocalSessionID": 1,
+    "PccSessionID": 1,
+    "LocalTimers": { "Keepalive": 30, "DeadTimer": 120 },
+    "PccTimers": { "Keepalive": 30, "DeadTimer": 120 },
+    "EffectiveTimers": { "Keepalive": 30, "DeadTimer": 120 },
+    "PccType": "RFC_COMPLIANT",
+    "Capabilities": [],
+    "PccCapabilities": [],
+    "IsSynced": true,
+    "SRPolicies": [
       {
         "plspId": 1,
         "policyName": "sample_policy1",
@@ -116,50 +155,40 @@ JSON formatted response
     ]
   },
   {
-    "peerAddr": "2001:0db8::1",
-    "srPolicies": [
-      {
-        "plspId": 1,
-        "policyName": "sample_policy2",
-        "segmentList": [
-          {
-            "sid": "2001:0db8:1005::",
-            "localAddr": "2001:0db8::5",
-            "sidStructure": "32,16,0,80"
-          }
-        ],
-        "srcAddr": "2001:0db8::1",
-        "dstAddr": "2001:0db8::2",
-        "color": 888,
-        "preference": 100,
-        "lspId": 1,
-        "state": "active",
-        "type": "dynamic",
-        "metric": "te"
-      }
-    ]
+    "Addr": "2001:0db8::1",
+    "State": "KEEP_WAIT",
+    "LocalSessionID": 2,
+    "PccSessionID": 3,
+    "LocalTimers": { "Keepalive": 30, "DeadTimer": 120 },
+    "PccTimers": { "Keepalive": 30, "DeadTimer": 120 },
+    "EffectiveTimers": { "Keepalive": 30, "DeadTimer": 120 },
+    "PccType": "CISCO_LEGACY",
+    "Capabilities": [],
+    "PccCapabilities": [],
+    "IsSynced": false,
+    "SRPolicies": []
   }
 ]
 ```
 
 Notes:
 
-- Policies appear in this list only after their first PCRpt is received.
-- `lspId` is omitted when the reported LSP-ID is zero. `plspId` and `state`
-  reflect the latest PCRpt received.
+- Policies appear in `SRPolicies` only after their first PCRpt is received, so
+  a session that is not yet synced reports an empty list.
+- `lspId` is omitted when zero. `plspId` and `state` reflect the latest PCRpt.
 - `srcRouterId`/`dstRouterId` are resolved from TED loopback addresses and are
   omitted when no matching node is found.
-- `segmentList` entries include `localAddr`/`remoteAddr` when the SID carries
-  NAI information. SRv6 segments may also include `sidStructure`.
-- `type` and `metric` reflect the candidate-path settings used when the policy
-  was created by `pola sr-policy add`. They are omitted for policies discovered
-  from the router or after a polad restart.
+- `segmentList` includes NAI addresses when available and may include
+  `sidStructure` for SRv6 segments.
+- `type` and `metric` are retained only for policies created by
+  `pola sr-policy add`; they are unavailable for policies discovered from the
+  router or after a polad restart.
 
 ### pola sr-policy add -f `filepath`
 
-Create a new SR Policy **using TED**
+Create a new SR Policy **using TED**.
 
-#### Case: Dynamic Path calculate
+#### Dynamic path
 
 YAML input format
 
@@ -172,8 +201,10 @@ srPolicy:
   dstRouterID: 0000.0aff.0004
   color: 100
   type: dynamic
-  metric: igp / te / delay
+  metric: igp
 ```
+
+`metric` can be `igp`, `te`, or `delay`.
 
 JSON formatted response
 
@@ -183,7 +214,7 @@ JSON formatted response
 }
 ```
 
-#### Case: Explicit Path
+#### Explicit path
 
 Each SID may include address information for the NAI.
 
@@ -212,11 +243,11 @@ JSON formatted response
 }
 ```
 
-#### Case: Explicit Path (endpoint addresses)
+#### Explicit path with endpoint addresses
 
 Instead of `srcRouterID`/`dstRouterID`, endpoints can be given directly as
-`srcAddr`/`dstAddr`. This form bypasses path computation: no CSPF and no
-router-ID resolution, so it accepts only `type: explicit` and takes the
+`srcAddr`/`dstAddr`. This form bypasses path computation: no CSPF or router-ID
+resolution is performed, so it accepts only `type: explicit` and takes the
 segment list verbatim.
 
 Each SID is still validated against the TED, so with `ted.enable: false` this
@@ -278,7 +309,7 @@ Notes:
   SID, anycast SID, static labels) always require `--no-sid-validate`.
 - The `-s` shorthand was removed in 1.4.0; use the long flag.
 
-### pola ted \[-j\]
+### pola ted [-j]
 
 Displays the TED managed by polad.
 

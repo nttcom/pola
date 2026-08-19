@@ -8,6 +8,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/nttcom/pola/cmd/pola/grpc"
@@ -29,6 +30,20 @@ func newSessionCmd() *cobra.Command {
 	return cmd
 }
 
+func displaySessionID(sessionID *uint32) string {
+	if sessionID == nil {
+		return "-"
+	}
+	return strconv.FormatUint(uint64(*sessionID), 10)
+}
+
+func timersDisplay(timers *grpc.SessionTimers) string {
+	if timers == nil {
+		return "-"
+	}
+	return fmt.Sprintf("Keepalive %d, DeadTimer %d", timers.Keepalive, timers.DeadTimer)
+}
+
 func showSession(jsonFlag bool) error {
 	sessions, err := grpc.GetSessions(client)
 
@@ -37,18 +52,24 @@ func showSession(jsonFlag bool) error {
 	}
 
 	if jsonFlag {
-		// Output JSON format
 		outputJSON, err := json.Marshal(sessions)
 		if err != nil {
 			return err
 		}
 		fmt.Println(string(outputJSON))
 	} else {
-		// Output user-friendly format
 		for i, ss := range sessions {
 			fmt.Printf("sessionAddr(%d): %s\n", i, ss.Addr.String())
 			fmt.Printf("  State: %s\n", ss.State)
-			fmt.Printf("  Capabilities: %s\n", strings.Join(ss.CapStrings(), ", "))
+			fmt.Printf("  SessionID (Pola): %s, SessionID (PCC): %s\n",
+				displaySessionID(ss.LocalSessionID), displaySessionID(ss.PccSessionID))
+			fmt.Printf("  Advertised (Pola): %s\n", timersDisplay(ss.LocalTimers))
+			fmt.Printf("  Advertised (PCC):  %s\n", timersDisplay(ss.PccTimers))
+			fmt.Printf("  Effective: Keepalive %d, DeadTimer %d\n",
+				ss.EffectiveTimers.Keepalive, ss.EffectiveTimers.DeadTimer)
+			fmt.Printf("  PccType: %s\n", ss.PccType)
+			fmt.Printf("  Capabilities (Pola): %s\n", strings.Join(ss.CapStrings(), ", "))
+			fmt.Printf("  Capabilities (PCC): %s\n", strings.Join(ss.PccCapStrings(), ", "))
 			fmt.Printf("  IsSynced: %t\n", ss.IsSynced)
 		}
 	}

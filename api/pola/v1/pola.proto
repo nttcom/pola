@@ -23,7 +23,6 @@ message Segment {
   string sid_structure = 2;
   string local_addr = 3;
   string remote_addr = 4;
-  // sid_absent indicates that the SID is omitted and the NAI identifies the segment.
   bool sid_absent = 5;
 }
 
@@ -66,18 +65,10 @@ message SRPolicy {
 
 message CreateSRPolicyRequest {
   SRPolicy sr_policy = 1;
-
-  // Not required when disable_path_compute is true.
   uint32 asn = 2;
-
   reserved 3;
   reserved "sid_validate";
-
-  // Use endpoints and segments provided in the request without TED lookup
-  // or path computation (no CSPF or router-ID resolution).
   bool disable_path_compute = 4;
-
-  // Skip checking that explicit SIDs exist in the TED.
   bool no_sid_validate = 5;
 }
 
@@ -96,8 +87,19 @@ message DeleteSRPolicyResponse {
 
 enum SessionState {
   SESSION_STATE_UNSPECIFIED = 0;
-  SESSION_STATE_DOWN = 1;
+  reserved 1;
+  reserved "SESSION_STATE_DOWN";
   SESSION_STATE_UP = 2;
+  SESSION_STATE_TCP_PENDING = 3;
+  SESSION_STATE_OPEN_WAIT = 4;
+  SESSION_STATE_KEEP_WAIT = 5;
+}
+
+enum PccType {
+  PCC_TYPE_UNSPECIFIED = 0;
+  PCC_TYPE_CISCO_LEGACY = 1;
+  PCC_TYPE_JUNIPER_LEGACY = 2;
+  PCC_TYPE_RFC_COMPLIANT = 3;
 }
 
 enum CapabilityType {
@@ -177,6 +179,16 @@ message Capability {
   }
 }
 
+message SessionTimers {
+  uint32 keepalive = 1;
+  uint32 dead_timer = 2;
+}
+
+message EffectiveTimers {
+  uint32 keepalive = 1;
+  uint32 dead_timer = 2;
+}
+
 message Session {
   bytes addr = 1;
   SessionState state = 2;
@@ -184,8 +196,14 @@ message Session {
   reserved "caps";
   bool is_synced = 4;
   repeated Capability capabilities = 5;
-  // Populated by GetSRPolicyList; empty when returned from GetSessionList.
   repeated SRPolicy sr_policies = 6;
+  PccType pcc_type = 7;
+  repeated Capability pcc_capabilities = 8;
+  SessionTimers local_timers = 9;
+  SessionTimers pcc_timers = 10;
+  optional uint32 local_session_id = 11;
+  optional uint32 pcc_session_id = 12;
+  EffectiveTimers effective_timers = 13;
 }
 
 message EndpointBehavior {
@@ -277,7 +295,6 @@ message GetSessionListResponse {
 }
 
 message GetSRPolicyListRequest {
-  // Optional filter: only return policies for the PCEP session with this peer address.
   bytes session_addr = 1;
 }
 

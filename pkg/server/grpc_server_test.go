@@ -653,6 +653,78 @@ func TestGetSessionList_MultipathCapabilityDoesNotSetMsd(t *testing.T) {
 	assert.Equal(t, uint32(8), multipath.GetMultipath().GetMaxMultipaths())
 }
 
+func TestGetSessionList_ReportsLocalAndPccTimersAndSessionID(t *testing.T) {
+	session := &Session{
+		peerAddr:  netip.MustParseAddr("10.0.0.1"),
+		isSynced:  true,
+		state:     sessionStateUp,
+		localOpen: &OpenParams{SessionID: 3, Keepalive: 30, DeadTimer: 120},
+		pccOpen:   &OpenParams{SessionID: 7, Keepalive: 10, DeadTimer: 40},
+	}
+	s := &APIServer{
+		pce:    &Server{sessionList: []*Session{session}},
+		logger: zap.NewNop(),
+	}
+
+	resp, err := s.GetSessionList(context.Background(), &pb.GetSessionListRequest{})
+	require.NoError(t, err)
+	require.Len(t, resp.Sessions, 1)
+
+	got := resp.Sessions[0]
+	assert.Equal(t, pb.SessionState_SESSION_STATE_UP, got.GetState())
+	assert.Equal(t, uint32(3), got.GetLocalSessionId())
+	assert.Equal(t, uint32(7), got.GetPccSessionId())
+	assert.Equal(t, uint32(30), got.GetLocalTimers().GetKeepalive())
+	assert.Equal(t, uint32(120), got.GetLocalTimers().GetDeadTimer())
+	assert.Equal(t, uint32(10), got.GetPccTimers().GetKeepalive())
+	assert.Equal(t, uint32(40), got.GetPccTimers().GetDeadTimer())
+	assert.Equal(t, uint32(30), got.GetEffectiveTimers().GetKeepalive())
+	assert.Equal(t, uint32(40), got.GetEffectiveTimers().GetDeadTimer())
+}
+
+func TestGetSessionList_LeavesAdvertisedValuesUnsetBeforeTheOpenExchange(t *testing.T) {
+	s := &APIServer{
+		pce: &Server{sessionList: []*Session{
+			{peerAddr: netip.MustParseAddr("10.0.0.1"), state: sessionStateOpenWait},
+		}},
+		logger: zap.NewNop(),
+	}
+
+	resp, err := s.GetSessionList(context.Background(), &pb.GetSessionListRequest{})
+	require.NoError(t, err)
+	require.Len(t, resp.Sessions, 1)
+
+	got := resp.Sessions[0]
+	assert.Equal(t, pb.SessionState_SESSION_STATE_OPEN_WAIT, got.GetState())
+	assert.Nil(t, got.LocalSessionId, "a SID of 0 must be distinguishable from an unsent Open message")
+	assert.Nil(t, got.PccSessionId, "a SID of 0 must be distinguishable from an unreceived Open message")
+	assert.Nil(t, got.GetLocalTimers())
+	assert.Nil(t, got.GetPccTimers())
+}
+
+func TestGetSessionList_ReportsZeroPccSessionIDAsAdvertised(t *testing.T) {
+	s := &APIServer{
+		pce: &Server{sessionList: []*Session{{
+			peerAddr:  netip.MustParseAddr("10.0.0.1"),
+			state:     sessionStateUp,
+			localOpen: &OpenParams{SessionID: 0, Keepalive: 30, DeadTimer: 120},
+			pccOpen:   &OpenParams{SessionID: 0, Keepalive: 0, DeadTimer: 0},
+		}}},
+		logger: zap.NewNop(),
+	}
+
+	resp, err := s.GetSessionList(context.Background(), &pb.GetSessionListRequest{})
+	require.NoError(t, err)
+	require.Len(t, resp.Sessions, 1)
+
+	got := resp.Sessions[0]
+	require.NotNil(t, got.LocalSessionId, "SID 0 is valid on the wire and must be reported")
+	assert.Zero(t, got.GetLocalSessionId())
+	require.NotNil(t, got.PccSessionId)
+	assert.Zero(t, got.GetPccSessionId())
+	assert.Zero(t, got.GetEffectiveTimers().GetDeadTimer())
+}
+
 func TestGetSessionList_SortsSessionsByAddr(t *testing.T) {
 	s := &APIServer{
 		pce: &Server{sessionList: []*Session{
@@ -722,6 +794,21 @@ func TestGetSRPolicyList_FillsMissingFieldsAndOrdersDeterministically(t *testing
 	assert.Equal(t, pb.SRPolicyState_SR_POLICY_STATE_ACTIVE, policy.GetState())
 	assert.Equal(t, "0000.0aff.0001", policy.GetSrcRouterId())
 	assert.Empty(t, policy.GetDstRouterId(), "no TED node owns the destination address")
+}
+
+func TestGetSRPolicyList_IncludesUnsyncedSessions(t *testing.T) {
+	s := &APIServer{
+		pce: &Server{sessionList: []*Session{
+			{peerAddr: netip.MustParseAddr("10.0.0.1"), isSynced: false},
+		}},
+		logger: zap.NewNop(),
+	}
+
+	resp, err := s.GetSRPolicyList(context.Background(), &pb.GetSRPolicyListRequest{})
+	require.NoError(t, err)
+	require.Len(t, resp.Sessions, 1, "unsynced sessions must still be reported so callers can see why policies are missing")
+	assert.False(t, resp.Sessions[0].GetIsSynced())
+	assert.Empty(t, resp.Sessions[0].GetSrPolicies())
 }
 
 func TestGetSRPolicyList_FiltersBySessionAddr(t *testing.T) {
@@ -955,7 +1042,7 @@ func TestSessionList_ConcurrentAccess(_ *testing.T) {
 	go func() {
 		defer close(done)
 		for i := range 100 {
-			ss := &Session{sessionID: uint8(i), peerAddr: addr, isSynced: true}
+			ss := &Session{localSessionID: uint8(i), peerAddr: addr, isSynced: true}
 
 			s.sessionMu.Lock()
 			s.sessionList = append(s.sessionList, ss)
@@ -963,7 +1050,7 @@ func TestSessionList_ConcurrentAccess(_ *testing.T) {
 
 			s.sessionMu.Lock()
 			for j, v := range s.sessionList {
-				if v.sessionID == ss.sessionID {
+				if v.localSessionID == ss.localSessionID {
 					s.sessionList[j] = s.sessionList[len(s.sessionList)-1]
 					s.sessionList = s.sessionList[:len(s.sessionList)-1]
 					break
@@ -974,9 +1061,10 @@ func TestSessionList_ConcurrentAccess(_ *testing.T) {
 	}()
 
 	for range 100 {
-		s.SearchSession(addr, false)
-		s.SRPolicies()
-		s.Sessions()
+		s.SearchSession(addr)
+		for _, ss := range s.Sessions() {
+			ss.SRPolicies()
+		}
 	}
 	<-done
 }
@@ -990,7 +1078,7 @@ func TestDeleteSRPolicy_SrcAddrOmitted(t *testing.T) {
 	peerAddr := netip.MustParseAddr("10.0.255.1")
 	dstAddr := netip.MustParseAddr("10.255.0.2")
 
-	ss := NewSession(1, peerAddr, server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), peerAddr, server, zap.NewNop(), nil, 0)
 	ss.isSynced = true
 	ss.srPolicies = []*table.SRPolicy{
 		{
@@ -1397,6 +1485,47 @@ func TestGetSyncedPCEPSession(t *testing.T) {
 	assert.Error(t, err, "expected an error when no synced session matches")
 }
 
+func TestResolveSession(t *testing.T) {
+	peerAddr := netip.MustParseAddr("10.0.255.1")
+
+	t.Run("the peer address identifies the session", func(t *testing.T) {
+		ss := &Session{peerAddr: peerAddr, isSynced: true}
+		pce := &Server{sessionList: []*Session{ss}}
+
+		got, err := resolveSession(pce, peerAddr.AsSlice(), true)
+		require.NoError(t, err)
+		assert.Same(t, ss, got)
+	})
+
+	t.Run("no session is NotFound", func(t *testing.T) {
+		pce := &Server{}
+
+		_, err := resolveSession(pce, peerAddr.AsSlice(), true)
+		require.Error(t, err)
+		assert.Equal(t, codes.NotFound, status.Code(err))
+		assert.Equal(t, ReasonPCEPSessionNotFound, errInfoReason(t, err))
+	})
+
+	t.Run("an unsynced session reports not synced", func(t *testing.T) {
+		ss := &Session{peerAddr: peerAddr, isSynced: false}
+		pce := &Server{sessionList: []*Session{ss}}
+
+		_, err := resolveSession(pce, peerAddr.AsSlice(), true)
+		require.Error(t, err)
+		assert.Equal(t, codes.FailedPrecondition, status.Code(err))
+		assert.Equal(t, ReasonPCEPSessionNotSynced, errInfoReason(t, err))
+	})
+
+	t.Run("requireSynced false accepts an unsynced session", func(t *testing.T) {
+		ss := &Session{peerAddr: peerAddr, isSynced: false}
+		pce := &Server{sessionList: []*Session{ss}}
+
+		got, err := resolveSession(pce, peerAddr.AsSlice(), false)
+		require.NoError(t, err)
+		assert.Same(t, ss, got)
+	})
+}
+
 func TestParseSidStructure(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -1686,7 +1815,7 @@ func TestCreateSRPolicy(t *testing.T) {
 		})
 
 		peerAddr := netip.MustParseAddr("10.0.255.1")
-		ss := NewSession(1, peerAddr, server, zap.NewNop(), nil, 0)
+		ss := NewSession(testLocalOpen(1), peerAddr, server, zap.NewNop(), nil, 0)
 		ss.isSynced = true
 
 		s := &APIServer{pce: &Server{ted: ted, sessionList: []*Session{ss}}, logger: zap.NewNop()}
@@ -1734,7 +1863,7 @@ func TestCreateSRPolicy_SRv6WithoutLocalAddr(t *testing.T) {
 	})
 
 	peerAddr := netip.MustParseAddr("10.0.255.1")
-	ss := NewSession(1, peerAddr, server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), peerAddr, server, zap.NewNop(), nil, 0)
 	ss.isSynced = true
 
 	s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: zap.NewNop()}
@@ -1868,7 +1997,7 @@ func TestCreateSRPolicy_StatusCodes(t *testing.T) {
 			r.SrPolicy.Metric = pb.MetricType_METRIC_TYPE_TE
 			return r
 		}, codes.FailedPrecondition, "METRIC_NOT_CARRIED", "metric METRIC_TYPE_TE not defined"},
-		{"no synced PCEP session", true, explicitReq, codes.FailedPrecondition, "PCEP_SESSION_NOT_SYNCED", "no synced session"},
+		{"no PCEP session", true, explicitReq, codes.NotFound, "PCEP_SESSION_NOT_FOUND", "no session with address"},
 	}
 
 	for _, tt := range tests {
@@ -1975,7 +2104,7 @@ func TestDeleteSRPolicy(t *testing.T) {
 			assert.NoError(t, client.Close(), "failed to close client connection")
 		})
 
-		ss := NewSession(1, peerAddr, server, zap.NewNop(), nil, 0)
+		ss := NewSession(testLocalOpen(1), peerAddr, server, zap.NewNop(), nil, 0)
 		ss.isSynced = true
 		ss.srPolicies = []*table.SRPolicy{{PlspID: 1, Name: "test-policy", DstAddr: dstAddr, Color: 100, Preference: 100}}
 		require.NoError(t, server.Close(), "failed to close server connection")
@@ -1993,7 +2122,7 @@ func TestDeleteSRPolicy(t *testing.T) {
 			assert.NoError(t, client.Close(), "failed to close client connection")
 		})
 
-		ss := NewSession(1, peerAddr, server, zap.NewNop(), nil, 0)
+		ss := NewSession(testLocalOpen(1), peerAddr, server, zap.NewNop(), nil, 0)
 		ss.isSynced = true
 		ss.srPolicies = []*table.SRPolicy{{PlspID: 1, Name: "test-policy", DstAddr: dstAddr, Color: 100, Preference: 100}}
 
@@ -2157,7 +2286,7 @@ func TestSendSRPolicyRequest_CreatesNewPolicy(t *testing.T) {
 
 	peerAddr := netip.MustParseAddr("10.0.255.1")
 	dstAddr := netip.MustParseAddr("10.255.0.2")
-	ss := NewSession(1, peerAddr, server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), peerAddr, server, zap.NewNop(), nil, 0)
 	ss.isSynced = true
 
 	s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: zap.NewNop()}
@@ -2176,7 +2305,7 @@ func TestSendSRPolicyRequest_UpdatesExistingPolicy(t *testing.T) {
 
 	peerAddr := netip.MustParseAddr("10.0.255.1")
 	dstAddr := netip.MustParseAddr("10.255.0.2")
-	ss := NewSession(1, peerAddr, server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), peerAddr, server, zap.NewNop(), nil, 0)
 	ss.isSynced = true
 	ss.srPolicies = []*table.SRPolicy{{PlspID: 7, Color: 100, DstAddr: dstAddr}}
 
@@ -2196,7 +2325,7 @@ func TestSendSRPolicyRequest_UpdateSendFailure(t *testing.T) {
 
 	peerAddr := netip.MustParseAddr("10.0.255.1")
 	dstAddr := netip.MustParseAddr("10.255.0.2")
-	ss := NewSession(1, peerAddr, server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), peerAddr, server, zap.NewNop(), nil, 0)
 	ss.isSynced = true
 	ss.srPolicies = []*table.SRPolicy{{PlspID: 7, Color: 100, DstAddr: dstAddr}}
 	require.NoError(t, server.Close(), "failed to close server connection")
@@ -2218,7 +2347,7 @@ func TestSendSRPolicyRequest_CreateSendFailure(t *testing.T) {
 
 	peerAddr := netip.MustParseAddr("10.0.255.1")
 	dstAddr := netip.MustParseAddr("10.255.0.2")
-	ss := NewSession(1, peerAddr, server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), peerAddr, server, zap.NewNop(), nil, 0)
 	ss.isSynced = true
 	require.NoError(t, server.Close(), "failed to close server connection")
 
@@ -2519,7 +2648,7 @@ func TestDeleteSession(t *testing.T) {
 	t.Run("malformed address", func(t *testing.T) {
 		s := &APIServer{pce: &Server{}, logger: zap.NewNop()}
 		_, err := s.DeleteSession(context.Background(), &pb.DeleteSessionRequest{Addr: []byte{1, 2, 3}})
-		require.ErrorContains(t, err, "invalid address")
+		require.ErrorContains(t, err, "invalid PCEP session address")
 		assert.Equal(t, ReasonInvalidRequest, errInfoReason(t, err))
 	})
 
@@ -2537,7 +2666,7 @@ func TestDeleteSession(t *testing.T) {
 		})
 
 		peerAddr := netip.MustParseAddr("10.0.255.1")
-		ss := NewSession(1, peerAddr, server, zap.NewNop(), nil, 0)
+		ss := NewSession(testLocalOpen(1), peerAddr, server, zap.NewNop(), nil, 0)
 		require.NoError(t, server.Close(), "failed to close server connection")
 
 		s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: zap.NewNop()}
@@ -2554,13 +2683,13 @@ func TestDeleteSession(t *testing.T) {
 		})
 
 		peerAddr := netip.MustParseAddr("10.0.255.1")
-		ss := NewSession(1, peerAddr, server, zap.NewNop(), nil, 0)
+		ss := NewSession(testLocalOpen(1), peerAddr, server, zap.NewNop(), nil, 0)
 		pce := &Server{sessionList: []*Session{ss}}
 		s := &APIServer{pce: pce, logger: zap.NewNop()}
 
 		resp, err := s.DeleteSession(context.Background(), &pb.DeleteSessionRequest{Addr: peerAddr.AsSlice()})
 		require.NoError(t, err)
 		assert.True(t, resp.GetIsSuccess())
-		assert.Nil(t, pce.SearchSession(peerAddr, false), "expected the session to be removed from the PCE")
+		assert.Nil(t, pce.SearchSession(peerAddr), "expected the session to be removed from the PCE")
 	})
 }

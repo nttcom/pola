@@ -295,6 +295,54 @@ func TestGetSessions_WithCapabilities(t *testing.T) {
 	assert.Equal(t, []Capability{{Type: "SR", Detail: SRCapability{MSD: 10}}}, sessions[0].Capabilities)
 }
 
+func TestGetSessions_WithPccCapabilities(t *testing.T) {
+	client := &fakeClient{sessionListResp: &pb.GetSessionListResponse{
+		Sessions: []*pb.Session{
+			{
+				Addr:  netip.MustParseAddr("192.0.2.1").AsSlice(),
+				State: pb.SessionState_SESSION_STATE_UP,
+				PccCapabilities: []*pb.Capability{
+					{Type: pb.CapabilityType_CAPABILITY_TYPE_SR, Detail: &pb.Capability_Sr{Sr: &pb.SrCapability{Msd: 10}}},
+				},
+			},
+		},
+	}}
+
+	sessions, err := GetSessions(client)
+	require.NoError(t, err)
+	require.Len(t, sessions, 1)
+	assert.Equal(t, []Capability{{Type: "SR", Detail: SRCapability{MSD: 10}}}, sessions[0].PccCapabilities)
+	assert.Equal(t, []string{"SR", "MSD=10"}, sessions[0].PccCapStrings())
+}
+
+func TestGetSessions_WithSessionIDsAndTimers(t *testing.T) {
+	client := &fakeClient{sessionListResp: &pb.GetSessionListResponse{
+		Sessions: []*pb.Session{
+			{
+				Addr:           netip.MustParseAddr("192.0.2.1").AsSlice(),
+				State:          pb.SessionState_SESSION_STATE_UP,
+				LocalSessionId: proto.Uint32(1),
+				PccSessionId:   proto.Uint32(2),
+				LocalTimers:    &pb.SessionTimers{Keepalive: 30, DeadTimer: 120},
+				PccTimers:      &pb.SessionTimers{Keepalive: 10, DeadTimer: 40},
+			},
+		},
+	}}
+
+	sessions, err := GetSessions(client)
+	require.NoError(t, err)
+	require.Len(t, sessions, 1)
+
+	require.NotNil(t, sessions[0].LocalSessionID)
+	assert.Equal(t, uint32(1), *sessions[0].LocalSessionID)
+	require.NotNil(t, sessions[0].PccSessionID)
+	assert.Equal(t, uint32(2), *sessions[0].PccSessionID)
+	require.NotNil(t, sessions[0].LocalTimers)
+	assert.Equal(t, SessionTimers{Keepalive: 30, DeadTimer: 120}, *sessions[0].LocalTimers)
+	require.NotNil(t, sessions[0].PccTimers)
+	assert.Equal(t, SessionTimers{Keepalive: 10, DeadTimer: 40}, *sessions[0].PccTimers)
+}
+
 func TestGetSessions_Errors(t *testing.T) {
 	t.Run("client error propagates", func(t *testing.T) {
 		client := &fakeClient{sessionListErr: assert.AnError}

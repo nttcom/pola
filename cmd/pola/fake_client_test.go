@@ -21,6 +21,7 @@ type fakePCEServiceClient struct {
 	deleteSessionReq *pb.DeleteSessionRequest
 	deleteSessionErr error
 
+	srPolicyListReq  *pb.GetSRPolicyListRequest
 	srPolicyListResp *pb.GetSRPolicyListResponse
 	srPolicyListErr  error
 
@@ -46,7 +47,8 @@ func (f *fakePCEServiceClient) DeleteSession(_ context.Context, in *pb.DeleteSes
 	return &pb.DeleteSessionResponse{}, nil
 }
 
-func (f *fakePCEServiceClient) GetSRPolicyList(_ context.Context, _ *pb.GetSRPolicyListRequest, _ ...grpc.CallOption) (*pb.GetSRPolicyListResponse, error) {
+func (f *fakePCEServiceClient) GetSRPolicyList(_ context.Context, in *pb.GetSRPolicyListRequest, _ ...grpc.CallOption) (*pb.GetSRPolicyListResponse, error) {
+	f.srPolicyListReq = in
 	return f.srPolicyListResp, f.srPolicyListErr
 }
 

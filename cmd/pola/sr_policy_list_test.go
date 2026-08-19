@@ -147,13 +147,15 @@ func TestShowSRPolicyList(t *testing.T) {
 		out := captureStdout(t, func() {
 			require.NoError(t, showSRPolicyList(listCmdWithJSONFlag(), []string{}))
 		})
-		assert.Equal(t, "No SR Policies found.\n", out)
+		assert.Equal(t, "No PCEP sessions connected.\n", out)
 	})
 
 	t.Run("plain text output", func(t *testing.T) {
 		client = &fakePCEServiceClient{srPolicyListResp: &pb.GetSRPolicyListResponse{
 			Sessions: []*pb.Session{{
-				Addr: netip.MustParseAddr("192.0.2.1").AsSlice(),
+				Addr:     netip.MustParseAddr("192.0.2.1").AsSlice(),
+				State:    pb.SessionState_SESSION_STATE_UP,
+				IsSynced: true,
 				SrPolicies: []*pb.SRPolicy{
 					{
 						PolicyName:  "pol1",
@@ -183,7 +185,7 @@ func TestShowSRPolicyList(t *testing.T) {
 			require.NoError(t, showSRPolicyList(listCmdWithJSONFlag(), []string{}))
 		})
 
-		want := "Session: 192.0.2.1\n" +
+		want := "Session: 192.0.2.1 (State: UP, IsSynced: true)\n" +
 			"  PolicyName: pol1\n" +
 			"    PlspID: 1\n" +
 			"    LSPID: 2\n" +
@@ -205,6 +207,42 @@ func TestShowSRPolicyList(t *testing.T) {
 			"    Preference: 0\n" +
 			"    SegmentList: None\n" +
 			"\n"
+		assert.Equal(t, want, out)
+	})
+
+	t.Run("synced session with no policies", func(t *testing.T) {
+		client = &fakePCEServiceClient{srPolicyListResp: &pb.GetSRPolicyListResponse{
+			Sessions: []*pb.Session{{
+				Addr:     netip.MustParseAddr("192.0.2.1").AsSlice(),
+				State:    pb.SessionState_SESSION_STATE_UP,
+				IsSynced: true,
+			}},
+		}}
+
+		out := captureStdout(t, func() {
+			require.NoError(t, showSRPolicyList(listCmdWithJSONFlag(), []string{}))
+		})
+
+		want := "Session: 192.0.2.1 (State: UP, IsSynced: true)\n" +
+			"  No SR Policies.\n\n"
+		assert.Equal(t, want, out)
+	})
+
+	t.Run("unsynced session is shown with an explanatory note", func(t *testing.T) {
+		client = &fakePCEServiceClient{srPolicyListResp: &pb.GetSRPolicyListResponse{
+			Sessions: []*pb.Session{{
+				Addr:     netip.MustParseAddr("192.0.2.1").AsSlice(),
+				State:    pb.SessionState_SESSION_STATE_UP,
+				IsSynced: false,
+			}},
+		}}
+
+		out := captureStdout(t, func() {
+			require.NoError(t, showSRPolicyList(listCmdWithJSONFlag(), []string{}))
+		})
+
+		want := "Session: 192.0.2.1 (State: UP, IsSynced: false)\n" +
+			"  No SR Policies: session is still synchronizing.\n\n"
 		assert.Equal(t, want, out)
 	})
 
@@ -233,6 +271,20 @@ func TestShowSRPolicyList(t *testing.T) {
 		require.NoError(t, cmd.Flags().Set("session", "not-an-address"))
 		err := showSRPolicyList(cmd, []string{})
 		require.Error(t, err)
+	})
+
+	t.Run("session filter propagates to the request", func(t *testing.T) {
+		fake := &fakePCEServiceClient{srPolicyListResp: &pb.GetSRPolicyListResponse{}}
+		client = fake
+		cmd := listCmdWithJSONFlag()
+		require.NoError(t, cmd.Flags().Set("session", "192.0.2.1"))
+
+		captureStdout(t, func() {
+			require.NoError(t, showSRPolicyList(cmd, []string{}))
+		})
+
+		require.NotNil(t, fake.srPolicyListReq)
+		assert.Equal(t, netip.MustParseAddr("192.0.2.1").AsSlice(), fake.srPolicyListReq.GetSessionAddr())
 	})
 
 	t.Run("grpc error propagates", func(t *testing.T) {

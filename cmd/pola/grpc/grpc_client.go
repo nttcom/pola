@@ -16,6 +16,7 @@ import (
 
 	pb "github.com/nttcom/pola/api/pola/v1"
 	"github.com/nttcom/pola/pkg/table"
+	"google.golang.org/protobuf/proto"
 )
 
 func withTimeout() (context.Context, context.CancelFunc) {
@@ -181,7 +182,7 @@ type UnknownCapability struct {
 	TLVType uint32
 }
 
-// Strings returns the human-readable flags for this capability.
+// Strings returns a human-readable representation of this capability.
 func (c UnknownCapability) Strings() []string {
 	return []string{fmt.Sprintf("unknown_type_%d", c.TLVType)}
 }
@@ -197,7 +198,7 @@ type Capability struct {
 	Detail capabilityDetail
 }
 
-// Strings returns the human-readable flags for this capability's TLV.
+// Strings returns a human-readable representation of this capability.
 func (c Capability) Strings() []string {
 	if c.Detail == nil {
 		return []string{c.Type}
@@ -205,21 +206,50 @@ func (c Capability) Strings() []string {
 	return c.Detail.Strings()
 }
 
-// Session represents a PCEP session with its capabilities and synchronization state.
-type Session struct {
-	Addr         netip.Addr
-	State        string
-	Capabilities []Capability
-	IsSynced     bool
+// SessionTimers holds the timers advertised by a PCEP speaker.
+type SessionTimers struct {
+	Keepalive uint32
+	DeadTimer uint32
 }
 
-// CapStrings flattens the human-readable flags of all capabilities into a single list.
+// EffectiveTimers holds the timers currently applied by Pola.
+type EffectiveTimers struct {
+	Keepalive uint32
+	DeadTimer uint32
+}
+
+// Session represents a PCEP session.
+type Session struct {
+	Addr            netip.Addr
+	State           string
+	LocalSessionID  *uint32
+	PccSessionID    *uint32
+	LocalTimers     *SessionTimers
+	PccTimers       *SessionTimers
+	EffectiveTimers EffectiveTimers
+	PccType         string
+	Capabilities    []Capability
+	PccCapabilities []Capability
+	IsSynced        bool
+	SRPolicies      []table.SRPolicy
+}
+
+// CapStrings returns human-readable representations of Pola's capabilities.
 func (s Session) CapStrings() []string {
-	var caps []string
-	for _, c := range s.Capabilities {
-		caps = append(caps, c.Strings()...)
+	return capStrings(s.Capabilities)
+}
+
+// PccCapStrings returns human-readable representations of the PCC's capabilities.
+func (s Session) PccCapStrings() []string {
+	return capStrings(s.PccCapabilities)
+}
+
+func capStrings(caps []Capability) []string {
+	var out []string
+	for _, c := range caps {
+		out = append(out, c.Strings()...)
 	}
-	return caps
+	return out
 }
 
 // capabilityFromPB converts a gRPC Capability into its typed client-side representation.
@@ -266,6 +296,45 @@ func capabilityFromPB(c *pb.Capability) Capability {
 	return cap
 }
 
+func sessionFromPB(pbss *pb.Session) (Session, error) {
+	addr, ok := netip.AddrFromSlice(pbss.GetAddr())
+	if !ok {
+		return Session{}, fmt.Errorf("invalid session address: %v", pbss.GetAddr())
+	}
+
+	ss := Session{
+		Addr:  addr,
+		State: strings.TrimPrefix(pbss.GetState().String(), "SESSION_STATE_"),
+		EffectiveTimers: EffectiveTimers{
+			Keepalive: pbss.GetEffectiveTimers().GetKeepalive(),
+			DeadTimer: pbss.GetEffectiveTimers().GetDeadTimer(),
+		},
+		PccType:         strings.TrimPrefix(pbss.GetPccType().String(), "PCC_TYPE_"),
+		IsSynced:        pbss.GetIsSynced(),
+		Capabilities:    []Capability{},
+		PccCapabilities: []Capability{},
+	}
+	if pbss.LocalSessionId != nil {
+		ss.LocalSessionID = proto.Uint32(pbss.GetLocalSessionId())
+	}
+	if pbss.PccSessionId != nil {
+		ss.PccSessionID = proto.Uint32(pbss.GetPccSessionId())
+	}
+	if t := pbss.GetLocalTimers(); t != nil {
+		ss.LocalTimers = &SessionTimers{Keepalive: t.GetKeepalive(), DeadTimer: t.GetDeadTimer()}
+	}
+	if t := pbss.GetPccTimers(); t != nil {
+		ss.PccTimers = &SessionTimers{Keepalive: t.GetKeepalive(), DeadTimer: t.GetDeadTimer()}
+	}
+	for _, c := range pbss.GetCapabilities() {
+		ss.Capabilities = append(ss.Capabilities, capabilityFromPB(c))
+	}
+	for _, c := range pbss.GetPccCapabilities() {
+		ss.PccCapabilities = append(ss.PccCapabilities, capabilityFromPB(c))
+	}
+	return ss, nil
+}
+
 // GetSessions retrieves the list of PCEP sessions from the PCE server.
 func GetSessions(client pb.PCEServiceClient) ([]Session, error) {
 	ctx, cancel := withTimeout()
@@ -278,19 +347,9 @@ func GetSessions(client pb.PCEServiceClient) ([]Session, error) {
 
 	var sessions []Session
 	for _, pbss := range ret.GetSessions() {
-		addr, ok := netip.AddrFromSlice(pbss.GetAddr())
-		if !ok {
-			return nil, fmt.Errorf("invalid session address: %v", pbss.GetAddr())
-		}
-
-		ss := Session{
-			Addr:         addr,
-			State:        pbss.State.String(),
-			IsSynced:     pbss.GetIsSynced(),
-			Capabilities: []Capability{},
-		}
-		for _, c := range pbss.GetCapabilities() {
-			ss.Capabilities = append(ss.Capabilities, capabilityFromPB(c))
+		ss, err := sessionFromPB(pbss)
+		if err != nil {
+			return nil, err
 		}
 		sessions = append(sessions, ss)
 	}
@@ -310,15 +369,9 @@ func DeleteSession(client pb.PCEServiceClient, req *pb.DeleteSessionRequest) err
 	return nil
 }
 
-// SessionSRPolicies groups the SR Policies managed over a single PCEP session.
-type SessionSRPolicies struct {
-	Addr       netip.Addr       `json:"peerAddr"`
-	SRPolicies []table.SRPolicy `json:"srPolicies"`
-}
-
-// GetSRPolicyList returns SR Policies grouped by PCEP session in stable order.
-// If sessionAddr is valid, only the matching session is returned.
-func GetSRPolicyList(client pb.PCEServiceClient, sessionAddr netip.Addr) ([]SessionSRPolicies, error) {
+// GetSRPolicyList returns SR Policies grouped by PCEP session,
+// optionally filtered by session address.
+func GetSRPolicyList(client pb.PCEServiceClient, sessionAddr netip.Addr) ([]Session, error) {
 	ctx, cancel := withTimeout()
 	defer cancel()
 
@@ -332,23 +385,23 @@ func GetSRPolicyList(client pb.PCEServiceClient, sessionAddr netip.Addr) ([]Sess
 		return nil, err
 	}
 
-	sessions := make([]SessionSRPolicies, 0, len(ret.GetSessions()))
+	sessions := make([]Session, 0, len(ret.GetSessions()))
 	for _, pbSession := range ret.GetSessions() {
-		peerAddr, ok := netip.AddrFromSlice(pbSession.GetAddr())
-		if !ok {
-			return nil, fmt.Errorf("invalid session address: %v", pbSession.GetAddr())
+		ss, err := sessionFromPB(pbSession)
+		if err != nil {
+			return nil, err
 		}
 
-		policies := make([]table.SRPolicy, 0, len(pbSession.GetSrPolicies()))
+		ss.SRPolicies = make([]table.SRPolicy, 0, len(pbSession.GetSrPolicies()))
 		for _, p := range pbSession.GetSrPolicies() {
 			policy, err := convertSRPolicy(p)
 			if err != nil {
 				return nil, err
 			}
-			policies = append(policies, policy)
+			ss.SRPolicies = append(ss.SRPolicies, policy)
 		}
 
-		sessions = append(sessions, SessionSRPolicies{Addr: peerAddr, SRPolicies: policies})
+		sessions = append(sessions, ss)
 	}
 
 	return sessions, nil

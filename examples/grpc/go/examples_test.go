@@ -432,7 +432,7 @@ func TestSessionList(t *testing.T) {
 		wantOutput(t, out, code,
 			"sessionAddr(0): 192.0.2.1",
 			"state: SESSION_STATE_UP",
-			"capabilities: STATEFUL, SR(msd=10, unlimitedMsd=false, naiSupported=false)",
+			"capabilities (Pola): STATEFUL, SR(msd=10, unlimitedMsd=false, naiSupported=false)",
 			"isSynced: true",
 			"invalid address for session 1",
 		)

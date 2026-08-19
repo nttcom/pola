@@ -16,7 +16,7 @@ import (
 )
 
 func newSessionDeleteCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:          "delete",
 		Aliases:      []string{"del"},
 		SilenceUsage: true,
@@ -34,6 +34,7 @@ func newSessionDeleteCmd() *cobra.Command {
 			return nil
 		},
 	}
+	return cmd
 }
 
 func deleteSession(session netip.Addr, jsonFlag bool) error {

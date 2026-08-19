@@ -8,6 +8,7 @@ package server
 import (
 	"fmt"
 	"net/netip"
+	"time"
 
 	pb "github.com/nttcom/pola/api/pola/v1"
 	"github.com/nttcom/pola/pkg/packet/pcep"
@@ -15,6 +16,54 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 )
+
+// dedupCapabilities converts capabilities to protobuf, dropping duplicates.
+func dedupCapabilities(logger *zap.Logger, kind string, caps []pcep.CapabilityInterface) []*pb.Capability {
+	var pbCaps []*pb.Capability
+	seen := make(map[string]struct{})
+	for _, cap := range caps {
+		b, err := cap.Serialize()
+		if err != nil {
+			logger.Warn(fmt.Sprintf("failed to serialize %s capability", kind), zap.Error(err))
+			continue
+		}
+		key := fmt.Sprintf("%d:%s", cap.Type(), b)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		pbCaps = append(pbCaps, buildCapability(cap))
+	}
+	return pbCaps
+}
+
+func toPBSessionState(state sessionState) pb.SessionState {
+	switch state {
+	case sessionStateTCPPending:
+		return pb.SessionState_SESSION_STATE_TCP_PENDING
+	case sessionStateOpenWait:
+		return pb.SessionState_SESSION_STATE_OPEN_WAIT
+	case sessionStateKeepWait:
+		return pb.SessionState_SESSION_STATE_KEEP_WAIT
+	case sessionStateUp:
+		return pb.SessionState_SESSION_STATE_UP
+	default:
+		return pb.SessionState_SESSION_STATE_UNSPECIFIED
+	}
+}
+
+func toPBPccType(pccType pcep.PccType) pb.PccType {
+	switch pccType {
+	case pcep.CiscoLegacy:
+		return pb.PccType_PCC_TYPE_CISCO_LEGACY
+	case pcep.JuniperLegacy:
+		return pb.PccType_PCC_TYPE_JUNIPER_LEGACY
+	case pcep.RFCCompliant:
+		return pb.PccType_PCC_TYPE_RFC_COMPLIANT
+	default:
+		return pb.PccType_PCC_TYPE_UNSPECIFIED
+	}
+}
 
 func buildCapability(cap pcep.CapabilityInterface) *pb.Capability {
 	c := &pb.Capability{Type: capabilityType(cap.Type())}
@@ -102,9 +151,43 @@ func capabilityType(t pcep.TLVType) pb.CapabilityType {
 	}
 }
 
-func (s *APIServer) buildPBSRPolicy(peerAddr netip.Addr, policy *table.SRPolicy, routerIDIndex map[netip.Addr]string) *pb.SRPolicy {
+// buildPBSession converts a Session to its protobuf representation.
+// Session IDs and advertised timers are nil until the Open message is received.
+func (s *APIServer) buildPBSession(pcepSession *Session) *pb.Session {
+	pbSession := &pb.Session{
+		Addr:            pcepSession.peerAddr.AsSlice(),
+		State:           toPBSessionState(pcepSession.State()),
+		IsSynced:        pcepSession.IsSynced(),
+		PccType:         toPBPccType(pcepSession.PccType()),
+		Capabilities:    dedupCapabilities(s.logger, "advertised", pcepSession.AdvertisedCapabilities()),
+		PccCapabilities: dedupCapabilities(s.logger, "received", pcepSession.ReceivedCapabilities()),
+		EffectiveTimers: &pb.EffectiveTimers{
+			Keepalive: uint32(pcepSession.keepaliveInterval()),
+			DeadTimer: uint32(pcepSession.readDeadline() / time.Second),
+		},
+	}
+
+	if localOpen, ok := pcepSession.LocalOpen(); ok {
+		pbSession.LocalSessionId = proto.Uint32(uint32(localOpen.SessionID))
+		pbSession.LocalTimers = &pb.SessionTimers{
+			Keepalive: uint32(localOpen.Keepalive),
+			DeadTimer: uint32(localOpen.DeadTimer),
+		}
+	}
+	if pccOpen, ok := pcepSession.PccOpen(); ok {
+		pbSession.PccSessionId = proto.Uint32(uint32(pccOpen.SessionID))
+		pbSession.PccTimers = &pb.SessionTimers{
+			Keepalive: uint32(pccOpen.Keepalive),
+			DeadTimer: uint32(pccOpen.DeadTimer),
+		}
+	}
+
+	return pbSession
+}
+
+func (s *APIServer) buildPBSRPolicy(pcepSession *Session, policy *table.SRPolicy, routerIDIndex map[netip.Addr]string) *pb.SRPolicy {
 	srPolicy := &pb.SRPolicy{
-		PcepSessionAddr: peerAddr.AsSlice(),
+		PcepSessionAddr: pcepSession.peerAddr.AsSlice(),
 		SegmentList:     make([]*pb.Segment, 0, len(policy.SegmentList)),
 		Color:           policy.Color,
 		Preference:      policy.Preference,

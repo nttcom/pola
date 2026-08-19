@@ -149,6 +149,8 @@ func translateCreateSRPolicyError(err error) error {
 			return fmt.Errorf("%s\n  hint: the PCE has not finished syncing the TED yet; retry shortly", msg)
 		case reasonPCEPSessionNotSynced:
 			return fmt.Errorf("%s\n  hint: check that a PCEP session to the target PCC is established and synced", msg)
+		case reasonPCEPSessionNotFound:
+			return fmt.Errorf("%s\n  hint: run `pola session` to check the PCEP session address", msg)
 		case reasonDestinationUnreach:
 			return fmt.Errorf("%s\n  hint: no path exists to the destination in the current topology", msg)
 		case reasonMetricNotCarried:

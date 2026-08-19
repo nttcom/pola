@@ -302,13 +302,13 @@ func (o *OpenObject) Len() int {
 }
 
 // NewOpenObject creates a new OpenObject.
-func NewOpenObject(sessionID uint8, keepalive uint8, capabilities []CapabilityInterface) *OpenObject {
+func NewOpenObject(sessionID uint8, keepalive uint8, deadTimer uint8, capabilities []CapabilityInterface) *OpenObject {
 	return &OpenObject{
 		ObjectType: ObjectTypeOpenOpen,
 		Version:    uint8(1), // PCEP version. Current version is 1
 		Flag:       uint8(0),
 		Keepalive:  keepalive,
-		Deadtime:   DeadTimerFor(keepalive),
+		Deadtime:   deadTimer,
 		Sid:        sessionID,
 		Caps:       capabilities,
 	}

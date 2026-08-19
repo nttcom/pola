@@ -35,61 +35,75 @@ func showSRPolicyList(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-
 	sessions, err := grpc.GetSRPolicyList(client, sessionAddr)
 	if err != nil {
 		return fmt.Errorf("failed to retrieve SR policy list: %w", err)
 	}
 
 	if jsonFlag {
-		// Output in JSON format
 		outputJSON, err := json.Marshal(sessions)
 		if err != nil {
 			return fmt.Errorf("failed to marshal SR policy list to JSON: %w", err)
 		}
 		fmt.Println(string(outputJSON))
-	} else {
-		// Output in user-friendly format
-		if len(sessions) == 0 {
-			fmt.Println("No SR Policies found.")
-		} else {
-			for _, session := range sessions {
-				fmt.Printf("Session: %s\n", session.Addr.String())
-				for _, policy := range session.SRPolicies {
-					fmt.Printf("  PolicyName: %s\n", policy.Name)
-					fmt.Printf("    PlspID: %d\n", policy.PlspID)
-					fmt.Printf("    LSPID: %d\n", policy.LSPID)
-					fmt.Printf("    State: %s\n", policy.State)
-					if policy.Type != "" {
-						fmt.Printf("    Type: %s\n", policy.Type)
-					}
-					if policy.Metric != table.UnspecifiedMetric {
-						fmt.Printf("    Metric: %s\n", policy.Metric.DisplayString())
-					}
-					fmt.Printf("    SrcAddr: %s\n", srcDstDisplay(policy.SrcAddr.String(), policy.SrcRouterID))
-					fmt.Printf("    DstAddr: %s\n", srcDstDisplay(policy.DstAddr.String(), policy.DstRouterID))
-					fmt.Printf("    Color: %d\n", policy.Color)
-					fmt.Printf("    Preference: %d\n", policy.Preference)
-					fmt.Printf("    SegmentList: ")
+		return nil
+	}
 
-					if len(policy.SegmentList) == 0 {
-						fmt.Println("None")
-					} else {
-						for j, segment := range policy.SegmentList {
-							fmt.Print(segmentDisplayString(segment))
-							if j == len(policy.SegmentList)-1 {
-								fmt.Println()
-							} else {
-								fmt.Print(" -> ")
-							}
-						}
-					}
-				}
-				fmt.Println()
-			}
-		}
+	if len(sessions) == 0 {
+		fmt.Println("No PCEP sessions connected.")
+		return nil
+	}
+	for _, session := range sessions {
+		printSRPolicySession(session)
 	}
 	return nil
+}
+
+func printSRPolicySession(session grpc.Session) {
+	fmt.Printf("Session: %s (State: %s, IsSynced: %t)\n",
+		session.Addr.String(), session.State, session.IsSynced)
+	if len(session.SRPolicies) == 0 {
+		if session.IsSynced {
+			fmt.Println("  No SR Policies.")
+		} else {
+			fmt.Println("  No SR Policies: session is still synchronizing.")
+		}
+	}
+	for _, policy := range session.SRPolicies {
+		printSRPolicy(policy)
+	}
+	fmt.Println()
+}
+
+func printSRPolicy(policy table.SRPolicy) {
+	fmt.Printf("  PolicyName: %s\n", policy.Name)
+	fmt.Printf("    PlspID: %d\n", policy.PlspID)
+	fmt.Printf("    LSPID: %d\n", policy.LSPID)
+	fmt.Printf("    State: %s\n", policy.State)
+	if policy.Type != "" {
+		fmt.Printf("    Type: %s\n", policy.Type)
+	}
+	if policy.Metric != table.UnspecifiedMetric {
+		fmt.Printf("    Metric: %s\n", policy.Metric.DisplayString())
+	}
+	fmt.Printf("    SrcAddr: %s\n", srcDstDisplay(policy.SrcAddr.String(), policy.SrcRouterID))
+	fmt.Printf("    DstAddr: %s\n", srcDstDisplay(policy.DstAddr.String(), policy.DstRouterID))
+	fmt.Printf("    Color: %d\n", policy.Color)
+	fmt.Printf("    Preference: %d\n", policy.Preference)
+	fmt.Printf("    SegmentList: ")
+
+	if len(policy.SegmentList) == 0 {
+		fmt.Println("None")
+		return
+	}
+	for j, segment := range policy.SegmentList {
+		fmt.Print(segmentDisplayString(segment))
+		if j == len(policy.SegmentList)-1 {
+			fmt.Println()
+		} else {
+			fmt.Print(" -> ")
+		}
+	}
 }
 
 func sessionAddrFlag(cmd *cobra.Command) (netip.Addr, error) {

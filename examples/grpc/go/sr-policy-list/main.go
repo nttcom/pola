@@ -49,6 +49,7 @@ func main() {
 	i := 0
 	for _, session := range ret.GetSessions() {
 		sessionAddr := formatAddr(session.GetAddr())
+		fmt.Printf("session: %s (state: %s, isSynced: %t)\n", sessionAddr, session.GetState(), session.GetIsSynced())
 		for _, srPolicy := range session.GetSrPolicies() {
 			fmt.Printf("srPolicy(%d):\n", i)
 			i++
@@ -79,7 +80,21 @@ func formatSegmentList(segmentList []*pb.Segment) string {
 
 	sids := make([]string, 0, len(segmentList))
 	for _, segment := range segmentList {
-		sids = append(sids, segment.GetSid())
+		sids = append(sids, formatSegment(segment))
 	}
 	return strings.Join(sids, " -> ")
+}
+
+func formatSegment(segment *pb.Segment) string {
+	local, remote := segment.GetLocalAddr(), segment.GetRemoteAddr()
+	switch {
+	case local == "" && remote == "":
+		return segment.GetSid()
+	case remote == "":
+		return fmt.Sprintf("%s (local=%s)", segment.GetSid(), local)
+	case local == "":
+		return fmt.Sprintf("%s (remote=%s)", segment.GetSid(), remote)
+	default:
+		return fmt.Sprintf("%s (local=%s, remote=%s)", segment.GetSid(), local, remote)
+	}
 }

@@ -30,6 +30,7 @@ func TestReasonConstantsMatchServer(t *testing.T) {
 	assert.Equal(t, server.ReasonDestinationUnreachable, reasonDestinationUnreach)
 	assert.Equal(t, server.ReasonMetricNotCarried, reasonMetricNotCarried)
 	assert.Equal(t, server.ReasonPCEPSessionNotSynced, reasonPCEPSessionNotSynced)
+	assert.Equal(t, server.ReasonPCEPSessionNotFound, reasonPCEPSessionNotFound)
 	assert.Equal(t, server.ReasonSIDValidationFailed, reasonSIDValidationFailed)
 }
 
@@ -52,6 +53,7 @@ func TestTranslateCreateSRPolicyError(t *testing.T) {
 		{"TED disabled gets a TED hint, not the SID hint", newErr(codes.FailedPrecondition, "TED_DISABLED", "ted is disabled"), "enable TED sync"},
 		{"TED not synced gets a retry hint", newErr(codes.FailedPrecondition, "TED_NOT_SYNCED", "no node in TED"), "retry shortly"},
 		{"unsynced PCEP session gets a session hint", newErr(codes.FailedPrecondition, "PCEP_SESSION_NOT_SYNCED", "no synced session with 10.0.0.1"), "PCEP session"},
+		{"missing PCEP session gets a `pola session` hint", newErr(codes.NotFound, "PCEP_SESSION_NOT_FOUND", "no session with address 10.0.0.1 found"), "pola session"},
 		{"unreachable destination gets a topology hint", newErr(codes.FailedPrecondition, "DESTINATION_UNREACHABLE", "next node not found"), "no path exists"},
 		{"uncarried metric gets a metric hint", newErr(codes.FailedPrecondition, "METRIC_NOT_CARRIED", "metric METRIC_TYPE_TE not defined"), "not advertised"},
 		{"invalid argument gets no hint", newErr(codes.InvalidArgument, "INVALID_REQUEST", "ASN must not be zero"), ""},
