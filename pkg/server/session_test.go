@@ -880,7 +880,7 @@ func TestFindRouterIDFromAddress(t *testing.T) {
 	ted.Nodes["198.51.100.2"] = nil
 
 	ss := &Session{ted: ted}
-	addrIndex := buildAddressRouterIDIndex(ted)
+	addrIndex := ted.AddressRouterIDIndex()
 
 	cases := []struct {
 		name    string

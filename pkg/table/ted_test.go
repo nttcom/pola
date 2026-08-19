@@ -602,3 +602,67 @@ func TestLsTEDPrint_Populated(t *testing.T) {
 	assert.Contains(t, out, "EndpointBehavior: UN, Flags: 1, Algorithm: 0")
 	assert.Contains(t, out, "MultiTopoIDs: [1]")
 }
+
+func TestLsTEDRouterIDIndex(t *testing.T) {
+	ted := &LsTED{Nodes: map[string]*LsNode{}}
+
+	v4Node := NewLsNode(65000, "router-v4")
+	v4Prefix := NewLsPrefix(v4Node)
+	v4Prefix.Prefix = netip.MustParsePrefix("192.0.2.10/32")
+	v4Node.Prefixes = append(v4Node.Prefixes, v4Prefix)
+	ted.Nodes[v4Node.RouterID] = v4Node
+
+	v6Node := NewLsNode(65000, "router-v6")
+	v6Prefix := NewLsPrefix(v6Node)
+	v6Prefix.Prefix = netip.MustParsePrefix("2001:db8::1/128")
+	v6Node.Prefixes = append(v6Node.Prefixes, v6Prefix)
+	ted.Nodes[v6Node.RouterID] = v6Node
+
+	// A node without a loopback (host) prefix must not appear in the index.
+	noLoopbackNode := NewLsNode(65000, "router-no-loopback")
+	nonHostPrefix := NewLsPrefix(noLoopbackNode)
+	nonHostPrefix.Prefix = netip.MustParsePrefix("192.0.2.0/24")
+	noLoopbackNode.Prefixes = append(noLoopbackNode.Prefixes, nonHostPrefix)
+	ted.Nodes[noLoopbackNode.RouterID] = noLoopbackNode
+	ted.Nodes["router-nil"] = nil
+
+	index := ted.RouterIDIndex()
+	assert.Equal(t, "router-v4", index[netip.MustParseAddr("192.0.2.10")])
+	assert.Equal(t, "router-v6", index[netip.MustParseAddr("2001:db8::1")])
+	assert.Empty(t, index[netip.MustParseAddr("192.0.2.0")])
+
+	var nilTED *LsTED
+	assert.Nil(t, nilTED.RouterIDIndex())
+}
+
+func TestLsTEDAddressRouterIDIndex(t *testing.T) {
+	ted := &LsTED{Nodes: map[string]*LsNode{}}
+
+	v4Node := NewLsNode(65000, "router-v4")
+	v4Prefix := NewLsPrefix(v4Node)
+	v4Prefix.Prefix = netip.MustParsePrefix("192.0.2.10/32")
+	v4Node.Prefixes = append(v4Node.Prefixes, v4Prefix)
+	ted.Nodes[v4Node.RouterID] = v4Node
+
+	v6Node := NewLsNode(65000, "router-v6")
+	v6Prefix := NewLsPrefix(v6Node)
+	v6Prefix.Prefix = netip.MustParsePrefix("2001:db8::1/128")
+	v6Node.Prefixes = append(v6Node.Prefixes, v6Prefix)
+	ted.Nodes[v6Node.RouterID] = v6Node
+
+	// Non-host prefixes are indexed too, by their network address.
+	subnetNode := NewLsNode(65000, "router-subnet")
+	subnetPrefix := NewLsPrefix(subnetNode)
+	subnetPrefix.Prefix = netip.MustParsePrefix("192.0.2.0/24")
+	subnetNode.Prefixes = append(subnetNode.Prefixes, subnetPrefix)
+	ted.Nodes[subnetNode.RouterID] = subnetNode
+	ted.Nodes["router-nil"] = nil
+
+	index := ted.AddressRouterIDIndex()
+	assert.Equal(t, "router-v4", index[netip.MustParseAddr("192.0.2.10")])
+	assert.Equal(t, "router-v6", index[netip.MustParseAddr("2001:db8::1")])
+	assert.Equal(t, "router-subnet", index[netip.MustParseAddr("192.0.2.0")])
+
+	var nilTED *LsTED
+	assert.Nil(t, nilTED.AddressRouterIDIndex())
+}

@@ -24,6 +24,43 @@ func (ted *LsTED) Update(tedElems []TEDElem, asn uint32) {
 	}
 }
 
+// RouterIDIndex builds a loopback-address-to-router-ID index from the TED.
+func (ted *LsTED) RouterIDIndex() map[netip.Addr]string {
+	if ted == nil {
+		return nil
+	}
+
+	index := make(map[netip.Addr]string, len(ted.Nodes))
+	for _, node := range ted.Nodes {
+		if node == nil {
+			continue
+		}
+		for _, prefix := range node.Prefixes {
+			if prefix.Prefix.Bits() == prefix.Prefix.Addr().BitLen() {
+				index[prefix.Prefix.Addr()] = node.RouterID
+			}
+		}
+	}
+	return index
+}
+
+// AddressRouterIDIndex builds an index from prefix addresses to router IDs.
+func (ted *LsTED) AddressRouterIDIndex() map[netip.Addr]string {
+	if ted == nil {
+		return nil
+	}
+	index := make(map[netip.Addr]string)
+	for routerID, node := range ted.Nodes {
+		if node == nil {
+			continue
+		}
+		for _, prefix := range node.Prefixes {
+			index[prefix.Prefix.Addr()] = routerID
+		}
+	}
+	return index
+}
+
 // Print prints the TED, listing each node with its prefixes, links and SRv6 SIDs.
 func (ted *LsTED) Print() {
 	if ted == nil || ted.Nodes == nil {
