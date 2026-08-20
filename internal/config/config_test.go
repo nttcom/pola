@@ -382,6 +382,51 @@ global:
 	require.ErrorContains(t, c.Validate(), "global.pcep.deadTimer must be 0")
 }
 
+func TestValidate_RejectsDeadTimerLessThanKeepalive(t *testing.T) {
+	path := writeConfig(t, `
+global:
+  pcep:
+    address: "127.0.0.1"
+    port: 4189
+    keepalive: 30
+    deadTimer: 10
+  grpcServer:
+    address: "127.0.0.1"
+    port: 50052
+  log:
+    path: "/var/log/pola/"
+    name: "polad.log"
+  ted:
+    enable: false
+`)
+
+	c, err := ReadConfigFile(path)
+	require.NoError(t, err)
+	require.ErrorContains(t, c.Validate(), "global.pcep.deadTimer must be >= global.pcep.keepalive")
+}
+
+func TestValidate_RejectsDeadTimerLessThanDefaultKeepaliveWhenKeepaliveUnset(t *testing.T) {
+	path := writeConfig(t, `
+global:
+  pcep:
+    address: "127.0.0.1"
+    port: 4189
+    deadTimer: 10
+  grpcServer:
+    address: "127.0.0.1"
+    port: 50052
+  log:
+    path: "/var/log/pola/"
+    name: "polad.log"
+  ted:
+    enable: false
+`)
+
+	c, err := ReadConfigFile(path)
+	require.NoError(t, err)
+	require.ErrorContains(t, c.Validate(), "global.pcep.deadTimer must be >= global.pcep.keepalive")
+}
+
 func TestPCEPKeepaliveRange_ReadsConfiguredValues(t *testing.T) {
 	path := writeConfig(t, `
 global:

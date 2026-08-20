@@ -1889,6 +1889,162 @@ func TestAwaitKeepalive_SendPCErrFailureIsLoggedNotFatal(t *testing.T) {
 	assert.NotEmpty(t, logs.FilterMessage("ERROR! Send PCErr Message").All())
 }
 
+func TestAwaitKeepalive_KeepWaitExpiresWhileReadingBody(t *testing.T) {
+	openBytes, err := pcep.NewOpenMessage(1, 30, 120, nil).Serialize()
+	require.NoError(t, err)
+
+	// Simulate a body read timeout after receiving the header.
+	header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeReport, MessageLength: pcep.CommonHeaderLength + 4}
+	conn := &fakeConn{r: &errAfterReader{prefix: append(openBytes, header.Serialize()...), err: os.ErrDeadlineExceeded}}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+
+	err = ss.Open()
+	require.ErrorContains(t, err, "KeepWait timer expired while reading the message body")
+}
+
+func TestHandleKeepWaitPCErr_MalformedPCErrReturnsError(t *testing.T) {
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+
+	_, err := ss.handleKeepWaitPCErr([]byte{}, true)
+	require.ErrorContains(t, err, "malformed PCErr in KeepWait")
+}
+
+func TestHandleKeepWaitPCErr_OtherErrorIsReportedAsIs(t *testing.T) {
+	conn := &fakeConn{r: bytes.NewReader(nil)}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+
+	pcerrMessage := pcep.NewPCErrMessage(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueSecondOpenStillUnacceptable, nil)
+	full, err := pcerrMessage.Serialize()
+	require.NoError(t, err)
+
+	_, err = ss.handleKeepWaitPCErr(full[pcep.CommonHeaderLength:], true)
+	require.ErrorContains(t, err, "peer rejected session establishment")
+}
+
+func TestHandleKeepWaitPCErr_NegotiableProposalIsFoundBehindOtherErrors(t *testing.T) {
+	conn := &fakeConn{r: bytes.NewReader(nil)}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss.allowNegotiation = true
+
+	pcerrMessage := &pcep.PCErrMessage{
+		Errors: []*pcep.ErrorObject{
+			pcep.NewErrorObject(pcepErrorTypeCapabilityNotSupported, pcepErrorValueUnassigned, nil),
+			pcep.NewErrorObject(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableNegotiable, nil),
+		},
+		Open: pcep.NewOpenObject(1, 20, 80, nil),
+	}
+	full, err := pcerrMessage.Serialize()
+	require.NoError(t, err)
+
+	retry, err := ss.handleKeepWaitPCErr(full[pcep.CommonHeaderLength:], true)
+	require.NoError(t, err)
+	assert.True(t, retry, "an Error 1/4 must drive renegotiation even when it is not the first PCEP-ERROR object")
+	assert.Equal(t, uint8(20), ss.localKeepalive)
+}
+
+func TestHandleKeepWaitPCErr_AllErrorsAreReported(t *testing.T) {
+	conn := &fakeConn{r: bytes.NewReader(nil)}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+
+	pcerrMessage := &pcep.PCErrMessage{
+		Errors: []*pcep.ErrorObject{
+			pcep.NewErrorObject(pcepErrorTypeCapabilityNotSupported, pcepErrorValueUnassigned, nil),
+			pcep.NewErrorObject(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableNonNegotiable, nil),
+		},
+	}
+	full, err := pcerrMessage.Serialize()
+	require.NoError(t, err)
+
+	_, err = ss.handleKeepWaitPCErr(full[pcep.CommonHeaderLength:], true)
+	require.ErrorContains(t, err, "error-type=2, error-value=0")
+	require.ErrorContains(t, err, "error-type=1, error-value=3")
+	assert.Zero(t, conn.writeCount, "a non-negotiable rejection must not be answered with PCErr 1/6")
+}
+
+func TestOpen_RetriesAfterAcceptablePCErrProposal(t *testing.T) {
+	peerOpenBytes, err := pcep.NewOpenMessage(1, 30, 120, nil).Serialize()
+	require.NoError(t, err)
+
+	proposedOpen := pcep.NewOpenObject(1, 20, 80, nil)
+	pcerrMessage := pcep.NewPCErrMessageWithOpen(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableNegotiable, proposedOpen)
+	pcerrBytes, err := pcerrMessage.Serialize()
+	require.NoError(t, err)
+
+	keepaliveBytes, err := pcep.NewKeepaliveMessage().Serialize()
+	require.NoError(t, err)
+
+	stream := append(append(peerOpenBytes, pcerrBytes...), keepaliveBytes...)
+	conn := &fakeConn{r: bytes.NewReader(stream)}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+
+	require.NoError(t, ss.Open(), "Open must retry with the peer's acceptable proposal instead of failing")
+	assert.Equal(t, uint8(20), ss.localKeepalive)
+	assert.Equal(t, uint8(80), ss.localDeadTimer)
+}
+
+func TestHandleProposedOpen_UnacceptableProposalIsRejected(t *testing.T) {
+	conn := &fakeConn{r: bytes.NewReader(nil)}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+
+	proposedOpen := pcep.NewOpenObject(1, 50, 10, nil)
+	retry, err := ss.handleProposedOpen(proposedOpen, true)
+	assert.False(t, retry)
+	require.ErrorContains(t, err, "peer proposed unacceptable session characteristics")
+}
+
+func TestHandleProposedOpen_MissingOpenObjectIsRejected(t *testing.T) {
+	conn := &fakeConn{r: bytes.NewReader(nil)}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+
+	retry, err := ss.handleProposedOpen(nil, true)
+	assert.False(t, retry)
+	require.ErrorContains(t, err, "without proposing acceptable ones")
+}
+
+func TestHandleProposedOpen_FurtherProposalAfterRetryIsRejected(t *testing.T) {
+	conn := &fakeConn{r: bytes.NewReader(nil)}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+
+	retry, err := ss.handleProposedOpen(pcep.NewOpenObject(1, 20, 80, nil), false)
+	assert.False(t, retry)
+	require.ErrorContains(t, err, "further proposal")
+	assert.Equal(t, 1, conn.writeCount, "an exhausted negotiation must be answered with PCErr 1/6")
+}
+
+func TestOpen_RejectsSecondProposalWithErrorValue6(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() { assert.NoError(t, client.Close()) })
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+
+	proposedOpen := pcep.NewOpenObject(1, 20, 80, nil)
+	pcerrMessage := pcep.NewPCErrMessageWithOpen(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableNegotiable, proposedOpen)
+
+	writeMessage(t, client, pcep.NewOpenMessage(1, 30, 120, nil))
+	writeMessage(t, client, pcerrMessage)
+	writeMessage(t, client, pcerrMessage)
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- ss.Open() }()
+
+	for range 4 {
+		require.NoError(t, readPCEPMessage(client))
+	}
+
+	rejection := readPCErrMessage(t, client)
+	require.Len(t, rejection.Errors, 1)
+	assert.Equal(t, pcepErrorTypeSessionEstablishmentFailure, rejection.Errors[0].ErrorType)
+	assert.Equal(t, pcepErrorValueUnacceptableProposal, rejection.Errors[0].ErrorValue)
+
+	select {
+	case err := <-errCh:
+		require.ErrorContains(t, err, "further proposal")
+	case <-time.After(2 * time.Second):
+		require.Fail(t, "Open did not return after rejecting the second proposal")
+	}
+	assert.False(t, ss.Up())
+}
+
 func TestReceiveOpen_OpenWaitExpiresWhileReadingBody(t *testing.T) {
 	header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeOpen, MessageLength: pcep.CommonHeaderLength + 10}
 	conn := &fakeConn{r: &errAfterReader{prefix: header.Serialize(), err: os.ErrDeadlineExceeded}}

@@ -93,6 +93,9 @@ func ReadConfigFile(configFile string) (Config, error) {
 	return *c, nil
 }
 
+// RFC 5440 §7.3 default Keepalive.
+const defaultKeepalive uint8 = 30
+
 func (p PCEP) validate() []error {
 	var errs []error
 
@@ -102,8 +105,17 @@ func (p PCEP) validate() []error {
 	if p.Port == "" {
 		errs = append(errs, errors.New("global.pcep.port is required"))
 	}
-	if p.Keepalive != nil && *p.Keepalive == 0 && p.DeadTimer != nil && *p.DeadTimer != 0 {
-		errs = append(errs, errors.New("global.pcep.deadTimer must be 0 when global.pcep.keepalive is 0"))
+	if p.DeadTimer != nil && *p.DeadTimer != 0 {
+		keepalive := defaultKeepalive
+		if p.Keepalive != nil {
+			keepalive = *p.Keepalive
+		}
+		switch {
+		case keepalive == 0:
+			errs = append(errs, errors.New("global.pcep.deadTimer must be 0 when global.pcep.keepalive is 0"))
+		case *p.DeadTimer < keepalive:
+			errs = append(errs, errors.New("global.pcep.deadTimer must be >= global.pcep.keepalive when both are nonzero"))
+		}
 	}
 	if p.MinKeepalive != nil && p.MaxKeepalive != nil && *p.MinKeepalive > *p.MaxKeepalive {
 		errs = append(errs, errors.New("global.pcep.minKeepalive must be <= global.pcep.maxKeepalive"))

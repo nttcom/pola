@@ -17,7 +17,6 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// dedupCapabilities converts capabilities to protobuf, dropping duplicates.
 func dedupCapabilities(logger *zap.Logger, kind string, caps []pcep.CapabilityInterface) []*pb.Capability {
 	var pbCaps []*pb.Capability
 	seen := make(map[string]struct{})
@@ -52,6 +51,51 @@ func toPBSessionState(state sessionState) pb.SessionState {
 	}
 }
 
+func toPBInitiator(initiator sessionInitiator) pb.SessionInitiator {
+	switch initiator {
+	case sessionInitiatorLocal:
+		return pb.SessionInitiator_SESSION_INITIATOR_LOCAL
+	case sessionInitiatorRemote:
+		return pb.SessionInitiator_SESSION_INITIATOR_REMOTE
+	default:
+		return pb.SessionInitiator_SESSION_INITIATOR_UNSPECIFIED
+	}
+}
+
+func toPBSyncState(state lspDBSyncState) pb.LspDbSyncState {
+	switch state {
+	case lspDBSyncPending:
+		return pb.LspDbSyncState_LSP_DB_SYNC_STATE_PENDING
+	case lspDBSyncOngoing:
+		return pb.LspDbSyncState_LSP_DB_SYNC_STATE_ONGOING
+	case lspDBSyncFinished:
+		return pb.LspDbSyncState_LSP_DB_SYNC_STATE_FINISHED
+	default:
+		return pb.LspDbSyncState_LSP_DB_SYNC_STATE_UNSPECIFIED
+	}
+}
+
+// toPBSessionStats converts session counters and setup counters to protobuf.
+// Counters not applicable to Pola's PCE role are reported as 0.
+func toPBSessionStats(stats sessionStatsSnapshot, setupOK, setupFail uint64) *pb.SessionStats {
+	return &pb.SessionStats{
+		Open:             &pb.MessageCounter{Sent: stats.OpenSent, Rcvd: stats.OpenRcvd},
+		Keepalive:        &pb.MessageCounter{Sent: stats.KeepaliveSent, Rcvd: stats.KeepaliveRcvd},
+		Close:            &pb.MessageCounter{Sent: stats.CloseSent, Rcvd: stats.CloseRcvd},
+		Pcerr:            &pb.MessageCounter{Sent: stats.PCErrSent, Rcvd: stats.PCErrRcvd},
+		Pcntf:            &pb.MessageCounter{Sent: 0, Rcvd: stats.PCNtfRcvd},
+		Pcreq:            &pb.MessageCounter{Sent: 0, Rcvd: stats.PCReqRcvd},
+		Pcrep:            &pb.MessageCounter{Sent: 0, Rcvd: stats.PCRepRcvd},
+		Report:           &pb.MessageCounter{Sent: 0, Rcvd: stats.RptRcvd},
+		Update:           &pb.MessageCounter{Sent: stats.UpdSent, Rcvd: 0},
+		Initiate:         &pb.MessageCounter{Sent: stats.PCInitiateSent, Rcvd: 0},
+		UnrecognizedRcvd: stats.UnknownRcvd,
+		CorruptRcvd:      stats.CorruptRcvd,
+		SessSetupOk:      setupOK,
+		SessSetupFail:    setupFail,
+	}
+}
+
 func toPBPccType(pccType pcep.PccType) pb.PccType {
 	switch pccType {
 	case pcep.CiscoLegacy:
@@ -79,11 +123,14 @@ func buildCapability(cap pcep.CapabilityInterface) *pb.Capability {
 			Color:                tlv.ColorCapability,
 		}}
 	case *pcep.SRPCECapability:
-		c.Detail = &pb.Capability_Sr{Sr: &pb.SrCapability{
+		sr := &pb.SrCapability{
 			UnlimitedMsd: tlv.HasUnlimitedMaxSIDDepth,
 			NaiSupported: tlv.IsNAISupported,
-			Msd:          uint32(tlv.MaximumSidDepth),
-		}}
+		}
+		if tlv.MaximumSidDepth != nil {
+			sr.Msd = proto.Uint32(uint32(*tlv.MaximumSidDepth))
+		}
+		c.Detail = &pb.Capability_Sr{Sr: sr}
 	case *pcep.SRv6PCECapability:
 		c.Detail = &pb.Capability_Srv6{Srv6: &pb.Srv6Capability{
 			NaiSupported: tlv.IsNAISupported,
@@ -152,34 +199,55 @@ func capabilityType(t pcep.TLVType) pb.CapabilityType {
 }
 
 // buildPBSession converts a Session to its protobuf representation.
-// Session IDs and advertised timers are nil until the Open message is received.
-func (s *APIServer) buildPBSession(pcepSession *Session) *pb.Session {
-	pbSession := &pb.Session{
-		Addr:            pcepSession.peerAddr.AsSlice(),
-		State:           toPBSessionState(pcepSession.State()),
-		IsSynced:        pcepSession.IsSynced(),
-		PccType:         toPBPccType(pcepSession.PccType()),
-		Capabilities:    dedupCapabilities(s.logger, "advertised", pcepSession.AdvertisedCapabilities()),
-		PccCapabilities: dedupCapabilities(s.logger, "received", pcepSession.ReceivedCapabilities()),
-		EffectiveTimers: &pb.EffectiveTimers{
-			Keepalive: uint32(pcepSession.keepaliveInterval()),
-			DeadTimer: uint32(pcepSession.readDeadline() / time.Second),
-		},
+// Stats is included only when requested.
+func (s *APIServer) buildPBSession(pcepSession *Session, includeStats bool) *pb.Session {
+	pccOpen, hasPccOpen := pcepSession.PccOpen()
+	pbPccType := pb.PccType_PCC_TYPE_UNSPECIFIED
+	if hasPccOpen {
+		pbPccType = toPBPccType(pcepSession.PccType())
 	}
 
-	if localOpen, ok := pcepSession.LocalOpen(); ok {
-		pbSession.LocalSessionId = proto.Uint32(uint32(localOpen.SessionID))
+	pbSession := &pb.Session{
+		PeerAddr:          pcepSession.peerAddr.AsSlice(),
+		State:             toPBSessionState(pcepSession.State()),
+		PccType:           pbPccType,
+		LocalCapabilities: dedupCapabilities(s.logger, "advertised", pcepSession.AdvertisedCapabilities()),
+		PeerCapabilities:  dedupCapabilities(s.logger, "received", pcepSession.ReceivedCapabilities()),
+		Initiator:         toPBInitiator(pcepSession.Initiator()),
+		SyncState:         toPBSyncState(pcepSession.SyncState()),
+	}
+
+	localOpen, hasLocalOpen := pcepSession.LocalOpen()
+	if hasLocalOpen {
+		pbSession.LocalSessionId = new(uint32(localOpen.SessionID))
 		pbSession.LocalTimers = &pb.SessionTimers{
 			Keepalive: uint32(localOpen.Keepalive),
 			DeadTimer: uint32(localOpen.DeadTimer),
 		}
 	}
-	if pccOpen, ok := pcepSession.PccOpen(); ok {
-		pbSession.PccSessionId = proto.Uint32(uint32(pccOpen.SessionID))
-		pbSession.PccTimers = &pb.SessionTimers{
+	if hasPccOpen {
+		pbSession.PeerSessionId = new(uint32(pccOpen.SessionID))
+		pbSession.PeerTimers = &pb.SessionTimers{
 			Keepalive: uint32(pccOpen.Keepalive),
 			DeadTimer: uint32(pccOpen.DeadTimer),
 		}
+	}
+	// Use Up() rather than Open flags: they become true before negotiation completes.
+	if pcepSession.Up() {
+		pbSession.EffectiveTimers = &pb.EffectiveTimers{
+			Keepalive: uint32(pcepSession.keepaliveInterval()),
+			DeadTimer: uint32(pcepSession.readDeadline() / time.Second),
+		}
+	}
+	if t := pcepSession.CreatedAt(); !t.IsZero() {
+		pbSession.CreatedAtUnixNano = t.UnixNano()
+	}
+	if t := pcepSession.EstablishedAt(); !t.IsZero() {
+		pbSession.EstablishedAtUnixNano = t.UnixNano()
+	}
+	if includeStats {
+		setupOK, setupFail := s.pce.PeerSetupStats(pcepSession.peerAddr)
+		pbSession.Stats = toPBSessionStats(pcepSession.Stats(), setupOK, setupFail)
 	}
 
 	return pbSession
@@ -187,18 +255,18 @@ func (s *APIServer) buildPBSession(pcepSession *Session) *pb.Session {
 
 func (s *APIServer) buildPBSRPolicy(pcepSession *Session, policy *table.SRPolicy, routerIDIndex map[netip.Addr]string) *pb.SRPolicy {
 	srPolicy := &pb.SRPolicy{
-		PcepSessionAddr: pcepSession.peerAddr.AsSlice(),
-		SegmentList:     make([]*pb.Segment, 0, len(policy.SegmentList)),
-		Color:           policy.Color,
-		Preference:      policy.Preference,
-		PolicyName:      policy.Name,
-		SrcAddr:         policy.SrcAddr.AsSlice(),
-		DstAddr:         policy.DstAddr.AsSlice(),
-		PlspId:          policy.PlspID,
-		LspId:           uint32(policy.LSPID),
-		State:           toPBPolicyState(policy.State),
-		Type:            toPBPolicyType(policy.Type),
-		Metric:          toPBMetricType(policy.Metric),
+		PeerAddr:    pcepSession.peerAddr.AsSlice(),
+		SegmentList: make([]*pb.Segment, 0, len(policy.SegmentList)),
+		Color:       policy.Color,
+		Preference:  policy.Preference,
+		PolicyName:  policy.Name,
+		SrcAddr:     policy.SrcAddr.AsSlice(),
+		DstAddr:     policy.DstAddr.AsSlice(),
+		PlspId:      policy.PlspID,
+		LspId:       uint32(policy.LSPID),
+		State:       toPBPolicyState(policy.State),
+		Type:        toPBPolicyType(policy.Type),
+		Metric:      toPBMetricType(policy.Metric),
 	}
 
 	srPolicy.SrcRouterId = routerIDIndex[policy.SrcAddr]
@@ -209,6 +277,17 @@ func (s *APIServer) buildPBSRPolicy(pcepSession *Session, policy *table.SRPolicy
 	}
 
 	return srPolicy
+}
+
+// buildPBSRPolicySession converts a Session and its SR Policies into the
+// lightweight SRPolicySession representation returned by GetSRPolicyList.
+func buildPBSRPolicySession(pcepSession *Session, policies []*pb.SRPolicy) *pb.SRPolicySession {
+	return &pb.SRPolicySession{
+		PeerAddr:   pcepSession.peerAddr.AsSlice(),
+		State:      toPBSessionState(pcepSession.State()),
+		SyncState:  toPBSyncState(pcepSession.SyncState()),
+		SrPolicies: policies,
+	}
 }
 
 func toPBPolicyType(polType table.PolicyType) pb.SRPolicyType {
@@ -290,9 +369,9 @@ func convertLsNode(lsNode *table.LsNode, logger *zap.Logger) *pb.LsNode {
 		Hostname:   lsNode.Hostname,
 		SrgbBegin:  lsNode.SrgbBegin,
 		SrgbEnd:    lsNode.SrgbEnd,
-		LsLinks:    convertLsLinks(lsNode.Links, logger),
-		LsPrefixes: convertLsPrefixes(lsNode.Prefixes),
-		LsSrv6Sids: convertLsSrv6SIDs(lsNode.SRv6SIDs),
+		Links:      convertLsLinks(lsNode.Links, logger),
+		Prefixes:   convertLsPrefixes(lsNode.Prefixes),
+		Srv6Sids:   convertLsSrv6SIDs(lsNode.SRv6SIDs),
 	}
 }
 
@@ -361,7 +440,7 @@ func convertLsPrefixes(prefixes []*table.LsPrefix) []*pb.LsPrefix {
 			pbPrefix := &pb.LsPrefix{Prefix: p.Prefix.String()}
 			// Preserve Prefix-SID presence, including index 0.
 			if p.HasPrefixSID() {
-				pbPrefix.SidIndex = proto.Uint32(p.SidIndex)
+				pbPrefix.SidIndex = new(p.SidIndex)
 			}
 			result = append(result, pbPrefix)
 		}

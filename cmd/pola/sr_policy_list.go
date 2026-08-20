@@ -30,11 +30,7 @@ func showSRPolicyList(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	format, err := resolveOutputFormat(jsonFmt, false)
-	if err != nil {
-		return err
-	}
-	return writeSRPolicyList(os.Stdout, peerAddr, format)
+	return writeSRPolicyList(os.Stdout, peerAddr, resolveOutputFormat(jsonFmt))
 }
 
 func writeSRPolicyList(w io.Writer, peerAddr netip.Addr, format outputFormat) error {

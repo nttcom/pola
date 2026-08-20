@@ -41,15 +41,15 @@ func main() {
 
 	ssAddr := netip.MustParseAddr("192.0.2.1")
 
-	r, err := c.CreateSRPolicy(ctx, &pb.CreateSRPolicyRequest{
+	_, err = c.CreateSRPolicy(ctx, &pb.CreateSRPolicyRequest{
 		Asn: 65000,
 		SrPolicy: &pb.SRPolicy{
-			PcepSessionAddr: ssAddr.AsSlice(),
-			SrcRouterId:     "0000.0aff.0001",
-			DstRouterId:     "0000.0aff.0004",
-			Color:           100,
-			PolicyName:      "sample-name",
-			Type:            pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT,
+			PeerAddr:    ssAddr.AsSlice(),
+			SrcRouterId: "0000.0aff.0001",
+			DstRouterId: "0000.0aff.0004",
+			Color:       100,
+			PolicyName:  "sample-name",
+			Type:        pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT,
 			SegmentList: []*pb.Segment{
 				{Sid: "16002"},
 				{Sid: "16003"},
@@ -62,5 +62,5 @@ func main() {
 		log.Fatalf("c.CreateSRPolicy error: %v", err)
 	}
 
-	log.Printf("success: isSuccess=%t", r.GetIsSuccess())
+	log.Print("success")
 }

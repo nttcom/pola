@@ -14,6 +14,7 @@ import (
 	"net/netip"
 	"slices"
 	"strconv"
+	"strings"
 	"unicode/utf8"
 
 	"go.uber.org/zap/zapcore"
@@ -186,6 +187,22 @@ func (t TLVType) String() string {
 		return fmt.Sprintf("%s (%s)", desc.Description, desc.Reference)
 	}
 	return fmt.Sprintf("Unknown TLV (0x%04x)", uint16(t))
+}
+
+// Name returns the registered name of the TLV type, or "" if unregistered.
+func (t TLVType) Name() string {
+	if desc, ok := tlvDescriptions[t]; ok {
+		return desc.Description
+	}
+	return ""
+}
+
+// Reference returns the defining document of the TLV type, or "" if unregistered.
+func (t TLVType) Reference() string {
+	if desc, ok := tlvDescriptions[t]; ok {
+		return desc.Reference
+	}
+	return ""
 }
 
 // IPv4AddrLen is the byte length of an IPv4 address.
@@ -884,7 +901,7 @@ func NewLSPDBVersion(version uint64) *LSPDBVersion {
 type SRPCECapability struct {
 	HasUnlimitedMaxSIDDepth bool
 	IsNAISupported          bool
-	MaximumSidDepth         uint8
+	MaximumSidDepth         *uint8
 }
 
 // Flag bits of the SR-PCE-CAPABILITY TLV, as masks against its Flags byte.
@@ -918,7 +935,8 @@ func (tlv *SRPCECapability) DecodeFromBytes(data []byte) error {
 	flags := val[SRPCECapabilityFlagsOffset]
 	tlv.HasUnlimitedMaxSIDDepth = IsBitSet(flags, UnlimitedMaximumSIDDepthFlag)
 	tlv.IsNAISupported = IsBitSet(flags, NAISupportedFlag)
-	tlv.MaximumSidDepth = val[SRPCECapabilityMSDOffset]
+	msd := val[SRPCECapabilityMSDOffset]
+	tlv.MaximumSidDepth = &msd
 
 	return nil
 }
@@ -929,7 +947,9 @@ func (tlv *SRPCECapability) Serialize() ([]byte, error) {
 
 	value[SRPCECapabilityFlagsOffset] = SetBit(value[SRPCECapabilityFlagsOffset], UnlimitedMaximumSIDDepthFlag, tlv.HasUnlimitedMaxSIDDepth)
 	value[SRPCECapabilityFlagsOffset] = SetBit(value[SRPCECapabilityFlagsOffset], NAISupportedFlag, tlv.IsNAISupported)
-	value[SRPCECapabilityMSDOffset] = tlv.MaximumSidDepth
+	if tlv.MaximumSidDepth != nil {
+		value[SRPCECapabilityMSDOffset] = *tlv.MaximumSidDepth
+	}
 
 	return AppendByteSlices(
 		Uint16ToByteSlice(tlv.Type()),
@@ -946,7 +966,9 @@ func (tlv *SRPCECapability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 
 	enc.AddBool("unlimited_max_sid_depth", tlv.HasUnlimitedMaxSIDDepth)
 	enc.AddBool("nai_is_supported", tlv.IsNAISupported)
-	enc.AddUint8("maximum_sid_depth", tlv.MaximumSidDepth)
+	if tlv.MaximumSidDepth != nil {
+		enc.AddUint8("maximum_sid_depth", *tlv.MaximumSidDepth)
+	}
 	return nil
 }
 
@@ -963,10 +985,11 @@ func (tlv *SRPCECapability) Len() int {
 // CapStrings returns capability strings for the receiver.
 func (tlv *SRPCECapability) CapStrings() []string {
 	ret := []string{"SR"}
-	if tlv.HasUnlimitedMaxSIDDepth {
+	switch {
+	case tlv.HasUnlimitedMaxSIDDepth:
 		ret = append(ret, "Unlimited-SID-Depth")
-	} else {
-		ret = append(ret, fmt.Sprintf("MSD=%d", tlv.MaximumSidDepth))
+	case tlv.MaximumSidDepth != nil:
+		ret = append(ret, fmt.Sprintf("MSD=%d", *tlv.MaximumSidDepth))
 	}
 	if tlv.IsNAISupported {
 		ret = append(ret, "SR-NAI-Supported")
@@ -979,7 +1002,7 @@ func NewSRPCECapability(hasUnlimitedMaxSIDDepth bool, isNAISupported bool, maxim
 	return &SRPCECapability{
 		HasUnlimitedMaxSIDDepth: hasUnlimitedMaxSIDDepth,
 		IsNAISupported:          isNAISupported,
-		MaximumSidDepth:         maximumSidDepth,
+		MaximumSidDepth:         &maximumSidDepth,
 	}
 }
 
@@ -1662,7 +1685,7 @@ func (tlv *PathSetupTypeCapability) CapStrings() []string {
 // what the associated LSPs have in common (RFC 8697).
 type AssocType uint16
 
-// IANA-assigned association types. assocTypeNames holds their names.
+// IANA-assigned association types (see the IANA PCEP "Association Type Field" registry).
 const (
 	AssocTypePathProtectionAssociation              AssocType = 0x01
 	AssocTypeDisjointAssociation                    AssocType = 0x02
@@ -1671,24 +1694,36 @@ const (
 	AssocTypeDoubleSidedBidirectionalLSPAssociation AssocType = 0x05
 	AssocTypeSRPolicyAssociation                    AssocType = 0x06
 	AssocTypeVnAssociationType                      AssocType = 0x07
+	AssocTypeBidirectionalSRLSPAssociation          AssocType = 0x08
+	AssocTypeP2MPSRPolicyAssociation                AssocType = 0x09
 )
 
-//nolint:gosec // G101: these are RFC 8697 association-type display names, not credentials.
-var assocTypeNames = map[AssocType]string{
-	AssocTypePathProtectionAssociation:              "Path Protection Association",
-	AssocTypeDisjointAssociation:                    "Disjoint Association",
-	AssocTypePolicyAssociation:                      "Policy Association",
-	AssocTypeSingleSidedBidirectionalLSPAssociation: "Single Sided Bidirectional LSP Association",
-	AssocTypeDoubleSidedBidirectionalLSPAssociation: "Double Sided Bidirectional LSP Association",
-	AssocTypeSRPolicyAssociation:                    "SR Policy Association",
-	AssocTypeVnAssociationType:                      "VN Association Type",
+var assocTypeDescriptions = map[AssocType]struct {
+	Description string
+	Reference   string
+}{
+	AssocTypePathProtectionAssociation:              {"Path Protection Association", "RFC8745"},
+	AssocTypeDisjointAssociation:                    {"Disjoint Association", "RFC8800"},
+	AssocTypePolicyAssociation:                      {"Policy Association", "RFC9005"},
+	AssocTypeSingleSidedBidirectionalLSPAssociation: {"Single Sided Bidirectional LSP Association", "RFC9059"},
+	AssocTypeDoubleSidedBidirectionalLSPAssociation: {"Double Sided Bidirectional LSP Association", "RFC9059"},
+	AssocTypeSRPolicyAssociation:                    {"SR Policy Association", "RFC9862"},
+	AssocTypeVnAssociationType:                      {"VN Association Type", "RFC9358"},
+	AssocTypeBidirectionalSRLSPAssociation:          {"Bidirectional SR LSP Association", "draft-ietf-pce-sr-bidir-path-25"},
+	AssocTypeP2MPSRPolicyAssociation:                {"P2MP SR Policy Association", "draft-ietf-pce-sr-p2mp-policy-11"},
 }
 
+// String returns the display name of the association type, suffixing
+// draft-defined types with " (draft)".
 func (at AssocType) String() string {
-	if name, ok := assocTypeNames[at]; ok {
-		return name
+	desc, ok := assocTypeDescriptions[at]
+	if !ok {
+		return fmt.Sprintf("Unknown AssocType (0x%04x)", uint16(at))
 	}
-	return fmt.Sprintf("Unknown AssocType (0x%04x)", uint16(at))
+	if strings.HasPrefix(desc.Reference, "draft-") {
+		return desc.Description + " (draft)"
+	}
+	return desc.Description
 }
 
 // AssocTypeList represents the ASSOC-TYPE-LIST TLV, advertising the

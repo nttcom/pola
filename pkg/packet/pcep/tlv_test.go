@@ -36,6 +36,25 @@ func TestTLVType_String(t *testing.T) {
 	}
 }
 
+func TestTLVType_NameAndReference(t *testing.T) {
+	cases := map[string]struct {
+		tlvType      TLVType
+		expectedName string
+		expectedRef  string
+	}{
+		"StatefulPCECapability": {TLVStatefulPCECapability, "STATEFUL-PCE-CAPABILITY", "RFC8231"},
+		"MultipathCap":          {TLVMultipathCap, "MULTIPATH-CAP", "draft-ietf-pce-multipath-07"},
+		"UnknownType":           {TLVType(0xdead), "", ""},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tt.expectedName, tt.tlvType.Name(), "unexpected TLVType.Name() result")
+			assert.Equal(t, tt.expectedRef, tt.tlvType.Reference(), "unexpected TLVType.Reference() result")
+		})
+	}
+}
+
 func TestTLVMap(t *testing.T) {
 	cases := map[string]struct {
 		tlvType  TLVType
@@ -783,23 +802,28 @@ func TestLSPDBVersion_CapStrings(t *testing.T) {
 	assert.Equal(t, testLSPDBVersionCapStrings, actual, "CapStrings() did not return expected value")
 }
 
+func msdPtr(v uint8) *uint8 { return &v }
+
 // Test data for SRPCECapability.
 var (
-	testSRPCECapability               = NewSRPCECapability(true, true, 10)
-	testSRPCECapabilityBytes          = append(tlvHeader(TLVSRPCECapability, 4), 0x03, 0x0a, 0x00, 0x00)
-	testSRPCECapabilityTruncated      = append(tlvHeader(TLVSRPCECapability, 4), 0x00, 0x02)
-	testSRPCECapabilityExtra          = append(tlvHeader(TLVSRPCECapability, 4), 0x03, 0x05, 0x00, 0x00, 0xde, 0xad, 0xbe, 0xef)
-	testSRPCECapabilityInvalidLength  = append(tlvHeader(TLVSRPCECapability, 8), 0x03, 0x05, 0x00, 0x00, 0xde, 0xad, 0xbe, 0xef)
-	testSRPCECapabilityAllEnabled     = &SRPCECapability{HasUnlimitedMaxSIDDepth: true, IsNAISupported: true}
-	testSRPCECapabilityUnlimitedOnly  = &SRPCECapability{HasUnlimitedMaxSIDDepth: true}
-	testSRPCECapabilityNAIOnly        = &SRPCECapability{IsNAISupported: true}
-	testSRPCECapabilityNoneEnabled    = &SRPCECapability{}
-	testSRPCECapabilityAllEnabledStrs = []string{"SR", "Unlimited-SID-Depth", "SR-NAI-Supported"}
-	testSRPCECapabilityUnlimitedStrs  = []string{"SR", "Unlimited-SID-Depth"}
-	testSRPCECapabilityNAIStrs        = []string{"SR", "MSD=0", "SR-NAI-Supported"}
-	testSRPCECapabilityMSDOnly        = &SRPCECapability{MaximumSidDepth: 10}
-	testSRPCECapabilityMSDOnlyStrs    = []string{"SR", "MSD=10"}
-	testSRPCECapabilityNoneStrs       = []string{"SR", "MSD=0"}
+	testSRPCECapability                      = NewSRPCECapability(true, true, 10)
+	testSRPCECapabilityBytes                 = append(tlvHeader(TLVSRPCECapability, 4), 0x03, 0x0a, 0x00, 0x00)
+	testSRPCECapabilityTruncated             = append(tlvHeader(TLVSRPCECapability, 4), 0x00, 0x02)
+	testSRPCECapabilityExtra                 = append(tlvHeader(TLVSRPCECapability, 4), 0x03, 0x05, 0x00, 0x00, 0xde, 0xad, 0xbe, 0xef)
+	testSRPCECapabilityInvalidLength         = append(tlvHeader(TLVSRPCECapability, 8), 0x03, 0x05, 0x00, 0x00, 0xde, 0xad, 0xbe, 0xef)
+	testSRPCECapabilityZeroMSDBytes          = append(tlvHeader(TLVSRPCECapability, 4), 0x00, 0x00, 0x00, 0x00)
+	testSRPCECapabilityAllEnabled            = &SRPCECapability{HasUnlimitedMaxSIDDepth: true, IsNAISupported: true}
+	testSRPCECapabilityUnlimitedOnly         = &SRPCECapability{HasUnlimitedMaxSIDDepth: true}
+	testSRPCECapabilityNAIOnly               = &SRPCECapability{IsNAISupported: true}
+	testSRPCECapabilityNoneEnabled           = &SRPCECapability{}
+	testSRPCECapabilityAllEnabledStrs        = []string{"SR", "Unlimited-SID-Depth", "SR-NAI-Supported"}
+	testSRPCECapabilityUnlimitedStrs         = []string{"SR", "Unlimited-SID-Depth"}
+	testSRPCECapabilityNAIStrs               = []string{"SR", "SR-NAI-Supported"}
+	testSRPCECapabilityMSDOnly               = &SRPCECapability{MaximumSidDepth: msdPtr(10)}
+	testSRPCECapabilityMSDOnlyStrs           = []string{"SR", "MSD=10"}
+	testSRPCECapabilityNoneStrs              = []string{"SR"}
+	testSRPCECapabilityMSDZeroAdvertised     = &SRPCECapability{MaximumSidDepth: msdPtr(0)}
+	testSRPCECapabilityMSDZeroAdvertisedStrs = []string{"SR", "MSD=0"}
 )
 
 func TestSRPCECapability_DecodeFromBytes(t *testing.T) {
@@ -808,6 +832,7 @@ func TestSRPCECapability_DecodeFromBytes(t *testing.T) {
 		"TruncatedSRPCECapability":     {testSRPCECapabilityTruncated, nil, true},
 		"ExtraBytesInSRPCECapability":  {testSRPCECapabilityExtra, nil, true},
 		"InvalidLengthSRPCECapability": {testSRPCECapabilityInvalidLength, nil, true},
+		"ZeroMSDIsStillAdvertised":     {testSRPCECapabilityZeroMSDBytes, testSRPCECapabilityMSDZeroAdvertised, false},
 	}
 	runTLVDecodeTests(t, cases, func() TLVInterface { return &SRPCECapability{} })
 }
@@ -833,7 +858,6 @@ func TestSRPCECapability_MarshalLogObject(t *testing.T) {
 			map[string]any{
 				"unlimited_max_sid_depth": false,
 				"nai_is_supported":        false,
-				"maximum_sid_depth":       uint8(0),
 			},
 		},
 		"FullTLV": {
@@ -849,7 +873,6 @@ func TestSRPCECapability_MarshalLogObject(t *testing.T) {
 			map[string]any{
 				"unlimited_max_sid_depth": true,
 				"nai_is_supported":        false,
-				"maximum_sid_depth":       uint8(0),
 			},
 		},
 		"OnlyNAI": {
@@ -857,7 +880,6 @@ func TestSRPCECapability_MarshalLogObject(t *testing.T) {
 			map[string]any{
 				"unlimited_max_sid_depth": false,
 				"nai_is_supported":        true,
-				"maximum_sid_depth":       uint8(0),
 			},
 		},
 	}
@@ -892,6 +914,7 @@ func TestSRPCECapability_CapStrings(t *testing.T) {
 		"OnlyNAISupportedEnabled":         {testSRPCECapabilityNAIOnly, testSRPCECapabilityNAIStrs},
 		"NoCapabilitiesEnabled":           {testSRPCECapabilityNoneEnabled, testSRPCECapabilityNoneStrs},
 		"WithNonZeroMSD":                  {testSRPCECapabilityMSDOnly, testSRPCECapabilityMSDOnlyStrs},
+		"MSDAdvertisedAsZero":             {testSRPCECapabilityMSDZeroAdvertised, testSRPCECapabilityMSDZeroAdvertisedStrs},
 	}
 	runCapStringsTests(t, cases)
 }
@@ -1255,6 +1278,8 @@ func TestAssocType_String(t *testing.T) {
 		"DoubleSidedBidir": {AssocTypeDoubleSidedBidirectionalLSPAssociation, "Double Sided Bidirectional LSP Association"},
 		"SRPolicy":         {AssocTypeSRPolicyAssociation, "SR Policy Association"},
 		"VnAssociation":    {AssocTypeVnAssociationType, "VN Association Type"},
+		"BidirSRLSP":       {AssocTypeBidirectionalSRLSPAssociation, "Bidirectional SR LSP Association (draft)"},
+		"P2MPSRPolicy":     {AssocTypeP2MPSRPolicyAssociation, "P2MP SR Policy Association (draft)"},
 		"Unknown":          {AssocType(0xffff), "Unknown AssocType (0xffff)"},
 	}
 

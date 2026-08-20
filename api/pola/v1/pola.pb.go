@@ -1037,7 +1037,7 @@ type SrCapability struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	UnlimitedMsd  bool                   `protobuf:"varint,1,opt,name=unlimited_msd,json=unlimitedMsd,proto3" json:"unlimited_msd,omitempty"`
 	NaiSupported  bool                   `protobuf:"varint,2,opt,name=nai_supported,json=naiSupported,proto3" json:"nai_supported,omitempty"`
-	Msd           uint32                 `protobuf:"varint,3,opt,name=msd,proto3" json:"msd,omitempty"`
+	Msd           *uint32                `protobuf:"varint,3,opt,name=msd,proto3,oneof" json:"msd,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1087,8 +1087,8 @@ func (x *SrCapability) GetNaiSupported() bool {
 }
 
 func (x *SrCapability) GetMsd() uint32 {
-	if x != nil {
-		return x.Msd
+	if x != nil && x.Msd != nil {
+		return *x.Msd
 	}
 	return 0
 }
@@ -1910,22 +1910,24 @@ func (x *SessionStats) GetSessSetupFail() uint64 {
 }
 
 type Session struct {
-	state                 protoimpl.MessageState `protogen:"open.v1"`
-	PeerAddr              []byte                 `protobuf:"bytes,1,opt,name=peer_addr,json=peerAddr,proto3" json:"peer_addr,omitempty"`
-	State                 SessionState           `protobuf:"varint,2,opt,name=state,proto3,enum=api.pola.v1.SessionState" json:"state,omitempty"`
-	LocalCapabilities     []*Capability          `protobuf:"bytes,5,rep,name=local_capabilities,json=localCapabilities,proto3" json:"local_capabilities,omitempty"`
-	PccType               PccType                `protobuf:"varint,7,opt,name=pcc_type,json=pccType,proto3,enum=api.pola.v1.PccType" json:"pcc_type,omitempty"`
-	PeerCapabilities      []*Capability          `protobuf:"bytes,8,rep,name=peer_capabilities,json=peerCapabilities,proto3" json:"peer_capabilities,omitempty"`
-	LocalTimers           *SessionTimers         `protobuf:"bytes,9,opt,name=local_timers,json=localTimers,proto3" json:"local_timers,omitempty"`
-	PeerTimers            *SessionTimers         `protobuf:"bytes,10,opt,name=peer_timers,json=peerTimers,proto3" json:"peer_timers,omitempty"`
-	LocalSessionId        *uint32                `protobuf:"varint,11,opt,name=local_session_id,json=localSessionId,proto3,oneof" json:"local_session_id,omitempty"`
-	PeerSessionId         *uint32                `protobuf:"varint,12,opt,name=peer_session_id,json=peerSessionId,proto3,oneof" json:"peer_session_id,omitempty"`
-	EffectiveTimers       *EffectiveTimers       `protobuf:"bytes,13,opt,name=effective_timers,json=effectiveTimers,proto3" json:"effective_timers,omitempty"`
-	Initiator             SessionInitiator       `protobuf:"varint,14,opt,name=initiator,proto3,enum=api.pola.v1.SessionInitiator" json:"initiator,omitempty"`
-	SyncState             LspDbSyncState         `protobuf:"varint,15,opt,name=sync_state,json=syncState,proto3,enum=api.pola.v1.LspDbSyncState" json:"sync_state,omitempty"`
-	CreatedAtUnixNano     int64                  `protobuf:"varint,16,opt,name=created_at_unix_nano,json=createdAtUnixNano,proto3" json:"created_at_unix_nano,omitempty"`             // Unix time in nanoseconds; 0 = unset.
-	EstablishedAtUnixNano int64                  `protobuf:"varint,17,opt,name=established_at_unix_nano,json=establishedAtUnixNano,proto3" json:"established_at_unix_nano,omitempty"` // Unix time in nanoseconds; 0 = not established.
-	Stats                 *SessionStats          `protobuf:"bytes,18,opt,name=stats,proto3" json:"stats,omitempty"`                                                                   // Populated only when include_stats is true.
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	PeerAddr          []byte                 `protobuf:"bytes,1,opt,name=peer_addr,json=peerAddr,proto3" json:"peer_addr,omitempty"`
+	State             SessionState           `protobuf:"varint,2,opt,name=state,proto3,enum=api.pola.v1.SessionState" json:"state,omitempty"`
+	LocalCapabilities []*Capability          `protobuf:"bytes,5,rep,name=local_capabilities,json=localCapabilities,proto3" json:"local_capabilities,omitempty"`
+	PccType           PccType                `protobuf:"varint,7,opt,name=pcc_type,json=pccType,proto3,enum=api.pola.v1.PccType" json:"pcc_type,omitempty"`
+	PeerCapabilities  []*Capability          `protobuf:"bytes,8,rep,name=peer_capabilities,json=peerCapabilities,proto3" json:"peer_capabilities,omitempty"`
+	LocalTimers       *SessionTimers         `protobuf:"bytes,9,opt,name=local_timers,json=localTimers,proto3" json:"local_timers,omitempty"`
+	PeerTimers        *SessionTimers         `protobuf:"bytes,10,opt,name=peer_timers,json=peerTimers,proto3" json:"peer_timers,omitempty"`
+	LocalSessionId    *uint32                `protobuf:"varint,11,opt,name=local_session_id,json=localSessionId,proto3,oneof" json:"local_session_id,omitempty"`
+	PeerSessionId     *uint32                `protobuf:"varint,12,opt,name=peer_session_id,json=peerSessionId,proto3,oneof" json:"peer_session_id,omitempty"`
+	// Valid when state is SESSION_STATE_UP. Do not infer readiness from
+	// presence or zero values; RFC 5440 permits a negotiated Keepalive of 0.
+	EffectiveTimers       *EffectiveTimers `protobuf:"bytes,13,opt,name=effective_timers,json=effectiveTimers,proto3" json:"effective_timers,omitempty"`
+	Initiator             SessionInitiator `protobuf:"varint,14,opt,name=initiator,proto3,enum=api.pola.v1.SessionInitiator" json:"initiator,omitempty"`
+	SyncState             LspDbSyncState   `protobuf:"varint,15,opt,name=sync_state,json=syncState,proto3,enum=api.pola.v1.LspDbSyncState" json:"sync_state,omitempty"`
+	CreatedAtUnixNano     int64            `protobuf:"varint,16,opt,name=created_at_unix_nano,json=createdAtUnixNano,proto3" json:"created_at_unix_nano,omitempty"`             // Unix time in nanoseconds; 0 = unset.
+	EstablishedAtUnixNano int64            `protobuf:"varint,17,opt,name=established_at_unix_nano,json=establishedAtUnixNano,proto3" json:"established_at_unix_nano,omitempty"` // Unix time in nanoseconds; 0 = not established.
+	Stats                 *SessionStats    `protobuf:"bytes,18,opt,name=stats,proto3" json:"stats,omitempty"`                                                                   // Populated only when include_stats is true.
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
 }
@@ -3206,11 +3208,12 @@ const file_api_pola_v1_pola_proto_rawDesc = "" +
 	"\x10triggered_resync\x18\x04 \x01(\bR\x0ftriggeredResync\x12$\n" +
 	"\x0edelta_lsp_sync\x18\x05 \x01(\bR\fdeltaLspSync\x124\n" +
 	"\x16triggered_initial_sync\x18\x06 \x01(\bR\x14triggeredInitialSync\x12\x14\n" +
-	"\x05color\x18\a \x01(\bR\x05color\"j\n" +
+	"\x05color\x18\a \x01(\bR\x05color\"w\n" +
 	"\fSrCapability\x12#\n" +
 	"\runlimited_msd\x18\x01 \x01(\bR\funlimitedMsd\x12#\n" +
-	"\rnai_supported\x18\x02 \x01(\bR\fnaiSupported\x12\x10\n" +
-	"\x03msd\x18\x03 \x01(\rR\x03msd\"5\n" +
+	"\rnai_supported\x18\x02 \x01(\bR\fnaiSupported\x12\x15\n" +
+	"\x03msd\x18\x03 \x01(\rH\x00R\x03msd\x88\x01\x01B\x06\n" +
+	"\x04_msd\"5\n" +
 	"\x0eSrv6Capability\x12#\n" +
 	"\rnai_supported\x18\x01 \x01(\bR\fnaiSupported\"C\n" +
 	"\x17PathSetupTypeCapability\x12(\n" +
@@ -3566,6 +3569,7 @@ func file_api_pola_v1_pola_proto_init() {
 	if File_api_pola_v1_pola_proto != nil {
 		return
 	}
+	file_api_pola_v1_pola_proto_msgTypes[8].OneofWrappers = []any{}
 	file_api_pola_v1_pola_proto_msgTypes[16].OneofWrappers = []any{
 		(*Capability_Stateful)(nil),
 		(*Capability_Sr)(nil),

@@ -42,30 +42,42 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 	defer cancel()
 
-	ret, err := c.GetSessionList(ctx, &pb.GetSessionListRequest{})
+	ret, err := c.GetSessionList(ctx, &pb.GetSessionListRequest{IncludeStats: true})
 	if err != nil {
 		log.Fatalf("unable to get session list from server: %v", err)
 	}
 
 	for i, ss := range ret.GetSessions() {
-		addr, ok := netip.AddrFromSlice(ss.GetAddr())
+		addr, ok := netip.AddrFromSlice(ss.GetPeerAddr())
 		if !ok {
-			log.Printf("invalid address for session %d: %v", i, ss.GetAddr())
+			log.Printf("invalid address for session %d: %v", i, ss.GetPeerAddr())
 			continue
 		}
-		fmt.Printf("sessionAddr(%d): %v\n", i, addr)
-		fmt.Printf("  sessionID (Pola): %s, sessionID (PCC): %s\n",
-			optionalUint32(ss.LocalSessionId), optionalUint32(ss.PccSessionId))
+		fmt.Printf("peerAddr(%d): %v\n", i, addr)
+		fmt.Printf("  sessionID (Pola): %s, sessionID (peer): %s\n",
+			optionalUint32(ss.LocalSessionId), optionalUint32(ss.PeerSessionId))
 		fmt.Printf("  state: %s\n", ss.GetState())
 		fmt.Printf("  advertised (Pola): %s\n", timersString(ss.GetLocalTimers()))
-		fmt.Printf("  advertised (PCC): %s\n", timersString(ss.GetPccTimers()))
-		fmt.Printf("  effective: keepalive: %d, deadTimer: %d\n",
-			ss.GetEffectiveTimers().GetKeepalive(), ss.GetEffectiveTimers().GetDeadTimer())
+		fmt.Printf("  advertised (peer): %s\n", timersString(ss.GetPeerTimers()))
+		fmt.Printf("  effective: keepalive: %s, deadTimer: %s\n",
+			effectiveTimerString(pb.EffectiveKeepalive(ss.GetState(), ss.GetEffectiveTimers())),
+			effectiveTimerString(pb.EffectiveDeadTimer(ss.GetState(), ss.GetEffectiveTimers())))
 		fmt.Printf("  pccType: %s\n", strings.TrimPrefix(ss.GetPccType().String(), "PCC_TYPE_"))
-		fmt.Printf("  capabilities (Pola): %s\n", strings.Join(capStrings(ss.GetCapabilities()), ", "))
-		fmt.Printf("  capabilities (PCC): %s\n", strings.Join(capStrings(ss.GetPccCapabilities()), ", "))
-		fmt.Printf("  isSynced: %t\n", ss.GetIsSynced())
+		fmt.Printf("  capabilities (Pola): %s\n", strings.Join(capStrings(ss.GetLocalCapabilities()), ", "))
+		fmt.Printf("  capabilities (peer): %s\n", strings.Join(capStrings(ss.GetPeerCapabilities()), ", "))
+		fmt.Printf("  initiator: %s\n", strings.TrimPrefix(ss.GetInitiator().String(), "SESSION_INITIATOR_"))
+		fmt.Printf("  syncState: %s\n", strings.TrimPrefix(ss.GetSyncState().String(), "LSP_DB_SYNC_STATE_"))
+		fmt.Printf("  createdAt: %s\n", unixNanoString(ss.GetCreatedAtUnixNano()))
+		fmt.Printf("  establishedAt: %s\n", unixNanoString(ss.GetEstablishedAtUnixNano()))
+		fmt.Printf("  stats: %s\n", ss.GetStats())
 	}
+}
+
+func unixNanoString(n int64) string {
+	if n == 0 {
+		return "-"
+	}
+	return time.Unix(0, n).UTC().Format(time.RFC3339)
 }
 
 func optionalUint32(v *uint32) string {
@@ -73,6 +85,13 @@ func optionalUint32(v *uint32) string {
 		return "-"
 	}
 	return strconv.FormatUint(uint64(*v), 10)
+}
+
+func effectiveTimerString(v uint32, ok bool) string {
+	if !ok {
+		return "-"
+	}
+	return strconv.FormatUint(uint64(v), 10)
 }
 
 func timersString(timers *pb.SessionTimers) string {

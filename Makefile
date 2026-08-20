@@ -215,6 +215,5 @@ release: ## Cut a release: make release VERSION=X.Y.Z
 
 clean: ## Remove generated files
 	$(RM) -r bin
-	# Preserve the tracked .gitignore in TEST_BIN_DIR.
 	@find $(TEST_BIN_DIR) -type f ! -name .gitignore -delete 2>/dev/null || true
 	$(RM) $(COVER_PROFILE)

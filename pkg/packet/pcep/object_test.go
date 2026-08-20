@@ -667,7 +667,7 @@ func TestOpenObject_RoundTrip(t *testing.T) {
 				&SRPCECapability{
 					HasUnlimitedMaxSIDDepth: true,
 					IsNAISupported:          true,
-					MaximumSidDepth:         10,
+					MaximumSidDepth:         msdPtr(10),
 				},
 			},
 		},
@@ -681,7 +681,7 @@ func TestOpenObject_RoundTrip(t *testing.T) {
 				&SRPCECapability{
 					HasUnlimitedMaxSIDDepth: false,
 					IsNAISupported:          false,
-					MaximumSidDepth:         16,
+					MaximumSidDepth:         msdPtr(16),
 				},
 				&SRv6PCECapability{
 					IsNAISupported: true,
@@ -1771,7 +1771,7 @@ func TestCommonObjectHeader_DecodeFromBytes_TooShort(t *testing.T) {
 func TestNewOpenObject(t *testing.T) {
 	t.Parallel()
 
-	caps := []CapabilityInterface{&SRPCECapability{MaximumSidDepth: 10}}
+	caps := []CapabilityInterface{&SRPCECapability{MaximumSidDepth: msdPtr(10)}}
 	o := NewOpenObject(7, 30, DeadTimerFor(30), caps)
 
 	want := &OpenObject{

@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/proto"
 
 	pb "github.com/nttcom/pola/api/pola/v1"
 )
@@ -210,9 +211,7 @@ func buildExamples() error {
 		errs []error
 	)
 	for _, dir := range exampleDirs {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			pkg := modulePath + "/" + dir
 			out, err := exec.Command("go", "build",
 				"-cover", "-coverpkg="+pkg,
@@ -222,7 +221,7 @@ func buildExamples() error {
 				errs = append(errs, fmt.Errorf("build %s: %w\n%s", dir, err, out))
 				mu.Unlock()
 			}
-		}()
+		})
 	}
 	wg.Wait()
 
@@ -421,7 +420,7 @@ func TestSessionList(t *testing.T) {
 				State:    pb.SessionState_SESSION_STATE_UP,
 				LocalCapabilities: []*pb.Capability{
 					{Type: pb.CapabilityType_CAPABILITY_TYPE_STATEFUL},
-					{Type: pb.CapabilityType_CAPABILITY_TYPE_SR, Detail: &pb.Capability_Sr{Sr: &pb.SrCapability{Msd: 10}}},
+					{Type: pb.CapabilityType_CAPABILITY_TYPE_SR, Detail: &pb.Capability_Sr{Sr: &pb.SrCapability{Msd: proto.Uint32(10)}}},
 				},
 				SyncState: pb.LspDbSyncState_LSP_DB_SYNC_STATE_FINISHED,
 			},

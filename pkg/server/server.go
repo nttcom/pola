@@ -45,16 +45,26 @@ type Server struct {
 	listener                 tcpListener
 	closed                   bool
 	shutdownSendCloseTimeout time.Duration
+	peerStatsMu              sync.Mutex
+	peerStats                map[netip.Addr]*peerSetupStats
 }
 
-// sessionIDAllocator allocates PCEP session IDs per peer.
+// peerSetupStats counts session establishment outcomes per peer.
+// Entries outlive individual Session objects.
+type peerSetupStats struct {
+	ok   uint64
+	fail uint64
+}
+
+// sessionIDAllocator allocates session IDs per peer.
+// IDs advance across reconnects so a new session does not immediately reuse
+// the previous session's ID.
 type sessionIDAllocator struct {
 	mu   sync.Mutex
 	next map[netip.Addr]uint8
 }
 
-// allocate returns the next available SID for peerAddr.
-func (a *sessionIDAllocator) allocate(peerAddr netip.Addr, inUse func(uint8) bool) (uint8, bool) {
+func (a *sessionIDAllocator) allocate(peerAddr netip.Addr) uint8 {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -62,16 +72,9 @@ func (a *sessionIDAllocator) allocate(peerAddr netip.Addr, inUse func(uint8) boo
 		a.next = make(map[netip.Addr]uint8)
 	}
 
-	candidate := a.next[peerAddr]
-	for range math.MaxUint8 + 1 {
-		id := candidate
-		candidate++
-		if inUse == nil || !inUse(id) {
-			a.next[peerAddr] = candidate
-			return id, true
-		}
-	}
-	return 0, false
+	id := a.next[peerAddr]
+	a.next[peerAddr] = id + 1
+	return id
 }
 
 type tcpListener interface {
@@ -272,7 +275,9 @@ func (s *Server) Serve(address string, port string) error {
 		}
 		ss.logger.Info("start PCEP session")
 		go func() {
-			ss.Established()
+			if err := ss.Established(); err != nil {
+				s.recordSetupResult(ss.peerAddr, false)
+			}
 			s.closeSession(ss)
 			ss.logger.Info("close PCEP session")
 		}()
@@ -293,27 +298,18 @@ func (s *Server) registerSession(conn net.Conn, peerAddr netip.Addr) *Session {
 	s.sessionMu.Lock()
 	if slices.ContainsFunc(s.sessionList, func(ss *Session) bool { return ss.peerAddr == peerAddr }) {
 		s.sessionMu.Unlock()
+		s.recordSetupResult(peerAddr, false)
 		s.rejectSecondSession(conn, peerAddr)
 		return nil
 	}
-	sessionID, ok := s.sessionIDs.allocate(peerAddr, func(id uint8) bool {
-		return slices.ContainsFunc(s.sessionList, func(ss *Session) bool {
-			return ss.peerAddr == peerAddr && ss.localSessionID == id
-		})
-	})
-	if !ok {
-		s.sessionMu.Unlock()
-		s.logger.Warn("no PCEP session ID available for peer, rejecting connection",
-			zap.String("peer", peerAddr.String()))
-		s.closeRejectedConn(conn, "session ID exhausted")
-		return nil
-	}
+	sessionID := s.sessionIDs.allocate(peerAddr)
 	localOpen := OpenParams{SessionID: sessionID, Keepalive: s.localKeepalive, DeadTimer: s.localDeadTimer}
 	ss := NewSession(localOpen, peerAddr, conn, s.logger, ted, s.asn)
 	ss.keepaliveRangeEnabled = s.keepaliveRangeEnabled
 	ss.minKeepalive = s.minKeepalive
 	ss.maxKeepalive = s.maxKeepalive
 	ss.allowNegotiation = s.allowNegotiation
+	ss.onEstablished = func() { s.recordSetupResult(peerAddr, true) }
 	s.sessionList = append(s.sessionList, ss)
 	s.sessionMu.Unlock()
 	return ss
@@ -367,11 +363,9 @@ func (s *Server) Shutdown() error {
 
 	var wg sync.WaitGroup
 	for _, ss := range sessions {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			s.gracefulCloseSession(ss)
-		}()
+		})
 	}
 	wg.Wait()
 
@@ -432,4 +426,33 @@ func (s *Server) Sessions() []*Session {
 	s.sessionMu.RLock()
 	defer s.sessionMu.RUnlock()
 	return slices.Clone(s.sessionList)
+}
+
+func (s *Server) recordSetupResult(addr netip.Addr, ok bool) {
+	s.peerStatsMu.Lock()
+	defer s.peerStatsMu.Unlock()
+	if s.peerStats == nil {
+		s.peerStats = make(map[netip.Addr]*peerSetupStats)
+	}
+	stats, exists := s.peerStats[addr]
+	if !exists {
+		stats = &peerSetupStats{}
+		s.peerStats[addr] = stats
+	}
+	if ok {
+		stats.ok++
+	} else {
+		stats.fail++
+	}
+}
+
+// PeerSetupStats returns cumulative session establishment outcomes for addr.
+// Counters persist across session teardown to match RFC 9826 sess-setup-ok/fail.
+func (s *Server) PeerSetupStats(addr netip.Addr) (ok, fail uint64) {
+	s.peerStatsMu.Lock()
+	defer s.peerStatsMu.Unlock()
+	if stats, exists := s.peerStats[addr]; exists {
+		return stats.ok, stats.fail
+	}
+	return 0, 0
 }

@@ -199,7 +199,6 @@ func printNodeSRv6SIDs(node *LsNode) {
 	}
 }
 
-
 // TEDElem is an interface for elements that can update the TED.
 type TEDElem interface {
 	UpdateTED(ted *LsTED, cfgASN uint32)

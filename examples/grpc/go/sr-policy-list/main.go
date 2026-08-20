@@ -48,12 +48,12 @@ func main() {
 
 	i := 0
 	for _, session := range ret.GetSessions() {
-		sessionAddr := formatAddr(session.GetAddr())
-		fmt.Printf("session: %s (state: %s, isSynced: %t)\n", sessionAddr, session.GetState(), session.GetIsSynced())
+		peerAddr := formatAddr(session.GetPeerAddr())
+		fmt.Printf("session: %s (state: %s, syncState: %s)\n", peerAddr, session.GetState(), session.GetSyncState())
 		for _, srPolicy := range session.GetSrPolicies() {
 			fmt.Printf("srPolicy(%d):\n", i)
 			i++
-			fmt.Printf("  sessionAddr: %s\n", sessionAddr)
+			fmt.Printf("  peerAddr: %s\n", peerAddr)
 			fmt.Printf("  policyName: %s\n", srPolicy.GetPolicyName())
 			fmt.Printf("  srcAddr: %s\n", formatAddr(srPolicy.GetSrcAddr()))
 			fmt.Printf("  dstAddr: %s\n", formatAddr(srPolicy.GetDstAddr()))

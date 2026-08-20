@@ -210,8 +210,7 @@ func TestShowSRPolicyList(t *testing.T) {
 			"    DstAddr: 192.0.2.4\n" +
 			"    Color: 0\n" +
 			"    Preference: 0\n" +
-			"    SegmentList: None\n" +
-			"\n"
+			"    SegmentList: None\n"
 		assert.Equal(t, want, out)
 	})
 
@@ -230,7 +229,7 @@ func TestShowSRPolicyList(t *testing.T) {
 		})
 
 		want := "Session: 192.0.2.1 (State: up, LSP-DB Sync: finished)\n" +
-			"  No SR Policies.\n\n"
+			"  No SR Policies.\n"
 		assert.Equal(t, want, out)
 	})
 
@@ -249,7 +248,7 @@ func TestShowSRPolicyList(t *testing.T) {
 		})
 
 		want := "Session: 192.0.2.1 (State: up, LSP-DB Sync: pending)\n" +
-			"  No SR Policies: session is still synchronizing.\n\n"
+			"  No SR Policies: session is still synchronizing.\n"
 		assert.Equal(t, want, out)
 	})
 

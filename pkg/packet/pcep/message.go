@@ -276,6 +276,9 @@ func (m *PCErrMessage) DecodeFromBytes(messageBody []uint8) error {
 			}
 			m.SRPs = append(m.SRPs, srp)
 		case ObjectClassOpen:
+			if commonObjectHeader.ObjectType != ObjectTypeOpenOpen {
+				return fmt.Errorf("PCErr: unsupported OPEN ObjectType: %d", commonObjectHeader.ObjectType)
+			}
 			openObj := &OpenObject{}
 			if err := openObj.DecodeFromBytes(commonObjectHeader.ObjectType, body); err != nil {
 				return err

@@ -49,3 +49,18 @@ func (en EnterpriseNumber) capLabel() string {
 	}
 	return "EN-" + strconv.FormatUint(uint64(en), 10)
 }
+
+var enterpriseNumberFullNames = map[EnterpriseNumber]string{
+	EnterpriseNumberCisco:   "Cisco Systems, Inc.",
+	EnterpriseNumberHuawei:  "Huawei Technologies Co., Ltd.",
+	EnterpriseNumberJuniper: "Juniper Networks, Inc.",
+}
+
+// DisplayLabel returns the enterprise number and vendor name.
+func (en EnterpriseNumber) DisplayLabel() string {
+	name, ok := enterpriseNumberFullNames[en]
+	if !ok {
+		name = "Unknown"
+	}
+	return fmt.Sprintf("%d (%s)", uint32(en), name)
+}

@@ -34,14 +34,14 @@ func TestPolaCapability(t *testing.T) {
 						&SRPCECapability{
 							HasUnlimitedMaxSIDDepth: false,
 							IsNAISupported:          false,
-							MaximumSidDepth:         uint8(16),
+							MaximumSidDepth:         msdPtr(16),
 						},
 					},
 				},
 				&SRPCECapability{
 					HasUnlimitedMaxSIDDepth: false,
 					IsNAISupported:          false,
-					MaximumSidDepth:         uint8(16),
+					MaximumSidDepth:         msdPtr(16),
 				},
 				&AssocTypeList{
 					AssocTypes: []AssocType{AssocTypePathProtectionAssociation, AssocTypeSRPolicyAssociation},
@@ -71,14 +71,14 @@ func TestPolaCapability(t *testing.T) {
 						&SRPCECapability{
 							HasUnlimitedMaxSIDDepth: false,
 							IsNAISupported:          false,
-							MaximumSidDepth:         uint8(16),
+							MaximumSidDepth:         msdPtr(16),
 						},
 					},
 				},
 				&SRPCECapability{
 					HasUnlimitedMaxSIDDepth: false,
 					IsNAISupported:          false,
-					MaximumSidDepth:         uint8(16),
+					MaximumSidDepth:         msdPtr(16),
 				},
 				&AssocTypeList{
 					AssocTypes: []AssocType{AssocTypePathProtectionAssociation, AssocTypeSRPolicyAssociation},
@@ -104,7 +104,7 @@ func TestPolaCapability(t *testing.T) {
 func TestPolaCapability_OutputAlwaysSerializes(t *testing.T) {
 	caps := []CapabilityInterface{
 		&StatefulPCECapability{LSPUpdateCapability: true},
-		&SRPCECapability{MaximumSidDepth: 16},
+		&SRPCECapability{MaximumSidDepth: msdPtr(16)},
 		&PathSetupTypeCapability{PathSetupTypes: Psts{PathSetupTypeSRTE}},
 		&AssocTypeList{AssocTypes: []AssocType{AssocTypeSRPolicyAssociation}},
 		&LSPDBVersion{VersionNumber: 1},

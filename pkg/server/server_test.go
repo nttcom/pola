@@ -571,14 +571,10 @@ func TestSessionIDAllocator_IncrementsByOneAndWraps(t *testing.T) {
 	var a sessionIDAllocator
 
 	for want := range math.MaxUint8 + 1 {
-		id, ok := a.allocate(peerAddr, nil)
-		require.True(t, ok)
-		assert.Equal(t, uint8(want), id)
+		assert.Equal(t, uint8(want), a.allocate(peerAddr))
 	}
 
-	id, ok := a.allocate(peerAddr, nil)
-	require.True(t, ok)
-	assert.Zero(t, id, "the sequence wraps back to zero after 255")
+	assert.Zero(t, a.allocate(peerAddr), "the sequence wraps back to zero after 255")
 }
 
 func TestSessionIDAllocator_SequenceIsIndependentPerPeer(t *testing.T) {
@@ -587,34 +583,10 @@ func TestSessionIDAllocator_SequenceIsIndependentPerPeer(t *testing.T) {
 	var a sessionIDAllocator
 
 	for want := range uint8(3) {
-		id, ok := a.allocate(peerA, nil)
-		require.True(t, ok)
-		assert.Equal(t, want, id)
+		assert.Equal(t, want, a.allocate(peerA))
 	}
 
-	id, ok := a.allocate(peerB, nil)
-	require.True(t, ok)
-	assert.Zero(t, id, "peer B's sequence must not be advanced by peer A")
-}
-
-func TestSessionIDAllocator_SkipsSessionIDsInUse(t *testing.T) {
-	peerAddr := netip.MustParseAddr("10.0.255.1")
-	var a sessionIDAllocator
-
-	id, ok := a.allocate(peerAddr, func(id uint8) bool { return id < 3 })
-	require.True(t, ok)
-	assert.Equal(t, uint8(3), id)
-
-	id, ok = a.allocate(peerAddr, nil)
-	require.True(t, ok)
-	assert.Equal(t, uint8(4), id, "the sequence continues after the skipped IDs")
-}
-
-func TestSessionIDAllocator_ReportsFalseWhenEveryIDIsInUse(t *testing.T) {
-	var a sessionIDAllocator
-
-	_, ok := a.allocate(netip.MustParseAddr("10.0.255.1"), func(uint8) bool { return true })
-	assert.False(t, ok)
+	assert.Zero(t, a.allocate(peerB), "peer B's sequence must not be advanced by peer A")
 }
 
 // blockingWriteConn simulates a peer that stopped reading.

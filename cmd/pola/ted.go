@@ -16,16 +16,13 @@ import (
 )
 
 func newTEDCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use: "ted",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			format, err := resolveOutputFormat(jsonFmt, false)
-			if err != nil {
-				return err
-			}
-			return showTED(os.Stdout, format)
+			return showTED(os.Stdout, resolveOutputFormat(jsonFmt))
 		},
 	}
+	return cmd
 }
 
 func showTED(w io.Writer, format outputFormat) error {

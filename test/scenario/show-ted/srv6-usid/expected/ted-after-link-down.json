@@ -29,10 +29,10 @@
                     "algorithm": 0
                 },
                 "sidStructure": {
-                    "localBlock": 0,
-                    "localNode": 0,
+                    "localBlock": 32,
+                    "localNode": 16,
                     "localFunc": 0,
-                    "localArg": 0
+                    "localArg": 80
                 },
                 "multiTopoIds": [
                     2
@@ -67,7 +67,22 @@
                         "value": 10
                     }
                 ],
-                "adjSid": 0
+                "adjSid": 0,
+                "srv6EndXSid": {
+                    "endpointBehavior": {
+                        "behavior": 57,
+                        "name": "UA"
+                    },
+                    "sids": [
+                        "fcbb:bb00:1002:e000::"
+                    ],
+                    "sidStructure": {
+                        "localBlock": 32,
+                        "localNode": 16,
+                        "localFunc": 16,
+                        "localArg": 64
+                    }
+                }
             }
         ],
         "srv6Sids": [
@@ -82,10 +97,10 @@
                     "algorithm": 0
                 },
                 "sidStructure": {
-                    "localBlock": 0,
-                    "localNode": 0,
+                    "localBlock": 32,
+                    "localNode": 16,
                     "localFunc": 0,
-                    "localArg": 0
+                    "localArg": 80
                 },
                 "multiTopoIds": [
                     2

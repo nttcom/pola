@@ -21,6 +21,29 @@
                         },
                         "port": {
                             "type": "integer"
+                        },
+                        "keepalive": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 255
+                        },
+                        "deadTimer": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 255
+                        },
+                        "minKeepalive": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 255
+                        },
+                        "maxKeepalive": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 255
+                        },
+                        "allowNegotiation": {
+                            "type": "boolean"
                         }
                     },
                     "required": [

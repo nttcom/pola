@@ -23,6 +23,7 @@ prepare these images.
 Copy the GoBGP binaries to `bin`:
 
 ```bash
+cd pola/examples/containerlab/srv6-usid-dynamic-path
 make -C ../../.. fetch-gobgp
 cp ../../../test/bin/gobgpd bin/gobgpd
 cp ../../../test/bin/gobgp bin/gobgp
@@ -33,9 +34,6 @@ Pola and GoBGP start automatically when the lab is deployed.
 Start Containerlab network
 
 ```bash
-git clone https://github.com/nttcom/pola
-cd pola/examples/containerlab/srv6-usid-dynamic-path
-
 sudo containerlab deploy
 ```
 
@@ -44,7 +42,7 @@ Wait for vJunos-router startup after `sudo containerlab deploy` (it takes severa
 ```bash
 $ docker logs clab-srv6-usid-dynamic-path-pe02 -f
 <snip.>
-2026-07-30 10:32:50,476: launch      INFO Startup complete in: 0:01:41.309132
+2026-08-25 06:26:03,619: launch     INFO Startup complete in: 0:01:46.155728
 ```
 
 ### Show TED
@@ -53,8 +51,7 @@ $ docker logs clab-srv6-usid-dynamic-path-pe02 -f
 $ docker exec -it clab-srv6-usid-dynamic-path-pola bash
 
 root@pola:/pola# pola ted -p 50052
-Node: 1
-  0000.0001.0001
+Node #0: 0000.0001.0001
   Hostname: pe01
   ISIS Area ID: 49.0000
   SRGB: 0 - 0
@@ -63,18 +60,18 @@ Node: 1
     fd00:ffff::1/128
   Links:
     Local: None Remote: None
-      RemoteNode: 0000.0001.0003
+      RemoteRouterID: 0000.0001.0003
       Metrics:
-        METRIC_TYPE_IGP: 10
+        igp: 10
       Adj-SID: 0
       SRv6 End.X SID:
         EndpointBehavior: UA
         SIDs: [fcbb:bb00:1001:e000::]
         SID Structure: Block: 32, Node: 16, Func: 16, Arg: 64
     Local: None Remote: None
-      RemoteNode: 0000.0001.0004
+      RemoteRouterID: 0000.0001.0004
       Metrics:
-        METRIC_TYPE_IGP: 100
+        igp: 100
       Adj-SID: 0
       SRv6 End.X SID:
         EndpointBehavior: UA
@@ -86,7 +83,7 @@ Node: 1
     EndpointBehavior: UN, Flags: 0, Algorithm: 0
     MultiTopoIDs: [2]
 
-Node: 2
+Node #1: 0000.0001.0003
 <snip.>
 ```
 
@@ -96,18 +93,39 @@ Connect to PCEP container, check PCEP session and SR policy
 
 ```bash
 root@pola:/pola# pola session -p 50052
-sessionAddr(0): fd00::2
-  State: SESSION_STATE_UP
-  Capabilities: [Stateful Update Instantiation Color SR-TE SRv6-TE Multipath Vendor-Info(Juniper)]
-  IsSynced: true
-
+Session #0: fd00::2
+  State:             up
+  LSP-DB Sync:       finished
+  Role:              active-stateful-pce
+  Up Time:           00:00:24
+  Session ID:        Local=0, Peer=2
+  Transport:         tcp, auth=none
+  Timers:
+               Local  Peer  Effective
+    Keepalive  30     30    30
+    DeadTimer  120    120   120
+  Capabilities:
+    Common:
+      VENDOR-INFORMATION [RFC7470]: 2636 (Juniper Networks, Inc.)
+      STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Stateful, Update, Instantiation
+      SR-PCE-CAPABILITY [RFC8664]: SR, MSD=0
+      PATH-SETUP-TYPE-CAPABILITY [RFC8408]: SR-TE, SRv6-TE
+      ASSOC-TYPE-LIST [RFC8697]:
+        1 Path Protection Association
+        6 SR Policy Association
+      MULTIPATH-CAP [draft-ietf-pce-multipath]: Multipath, MaxMultipaths=128, Weighted
+    Local only:
+      color
+    Peer only:
+      -
 root@pola:/pola# pola sr-policy list -p 50052
-No SR Policies found.
+Session: fd00::2 (State: up, LSP-DB Sync: finished)
+  No SR Policies.
 ```
 
-Apply and check SR Policy
+### Applying SR Policies
 
-`pe02-policy1.yaml` is mounted in the Pola container. It requests a dynamic path from pe02 to
+The Pola container includes `pe02-policy1.yaml`. It requests a dynamic path from pe02 to
 pe01 (`fd00:ffff::1`) with color 100. End SIDs are `fcbb:bb00:1001::` (pe01),
 `fcbb:bb00:1003::` (p01) and `fcbb:bb00:1004::` (p02), so the computed segment list below is the
 path p02 -> p01 -> pe01.
@@ -116,13 +134,18 @@ path p02 -> p01 -> pe01.
 root@pola:/pola# pola sr-policy add -f pe02-policy1.yaml -p 50052
 success!
 root@pola:/pola# pola sr-policy list -p 50052
-Session: fd00::2
+Session: fd00::2 (State: up, LSP-DB Sync: finished)
   PolicyName: DYNAMIC-POLICY
-    SrcAddr: fd00:ffff::2
-    DstAddr: fd00:ffff::1
+    PlspID: 1
+    LSPID: 0
+    State: active
+    Type: dynamic
+    Metric: igp
+    SrcAddr: fd00:ffff::2 (0000.0001.0002)
+    DstAddr: fd00:ffff::1 (0000.0001.0001)
     Color: 100
     Preference: 100
-    SegmentList: fcbb:bb00:1004:: -> fcbb:bb00:1003:: -> fcbb:bb00:1001::
+    SegmentList: fcbb:bb00:1004:: (local=fcbb:bb00:1004::) -> fcbb:bb00:1003:: (local=fcbb:bb00:1003::) -> fcbb:bb00:1001:: (local=fcbb:bb00:1001::)
 ```
 
 Enter container pe02 and check SR Policy

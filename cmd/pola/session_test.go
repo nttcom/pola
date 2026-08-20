@@ -97,11 +97,11 @@ func sessionFixture() *pb.Session {
 		PccType: pb.PccType_PCC_TYPE_RFC_COMPLIANT,
 		LocalCapabilities: []*pb.Capability{
 			{Type: pb.CapabilityType_CAPABILITY_TYPE_STATEFUL, Detail: &pb.Capability_Stateful{Stateful: &pb.StatefulCapability{LspUpdate: true}}},
-			{Type: pb.CapabilityType_CAPABILITY_TYPE_SR, Detail: &pb.Capability_Sr{Sr: &pb.SrCapability{Msd: 10}}},
+			{Type: pb.CapabilityType_CAPABILITY_TYPE_SR, Detail: &pb.Capability_Sr{Sr: &pb.SrCapability{Msd: proto.Uint32(10)}}},
 		},
 		PeerCapabilities: []*pb.Capability{
 			{Type: pb.CapabilityType_CAPABILITY_TYPE_STATEFUL, Detail: &pb.Capability_Stateful{Stateful: &pb.StatefulCapability{LspUpdate: true}}},
-			{Type: pb.CapabilityType_CAPABILITY_TYPE_SR, Detail: &pb.Capability_Sr{Sr: &pb.SrCapability{Msd: 16}}},
+			{Type: pb.CapabilityType_CAPABILITY_TYPE_SR, Detail: &pb.Capability_Sr{Sr: &pb.SrCapability{Msd: proto.Uint32(16)}}},
 		},
 		Initiator:             pb.SessionInitiator_SESSION_INITIATOR_REMOTE,
 		SyncState:             pb.LspDbSyncState_LSP_DB_SYNC_STATE_FINISHED,
@@ -137,11 +137,58 @@ func TestShowSession_Text(t *testing.T) {
 	assert.Contains(t, out, "Up Time:           00:12:22")
 	assert.Contains(t, out, "Session ID:        Local=1, Peer=7")
 	assert.Contains(t, out, "STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Stateful, Update")
-	assert.Contains(t, out, "Local only:        msd=10")
-	assert.Contains(t, out, "Peer only:         msd=16")
+	assert.Contains(t, out, "    Local only:\n      msd=10\n")
+	assert.Contains(t, out, "    Peer only:\n      msd=16\n")
 	assert.Contains(t, out, "Session Creation:  2026-08-19T09:30:00Z")
 	assert.Contains(t, out, "Initiator:         remote")
 	assert.Contains(t, out, "Session Setup:     ok=1, fail=0")
+}
+
+func TestShowSession_Text_CapabilityGrouping(t *testing.T) {
+	nowFunc = func() time.Time { return time.Date(2026, 8, 19, 9, 42, 27, 0, time.UTC) }
+	t.Cleanup(func() { nowFunc = time.Now })
+
+	fixture := sessionFixture()
+	assocTypeList := &pb.Capability{
+		Type: pb.CapabilityType_CAPABILITY_TYPE_ASSOC_TYPE_LIST,
+		Detail: &pb.Capability_AssocTypeList{AssocTypeList: &pb.AssocTypeListCapability{
+			AssocTypes: []uint32{2, 3, 5, 6, 9},
+		}},
+	}
+	unknownTLV := &pb.Capability{
+		Type:   pb.CapabilityType_CAPABILITY_TYPE_UNKNOWN,
+		Detail: &pb.Capability_Unknown{Unknown: &pb.UnknownCapability{TlvType: 73}},
+	}
+	fixture.LocalCapabilities = []*pb.Capability{
+		fixture.LocalCapabilities[0], // STATEFUL
+		{Type: pb.CapabilityType_CAPABILITY_TYPE_SR, Detail: &pb.Capability_Sr{Sr: &pb.SrCapability{Msd: proto.Uint32(10)}}},
+		assocTypeList,
+		unknownTLV,
+	}
+	fixture.PeerCapabilities = []*pb.Capability{
+		fixture.PeerCapabilities[0], // STATEFUL
+		{Type: pb.CapabilityType_CAPABILITY_TYPE_SR, Detail: &pb.Capability_Sr{Sr: &pb.SrCapability{Msd: proto.Uint32(10)}}},
+		assocTypeList,
+		unknownTLV,
+	}
+
+	client = &fakePCEServiceClient{sessionListResp: &pb.GetSessionListResponse{Sessions: []*pb.Session{fixture}}}
+
+	var buf bytes.Buffer
+	require.NoError(t, showSession(&buf, netip.Addr{}, true, outputText))
+	out := buf.String()
+
+	assert.Contains(t, out, "      ASSOC-TYPE-LIST [RFC8697]:\n"+
+		"        2 Disjoint Association\n"+
+		"        3 Policy Association\n"+
+		"        5 Double Sided Bidirectional LSP Association\n"+
+		"        6 SR Policy Association\n"+
+		"        9 P2MP SR Policy Association (draft)\n")
+	assert.Contains(t, out, "      Unrecognized TLVs:\n"+
+		"        type=73: SR-P2MP-POLICY-CAPABILITY (draft-ietf-pce-sr-p2mp-policy-11)\n")
+	assert.Contains(t, out, "    Local only:\n      -\n")
+	assert.Contains(t, out, "    Peer only:\n      -\n")
+	assert.NotContains(t, out, "ASSOC-TYPE-LIST [RFC8697]: 2 Disjoint Association")
 }
 
 func TestShowSession_JSON(t *testing.T) {

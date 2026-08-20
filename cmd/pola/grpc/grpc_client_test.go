@@ -271,6 +271,8 @@ func TestGetSessions_NoCapabilitiesIsEmptySlice(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, sessions, 1)
 
+	assert.Equal(t, "up", sessions[0].State)
+
 	require.NotNil(t, sessions[0].LocalCapabilities)
 	assert.Empty(t, sessions[0].LocalCapabilities)
 
@@ -286,7 +288,7 @@ func TestGetSessions_WithCapabilities(t *testing.T) {
 				PeerAddr: netip.MustParseAddr("192.0.2.1").AsSlice(),
 				State:    pb.SessionState_SESSION_STATE_UP,
 				LocalCapabilities: []*pb.Capability{
-					{Type: pb.CapabilityType_CAPABILITY_TYPE_SR, Detail: &pb.Capability_Sr{Sr: &pb.SrCapability{Msd: 10}}},
+					{Type: pb.CapabilityType_CAPABILITY_TYPE_SR, Detail: &pb.Capability_Sr{Sr: &pb.SrCapability{Msd: proto.Uint32(10)}}},
 				},
 			},
 		},
@@ -295,7 +297,7 @@ func TestGetSessions_WithCapabilities(t *testing.T) {
 	sessions, err := GetSessions(client, netip.Addr{}, false)
 	require.NoError(t, err)
 	require.Len(t, sessions, 1)
-	assert.Equal(t, []Capability{{Type: "SR", Detail: SRCapability{MSD: 10}}}, sessions[0].LocalCapabilities)
+	assert.Equal(t, []Capability{{Type: "SR", Detail: SRCapability{MSD: proto.Uint32(10)}}}, sessions[0].LocalCapabilities)
 }
 
 func TestGetSessions_WithPccCapabilities(t *testing.T) {
@@ -305,7 +307,7 @@ func TestGetSessions_WithPccCapabilities(t *testing.T) {
 				PeerAddr: netip.MustParseAddr("192.0.2.1").AsSlice(),
 				State:    pb.SessionState_SESSION_STATE_UP,
 				PeerCapabilities: []*pb.Capability{
-					{Type: pb.CapabilityType_CAPABILITY_TYPE_SR, Detail: &pb.Capability_Sr{Sr: &pb.SrCapability{Msd: 10}}},
+					{Type: pb.CapabilityType_CAPABILITY_TYPE_SR, Detail: &pb.Capability_Sr{Sr: &pb.SrCapability{Msd: proto.Uint32(10)}}},
 				},
 			},
 		},
@@ -314,7 +316,7 @@ func TestGetSessions_WithPccCapabilities(t *testing.T) {
 	sessions, err := GetSessions(client, netip.Addr{}, false)
 	require.NoError(t, err)
 	require.Len(t, sessions, 1)
-	assert.Equal(t, []Capability{{Type: "SR", Detail: SRCapability{MSD: 10}}}, sessions[0].PeerCapabilities)
+	assert.Equal(t, []Capability{{Type: "SR", Detail: SRCapability{MSD: proto.Uint32(10)}}}, sessions[0].PeerCapabilities)
 }
 
 func TestGetSessions_WithSessionIDsAndTimers(t *testing.T) {
@@ -343,6 +345,25 @@ func TestGetSessions_WithSessionIDsAndTimers(t *testing.T) {
 	assert.Equal(t, SessionTimers{Keepalive: 30, DeadTimer: 120}, *sessions[0].LocalTimers)
 	require.NotNil(t, sessions[0].PeerTimers)
 	assert.Equal(t, SessionTimers{Keepalive: 10, DeadTimer: 40}, *sessions[0].PeerTimers)
+}
+
+func TestGetSessions_EffectiveTimersIgnoredBeforeUp(t *testing.T) {
+	client := &fakeClient{sessionListResp: &pb.GetSessionListResponse{
+		Sessions: []*pb.Session{
+			{
+				PeerAddr: netip.MustParseAddr("192.0.2.1").AsSlice(),
+				State:    pb.SessionState_SESSION_STATE_KEEP_WAIT,
+				// A well-behaved server leaves EffectiveTimers nil before Up,
+				// but the client must not trust that convention blindly.
+				EffectiveTimers: &pb.EffectiveTimers{Keepalive: 30, DeadTimer: 120},
+			},
+		},
+	}}
+
+	sessions, err := GetSessions(client, netip.Addr{}, false)
+	require.NoError(t, err)
+	require.Len(t, sessions, 1)
+	assert.Equal(t, EffectiveTimers{}, sessions[0].EffectiveTimers)
 }
 
 func TestGetSessions_TimestampsInitiatorSyncStateAndStats(t *testing.T) {
@@ -423,6 +444,24 @@ func TestSyncStateFromPB(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			assert.Equal(t, tt.want, syncStateFromPB(tt.in))
+		})
+	}
+}
+
+func TestSessionStateFromPB(t *testing.T) {
+	tests := map[string]struct {
+		in   pb.SessionState
+		want string
+	}{
+		"up":          {pb.SessionState_SESSION_STATE_UP, "up"},
+		"tcp-pending": {pb.SessionState_SESSION_STATE_TCP_PENDING, "tcp-pending"},
+		"open-wait":   {pb.SessionState_SESSION_STATE_OPEN_WAIT, "open-wait"},
+		"keep-wait":   {pb.SessionState_SESSION_STATE_KEEP_WAIT, "keep-wait"},
+		"unspecified": {pb.SessionState_SESSION_STATE_UNSPECIFIED, "unknown"},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tt.want, sessionStateFromPB(tt.in))
 		})
 	}
 }
@@ -516,7 +555,9 @@ func TestCapabilityDetail_Strings(t *testing.T) {
 		},
 		{name: "Stateful with no flags", detail: StatefulCapability{}, want: []string{"Stateful"}},
 		{name: "SR unlimited MSD with NAI support", detail: SRCapability{UnlimitedMSD: true, NAISupported: true}, want: []string{"SR", "Unlimited-SID-Depth", "SR-NAI-Supported"}},
-		{name: "SR bounded MSD without NAI support", detail: SRCapability{MSD: 10}, want: []string{"SR", "MSD=10"}},
+		{name: "SR bounded MSD without NAI support", detail: SRCapability{MSD: proto.Uint32(10)}, want: []string{"SR", "MSD=10"}},
+		{name: "SR MSD advertised as zero", detail: SRCapability{MSD: proto.Uint32(0)}, want: []string{"SR", "MSD=0"}},
+		{name: "SR MSD not advertised", detail: SRCapability{}, want: []string{"SR"}},
 		{name: "SRv6 with NAI support", detail: SRv6Capability{NAISupported: true}, want: []string{"SRv6", "SRv6-NAI-Supported"}},
 		{name: "SRv6 without NAI support", detail: SRv6Capability{}, want: []string{"SRv6"}},
 		{name: "PathSetupType SR-TE (1) and SRv6-TE (3)", detail: PathSetupTypeCapability{PathSetupTypes: []uint32{1, 3}}, want: []string{"SR-TE", "SRv6-TE"}},
@@ -529,7 +570,8 @@ func TestCapabilityDetail_Strings(t *testing.T) {
 			want:   []string{"Multipath", "MaxMultipaths=4", "Weighted", "OppositeDir", "ForwardClass", "CompositePath"},
 		},
 		{name: "Multipath with no flags", detail: MultipathCapability{MaxMultipaths: 2}, want: []string{"Multipath", "MaxMultipaths=2"}},
-		{name: "VendorInformation", detail: VendorInformationCapability{EnterpriseNumber: 9}, want: []string{"Vendor-Info(9)"}},
+		{name: "VendorInformation known PEN", detail: VendorInformationCapability{EnterpriseNumber: 9}, want: []string{"9 (Cisco Systems, Inc.)"}},
+		{name: "VendorInformation unknown PEN", detail: VendorInformationCapability{EnterpriseNumber: 99999}, want: []string{"99999 (Unknown)"}},
 		{name: "Unknown TLV", detail: UnknownCapability{TLVType: 42}, want: []string{"unknown_type_42"}},
 	}
 	for _, tt := range tests {
@@ -546,7 +588,7 @@ func TestCapability_Strings(t *testing.T) {
 	})
 
 	t.Run("typed Detail is unaffected", func(t *testing.T) {
-		cap := Capability{Type: "SR", Detail: SRCapability{MSD: 10}}
+		cap := Capability{Type: "SR", Detail: SRCapability{MSD: proto.Uint32(10)}}
 		assert.Equal(t, []string{"SR", "MSD=10"}, cap.Strings())
 	})
 }
@@ -564,8 +606,8 @@ func TestCapabilityFromPB(t *testing.T) {
 		},
 		{
 			name:  "SR",
-			pbCap: &pb.Capability{Type: pb.CapabilityType_CAPABILITY_TYPE_SR, Detail: &pb.Capability_Sr{Sr: &pb.SrCapability{UnlimitedMsd: true, NaiSupported: true, Msd: 5}}},
-			want:  Capability{Type: "SR", Detail: SRCapability{UnlimitedMSD: true, NAISupported: true, MSD: 5}},
+			pbCap: &pb.Capability{Type: pb.CapabilityType_CAPABILITY_TYPE_SR, Detail: &pb.Capability_Sr{Sr: &pb.SrCapability{UnlimitedMsd: true, NaiSupported: true, Msd: proto.Uint32(5)}}},
+			want:  Capability{Type: "SR", Detail: SRCapability{UnlimitedMSD: true, NAISupported: true, MSD: proto.Uint32(5)}},
 		},
 		{
 			name:  "SRv6",
@@ -732,6 +774,7 @@ func TestGetSRPolicyList(t *testing.T) {
 		client := &fakeClient{srPolicyListResp: &pb.GetSRPolicyListResponse{
 			Sessions: []*pb.SRPolicySession{{
 				PeerAddr: netip.MustParseAddr("192.0.2.1").AsSlice(),
+				State:    pb.SessionState_SESSION_STATE_UP,
 				SrPolicies: []*pb.SRPolicy{{
 					PolicyName: "pol1",
 					SrcAddr:    netip.MustParseAddr("192.0.2.1").AsSlice(),
@@ -743,6 +786,7 @@ func TestGetSRPolicyList(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, got, 1)
 		assert.Equal(t, "192.0.2.1", got[0].PeerAddr.String())
+		assert.Equal(t, "up", got[0].State)
 		require.Len(t, got[0].SRPolicies, 1)
 		assert.Equal(t, "pol1", got[0].SRPolicies[0].Name)
 	})

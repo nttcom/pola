@@ -270,7 +270,7 @@ func TestOpenMessage_RoundTrip(t *testing.T) {
 	t.Parallel()
 
 	want := NewOpenMessage(7, 30, 120, []CapabilityInterface{
-		&SRPCECapability{MaximumSidDepth: 10},
+		NewSRPCECapability(false, false, 10),
 	})
 
 	raw, err := want.Serialize()

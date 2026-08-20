@@ -39,12 +39,12 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 	defer cancel()
 
-	r, err := c.DeleteSession(ctx, &pb.DeleteSessionRequest{
-		Addr: netip.MustParseAddr("192.0.2.1").AsSlice(),
+	_, err = c.DeleteSession(ctx, &pb.DeleteSessionRequest{
+		PeerAddr: netip.MustParseAddr("192.0.2.1").AsSlice(),
 	})
 	if err != nil {
 		log.Fatalf("c.DeleteSession error: %v", err)
 	}
 
-	log.Printf("success: isSuccess=%t", r.GetIsSuccess())
+	log.Print("success")
 }

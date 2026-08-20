@@ -21,9 +21,7 @@ prepare these images.
 Start Containerlab network
 
 ```bash
-git clone https://github.com/nttcom/pola
 cd pola/examples/containerlab/srv6-explicit-path-l3vpn
-
 sudo containerlab deploy
 ```
 
@@ -32,7 +30,7 @@ Wait for vJunos-router startup after `sudo containerlab deploy` (it takes severa
 ```bash
 $ docker logs clab-srv6-explicit-path-l3vpn-p01 -f
 <snip.>
-2026-07-29 10:04:52,616: launch      INFO Startup complete in: 0:02:02.424893
+2026-08-25 06:14:21,560: launch     INFO Startup complete in: 0:01:52.248573
 ```
 
 ### Apply SR Policy
@@ -43,22 +41,68 @@ Connect to PCEP container, check PCEP session and SR policy
 $ docker exec -it clab-srv6-explicit-path-l3vpn-pola bash
 
 root@pola:/pola# pola session
-sessionAddr(0): fd00::2
-  State: SESSION_STATE_UP
-  Capabilities: [Stateful Update Instantiation Color SR-TE SRv6-TE Multipath Vendor-Info(Juniper)]
-  IsSynced: true
-sessionAddr(1): fd00::1
-  State: SESSION_STATE_UP
-  Capabilities: [Stateful Update Instantiation Color SR-TE SRv6-TE Multipath Vendor-Info(Juniper)]
-  IsSynced: true
+Session #0: fd00::1
+  State:             up
+  LSP-DB Sync:       finished
+  Role:              active-stateful-pce
+  Up Time:           00:01:50
+  Session ID:        Local=0, Peer=1
+  Transport:         tcp, auth=none
+  Timers:
+               Local  Peer  Effective
+    Keepalive  30     30    30
+    DeadTimer  120    120   120
+  Capabilities:
+    Common:
+      VENDOR-INFORMATION [RFC7470]: 2636 (Juniper Networks, Inc.)
+      STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Stateful, Update, Instantiation
+      SR-PCE-CAPABILITY [RFC8664]: SR, MSD=0
+      PATH-SETUP-TYPE-CAPABILITY [RFC8408]: SR-TE, SRv6-TE
+      ASSOC-TYPE-LIST [RFC8697]:
+        1 Path Protection Association
+        6 SR Policy Association
+      MULTIPATH-CAP [draft-ietf-pce-multipath]: Multipath, MaxMultipaths=128, Weighted
+    Local only:
+      color
+    Peer only:
+      -
 
+Session #1: fd00::2
+  State:             up
+  LSP-DB Sync:       finished
+  Role:              active-stateful-pce
+  Up Time:           00:01:54
+  Session ID:        Local=0, Peer=1
+  Transport:         tcp, auth=none
+  Timers:
+               Local  Peer  Effective
+    Keepalive  30     30    30
+    DeadTimer  120    120   120
+  Capabilities:
+    Common:
+      VENDOR-INFORMATION [RFC7470]: 2636 (Juniper Networks, Inc.)
+      STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Stateful, Update, Instantiation
+      SR-PCE-CAPABILITY [RFC8664]: SR, MSD=0
+      PATH-SETUP-TYPE-CAPABILITY [RFC8408]: SR-TE, SRv6-TE
+      ASSOC-TYPE-LIST [RFC8697]:
+        1 Path Protection Association
+        6 SR Policy Association
+      MULTIPATH-CAP [draft-ietf-pce-multipath]: Multipath, MaxMultipaths=128, Weighted
+    Local only:
+      color
+    Peer only:
+      -
 root@pola:/pola# pola sr-policy list
-No SR Policies found.
+Session: fd00::1 (State: up, LSP-DB Sync: finished)
+  No SR Policies.
+
+Session: fd00::2 (State: up, LSP-DB Sync: finished)
+  No SR Policies.
 ```
 
-Apply and check SR Policy
+### Applying SR Policies
 
-One explicit-path policy per PCC is mounted in the Pola container.
+The Pola container includes one explicit-path policy for each PCC.
 
 | File | PCC | Endpoint | Segment List |
 | --- | --- | --- | --- |
@@ -76,21 +120,29 @@ root@pola:/pola# pola sr-policy add -f pe02-policy1.yaml --no-sid-validate
 warning: skipping SID validation (--no-sid-validate)
 success!
 root@pola:/pola# pola sr-policy list
-Session: fd00::2
-  PolicyName: pe02-policy1
-    SrcAddr: fd00:ffff::2
-    DstAddr: fd00:ffff:1:0:1::
-    Color: 1
-    Preference: 100
-    SegmentList: fd00:ffff:4:0:1:: -> fd00:ffff:3:0:1:: -> fd00:ffff:1:0:1::
-
-Session: fd00::1
+Session: fd00::1 (State: up, LSP-DB Sync: finished)
   PolicyName: pe01-policy1
+    PlspID: 1
+    LSPID: 0
+    State: active
+    Type: explicit
     SrcAddr: fd00:ffff::1
     DstAddr: fd00:ffff:2:0:1::
     Color: 1
     Preference: 100
-    SegmentList: fd00:ffff:3:0:1:: -> fd00:ffff:4:0:1:: -> fd00:ffff:2:0:1::
+    SegmentList: fd00:ffff:3:0:1:: (local=fd00:ffff::3) -> fd00:ffff:4:0:1:: (local=fd00:ffff::4) -> fd00:ffff:2:0:1:: (local=fd00:ffff::2)
+
+Session: fd00::2 (State: up, LSP-DB Sync: finished)
+  PolicyName: pe02-policy1
+    PlspID: 1
+    LSPID: 0
+    State: active
+    Type: explicit
+    SrcAddr: fd00:ffff::2
+    DstAddr: fd00:ffff:1:0:1::
+    Color: 1
+    Preference: 100
+    SegmentList: fd00:ffff:4:0:1:: (local=fd00:ffff::4) -> fd00:ffff:3:0:1:: (local=fd00:ffff::3) -> fd00:ffff:1:0:1:: (local=fd00:ffff::1)
 ```
 
 Enter container pe01 and check SR Policy
@@ -148,18 +200,18 @@ admin@pe01> show route table CUST-A.inet.0 192.168.2.0/24
 CUST-A.inet.0: 3 destinations, 3 routes (3 active, 0 holddown, 0 hidden)
 + = Active Route, - = Last Active, * = Both
 
-192.168.2.0/24     *[BGP/170] 00:01:40, localpref 100, from fd00:ffff::2
+192.168.2.0/24     *[BGP/170] 00:01:28, localpref 100, from fd00:ffff::2
                       AS path: I, validation-state: unverified
-                    >  to fe80::aac1:abff:fea9:267e via ge-0/0/0.0, SRv6 SID: fd00:ffff:2:0:4:a::, SRV6-Tunnel, Dest: fd00:ffff:2:0:1::-1<c6>
+                    >  to fe80::aac1:abff:fea2:1e02 via ge-0/0/0.0, SRv6 SID: fd00:ffff:2:0:4:a::, SRV6-Tunnel, Dest: fd00:ffff:2:0:1::-1<c6>
 
 admin@pe01> show route table CUST-A.inet6.0 fd00:a2::/64
 
 CUST-A.inet6.0: 5 destinations, 5 routes (5 active, 0 holddown, 0 hidden)
 + = Active Route, - = Last Active, * = Both
 
-fd00:a2::/64       *[BGP/170] 00:02:07, localpref 100, from fd00:ffff::2
+fd00:a2::/64       *[BGP/170] 00:01:49, localpref 100, from fd00:ffff::2
                       AS path: I, validation-state: unverified
-                    >  to fe80::aac1:abff:fea9:267e via ge-0/0/0.0, SRv6 SID: fd00:ffff:2:0:6:a::, SRV6-Tunnel, Dest: fd00:ffff:2:0:1::-1<c6>
+                    >  to fe80::aac1:abff:fea2:1e02 via ge-0/0/0.0, SRv6 SID: fd00:ffff:2:0:6:a::, SRV6-Tunnel, Dest: fd00:ffff:2:0:1::-1<c6>
 ```
 
 Enter container host01 and check SRv6-TE
@@ -173,15 +225,15 @@ $ docker exec -it clab-srv6-explicit-path-l3vpn-host01 /bin/bash
 
 host01:/# ping -c 3 192.168.2.1
 PING 192.168.2.1 (192.168.2.1) 56(84) bytes of data.
-64 bytes from 192.168.2.1: icmp_seq=1 ttl=62 time=32.9 ms
-64 bytes from 192.168.2.1: icmp_seq=2 ttl=62 time=3.05 ms
-64 bytes from 192.168.2.1: icmp_seq=3 ttl=62 time=3.31 ms
+64 bytes from 192.168.2.1: icmp_seq=1 ttl=62 time=34.3 ms
+64 bytes from 192.168.2.1: icmp_seq=2 ttl=62 time=8.22 ms
+64 bytes from 192.168.2.1: icmp_seq=3 ttl=62 time=3.43 ms
 
 host01:/# ping -c 3 fd00:a2::1
 PING fd00:a2::1 (fd00:a2::1) 56 data bytes
-64 bytes from fd00:a2::1: icmp_seq=1 ttl=62 time=895 ms
-64 bytes from fd00:a2::1: icmp_seq=2 ttl=62 time=2.88 ms
-64 bytes from fd00:a2::1: icmp_seq=3 ttl=62 time=2.68 ms
+64 bytes from fd00:a2::1: icmp_seq=1 ttl=62 time=949 ms
+64 bytes from fd00:a2::1: icmp_seq=2 ttl=62 time=2.67 ms
+64 bytes from fd00:a2::1: icmp_seq=3 ttl=62 time=2.57 ms
 ```
 
 * Capture on containerlab host
@@ -193,18 +245,18 @@ network namespace with `nsenter`:
 $ sudo nsenter -t $(docker inspect -f '{{.State.Pid}}' clab-srv6-explicit-path-l3vpn-pe01) -n tcpdump -nni eth1
 tcpdump: verbose output suppressed, use -v[v]... for full protocol decode
 listening on eth1, link-type EN10MB (Ethernet), snapshot length 262144 bytes
-10:06:29.445984 IP6 fd00:ffff::1 > fd00:ffff:3:0:1::: RT6 (len=6, type=4, segleft=2, last-entry=2, tag=0, [0]fd00:ffff:2:0:4:a::, [1]fd00:ffff:4:0:1::, [2]fd00:ffff:3:0:1::) IP 192.168.1.1 > 192.168.2.1: ICMP echo request, id 2207, seq 1, length 64
-10:06:29.471892 IP6 fd00:ffff::2 > fd00:ffff:1:0:4:a::: RT6 (len=6, type=4, segleft=0, last-entry=2, tag=0, [0]fd00:ffff:1:0:4:a::, [1]fd00:ffff:3:0:1::, [2]fd00:ffff:4:0:1::) IP 192.168.2.1 > 192.168.1.1: ICMP echo reply, id 2207, seq 1, length 64
-10:06:30.440747 IP6 fd00:ffff::1 > fd00:ffff:3:0:1::: RT6 (len=6, type=4, segleft=2, last-entry=2, tag=0, [0]fd00:ffff:2:0:4:a::, [1]fd00:ffff:4:0:1::, [2]fd00:ffff:3:0:1::) IP 192.168.1.1 > 192.168.2.1: ICMP echo request, id 2207, seq 2, length 64
-10:06:30.442996 IP6 fd00:ffff::2 > fd00:ffff:1:0:4:a::: RT6 (len=6, type=4, segleft=0, last-entry=2, tag=0, [0]fd00:ffff:1:0:4:a::, [1]fd00:ffff:3:0:1::, [2]fd00:ffff:4:0:1::) IP 192.168.2.1 > 192.168.1.1: ICMP echo reply, id 2207, seq 2, length 64
-10:06:31.441810 IP6 fd00:ffff::1 > fd00:ffff:3:0:1::: RT6 (len=6, type=4, segleft=2, last-entry=2, tag=0, [0]fd00:ffff:2:0:4:a::, [1]fd00:ffff:4:0:1::, [2]fd00:ffff:3:0:1::) IP 192.168.1.1 > 192.168.2.1: ICMP echo request, id 2207, seq 3, length 64
-10:06:31.444281 IP6 fd00:ffff::2 > fd00:ffff:1:0:4:a::: RT6 (len=6, type=4, segleft=0, last-entry=2, tag=0, [0]fd00:ffff:1:0:4:a::, [1]fd00:ffff:3:0:1::, [2]fd00:ffff:4:0:1::) IP 192.168.2.1 > 192.168.1.1: ICMP echo reply, id 2207, seq 3, length 64
-10:06:35.382665 IP6 fd00:ffff::1 > fd00:ffff:3:0:1::: RT6 (len=6, type=4, segleft=2, last-entry=2, tag=0, [0]fd00:ffff:2:0:6:a::, [1]fd00:ffff:4:0:1::, [2]fd00:ffff:3:0:1::) IP6 fd00:a1::1 > fd00:a2::1: ICMP6, echo request, id 2208, seq 1, length 64
-10:06:36.275209 IP6 fd00:ffff::2 > fd00:ffff:1:0:6:a::: RT6 (len=6, type=4, segleft=0, last-entry=2, tag=0, [0]fd00:ffff:1:0:6:a::, [1]fd00:ffff:3:0:1::, [2]fd00:ffff:4:0:1::) IP6 fd00:a2::1 > fd00:a1::1: ICMP6, echo reply, id 2208, seq 1, length 64
-10:06:36.380178 IP6 fd00:ffff::1 > fd00:ffff:3:0:1::: RT6 (len=6, type=4, segleft=2, last-entry=2, tag=0, [0]fd00:ffff:2:0:6:a::, [1]fd00:ffff:4:0:1::, [2]fd00:ffff:3:0:1::) IP6 fd00:a1::1 > fd00:a2::1: ICMP6, echo request, id 2208, seq 2, length 64
-10:06:36.382145 IP6 fd00:ffff::2 > fd00:ffff:1:0:6:a::: RT6 (len=6, type=4, segleft=0, last-entry=2, tag=0, [0]fd00:ffff:1:0:6:a::, [1]fd00:ffff:3:0:1::, [2]fd00:ffff:4:0:1::) IP6 fd00:a2::1 > fd00:a1::1: ICMP6, echo reply, id 2208, seq 2, length 64
-10:06:37.380982 IP6 fd00:ffff::1 > fd00:ffff:3:0:1::: RT6 (len=6, type=4, segleft=2, last-entry=2, tag=0, [0]fd00:ffff:2:0:6:a::, [1]fd00:ffff:4:0:1::, [2]fd00:ffff:3:0:1::) IP6 fd00:a1::1 > fd00:a2::1: ICMP6, echo request, id 2208, seq 3, length 64
-10:06:37.383046 IP6 fd00:ffff::2 > fd00:ffff:1:0:6:a::: RT6 (len=6, type=4, segleft=0, last-entry=2, tag=0, [0]fd00:ffff:1:0:6:a::, [1]fd00:ffff:3:0:1::, [2]fd00:ffff:4:0:1::) IP6 fd00:a2::1 > fd00:a1::1: ICMP6, echo reply, id 2208, seq 3, length 64
+15:21:09.103707 IP6 fd00:ffff::1 > fd00:ffff:3:0:1::: RT6 (len=6, type=4, segleft=2, last-entry=2, tag=0, [0]fd00:ffff:2:0:4:a::, [1]fd00:ffff:4:0:1::, [2]fd00:ffff:3:0:1::) IP 192.168.1.1 > 192.168.2.1: ICMP echo request, id 3516, seq 1, length 64
+15:21:09.128823 IP6 fd00:ffff::2 > fd00:ffff:1:0:4:a::: RT6 (len=6, type=4, segleft=0, last-entry=2, tag=0, [0]fd00:ffff:1:0:4:a::, [1]fd00:ffff:3:0:1::, [2]fd00:ffff:4:0:1::) IP 192.168.2.1 > 192.168.1.1: ICMP echo reply, id 3516, seq 1, length 64
+15:21:10.096342 IP6 fd00:ffff::1 > fd00:ffff:3:0:1::: RT6 (len=6, type=4, segleft=2, last-entry=2, tag=0, [0]fd00:ffff:2:0:4:a::, [1]fd00:ffff:4:0:1::, [2]fd00:ffff:3:0:1::) IP 192.168.1.1 > 192.168.2.1: ICMP echo request, id 3516, seq 2, length 64
+15:21:10.103683 IP6 fd00:ffff::2 > fd00:ffff:1:0:4:a::: RT6 (len=6, type=4, segleft=0, last-entry=2, tag=0, [0]fd00:ffff:1:0:4:a::, [1]fd00:ffff:3:0:1::, [2]fd00:ffff:4:0:1::) IP 192.168.2.1 > 192.168.1.1: ICMP echo reply, id 3516, seq 2, length 64
+15:21:11.097217 IP6 fd00:ffff::1 > fd00:ffff:3:0:1::: RT6 (len=6, type=4, segleft=2, last-entry=2, tag=0, [0]fd00:ffff:2:0:4:a::, [1]fd00:ffff:4:0:1::, [2]fd00:ffff:3:0:1::) IP 192.168.1.1 > 192.168.2.1: ICMP echo request, id 3516, seq 3, length 64
+15:21:11.099480 IP6 fd00:ffff::2 > fd00:ffff:1:0:4:a::: RT6 (len=6, type=4, segleft=0, last-entry=2, tag=0, [0]fd00:ffff:1:0:4:a::, [1]fd00:ffff:3:0:1::, [2]fd00:ffff:4:0:1::) IP 192.168.2.1 > 192.168.1.1: ICMP echo reply, id 3516, seq 3, length 64
+15:21:12.933163 IP6 fd00:ffff::1 > fd00:ffff:3:0:1::: RT6 (len=6, type=4, segleft=2, last-entry=2, tag=0, [0]fd00:ffff:2:0:6:a::, [1]fd00:ffff:4:0:1::, [2]fd00:ffff:3:0:1::) IP6 fd00:a1::1 > fd00:a2::1: ICMP6, echo request, id 3517, seq 1, length 64
+15:21:13.880423 IP6 fd00:ffff::2 > fd00:ffff:1:0:6:a::: RT6 (len=6, type=4, segleft=0, last-entry=2, tag=0, [0]fd00:ffff:1:0:6:a::, [1]fd00:ffff:3:0:1::, [2]fd00:ffff:4:0:1::) IP6 fd00:a2::1 > fd00:a1::1: ICMP6, echo reply, id 3517, seq 1, length 64
+15:21:13.931239 IP6 fd00:ffff::1 > fd00:ffff:3:0:1::: RT6 (len=6, type=4, segleft=2, last-entry=2, tag=0, [0]fd00:ffff:2:0:6:a::, [1]fd00:ffff:4:0:1::, [2]fd00:ffff:3:0:1::) IP6 fd00:a1::1 > fd00:a2::1: ICMP6, echo request, id 3517, seq 2, length 64
+15:21:13.933253 IP6 fd00:ffff::2 > fd00:ffff:1:0:6:a::: RT6 (len=6, type=4, segleft=0, last-entry=2, tag=0, [0]fd00:ffff:1:0:6:a::, [1]fd00:ffff:3:0:1::, [2]fd00:ffff:4:0:1::) IP6 fd00:a2::1 > fd00:a1::1: ICMP6, echo reply, id 3517, seq 2, length 64
+15:21:14.932395 IP6 fd00:ffff::1 > fd00:ffff:3:0:1::: RT6 (len=6, type=4, segleft=2, last-entry=2, tag=0, [0]fd00:ffff:2:0:6:a::, [1]fd00:ffff:4:0:1::, [2]fd00:ffff:3:0:1::) IP6 fd00:a1::1 > fd00:a2::1: ICMP6, echo request, id 3517, seq 3, length 64
+15:21:14.934276 IP6 fd00:ffff::2 > fd00:ffff:1:0:6:a::: RT6 (len=6, type=4, segleft=0, last-entry=2, tag=0, [0]fd00:ffff:1:0:6:a::, [1]fd00:ffff:3:0:1::, [2]fd00:ffff:4:0:1::) IP6 fd00:a2::1 > fd00:a1::1: ICMP6, echo reply, id 3517, seq 3, length 64
 ```
 
 Also, you can analyze with Wireshark on your Local PC

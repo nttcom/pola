@@ -51,3 +51,21 @@ func TestEnterpriseNumber_capLabel(t *testing.T) {
 		})
 	}
 }
+
+func TestEnterpriseNumber_DisplayLabel(t *testing.T) {
+	cases := map[string]struct {
+		enterpriseNumber EnterpriseNumber
+		expected         string
+	}{
+		"Cisco":     {EnterpriseNumberCisco, "9 (Cisco Systems, Inc.)"},
+		"Huawei":    {EnterpriseNumberHuawei, "2011 (Huawei Technologies Co., Ltd.)"},
+		"Juniper":   {EnterpriseNumberJuniper, "2636 (Juniper Networks, Inc.)"},
+		"UnknownEN": {99999, "99999 (Unknown)"},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.enterpriseNumber.DisplayLabel())
+		})
+	}
+}

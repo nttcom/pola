@@ -333,15 +333,15 @@ func parseProfileLine(s string) (block, bool) {
 
 // posOf parses a "<line>.<col>" coverage profile position.
 func posOf(pos string) (line, col int, ok bool) {
-	dot := strings.IndexByte(pos, '.')
-	if dot < 0 {
+	before, after, ok0 := strings.Cut(pos, ".")
+	if !ok0 {
 		return 0, 0, false
 	}
-	line, err := strconv.Atoi(pos[:dot])
+	line, err := strconv.Atoi(before)
 	if err != nil || line < 1 {
 		return 0, 0, false
 	}
-	col, err = strconv.Atoi(pos[dot+1:])
+	col, err = strconv.Atoi(after)
 	if err != nil || col < 1 {
 		return 0, 0, false
 	}
@@ -408,7 +408,7 @@ func (idx *sourceIndex) ensure(file string) {
 			}
 		}
 	}
-	sort.Slice(code, func(i, j int) bool { return code[i] < code[j] })
+	slices.Sort(code)
 	idx.files[file] = tf
 	idx.code[file] = code
 }

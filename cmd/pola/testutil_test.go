@@ -9,12 +9,13 @@ import (
 	"bytes"
 	"io"
 	"os"
+	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// captureStdout captures output written directly to os.Stdout while f runs.
 func captureStdout(t *testing.T, f func()) string {
 	t.Helper()
 
@@ -33,7 +34,6 @@ func captureStdout(t *testing.T, f func()) string {
 	return buf.String()
 }
 
-// captureStderr captures output written directly to os.Stderr while f runs.
 func captureStderr(t *testing.T, f func()) string {
 	t.Helper()
 
@@ -50,4 +50,25 @@ func captureStderr(t *testing.T, f func()) string {
 	_, err = io.Copy(&buf, r)
 	require.NoError(t, err)
 	return buf.String()
+}
+
+// condFailWriter injects a write error when the content matches its predicate.
+type condFailWriter struct {
+	fail func(string) bool
+	buf  bytes.Buffer
+}
+
+func (w *condFailWriter) Write(p []byte) (int, error) {
+	if w.fail != nil && w.fail(string(p)) {
+		return 0, assert.AnError
+	}
+	return w.buf.Write(p)
+}
+
+func containsFail(sub string) func(string) bool {
+	return func(s string) bool { return strings.Contains(s, sub) }
+}
+
+func exactFail(s string) func(string) bool {
+	return func(p string) bool { return p == s }
 }

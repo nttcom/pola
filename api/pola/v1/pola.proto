@@ -130,7 +130,7 @@ message StatefulCapability {
 message SrCapability {
   bool unlimited_msd = 1;
   bool nai_supported = 2;
-  uint32 msd = 3;
+  optional uint32 msd = 3;
 }
 
 message Srv6Capability {
@@ -239,6 +239,8 @@ message Session {
   SessionTimers peer_timers = 10;
   optional uint32 local_session_id = 11;
   optional uint32 peer_session_id = 12;
+  // Valid when state is SESSION_STATE_UP. Do not infer readiness from
+  // presence or zero values; RFC 5440 permits a negotiated Keepalive of 0.
   EffectiveTimers effective_timers = 13;
   SessionInitiator initiator = 14;
   LspDbSyncState sync_state = 15;
