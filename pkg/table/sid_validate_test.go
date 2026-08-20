@@ -7,6 +7,7 @@ package table
 
 import (
 	"net/netip"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -529,6 +530,173 @@ func TestHasMixedSegmentTypes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.want, HasMixedSegmentTypes(tt.segs))
+		})
+	}
+}
+
+func TestValidateExplicitPath(t *testing.T) {
+	// Topology: A --adj24001--> B --adj24002--> C
+	// A has node SID 16001, B has node SID 16002, C has node SID 16003.
+	nodeA := &LsNode{
+		RouterID:  "0000.0000.000a",
+		SrgbBegin: 16000,
+		Prefixes:  []*LsPrefix{{Prefix: netip.MustParsePrefix("10.0.0.10/32"), SidIndex: 1, HasSidIndex: true}},
+	}
+	nodeB := &LsNode{
+		RouterID:  "0000.0000.000b",
+		SrgbBegin: 16000,
+		Prefixes:  []*LsPrefix{{Prefix: netip.MustParsePrefix("10.0.0.11/32"), SidIndex: 2, HasSidIndex: true}},
+	}
+	nodeC := &LsNode{
+		RouterID:  "0000.0000.000c",
+		SrgbBegin: 16000,
+		Prefixes:  []*LsPrefix{{Prefix: netip.MustParsePrefix("10.0.0.12/32"), SidIndex: 3, HasSidIndex: true}},
+	}
+	nodeA.Links = []*LsLink{{LocalNode: nodeA, RemoteNode: nodeB, AdjSid: 24001}}
+	nodeB.Links = []*LsLink{{LocalNode: nodeB, RemoteNode: nodeC, AdjSid: 24002}}
+
+	ted := newTestTED(nodeA, nodeB, nodeC)
+
+	tests := []struct {
+		name    string
+		src     string
+		segs    []Segment
+		wantErr string // empty means expect nil error
+	}{
+		{
+			name: "valid: A to B via node SID, B to C via adj SID on B",
+			src:  "0000.0000.000a",
+			segs: []Segment{
+				NewSegmentSRMPLS(16002), // node SID of B
+				NewSegmentSRMPLS(24002), // adj SID on B -> C
+			},
+			wantErr: "",
+		},
+		{
+			name: "adj SID on wrong owner: B adj SID used while owner is A",
+			src:  "0000.0000.000a",
+			segs: []Segment{
+				NewSegmentSRMPLS(24002), // belongs to B, not A
+			},
+			wantErr: "does not have adjacency SID",
+		},
+		{
+			name: "SID not in TED",
+			src:  "0000.0000.000a",
+			segs: []Segment{
+				NewSegmentSRMPLS(99999),
+			},
+			wantErr: "not found in TED",
+		},
+		{
+			name: "single node SID valid",
+			src:  "0000.0000.000a",
+			segs: []Segment{
+				NewSegmentSRMPLS(16001), // node SID of A
+			},
+			wantErr: "",
+		},
+		{
+			name:    "empty segment list",
+			src:     "0000.0000.000a",
+			segs:    []Segment{},
+			wantErr: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateExplicitPath(ted, tt.src, tt.segs)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Errorf("expected nil error, got: %v", err)
+				}
+			} else {
+				if err == nil {
+					t.Errorf("expected error containing %q, got nil", tt.wantErr)
+				} else if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("expected error containing %q, got: %v", tt.wantErr, err)
+				}
+			}
+		})
+	}
+}
+
+func TestValidateExplicitPathSRv6(t *testing.T) {
+	// Topology: A --End.X:fc00::a:b--> B --End.X:fc00::b:c--> C
+	// A has End SID fc00::a:1, B has End SID fc00::b:1, C has End SID fc00::c:1.
+	nodeA := &LsNode{
+		RouterID: "0000.0000.000a",
+		SRv6SIDs: []*LsSrv6SID{{Sids: []string{"fc00::a:1"}}},
+	}
+	nodeB := &LsNode{
+		RouterID: "0000.0000.000b",
+		SRv6SIDs: []*LsSrv6SID{{Sids: []string{"fc00::b:1"}}},
+	}
+	nodeC := &LsNode{
+		RouterID: "0000.0000.000c",
+		SRv6SIDs: []*LsSrv6SID{{Sids: []string{"fc00::c:1"}}},
+	}
+	nodeA.Links = []*LsLink{{LocalNode: nodeA, RemoteNode: nodeB, Srv6EndXSID: &Srv6EndXSID{Sids: []string{"fc00::a:b"}}}}
+	nodeB.Links = []*LsLink{{LocalNode: nodeB, RemoteNode: nodeC, Srv6EndXSID: &Srv6EndXSID{Sids: []string{"fc00::b:c"}}}}
+
+	ted := newTestTED(nodeA, nodeB, nodeC)
+
+	tests := []struct {
+		name    string
+		src     string
+		segs    []Segment
+		wantErr string // empty means expect nil error
+	}{
+		{
+			name: "valid: A to B via End SID, B to C via End.X on B",
+			src:  "0000.0000.000a",
+			segs: []Segment{
+				NewSegmentSRv6(netip.MustParseAddr("fc00::b:1")), // End SID of B
+				NewSegmentSRv6(netip.MustParseAddr("fc00::b:c")), // End.X on B -> C
+			},
+			wantErr: "",
+		},
+		{
+			name: "End.X on wrong owner: B End.X used while owner is A",
+			src:  "0000.0000.000a",
+			segs: []Segment{
+				NewSegmentSRv6(netip.MustParseAddr("fc00::b:c")), // belongs to B, not A
+			},
+			wantErr: "does not have adjacency SID",
+		},
+		{
+			name: "SRv6 SID not in TED",
+			src:  "0000.0000.000a",
+			segs: []Segment{
+				NewSegmentSRv6(netip.MustParseAddr("fd00::dead:beef")),
+			},
+			wantErr: "not found in TED",
+		},
+		{
+			name: "single End SID valid",
+			src:  "0000.0000.000a",
+			segs: []Segment{
+				NewSegmentSRv6(netip.MustParseAddr("fc00::a:1")), // End SID of A
+			},
+			wantErr: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateExplicitPath(ted, tt.src, tt.segs)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Errorf("expected nil error, got: %v", err)
+				}
+			} else {
+				if err == nil {
+					t.Errorf("expected error containing %q, got nil", tt.wantErr)
+				} else if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("expected error containing %q, got: %v", tt.wantErr, err)
+				}
+			}
 		})
 	}
 }
