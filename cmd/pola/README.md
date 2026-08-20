@@ -28,75 +28,109 @@ go install ./...
 
 ## Command Reference
 
-### pola session [-j]
+### pola session [peer-address] [detail] [-j]
 
 Displays PCEP sessions, sorted by peer address.
 
-JSON formatted response
+- `peer-address` optionally filters sessions by peer address.
+- `detail` includes additional session information and message statistics.
+- `-j` outputs JSON.
+
+Without arguments, all sessions are shown in summary form.
+
+Text formatted response (`pola session detail`)
+
+```text
+Session #0: 192.0.2.1
+  State:             up
+  LSP-DB Sync:       finished
+  Role:              active-stateful-pce
+  Up Time:           00:12:22
+  Session ID:        Local=1, Peer=7
+  Transport:         tcp, auth=none
+  Timers:
+               Local  Peer  Effective
+    Keepalive  30     10    10
+    DeadTimer  120    40    40
+  Capabilities:
+    Common:
+      STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Stateful, Update, Instantiation
+      SR-PCE-CAPABILITY [RFC8664]: SR, SR-NAI-Supported
+      ASSOC-TYPE-LIST [RFC8697]: 6 SR Policy Association
+    Local only:        msd=10
+    Peer only:         assoctype:9, color, msd=16
+  Session Creation:  2026-08-19T09:30:05Z
+  Initiator:         remote
+  Stats:
+               Sent  Rcvd
+    Keepalive  25    25
+    PCErr      0     0
+    PCNtf      0     0
+    Report     0     3
+    Update     1     0
+    Initiate   1     0
+    Unrecognized Rcvd: 0
+    Corrupt Rcvd:      0
+    Session Setup:     ok=1, fail=0
+```
+
+JSON formatted response (`pola session detail -j`)
 
 ```json
 [
   {
-    "Addr": "192.0.2.1",
-    "State": "UP",
-    "LocalSessionID": 1,
-    "PccSessionID": 1,
-    "LocalTimers": { "Keepalive": 30, "DeadTimer": 120 },
-    "PccTimers": { "Keepalive": 10, "DeadTimer": 40 },
-    "EffectiveTimers": { "Keepalive": 30, "DeadTimer": 40 },
-    "PccType": "RFC_COMPLIANT",
-    "Capabilities": [
-      {
-        "Type": "STATEFUL",
-        "Detail": {
-          "LSPUpdate": true,
-          "IncludeDBVersion": false,
-          "LSPInstantiation": true,
-          "TriggeredResync": false,
-          "DeltaLSPSync": false,
-          "TriggeredInitialSync": false,
-          "Color": false
-        }
+    "peerAddress": "192.0.2.1",
+    "state": "up",
+    "lspDbSync": "finished",
+    "upTime": "00:12:22",
+    "role": "active-stateful-pce",
+    "sessionId": { "local": 1, "peer": 7 },
+    "timers": {
+      "keepalive": { "local": 30, "peer": 10, "effective": 10 },
+      "deadTimer": { "local": 120, "peer": 40, "effective": 40 }
+    },
+    "transport": { "protocol": "tcp", "auth": "none" },
+    "capabilities": {
+      "common": {
+        "stateful": true,
+        "update": true,
+        "instantiation": true,
+        "pathSetupTypes": [],
+        "associationTypes": [6],
+        "unrecognizedTlvTypes": []
       },
-      {
-        "Type": "SR",
-        "Detail": {
-          "UnlimitedMSD": false,
-          "NAISupported": true,
-          "MSD": 10
-        }
-      }
-    ],
-    "PccCapabilities": [
-      {
-        "Type": "SR",
-        "Detail": {
-          "UnlimitedMSD": false,
-          "NAISupported": true,
-          "MSD": 16
-        }
-      }
-    ],
-    "IsSynced": true
+      "localOnly": [{ "name": "msd", "value": "10" }],
+      "peerOnly": [
+        { "name": "assoctype", "value": "9" },
+        { "name": "color" },
+        { "name": "msd", "value": "16" }
+      ]
+    },
+    "sessionCreation": "2026-08-19T09:30:05Z",
+    "initiator": "remote",
+    "stats": {
+      "keepalive": { "sent": 25, "rcvd": 25 },
+      "pcerr": { "sent": 0, "rcvd": 0 },
+      "pcntf": { "sent": 0, "rcvd": 0 },
+      "report": { "sent": 0, "rcvd": 3 },
+      "update": { "sent": 1, "rcvd": 0 },
+      "initiate": { "sent": 1, "rcvd": 0 },
+      "unrecognizedRcvd": 0,
+      "corruptRcvd": 0,
+      "sessionSetup": { "ok": 1, "fail": 0 }
+    }
   }
 ]
 ```
 
-`State` is the current PCEP session state: `TCP_PENDING`, `OPEN_WAIT`,
-`KEEP_WAIT`, or `UP`.
+Field reference:
 
-`LocalSessionID` and `PccSessionID` are the PCEP session IDs advertised by
-Pola and the PCC, respectively. They are omitted until the corresponding
-Open message is received.
-
-`LocalTimers` and `PccTimers` show the PCEP timers advertised by Pola and the
-PCC. `EffectiveTimers` shows the timers currently applied by Pola. These
-fields are omitted while the session is in `TCP_PENDING` or `OPEN_WAIT`.
-
-`Capabilities` lists capabilities advertised by Pola, while `PccCapabilities`
-lists those advertised by the PCC. `PccType` is the PCC type detected from its
-capabilities. `IsSynced` indicates whether initial state synchronization has
-completed.
+- `sessionId.local`/`peer` are omitted until the corresponding Open
+  message has been exchanged.
+- `lspDbSync` indicates the LSP-DB synchronization state and uses the
+  same vocabulary as `pola sr-policy list`.
+- `stats` contains RFC 9826 message counters. Session setup counters
+  persist across reconnects.
 
 ### pola session delete *Address* [-j]
 
@@ -110,31 +144,43 @@ JSON formatted response
 }
 ```
 
-### pola sr-policy list [-j] [--session *address*]
+### pola sr-policy list [-j] [--peer *address*]
 
-Displays SR Policies managed by polad, grouped by PCEP session and sorted by
-peer address. `--session` filters by peer address.
+Displays SR Policies managed by polad, grouped by PCEP peer and sorted by
+peer address. `--peer` filters by peer address.
 
-All connected sessions are included. Use `IsSynced` to distinguish an
-unsynchronized session from a synced session with no SR Policies.
+All connected sessions are included. Use `lspDbSync` to distinguish an
+unsynchronized session (`pending` or `ongoing`) from a synced session
+(`finished`) with no SR Policies.
+
+Text formatted response
+
+```text
+Session: 192.0.2.2 (State: up, LSP-DB Sync: finished)
+  PolicyName: sample_policy1
+    PlspID: 1
+    LSPID: 1
+    State: up
+    Type: explicit
+    SrcAddr: 192.0.2.2 (0000.0aff.0002)
+    DstAddr: 192.0.2.1 (0000.0aff.0001)
+    Color: 999
+    Preference: 100
+    SegmentList: 16003 -> 16001
+
+Session: 2001:db8::1 (State: keep-wait, LSP-DB Sync: pending)
+  No SR Policies: session is still synchronizing.
+```
 
 JSON formatted response
 
 ```json
 [
   {
-    "Addr": "192.0.2.2",
-    "State": "UP",
-    "LocalSessionID": 1,
-    "PccSessionID": 1,
-    "LocalTimers": { "Keepalive": 30, "DeadTimer": 120 },
-    "PccTimers": { "Keepalive": 30, "DeadTimer": 120 },
-    "EffectiveTimers": { "Keepalive": 30, "DeadTimer": 120 },
-    "PccType": "RFC_COMPLIANT",
-    "Capabilities": [],
-    "PccCapabilities": [],
-    "IsSynced": true,
-    "SRPolicies": [
+    "peerAddress": "192.0.2.2",
+    "state": "up",
+    "lspDbSync": "finished",
+    "srPolicies": [
       {
         "plspId": 1,
         "policyName": "sample_policy1",
@@ -155,34 +201,22 @@ JSON formatted response
     ]
   },
   {
-    "Addr": "2001:0db8::1",
-    "State": "KEEP_WAIT",
-    "LocalSessionID": 2,
-    "PccSessionID": 3,
-    "LocalTimers": { "Keepalive": 30, "DeadTimer": 120 },
-    "PccTimers": { "Keepalive": 30, "DeadTimer": 120 },
-    "EffectiveTimers": { "Keepalive": 30, "DeadTimer": 120 },
-    "PccType": "CISCO_LEGACY",
-    "Capabilities": [],
-    "PccCapabilities": [],
-    "IsSynced": false,
-    "SRPolicies": []
+    "peerAddress": "2001:db8::1",
+    "state": "keep-wait",
+    "lspDbSync": "pending",
+    "srPolicies": []
   }
 ]
 ```
 
 Notes:
 
-- Policies appear in `SRPolicies` only after their first PCRpt is received, so
-  a session that is not yet synced reports an empty list.
-- `lspId` is omitted when zero. `plspId` and `state` reflect the latest PCRpt.
-- `srcRouterId`/`dstRouterId` are resolved from TED loopback addresses and are
-  omitted when no matching node is found.
-- `segmentList` includes NAI addresses when available and may include
-  `sidStructure` for SRv6 segments.
-- `type` and `metric` are retained only for policies created by
-  `pola sr-policy add`; they are unavailable for policies discovered from the
-  router or after a polad restart.
+- `state` and `lspDbSync` use the same vocabulary as `pola session`.
+- Policies appear after the first PCRpt is received.
+- `lspId` is omitted when zero.
+- `srcRouterId`/`dstRouterId` are resolved from TED.
+- `type` and `metric` are available for policies created by
+  `pola sr-policy add`.
 
 ### pola sr-policy add -f `filepath`
 
@@ -251,8 +285,7 @@ resolution is performed, so it accepts only `type: explicit` and takes the
 segment list verbatim.
 
 Each SID is still validated against the TED, so with `ted.enable: false` this
-form additionally needs
-[`--no-sid-validate`](#pola-sr-policy-add--f-filepath---no-sid-validate).
+form additionally requires `--no-sid-validate`.
 
 For each SID, specify the address information required to construct the NAI.
 `localAddr` is required for SRv6 SIDs but optional for SR-MPLS labels.
@@ -262,6 +295,7 @@ See [JSON schema](../../docs/schemas/cli/policy.json) for input details.
 YAML input format
 
 ```yaml
+asn: 65000
 srPolicy:
   pcepSessionAddr: "2001:0db8::1"
   srcAddr: "2001:0db8::1"
@@ -269,12 +303,6 @@ srPolicy:
   name: "policy-name"
   color: 100
   segmentList:
-    - sid: "2001:0db8:1005::"
-      localAddr: "2001:0db8::5"
-      sidStructure: "32,16,0,80"
-    - sid: "2001:0db8:1006::"
-      localAddr: "2001:0db8::6"
-      sidStructure: "32,16,0,80"
     - sid: "2001:0db8:1005::"
       localAddr: "2001:0db8::5"
       sidStructure: "32,16,0,80"
@@ -293,172 +321,120 @@ JSON formatted response
 
 ### pola sr-policy add -f `filepath` --no-sid-validate
 
-Skips the check that every explicit SID exists in the TED. Without the flag,
-the request fails if any SID is missing from the TED, including when the TED is
-disabled or not yet synchronized. With the flag, the policy is provisioned and
-both the CLI and polad log a warning.
+Skips validation of explicit SIDs against the TED.
 
-Notes:
-
-- Dynamic paths and `waypoints[].sid` overrides are not validated.
-- Validation is best-effort: the TED is populated asynchronously via BGP-LS,
-  so results can lag behind the actual topology.
-- For SRv6 uSID containers, only the locator portion is checked, not the
-  full SID.
-- SID types not represented in the TED (Binding SID, Flex-Algorithm prefix
-  SID, anycast SID, static labels) always require `--no-sid-validate`.
-- The `-s` shorthand was removed in 1.4.0; use the long flag.
+> [!NOTE]
+> SID validation depends on the asynchronously populated BGP-LS TED and may
+> not reflect the current network topology. Use this option for SIDs that
+> cannot be represented in the TED.
 
 ### pola ted [-j]
 
-Displays the TED managed by polad.
+Displays the TED managed by polad, sorted by router ID. If TED is disabled by
+polad, the command returns a non-zero exit status with an error message on
+stderr, in both text and `-j` mode.
 
-JSON formatted response
+Text formatted response
+
+```text
+Node #0: 0000.0aff.0001
+  Hostname: host1
+  ISIS Area ID: 490000
+  SRGB: 16000 - 24000
+  Prefixes:
+    10.0.0.0/30
+    10.255.0.1/32
+      index: 1
+  Links:
+    Local: 10.0.0.1 Remote: 10.0.0.2
+      RemoteRouterID: 0000.0aff.0002
+      Metrics:
+        igp: 10
+      Adj-SID: 17
+      SRv6 End.X SID:
+        EndpointBehavior: ENDX
+        SIDs: [2001:db8:1::1]
+        SID Structure: Block: 32, Node: 16, Func: 16, Arg: 0
+  SRv6 SIDs:
+    SIDs: [2001:db8:1::]
+    Block: 32, Node: 16, Func: 16, Arg: 0
+    EndpointBehavior: END, Flags: 0, Algorithm: 0
+    MultiTopoIDs: []
+
+Node #1: 0000.0aff.0002
+  Hostname: host2
+  ISIS Area ID: 490000
+  SRGB: 16000 - 24000
+  Prefixes:
+    10.0.0.0/30
+    10.255.0.2/32
+      index: 2
+  Links:
+  SRv6 SIDs:
+```
+
+JSON formatted response. The top level is an array of nodes, matching the
+other commands' output; there is no wrapping `ted` object. A link's `localIp`/`remoteIp` is omitted when the BGP-LS descriptor
+does not contain an interface address.
 
 ```json
-{
-  "ted": [
-    {
-      "asn": 65000,
-      "hostname": "host1",
-      "isisAreaID": "490000",
-      "links": [
-        {
-          "adjSid": 17,
-          "localIP": "10.0.1.1",
-          "metrics": [
-            {
-              "type": "IGP",
-              "value": 10
-            }
-          ],
-          "remoteIP": "10.0.1.2",
-          "remoteNode": "0000.0aff.0003"
-        },
-        {
-          "adjSid": 18,
-          "localIP": "10.0.0.1",
-          "metrics": [
-            {
-              "type": "IGP",
-              "value": 10
-            }
-          ],
-          "remoteIP": "10.0.0.2",
-          "remoteNode": "0000.0aff.0002"
+[
+  {
+    "asn": 65000,
+    "routerId": "0000.0aff.0001",
+    "hostname": "host1",
+    "isisAreaId": "490000",
+    "srgb": { "begin": 16000, "end": 24000 },
+    "prefixes": [
+      { "prefix": "10.0.0.0/30" },
+      { "prefix": "10.255.0.1/32", "sidIndex": 1 }
+    ],
+    "links": [
+      {
+        "localIp": "10.0.0.1",
+        "remoteIp": "10.0.0.2",
+        "remoteRouterId": "0000.0aff.0002",
+        "metrics": [{ "type": "igp", "value": 10 }],
+        "adjSid": 17,
+        "srv6EndXSid": {
+          "endpointBehavior": { "behavior": 5, "name": "ENDX" },
+          "sids": ["2001:db8:1::1"],
+          "sidStructure": { "localBlock": 32, "localNode": 16, "localFunc": 16, "localArg": 0 }
         }
-      ],
-      "prefixes": [
-        {
-          "prefix": "10.0.1.0/30"
-        },
-        {
-          "prefix": "10.0.0.0/30"
-        },
-        {
-          "prefix": "10.255.0.1/32",
-          "sidIndex": 1
-        }
-      ],
-      "routerID": "0000.0aff.0001",
-      "srgbBegin": 16000,
-      "srgbEnd": 24000
-    },
-    {
-      "asn": 65000,
-      "hostname": "host2",
-      "isisAreaID": "490000",
-      "links": [
-        {
-          "adjSid": 17,
-          "localIP": "10.0.1.2",
-          "metrics": [
-            {
-              "type": "IGP",
-              "value": 10
-            }
-          ],
-          "remoteIP": "10.0.1.1",
-          "remoteNode": "0000.0aff.0001"
-        },
-        {
-          "adjSid": 16,
-          "localIP": "10.0.2.2",
-          "metrics": [
-            {
-              "type": "IGP",
-              "value": 10
-            }
-          ],
-          "remoteIP": "10.0.2.1",
-          "remoteNode": "0000.0aff.0002"
-        }
-      ],
-      "prefixes": [
-        {
-          "prefix": "10.255.0.3/32",
-          "sidIndex": 3
-        },
-        {
-          "prefix": "10.0.2.0/30"
-        },
-        {
-          "prefix": "10.0.1.0/30"
-        }
-      ],
-      "routerID": "0000.0aff.0003",
-      "srgbBegin": 16000,
-      "srgbEnd": 24000
-    },
-    {
-      "asn": 65000,
-      "hostname": "host3",
-      "isisAreaID": "490000",
-      "links": [
-        {
-          "adjSid": 24001,
-          "localIP": "10.0.0.2",
-          "metrics": [
-            {
-              "type": "IGP",
-              "value": 10
-            }
-          ],
-          "remoteIP": "10.0.0.1",
-          "remoteNode": "0000.0aff.0001"
-        },
-        {
-          "adjSid": 24003,
-          "localIP": "10.0.2.1",
-          "metrics": [
-            {
-              "type": "IGP",
-              "value": 10
-            }
-          ],
-          "remoteIP": "10.0.2.2",
-          "remoteNode": "0000.0aff.0201"
-        }
-      ],
-      "prefixes": [
-        {
-          "prefix": "10.0.2.0/30"
-        },
-        {
-          "prefix": "10.0.0.0/30"
-        },
-        {
-          "prefix": "10.255.0.2/32",
-          "sidIndex": 2
-        }
-      ],
-      "routerID": "0000.0aff.0002",
-      "srgbBegin": 16000,
-      "srgbEnd": 24000
-    }
-  ]
-}
+      }
+    ],
+    "srv6Sids": [
+      {
+        "sids": ["2001:db8:1::"],
+        "endpointBehavior": { "behavior": 1, "name": "END", "flags": 0, "algorithm": 0 },
+        "sidStructure": { "localBlock": 32, "localNode": 16, "localFunc": 16, "localArg": 0 },
+        "multiTopoIds": []
+      }
+    ]
+  },
+  {
+    "asn": 65000,
+    "routerId": "0000.0aff.0002",
+    "hostname": "host2",
+    "isisAreaId": "490000",
+    "srgb": { "begin": 16000, "end": 24000 },
+    "prefixes": [
+      { "prefix": "10.0.0.0/30" },
+      { "prefix": "10.255.0.2/32", "sidIndex": 2 }
+    ],
+    "links": [],
+    "srv6Sids": []
+  }
+]
 ```
+
+Notes:
+
+- `metrics[].type` is a lowercase token (`igp`, `te`, `delay`, `hopcount`),
+  matching the metric vocabulary used elsewhere.
+- `endpointBehavior.flags`/`.algorithm` are present for node SRv6 SIDs
+  (`srv6Sids`) but omitted for adjacency SIDs (`links[].srv6EndXSid`), which
+  carry only the behavior.
 
 ## Completion
 

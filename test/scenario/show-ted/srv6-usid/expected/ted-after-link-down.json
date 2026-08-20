@@ -1,82 +1,96 @@
-{
-    "ted": [
-        {
-            "asn": 65000,
-            "hostname": "pe01",
-            "isisAreaID": "49.0000",
-            "links": [],
-            "prefixes": [
-                {
-                    "prefix": "fd00::/64"
-                },
-                {
-                    "prefix": "fcbb:bb00:1001::/48"
-                }
-            ],
-            "routerID": "0000.0aff.0001",
-            "srgbBegin": 0,
-            "srgbEnd": 0,
-            "srv6SIDs": [
-                {
-                    "endpointBehavior": {
-                        "Behavior": 48,
-                        "Flags": 0,
-                        "Algorithm": 0
-                    },
-                    "multiTopoIDs": [
-                        2
-                    ],
-                    "sids": [
-                        "fcbb:bb00:1001::"
-                    ]
-                }
-            ]
+[
+    {
+        "asn": 65000,
+        "routerId": "0000.0aff.0001",
+        "hostname": "pe01",
+        "isisAreaId": "49.0000",
+        "srgb": {
+            "begin": 0,
+            "end": 0
         },
-        {
-            "asn": 65000,
-            "hostname": "pe02",
-            "isisAreaID": "49.0000",
-            "links": [
-                {
-                    "adjSid": 0,
-                    "localIP": "None",
-                    "metrics": [
-                        {
-                            "type": "METRIC_TYPE_IGP",
-                            "value": 10
-                        },
-                        {
-                            "type": "METRIC_TYPE_TE",
-                            "value": 10
-                        }
-                    ],
-                    "remoteIP": "None",
-                    "remoteNode": "0000.0aff.0001"
-                }
-            ],
-            "prefixes": [
-                {
-                    "prefix": "fcbb:bb00:1002::/48"
-                }
-            ],
-            "routerID": "0000.0aff.0002",
-            "srgbBegin": 0,
-            "srgbEnd": 0,
-            "srv6SIDs": [
-                {
-                    "endpointBehavior": {
-                        "Behavior": 48,
-                        "Flags": 0,
-                        "Algorithm": 0
+        "prefixes": [
+            {
+                "prefix": "fd00::/64"
+            },
+            {
+                "prefix": "fcbb:bb00:1001::/48"
+            }
+        ],
+        "links": [],
+        "srv6Sids": [
+            {
+                "sids": [
+                    "fcbb:bb00:1001::"
+                ],
+                "endpointBehavior": {
+                    "behavior": 48,
+                    "name": "UN",
+                    "flags": 0,
+                    "algorithm": 0
+                },
+                "sidStructure": {
+                    "localBlock": 0,
+                    "localNode": 0,
+                    "localFunc": 0,
+                    "localArg": 0
+                },
+                "multiTopoIds": [
+                    2
+                ]
+            }
+        ]
+    },
+    {
+        "asn": 65000,
+        "routerId": "0000.0aff.0002",
+        "hostname": "pe02",
+        "isisAreaId": "49.0000",
+        "srgb": {
+            "begin": 0,
+            "end": 0
+        },
+        "prefixes": [
+            {
+                "prefix": "fcbb:bb00:1002::/48"
+            }
+        ],
+        "links": [
+            {
+                "remoteRouterId": "0000.0aff.0001",
+                "metrics": [
+                    {
+                        "type": "igp",
+                        "value": 10
                     },
-                    "multiTopoIDs": [
-                        2
-                    ],
-                    "sids": [
-                        "fcbb:bb00:1002::"
-                    ]
-                }
-            ]
-        }
-    ]
-}
+                    {
+                        "type": "te",
+                        "value": 10
+                    }
+                ],
+                "adjSid": 0
+            }
+        ],
+        "srv6Sids": [
+            {
+                "sids": [
+                    "fcbb:bb00:1002::"
+                ],
+                "endpointBehavior": {
+                    "behavior": 48,
+                    "name": "UN",
+                    "flags": 0,
+                    "algorithm": 0
+                },
+                "sidStructure": {
+                    "localBlock": 0,
+                    "localNode": 0,
+                    "localFunc": 0,
+                    "localArg": 0
+                },
+                "multiTopoIds": [
+                    2
+                ]
+            }
+        ]
+    }
+]

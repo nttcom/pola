@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"net/netip"
 	"testing"
+	"time"
 
 	pb "github.com/nttcom/pola/api/pola/v1"
 	"github.com/nttcom/pola/pkg/table"
@@ -24,6 +25,7 @@ type fakeClient struct {
 
 	sessionListResp *pb.GetSessionListResponse
 	sessionListErr  error
+	sessionListReq  *pb.GetSessionListRequest
 
 	deleteSessionErr error
 
@@ -37,7 +39,8 @@ type fakeClient struct {
 	tedErr  error
 }
 
-func (f *fakeClient) GetSessionList(_ context.Context, _ *pb.GetSessionListRequest, _ ...grpc.CallOption) (*pb.GetSessionListResponse, error) {
+func (f *fakeClient) GetSessionList(_ context.Context, req *pb.GetSessionListRequest, _ ...grpc.CallOption) (*pb.GetSessionListResponse, error) {
+	f.sessionListReq = req
 	return f.sessionListResp, f.sessionListErr
 }
 
@@ -56,14 +59,14 @@ func (f *fakeClient) CreateSRPolicy(_ context.Context, _ *pb.CreateSRPolicyReque
 	if f.createSRPolicyErr != nil {
 		return nil, f.createSRPolicyErr
 	}
-	return &pb.CreateSRPolicyResponse{IsSuccess: true}, nil
+	return &pb.CreateSRPolicyResponse{}, nil
 }
 
 func (f *fakeClient) DeleteSRPolicy(_ context.Context, _ *pb.DeleteSRPolicyRequest, _ ...grpc.CallOption) (*pb.DeleteSRPolicyResponse, error) {
 	if f.deleteSRPolicyErr != nil {
 		return nil, f.deleteSRPolicyErr
 	}
-	return &pb.DeleteSRPolicyResponse{IsSuccess: true}, nil
+	return &pb.DeleteSRPolicyResponse{}, nil
 }
 
 func (f *fakeClient) GetTED(_ context.Context, _ *pb.GetTEDRequest, _ ...grpc.CallOption) (*pb.GetTEDResponse, error) {
@@ -258,103 +261,226 @@ func TestGetSessions_NoCapabilitiesIsEmptySlice(t *testing.T) {
 	client := &fakeClient{sessionListResp: &pb.GetSessionListResponse{
 		Sessions: []*pb.Session{
 			{
-				Addr:  netip.MustParseAddr("192.0.2.1").AsSlice(),
-				State: pb.SessionState_SESSION_STATE_UP,
+				PeerAddr: netip.MustParseAddr("192.0.2.1").AsSlice(),
+				State:    pb.SessionState_SESSION_STATE_UP,
 			},
 		},
 	}}
 
-	sessions, err := GetSessions(client)
+	sessions, err := GetSessions(client, netip.Addr{}, false)
 	require.NoError(t, err)
 	require.Len(t, sessions, 1)
 
-	require.NotNil(t, sessions[0].Capabilities)
-	assert.Empty(t, sessions[0].Capabilities)
+	require.NotNil(t, sessions[0].LocalCapabilities)
+	assert.Empty(t, sessions[0].LocalCapabilities)
 
 	marshaled, err := json.Marshal(sessions[0])
 	require.NoError(t, err)
-	assert.Contains(t, string(marshaled), `"Capabilities":[]`)
+	assert.Contains(t, string(marshaled), `"LocalCapabilities":[]`)
 }
 
 func TestGetSessions_WithCapabilities(t *testing.T) {
 	client := &fakeClient{sessionListResp: &pb.GetSessionListResponse{
 		Sessions: []*pb.Session{
 			{
-				Addr:  netip.MustParseAddr("192.0.2.1").AsSlice(),
-				State: pb.SessionState_SESSION_STATE_UP,
-				Capabilities: []*pb.Capability{
+				PeerAddr: netip.MustParseAddr("192.0.2.1").AsSlice(),
+				State:    pb.SessionState_SESSION_STATE_UP,
+				LocalCapabilities: []*pb.Capability{
 					{Type: pb.CapabilityType_CAPABILITY_TYPE_SR, Detail: &pb.Capability_Sr{Sr: &pb.SrCapability{Msd: 10}}},
 				},
 			},
 		},
 	}}
 
-	sessions, err := GetSessions(client)
+	sessions, err := GetSessions(client, netip.Addr{}, false)
 	require.NoError(t, err)
 	require.Len(t, sessions, 1)
-	assert.Equal(t, []Capability{{Type: "SR", Detail: SRCapability{MSD: 10}}}, sessions[0].Capabilities)
+	assert.Equal(t, []Capability{{Type: "SR", Detail: SRCapability{MSD: 10}}}, sessions[0].LocalCapabilities)
 }
 
 func TestGetSessions_WithPccCapabilities(t *testing.T) {
 	client := &fakeClient{sessionListResp: &pb.GetSessionListResponse{
 		Sessions: []*pb.Session{
 			{
-				Addr:  netip.MustParseAddr("192.0.2.1").AsSlice(),
-				State: pb.SessionState_SESSION_STATE_UP,
-				PccCapabilities: []*pb.Capability{
+				PeerAddr: netip.MustParseAddr("192.0.2.1").AsSlice(),
+				State:    pb.SessionState_SESSION_STATE_UP,
+				PeerCapabilities: []*pb.Capability{
 					{Type: pb.CapabilityType_CAPABILITY_TYPE_SR, Detail: &pb.Capability_Sr{Sr: &pb.SrCapability{Msd: 10}}},
 				},
 			},
 		},
 	}}
 
-	sessions, err := GetSessions(client)
+	sessions, err := GetSessions(client, netip.Addr{}, false)
 	require.NoError(t, err)
 	require.Len(t, sessions, 1)
-	assert.Equal(t, []Capability{{Type: "SR", Detail: SRCapability{MSD: 10}}}, sessions[0].PccCapabilities)
-	assert.Equal(t, []string{"SR", "MSD=10"}, sessions[0].PccCapStrings())
+	assert.Equal(t, []Capability{{Type: "SR", Detail: SRCapability{MSD: 10}}}, sessions[0].PeerCapabilities)
 }
 
 func TestGetSessions_WithSessionIDsAndTimers(t *testing.T) {
 	client := &fakeClient{sessionListResp: &pb.GetSessionListResponse{
 		Sessions: []*pb.Session{
 			{
-				Addr:           netip.MustParseAddr("192.0.2.1").AsSlice(),
+				PeerAddr:       netip.MustParseAddr("192.0.2.1").AsSlice(),
 				State:          pb.SessionState_SESSION_STATE_UP,
 				LocalSessionId: proto.Uint32(1),
-				PccSessionId:   proto.Uint32(2),
+				PeerSessionId:  proto.Uint32(2),
 				LocalTimers:    &pb.SessionTimers{Keepalive: 30, DeadTimer: 120},
-				PccTimers:      &pb.SessionTimers{Keepalive: 10, DeadTimer: 40},
+				PeerTimers:     &pb.SessionTimers{Keepalive: 10, DeadTimer: 40},
 			},
 		},
 	}}
 
-	sessions, err := GetSessions(client)
+	sessions, err := GetSessions(client, netip.Addr{}, false)
 	require.NoError(t, err)
 	require.Len(t, sessions, 1)
 
 	require.NotNil(t, sessions[0].LocalSessionID)
 	assert.Equal(t, uint32(1), *sessions[0].LocalSessionID)
-	require.NotNil(t, sessions[0].PccSessionID)
-	assert.Equal(t, uint32(2), *sessions[0].PccSessionID)
+	require.NotNil(t, sessions[0].PeerSessionID)
+	assert.Equal(t, uint32(2), *sessions[0].PeerSessionID)
 	require.NotNil(t, sessions[0].LocalTimers)
 	assert.Equal(t, SessionTimers{Keepalive: 30, DeadTimer: 120}, *sessions[0].LocalTimers)
-	require.NotNil(t, sessions[0].PccTimers)
-	assert.Equal(t, SessionTimers{Keepalive: 10, DeadTimer: 40}, *sessions[0].PccTimers)
+	require.NotNil(t, sessions[0].PeerTimers)
+	assert.Equal(t, SessionTimers{Keepalive: 10, DeadTimer: 40}, *sessions[0].PeerTimers)
+}
+
+func TestGetSessions_TimestampsInitiatorSyncStateAndStats(t *testing.T) {
+	client := &fakeClient{sessionListResp: &pb.GetSessionListResponse{
+		Sessions: []*pb.Session{
+			{
+				PeerAddr:              netip.MustParseAddr("192.0.2.1").AsSlice(),
+				State:                 pb.SessionState_SESSION_STATE_UP,
+				Initiator:             pb.SessionInitiator_SESSION_INITIATOR_REMOTE,
+				SyncState:             pb.LspDbSyncState_LSP_DB_SYNC_STATE_FINISHED,
+				CreatedAtUnixNano:     1000,
+				EstablishedAtUnixNano: 2000,
+				Stats: &pb.SessionStats{
+					Keepalive:        &pb.MessageCounter{Sent: 1, Rcvd: 2},
+					Pcerr:            &pb.MessageCounter{Sent: 3, Rcvd: 4},
+					Pcntf:            &pb.MessageCounter{Rcvd: 5},
+					Report:           &pb.MessageCounter{Rcvd: 6},
+					Update:           &pb.MessageCounter{Sent: 7},
+					Initiate:         &pb.MessageCounter{Sent: 8},
+					UnrecognizedRcvd: 9,
+					CorruptRcvd:      10,
+					SessSetupOk:      11,
+					SessSetupFail:    12,
+				},
+			},
+		},
+	}}
+
+	sessions, err := GetSessions(client, netip.Addr{}, true)
+	require.NoError(t, err)
+	require.Len(t, sessions, 1)
+
+	ss := sessions[0]
+	assert.Equal(t, "remote", ss.Initiator)
+	assert.Equal(t, "finished", ss.SyncState)
+	assert.Equal(t, time.Unix(0, 1000), ss.CreatedAt)
+	assert.Equal(t, time.Unix(0, 2000), ss.EstablishedAt)
+
+	require.NotNil(t, ss.Stats)
+	assert.Equal(t, MessageCounter{Sent: 1, Rcvd: 2}, ss.Stats.Keepalive)
+	assert.Equal(t, MessageCounter{Sent: 3, Rcvd: 4}, ss.Stats.PCErr)
+	assert.Equal(t, MessageCounter{Sent: 0, Rcvd: 5}, ss.Stats.PCNtf)
+	assert.Equal(t, MessageCounter{Sent: 0, Rcvd: 6}, ss.Stats.Report)
+	assert.Equal(t, MessageCounter{Sent: 7, Rcvd: 0}, ss.Stats.Update)
+	assert.Equal(t, MessageCounter{Sent: 8, Rcvd: 0}, ss.Stats.Initiate)
+	assert.Equal(t, uint64(9), ss.Stats.UnrecognizedRcvd)
+	assert.Equal(t, uint64(10), ss.Stats.CorruptRcvd)
+	assert.Equal(t, uint64(11), ss.Stats.SessSetupOK)
+	assert.Equal(t, uint64(12), ss.Stats.SessSetupFail)
+}
+
+func TestInitiatorFromPB(t *testing.T) {
+	tests := map[string]struct {
+		in   pb.SessionInitiator
+		want string
+	}{
+		"local":       {pb.SessionInitiator_SESSION_INITIATOR_LOCAL, "local"},
+		"remote":      {pb.SessionInitiator_SESSION_INITIATOR_REMOTE, "remote"},
+		"unspecified": {pb.SessionInitiator_SESSION_INITIATOR_UNSPECIFIED, "unknown"},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tt.want, initiatorFromPB(tt.in))
+		})
+	}
+}
+
+func TestSyncStateFromPB(t *testing.T) {
+	tests := map[string]struct {
+		in   pb.LspDbSyncState
+		want string
+	}{
+		"pending":     {pb.LspDbSyncState_LSP_DB_SYNC_STATE_PENDING, "pending"},
+		"ongoing":     {pb.LspDbSyncState_LSP_DB_SYNC_STATE_ONGOING, "ongoing"},
+		"finished":    {pb.LspDbSyncState_LSP_DB_SYNC_STATE_FINISHED, "finished"},
+		"unspecified": {pb.LspDbSyncState_LSP_DB_SYNC_STATE_UNSPECIFIED, "unknown"},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tt.want, syncStateFromPB(tt.in))
+		})
+	}
+}
+
+func TestGetSessions_ZeroTimestampsAndUnsetEnumsStayZero(t *testing.T) {
+	client := &fakeClient{sessionListResp: &pb.GetSessionListResponse{
+		Sessions: []*pb.Session{
+			{PeerAddr: netip.MustParseAddr("192.0.2.1").AsSlice(), State: pb.SessionState_SESSION_STATE_OPEN_WAIT},
+		},
+	}}
+
+	sessions, err := GetSessions(client, netip.Addr{}, false)
+	require.NoError(t, err)
+	require.Len(t, sessions, 1)
+
+	ss := sessions[0]
+	assert.Equal(t, "unknown", ss.Initiator)
+	assert.Equal(t, "unknown", ss.SyncState)
+	assert.True(t, ss.CreatedAt.IsZero())
+	assert.True(t, ss.EstablishedAt.IsZero())
+	assert.Nil(t, ss.Stats)
+}
+
+func TestGetSessions_PassesFilterAddrAndIncludeStats(t *testing.T) {
+	client := &fakeClient{sessionListResp: &pb.GetSessionListResponse{}}
+	addr := netip.MustParseAddr("192.0.2.1")
+
+	_, err := GetSessions(client, addr, true)
+	require.NoError(t, err)
+
+	require.NotNil(t, client.sessionListReq)
+	assert.Equal(t, addr.AsSlice(), client.sessionListReq.GetPeerAddr())
+	assert.True(t, client.sessionListReq.GetIncludeStats())
+}
+
+func TestGetSessions_NoFilterAddrLeavesSessionAddrEmpty(t *testing.T) {
+	client := &fakeClient{sessionListResp: &pb.GetSessionListResponse{}}
+
+	_, err := GetSessions(client, netip.Addr{}, false)
+	require.NoError(t, err)
+
+	require.NotNil(t, client.sessionListReq)
+	assert.Empty(t, client.sessionListReq.GetPeerAddr())
+	assert.False(t, client.sessionListReq.GetIncludeStats())
 }
 
 func TestGetSessions_Errors(t *testing.T) {
 	t.Run("client error propagates", func(t *testing.T) {
 		client := &fakeClient{sessionListErr: assert.AnError}
-		_, err := GetSessions(client)
+		_, err := GetSessions(client, netip.Addr{}, false)
 		require.ErrorIs(t, err, assert.AnError)
 	})
 
 	t.Run("malformed session address", func(t *testing.T) {
 		client := &fakeClient{sessionListResp: &pb.GetSessionListResponse{
-			Sessions: []*pb.Session{{Addr: []byte{1, 2, 3}}},
+			Sessions: []*pb.Session{{PeerAddr: []byte{1, 2, 3}}},
 		}}
-		_, err := GetSessions(client)
+		_, err := GetSessions(client, netip.Addr{}, false)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid session address")
 	})
@@ -363,7 +489,7 @@ func TestGetSessions_Errors(t *testing.T) {
 func TestDeleteSession(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		client := &fakeClient{}
-		err := DeleteSession(client, &pb.DeleteSessionRequest{Addr: netip.MustParseAddr("192.0.2.1").AsSlice()})
+		err := DeleteSession(client, &pb.DeleteSessionRequest{PeerAddr: netip.MustParseAddr("192.0.2.1").AsSlice()})
 		require.NoError(t, err)
 	})
 
@@ -423,14 +549,6 @@ func TestCapability_Strings(t *testing.T) {
 		cap := Capability{Type: "SR", Detail: SRCapability{MSD: 10}}
 		assert.Equal(t, []string{"SR", "MSD=10"}, cap.Strings())
 	})
-}
-
-func TestSession_CapStrings(t *testing.T) {
-	s := Session{Capabilities: []Capability{
-		{Type: "SR", Detail: SRCapability{MSD: 10}},
-		{Type: "SRV6", Detail: SRv6Capability{NAISupported: true}},
-	}}
-	assert.Equal(t, []string{"SR", "MSD=10", "SRv6", "SRv6-NAI-Supported"}, s.CapStrings())
 }
 
 func TestCapabilityFromPB(t *testing.T) {
@@ -612,8 +730,8 @@ func TestConvertSRPolicy(t *testing.T) {
 func TestGetSRPolicyList(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		client := &fakeClient{srPolicyListResp: &pb.GetSRPolicyListResponse{
-			Sessions: []*pb.Session{{
-				Addr: netip.MustParseAddr("192.0.2.1").AsSlice(),
+			Sessions: []*pb.SRPolicySession{{
+				PeerAddr: netip.MustParseAddr("192.0.2.1").AsSlice(),
 				SrPolicies: []*pb.SRPolicy{{
 					PolicyName: "pol1",
 					SrcAddr:    netip.MustParseAddr("192.0.2.1").AsSlice(),
@@ -624,7 +742,7 @@ func TestGetSRPolicyList(t *testing.T) {
 		got, err := GetSRPolicyList(client, netip.MustParseAddr("192.0.2.1"))
 		require.NoError(t, err)
 		require.Len(t, got, 1)
-		assert.Equal(t, "192.0.2.1", got[0].Addr.String())
+		assert.Equal(t, "192.0.2.1", got[0].PeerAddr.String())
 		require.Len(t, got[0].SRPolicies, 1)
 		assert.Equal(t, "pol1", got[0].SRPolicies[0].Name)
 	})
@@ -637,7 +755,7 @@ func TestGetSRPolicyList(t *testing.T) {
 
 	t.Run("invalid session address", func(t *testing.T) {
 		client := &fakeClient{srPolicyListResp: &pb.GetSRPolicyListResponse{
-			Sessions: []*pb.Session{{Addr: []byte{1, 2, 3}}},
+			Sessions: []*pb.SRPolicySession{{PeerAddr: []byte{1, 2, 3}}},
 		}}
 		_, err := GetSRPolicyList(client, netip.Addr{})
 		require.Error(t, err)
@@ -645,8 +763,8 @@ func TestGetSRPolicyList(t *testing.T) {
 
 	t.Run("policy conversion error propagates", func(t *testing.T) {
 		client := &fakeClient{srPolicyListResp: &pb.GetSRPolicyListResponse{
-			Sessions: []*pb.Session{{
-				Addr:       netip.MustParseAddr("192.0.2.1").AsSlice(),
+			Sessions: []*pb.SRPolicySession{{
+				PeerAddr:   netip.MustParseAddr("192.0.2.1").AsSlice(),
 				SrPolicies: []*pb.SRPolicy{{SrcAddr: []byte{1, 2, 3}}},
 			}},
 		}}
@@ -678,7 +796,7 @@ func TestDeleteSRPolicy(t *testing.T) {
 }
 
 func TestGetTED_Disabled(t *testing.T) {
-	ted, err := GetTED(&fakeClient{tedResp: &pb.GetTEDResponse{Enable: false}})
+	ted, err := GetTED(&fakeClient{tedResp: &pb.GetTEDResponse{Enabled: false}})
 	require.NoError(t, err)
 	assert.Nil(t, ted)
 }
@@ -696,7 +814,7 @@ func TestGetTED_Success(t *testing.T) {
 		IsisAreaId: "49.0001",
 		SrgbBegin:  16000,
 		SrgbEnd:    23999,
-		LsLinks: []*pb.LsLink{
+		Links: []*pb.LsLink{
 			{
 				LocalRouterId:  "0000.0aff.0001",
 				RemoteRouterId: "0000.0aff.0002",
@@ -720,11 +838,11 @@ func TestGetTED_Success(t *testing.T) {
 				RemoteRouterId: "0000.0aff.0002",
 			},
 		},
-		LsPrefixes: []*pb.LsPrefix{
+		Prefixes: []*pb.LsPrefix{
 			{Prefix: "10.0.0.1/32", SidIndex: proto.Uint32(1)},
 			{Prefix: "10.0.0.2/32"},
 		},
-		LsSrv6Sids: []*pb.LsSrv6SID{
+		Srv6Sids: []*pb.LsSrv6SID{
 			{
 				Sids:             []*pb.SID{{Sid: "2001:db8:1::"}},
 				EndpointBehavior: &pb.EndpointBehavior{Behavior: uint32(table.BehaviorEND), Flags: 1, Algorithm: 0},
@@ -735,7 +853,7 @@ func TestGetTED_Success(t *testing.T) {
 	}
 	nodeB := &pb.LsNode{Asn: 65000, RouterId: "0000.0aff.0002"}
 
-	client := &fakeClient{tedResp: &pb.GetTEDResponse{Enable: true, LsNodes: []*pb.LsNode{nodeA, nodeB}}}
+	client := &fakeClient{tedResp: &pb.GetTEDResponse{Enabled: true, Nodes: []*pb.LsNode{nodeA, nodeB}}}
 	ted, err := GetTED(client)
 	require.NoError(t, err)
 	require.NotNil(t, ted)
@@ -783,16 +901,16 @@ func TestGetTED_Success(t *testing.T) {
 
 func TestGetTED_PropagatesConversionErrors(t *testing.T) {
 	t.Run("invalid link IP", func(t *testing.T) {
-		node := &pb.LsNode{RouterId: "0000.0aff.0001", LsLinks: []*pb.LsLink{
+		node := &pb.LsNode{RouterId: "0000.0aff.0001", Links: []*pb.LsLink{
 			{LocalRouterId: "0000.0aff.0001", RemoteRouterId: "0000.0aff.0001", LocalIp: "not-an-ip"},
 		}}
-		_, err := GetTED(&fakeClient{tedResp: &pb.GetTEDResponse{Enable: true, LsNodes: []*pb.LsNode{node}}})
+		_, err := GetTED(&fakeClient{tedResp: &pb.GetTEDResponse{Enabled: true, Nodes: []*pb.LsNode{node}}})
 		require.Error(t, err)
 	})
 
 	t.Run("invalid prefix", func(t *testing.T) {
-		node := &pb.LsNode{RouterId: "0000.0aff.0001", LsPrefixes: []*pb.LsPrefix{{Prefix: "not-a-prefix"}}}
-		_, err := GetTED(&fakeClient{tedResp: &pb.GetTEDResponse{Enable: true, LsNodes: []*pb.LsNode{node}}})
+		node := &pb.LsNode{RouterId: "0000.0aff.0001", Prefixes: []*pb.LsPrefix{{Prefix: "not-a-prefix"}}}
+		_, err := GetTED(&fakeClient{tedResp: &pb.GetTEDResponse{Enabled: true, Nodes: []*pb.LsNode{node}}})
 		require.Error(t, err)
 	})
 }
@@ -837,8 +955,8 @@ func TestAddLsNode_InvalidSrv6SID(t *testing.T) {
 		"0000.0aff.0001": table.NewLsNode(65000, "0000.0aff.0001"),
 	}}
 	node := &pb.LsNode{
-		RouterId:   "0000.0aff.0001",
-		LsPrefixes: []*pb.LsPrefix{{Prefix: "not-a-prefix"}},
+		RouterId: "0000.0aff.0001",
+		Prefixes: []*pb.LsPrefix{{Prefix: "not-a-prefix"}},
 	}
 
 	err := addLsNode(ted, node)

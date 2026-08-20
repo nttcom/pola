@@ -119,10 +119,9 @@ func addSRPolicy(input inputFormat, jsonFlag bool, noSIDValidate bool) error {
 	}
 
 	if jsonFlag {
-		fmt.Printf("{\"status\": \"success\"}\n")
-	} else {
-		fmt.Printf("success!\n")
+		return writeJSON(os.Stdout, statusResult{Status: "success"})
 	}
+	fmt.Printf("success!\n")
 
 	return nil
 }
@@ -198,13 +197,13 @@ func addSRPolicyWithEndpointAddr(input inputFormat, noSIDValidate bool) error {
 		segmentList = append(segmentList, pbSeg)
 	}
 	srPolicy := &pb.SRPolicy{
-		PcepSessionAddr: input.SRPolicy.PCEPSessionAddr.AsSlice(),
-		SrcAddr:         input.SRPolicy.SrcAddr.AsSlice(),
-		DstAddr:         input.SRPolicy.DstAddr.AsSlice(),
-		SegmentList:     segmentList,
-		Color:           input.SRPolicy.Color,
-		PolicyName:      input.SRPolicy.Name,
-		Type:            pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT,
+		PeerAddr:    input.SRPolicy.PCEPSessionAddr.AsSlice(),
+		SrcAddr:     input.SRPolicy.SrcAddr.AsSlice(),
+		DstAddr:     input.SRPolicy.DstAddr.AsSlice(),
+		SegmentList: segmentList,
+		Color:       input.SRPolicy.Color,
+		PolicyName:  input.SRPolicy.Name,
+		Type:        pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT,
 	}
 
 	request := &pb.CreateSRPolicyRequest{
@@ -230,15 +229,15 @@ func addSRPolicyWithRouterID(input inputFormat, noSIDValidate bool) error {
 	}
 
 	srPolicy := &pb.SRPolicy{
-		PcepSessionAddr: input.SRPolicy.PCEPSessionAddr.AsSlice(),
-		SrcRouterId:     input.SRPolicy.SrcRouterID,
-		DstRouterId:     input.SRPolicy.DstRouterID,
-		Color:           input.SRPolicy.Color,
-		PolicyName:      input.SRPolicy.Name,
-		Type:            srPolicyType,
-		SegmentList:     segmentList,
-		Metric:          metric,
-		Waypoints:       waypoints,
+		PeerAddr:    input.SRPolicy.PCEPSessionAddr.AsSlice(),
+		SrcRouterId: input.SRPolicy.SrcRouterID,
+		DstRouterId: input.SRPolicy.DstRouterID,
+		Color:       input.SRPolicy.Color,
+		PolicyName:  input.SRPolicy.Name,
+		Type:        srPolicyType,
+		SegmentList: segmentList,
+		Metric:      metric,
+		Waypoints:   waypoints,
 	}
 
 	req := &pb.CreateSRPolicyRequest{

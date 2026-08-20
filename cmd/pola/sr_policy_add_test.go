@@ -293,13 +293,13 @@ func TestAddSRPolicyWithEndpointAddr(t *testing.T) {
 
 		require.NotNil(t, fake.createSRPolicyReq)
 		want := &pb.SRPolicy{
-			PcepSessionAddr: netip.MustParseAddr("192.0.2.1").AsSlice(),
-			SrcAddr:         netip.MustParseAddr("192.0.2.1").AsSlice(),
-			DstAddr:         netip.MustParseAddr("192.0.2.2").AsSlice(),
-			SegmentList:     []*pb.Segment{{Sid: "16003", LocalAddr: "192.0.2.1", RemoteAddr: "192.0.2.2", SidStructure: "32,16,0,80"}},
-			Color:           100,
-			PolicyName:      "pol1",
-			Type:            pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT,
+			PeerAddr:    netip.MustParseAddr("192.0.2.1").AsSlice(),
+			SrcAddr:     netip.MustParseAddr("192.0.2.1").AsSlice(),
+			DstAddr:     netip.MustParseAddr("192.0.2.2").AsSlice(),
+			SegmentList: []*pb.Segment{{Sid: "16003", LocalAddr: "192.0.2.1", RemoteAddr: "192.0.2.2", SidStructure: "32,16,0,80"}},
+			Color:       100,
+			PolicyName:  "pol1",
+			Type:        pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT,
 		}
 		assert.Equal(t, want, fake.createSRPolicyReq.SrPolicy)
 		assert.Equal(t, uint32(65000), fake.createSRPolicyReq.Asn)
@@ -337,14 +337,14 @@ func TestAddSRPolicyWithRouterID(t *testing.T) {
 
 		require.NotNil(t, fake.createSRPolicyReq)
 		want := &pb.SRPolicy{
-			PcepSessionAddr: netip.MustParseAddr("192.0.2.1").AsSlice(),
-			SrcRouterId:     "0000.0aff.0001",
-			DstRouterId:     "0000.0aff.0002",
-			Color:           100,
-			PolicyName:      "pol1",
-			Type:            pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC,
-			Metric:          pb.MetricType_METRIC_TYPE_DELAY,
-			Waypoints:       []*pb.Waypoint{{RouterId: "0000.0aff.0003"}},
+			PeerAddr:    netip.MustParseAddr("192.0.2.1").AsSlice(),
+			SrcRouterId: "0000.0aff.0001",
+			DstRouterId: "0000.0aff.0002",
+			Color:       100,
+			PolicyName:  "pol1",
+			Type:        pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC,
+			Metric:      pb.MetricType_METRIC_TYPE_DELAY,
+			Waypoints:   []*pb.Waypoint{{RouterId: "0000.0aff.0003"}},
 		}
 		assert.Equal(t, want, fake.createSRPolicyReq.SrPolicy)
 		assert.Equal(t, uint32(65000), fake.createSRPolicyReq.Asn)

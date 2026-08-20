@@ -6,6 +6,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"testing"
 
@@ -20,8 +21,8 @@ func TestNewTEDCmd_RunE(t *testing.T) {
 	cmd := newTEDCmd()
 
 	client = &fakePCEServiceClient{tedResp: &pb.GetTEDResponse{
-		Enable:  true,
-		LsNodes: []*pb.LsNode{{RouterId: "0000.0aff.0001"}},
+		Enabled: true,
+		Nodes:   []*pb.LsNode{{RouterId: "0000.0aff.0001"}},
 	}}
 	captureStdout(t, func() {
 		require.NoError(t, cmd.RunE(cmd, []string{}))
@@ -32,30 +33,36 @@ func TestNewTEDCmd_RunE(t *testing.T) {
 	require.ErrorIs(t, err, assert.AnError)
 }
 
-func TestPrintTED(t *testing.T) {
+func TestShowTED(t *testing.T) {
 	t.Run("grpc error propagates", func(t *testing.T) {
 		client = &fakePCEServiceClient{tedErr: assert.AnError}
-		err := printTED(false)
+		var buf bytes.Buffer
+		err := showTED(&buf, outputText)
 		require.Error(t, err)
 	})
 
-	t.Run("disabled TED prints a dedicated message", func(t *testing.T) {
-		client = &fakePCEServiceClient{tedResp: &pb.GetTEDResponse{Enable: false}}
-		out := captureStdout(t, func() {
-			require.NoError(t, printTED(false))
-		})
-		assert.Contains(t, out, "TED is disabled by polad")
+	t.Run("disabled TED returns an error", func(t *testing.T) {
+		client = &fakePCEServiceClient{tedResp: &pb.GetTEDResponse{Enabled: false}}
+		var buf bytes.Buffer
+		err := showTED(&buf, outputText)
+		require.ErrorContains(t, err, "TED is disabled by polad")
 	})
 
-	t.Run("plain text output delegates to LsTED.Print", func(t *testing.T) {
+	t.Run("disabled TED returns an error even in JSON mode", func(t *testing.T) {
+		client = &fakePCEServiceClient{tedResp: &pb.GetTEDResponse{Enabled: false}}
+		var buf bytes.Buffer
+		err := showTED(&buf, outputJSON)
+		require.ErrorContains(t, err, "TED is disabled by polad")
+	})
+
+	t.Run("plain text output", func(t *testing.T) {
 		client = &fakePCEServiceClient{tedResp: &pb.GetTEDResponse{
-			Enable:  true,
-			LsNodes: []*pb.LsNode{{RouterId: "0000.0aff.0001"}},
+			Enabled: true,
+			Nodes:   []*pb.LsNode{{RouterId: "0000.0aff.0001"}},
 		}}
-		out := captureStdout(t, func() {
-			require.NoError(t, printTED(false))
-		})
-		assert.Contains(t, out, "0000.0aff.0001")
+		var buf bytes.Buffer
+		require.NoError(t, showTED(&buf, outputText))
+		assert.Contains(t, buf.String(), "0000.0aff.0001")
 	})
 
 	t.Run("json output", func(t *testing.T) {
@@ -63,7 +70,7 @@ func TestPrintTED(t *testing.T) {
 			Asn:      65000,
 			RouterId: "0000.0aff.0001",
 			Hostname: "routerA",
-			LsLinks: []*pb.LsLink{
+			Links: []*pb.LsLink{
 				{
 					LocalRouterId:  "0000.0aff.0001",
 					RemoteRouterId: "0000.0aff.0001",
@@ -78,27 +85,25 @@ func TestPrintTED(t *testing.T) {
 					AdjSid:         24002,
 				},
 			},
-			LsPrefixes: []*pb.LsPrefix{
+			Prefixes: []*pb.LsPrefix{
 				{Prefix: "10.0.0.1/32", SidIndex: proto.Uint32(1)},
 				{Prefix: "10.0.0.2/32"},
 			},
-			LsSrv6Sids: []*pb.LsSrv6SID{{
+			Srv6Sids: []*pb.LsSrv6SID{{
 				Sids:             []*pb.SID{{Sid: "2001:db8:1::"}},
 				EndpointBehavior: &pb.EndpointBehavior{Behavior: 1},
+				SidStructure:     &pb.SidStructure{},
 			}},
 		}
-		client = &fakePCEServiceClient{tedResp: &pb.GetTEDResponse{Enable: true, LsNodes: []*pb.LsNode{node}}}
+		client = &fakePCEServiceClient{tedResp: &pb.GetTEDResponse{Enabled: true, Nodes: []*pb.LsNode{node}}}
 
-		out := captureStdout(t, func() {
-			require.NoError(t, printTED(true))
-		})
+		var buf bytes.Buffer
+		require.NoError(t, showTED(&buf, outputJSON))
 
-		var decoded map[string]any
-		require.NoError(t, json.Unmarshal([]byte(out), &decoded))
-		nodes, ok := decoded["ted"].([]any)
-		require.True(t, ok)
+		var nodes []map[string]any
+		require.NoError(t, json.Unmarshal(buf.Bytes(), &nodes))
 		require.Len(t, nodes, 1)
-		nodeMap := nodes[0].(map[string]any)
+		nodeMap := nodes[0]
 		assert.Equal(t, "routerA", nodeMap["hostname"])
 		//nolint:testifylint // float-compare: JSON decodes numbers to float64, and these are exact small integers.
 		assert.Equal(t, float64(65000), nodeMap["asn"])
@@ -107,12 +112,14 @@ func TestPrintTED(t *testing.T) {
 		require.True(t, ok)
 		require.Len(t, links, 2)
 		linkMap := links[0].(map[string]any)
-		assert.Equal(t, "192.0.2.1", linkMap["localIP"])
-		assert.Equal(t, "None", linkMap["remoteIP"])
+		assert.Equal(t, "192.0.2.1", linkMap["localIp"])
+		_, hasRemoteIP := linkMap["remoteIp"]
+		assert.False(t, hasRemoteIP, "unset remoteIp must be omitted, not a \"None\" sentinel")
 
 		linkMap2 := links[1].(map[string]any)
-		assert.Equal(t, "None", linkMap2["localIP"])
-		assert.Equal(t, "192.0.2.2", linkMap2["remoteIP"])
+		_, hasLocalIP := linkMap2["localIp"]
+		assert.False(t, hasLocalIP)
+		assert.Equal(t, "192.0.2.2", linkMap2["remoteIp"])
 
 		prefixes, ok := nodeMap["prefixes"].([]any)
 		require.True(t, ok)
@@ -122,7 +129,7 @@ func TestPrintTED(t *testing.T) {
 		_, hasSidIndex := prefixes[1].(map[string]any)["sidIndex"]
 		assert.False(t, hasSidIndex)
 
-		srv6SIDs, ok := nodeMap["srv6SIDs"].([]any)
+		srv6SIDs, ok := nodeMap["srv6Sids"].([]any)
 		require.True(t, ok)
 		assert.Len(t, srv6SIDs, 1)
 	})

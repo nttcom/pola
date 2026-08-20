@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"os"
 
 	pb "github.com/nttcom/pola/api/pola/v1"
 	"github.com/nttcom/pola/cmd/pola/grpc"
@@ -39,16 +40,15 @@ func newSessionDeleteCmd() *cobra.Command {
 
 func deleteSession(session netip.Addr, jsonFlag bool) error {
 	request := &pb.DeleteSessionRequest{
-		Addr: session.AsSlice(),
+		PeerAddr: session.AsSlice(),
 	}
 	err := grpc.DeleteSession(client, request)
 	if err != nil {
 		return err
 	}
 	if jsonFlag {
-		fmt.Printf("{\"status\": \"success\"}\n")
-	} else {
-		fmt.Printf("success!\n")
+		return writeJSON(os.Stdout, statusResult{Status: "success"})
 	}
+	fmt.Printf("success!\n")
 	return nil
 }

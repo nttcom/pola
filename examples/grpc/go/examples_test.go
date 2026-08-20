@@ -35,7 +35,7 @@ type fakeServer struct {
 	fail bool
 
 	sessions         []*pb.Session
-	srPolicySessions []*pb.Session
+	srPolicySessions []*pb.SRPolicySession
 	ted              *pb.GetTEDResponse
 
 	mu         sync.Mutex
@@ -51,7 +51,7 @@ func (f *fakeServer) CreateSRPolicy(_ context.Context, req *pb.CreateSRPolicyReq
 	if f.fail {
 		return nil, errFake
 	}
-	return &pb.CreateSRPolicyResponse{IsSuccess: true}, nil
+	return &pb.CreateSRPolicyResponse{}, nil
 }
 
 func (f *fakeServer) DeleteSRPolicy(_ context.Context, req *pb.DeleteSRPolicyRequest) (*pb.DeleteSRPolicyResponse, error) {
@@ -61,7 +61,7 @@ func (f *fakeServer) DeleteSRPolicy(_ context.Context, req *pb.DeleteSRPolicyReq
 	if f.fail {
 		return nil, errFake
 	}
-	return &pb.DeleteSRPolicyResponse{IsSuccess: true}, nil
+	return &pb.DeleteSRPolicyResponse{}, nil
 }
 
 func (f *fakeServer) DeleteSession(_ context.Context, req *pb.DeleteSessionRequest) (*pb.DeleteSessionResponse, error) {
@@ -71,7 +71,7 @@ func (f *fakeServer) DeleteSession(_ context.Context, req *pb.DeleteSessionReque
 	if f.fail {
 		return nil, errFake
 	}
-	return &pb.DeleteSessionResponse{IsSuccess: true}, nil
+	return &pb.DeleteSessionResponse{}, nil
 }
 
 func (f *fakeServer) GetSessionList(_ context.Context, _ *pb.GetSessionListRequest) (*pb.GetSessionListResponse, error) {
@@ -292,7 +292,7 @@ func TestSRPolicyCreateDynamic(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		f := &fakeServer{}
 		out, code := run(t, "sr-policy-create-dynamic", serve(t, f))
-		wantOutput(t, out, code, "success: isSuccess=true")
+		wantOutput(t, out, code, "success")
 
 		req := f.createReq
 		require.NotNil(t, req, "server received no request")
@@ -316,7 +316,7 @@ func TestSRPolicyCreateExplicit(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		f := &fakeServer{}
 		out, code := run(t, "sr-policy-create-explicit", serve(t, f))
-		wantOutput(t, out, code, "success: isSuccess=true")
+		wantOutput(t, out, code, "success")
 
 		req := f.createReq
 		require.NotNil(t, req, "server received no request")
@@ -336,7 +336,7 @@ func TestSRPolicyCreateNoSIDValidate(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		f := &fakeServer{}
 		out, code := run(t, "sr-policy-create-no-sid-validate", serve(t, f))
-		wantOutput(t, out, code, "success: isSuccess=true")
+		wantOutput(t, out, code, "success")
 
 		req := f.createReq
 		require.NotNil(t, req, "server received no request")
@@ -358,7 +358,7 @@ func TestSRPolicyCreateSRv6(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		f := &fakeServer{}
 		out, code := run(t, "sr-policy-create-srv6", serve(t, f))
-		wantOutput(t, out, code, "success: isSuccess=true")
+		wantOutput(t, out, code, "success")
 
 		req := f.createReq
 		require.NotNil(t, req, "server received no request")
@@ -380,12 +380,12 @@ func TestSRPolicyDelete(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		f := &fakeServer{}
 		out, code := run(t, "sr-policy-delete", serve(t, f))
-		wantOutput(t, out, code, "success: isSuccess=true")
+		wantOutput(t, out, code, "success")
 
 		req := f.deleteReq
 		require.NotNil(t, req, "server received no request")
 		// polad identifies the policy by these four fields, so all must be set.
-		assert.NotEmpty(t, req.GetSrPolicy().GetPcepSessionAddr())
+		assert.NotEmpty(t, req.GetSrPolicy().GetPeerAddr())
 		assert.NotEmpty(t, req.GetSrPolicy().GetDstAddr())
 		assert.NotZero(t, req.GetSrPolicy().GetColor())
 		assert.NotEmpty(t, req.GetSrPolicy().GetPolicyName())
@@ -401,10 +401,10 @@ func TestSessionDelete(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		f := &fakeServer{}
 		out, code := run(t, "session-delete", serve(t, f))
-		wantOutput(t, out, code, "success: isSuccess=true")
+		wantOutput(t, out, code, "success")
 
 		require.NotNil(t, f.sessionReq, "server received no request")
-		assert.Equal(t, addrBytes(t, "192.0.2.1"), f.sessionReq.GetAddr())
+		assert.Equal(t, addrBytes(t, "192.0.2.1"), f.sessionReq.GetPeerAddr())
 	})
 
 	t.Run("rpc error", func(t *testing.T) {
@@ -417,26 +417,26 @@ func TestSessionList(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		f := &fakeServer{sessions: []*pb.Session{
 			{
-				Addr:  addrBytes(t, "192.0.2.1"),
-				State: pb.SessionState_SESSION_STATE_UP,
-				Capabilities: []*pb.Capability{
+				PeerAddr: addrBytes(t, "192.0.2.1"),
+				State:    pb.SessionState_SESSION_STATE_UP,
+				LocalCapabilities: []*pb.Capability{
 					{Type: pb.CapabilityType_CAPABILITY_TYPE_STATEFUL},
 					{Type: pb.CapabilityType_CAPABILITY_TYPE_SR, Detail: &pb.Capability_Sr{Sr: &pb.SrCapability{Msd: 10}}},
 				},
-				IsSynced: true,
+				SyncState: pb.LspDbSyncState_LSP_DB_SYNC_STATE_FINISHED,
 			},
-			// Invalid session address: the example should warn and skip the session.
-			{Addr: []byte{1, 2, 3}},
+			// Invalid peer address: the example should warn and skip the session.
+			{PeerAddr: []byte{1, 2, 3}},
 		}}
 		out, code := run(t, "session-list", serve(t, f))
 		wantOutput(t, out, code,
-			"sessionAddr(0): 192.0.2.1",
+			"peerAddr(0): 192.0.2.1",
 			"state: SESSION_STATE_UP",
 			"capabilities (Pola): STATEFUL, SR(msd=10, unlimitedMsd=false, naiSupported=false)",
-			"isSynced: true",
+			"syncState: FINISHED",
 			"invalid address for session 1",
 		)
-		assert.NotContains(t, out, "sessionAddr(1)", "the invalid session was printed anyway")
+		assert.NotContains(t, out, "peerAddr(1)", "the invalid session was printed anyway")
 	})
 
 	t.Run("rpc error", func(t *testing.T) {
@@ -447,9 +447,9 @@ func TestSessionList(t *testing.T) {
 
 func TestSRPolicyList(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
-		f := &fakeServer{srPolicySessions: []*pb.Session{
+		f := &fakeServer{srPolicySessions: []*pb.SRPolicySession{
 			{
-				Addr: addrBytes(t, "192.0.2.1"),
+				PeerAddr: addrBytes(t, "192.0.2.1"),
 				SrPolicies: []*pb.SRPolicy{{
 					SrcAddr:     addrBytes(t, "192.0.2.1"),
 					DstAddr:     addrBytes(t, "192.0.2.2"),
@@ -460,7 +460,7 @@ func TestSRPolicyList(t *testing.T) {
 				}},
 			},
 			{
-				Addr: []byte{1, 2, 3},
+				PeerAddr: []byte{1, 2, 3},
 				SrPolicies: []*pb.SRPolicy{{
 					PolicyName: "no-segments",
 				}},
@@ -476,7 +476,7 @@ func TestSRPolicyList(t *testing.T) {
 			"preference: 200",
 			"path: 16002 -> 16003",
 			"srPolicy(1):",
-			"sessionAddr: invalid",
+			"peerAddr: invalid",
 			"path: None",
 		)
 	})
@@ -490,13 +490,13 @@ func TestSRPolicyList(t *testing.T) {
 func TestTEDGet(t *testing.T) {
 	t.Run("enabled", func(t *testing.T) {
 		f := &fakeServer{ted: &pb.GetTEDResponse{
-			Enable: true,
-			LsNodes: []*pb.LsNode{{
-				Asn:        65000,
-				RouterId:   "0000.0aff.0001",
-				Hostname:   "node1",
-				LsPrefixes: []*pb.LsPrefix{{Prefix: "10.0.0.1/32"}},
-				LsLinks:    []*pb.LsLink{{LocalRouterId: "0000.0aff.0001"}},
+			Enabled: true,
+			Nodes: []*pb.LsNode{{
+				Asn:      65000,
+				RouterId: "0000.0aff.0001",
+				Hostname: "node1",
+				Prefixes: []*pb.LsPrefix{{Prefix: "10.0.0.1/32"}},
+				Links:    []*pb.LsLink{{LocalRouterId: "0000.0aff.0001"}},
 			}},
 		}}
 		out, code := run(t, "ted-get", serve(t, f))
@@ -505,7 +505,7 @@ func TestTEDGet(t *testing.T) {
 	})
 
 	t.Run("disabled", func(t *testing.T) {
-		f := &fakeServer{ted: &pb.GetTEDResponse{Enable: false}}
+		f := &fakeServer{ted: &pb.GetTEDResponse{Enabled: false}}
 		out, code := run(t, "ted-get", serve(t, f))
 		wantOutput(t, out, code, "TED is disabled")
 	})

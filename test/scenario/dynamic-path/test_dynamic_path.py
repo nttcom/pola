@@ -52,7 +52,7 @@ def srv6_usid_lab(clab_deploy_module):
     print("Waiting for PCEP session")
     wait_until_command_success(
         f"docker exec {POLA} /bin/pola session -p {GRPC_PORT} "
-        "| grep 'sessionAddr(0): fd00::2'"
+        "| grep 'Session #0: fd00::2'"
     )
 
     wait_until_ted_has_routers(POLA, ROUTER_IDS)

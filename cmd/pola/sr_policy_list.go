@@ -6,14 +6,14 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
+	"io"
 	"net/netip"
+	"os"
 
 	"github.com/spf13/cobra"
 
 	"github.com/nttcom/pola/cmd/pola/grpc"
-	"github.com/nttcom/pola/pkg/table"
 )
 
 func newSRPolicyListCmd() *cobra.Command {
@@ -21,140 +21,59 @@ func newSRPolicyListCmd() *cobra.Command {
 		Use:  "list",
 		RunE: showSRPolicyList,
 	}
-	cmd.Flags().String("session", "", "filter by PCEP session peer address")
+	cmd.Flags().String("peer", "", "filter by PCEP peer address")
 	return cmd
 }
 
 func showSRPolicyList(cmd *cobra.Command, _ []string) error {
-	jsonFlag, err := cmd.Flags().GetBool("json")
-	if err != nil {
-		return fmt.Errorf("failed to retrieve 'json' flag: %w", err)
-	}
-
-	sessionAddr, err := sessionAddrFlag(cmd)
+	peerAddr, err := peerAddrFlag(cmd)
 	if err != nil {
 		return err
 	}
-	sessions, err := grpc.GetSRPolicyList(client, sessionAddr)
+	format, err := resolveOutputFormat(jsonFmt, false)
+	if err != nil {
+		return err
+	}
+	return writeSRPolicyList(os.Stdout, peerAddr, format)
+}
+
+func writeSRPolicyList(w io.Writer, peerAddr netip.Addr, format outputFormat) error {
+	sessions, err := grpc.GetSRPolicyList(client, peerAddr)
 	if err != nil {
 		return fmt.Errorf("failed to retrieve SR policy list: %w", err)
 	}
 
-	if jsonFlag {
-		outputJSON, err := json.Marshal(sessions)
-		if err != nil {
-			return fmt.Errorf("failed to marshal SR policy list to JSON: %w", err)
-		}
-		fmt.Println(string(outputJSON))
-		return nil
-	}
-
 	if len(sessions) == 0 {
-		fmt.Println("No PCEP sessions connected.")
-		return nil
-	}
-	for _, session := range sessions {
-		printSRPolicySession(session)
-	}
-	return nil
-}
-
-func printSRPolicySession(session grpc.Session) {
-	fmt.Printf("Session: %s (State: %s, IsSynced: %t)\n",
-		session.Addr.String(), session.State, session.IsSynced)
-	if len(session.SRPolicies) == 0 {
-		if session.IsSynced {
-			fmt.Println("  No SR Policies.")
-		} else {
-			fmt.Println("  No SR Policies: session is still synchronizing.")
+		if format == outputJSON {
+			_, err := fmt.Fprintln(w, "[]")
+			return err
 		}
+		_, err := fmt.Fprintln(w, "No PCEP sessions connected.")
+		return err
 	}
-	for _, policy := range session.SRPolicies {
-		printSRPolicy(policy)
+
+	views := make([]srPolicySessionView, 0, len(sessions))
+	for _, ss := range sessions {
+		views = append(views, newSRPolicySessionView(ss))
 	}
-	fmt.Println()
+
+	if format == outputJSON {
+		return writeJSON(w, views)
+	}
+	return writeSRPolicyText(w, views)
 }
 
-func printSRPolicy(policy table.SRPolicy) {
-	fmt.Printf("  PolicyName: %s\n", policy.Name)
-	fmt.Printf("    PlspID: %d\n", policy.PlspID)
-	fmt.Printf("    LSPID: %d\n", policy.LSPID)
-	fmt.Printf("    State: %s\n", policy.State)
-	if policy.Type != "" {
-		fmt.Printf("    Type: %s\n", policy.Type)
-	}
-	if policy.Metric != table.UnspecifiedMetric {
-		fmt.Printf("    Metric: %s\n", policy.Metric.DisplayString())
-	}
-	fmt.Printf("    SrcAddr: %s\n", srcDstDisplay(policy.SrcAddr.String(), policy.SrcRouterID))
-	fmt.Printf("    DstAddr: %s\n", srcDstDisplay(policy.DstAddr.String(), policy.DstRouterID))
-	fmt.Printf("    Color: %d\n", policy.Color)
-	fmt.Printf("    Preference: %d\n", policy.Preference)
-	fmt.Printf("    SegmentList: ")
-
-	if len(policy.SegmentList) == 0 {
-		fmt.Println("None")
-		return
-	}
-	for j, segment := range policy.SegmentList {
-		fmt.Print(segmentDisplayString(segment))
-		if j == len(policy.SegmentList)-1 {
-			fmt.Println()
-		} else {
-			fmt.Print(" -> ")
-		}
-	}
-}
-
-func sessionAddrFlag(cmd *cobra.Command) (netip.Addr, error) {
-	flag, err := cmd.Flags().GetString("session")
+func peerAddrFlag(cmd *cobra.Command) (netip.Addr, error) {
+	flag, err := cmd.Flags().GetString("peer")
 	if err != nil {
-		return netip.Addr{}, fmt.Errorf("failed to retrieve 'session' flag: %w", err)
+		return netip.Addr{}, fmt.Errorf("failed to retrieve 'peer' flag: %w", err)
 	}
 	if flag == "" {
 		return netip.Addr{}, nil
 	}
 	addr, err := netip.ParseAddr(flag)
 	if err != nil {
-		return netip.Addr{}, fmt.Errorf("invalid --session address %q: %w", flag, err)
+		return netip.Addr{}, fmt.Errorf("invalid --peer address %q: %w", flag, err)
 	}
 	return addr, nil
-}
-
-func srcDstDisplay(addr, routerID string) string {
-	if routerID == "" {
-		return addr
-	}
-	return fmt.Sprintf("%s (%s)", addr, routerID)
-}
-
-func segmentDisplayString(seg table.Segment) string {
-	var localAddr, remoteAddr string
-	switch v := seg.(type) {
-	case table.SegmentSRv6:
-		if v.LocalAddr.IsValid() {
-			localAddr = v.LocalAddr.String()
-		}
-		if v.RemoteAddr.IsValid() {
-			remoteAddr = v.RemoteAddr.String()
-		}
-	case table.SegmentSRMPLS:
-		if v.LocalAddr.IsValid() {
-			localAddr = v.LocalAddr.String()
-		}
-		if v.RemoteAddr.IsValid() {
-			remoteAddr = v.RemoteAddr.String()
-		}
-	}
-
-	switch {
-	case localAddr == "" && remoteAddr == "":
-		return seg.SidString()
-	case remoteAddr == "":
-		return fmt.Sprintf("%s (local=%s)", seg.SidString(), localAddr)
-	case localAddr == "":
-		return fmt.Sprintf("%s (remote=%s)", seg.SidString(), remoteAddr)
-	default:
-		return fmt.Sprintf("%s (local=%s, remote=%s)", seg.SidString(), localAddr, remoteAddr)
-	}
 }

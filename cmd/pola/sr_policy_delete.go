@@ -72,10 +72,10 @@ func deleteSRPolicy(input inputFormat, jsonFlag bool) error {
 	}
 
 	srPolicy := &pb.SRPolicy{
-		PcepSessionAddr: input.SRPolicy.PCEPSessionAddr.AsSlice(),
-		DstAddr:         input.SRPolicy.DstAddr.AsSlice(),
-		Color:           input.SRPolicy.Color,
-		PolicyName:      input.SRPolicy.Name,
+		PeerAddr:   input.SRPolicy.PCEPSessionAddr.AsSlice(),
+		DstAddr:    input.SRPolicy.DstAddr.AsSlice(),
+		Color:      input.SRPolicy.Color,
+		PolicyName: input.SRPolicy.Name,
 	}
 	inputData := &pb.DeleteSRPolicyRequest{
 		SrPolicy: srPolicy,
@@ -89,10 +89,9 @@ func deleteSRPolicy(input inputFormat, jsonFlag bool) error {
 	}
 
 	if jsonFlag {
-		fmt.Printf("{\"status\": \"success\"}\n")
-	} else {
-		fmt.Printf("success!\n")
+		return writeJSON(os.Stdout, statusResult{Status: "success"})
 	}
+	fmt.Printf("success!\n")
 
 	return nil
 }
