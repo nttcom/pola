@@ -217,10 +217,19 @@ func (idx *SIDIndex) NextHop(owner string, seg Segment) (string, error) {
 	}
 }
 
+// ownerUnknown indicates that the current router is unknown.
+const ownerUnknown = ""
+
 func (idx *SIDIndex) nextHopMPLS(owner string, s SegmentSRMPLS) (string, error) {
 	// Node SID (prefix SID)?
 	if next, ok := idx.mplsNodeSIDOwner[s.Sid]; ok {
 		return next, nil
+	}
+	if owner == ownerUnknown {
+		if _, exists := idx.mplsSIDs[s.Sid]; exists {
+			return ownerUnknown, nil
+		}
+		return "", fmt.Errorf("SID %s not found in TED", s.SidString())
 	}
 	// Adjacency SID — must be on owner.
 	if next, ok := idx.mplsAdjSIDNextHop[adjKeyMPLS{owner, s.Sid}]; ok {
@@ -237,6 +246,12 @@ func (idx *SIDIndex) nextHopSRv6(owner string, s SegmentSRv6) (string, error) {
 	if next, ok := idx.srv6NodeSIDOwner[s.Sid]; ok {
 		return next, nil
 	}
+	if owner == ownerUnknown {
+		if idx.hasSRv6(s) {
+			return ownerUnknown, nil
+		}
+		return "", fmt.Errorf("SID %s not found in TED", s.SidString())
+	}
 	// Adjacency SID (End.X) — must be on owner.
 	if next, ok := idx.srv6AdjSIDNextHop[adjKeySRv6{owner, s.Sid}]; ok {
 		return next, nil
@@ -252,6 +267,19 @@ func (idx *SIDIndex) nextHopSRv6(owner string, s SegmentSRv6) (string, error) {
 //   - Node SIDs are valid from any owner; the owner advances to that node.
 //   - Adjacency SIDs must be local to the current owner; owner advances to the link's remote node.
 func ValidateExplicitPath(ted *LsTED, srcRouterID string, segmentList []Segment) error {
+	if ted == nil {
+		return errors.New("TED is nil")
+	}
+	if srcRouterID == "" {
+		return errors.New("source router ID is empty")
+	}
+	if _, ok := ted.Nodes[srcRouterID]; !ok {
+		return fmt.Errorf("source router ID %s not found in TED", srcRouterID)
+	}
+
+	if len(segmentList) == 0 {
+		return nil
+	}
 	idx := NewSIDIndex(ted)
 	owner := srcRouterID
 	for i, seg := range segmentList {

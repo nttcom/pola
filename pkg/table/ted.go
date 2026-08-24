@@ -63,12 +63,8 @@ func (ted *LsTED) AddressRouterIDIndex() map[netip.Addr]string {
 
 // FindRouterIDByLoopback returns the router ID of the node whose loopback address matches addr.
 func (ted *LsTED) FindRouterIDByLoopback(addr netip.Addr) (string, bool) {
-	for routerID, node := range ted.Nodes {
-		if loopback, err := node.LoopbackAddr(); err == nil && loopback == addr {
-			return routerID, true
-		}
-	}
-	return "", false
+	routerID, ok := ted.RouterIDIndex()[addr]
+	return routerID, ok
 }
 
 // Print prints the TED, listing each node with its prefixes, links and SRv6 SIDs.
