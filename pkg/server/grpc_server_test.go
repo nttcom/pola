@@ -33,8 +33,6 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func testMSDPtr(v uint8) *uint8 { return &v }
-
 func TestStatusFromCSPFError(t *testing.T) {
 	reasonOf := func(t *testing.T, err error) (codes.Code, string) {
 		t.Helper()
@@ -571,7 +569,7 @@ func TestGetSessionList_BuildsStructuredCapabilities(t *testing.T) {
 		peerAddr:  netip.MustParseAddr("10.0.0.1"),
 		syncState: lspDBSyncFinished,
 		advertisedCapabilities: []pcep.CapabilityInterface{
-			&pcep.SRPCECapability{IsNAISupported: true, MaximumSidDepth: testMSDPtr(10)},
+			&pcep.SRPCECapability{IsNAISupported: true, MaximumSidDepth: 10},
 			&pcep.LSPDBVersion{VersionNumber: 42},
 		},
 	}
@@ -2506,7 +2504,7 @@ func TestBuildCapability(t *testing.T) {
 		},
 		{
 			name: "sr",
-			cap:  &pcep.SRPCECapability{IsNAISupported: true, MaximumSidDepth: testMSDPtr(8)},
+			cap:  &pcep.SRPCECapability{IsNAISupported: true, MaximumSidDepth: 8},
 			want: &pb.Capability{
 				Type:   pb.CapabilityType_CAPABILITY_TYPE_SR,
 				Detail: &pb.Capability_Sr{Sr: &pb.SrCapability{NaiSupported: true, Msd: proto.Uint32(8)}},

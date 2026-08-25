@@ -40,12 +40,7 @@ func writeSRPolicyList(w io.Writer, peerAddr netip.Addr, format outputFormat) er
 	}
 
 	if len(sessions) == 0 {
-		if format == outputJSON {
-			_, err := fmt.Fprintln(w, "[]")
-			return err
-		}
-		_, err := fmt.Fprintln(w, "No PCEP sessions connected.")
-		return err
+		return writeNoSessions(w, peerAddr, format)
 	}
 
 	views := make([]srPolicySessionView, 0, len(sessions))

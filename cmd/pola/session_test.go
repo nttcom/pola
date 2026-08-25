@@ -107,6 +107,7 @@ func sessionFixture() *pb.Session {
 		SyncState:             pb.LspDbSyncState_LSP_DB_SYNC_STATE_FINISHED,
 		CreatedAtUnixNano:     time.Date(2026, 8, 19, 9, 30, 0, 0, time.UTC).UnixNano(),
 		EstablishedAtUnixNano: time.Date(2026, 8, 19, 9, 30, 5, 0, time.UTC).UnixNano(),
+		UptimeNanos:           742000000000, // 12 minutes 22 seconds in nanoseconds
 		Stats: &pb.SessionStats{
 			Keepalive:     &pb.MessageCounter{Sent: 3, Rcvd: 3},
 			Pcerr:         &pb.MessageCounter{Sent: 0, Rcvd: 0},
@@ -121,9 +122,6 @@ func sessionFixture() *pb.Session {
 }
 
 func TestShowSession_Text(t *testing.T) {
-	nowFunc = func() time.Time { return time.Date(2026, 8, 19, 9, 42, 27, 0, time.UTC) }
-	t.Cleanup(func() { nowFunc = time.Now })
-
 	client = &fakePCEServiceClient{sessionListResp: &pb.GetSessionListResponse{Sessions: []*pb.Session{sessionFixture()}}}
 
 	var buf bytes.Buffer
@@ -145,9 +143,6 @@ func TestShowSession_Text(t *testing.T) {
 }
 
 func TestShowSession_Text_CapabilityGrouping(t *testing.T) {
-	nowFunc = func() time.Time { return time.Date(2026, 8, 19, 9, 42, 27, 0, time.UTC) }
-	t.Cleanup(func() { nowFunc = time.Now })
-
 	fixture := sessionFixture()
 	assocTypeList := &pb.Capability{
 		Type: pb.CapabilityType_CAPABILITY_TYPE_ASSOC_TYPE_LIST,

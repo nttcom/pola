@@ -898,19 +898,17 @@ func NewLSPDBVersion(version uint64) *LSPDBVersion {
 
 // SRPCECapability represents the SR-PCE-CAPABILITY TLV, advertising the
 // maximum SID depth (MSD) for SR-MPLS paths and NAI support (RFC 8664).
+// The MSD octet is always present on the wire and is 0 when unlimited.
 type SRPCECapability struct {
 	HasUnlimitedMaxSIDDepth bool
 	IsNAISupported          bool
-	MaximumSidDepth         *uint8
+	MaximumSidDepth         uint8
 }
 
-// Flag bits of the SR-PCE-CAPABILITY TLV, as masks against its Flags byte.
+// Flag bits of the SR-PCE-CAPABILITY TLV.
 const (
-	// UnlimitedMaximumSIDDepthFlag means the speaker imposes no MSD limit, so
-	// the Maximum SID Depth field must be ignored.
 	UnlimitedMaximumSIDDepthFlag byte = 0x01
-	// NAISupportedFlag means the speaker can resolve a NAI in an SR-ERO subobject.
-	NAISupportedFlag byte = 0x02
+	NAISupportedFlag             byte = 0x02
 )
 
 // Byte offsets of the fields within the SR-PCE-CAPABILITY TLV value.
@@ -935,8 +933,7 @@ func (tlv *SRPCECapability) DecodeFromBytes(data []byte) error {
 	flags := val[SRPCECapabilityFlagsOffset]
 	tlv.HasUnlimitedMaxSIDDepth = IsBitSet(flags, UnlimitedMaximumSIDDepthFlag)
 	tlv.IsNAISupported = IsBitSet(flags, NAISupportedFlag)
-	msd := val[SRPCECapabilityMSDOffset]
-	tlv.MaximumSidDepth = &msd
+	tlv.MaximumSidDepth = val[SRPCECapabilityMSDOffset]
 
 	return nil
 }
@@ -947,9 +944,7 @@ func (tlv *SRPCECapability) Serialize() ([]byte, error) {
 
 	value[SRPCECapabilityFlagsOffset] = SetBit(value[SRPCECapabilityFlagsOffset], UnlimitedMaximumSIDDepthFlag, tlv.HasUnlimitedMaxSIDDepth)
 	value[SRPCECapabilityFlagsOffset] = SetBit(value[SRPCECapabilityFlagsOffset], NAISupportedFlag, tlv.IsNAISupported)
-	if tlv.MaximumSidDepth != nil {
-		value[SRPCECapabilityMSDOffset] = *tlv.MaximumSidDepth
-	}
+	value[SRPCECapabilityMSDOffset] = tlv.MaximumSidDepth
 
 	return AppendByteSlices(
 		Uint16ToByteSlice(tlv.Type()),
@@ -966,9 +961,7 @@ func (tlv *SRPCECapability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 
 	enc.AddBool("unlimited_max_sid_depth", tlv.HasUnlimitedMaxSIDDepth)
 	enc.AddBool("nai_is_supported", tlv.IsNAISupported)
-	if tlv.MaximumSidDepth != nil {
-		enc.AddUint8("maximum_sid_depth", *tlv.MaximumSidDepth)
-	}
+	enc.AddUint8("maximum_sid_depth", tlv.MaximumSidDepth)
 	return nil
 }
 
@@ -985,11 +978,10 @@ func (tlv *SRPCECapability) Len() int {
 // CapStrings returns capability strings for the receiver.
 func (tlv *SRPCECapability) CapStrings() []string {
 	ret := []string{"SR"}
-	switch {
-	case tlv.HasUnlimitedMaxSIDDepth:
+	if tlv.HasUnlimitedMaxSIDDepth {
 		ret = append(ret, "Unlimited-SID-Depth")
-	case tlv.MaximumSidDepth != nil:
-		ret = append(ret, fmt.Sprintf("MSD=%d", *tlv.MaximumSidDepth))
+	} else {
+		ret = append(ret, fmt.Sprintf("MSD=%d", tlv.MaximumSidDepth))
 	}
 	if tlv.IsNAISupported {
 		ret = append(ret, "SR-NAI-Supported")
@@ -997,12 +989,18 @@ func (tlv *SRPCECapability) CapStrings() []string {
 	return ret
 }
 
+// HasInvalidZeroMSD reports the invalid RFC 8664 §5.1 combination of
+// X=0 and MSD=0.
+func (tlv *SRPCECapability) HasInvalidZeroMSD() bool {
+	return !tlv.HasUnlimitedMaxSIDDepth && tlv.MaximumSidDepth == 0
+}
+
 // NewSRPCECapability creates and returns a new SRPCECapability.
 func NewSRPCECapability(hasUnlimitedMaxSIDDepth bool, isNAISupported bool, maximumSidDepth uint8) *SRPCECapability {
 	return &SRPCECapability{
 		HasUnlimitedMaxSIDDepth: hasUnlimitedMaxSIDDepth,
 		IsNAISupported:          isNAISupported,
-		MaximumSidDepth:         &maximumSidDepth,
+		MaximumSidDepth:         maximumSidDepth,
 	}
 }
 

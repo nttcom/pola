@@ -23,6 +23,7 @@ prepare these images.
 Copy the GoBGP binaries to `bin`:
 
 ```bash
+git clone https://github.com/nttcom/pola
 cd pola/examples/containerlab/srv6-usid-dynamic-path
 make -C ../../.. fetch-gobgp
 cp ../../../test/bin/gobgpd bin/gobgpd

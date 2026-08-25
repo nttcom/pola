@@ -55,13 +55,10 @@ const (
 	pcepErrorValueSecondOpenStillUnacceptable uint8 = 5
 	pcepErrorValueUnacceptableProposal        uint8 = 6
 	pcepErrorValueKeepWaitTimerExpired        uint8 = 7
-
-	pcepErrorTypeCapabilityNotSupported uint8 = 2
-
-	pcepErrorTypeSecondSessionAttempt  uint8 = 9
-	pcepErrorValueSecondSessionAttempt uint8 = 1
-
-	pcepErrorValueUnassigned uint8 = 0
+	pcepErrorTypeCapabilityNotSupported       uint8 = 2
+	pcepErrorTypeSecondSessionAttempt         uint8 = 9
+	pcepErrorValueSecondSessionAttempt        uint8 = 1
+	pcepErrorValueUnassigned                  uint8 = 0
 )
 
 // sessionState represents the PCEP session state (RFC 5440 Appendix A).
@@ -91,8 +88,7 @@ const (
 	sessionInitiatorLocal
 )
 
-// sessionStats holds the per-session PCEP message counters tracked by Pola.
-
+// sessionStats holds per-session PCEP message counters (RFC 9826).
 type sessionStats struct {
 	mu             sync.Mutex
 	openSent       uint64
@@ -349,24 +345,25 @@ func (ss *Session) clearSRPolicyIntents() {
 // NewSession creates a new PCEP session with the given local Open parameters.
 func NewSession(localOpen OpenParams, peerAddr netip.Addr, tcpConn net.Conn, logger *zap.Logger, ted *table.LsTED, asn uint32) *Session {
 	return &Session{
-		localSessionID:    localOpen.SessionID,
-		localKeepalive:    localOpen.Keepalive,
-		localDeadTimer:    localOpen.DeadTimer,
-		openWait:          openWaitTimer,
-		keepWait:          keepWaitTimer,
-		createdAt:         time.Now(),
-		srpIDHead:         uint32(1),
-		srpIDMax:          math.MaxUint32,
-		srPolicyIntentTTL: defaultSRPolicyIntentTTL,
-		sweepInterval:     defaultSRPolicyIntentSweepInterval,
-		maxUnknownMsgs:    defaultMaxUnknownMsgs,
-		unknownMsgWindow:  defaultUnknownMsgWindow,
-		logger:            logger.With(zap.String("server", "pcep"), zap.String("session", peerAddr.String())),
-		pccType:           pcep.RFCCompliant,
-		peerAddr:          peerAddr,
-		tcpConn:           tcpConn,
-		ted:               ted,
-		asn:               asn,
+		localSessionID:         localOpen.SessionID,
+		localKeepalive:         localOpen.Keepalive,
+		localDeadTimer:         localOpen.DeadTimer,
+		openWait:               openWaitTimer,
+		keepWait:               keepWaitTimer,
+		createdAt:              time.Now(),
+		srpIDHead:              uint32(1),
+		srpIDMax:               math.MaxUint32,
+		srPolicyIntentTTL:      defaultSRPolicyIntentTTL,
+		sweepInterval:          defaultSRPolicyIntentSweepInterval,
+		maxUnknownMsgs:         defaultMaxUnknownMsgs,
+		unknownMsgWindow:       defaultUnknownMsgWindow,
+		logger:                 logger.With(zap.String("server", "pcep"), zap.String("session", peerAddr.String())),
+		pccType:                pcep.RFCCompliant,
+		peerAddr:               peerAddr,
+		tcpConn:                tcpConn,
+		ted:                    ted,
+		asn:                    asn,
+		advertisedCapabilities: pcep.DefaultCapabilities(),
 	}
 }
 
@@ -437,14 +434,14 @@ const maxKeepWaitOpenAttempts = 2
 // Open establishes the PCEP session according to RFC 5440 §6.2.
 func (ss *Session) Open() error {
 	ss.setState(sessionStateOpenWait)
+	if err := ss.SendOpen(); err != nil {
+		return err
+	}
 	if err := ss.negotiateOpen(); err != nil {
 		return err
 	}
 
 	for attempt := range maxKeepWaitOpenAttempts {
-		if err := ss.SendOpen(); err != nil {
-			return err
-		}
 		if err := ss.SendKeepalive(); err != nil {
 			return err
 		}
@@ -458,6 +455,11 @@ func (ss *Session) Open() error {
 		if !retry {
 			ss.setState(sessionStateUp)
 			return nil
+		}
+
+		ss.setState(sessionStateOpenWait)
+		if err := ss.SendOpen(); err != nil {
+			return err
 		}
 	}
 	return errors.New("peer repeatedly rejected Pola's session characteristics")
@@ -572,6 +574,17 @@ func (ss *Session) sendPCErrBestEffort(errorType, errorValue uint8) {
 	}
 }
 
+// validateCapabilities logs known peer deviations from RFC-defined capabilities.
+// X=0 with MSD=0 is invalid per RFC 8664 §5.1, but tolerated for
+// compatibility with deployed Cisco XRd, Juniper vJunos, and FRRouting.
+func (ss *Session) validateCapabilities(caps []pcep.CapabilityInterface) {
+	for _, capability := range caps {
+		if sr, ok := capability.(*pcep.SRPCECapability); ok && sr.HasInvalidZeroMSD() {
+			ss.logger.Warn("peer advertised SR-PCE-CAPABILITY with X=0 and MSD=0 (RFC 8664 §5.1); tolerating as a known deployed-peer deviation")
+		}
+	}
+}
+
 func (ss *Session) readFullWithDeadline(buf []uint8, deadline time.Time) error {
 	if err := ss.tcpConn.SetReadDeadline(deadline); err != nil {
 		return err
@@ -641,8 +654,10 @@ func (ss *Session) ReceiveOpen() error {
 
 	receivedCaps := slices.Clone(openMessage.OpenObject.Caps)
 
-	// pccType detection
-	// * FRRouting cannot be detected from the open message, so it is treated as an RFC compliant
+	ss.stats.inc(&ss.stats.openRcvd)
+
+	ss.validateCapabilities(receivedCaps)
+
 	pccType := pcep.DeterminePccType(receivedCaps)
 	ss.logger.Debug("Determine PCC Type", zap.Int("pcc-type", int(pccType)))
 
@@ -657,7 +672,6 @@ func (ss *Session) ReceiveOpen() error {
 	ss.stateMu.Unlock()
 
 	ss.setAdvertisedCapabilities(pcep.PolaCapability(openMessage.OpenObject.Caps))
-	ss.stats.inc(&ss.stats.openRcvd)
 
 	return nil
 }
@@ -693,7 +707,10 @@ func (ss *Session) negotiateOpen() error {
 
 // acceptableOpen reports whether the peer's session characteristics are acceptable.
 func (ss *Session) acceptableOpen(pccOpen OpenParams) bool {
-	if pccOpen.Keepalive != 0 && pccOpen.DeadTimer != 0 && pccOpen.DeadTimer < pccOpen.Keepalive {
+	if pccOpen.Keepalive == 0 && pccOpen.DeadTimer != 0 {
+		return false
+	}
+	if pccOpen.Keepalive != 0 && pccOpen.DeadTimer != 0 && pccOpen.DeadTimer <= pccOpen.Keepalive {
 		return false
 	}
 	if !ss.keepaliveRangeEnabled {
@@ -713,13 +730,18 @@ func (ss *Session) proposedTimers(pccOpen OpenParams) (keepalive, deadTimer uint
 			keepalive = ss.maxKeepalive
 		}
 	}
-	return keepalive, pcep.DeadTimerFor(keepalive)
+	deadTimer = pcep.DeadTimerFor(keepalive)
+	if deadTimer <= keepalive {
+		// No 8-bit DeadTimer exceeds keepalive (e.g. keepalive=255), so use 0.
+		deadTimer = 0
+	}
+	return keepalive, deadTimer
 }
 
 // proposeAcceptableOpen sends a PCErr proposing acceptable session characteristics.
 func (ss *Session) proposeAcceptableOpen(pccOpen OpenParams) error {
 	keepalive, deadTimer := ss.proposedTimers(pccOpen)
-	openObject := pcep.NewOpenObject(ss.localSessionID, keepalive, deadTimer, nil)
+	openObject := pcep.NewOpenObject(pccOpen.SessionID, keepalive, deadTimer, nil)
 
 	pcerrMessage := pcep.NewPCErrMessageWithOpen(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableNegotiable, openObject)
 	ss.logger.Debug("Send PCErr Message proposing session characteristics",
@@ -1136,6 +1158,53 @@ func effectiveKeepalive(localKeepalive, localDeadTimer uint8) uint8 {
 		limit = 1
 	}
 	return min(localKeepalive, limit)
+}
+
+// sessionSnapshot is a consistent view of session state.
+type sessionSnapshot struct {
+	state                   sessionState
+	pccType                 pcep.PccType
+	localOpen               *OpenParams
+	pccOpen                 *OpenParams
+	initiator               sessionInitiator
+	syncState               lspDBSyncState
+	createdAt               time.Time
+	establishedAt           time.Time
+	advertisedCapabilities  []pcep.CapabilityInterface
+	receivedPccCapabilities []pcep.CapabilityInterface
+}
+
+func (ss *Session) snapshot() sessionSnapshot {
+	ss.stateMu.RLock()
+	defer ss.stateMu.RUnlock()
+	return sessionSnapshot{
+		state:                   ss.state,
+		pccType:                 ss.pccType,
+		localOpen:               ss.localOpen,
+		pccOpen:                 ss.pccOpen,
+		initiator:               ss.initiator,
+		syncState:               ss.syncState,
+		createdAt:               ss.createdAt,
+		establishedAt:           ss.establishedAt,
+		advertisedCapabilities:  slices.Clone(ss.advertisedCapabilities),
+		receivedPccCapabilities: slices.Clone(ss.receivedPccCapabilities),
+	}
+}
+
+// keepaliveInterval returns Pola's effective Keepalive interval.
+func (snap sessionSnapshot) keepaliveInterval() uint8 {
+	if snap.localOpen == nil {
+		return 0
+	}
+	return effectiveKeepalive(snap.localOpen.Keepalive, snap.localOpen.DeadTimer)
+}
+
+// readDeadline returns the deadline derived from the peer's DeadTimer.
+func (snap sessionSnapshot) readDeadline() time.Duration {
+	if snap.pccOpen == nil || snap.pccOpen.Keepalive == 0 || snap.pccOpen.DeadTimer == 0 {
+		return 0
+	}
+	return time.Duration(snap.pccOpen.DeadTimer) * time.Second
 }
 
 // ReceivedCapabilities returns a snapshot of the capabilities advertised by the PCC.

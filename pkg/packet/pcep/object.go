@@ -325,6 +325,22 @@ func DeadTimerFor(keepalive uint8) uint8 {
 	return uint8(d)
 }
 
+// ValidateTimers validates keepalive/deadTimer according to RFC 5440 §7.3.
+// A nil deadTimer uses the RFC-recommended default, DeadTimerFor(keepalive).
+func ValidateTimers(keepalive uint8, deadTimer *uint8) error {
+	resolved := DeadTimerFor(keepalive)
+	if deadTimer != nil {
+		resolved = *deadTimer
+	}
+	switch {
+	case keepalive == 0 && resolved != 0:
+		return errors.New("deadTimer must be 0 when keepalive is 0")
+	case keepalive != 0 && resolved != 0 && resolved <= keepalive:
+		return fmt.Errorf("deadTimer must be greater than keepalive (got deadTimer=%d, keepalive=%d)", resolved, keepalive)
+	}
+	return nil
+}
+
 // BandwidthObject is a PCEP Bandwidth object (RFC 5440 §7.7).
 type BandwidthObject struct {
 	ObjectType ObjectType

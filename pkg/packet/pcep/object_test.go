@@ -667,7 +667,7 @@ func TestOpenObject_RoundTrip(t *testing.T) {
 				&SRPCECapability{
 					HasUnlimitedMaxSIDDepth: true,
 					IsNAISupported:          true,
-					MaximumSidDepth:         msdPtr(10),
+					MaximumSidDepth:         10,
 				},
 			},
 		},
@@ -681,7 +681,7 @@ func TestOpenObject_RoundTrip(t *testing.T) {
 				&SRPCECapability{
 					HasUnlimitedMaxSIDDepth: false,
 					IsNAISupported:          false,
-					MaximumSidDepth:         msdPtr(16),
+					MaximumSidDepth:         16,
 				},
 				&SRv6PCECapability{
 					IsNAISupported: true,
@@ -752,6 +752,39 @@ func TestOpenObject_Serialize_ObjectLengthBoundary(t *testing.T) {
 	o := OpenObject{Caps: []CapabilityInterface{&UnknownTLV{Value: make([]byte, 65531)}}}
 	_, err := o.Serialize()
 	assert.ErrorContains(t, err, "exceeds")
+}
+
+func TestValidateTimers(t *testing.T) {
+	t.Parallel()
+
+	uint8Ptr := func(v uint8) *uint8 { return &v }
+
+	cases := map[string]struct {
+		keepalive uint8
+		deadTimer *uint8
+		wantErr   bool
+	}{
+		"NilDeadTimer_KeepaliveZero":       {keepalive: 0, deadTimer: nil, wantErr: false},
+		"NilDeadTimer_KeepaliveNonzero":    {keepalive: 30, deadTimer: nil, wantErr: false},
+		"ExplicitZero_KeepaliveZero":       {keepalive: 0, deadTimer: uint8Ptr(0), wantErr: false},
+		"ExplicitNonzero_KeepaliveZero":    {keepalive: 0, deadTimer: uint8Ptr(1), wantErr: true},
+		"ExplicitGreater_KeepaliveNonzero": {keepalive: 30, deadTimer: uint8Ptr(60), wantErr: false},
+		"ExplicitEqual_KeepaliveNonzero":   {keepalive: 30, deadTimer: uint8Ptr(30), wantErr: true},
+		"ExplicitLess_KeepaliveNonzero":    {keepalive: 30, deadTimer: uint8Ptr(10), wantErr: true},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			err := ValidateTimers(tt.keepalive, tt.deadTimer)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
 }
 
 func TestLSPAObject_RoundTrip(t *testing.T) {
@@ -1771,7 +1804,7 @@ func TestCommonObjectHeader_DecodeFromBytes_TooShort(t *testing.T) {
 func TestNewOpenObject(t *testing.T) {
 	t.Parallel()
 
-	caps := []CapabilityInterface{&SRPCECapability{MaximumSidDepth: msdPtr(10)}}
+	caps := []CapabilityInterface{&SRPCECapability{MaximumSidDepth: 10}}
 	o := NewOpenObject(7, 30, DeadTimerFor(30), caps)
 
 	want := &OpenObject{

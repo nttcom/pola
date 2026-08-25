@@ -14,7 +14,6 @@ import (
 	"github.com/nttcom/pola/pkg/packet/pcep"
 	"github.com/nttcom/pola/pkg/table"
 	"go.uber.org/zap"
-	"google.golang.org/protobuf/proto"
 )
 
 func dedupCapabilities(logger *zap.Logger, kind string, caps []pcep.CapabilityInterface) []*pb.Capability {
@@ -123,14 +122,11 @@ func buildCapability(cap pcep.CapabilityInterface) *pb.Capability {
 			Color:                tlv.ColorCapability,
 		}}
 	case *pcep.SRPCECapability:
-		sr := &pb.SrCapability{
+		c.Detail = &pb.Capability_Sr{Sr: &pb.SrCapability{
 			UnlimitedMsd: tlv.HasUnlimitedMaxSIDDepth,
 			NaiSupported: tlv.IsNAISupported,
-		}
-		if tlv.MaximumSidDepth != nil {
-			sr.Msd = proto.Uint32(uint32(*tlv.MaximumSidDepth))
-		}
-		c.Detail = &pb.Capability_Sr{Sr: sr}
+			Msd:          new(uint32(tlv.MaximumSidDepth)),
+		}}
 	case *pcep.SRv6PCECapability:
 		c.Detail = &pb.Capability_Srv6{Srv6: &pb.Srv6Capability{
 			NaiSupported: tlv.IsNAISupported,
@@ -201,49 +197,49 @@ func capabilityType(t pcep.TLVType) pb.CapabilityType {
 // buildPBSession converts a Session to its protobuf representation.
 // Stats is included only when requested.
 func (s *APIServer) buildPBSession(pcepSession *Session, includeStats bool) *pb.Session {
-	pccOpen, hasPccOpen := pcepSession.PccOpen()
+	snap := pcepSession.snapshot()
+
 	pbPccType := pb.PccType_PCC_TYPE_UNSPECIFIED
-	if hasPccOpen {
-		pbPccType = toPBPccType(pcepSession.PccType())
+	if snap.pccOpen != nil {
+		pbPccType = toPBPccType(snap.pccType)
 	}
 
 	pbSession := &pb.Session{
 		PeerAddr:          pcepSession.peerAddr.AsSlice(),
-		State:             toPBSessionState(pcepSession.State()),
+		State:             toPBSessionState(snap.state),
 		PccType:           pbPccType,
-		LocalCapabilities: dedupCapabilities(s.logger, "advertised", pcepSession.AdvertisedCapabilities()),
-		PeerCapabilities:  dedupCapabilities(s.logger, "received", pcepSession.ReceivedCapabilities()),
-		Initiator:         toPBInitiator(pcepSession.Initiator()),
-		SyncState:         toPBSyncState(pcepSession.SyncState()),
+		LocalCapabilities: dedupCapabilities(s.logger, "advertised", snap.advertisedCapabilities),
+		PeerCapabilities:  dedupCapabilities(s.logger, "received", snap.receivedPccCapabilities),
+		Initiator:         toPBInitiator(snap.initiator),
+		SyncState:         toPBSyncState(snap.syncState),
 	}
 
-	localOpen, hasLocalOpen := pcepSession.LocalOpen()
-	if hasLocalOpen {
-		pbSession.LocalSessionId = new(uint32(localOpen.SessionID))
+	if snap.localOpen != nil {
+		pbSession.LocalSessionId = new(uint32(snap.localOpen.SessionID))
 		pbSession.LocalTimers = &pb.SessionTimers{
-			Keepalive: uint32(localOpen.Keepalive),
-			DeadTimer: uint32(localOpen.DeadTimer),
+			Keepalive: uint32(snap.localOpen.Keepalive),
+			DeadTimer: uint32(snap.localOpen.DeadTimer),
 		}
 	}
-	if hasPccOpen {
-		pbSession.PeerSessionId = new(uint32(pccOpen.SessionID))
+	if snap.pccOpen != nil {
+		pbSession.PeerSessionId = new(uint32(snap.pccOpen.SessionID))
 		pbSession.PeerTimers = &pb.SessionTimers{
-			Keepalive: uint32(pccOpen.Keepalive),
-			DeadTimer: uint32(pccOpen.DeadTimer),
+			Keepalive: uint32(snap.pccOpen.Keepalive),
+			DeadTimer: uint32(snap.pccOpen.DeadTimer),
 		}
 	}
-	// Use Up() rather than Open flags: they become true before negotiation completes.
-	if pcepSession.Up() {
+	if snap.state == sessionStateUp {
 		pbSession.EffectiveTimers = &pb.EffectiveTimers{
-			Keepalive: uint32(pcepSession.keepaliveInterval()),
-			DeadTimer: uint32(pcepSession.readDeadline() / time.Second),
+			Keepalive: uint32(snap.keepaliveInterval()),
+			DeadTimer: uint32(snap.readDeadline() / time.Second),
 		}
 	}
-	if t := pcepSession.CreatedAt(); !t.IsZero() {
-		pbSession.CreatedAtUnixNano = t.UnixNano()
+	if !snap.createdAt.IsZero() {
+		pbSession.CreatedAtUnixNano = snap.createdAt.UnixNano()
 	}
-	if t := pcepSession.EstablishedAt(); !t.IsZero() {
-		pbSession.EstablishedAtUnixNano = t.UnixNano()
+	if !snap.establishedAt.IsZero() {
+		pbSession.EstablishedAtUnixNano = snap.establishedAt.UnixNano()
+		pbSession.UptimeNanos = time.Since(snap.establishedAt).Nanoseconds()
 	}
 	if includeStats {
 		setupOK, setupFail := s.pce.PeerSetupStats(pcepSession.peerAddr)
@@ -282,10 +278,11 @@ func (s *APIServer) buildPBSRPolicy(pcepSession *Session, policy *table.SRPolicy
 // buildPBSRPolicySession converts a Session and its SR Policies into the
 // lightweight SRPolicySession representation returned by GetSRPolicyList.
 func buildPBSRPolicySession(pcepSession *Session, policies []*pb.SRPolicy) *pb.SRPolicySession {
+	snap := pcepSession.snapshot()
 	return &pb.SRPolicySession{
 		PeerAddr:   pcepSession.peerAddr.AsSlice(),
-		State:      toPBSessionState(pcepSession.State()),
-		SyncState:  toPBSyncState(pcepSession.SyncState()),
+		State:      toPBSessionState(snap.state),
+		SyncState:  toPBSyncState(snap.syncState),
 		SrPolicies: policies,
 	}
 }

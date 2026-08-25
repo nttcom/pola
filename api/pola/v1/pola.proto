@@ -252,6 +252,7 @@ message Session {
   int64 created_at_unix_nano = 16; // Unix time in nanoseconds; 0 = unset.
   int64 established_at_unix_nano = 17; // Unix time in nanoseconds; 0 = not established.
   SessionStats stats = 18; // Populated only when include_stats is true.
+  int64 uptime_nanos = 19; // Duration since session establishment in nanoseconds; 0 = not established.
   reserved "caps", "is_synced", "sr_policies";
 }
 

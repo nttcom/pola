@@ -887,6 +887,11 @@ func TestPCErrMessage_DecodeFromBytes_Errors(t *testing.T) {
 			NewCommonObjectHeader(ObjectClassOpen, ObjectTypeOpenOpen, commonObjectHeaderLength+4).Serialize(),
 			[]uint8{0x40, 0x00, 0x00, 0x00}, // unsupported PCEP version (2) in the OPEN object
 		),
+		"UnsupportedOpenObjectType": AppendByteSlices(
+			validError,
+			NewCommonObjectHeader(ObjectClassOpen, ObjectType(2), commonObjectHeaderLength+4).Serialize(),
+			[]uint8{0x20, 0x00, 0x00, 0x00},
+		),
 	}
 
 	for name, body := range cases {

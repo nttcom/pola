@@ -62,13 +62,9 @@ global:
 
 #### Advertising Pola's timers
 
-`global.pcep.keepalive` and `global.pcep.deadTimer` configure the values Pola
-advertises in its Open message (RFC 5440 §7.3). If omitted, they default to a
-30-second Keepalive and a DeadTimer of four times the Keepalive.
-
-`keepalive` is the maximum interval between PCEP messages sent by Pola.
-`deadTimer` is the silence after which the PCC may declare Pola down. If
-`keepalive` is `0`, `deadTimer` must also be `0`.
+`global.pcep.keepalive` and `global.pcep.deadTimer` configure the timers Pola
+advertises in its Open message (RFC 5440 §7.3). They default to 30 and 120
+seconds. If `keepalive` is `0`, `deadTimer` must also be `0`.
 
 ```yaml
 global:
@@ -79,8 +75,8 @@ global:
     deadTimer: 120
 ```
 
-Note that these values apply to Pola's own transmissions only. The interval Pola
-waits before declaring a PCC down comes from the DeadTimer that PCC advertised.
+These timers apply to Pola's side of the session. Pola uses the DeadTimer
+advertised by the PCC to detect a peer failure.
 
 #### Validating peer timers
 

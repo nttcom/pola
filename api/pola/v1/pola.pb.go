@@ -1961,6 +1961,7 @@ type Session struct {
 	CreatedAtUnixNano     int64            `protobuf:"varint,16,opt,name=created_at_unix_nano,json=createdAtUnixNano,proto3" json:"created_at_unix_nano,omitempty"`             // Unix time in nanoseconds; 0 = unset.
 	EstablishedAtUnixNano int64            `protobuf:"varint,17,opt,name=established_at_unix_nano,json=establishedAtUnixNano,proto3" json:"established_at_unix_nano,omitempty"` // Unix time in nanoseconds; 0 = not established.
 	Stats                 *SessionStats    `protobuf:"bytes,18,opt,name=stats,proto3" json:"stats,omitempty"`                                                                   // Populated only when include_stats is true.
+	UptimeNanos           int64            `protobuf:"varint,19,opt,name=uptime_nanos,json=uptimeNanos,proto3" json:"uptime_nanos,omitempty"`                                   // Duration since session establishment in nanoseconds; 0 = not established.
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
 }
@@ -2098,6 +2099,13 @@ func (x *Session) GetStats() *SessionStats {
 		return x.Stats
 	}
 	return nil
+}
+
+func (x *Session) GetUptimeNanos() int64 {
+	if x != nil {
+		return x.UptimeNanos
+	}
+	return 0
 }
 
 type SRPolicySession struct {
@@ -3306,7 +3314,7 @@ const file_api_pola_v1_pola_proto_rawDesc = "" +
 	"\x04open\x18\v \x01(\v2\x1b.api.pola.v1.MessageCounterR\x04open\x121\n" +
 	"\x05close\x18\f \x01(\v2\x1b.api.pola.v1.MessageCounterR\x05close\x121\n" +
 	"\x05pcreq\x18\r \x01(\v2\x1b.api.pola.v1.MessageCounterR\x05pcreq\x121\n" +
-	"\x05pcrep\x18\x0e \x01(\v2\x1b.api.pola.v1.MessageCounterR\x05pcrep\"\xa4\a\n" +
+	"\x05pcrep\x18\x0e \x01(\v2\x1b.api.pola.v1.MessageCounterR\x05pcrep\"\xc7\a\n" +
 	"\aSession\x12\x1b\n" +
 	"\tpeer_addr\x18\x01 \x01(\fR\bpeerAddr\x12/\n" +
 	"\x05state\x18\x02 \x01(\x0e2\x19.api.pola.v1.SessionStateR\x05state\x12F\n" +
@@ -3325,7 +3333,8 @@ const file_api_pola_v1_pola_proto_rawDesc = "" +
 	"sync_state\x18\x0f \x01(\x0e2\x1b.api.pola.v1.LspDbSyncStateR\tsyncState\x12/\n" +
 	"\x14created_at_unix_nano\x18\x10 \x01(\x03R\x11createdAtUnixNano\x127\n" +
 	"\x18established_at_unix_nano\x18\x11 \x01(\x03R\x15establishedAtUnixNano\x12/\n" +
-	"\x05stats\x18\x12 \x01(\v2\x19.api.pola.v1.SessionStatsR\x05statsB\x13\n" +
+	"\x05stats\x18\x12 \x01(\v2\x19.api.pola.v1.SessionStatsR\x05stats\x12!\n" +
+	"\fuptime_nanos\x18\x13 \x01(\x03R\vuptimeNanosB\x13\n" +
 	"\x11_local_session_idB\x12\n" +
 	"\x10_peer_session_idJ\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\x06\x10\aR\x04capsR\tis_syncedR\vsr_policies\"\xd3\x01\n" +
 	"\x0fSRPolicySession\x12\x1b\n" +

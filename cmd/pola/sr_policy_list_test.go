@@ -303,12 +303,13 @@ func TestShowSRPolicyList(t *testing.T) {
 		cmd := newSRPolicyListCmd()
 		require.NoError(t, cmd.Flags().Set("peer", "192.0.2.1"))
 
-		captureStdout(t, func() {
+		out := captureStdout(t, func() {
 			require.NoError(t, showSRPolicyList(cmd, []string{}))
 		})
 
 		require.NotNil(t, fake.srPolicyListReq)
 		assert.Equal(t, netip.MustParseAddr("192.0.2.1").AsSlice(), fake.srPolicyListReq.GetPeerAddr())
+		assert.Equal(t, "No PCEP session for 192.0.2.1.\n", out)
 	})
 
 	t.Run("grpc error propagates", func(t *testing.T) {

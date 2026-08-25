@@ -11,6 +11,8 @@ import (
 	"os"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/nttcom/pola/pkg/packet/pcep"
 )
 
 // PCEP holds the configuration for PCEP protocol settings.
@@ -105,17 +107,12 @@ func (p PCEP) validate() []error {
 	if p.Port == "" {
 		errs = append(errs, errors.New("global.pcep.port is required"))
 	}
-	if p.DeadTimer != nil && *p.DeadTimer != 0 {
-		keepalive := defaultKeepalive
-		if p.Keepalive != nil {
-			keepalive = *p.Keepalive
-		}
-		switch {
-		case keepalive == 0:
-			errs = append(errs, errors.New("global.pcep.deadTimer must be 0 when global.pcep.keepalive is 0"))
-		case *p.DeadTimer < keepalive:
-			errs = append(errs, errors.New("global.pcep.deadTimer must be >= global.pcep.keepalive when both are nonzero"))
-		}
+	keepalive := defaultKeepalive
+	if p.Keepalive != nil {
+		keepalive = *p.Keepalive
+	}
+	if err := pcep.ValidateTimers(keepalive, p.DeadTimer); err != nil {
+		errs = append(errs, fmt.Errorf("global.pcep.%w", err))
 	}
 	if p.MinKeepalive != nil && p.MaxKeepalive != nil && *p.MinKeepalive > *p.MaxKeepalive {
 		errs = append(errs, errors.New("global.pcep.minKeepalive must be <= global.pcep.maxKeepalive"))

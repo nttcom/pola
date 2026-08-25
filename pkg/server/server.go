@@ -125,6 +125,24 @@ func resolveKeepaliveRange(minKeepalive, maxKeepalive *uint8) (lo, hi uint8, ena
 	return lo, hi, true
 }
 
+// validatePCEOptions validates timer constraints before starting the server.
+func validatePCEOptions(o *PCEOptions) error {
+	if o == nil {
+		return errors.New("PCEOptions must not be nil")
+	}
+	keepalive := defaultLocalKeepalive
+	if o.Keepalive != nil {
+		keepalive = *o.Keepalive
+	}
+	if err := pcep.ValidateTimers(keepalive, o.DeadTimer); err != nil {
+		return err
+	}
+	if o.MinKeepalive != nil && o.MaxKeepalive != nil && *o.MinKeepalive > *o.MaxKeepalive {
+		return errors.New("MinKeepalive must be <= MaxKeepalive")
+	}
+	return nil
+}
+
 func resolveLocalTimers(keepalive, deadTimer *uint8) (uint8, uint8) {
 	localKeepalive := defaultLocalKeepalive
 	if keepalive != nil {
@@ -133,14 +151,15 @@ func resolveLocalTimers(keepalive, deadTimer *uint8) (uint8, uint8) {
 	if deadTimer != nil {
 		return localKeepalive, *deadTimer
 	}
-	if localKeepalive == 0 {
-		return 0, 0
-	}
 	return localKeepalive, pcep.DeadTimerFor(localKeepalive)
 }
 
 // NewPCE starts the PCEP and gRPC servers.
 func NewPCE(ctx context.Context, o *PCEOptions, logger *zap.Logger, tedElemsChan chan []table.TEDElem) Error {
+	if err := validatePCEOptions(o); err != nil {
+		return Error{Server: "config", Error: err}
+	}
+
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 

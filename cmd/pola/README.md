@@ -50,22 +50,31 @@ Session #0: 192.0.2.1
   Transport:         tcp, auth=none
   Timers:
                Local  Peer  Effective
-    Keepalive  30     10    10
+    Keepalive  30     10    30
     DeadTimer  120    40    40
   Capabilities:
     Common:
       STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Stateful, Update, Instantiation
       SR-PCE-CAPABILITY [RFC8664]: SR, SR-NAI-Supported
-      ASSOC-TYPE-LIST [RFC8697]: 6 SR Policy Association
-    Local only:        msd=10
-    Peer only:         assoctype:9, color, msd=16
+      ASSOC-TYPE-LIST [RFC8697]:
+        6 SR Policy Association
+    Local only:
+      msd=10
+    Peer only:
+      assoctype=9
+      color
+      msd=16
   Session Creation:  2026-08-19T09:30:05Z
   Initiator:         remote
   Stats:
                Sent  Rcvd
+    Open       1     1
     Keepalive  25    25
+    Close      0     0
     PCErr      0     0
     PCNtf      0     0
+    PCReq      0     0
+    PCRep      0     0
     Report     0     3
     Update     1     0
     Initiate   1     0
@@ -86,7 +95,7 @@ JSON formatted response (`pola session detail -j`)
     "role": "active-stateful-pce",
     "sessionId": { "local": 1, "peer": 7 },
     "timers": {
-      "keepalive": { "local": 30, "peer": 10, "effective": 10 },
+      "keepalive": { "local": 30, "peer": 10, "effective": 30 },
       "deadTimer": { "local": 120, "peer": 40, "effective": 40 }
     },
     "transport": { "protocol": "tcp", "auth": "none" },
@@ -97,7 +106,8 @@ JSON formatted response (`pola session detail -j`)
         "instantiation": true,
         "pathSetupTypes": [],
         "associationTypes": [6],
-        "unrecognizedTlvTypes": []
+        "unrecognizedTlvTypes": [],
+        "other": []
       },
       "localOnly": [{ "name": "msd", "value": "10" }],
       "peerOnly": [
@@ -109,9 +119,13 @@ JSON formatted response (`pola session detail -j`)
     "sessionCreation": "2026-08-19T09:30:05Z",
     "initiator": "remote",
     "stats": {
+      "open": { "sent": 1, "rcvd": 1 },
       "keepalive": { "sent": 25, "rcvd": 25 },
+      "close": { "sent": 0, "rcvd": 0 },
       "pcerr": { "sent": 0, "rcvd": 0 },
       "pcntf": { "sent": 0, "rcvd": 0 },
+      "pcreq": { "sent": 0, "rcvd": 0 },
+      "pcrep": { "sent": 0, "rcvd": 0 },
       "report": { "sent": 0, "rcvd": 3 },
       "update": { "sent": 1, "rcvd": 0 },
       "initiate": { "sent": 1, "rcvd": 0 },

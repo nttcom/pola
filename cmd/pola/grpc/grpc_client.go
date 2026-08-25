@@ -220,14 +220,13 @@ type EffectiveTimers struct {
 	DeadTimer *uint32
 }
 
-// MessageCounter contains sent and received message counters.
+// MessageCounter mirrors one RFC 9826 sent/rcvd counter pair.
 type MessageCounter struct {
 	Sent uint64
 	Rcvd uint64
 }
 
-// SessionStats contains per-session PCEP message counters.
-// Open and Close are Pola-specific additions.
+// SessionStats contains per-session PCEP statistics.
 type SessionStats struct {
 	Open             MessageCounter
 	Keepalive        MessageCounter
@@ -261,6 +260,7 @@ type Session struct {
 	SyncState         string
 	CreatedAt         time.Time
 	EstablishedAt     time.Time
+	UptimeNanos       int64
 	Stats             *SessionStats
 }
 
@@ -362,6 +362,7 @@ func sessionFromPB(pbss *pb.Session) (Session, error) {
 	if n := pbss.GetEstablishedAtUnixNano(); n != 0 {
 		ss.EstablishedAt = time.Unix(0, n)
 	}
+	ss.UptimeNanos = pbss.GetUptimeNanos()
 	if s := pbss.GetStats(); s != nil {
 		ss.Stats = sessionStatsFromPB(s)
 	}

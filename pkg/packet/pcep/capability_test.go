@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestPolaCapability(t *testing.T) {
@@ -34,14 +35,14 @@ func TestPolaCapability(t *testing.T) {
 						&SRPCECapability{
 							HasUnlimitedMaxSIDDepth: false,
 							IsNAISupported:          false,
-							MaximumSidDepth:         msdPtr(16),
+							MaximumSidDepth:         16,
 						},
 					},
 				},
 				&SRPCECapability{
 					HasUnlimitedMaxSIDDepth: false,
 					IsNAISupported:          false,
-					MaximumSidDepth:         msdPtr(16),
+					MaximumSidDepth:         16,
 				},
 				&AssocTypeList{
 					AssocTypes: []AssocType{AssocTypePathProtectionAssociation, AssocTypeSRPolicyAssociation},
@@ -71,14 +72,14 @@ func TestPolaCapability(t *testing.T) {
 						&SRPCECapability{
 							HasUnlimitedMaxSIDDepth: false,
 							IsNAISupported:          false,
-							MaximumSidDepth:         msdPtr(16),
+							MaximumSidDepth:         16,
 						},
 					},
 				},
 				&SRPCECapability{
 					HasUnlimitedMaxSIDDepth: false,
 					IsNAISupported:          false,
-					MaximumSidDepth:         msdPtr(16),
+					MaximumSidDepth:         16,
 				},
 				&AssocTypeList{
 					AssocTypes: []AssocType{AssocTypePathProtectionAssociation, AssocTypeSRPolicyAssociation},
@@ -101,10 +102,20 @@ func TestPolaCapability(t *testing.T) {
 	}
 }
 
+func TestDefaultCapabilities(t *testing.T) {
+	caps := DefaultCapabilities()
+	require.Len(t, caps, 1)
+	statefulCap, ok := caps[0].(*StatefulPCECapability)
+	require.True(t, ok, "expected DefaultCapabilities to return a StatefulPCECapability")
+	assert.True(t, statefulCap.LSPUpdateCapability)
+	assert.True(t, statefulCap.LSPInstantiationCapability)
+	assert.True(t, statefulCap.ColorCapability)
+}
+
 func TestPolaCapability_OutputAlwaysSerializes(t *testing.T) {
 	caps := []CapabilityInterface{
 		&StatefulPCECapability{LSPUpdateCapability: true},
-		&SRPCECapability{MaximumSidDepth: msdPtr(16)},
+		&SRPCECapability{MaximumSidDepth: 16},
 		&PathSetupTypeCapability{PathSetupTypes: Psts{PathSetupTypeSRTE}},
 		&AssocTypeList{AssocTypes: []AssocType{AssocTypeSRPolicyAssociation}},
 		&LSPDBVersion{VersionNumber: 1},

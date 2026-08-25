@@ -88,23 +88,19 @@ func (c capabilitiesView) commonLines() []capDisplayLine {
 	return commonCapabilityLines(c.rawCommon)
 }
 
-// commonCapView exposes selected capability dimensions shared by both sides.
-// It is not an exhaustive representation; other common capabilities remain
-// visible in the text output.
+// commonCapView exposes capabilities shared by both sides.
 type commonCapView struct {
 	Stateful       bool     `json:"stateful"`
 	Update         bool     `json:"update"`
 	Instantiation  bool     `json:"instantiation"`
 	PathSetupTypes []string `json:"pathSetupTypes"`
-
-	// SRMSD and SRv6MSD are set only when both sides advertise the same value;
-	// mismatches remain in localOnly/peerOnly.
-	// SRv6MSD is currently always nil because the wire decoder and gRPC schema
-	// do not carry the RFC 9603 MSD field yet.
-	SRMSD                *uint32  `json:"srMsd,omitempty"`
-	SRv6MSD              *uint32  `json:"srv6Msd,omitempty"`
-	AssociationTypes     []uint32 `json:"associationTypes"`
-	UnrecognizedTLVTypes []uint32 `json:"unrecognizedTlvTypes"`
+	// SRMSD and SRv6MSD are set only when both sides advertise the same value.
+	// SRv6MSD is unavailable until RFC 9603 MSD is supported by the decoder and gRPC schema.
+	SRMSD                *uint32          `json:"srMsd,omitempty"`
+	SRv6MSD              *uint32          `json:"srv6Msd,omitempty"`
+	AssociationTypes     []uint32         `json:"associationTypes"`
+	UnrecognizedTLVTypes []uint32         `json:"unrecognizedTlvTypes"`
+	Other                []capabilityView `json:"other"`
 }
 
 func buildCapabilitiesView(localCaps, peerCaps []grpc.Capability) capabilitiesView {
@@ -115,6 +111,7 @@ func buildCapabilitiesView(localCaps, peerCaps []grpc.Capability) capabilitiesVi
 			PathSetupTypes:       []string{},
 			AssociationTypes:     []uint32{},
 			UnrecognizedTLVTypes: []uint32{},
+			Other:                []capabilityView{},
 		},
 		LocalOnly: onlyCapabilities(sets.localOnly),
 		PeerOnly:  onlyCapabilities(sets.peerOnly),
@@ -128,6 +125,12 @@ func buildCapabilitiesView(localCaps, peerCaps []grpc.Capability) capabilitiesVi
 	slices.Sort(view.Common.PathSetupTypes)
 	slices.Sort(view.Common.AssociationTypes)
 	slices.Sort(view.Common.UnrecognizedTLVTypes)
+	slices.SortFunc(view.Common.Other, func(a, b capabilityView) int {
+		if c := cmp.Compare(a.Name, b.Name); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.Value, b.Value)
+	})
 
 	return view
 }
@@ -143,7 +146,7 @@ func parseTokenUint32(token, prefix string) (uint32, bool) {
 	return uint32(n), true
 }
 
-func applyStatefulFeature(common *commonCapView, token string) {
+func applyStatefulFeature(common *commonCapView, token string) bool {
 	switch token {
 	case "Stateful":
 		common.Stateful = true
@@ -151,28 +154,38 @@ func applyStatefulFeature(common *commonCapView, token string) {
 		common.Update = true
 	case "Instantiation":
 		common.Instantiation = true
+	default:
+		return false
 	}
+	return true
 }
 
 func applyCommonFeature(common *commonCapView, f capFeature) {
 	switch f.group {
 	case "STATEFUL":
-		applyStatefulFeature(common, f.token)
+		if applyStatefulFeature(common, f.token) {
+			return
+		}
 	case "PATH_SETUP_TYPE":
 		common.PathSetupTypes = append(common.PathSetupTypes, f.token)
+		return
 	case "SR":
 		if n, ok := parseTokenUint32(f.token, "MSD="); ok {
 			common.SRMSD = &n
+			return
 		}
 	case "ASSOC_TYPE_LIST":
 		if n, ok := parseTokenUint32(f.token, "AssocType:"); ok {
 			common.AssociationTypes = append(common.AssociationTypes, n)
+			return
 		}
 	case "UNKNOWN":
 		if n, ok := parseTokenUint32(f.token, "unknown_type_"); ok {
 			common.UnrecognizedTLVTypes = append(common.UnrecognizedTLVTypes, n)
+			return
 		}
 	}
+	common.Other = append(common.Other, capabilityViewFromToken(f.token))
 }
 
 func onlyTokens(features []capFeature) []string {

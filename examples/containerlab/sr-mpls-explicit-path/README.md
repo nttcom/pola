@@ -24,6 +24,7 @@ prepare these images.
 Start Containerlab network
 
 ```bash
+git clone https://github.com/nttcom/pola
 cd pola/examples/containerlab/sr-mpls-explicit-path
 sudo containerlab deploy
 ```

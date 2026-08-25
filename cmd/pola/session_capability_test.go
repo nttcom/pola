@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/nttcom/pola/cmd/pola/grpc"
+	"github.com/nttcom/pola/pkg/packet/pcep"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -202,6 +203,86 @@ func TestCommonCapabilityLines_UnknownGroupSortsLast(t *testing.T) {
 	lines := commonCapabilityLines(common)
 	assert.Equal(t, "MULTIPATH-CAP [draft-ietf-pce-multipath]: Multipath", lines[0].Header)
 	assert.Equal(t, "Unrecognized TLVs", lines[1].Header)
+}
+
+func TestBuildCapabilitiesView_UntypedCommonCapabilitiesLandInOther(t *testing.T) {
+	caps := []grpc.Capability{
+		{Type: "VENDOR_INFORMATION", Detail: grpc.VendorInformationCapability{EnterpriseNumber: uint32(pcep.EnterpriseNumberJuniper)}},
+		{Type: "MULTIPATH", Detail: grpc.MultipathCapability{MaxMultipaths: 4, Weighted: true}},
+		{Type: "LSP_DB_VERSION", Detail: grpc.LSPDBVersionCapability{VersionNumber: 1}},
+		{Type: "SRV6", Detail: grpc.SRv6Capability{NAISupported: true}},
+		{Type: "STATEFUL", Detail: grpc.StatefulCapability{TriggeredResync: true}},
+	}
+
+	view := buildCapabilitiesView(caps, caps)
+
+	assert.Contains(t, view.Common.Other, capabilityView{Name: pcep.EnterpriseNumberJuniper.DisplayLabel()})
+	assert.Contains(t, view.Common.Other, capabilityView{Name: "Multipath"})
+	assert.Contains(t, view.Common.Other, capabilityView{Name: "MaxMultipaths", Value: "4"})
+	assert.Contains(t, view.Common.Other, capabilityView{Name: "Weighted"})
+	assert.Contains(t, view.Common.Other, capabilityView{Name: "LSP-DB-VERSION"})
+	assert.Contains(t, view.Common.Other, capabilityView{Name: "SRv6-NAI-Supported"})
+	assert.Contains(t, view.Common.Other, capabilityView{Name: "Triggered-Resync"})
+	assert.True(t, view.Common.Stateful)
+	assert.NotContains(t, view.Common.Other, capabilityView{Name: "Stateful"})
+}
+
+func TestBuildCapabilitiesView_OtherPreservesOriginalTokenCasing(t *testing.T) {
+	caps := []grpc.Capability{
+		{Type: "VENDOR_INFORMATION", Detail: grpc.VendorInformationCapability{EnterpriseNumber: uint32(pcep.EnterpriseNumberJuniper)}},
+	}
+
+	view := buildCapabilitiesView(caps, caps)
+
+	require.Len(t, view.Common.Other, 1)
+	assert.Contains(t, view.Common.Other[0].Name, "Juniper")
+}
+
+func TestBuildCapabilitiesView_OtherIsSortedByNameThenValue(t *testing.T) {
+	caps := []grpc.Capability{
+		{Type: "MULTIPATH", Detail: grpc.MultipathCapability{MaxMultipaths: 4, Weighted: true, OppositeDir: true}},
+		{Type: "STATEFUL", Detail: grpc.StatefulCapability{TriggeredResync: true, Color: true}},
+	}
+
+	expected := []capabilityView{
+		{Name: "Color"},
+		{Name: "MaxMultipaths", Value: "4"},
+		{Name: "Multipath"},
+		{Name: "OppositeDir"},
+		{Name: "Triggered-Resync"},
+		{Name: "Weighted"},
+	}
+
+	view1 := buildCapabilitiesView(caps, caps)
+	view2 := buildCapabilitiesView(caps, caps)
+
+	assert.Equal(t, expected, view1.Common.Other)
+	assert.Equal(t, view1.Common.Other, view2.Common.Other, "Other must be sorted deterministically across calls")
+}
+
+func TestBuildCapabilitiesView_OtherTiesOnNameSortByValue(t *testing.T) {
+	caps := []grpc.Capability{
+		{Type: "MULTIPATH", Detail: grpc.MultipathCapability{MaxMultipaths: 8}},
+		{Type: "MULTIPATH", Detail: grpc.MultipathCapability{MaxMultipaths: 4}},
+	}
+
+	view := buildCapabilitiesView(caps, caps)
+
+	require.GreaterOrEqual(t, len(view.Common.Other), 2)
+	assert.Equal(t, capabilityView{Name: "MaxMultipaths", Value: "4"}, view.Common.Other[0])
+	assert.Equal(t, capabilityView{Name: "MaxMultipaths", Value: "8"}, view.Common.Other[1])
+}
+
+func TestBuildCapabilitiesView_TypedFieldsDoNotDuplicateIntoOther(t *testing.T) {
+	caps := []grpc.Capability{
+		{Type: "STATEFUL", Detail: grpc.StatefulCapability{LSPUpdate: true, LSPInstantiation: true}},
+		{Type: "SR", Detail: grpc.SRCapability{MSD: proto.Uint32(10)}},
+		{Type: "ASSOC_TYPE_LIST", Detail: grpc.AssocTypeListCapability{AssocTypes: []uint32{6}}},
+	}
+
+	view := buildCapabilitiesView(caps, caps)
+
+	assert.Equal(t, []capabilityView{{Name: "SR"}}, view.Common.Other)
 }
 
 func TestCommonCapabilityLines_SingleAssocTypeStillUsesHeadingForm(t *testing.T) {

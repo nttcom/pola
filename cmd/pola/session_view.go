@@ -12,9 +12,6 @@ import (
 	"github.com/nttcom/pola/cmd/pola/grpc"
 )
 
-// nowFunc is a variable so tests can use a deterministic clock.
-var nowFunc = time.Now
-
 // sessionView fields follow the operator-facing reading order.
 type sessionView struct {
 	PeerAddress  string           `json:"peerAddress"`
@@ -162,8 +159,8 @@ func newSessionView(ss grpc.Session, detail bool) sessionView {
 		Capabilities: buildCapabilitiesView(ss.LocalCapabilities, ss.PeerCapabilities),
 	}
 
-	if !ss.EstablishedAt.IsZero() {
-		v.UpTime = formatUpTime(nowFunc().Sub(ss.EstablishedAt))
+	if ss.UptimeNanos > 0 {
+		v.UpTime = formatUpTime(time.Duration(ss.UptimeNanos))
 	}
 
 	if detail {

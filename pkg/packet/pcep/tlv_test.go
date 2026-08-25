@@ -8,6 +8,7 @@ package pcep
 import (
 	"encoding/binary"
 	"fmt"
+	"math"
 	"net/netip"
 	"slices"
 	"strings"
@@ -802,8 +803,6 @@ func TestLSPDBVersion_CapStrings(t *testing.T) {
 	assert.Equal(t, testLSPDBVersionCapStrings, actual, "CapStrings() did not return expected value")
 }
 
-func msdPtr(v uint8) *uint8 { return &v }
-
 // Test data for SRPCECapability.
 var (
 	testSRPCECapability                      = NewSRPCECapability(true, true, 10)
@@ -818,11 +817,11 @@ var (
 	testSRPCECapabilityNoneEnabled           = &SRPCECapability{}
 	testSRPCECapabilityAllEnabledStrs        = []string{"SR", "Unlimited-SID-Depth", "SR-NAI-Supported"}
 	testSRPCECapabilityUnlimitedStrs         = []string{"SR", "Unlimited-SID-Depth"}
-	testSRPCECapabilityNAIStrs               = []string{"SR", "SR-NAI-Supported"}
-	testSRPCECapabilityMSDOnly               = &SRPCECapability{MaximumSidDepth: msdPtr(10)}
+	testSRPCECapabilityNAIStrs               = []string{"SR", "MSD=0", "SR-NAI-Supported"}
+	testSRPCECapabilityMSDOnly               = &SRPCECapability{MaximumSidDepth: 10}
 	testSRPCECapabilityMSDOnlyStrs           = []string{"SR", "MSD=10"}
-	testSRPCECapabilityNoneStrs              = []string{"SR"}
-	testSRPCECapabilityMSDZeroAdvertised     = &SRPCECapability{MaximumSidDepth: msdPtr(0)}
+	testSRPCECapabilityNoneStrs              = []string{"SR", "MSD=0"}
+	testSRPCECapabilityMSDZeroAdvertised     = &SRPCECapability{MaximumSidDepth: 0}
 	testSRPCECapabilityMSDZeroAdvertisedStrs = []string{"SR", "MSD=0"}
 )
 
@@ -858,6 +857,7 @@ func TestSRPCECapability_MarshalLogObject(t *testing.T) {
 			map[string]any{
 				"unlimited_max_sid_depth": false,
 				"nai_is_supported":        false,
+				"maximum_sid_depth":       uint8(0),
 			},
 		},
 		"FullTLV": {
@@ -873,6 +873,7 @@ func TestSRPCECapability_MarshalLogObject(t *testing.T) {
 			map[string]any{
 				"unlimited_max_sid_depth": true,
 				"nai_is_supported":        false,
+				"maximum_sid_depth":       uint8(0),
 			},
 		},
 		"OnlyNAI": {
@@ -880,6 +881,7 @@ func TestSRPCECapability_MarshalLogObject(t *testing.T) {
 			map[string]any{
 				"unlimited_max_sid_depth": false,
 				"nai_is_supported":        true,
+				"maximum_sid_depth":       uint8(0),
 			},
 		},
 	}
@@ -917,6 +919,54 @@ func TestSRPCECapability_CapStrings(t *testing.T) {
 		"MSDAdvertisedAsZero":             {testSRPCECapabilityMSDZeroAdvertised, testSRPCECapabilityMSDZeroAdvertisedStrs},
 	}
 	runCapStringsTests(t, cases)
+}
+
+func TestSRPCECapability_DecodeSerializeRoundTrip(t *testing.T) {
+	cases := map[string]*SRPCECapability{
+		"MSDNonZero":       {MaximumSidDepth: 200},
+		"MSDMax":           {MaximumSidDepth: math.MaxUint8},
+		"UnlimitedZeroMSD": {HasUnlimitedMaxSIDDepth: true},
+		"UnlimitedWithNAIZeroMSD": {
+			HasUnlimitedMaxSIDDepth: true,
+			IsNAISupported:          true,
+		},
+	}
+
+	for name, original := range cases {
+		t.Run(name, func(t *testing.T) {
+			b, err := original.Serialize()
+			require.NoError(t, err)
+
+			var decoded SRPCECapability
+			require.NoError(t, decoded.DecodeFromBytes(b))
+			assert.Equal(t, original, &decoded, "first decode must match the original")
+
+			b2, err := decoded.Serialize()
+			require.NoError(t, err)
+			assert.Equal(t, b, b2, "re-serializing a decoded value must produce identical bytes")
+
+			var decodedAgain SRPCECapability
+			require.NoError(t, decodedAgain.DecodeFromBytes(b2))
+			assert.Equal(t, decoded, decodedAgain, "second decode must match the first")
+		})
+	}
+}
+
+func TestSRPCECapability_HasInvalidZeroMSD(t *testing.T) {
+	cases := map[string]struct {
+		input    *SRPCECapability
+		expected bool
+	}{
+		"XZeroMSDZero":        {&SRPCECapability{}, true},
+		"XZeroMSDNonZero":     {&SRPCECapability{MaximumSidDepth: 10}, false},
+		"XOneMSDZero":         {&SRPCECapability{HasUnlimitedMaxSIDDepth: true}, false},
+		"XZeroNAIOnlyMSDZero": {&SRPCECapability{IsNAISupported: true}, true},
+	}
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.input.HasInvalidZeroMSD())
+		})
+	}
 }
 
 func TestPst_String(t *testing.T) {

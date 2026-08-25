@@ -67,9 +67,6 @@ func TestFormatUpTime(t *testing.T) {
 }
 
 func TestNewSessionView_UpTimeOmittedUnlessEstablished(t *testing.T) {
-	nowFunc = func() time.Time { return time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) }
-	t.Cleanup(func() { nowFunc = time.Now })
-
 	notEstablished := grpc.Session{PeerAddr: netip.MustParseAddr("192.0.2.1"), State: "open-wait"}
 	assert.Empty(t, newSessionView(notEstablished, false).UpTime)
 
@@ -77,6 +74,7 @@ func TestNewSessionView_UpTimeOmittedUnlessEstablished(t *testing.T) {
 		PeerAddr:      netip.MustParseAddr("192.0.2.1"),
 		State:         "up",
 		EstablishedAt: time.Date(2025, 12, 31, 23, 0, 0, 0, time.UTC),
+		UptimeNanos:   3600000000000, // 1 hour in nanoseconds
 	}
 	assert.Equal(t, "01:00:00", newSessionView(established, false).UpTime)
 }

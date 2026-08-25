@@ -78,7 +78,8 @@ type fakeConn struct {
 
 	mu                 sync.Mutex
 	writeCount         int
-	failAfter          int // number of successful writes before writeErr is returned; ignored if writeErr is nil.
+	written            [][]byte // raw bytes passed to each Write call, in order
+	failAfter          int      // number of successful writes before writeErr; ignored if writeErr is nil
 	writeErr           error
 	setReadDeadlineErr error
 	closeErr           error
@@ -90,10 +91,18 @@ func (c *fakeConn) Write(p []byte) (int, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.writeCount++
+	c.written = append(c.written, append([]byte{}, p...))
 	if c.writeErr != nil && c.writeCount > c.failAfter {
 		return 0, c.writeErr
 	}
 	return len(p), nil
+}
+
+// writes returns a snapshot of the bytes passed to each Write call, in order.
+func (c *fakeConn) writes() [][]byte {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([][]byte{}, c.written...)
 }
 
 func (c *fakeConn) Close() error                       { return c.closeErr }
@@ -101,8 +110,7 @@ func (c *fakeConn) LocalAddr() net.Addr                { return nil }
 func (c *fakeConn) RemoteAddr() net.Addr               { return nil }
 func (c *fakeConn) SetDeadline(_ time.Time) error      { return nil }
 func (c *fakeConn) SetWriteDeadline(_ time.Time) error { return nil }
-
-func (c *fakeConn) SetReadDeadline(_ time.Time) error { return c.setReadDeadlineErr }
+func (c *fakeConn) SetReadDeadline(_ time.Time) error  { return c.setReadDeadlineErr }
 
 // newTestStateReport builds a PCRpt state report for an SR-MPLS policy with an explicit path.
 func newTestStateReport(t *testing.T, plspID uint32, srpID uint32) *pcep.StateReport {
@@ -478,6 +486,8 @@ func TestReceiveOpenSeparatesPccAndPolaCapabilities(t *testing.T) {
 
 	assert.Equal(t, pccCaps, ss.receivedPccCapabilities)
 	assert.Equal(t, pcep.PolaCapability(pccCaps), ss.advertisedCapabilities)
+	assert.Equal(t, pccCaps, ss.ReceivedCapabilities())
+	assert.Equal(t, pcep.RFCCompliant, ss.PccType())
 
 	sr := newTestStateReport(t, 1, 0)
 	sr.LSPObject.TLVs = append(sr.LSPObject.TLVs, &pcep.Color{Color: 100})
@@ -1106,9 +1116,15 @@ func TestAcceptableOpen(t *testing.T) {
 			want:    false,
 		},
 		{
-			name:    "zero keepalive ignores deadtimer regardless of value",
+			name:    "zero keepalive requires zero deadtimer per RFC",
 			session: &Session{},
 			pccOpen: OpenParams{Keepalive: 0, DeadTimer: 1},
+			want:    false,
+		},
+		{
+			name:    "zero keepalive with zero deadtimer is acceptable",
+			session: &Session{},
+			pccOpen: OpenParams{Keepalive: 0, DeadTimer: 0},
 			want:    true,
 		},
 		{
@@ -1183,6 +1199,13 @@ func TestProposedTimers(t *testing.T) {
 			pccOpen:       OpenParams{Keepalive: 200, DeadTimer: 255},
 			wantKeepalive: 60,
 			wantDeadTimer: 240,
+		},
+		{
+			name:          "high keepalive has deadtimer disabled when capped at 255",
+			session:       &Session{},
+			pccOpen:       OpenParams{Keepalive: 255, DeadTimer: 255},
+			wantKeepalive: 255,
+			wantDeadTimer: 0,
 		},
 	}
 	for _, tt := range tests {
@@ -1392,6 +1415,8 @@ func TestEstablished_OpenWaitExpiryReportsErrorValue2(t *testing.T) {
 		close(done)
 	}()
 
+	require.NoError(t, readPCEPMessage(client), "failed to read Pola's initial Open")
+
 	// RFC 5440 §6.2 and Appendix A: OpenWait expiry sends PCErr Error-value=2.
 	pcerrMessage := readPCErrMessage(t, client)
 	require.Len(t, pcerrMessage.Errors, 1)
@@ -1420,6 +1445,8 @@ func TestEstablished_NonOpenFirstMessageReportsErrorValue1(t *testing.T) {
 		close(done)
 	}()
 
+	require.NoError(t, readPCEPMessage(client), "failed to read Pola's initial Open")
+
 	pcerrMessage := readPCErrMessage(t, client)
 	require.Len(t, pcerrMessage.Errors, 1)
 	assert.Equal(t, uint8(1), pcerrMessage.Errors[0].ErrorType)
@@ -1429,6 +1456,45 @@ func TestEstablished_NonOpenFirstMessageReportsErrorValue1(t *testing.T) {
 	case <-done:
 	case <-time.After(2 * time.Second):
 		require.Fail(t, "Established did not return after a non-Open first message")
+	}
+}
+
+func TestEstablished_InvalidZeroMSDIsToleratedWithWarning(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() { assert.NoError(t, client.Close()) })
+
+	core, logs := observer.New(zap.WarnLevel)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.New(core), nil, 0)
+
+	// RFC 8664 §5.1 forbids X=0 with a zero MSD, but Cisco XRd, Juniper
+	// vJunos, and FRRouting all advertise it in practice; the session must
+	// still come up.
+	pccCaps := []pcep.CapabilityInterface{&pcep.SRPCECapability{}}
+	openMessage := pcep.NewOpenMessage(1, 30, pcep.DeadTimerFor(30), pccCaps)
+	writeMessage(t, client, openMessage)
+
+	done := make(chan struct{})
+	go func() {
+		_ = ss.Established()
+		close(done)
+	}()
+
+	require.NoError(t, readPCEPMessage(client), "failed to read Open reply")
+	require.NoError(t, readPCEPMessage(client), "failed to read the Keepalive acknowledging the peer's Open")
+
+	writeMessage(t, client, pcep.NewKeepaliveMessage())
+
+	require.Eventually(t, ss.Up, 2*time.Second, 10*time.Millisecond,
+		"the session must come up despite the peer's invalid SR-PCE-CAPABILITY")
+
+	assert.Len(t, logs.FilterMessage(
+		"peer advertised SR-PCE-CAPABILITY with X=0 and MSD=0 (RFC 8664 §5.1); tolerating as a known deployed-peer deviation").All(), 1)
+
+	writeMessage(t, client, pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided))
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		require.Fail(t, "Established did not return after the peer sent a Close message")
 	}
 }
 
@@ -1482,6 +1548,8 @@ func TestEstablished_UnacceptableKeepaliveNonNegotiableReportsErrorValue3(t *tes
 		close(done)
 	}()
 
+	require.NoError(t, readPCEPMessage(client), "failed to read Pola's initial Open")
+
 	// RFC 5440 §6.2: negotiation disabled sends Error-Value=3 (non-negotiable).
 	pcerrMessage := readPCErrMessage(t, client)
 	require.Len(t, pcerrMessage.Errors, 1)
@@ -1514,6 +1582,8 @@ func TestEstablished_NegotiatesAcceptableKeepaliveThenEstablishes(t *testing.T) 
 		close(done)
 	}()
 
+	require.NoError(t, readPCEPMessage(client), "failed to read Pola's initial Open")
+
 	// RFC 5440 §7.15: propose acceptable session characteristics with Error-Value=4.
 	pcerrMessage := readPCErrMessage(t, client)
 	require.Len(t, pcerrMessage.Errors, 1)
@@ -1525,7 +1595,6 @@ func TestEstablished_NegotiatesAcceptableKeepaliveThenEstablishes(t *testing.T) 
 
 	writeMessage(t, client, pcep.NewOpenMessage(1, 30, 120, nil))
 
-	require.NoError(t, readPCEPMessage(client), "failed to read Open reply")
 	require.NoError(t, readPCEPMessage(client), "failed to read the Keepalive acknowledging the peer's Open")
 
 	writeMessage(t, client, pcep.NewKeepaliveMessage())
@@ -1557,6 +1626,8 @@ func TestEstablished_SecondOpenStillUnacceptableReportsErrorValue5(t *testing.T)
 		_ = ss.Established()
 		close(done)
 	}()
+
+	require.NoError(t, readPCEPMessage(client), "failed to read Pola's initial Open")
 
 	firstErr := readPCErrMessage(t, client)
 	require.Equal(t, uint8(4), firstErr.Errors[0].ErrorValue)
@@ -1982,6 +2053,42 @@ func TestOpen_RetriesAfterAcceptablePCErrProposal(t *testing.T) {
 	assert.Equal(t, uint8(80), ss.localDeadTimer)
 }
 
+func TestOpen_SendOpenFailsAfterRetryingWithProposal(t *testing.T) {
+	// Use distinct SIDs to verify that retrying keeps Pola's own SID.
+	peerOpenBytes, err := pcep.NewOpenMessage(2, 30, 120, nil).Serialize()
+	require.NoError(t, err)
+
+	proposedOpen := pcep.NewOpenObject(2, 20, 80, nil)
+	pcerrMessage := pcep.NewPCErrMessageWithOpen(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableNegotiable, proposedOpen)
+	pcerrBytes, err := pcerrMessage.Serialize()
+	require.NoError(t, err)
+
+	stream := append(append([]byte(nil), peerOpenBytes...), pcerrBytes...)
+	conn := &fakeConn{
+		r:         bytes.NewReader(stream),
+		failAfter: 2,
+		writeErr:  errors.New("write: broken pipe"),
+	}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+
+	err = ss.Open()
+	require.Error(t, err)
+	require.ErrorContains(t, err, "write: broken pipe")
+
+	writes := conn.writes()
+	require.Len(t, writes, 3, "expected initial Open, Keepalive, and retry Open")
+
+	initialOpen := readOpenMessage(t, bytes.NewReader(writes[0]))
+	assert.Equal(t, uint8(1), initialOpen.OpenObject.Sid, "initial SendOpen must use Pola's own SID")
+
+	var keepaliveHeader pcep.CommonHeader
+	require.NoError(t, keepaliveHeader.DecodeFromBytes(writes[1]))
+	assert.Equal(t, pcep.MessageTypeKeepalive, keepaliveHeader.MessageType, "second write must be the Keepalive")
+
+	retryOpen := readOpenMessage(t, bytes.NewReader(writes[2]))
+	assert.Equal(t, uint8(1), retryOpen.OpenObject.Sid, "retry SendOpen must still use Pola's own SID, not the peer's proposed one")
+}
+
 func TestHandleProposedOpen_UnacceptableProposalIsRejected(t *testing.T) {
 	conn := &fakeConn{r: bytes.NewReader(nil)}
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
@@ -2223,8 +2330,8 @@ func TestEstablished_SendsCloseWhenTheDeadTimerExpires(t *testing.T) {
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() { assert.NoError(t, client.Close()) })
 
-	// A 1-second DeadTimer from the PCC keeps the test fast.
-	writeMessage(t, client, pcep.NewOpenMessage(1, 1, 1, nil))
+	// A 2-second DeadTimer from the PCC keeps the test fast.
+	writeMessage(t, client, pcep.NewOpenMessage(1, 1, 2, nil))
 	writeMessage(t, client, pcep.NewKeepaliveMessage())
 
 	ss := NewSession(OpenParams{SessionID: 1, Keepalive: 0, DeadTimer: 0}, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
@@ -2436,6 +2543,46 @@ func TestReceivePCEPMessage_UnsupportedMessageBodyIsConsumed(t *testing.T) {
 
 	_, found := ss.SearchSRPolicy(5)
 	assert.True(t, found, "the PCRpt following an unsupported message was not processed")
+}
+
+func TestReceivePCEPMessage_NotificationBodyIsConsumed(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() {
+		assert.NoError(t, server.Close(), "failed to close server connection")
+	})
+	t.Cleanup(func() {
+		assert.NoError(t, client.Close(), "failed to close client connection")
+	})
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+
+	trap, err := pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided).Serialize()
+	require.NoError(t, err, "failed to serialize the message body")
+	writeRawPCEPMessage(t, client, pcep.MessageTypeNotification, trap)
+
+	writeStateReportMessage(t, client, newTestStateReport(t, 5, 0))
+	writeMessage(t, client, pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided))
+
+	require.NoError(t, ss.ReceivePCEPMessage())
+
+	_, found := ss.SearchSRPolicy(5)
+	assert.True(t, found, "the PCRpt following a Notification was not processed")
+	assert.Equal(t, uint64(1), ss.Stats().PCNtfRcvd)
+}
+
+func TestReceivePCEPMessage_NotificationTruncatedBodyReturnsError(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() {
+		assert.NoError(t, server.Close(), "failed to close server connection")
+	})
+
+	header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeNotification, MessageLength: pcep.CommonHeaderLength + 4}
+	_, err := client.Write(header.Serialize())
+	require.NoError(t, err, "failed to write header")
+	require.NoError(t, client.Close(), "failed to close client connection")
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	assert.Error(t, ss.ReceivePCEPMessage(), "a truncated Notification body must be reported")
 }
 
 func TestHandleUnsupportedMessage_ReadBodyErrorIsReturned(t *testing.T) {

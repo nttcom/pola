@@ -214,6 +214,58 @@ func TestServer_CloseSession_LogsWarnOnOtherCloseFailure(t *testing.T) {
 	assert.Empty(t, s.Sessions())
 }
 
+func TestValidatePCEOptions(t *testing.T) {
+	tests := []struct {
+		name    string
+		o       *PCEOptions
+		wantErr bool
+	}{
+		{name: "nil options rejected", o: nil, wantErr: true},
+		{name: "Keepalive=0/DeadTimer=0 OK", o: &PCEOptions{Keepalive: new(uint8(0)), DeadTimer: new(uint8(0))}, wantErr: false},
+		{name: "Keepalive=0/DeadTimer>0 rejected", o: &PCEOptions{Keepalive: new(uint8(0)), DeadTimer: new(uint8(1))}, wantErr: true},
+		{name: "DeadTimer<Keepalive rejected", o: &PCEOptions{Keepalive: new(uint8(30)), DeadTimer: new(uint8(29))}, wantErr: true},
+		{name: "DeadTimer==Keepalive rejected", o: &PCEOptions{Keepalive: new(uint8(30)), DeadTimer: new(uint8(30))}, wantErr: true},
+		{name: "DeadTimer>Keepalive OK", o: &PCEOptions{Keepalive: new(uint8(30)), DeadTimer: new(uint8(31))}, wantErr: false},
+		{name: "Keepalive=255 with default DeadTimer rejected", o: &PCEOptions{Keepalive: new(uint8(255))}, wantErr: true},
+		{name: "MinKeepalive==MaxKeepalive OK", o: &PCEOptions{MinKeepalive: new(uint8(30)), MaxKeepalive: new(uint8(30))}, wantErr: false},
+		{name: "MinKeepalive>MaxKeepalive rejected", o: &PCEOptions{MinKeepalive: new(uint8(31)), MaxKeepalive: new(uint8(30))}, wantErr: true},
+		{name: "no options set is OK", o: &PCEOptions{}, wantErr: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validatePCEOptions(tt.o)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestNewPCE_NilOptionsReturnsConfigErrorWithoutPanicking(t *testing.T) {
+	err := NewPCE(context.Background(), nil, zap.NewNop(), make(chan []table.TEDElem))
+	assert.Equal(t, "config", err.Server)
+	require.Error(t, err.Error)
+}
+
+func TestNewPCE_InvalidTimerConfigRejectedBeforeListening(t *testing.T) {
+	// A direct NewPCE caller (bypassing internal/config's own validation)
+	// must not be able to start a PCE with an invalid timer configuration.
+	o := &PCEOptions{
+		PCEPAddr:  "127.0.0.1",
+		PCEPPort:  "0",
+		GRPCAddr:  "127.0.0.1",
+		GRPCPort:  "0",
+		Keepalive: new(uint8(0)),
+		DeadTimer: new(uint8(1)),
+	}
+
+	err := NewPCE(context.Background(), o, zap.NewNop(), make(chan []table.TEDElem))
+	assert.Equal(t, "config", err.Server)
+	require.Error(t, err.Error)
+}
+
 func TestNewPCE_ReturnsTaggedError(t *testing.T) {
 	tests := []struct {
 		name       string

@@ -156,7 +156,7 @@ def wait_until_ted_has_routers(
     router_ids: list[str],
     timeout: int = 600,
     interval: int = 5,
-) -> dict:
+) -> list:
     """Wait until TED contains all router IDs."""
 
     router_ids = set(router_ids)
@@ -182,7 +182,7 @@ def wait_until_ted_has_links(
     expected_links: set[frozenset[str]],
     timeout: int = 600,
     interval: int = 5,
-) -> dict:
+) -> list:
     """Wait until TED contains all expected links."""
 
     def predicate(ted):
@@ -211,10 +211,10 @@ def wait_until_ted_has_links(
 
 def wait_until_ted_matches(
     pola_container: str,
-    expected: dict,
+    expected: list,
     timeout: int = 600,
     interval: int = 5,
-) -> dict:
+) -> list:
     """Wait until TED JSON matches expected."""
 
     def predicate(ted):
