@@ -666,3 +666,20 @@ func TestLsTEDAddressRouterIDIndex(t *testing.T) {
 	var nilTED *LsTED
 	assert.Nil(t, nilTED.AddressRouterIDIndex())
 }
+
+func TestLsTEDFindRouterIDByLoopback(t *testing.T) {
+	ted := &LsTED{Nodes: map[string]*LsNode{}}
+
+	node := NewLsNode(65000, "router-v4")
+	prefix := NewLsPrefix(node)
+	prefix.Prefix = netip.MustParsePrefix("192.0.2.10/32")
+	node.Prefixes = append(node.Prefixes, prefix)
+	ted.Nodes[node.RouterID] = node
+
+	routerID, ok := ted.FindRouterIDByLoopback(netip.MustParseAddr("192.0.2.10"))
+	require.True(t, ok)
+	assert.Equal(t, "router-v4", routerID)
+
+	_, ok = ted.FindRouterIDByLoopback(netip.MustParseAddr("192.0.2.99"))
+	assert.False(t, ok)
+}

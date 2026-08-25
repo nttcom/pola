@@ -443,17 +443,26 @@ func (s *APIServer) validateSIDs(req *pb.CreateSRPolicyRequest, segmentList []ta
 			"TED is enabled but empty (not yet synchronized), SID validation cannot be performed")
 	}
 
-	missingSegments := table.MissingSegments(ted, segmentList)
-	if len(missingSegments) == 0 {
-		return nil
+	// Resolve source router ID for path traversal.
+	var srcRouterID string
+	if req.GetDisablePathCompute() {
+		srcAddr, ok := netip.AddrFromSlice(req.GetSrPolicy().GetSrcAddr())
+		if !ok {
+			return newStatus(codes.InvalidArgument, ReasonInvalidRequest, "invalid source address in request")
+		}
+		srcRouterID, ok = ted.FindRouterIDByLoopback(srcAddr)
+		if !ok {
+			return newStatus(codes.InvalidArgument, ReasonInvalidRequest,
+				"source address %s not found in TED", srcAddr)
+		}
+	} else {
+		srcRouterID = req.GetSrPolicy().GetSrcRouterId()
 	}
 
-	descriptions := make([]string, 0, len(missingSegments))
-	for _, m := range missingSegments {
-		descriptions = append(descriptions, m.String())
+	if err := table.ValidateExplicitPath(ted, srcRouterID, segmentList); err != nil {
+		return newStatus(codes.FailedPrecondition, ReasonSIDValidationFailed, "SID validation failed: %s", err)
 	}
-	return newStatus(codes.FailedPrecondition, ReasonSIDValidationFailed,
-		"SID validation failed, the following SIDs are not found in TED: %s", strings.Join(descriptions, ", "))
+	return nil
 }
 
 // DeleteSRPolicy deletes an existing SR Policy.

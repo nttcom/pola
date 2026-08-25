@@ -197,6 +197,7 @@ func explicitPolicyRequest(noSIDValidate bool, sid string) *pb.CreateSRPolicyReq
 			Type:        pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT,
 			PolicyName:  "test",
 			Color:       100,
+			SrcRouterId: "0000.0000.0001",
 			SegmentList: []*pb.Segment{{Sid: sid}},
 		},
 		NoSidValidate: noSIDValidate,
@@ -322,6 +323,54 @@ func TestValidateSIDs_EndpointFormIsStillValidated(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, codes.FailedPrecondition, st.Code())
 	assert.Contains(t, st.Message(), "hop 1", "expected the missing hop to be listed")
+}
+
+func TestValidateSIDs_DisablePathComputeInvalidSourceAddress(t *testing.T) {
+	node := &table.LsNode{
+		RouterID:  "0000.0000.0001",
+		SrgbBegin: 16000,
+		Prefixes: []*table.LsPrefix{
+			{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 3, HasSidIndex: true},
+		},
+	}
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{node.RouterID: node}}
+	s := newTestAPIServer(ted)
+
+	req := explicitPolicyRequest(false, "16003")
+	req.DisablePathCompute = true
+	req.SrPolicy.SrcAddr = []byte{1, 2, 3}
+	req.SrPolicy.DstAddr = netip.MustParseAddr("10.0.0.2").AsSlice()
+	segmentList := []table.Segment{table.NewSegmentSRMPLS(16003)}
+
+	err := s.validateSIDs(req, segmentList)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.InvalidArgument, st.Code())
+	assert.Contains(t, st.Message(), "invalid source address in request")
+}
+
+func TestValidateSIDs_DisablePathComputeSourceAddressNotFound(t *testing.T) {
+	node := &table.LsNode{
+		RouterID:  "0000.0000.0001",
+		SrgbBegin: 16000,
+		Prefixes: []*table.LsPrefix{
+			{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 3, HasSidIndex: true},
+		},
+	}
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{node.RouterID: node}}
+	s := newTestAPIServer(ted)
+
+	req := explicitPolicyRequest(false, "16003")
+	req.DisablePathCompute = true
+	req.SrPolicy.SrcAddr = netip.MustParseAddr("10.0.0.9").AsSlice()
+	req.SrPolicy.DstAddr = netip.MustParseAddr("10.0.0.2").AsSlice()
+	segmentList := []table.Segment{table.NewSegmentSRMPLS(16003)}
+
+	err := s.validateSIDs(req, segmentList)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.InvalidArgument, st.Code())
+	assert.Contains(t, st.Message(), "source address 10.0.0.9 not found in TED")
 }
 
 func TestValidateSIDs_LabelOutOfRangeIsRejectedEvenWithNoSidValidate(t *testing.T) {

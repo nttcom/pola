@@ -6,9 +6,22 @@
 package table
 
 import (
+	"errors"
 	"fmt"
 	"net/netip"
 )
+
+// adjKeyMPLS is the lookup key for an SR-MPLS adjacency SID owned by a specific node.
+type adjKeyMPLS struct {
+	owner string
+	sid   uint32
+}
+
+// adjKeySRv6 is the lookup key for an SRv6 End.X SID owned by a specific node.
+type adjKeySRv6 struct {
+	owner string
+	sid   netip.Addr
+}
 
 // MPLSLabelMax is the maximum 20-bit MPLS label value.
 const MPLSLabelMax uint32 = 0xFFFFF
@@ -18,6 +31,14 @@ type SIDIndex struct {
 	mplsSIDs     map[uint32]struct{}       // prefix SIDs and adjacency SIDs
 	srv6SIDs     map[netip.Addr]struct{}   // End / End.X SIDs, matched exactly
 	srv6Locators map[netip.Prefix]struct{} // locator prefixes derived from SID structures
+
+	// path-aware: node SID → owning router ID
+	mplsNodeSIDOwner map[uint32]string
+	srv6NodeSIDOwner map[netip.Addr]string
+
+	// path-aware: (owner router ID, adj SID) → next-hop router ID
+	mplsAdjSIDNextHop map[adjKeyMPLS]string
+	srv6AdjSIDNextHop map[adjKeySRv6]string
 }
 
 // MissingSegment identifies one rejected segment by its position in the
@@ -34,9 +55,13 @@ func (m MissingSegment) String() string {
 // NewSIDIndex builds a SIDIndex from the TED.
 func NewSIDIndex(ted *LsTED) *SIDIndex {
 	idx := &SIDIndex{
-		mplsSIDs:     map[uint32]struct{}{},
-		srv6SIDs:     map[netip.Addr]struct{}{},
-		srv6Locators: map[netip.Prefix]struct{}{},
+		mplsSIDs:          map[uint32]struct{}{},
+		srv6SIDs:          map[netip.Addr]struct{}{},
+		srv6Locators:      map[netip.Prefix]struct{}{},
+		mplsNodeSIDOwner:  map[uint32]string{},
+		srv6NodeSIDOwner:  map[netip.Addr]string{},
+		mplsAdjSIDNextHop: map[adjKeyMPLS]string{},
+		srv6AdjSIDNextHop: map[adjKeySRv6]string{},
 	}
 	if ted == nil {
 		return idx
@@ -64,6 +89,7 @@ func (idx *SIDIndex) addNodePrefixSIDs(node *LsNode) {
 		}
 		if label, ok := srgbLabel(node, p.SidIndex); ok {
 			idx.mplsSIDs[label] = struct{}{}
+			idx.mplsNodeSIDOwner[label] = node.RouterID
 		}
 	}
 }
@@ -89,9 +115,19 @@ func (idx *SIDIndex) addLinkSIDs(node *LsNode) {
 		}
 		if l.AdjSid != 0 {
 			idx.mplsSIDs[l.AdjSid] = struct{}{}
+			if l.RemoteNode != nil {
+				idx.mplsAdjSIDNextHop[adjKeyMPLS{node.RouterID, l.AdjSid}] = l.RemoteNode.RouterID
+			}
 		}
 		if l.Srv6EndXSID != nil {
 			idx.addSRv6(l.Srv6EndXSID.Sids, l.Srv6EndXSID.Srv6SIDStructure)
+			if l.RemoteNode != nil {
+				for _, s := range l.Srv6EndXSID.Sids {
+					if addr, err := netip.ParseAddr(s); err == nil {
+						idx.srv6AdjSIDNextHop[adjKeySRv6{node.RouterID, addr}] = l.RemoteNode.RouterID
+					}
+				}
+			}
 		}
 	}
 }
@@ -101,6 +137,11 @@ func (idx *SIDIndex) addSRv6NodeSIDs(node *LsNode) {
 	for _, s := range node.SRv6SIDs {
 		if s != nil {
 			idx.addSRv6(s.Sids, s.SIDStructure)
+			for _, sidStr := range s.Sids {
+				if addr, err := netip.ParseAddr(sidStr); err == nil {
+					idx.srv6NodeSIDOwner[addr] = node.RouterID
+				}
+			}
 		}
 	}
 }
@@ -159,6 +200,99 @@ func (idx *SIDIndex) hasSRv6(s SegmentSRv6) bool {
 		return true
 	}
 	return false
+}
+
+// NextHop returns the next-hop router ID after traversing seg from owner.
+// For node SIDs it returns the SID's owning router ID (valid from any owner).
+// For adjacency SIDs it verifies the SID is local to owner, then returns the remote router ID.
+// Returns an error if the SID is unknown or does not belong to owner.
+func (idx *SIDIndex) NextHop(owner string, seg Segment) (string, error) {
+	switch s := seg.(type) {
+	case SegmentSRMPLS:
+		return idx.nextHopMPLS(owner, s)
+	case SegmentSRv6:
+		return idx.nextHopSRv6(owner, s)
+	default:
+		return "", errors.New("unknown segment family")
+	}
+}
+
+// ownerUnknown indicates that the current router is unknown.
+const ownerUnknown = ""
+
+func (idx *SIDIndex) nextHopMPLS(owner string, s SegmentSRMPLS) (string, error) {
+	// Node SID (prefix SID)?
+	if next, ok := idx.mplsNodeSIDOwner[s.Sid]; ok {
+		return next, nil
+	}
+	if owner == ownerUnknown {
+		if _, exists := idx.mplsSIDs[s.Sid]; exists {
+			return ownerUnknown, nil
+		}
+		return "", fmt.Errorf("SID %s not found in TED", s.SidString())
+	}
+	// Adjacency SID — must be on owner.
+	if next, ok := idx.mplsAdjSIDNextHop[adjKeyMPLS{owner, s.Sid}]; ok {
+		return next, nil
+	}
+	if _, exists := idx.mplsSIDs[s.Sid]; exists {
+		return "", fmt.Errorf("%s does not have adjacency SID %s", owner, s.SidString())
+	}
+	return "", fmt.Errorf("SID %s not found in TED", s.SidString())
+}
+
+func (idx *SIDIndex) nextHopSRv6(owner string, s SegmentSRv6) (string, error) {
+	// Node SID (End SID)?
+	if next, ok := idx.srv6NodeSIDOwner[s.Sid]; ok {
+		return next, nil
+	}
+	if owner == ownerUnknown {
+		if idx.hasSRv6(s) {
+			return ownerUnknown, nil
+		}
+		return "", fmt.Errorf("SID %s not found in TED", s.SidString())
+	}
+	// Adjacency SID (End.X) — must be on owner.
+	if next, ok := idx.srv6AdjSIDNextHop[adjKeySRv6{owner, s.Sid}]; ok {
+		return next, nil
+	}
+	if idx.hasSRv6(s) {
+		return "", fmt.Errorf("%s does not have adjacency SID %s", owner, s.SidString())
+	}
+	return "", fmt.Errorf("SID %s not found in TED", s.SidString())
+}
+
+// ValidateExplicitPath performs path-aware SID validation on an explicit segment list.
+// Starting from srcRouterID, it verifies each SID via SIDIndex.NextHop:
+//   - Node SIDs are valid from any owner; the owner advances to that node.
+//   - Adjacency SIDs must be local to the current owner; owner advances to the link's remote node.
+func ValidateExplicitPath(ted *LsTED, srcRouterID string, segmentList []Segment) error {
+	if ted == nil {
+		return errors.New("TED is nil")
+	}
+	if srcRouterID == "" {
+		return errors.New("source router ID is empty")
+	}
+	if _, ok := ted.Nodes[srcRouterID]; !ok {
+		return fmt.Errorf("source router ID %s not found in TED", srcRouterID)
+	}
+
+	if len(segmentList) == 0 {
+		return nil
+	}
+	idx := NewSIDIndex(ted)
+	owner := srcRouterID
+	for i, seg := range segmentList {
+		if seg == nil {
+			return fmt.Errorf("hop %d: nil segment", i+1)
+		}
+		next, err := idx.NextHop(owner, seg)
+		if err != nil {
+			return fmt.Errorf("hop %d (%s): %w", i+1, seg.SidString(), err)
+		}
+		owner = next
+	}
+	return nil
 }
 
 // MissingSegments reports the segments not found in the TED.
