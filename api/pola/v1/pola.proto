@@ -206,24 +206,29 @@ enum LspDbSyncState {
   LSP_DB_SYNC_STATE_FINISHED = 3;
 }
 
-// MessageCounter contains the sent and received message counters from RFC 9826 ietf-pcep-stats.
+// MessageCounter contains sent and received message counters.
 message MessageCounter {
   uint64 sent = 1;
   uint64 rcvd = 2;
 }
 
-// SessionStats contains the message counters defined by RFC 9826 ietf-pcep-stats.
+// SessionStats contains per-session PCEP message counters.
+// Open and close are Pola-specific additions.
 message SessionStats {
-  MessageCounter keepalive = 1; // keepalive-sent / keepalive-rcvd
-  MessageCounter pcerr = 2; // pcerr-sent / pcerr-rcvd
-  MessageCounter pcntf = 3; // pcntf-sent / pcntf-rcvd
-  MessageCounter report = 4; // rpt-sent / rpt-rcvd (stateful)
-  MessageCounter update = 5; // upd-sent / upd-rcvd (stateful)
-  MessageCounter initiate = 6; // pcinitiate-sent / pcinitiate-rcvd (initiation)
-  uint64 unrecognized_rcvd = 7; // unknown-rcvd
-  uint64 corrupt_rcvd = 8; // corrupt-rcvd
-  uint64 sess_setup_ok = 9; // sess-setup-ok (per peer, survives session teardown)
-  uint64 sess_setup_fail = 10; // sess-setup-fail (per peer, survives session teardown)
+  MessageCounter keepalive = 1; // keepalive-sent / keepalive-rcvd (RFC 9826)
+  MessageCounter pcerr = 2; // pcerr-sent / pcerr-rcvd (RFC 9826)
+  MessageCounter pcntf = 3; // pcntf-sent / pcntf-rcvd (RFC 9826)
+  MessageCounter report = 4; // rpt-sent / rpt-rcvd (RFC 9826, stateful)
+  MessageCounter update = 5; // upd-sent / upd-rcvd (RFC 9826, stateful)
+  MessageCounter initiate = 6; // pcinitiate-sent / pcinitiate-rcvd (RFC 9826, initiation)
+  uint64 unrecognized_rcvd = 7; // unknown-rcvd (RFC 9826)
+  uint64 corrupt_rcvd = 8; // corrupt-rcvd (RFC 9826)
+  uint64 sess_setup_ok = 9; // sess-setup-ok (RFC 9826; per peer, survives session teardown)
+  uint64 sess_setup_fail = 10; // sess-setup-fail (RFC 9826; per peer, survives session teardown)
+  MessageCounter open = 11; // open-sent / open-rcvd (Pola-specific, not in RFC 9826)
+  MessageCounter close = 12; // close-sent / close-rcvd (Pola-specific, not in RFC 9826)
+  MessageCounter pcreq = 13; // pcreq-sent / pcreq-rcvd (RFC 9826)
+  MessageCounter pcrep = 14; // pcrep-sent / pcrep-rcvd (RFC 9826)
 }
 
 message Session {

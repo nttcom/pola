@@ -220,18 +220,22 @@ type EffectiveTimers struct {
 	DeadTimer *uint32
 }
 
-// MessageCounter is a sent/rcvd counter pair (RFC 9826 ietf-pcep-stats).
+// MessageCounter contains sent and received message counters.
 type MessageCounter struct {
 	Sent uint64
 	Rcvd uint64
 }
 
-// SessionStats holds the RFC 9826 ietf-pcep-stats message counters of a
-// session. It is nil unless requested via GetSessions' includeStats.
+// SessionStats contains per-session PCEP message counters.
+// Open and Close are Pola-specific additions.
 type SessionStats struct {
+	Open             MessageCounter
 	Keepalive        MessageCounter
+	Close            MessageCounter
 	PCErr            MessageCounter
 	PCNtf            MessageCounter
+	PCReq            MessageCounter
+	PCRep            MessageCounter
 	Report           MessageCounter
 	Update           MessageCounter
 	Initiate         MessageCounter
@@ -412,9 +416,13 @@ func messageCounterFromPB(c *pb.MessageCounter) MessageCounter {
 
 func sessionStatsFromPB(s *pb.SessionStats) *SessionStats {
 	return &SessionStats{
+		Open:             messageCounterFromPB(s.GetOpen()),
 		Keepalive:        messageCounterFromPB(s.GetKeepalive()),
+		Close:            messageCounterFromPB(s.GetClose()),
 		PCErr:            messageCounterFromPB(s.GetPcerr()),
 		PCNtf:            messageCounterFromPB(s.GetPcntf()),
+		PCReq:            messageCounterFromPB(s.GetPcreq()),
+		PCRep:            messageCounterFromPB(s.GetPcrep()),
 		Report:           messageCounterFromPB(s.GetReport()),
 		Update:           messageCounterFromPB(s.GetUpdate()),
 		Initiate:         messageCounterFromPB(s.GetInitiate()),

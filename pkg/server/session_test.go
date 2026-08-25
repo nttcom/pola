@@ -3160,9 +3160,17 @@ func TestSessionStats_SendCountersIncrementOnSuccess(t *testing.T) {
 
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
 
+	require.NoError(t, ss.SendOpen())
+	require.NoError(t, readPCEPMessage(client))
+	assert.Equal(t, uint64(1), ss.Stats().OpenSent)
+
 	require.NoError(t, ss.SendKeepalive())
 	require.NoError(t, readPCEPMessage(client))
 	assert.Equal(t, uint64(1), ss.Stats().KeepaliveSent)
+
+	require.NoError(t, ss.SendClose(pcep.CloseReasonNoExplanationProvided))
+	require.NoError(t, readPCEPMessage(client))
+	assert.Equal(t, uint64(1), ss.Stats().CloseSent)
 
 	require.NoError(t, ss.SendPCErr(pcepErrorTypeCapabilityNotSupported, pcepErrorValueUnassigned))
 	require.NoError(t, readPCEPMessage(client))
@@ -3189,6 +3197,24 @@ func TestSessionStats_SendCountersIncrementOnSuccess(t *testing.T) {
 	assert.Equal(t, uint64(1), ss.Stats().PCInitiateSent)
 }
 
+func TestSessionStats_OpenRcvdIncrementsOnSuccess(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() {
+		assert.NoError(t, server.Close(), "failed to close server connection")
+		assert.NoError(t, client.Close(), "failed to close client connection")
+	})
+
+	openMessage := pcep.NewOpenMessage(1, 30, pcep.DeadTimerFor(30), nil)
+	byteOpenMessage, err := openMessage.Serialize()
+	require.NoError(t, err, "failed to serialize open message")
+	_, err = client.Write(byteOpenMessage)
+	require.NoError(t, err, "failed to write open message")
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	require.NoError(t, ss.ReceiveOpen())
+	assert.Equal(t, uint64(1), ss.Stats().OpenRcvd)
+}
+
 func TestCountReceived_IncrementsExpectedCounter(t *testing.T) {
 	cases := map[string]struct {
 		messageType pcep.MessageType
@@ -3198,6 +3224,9 @@ func TestCountReceived_IncrementsExpectedCounter(t *testing.T) {
 		"Report":       {pcep.MessageTypeReport, func(s sessionStatsSnapshot) uint64 { return s.RptRcvd }},
 		"Error":        {pcep.MessageTypeError, func(s sessionStatsSnapshot) uint64 { return s.PCErrRcvd }},
 		"Notification": {pcep.MessageTypeNotification, func(s sessionStatsSnapshot) uint64 { return s.PCNtfRcvd }},
+		"Close":        {pcep.MessageTypeClose, func(s sessionStatsSnapshot) uint64 { return s.CloseRcvd }},
+		"Pcreq":        {pcep.MessageTypePcreq, func(s sessionStatsSnapshot) uint64 { return s.PCReqRcvd }},
+		"Pcrep":        {pcep.MessageTypePcrep, func(s sessionStatsSnapshot) uint64 { return s.PCRepRcvd }},
 		"Unknown":      {pcep.MessageTypeStartTLS, func(s sessionStatsSnapshot) uint64 { return s.UnknownRcvd }},
 	}
 
@@ -3210,10 +3239,11 @@ func TestCountReceived_IncrementsExpectedCounter(t *testing.T) {
 	}
 }
 
-func TestCountReceived_CloseHasNoCounter(t *testing.T) {
+func TestCountReceived_CloseHasDedicatedCounter(t *testing.T) {
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
 	ss.countReceived(pcep.MessageTypeClose)
 	snap := ss.Stats()
+	assert.Equal(t, uint64(1), snap.CloseRcvd)
 	assert.Zero(t, snap.UnknownRcvd, "Close must not be counted as an unrecognized message")
 	assert.Zero(t, snap.KeepaliveRcvd)
 	assert.Zero(t, snap.RptRcvd)

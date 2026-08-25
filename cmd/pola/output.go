@@ -7,7 +7,6 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 )
@@ -18,20 +17,13 @@ type outputFormat int
 const (
 	outputText outputFormat = iota
 	outputJSON
-	outputYANG
 )
 
-func resolveOutputFormat(jsonFlag, yangFlag bool) (outputFormat, error) {
-	if jsonFlag && yangFlag {
-		return outputText, errors.New("-j and -y are mutually exclusive")
-	}
+func resolveOutputFormat(jsonFlag bool) outputFormat {
 	if jsonFlag {
-		return outputJSON, nil
+		return outputJSON
 	}
-	if yangFlag {
-		return outputText, errors.New("YANG output is not implemented")
-	}
-	return outputText, nil
+	return outputText
 }
 
 type statusResult struct {

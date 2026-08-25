@@ -1739,7 +1739,7 @@ func (x *EffectiveTimers) GetDeadTimer() uint32 {
 	return 0
 }
 
-// MessageCounter contains the sent and received message counters from RFC 9826 ietf-pcep-stats.
+// MessageCounter contains sent and received message counters.
 type MessageCounter struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Sent          uint64                 `protobuf:"varint,1,opt,name=sent,proto3" json:"sent,omitempty"`
@@ -1792,19 +1792,24 @@ func (x *MessageCounter) GetRcvd() uint64 {
 	return 0
 }
 
-// SessionStats contains the message counters defined by RFC 9826 ietf-pcep-stats.
+// SessionStats contains per-session PCEP message counters.
+// Open and close are Pola-specific additions.
 type SessionStats struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
-	Keepalive        *MessageCounter        `protobuf:"bytes,1,opt,name=keepalive,proto3" json:"keepalive,omitempty"`                                        // keepalive-sent / keepalive-rcvd
-	Pcerr            *MessageCounter        `protobuf:"bytes,2,opt,name=pcerr,proto3" json:"pcerr,omitempty"`                                                // pcerr-sent / pcerr-rcvd
-	Pcntf            *MessageCounter        `protobuf:"bytes,3,opt,name=pcntf,proto3" json:"pcntf,omitempty"`                                                // pcntf-sent / pcntf-rcvd
-	Report           *MessageCounter        `protobuf:"bytes,4,opt,name=report,proto3" json:"report,omitempty"`                                              // rpt-sent / rpt-rcvd (stateful)
-	Update           *MessageCounter        `protobuf:"bytes,5,opt,name=update,proto3" json:"update,omitempty"`                                              // upd-sent / upd-rcvd (stateful)
-	Initiate         *MessageCounter        `protobuf:"bytes,6,opt,name=initiate,proto3" json:"initiate,omitempty"`                                          // pcinitiate-sent / pcinitiate-rcvd (initiation)
-	UnrecognizedRcvd uint64                 `protobuf:"varint,7,opt,name=unrecognized_rcvd,json=unrecognizedRcvd,proto3" json:"unrecognized_rcvd,omitempty"` // unknown-rcvd
-	CorruptRcvd      uint64                 `protobuf:"varint,8,opt,name=corrupt_rcvd,json=corruptRcvd,proto3" json:"corrupt_rcvd,omitempty"`                // corrupt-rcvd
-	SessSetupOk      uint64                 `protobuf:"varint,9,opt,name=sess_setup_ok,json=sessSetupOk,proto3" json:"sess_setup_ok,omitempty"`              // sess-setup-ok (per peer, survives session teardown)
-	SessSetupFail    uint64                 `protobuf:"varint,10,opt,name=sess_setup_fail,json=sessSetupFail,proto3" json:"sess_setup_fail,omitempty"`       // sess-setup-fail (per peer, survives session teardown)
+	Keepalive        *MessageCounter        `protobuf:"bytes,1,opt,name=keepalive,proto3" json:"keepalive,omitempty"`                                        // keepalive-sent / keepalive-rcvd (RFC 9826)
+	Pcerr            *MessageCounter        `protobuf:"bytes,2,opt,name=pcerr,proto3" json:"pcerr,omitempty"`                                                // pcerr-sent / pcerr-rcvd (RFC 9826)
+	Pcntf            *MessageCounter        `protobuf:"bytes,3,opt,name=pcntf,proto3" json:"pcntf,omitempty"`                                                // pcntf-sent / pcntf-rcvd (RFC 9826)
+	Report           *MessageCounter        `protobuf:"bytes,4,opt,name=report,proto3" json:"report,omitempty"`                                              // rpt-sent / rpt-rcvd (RFC 9826, stateful)
+	Update           *MessageCounter        `protobuf:"bytes,5,opt,name=update,proto3" json:"update,omitempty"`                                              // upd-sent / upd-rcvd (RFC 9826, stateful)
+	Initiate         *MessageCounter        `protobuf:"bytes,6,opt,name=initiate,proto3" json:"initiate,omitempty"`                                          // pcinitiate-sent / pcinitiate-rcvd (RFC 9826, initiation)
+	UnrecognizedRcvd uint64                 `protobuf:"varint,7,opt,name=unrecognized_rcvd,json=unrecognizedRcvd,proto3" json:"unrecognized_rcvd,omitempty"` // unknown-rcvd (RFC 9826)
+	CorruptRcvd      uint64                 `protobuf:"varint,8,opt,name=corrupt_rcvd,json=corruptRcvd,proto3" json:"corrupt_rcvd,omitempty"`                // corrupt-rcvd (RFC 9826)
+	SessSetupOk      uint64                 `protobuf:"varint,9,opt,name=sess_setup_ok,json=sessSetupOk,proto3" json:"sess_setup_ok,omitempty"`              // sess-setup-ok (RFC 9826; per peer, survives session teardown)
+	SessSetupFail    uint64                 `protobuf:"varint,10,opt,name=sess_setup_fail,json=sessSetupFail,proto3" json:"sess_setup_fail,omitempty"`       // sess-setup-fail (RFC 9826; per peer, survives session teardown)
+	Open             *MessageCounter        `protobuf:"bytes,11,opt,name=open,proto3" json:"open,omitempty"`                                                 // open-sent / open-rcvd (Pola-specific, not in RFC 9826)
+	Close            *MessageCounter        `protobuf:"bytes,12,opt,name=close,proto3" json:"close,omitempty"`                                               // close-sent / close-rcvd (Pola-specific, not in RFC 9826)
+	Pcreq            *MessageCounter        `protobuf:"bytes,13,opt,name=pcreq,proto3" json:"pcreq,omitempty"`                                               // pcreq-sent / pcreq-rcvd (RFC 9826)
+	Pcrep            *MessageCounter        `protobuf:"bytes,14,opt,name=pcrep,proto3" json:"pcrep,omitempty"`                                               // pcrep-sent / pcrep-rcvd (RFC 9826)
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -1907,6 +1912,34 @@ func (x *SessionStats) GetSessSetupFail() uint64 {
 		return x.SessSetupFail
 	}
 	return 0
+}
+
+func (x *SessionStats) GetOpen() *MessageCounter {
+	if x != nil {
+		return x.Open
+	}
+	return nil
+}
+
+func (x *SessionStats) GetClose() *MessageCounter {
+	if x != nil {
+		return x.Close
+	}
+	return nil
+}
+
+func (x *SessionStats) GetPcreq() *MessageCounter {
+	if x != nil {
+		return x.Pcreq
+	}
+	return nil
+}
+
+func (x *SessionStats) GetPcrep() *MessageCounter {
+	if x != nil {
+		return x.Pcrep
+	}
+	return nil
 }
 
 type Session struct {
@@ -3257,7 +3290,7 @@ const file_api_pola_v1_pola_proto_rawDesc = "" +
 	"dead_timer\x18\x02 \x01(\rR\tdeadTimer\"8\n" +
 	"\x0eMessageCounter\x12\x12\n" +
 	"\x04sent\x18\x01 \x01(\x04R\x04sent\x12\x12\n" +
-	"\x04rcvd\x18\x02 \x01(\x04R\x04rcvd\"\xee\x03\n" +
+	"\x04rcvd\x18\x02 \x01(\x04R\x04rcvd\"\xb8\x05\n" +
 	"\fSessionStats\x129\n" +
 	"\tkeepalive\x18\x01 \x01(\v2\x1b.api.pola.v1.MessageCounterR\tkeepalive\x121\n" +
 	"\x05pcerr\x18\x02 \x01(\v2\x1b.api.pola.v1.MessageCounterR\x05pcerr\x121\n" +
@@ -3269,7 +3302,11 @@ const file_api_pola_v1_pola_proto_rawDesc = "" +
 	"\fcorrupt_rcvd\x18\b \x01(\x04R\vcorruptRcvd\x12\"\n" +
 	"\rsess_setup_ok\x18\t \x01(\x04R\vsessSetupOk\x12&\n" +
 	"\x0fsess_setup_fail\x18\n" +
-	" \x01(\x04R\rsessSetupFail\"\xa4\a\n" +
+	" \x01(\x04R\rsessSetupFail\x12/\n" +
+	"\x04open\x18\v \x01(\v2\x1b.api.pola.v1.MessageCounterR\x04open\x121\n" +
+	"\x05close\x18\f \x01(\v2\x1b.api.pola.v1.MessageCounterR\x05close\x121\n" +
+	"\x05pcreq\x18\r \x01(\v2\x1b.api.pola.v1.MessageCounterR\x05pcreq\x121\n" +
+	"\x05pcrep\x18\x0e \x01(\v2\x1b.api.pola.v1.MessageCounterR\x05pcrep\"\xa4\a\n" +
 	"\aSession\x12\x1b\n" +
 	"\tpeer_addr\x18\x01 \x01(\fR\bpeerAddr\x12/\n" +
 	"\x05state\x18\x02 \x01(\x0e2\x19.api.pola.v1.SessionStateR\x05state\x12F\n" +
@@ -3517,51 +3554,55 @@ var file_api_pola_v1_pola_proto_depIdxs = []int32{
 	27, // 20: api.pola.v1.SessionStats.report:type_name -> api.pola.v1.MessageCounter
 	27, // 21: api.pola.v1.SessionStats.update:type_name -> api.pola.v1.MessageCounter
 	27, // 22: api.pola.v1.SessionStats.initiate:type_name -> api.pola.v1.MessageCounter
-	2,  // 23: api.pola.v1.Session.state:type_name -> api.pola.v1.SessionState
-	24, // 24: api.pola.v1.Session.local_capabilities:type_name -> api.pola.v1.Capability
-	3,  // 25: api.pola.v1.Session.pcc_type:type_name -> api.pola.v1.PccType
-	24, // 26: api.pola.v1.Session.peer_capabilities:type_name -> api.pola.v1.Capability
-	25, // 27: api.pola.v1.Session.local_timers:type_name -> api.pola.v1.SessionTimers
-	25, // 28: api.pola.v1.Session.peer_timers:type_name -> api.pola.v1.SessionTimers
-	26, // 29: api.pola.v1.Session.effective_timers:type_name -> api.pola.v1.EffectiveTimers
-	5,  // 30: api.pola.v1.Session.initiator:type_name -> api.pola.v1.SessionInitiator
-	6,  // 31: api.pola.v1.Session.sync_state:type_name -> api.pola.v1.LspDbSyncState
-	28, // 32: api.pola.v1.Session.stats:type_name -> api.pola.v1.SessionStats
-	2,  // 33: api.pola.v1.SRPolicySession.state:type_name -> api.pola.v1.SessionState
-	6,  // 34: api.pola.v1.SRPolicySession.sync_state:type_name -> api.pola.v1.LspDbSyncState
-	10, // 35: api.pola.v1.SRPolicySession.sr_policies:type_name -> api.pola.v1.SRPolicy
-	33, // 36: api.pola.v1.LsSrv6SID.sids:type_name -> api.pola.v1.SID
-	31, // 37: api.pola.v1.LsSrv6SID.endpoint_behavior:type_name -> api.pola.v1.EndpointBehavior
-	32, // 38: api.pola.v1.LsSrv6SID.sid_structure:type_name -> api.pola.v1.SidStructure
-	34, // 39: api.pola.v1.LsSrv6SID.multi_topo_ids:type_name -> api.pola.v1.MultiTopoID
-	7,  // 40: api.pola.v1.Metric.type:type_name -> api.pola.v1.MetricType
-	33, // 41: api.pola.v1.Srv6EndXSID.sids:type_name -> api.pola.v1.SID
-	32, // 42: api.pola.v1.Srv6EndXSID.sid_structure:type_name -> api.pola.v1.SidStructure
-	37, // 43: api.pola.v1.LsLink.metrics:type_name -> api.pola.v1.Metric
-	38, // 44: api.pola.v1.LsLink.srv6_end_x_sid:type_name -> api.pola.v1.Srv6EndXSID
-	39, // 45: api.pola.v1.LsNode.links:type_name -> api.pola.v1.LsLink
-	36, // 46: api.pola.v1.LsNode.prefixes:type_name -> api.pola.v1.LsPrefix
-	35, // 47: api.pola.v1.LsNode.srv6_sids:type_name -> api.pola.v1.LsSrv6SID
-	29, // 48: api.pola.v1.GetSessionListResponse.sessions:type_name -> api.pola.v1.Session
-	30, // 49: api.pola.v1.GetSRPolicyListResponse.sessions:type_name -> api.pola.v1.SRPolicySession
-	40, // 50: api.pola.v1.GetTEDResponse.nodes:type_name -> api.pola.v1.LsNode
-	11, // 51: api.pola.v1.PCEService.CreateSRPolicy:input_type -> api.pola.v1.CreateSRPolicyRequest
-	13, // 52: api.pola.v1.PCEService.DeleteSRPolicy:input_type -> api.pola.v1.DeleteSRPolicyRequest
-	41, // 53: api.pola.v1.PCEService.GetSessionList:input_type -> api.pola.v1.GetSessionListRequest
-	43, // 54: api.pola.v1.PCEService.GetSRPolicyList:input_type -> api.pola.v1.GetSRPolicyListRequest
-	45, // 55: api.pola.v1.PCEService.GetTED:input_type -> api.pola.v1.GetTEDRequest
-	47, // 56: api.pola.v1.PCEService.DeleteSession:input_type -> api.pola.v1.DeleteSessionRequest
-	12, // 57: api.pola.v1.PCEService.CreateSRPolicy:output_type -> api.pola.v1.CreateSRPolicyResponse
-	14, // 58: api.pola.v1.PCEService.DeleteSRPolicy:output_type -> api.pola.v1.DeleteSRPolicyResponse
-	42, // 59: api.pola.v1.PCEService.GetSessionList:output_type -> api.pola.v1.GetSessionListResponse
-	44, // 60: api.pola.v1.PCEService.GetSRPolicyList:output_type -> api.pola.v1.GetSRPolicyListResponse
-	46, // 61: api.pola.v1.PCEService.GetTED:output_type -> api.pola.v1.GetTEDResponse
-	48, // 62: api.pola.v1.PCEService.DeleteSession:output_type -> api.pola.v1.DeleteSessionResponse
-	57, // [57:63] is the sub-list for method output_type
-	51, // [51:57] is the sub-list for method input_type
-	51, // [51:51] is the sub-list for extension type_name
-	51, // [51:51] is the sub-list for extension extendee
-	0,  // [0:51] is the sub-list for field type_name
+	27, // 23: api.pola.v1.SessionStats.open:type_name -> api.pola.v1.MessageCounter
+	27, // 24: api.pola.v1.SessionStats.close:type_name -> api.pola.v1.MessageCounter
+	27, // 25: api.pola.v1.SessionStats.pcreq:type_name -> api.pola.v1.MessageCounter
+	27, // 26: api.pola.v1.SessionStats.pcrep:type_name -> api.pola.v1.MessageCounter
+	2,  // 27: api.pola.v1.Session.state:type_name -> api.pola.v1.SessionState
+	24, // 28: api.pola.v1.Session.local_capabilities:type_name -> api.pola.v1.Capability
+	3,  // 29: api.pola.v1.Session.pcc_type:type_name -> api.pola.v1.PccType
+	24, // 30: api.pola.v1.Session.peer_capabilities:type_name -> api.pola.v1.Capability
+	25, // 31: api.pola.v1.Session.local_timers:type_name -> api.pola.v1.SessionTimers
+	25, // 32: api.pola.v1.Session.peer_timers:type_name -> api.pola.v1.SessionTimers
+	26, // 33: api.pola.v1.Session.effective_timers:type_name -> api.pola.v1.EffectiveTimers
+	5,  // 34: api.pola.v1.Session.initiator:type_name -> api.pola.v1.SessionInitiator
+	6,  // 35: api.pola.v1.Session.sync_state:type_name -> api.pola.v1.LspDbSyncState
+	28, // 36: api.pola.v1.Session.stats:type_name -> api.pola.v1.SessionStats
+	2,  // 37: api.pola.v1.SRPolicySession.state:type_name -> api.pola.v1.SessionState
+	6,  // 38: api.pola.v1.SRPolicySession.sync_state:type_name -> api.pola.v1.LspDbSyncState
+	10, // 39: api.pola.v1.SRPolicySession.sr_policies:type_name -> api.pola.v1.SRPolicy
+	33, // 40: api.pola.v1.LsSrv6SID.sids:type_name -> api.pola.v1.SID
+	31, // 41: api.pola.v1.LsSrv6SID.endpoint_behavior:type_name -> api.pola.v1.EndpointBehavior
+	32, // 42: api.pola.v1.LsSrv6SID.sid_structure:type_name -> api.pola.v1.SidStructure
+	34, // 43: api.pola.v1.LsSrv6SID.multi_topo_ids:type_name -> api.pola.v1.MultiTopoID
+	7,  // 44: api.pola.v1.Metric.type:type_name -> api.pola.v1.MetricType
+	33, // 45: api.pola.v1.Srv6EndXSID.sids:type_name -> api.pola.v1.SID
+	32, // 46: api.pola.v1.Srv6EndXSID.sid_structure:type_name -> api.pola.v1.SidStructure
+	37, // 47: api.pola.v1.LsLink.metrics:type_name -> api.pola.v1.Metric
+	38, // 48: api.pola.v1.LsLink.srv6_end_x_sid:type_name -> api.pola.v1.Srv6EndXSID
+	39, // 49: api.pola.v1.LsNode.links:type_name -> api.pola.v1.LsLink
+	36, // 50: api.pola.v1.LsNode.prefixes:type_name -> api.pola.v1.LsPrefix
+	35, // 51: api.pola.v1.LsNode.srv6_sids:type_name -> api.pola.v1.LsSrv6SID
+	29, // 52: api.pola.v1.GetSessionListResponse.sessions:type_name -> api.pola.v1.Session
+	30, // 53: api.pola.v1.GetSRPolicyListResponse.sessions:type_name -> api.pola.v1.SRPolicySession
+	40, // 54: api.pola.v1.GetTEDResponse.nodes:type_name -> api.pola.v1.LsNode
+	11, // 55: api.pola.v1.PCEService.CreateSRPolicy:input_type -> api.pola.v1.CreateSRPolicyRequest
+	13, // 56: api.pola.v1.PCEService.DeleteSRPolicy:input_type -> api.pola.v1.DeleteSRPolicyRequest
+	41, // 57: api.pola.v1.PCEService.GetSessionList:input_type -> api.pola.v1.GetSessionListRequest
+	43, // 58: api.pola.v1.PCEService.GetSRPolicyList:input_type -> api.pola.v1.GetSRPolicyListRequest
+	45, // 59: api.pola.v1.PCEService.GetTED:input_type -> api.pola.v1.GetTEDRequest
+	47, // 60: api.pola.v1.PCEService.DeleteSession:input_type -> api.pola.v1.DeleteSessionRequest
+	12, // 61: api.pola.v1.PCEService.CreateSRPolicy:output_type -> api.pola.v1.CreateSRPolicyResponse
+	14, // 62: api.pola.v1.PCEService.DeleteSRPolicy:output_type -> api.pola.v1.DeleteSRPolicyResponse
+	42, // 63: api.pola.v1.PCEService.GetSessionList:output_type -> api.pola.v1.GetSessionListResponse
+	44, // 64: api.pola.v1.PCEService.GetSRPolicyList:output_type -> api.pola.v1.GetSRPolicyListResponse
+	46, // 65: api.pola.v1.PCEService.GetTED:output_type -> api.pola.v1.GetTEDResponse
+	48, // 66: api.pola.v1.PCEService.DeleteSession:output_type -> api.pola.v1.DeleteSessionResponse
+	61, // [61:67] is the sub-list for method output_type
+	55, // [55:61] is the sub-list for method input_type
+	55, // [55:55] is the sub-list for extension type_name
+	55, // [55:55] is the sub-list for extension extendee
+	0,  // [0:55] is the sub-list for field type_name
 }
 
 func init() { file_api_pola_v1_pola_proto_init() }
