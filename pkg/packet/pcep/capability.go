@@ -11,7 +11,7 @@ type CapabilityInterface interface {
 	CapStrings() []string
 }
 
-// polaStatefulCapability returns Pola's Stateful PCE Capability.
+// polaStatefulCapability returns Pola's Stateful PCE Capability (RFC 8231).
 func polaStatefulCapability() *StatefulPCECapability {
 	return &StatefulPCECapability{
 		LSPUpdateCapability:            true,
@@ -32,23 +32,30 @@ func polaStatefulCapability() *StatefulPCECapability {
 	}
 }
 
-// DefaultCapabilities returns Pola's default advertised capabilities.
-func DefaultCapabilities() []CapabilityInterface {
-	return []CapabilityInterface{polaStatefulCapability()}
+// polaPathSetupTypeCapability returns Pola's supported path setup types
+// and their corresponding SR capability sub-TLVs.
+func polaPathSetupTypeCapability() *PathSetupTypeCapability {
+	return &PathSetupTypeCapability{
+		PathSetupTypes: Psts{PathSetupTypeSRTE, PathSetupTypeSRv6TE},
+		SubTLVs: []TLVInterface{
+			&SRPCECapability{HasUnlimitedMaxSIDDepth: true},
+			&SRv6PCECapability{},
+		},
+	}
 }
 
-// PolaCapability converts received capabilities to those advertised by Pola.
-func PolaCapability(caps []CapabilityInterface) []CapabilityInterface {
-	polaCaps := []CapabilityInterface{}
-	for _, cap := range caps {
-		switch tlv := cap.(type) {
-		case *StatefulPCECapability:
-			polaCaps = append(polaCaps, polaStatefulCapability())
-		case *LSPDBVersion:
-			continue
-		default:
-			polaCaps = append(polaCaps, tlv)
-		}
+// polaAssocTypeList returns Pola's ASSOC-TYPE-LIST TLV.
+func polaAssocTypeList() *AssocTypeList {
+	return &AssocTypeList{
+		AssocTypes: []AssocType{AssocTypeSRPolicyAssociation},
 	}
-	return polaCaps
+}
+
+// DefaultCapabilities returns the capabilities Pola advertises in its OPEN.
+func DefaultCapabilities() []CapabilityInterface {
+	return []CapabilityInterface{
+		polaStatefulCapability(),
+		polaPathSetupTypeCapability(),
+		polaAssocTypeList(),
+	}
 }

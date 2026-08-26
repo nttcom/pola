@@ -1696,6 +1696,12 @@ const (
 	AssocTypeP2MPSRPolicyAssociation                AssocType = 0x09
 )
 
+// Vendor-specific Association Type values used for legacy PCC interoperability.
+const (
+	AssocTypeSRPolicyAssociationCisco   AssocType = 0x14   // Cisco-specific
+	AssocTypeSRPolicyAssociationJuniper AssocType = 0xffe1 // Juniper-specific (deprecated)
+)
+
 var assocTypeDescriptions = map[AssocType]struct {
 	Description string
 	Reference   string
@@ -1709,6 +1715,8 @@ var assocTypeDescriptions = map[AssocType]struct {
 	AssocTypeVnAssociationType:                      {"VN Association Type", "RFC9358"},
 	AssocTypeBidirectionalSRLSPAssociation:          {"Bidirectional SR LSP Association", "draft-ietf-pce-sr-bidir-path-25"},
 	AssocTypeP2MPSRPolicyAssociation:                {"P2MP SR Policy Association", "draft-ietf-pce-sr-p2mp-policy-11"},
+	AssocTypeSRPolicyAssociationCisco:               {"SR Policy Association (Cisco-specific)", "not IANA-assigned"},
+	AssocTypeSRPolicyAssociationJuniper:             {"SR Policy Association (Juniper-specific, deprecated)", "not IANA-assigned"},
 }
 
 // String returns the display name of the association type, suffixing

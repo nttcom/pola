@@ -459,7 +459,7 @@ func TestHandleStateReportRemove(t *testing.T) {
 	assert.False(t, found, "SR Policy is still registered after being reported as removed")
 }
 
-func TestReceiveOpenSeparatesPccAndPolaCapabilities(t *testing.T) {
+func TestReceiveOpenDoesNotOverwriteAdvertisedCapabilities(t *testing.T) {
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		assert.NoError(t, server.Close(), "failed to close server connection")
@@ -485,9 +485,10 @@ func TestReceiveOpenSeparatesPccAndPolaCapabilities(t *testing.T) {
 	require.NoError(t, ss.ReceiveOpen())
 
 	assert.Equal(t, pccCaps, ss.receivedPccCapabilities)
-	assert.Equal(t, pcep.PolaCapability(pccCaps), ss.advertisedCapabilities)
 	assert.Equal(t, pccCaps, ss.ReceivedCapabilities())
 	assert.Equal(t, pcep.RFCCompliant, ss.PccType())
+	assert.Equal(t, pcep.DefaultCapabilities(), ss.advertisedCapabilities)
+	assert.Equal(t, pcep.DefaultCapabilities(), ss.AdvertisedCapabilities())
 
 	sr := newTestStateReport(t, 1, 0)
 	sr.LSPObject.TLVs = append(sr.LSPObject.TLVs, &pcep.Color{Color: 100})
@@ -1050,6 +1051,21 @@ func TestSendOpen_AdvertisesConfiguredTimers(t *testing.T) {
 	sent := readOpenMessage(t, client)
 	assert.Equal(t, uint8(5), sent.OpenObject.Keepalive)
 	assert.Equal(t, uint8(60), sent.OpenObject.Deadtime)
+}
+
+func TestSendOpen_AdvertisesFullCapabilitySetOnTheWire(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() { assert.NoError(t, client.Close()) })
+	t.Cleanup(func() { assert.NoError(t, server.Close()) })
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	require.NoError(t, ss.SendOpen())
+
+	sent := readOpenMessage(t, client)
+	assert.Equal(t, pcep.DefaultCapabilities(), sent.OpenObject.Caps,
+		"the wire-level Open must carry Pola's complete capability set, not a partial default")
+	assert.Equal(t, pcep.DefaultCapabilities(), ss.AdvertisedCapabilities(),
+		"AdvertisedCapabilities must match what was actually sent on the wire")
 }
 
 func TestSendOpen_ErrorPropagatesFromSendFailure(t *testing.T) {
@@ -2097,6 +2113,20 @@ func TestHandleProposedOpen_UnacceptableProposalIsRejected(t *testing.T) {
 	retry, err := ss.handleProposedOpen(proposedOpen, true)
 	assert.False(t, retry)
 	require.ErrorContains(t, err, "peer proposed unacceptable session characteristics")
+}
+
+func TestHandleProposedOpen_IgnoresPCCKeepaliveRange(t *testing.T) {
+	conn := &fakeConn{r: bytes.NewReader(nil)}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss.keepaliveRangeEnabled = true
+	ss.minKeepalive, ss.maxKeepalive = 10, 60
+
+	proposedOpen := pcep.NewOpenObject(1, 5, 20, nil)
+	retry, err := ss.handleProposedOpen(proposedOpen, true)
+	require.NoError(t, err)
+	assert.True(t, retry)
+	assert.Equal(t, uint8(5), ss.localKeepalive)
+	assert.Equal(t, uint8(20), ss.localDeadTimer)
 }
 
 func TestHandleProposedOpen_MissingOpenObjectIsRejected(t *testing.T) {

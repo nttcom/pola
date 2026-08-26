@@ -1197,20 +1197,20 @@ func TestAssociationObject_RoundTrip(t *testing.T) {
 	cases := map[string]AssociationObject{
 		"IPv4_NoTLVs": {
 			ObjectType: ObjectTypeAssociationIPv4,
-			AssocType:  AssociationTypeSRPolicyAssociation,
+			AssocType:  AssocTypeSRPolicyAssociation,
 			AssocID:    1,
 			AssocSrc:   v4,
 		},
 		"IPv4_RFlag": {
 			ObjectType: ObjectTypeAssociationIPv4,
 			RFlag:      true,
-			AssocType:  AssociationTypeSRPolicyAssociation,
+			AssocType:  AssocTypeSRPolicyAssociation,
 			AssocID:    1,
 			AssocSrc:   v4,
 		},
 		"IPv4_WithSRPolicyTLVs": {
 			ObjectType: ObjectTypeAssociationIPv4,
-			AssocType:  AssociationTypeSRPolicyAssociation,
+			AssocType:  AssocTypeSRPolicyAssociation,
 			AssocID:    1,
 			AssocSrc:   v4,
 			TLVs: []TLVInterface{
@@ -1231,13 +1231,13 @@ func TestAssociationObject_RoundTrip(t *testing.T) {
 		},
 		"IPv6_NoTLVs": {
 			ObjectType: ObjectTypeAssociationIPv6,
-			AssocType:  AssociationTypeSRPolicyAssociation,
+			AssocType:  AssocTypeSRPolicyAssociation,
 			AssocID:    1,
 			AssocSrc:   v6,
 		},
 		"IPv6_WithExtendedAssociationID": {
 			ObjectType: ObjectTypeAssociationIPv6,
-			AssocType:  AssociationTypeSRPolicyAssociation,
+			AssocType:  AssocTypeSRPolicyAssociation,
 			AssocID:    1,
 			AssocSrc:   v6,
 			TLVs: []TLVInterface{
@@ -2444,16 +2444,16 @@ func TestDeterminePccType(t *testing.T) {
 		"NoCaps":          {nil, RFCCompliant},
 		"NoAssocTypeList": {[]CapabilityInterface{&SRPCECapability{}}, RFCCompliant},
 		"CiscoAssocType": {
-			[]CapabilityInterface{&AssocTypeList{AssocTypes: []AssocType{AssociationTypeSRPolicyAssociationCisco}}},
+			[]CapabilityInterface{&AssocTypeList{AssocTypes: []AssocType{AssocTypeSRPolicyAssociationCisco}}},
 			CiscoLegacy,
 		},
 		"JuniperAssocType": {
-			[]CapabilityInterface{&AssocTypeList{AssocTypes: []AssocType{AssociationTypeSRPolicyAssociationJuniper}}},
+			[]CapabilityInterface{&AssocTypeList{AssocTypes: []AssocType{AssocTypeSRPolicyAssociationJuniper}}},
 			JuniperLegacy,
 		},
 		"JuniperWinsOverCisco": {
 			[]CapabilityInterface{&AssocTypeList{AssocTypes: []AssocType{
-				AssociationTypeSRPolicyAssociationCisco, AssociationTypeSRPolicyAssociationJuniper,
+				AssocTypeSRPolicyAssociationCisco, AssocTypeSRPolicyAssociationJuniper,
 			}}},
 			JuniperLegacy,
 		},
@@ -2473,7 +2473,7 @@ func TestAssociationObject_DecodeFromBytes_Errors(t *testing.T) {
 	v4Body := []uint8{0x00, 0x00, 0x00, 0x00, 0x00, 0x06, 0x00, 0x01, 0xc0, 0x00, 0x02, 0x01}
 	v6Body := AppendByteSlices(
 		make([]uint8, 4),
-		Uint16ToByteSlice(uint16(AssociationTypeSRPolicyAssociation)),
+		Uint16ToByteSlice(uint16(AssocTypeSRPolicyAssociation)),
 		Uint16ToByteSlice(uint16(1)),
 		netip.MustParseAddr("2001:db8::1").AsSlice(),
 	)

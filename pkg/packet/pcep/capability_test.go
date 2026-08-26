@@ -12,117 +12,47 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestPolaCapability(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    []CapabilityInterface
-		expected []CapabilityInterface
-	}{
-		{
-			name: "Basic Capability Test",
-			input: []CapabilityInterface{
-				&StatefulPCECapability{
-					LSPUpdateCapability:        false,
-					IncludeDBVersion:           true,
-					LSPInstantiationCapability: false,
-					TriggeredResync:            true,
-					DeltaLSPSyncCapability:     true,
-					TriggeredInitialSync:       true,
-				},
-				&PathSetupTypeCapability{
-					PathSetupTypes: Psts{PathSetupTypeRSVPTE, PathSetupTypeSRTE, PathSetupTypeSRv6TE},
-					SubTLVs: []TLVInterface{
-						&SRPCECapability{
-							HasUnlimitedMaxSIDDepth: false,
-							IsNAISupported:          false,
-							MaximumSidDepth:         16,
-						},
-					},
-				},
-				&SRPCECapability{
-					HasUnlimitedMaxSIDDepth: false,
-					IsNAISupported:          false,
-					MaximumSidDepth:         16,
-				},
-				&AssocTypeList{
-					AssocTypes: []AssocType{AssocTypePathProtectionAssociation, AssocTypeSRPolicyAssociation},
-				},
-			},
-			expected: []CapabilityInterface{
-				&StatefulPCECapability{
-					LSPUpdateCapability:            true,
-					IncludeDBVersion:               false,
-					LSPInstantiationCapability:     true,
-					TriggeredResync:                false,
-					DeltaLSPSyncCapability:         false,
-					TriggeredInitialSync:           false,
-					P2mpCapability:                 false,
-					P2mpLSPUpdateCapability:        false,
-					P2mpLSPInstantiationCapability: false,
-					LSPSchedulingCapability:        false,
-					PdLSPCapability:                false,
-					ColorCapability:                true,
-					PathRecomputationCapability:    false,
-					StrictPathCapability:           false,
-					Relax:                          false,
-				},
-				&PathSetupTypeCapability{
-					PathSetupTypes: Psts{PathSetupTypeRSVPTE, PathSetupTypeSRTE, PathSetupTypeSRv6TE},
-					SubTLVs: []TLVInterface{
-						&SRPCECapability{
-							HasUnlimitedMaxSIDDepth: false,
-							IsNAISupported:          false,
-							MaximumSidDepth:         16,
-						},
-					},
-				},
-				&SRPCECapability{
-					HasUnlimitedMaxSIDDepth: false,
-					IsNAISupported:          false,
-					MaximumSidDepth:         16,
-				},
-				&AssocTypeList{
-					AssocTypes: []AssocType{AssocTypePathProtectionAssociation, AssocTypeSRPolicyAssociation},
-				},
-			},
-		},
-		{
-			name: "Includes LSPDBVersion (should be skipped)",
-			input: []CapabilityInterface{
-				&LSPDBVersion{},
-			},
-			expected: []CapabilityInterface{},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, PolaCapability(tt.input))
-		})
-	}
-}
-
 func TestDefaultCapabilities(t *testing.T) {
 	caps := DefaultCapabilities()
-	require.Len(t, caps, 1)
+	require.Len(t, caps, 3)
+
 	statefulCap, ok := caps[0].(*StatefulPCECapability)
-	require.True(t, ok, "expected DefaultCapabilities to return a StatefulPCECapability")
+	require.True(t, ok, "expected DefaultCapabilities[0] to be a StatefulPCECapability")
 	assert.True(t, statefulCap.LSPUpdateCapability)
 	assert.True(t, statefulCap.LSPInstantiationCapability)
 	assert.True(t, statefulCap.ColorCapability)
+
+	pstCap, ok := caps[1].(*PathSetupTypeCapability)
+	require.True(t, ok, "expected DefaultCapabilities[1] to be a PathSetupTypeCapability")
+	assert.Equal(t, Psts{PathSetupTypeSRTE, PathSetupTypeSRv6TE}, pstCap.PathSetupTypes)
+	require.Len(t, pstCap.SubTLVs, 2)
+
+	srCap, ok := pstCap.SubTLVs[0].(*SRPCECapability)
+	require.True(t, ok, "expected the first PST-CAPABILITY sub-TLV to be SR-PCE-CAPABILITY")
+	// RFC 8664 §5.1: a PCE MUST set N-Flag=0, X-Flag=1, and MSD=0.
+	assert.False(t, srCap.IsNAISupported)
+	assert.True(t, srCap.HasUnlimitedMaxSIDDepth)
+	assert.Equal(t, uint8(0), srCap.MaximumSidDepth)
+
+	srv6Cap, ok := pstCap.SubTLVs[1].(*SRv6PCECapability)
+	require.True(t, ok, "expected the second PST-CAPABILITY sub-TLV to be SRv6-PCE-CAPABILITY")
+	// RFC 9603 §5.1: a PCE MUST set the N flag to zero and omit the MSD.
+	assert.False(t, srv6Cap.IsNAISupported)
+
+	assocCap, ok := caps[2].(*AssocTypeList)
+	require.True(t, ok, "expected DefaultCapabilities[2] to be an AssocTypeList")
+	// RFC 9862 §5.2: a PCEP speaker MUST advertise the SRPA type before using it.
+	assert.Equal(t, []AssocType{AssocTypeSRPolicyAssociation}, assocCap.AssocTypes)
 }
 
-func TestPolaCapability_OutputAlwaysSerializes(t *testing.T) {
-	caps := []CapabilityInterface{
-		&StatefulPCECapability{LSPUpdateCapability: true},
-		&SRPCECapability{MaximumSidDepth: 16},
-		&PathSetupTypeCapability{PathSetupTypes: Psts{PathSetupTypeSRTE}},
-		&AssocTypeList{AssocTypes: []AssocType{AssocTypeSRPolicyAssociation}},
-		&LSPDBVersion{VersionNumber: 1},
-	}
+func TestDefaultCapabilities_WireRoundTrip(t *testing.T) {
+	for _, cap := range DefaultCapabilities() {
+		b, err := cap.Serialize()
+		require.NoError(t, err, "%T must serialize", cap)
 
-	for _, cap := range PolaCapability(caps) {
-		_, err := cap.Serialize()
-		assert.NoError(t, err, "PolaCapability output must always serialize: %T", cap)
+		decodedTLVs, err := DecodeTLVs(b)
+		require.NoError(t, err, "%T must decode its own serialized bytes", cap)
+		require.Len(t, decodedTLVs, 1)
+		assert.Equal(t, cap, decodedTLVs[0], "%T round-trip mismatch", cap)
 	}
 }

@@ -186,7 +186,7 @@ func TestNewPCInitiateMessage_VendorObjectSelection(t *testing.T) {
 		"JuniperLegacy": {
 			pccType:         JuniperLegacy,
 			wantAssociation: true,
-			wantAssocType:   AssociationTypeSRPolicyAssociationJuniper,
+			wantAssocType:   AssocTypeSRPolicyAssociationJuniper,
 		},
 		"CiscoLegacy": {
 			pccType:        CiscoLegacy,
@@ -195,7 +195,7 @@ func TestNewPCInitiateMessage_VendorObjectSelection(t *testing.T) {
 		"RFCCompliant": {
 			pccType:         RFCCompliant,
 			wantAssociation: true,
-			wantAssocType:   AssociationTypeSRPolicyAssociation,
+			wantAssocType:   AssocTypeSRPolicyAssociation,
 			wantVendorInfo:  true,
 		},
 	}
@@ -572,7 +572,7 @@ func TestPCRptMessage_DecodeFromBytes(t *testing.T) {
 		metric2 := &MetricObject{ObjectType: ObjectType(1), BFlag: true, MetricType: 1}
 		lspa := &LSPAObject{ObjectType: ObjectType(1), SetupPriority: 7, HoldingPriority: 7, LFlag: true}
 		assoc := &AssociationObject{
-			ObjectType: ObjectTypeAssociationIPv4, AssocType: AssociationTypeSRPolicyAssociation,
+			ObjectType: ObjectTypeAssociationIPv4, AssocType: AssocTypeSRPolicyAssociation,
 			AssocID: 1, AssocSrc: netip.MustParseAddr("192.0.2.1"),
 		}
 		vendorInfo := &VendorInformationObject{ObjectType: ObjectTypeVendorSpecificConstraints, EnterpriseNumber: EnterpriseNumberCisco}

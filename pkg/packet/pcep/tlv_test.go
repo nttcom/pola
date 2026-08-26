@@ -1330,6 +1330,8 @@ func TestAssocType_String(t *testing.T) {
 		"VnAssociation":    {AssocTypeVnAssociationType, "VN Association Type"},
 		"BidirSRLSP":       {AssocTypeBidirectionalSRLSPAssociation, "Bidirectional SR LSP Association (draft)"},
 		"P2MPSRPolicy":     {AssocTypeP2MPSRPolicyAssociation, "P2MP SR Policy Association (draft)"},
+		"SRPolicyCisco":    {AssocTypeSRPolicyAssociationCisco, "SR Policy Association (Cisco-specific)"},
+		"SRPolicyJuniper":  {AssocTypeSRPolicyAssociationJuniper, "SR Policy Association (Juniper-specific, deprecated)"},
 		"Unknown":          {AssocType(0xffff), "Unknown AssocType (0xffff)"},
 	}
 

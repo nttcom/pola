@@ -541,7 +541,7 @@ func (ss *Session) handleProposedOpen(proposedOpen *pcep.OpenObject, renegotiabl
 		return false, fmt.Errorf("peer rejected Pola's renegotiated Open with a further proposal (Keepalive=%d, DeadTimer=%d)",
 			proposed.Keepalive, proposed.DeadTimer)
 	}
-	if !ss.acceptableOpen(proposed) {
+	if !validTimerRelationship(proposed) {
 		ss.sendPCErrBestEffort(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableProposal)
 		return false, fmt.Errorf("peer proposed unacceptable session characteristics (Keepalive=%d, DeadTimer=%d)",
 			proposed.Keepalive, proposed.DeadTimer)
@@ -671,8 +671,6 @@ func (ss *Session) ReceiveOpen() error {
 	}
 	ss.stateMu.Unlock()
 
-	ss.setAdvertisedCapabilities(pcep.PolaCapability(openMessage.OpenObject.Caps))
-
 	return nil
 }
 
@@ -705,12 +703,22 @@ func (ss *Session) negotiateOpen() error {
 		pccOpen.Keepalive, pccOpen.DeadTimer)
 }
 
-// acceptableOpen reports whether the peer's session characteristics are acceptable.
-func (ss *Session) acceptableOpen(pccOpen OpenParams) bool {
-	if pccOpen.Keepalive == 0 && pccOpen.DeadTimer != 0 {
+// validTimerRelationship reports whether Keepalive and DeadTimer satisfy
+// RFC 5440 §7.3.
+func validTimerRelationship(open OpenParams) bool {
+	if open.Keepalive == 0 && open.DeadTimer != 0 {
 		return false
 	}
-	if pccOpen.Keepalive != 0 && pccOpen.DeadTimer != 0 && pccOpen.DeadTimer <= pccOpen.Keepalive {
+	if open.Keepalive != 0 && open.DeadTimer != 0 && open.DeadTimer <= open.Keepalive {
+		return false
+	}
+	return true
+}
+
+// acceptableOpen reports whether the PCC's proposed session parameters
+// are acceptable.
+func (ss *Session) acceptableOpen(pccOpen OpenParams) bool {
+	if !validTimerRelationship(pccOpen) {
 		return false
 	}
 	if !ss.keepaliveRangeEnabled {
@@ -1219,12 +1227,6 @@ func (ss *Session) AdvertisedCapabilities() []pcep.CapabilityInterface {
 	ss.stateMu.RLock()
 	defer ss.stateMu.RUnlock()
 	return slices.Clone(ss.advertisedCapabilities)
-}
-
-func (ss *Session) setAdvertisedCapabilities(caps []pcep.CapabilityInterface) {
-	ss.stateMu.Lock()
-	defer ss.stateMu.Unlock()
-	ss.advertisedCapabilities = caps
 }
 
 // Response to request from PCE (SrpID != 0)
