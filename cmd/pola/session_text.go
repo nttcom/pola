@@ -132,21 +132,21 @@ func writeCapabilitySections(w io.Writer, c capabilitiesView) error {
 	if _, err := fmt.Fprintln(w, "  Capabilities:"); err != nil {
 		return err
 	}
-	if err := writeCommonCapabilityLines(w, c); err != nil {
+	if err := writeCapabilityGroupSection(w, "Common", c.commonLines()); err != nil {
 		return err
 	}
-	if err := writeOnlyLine(w, "Local only", c.LocalOnly); err != nil {
+	if err := writeCapabilityGroupSection(w, "Local only", capabilityLines(c.LocalOnly)); err != nil {
 		return err
 	}
-	return writeOnlyLine(w, "Peer only", c.PeerOnly)
+	return writeCapabilityGroupSection(w, "Peer only", capabilityLines(c.PeerOnly))
 }
 
-func writeCommonCapabilityLines(w io.Writer, c capabilitiesView) error {
-	lines := c.commonLines()
+// writeCapabilityGroupSection writes a labeled capability section.
+func writeCapabilityGroupSection(w io.Writer, label string, lines []capDisplayLine) error {
 	if len(lines) == 0 {
-		return writeLabeledLine(w, 4, "Common", "-")
+		return writeLabeledLine(w, 4, label, "-")
 	}
-	if _, err := fmt.Fprintln(w, "    Common:"); err != nil {
+	if _, err := fmt.Fprintf(w, "    %s:\n", label); err != nil {
 		return err
 	}
 	for _, line := range lines {
@@ -161,14 +161,6 @@ func writeCommonCapabilityLines(w io.Writer, c capabilitiesView) error {
 		}
 	}
 	return nil
-}
-
-func writeOnlyLine(w io.Writer, label string, caps []capabilityView) error {
-	tokens := make([]string, len(caps))
-	for i, c := range caps {
-		tokens[i] = formatCapabilityToken(c)
-	}
-	return writeGroupedLine(w, 4, label, tokens)
 }
 
 // writeGroupedLine writes a heading followed by each item on its own
@@ -187,13 +179,6 @@ func writeGroupedLine(w io.Writer, indent int, header string, items []string) er
 		}
 	}
 	return nil
-}
-
-func formatCapabilityToken(c capabilityView) string {
-	if c.Value == "" {
-		return c.Name
-	}
-	return c.Name + "=" + c.Value
 }
 
 func writeStatsTable(w io.Writer, s statsView) error {

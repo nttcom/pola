@@ -97,9 +97,11 @@ func (c SRv6Capability) Strings() []string {
 	return ret
 }
 
-// PathSetupTypeCapability holds the raw PathSetupType values advertised by the peer.
+// PathSetupTypeCapability holds the raw PathSetupType values advertised by the peer,
+// along with any per-PST capability sub-TLVs (RFC 8408).
 type PathSetupTypeCapability struct {
-	PathSetupTypes []uint32
+	PathSetupTypes  []uint32
+	SubCapabilities []Capability
 }
 
 // Strings returns the human-readable flags for this capability.
@@ -295,7 +297,11 @@ func capabilityFromPB(c *pb.Capability) Capability {
 	case *pb.Capability_Srv6:
 		cap.Detail = SRv6Capability{NAISupported: detail.Srv6.GetNaiSupported()}
 	case *pb.Capability_PathSetupType:
-		cap.Detail = PathSetupTypeCapability{PathSetupTypes: detail.PathSetupType.GetPathSetupTypes()}
+		pst := PathSetupTypeCapability{PathSetupTypes: detail.PathSetupType.GetPathSetupTypes()}
+		for _, sub := range detail.PathSetupType.GetSubCapabilities() {
+			pst.SubCapabilities = append(pst.SubCapabilities, capabilityFromPB(sub))
+		}
+		cap.Detail = pst
 	case *pb.Capability_AssocTypeList:
 		cap.Detail = AssocTypeListCapability{AssocTypes: detail.AssocTypeList.GetAssocTypes()}
 	case *pb.Capability_LspDbVersion:

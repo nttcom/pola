@@ -45,10 +45,30 @@ func polaPathSetupTypeCapability() *PathSetupTypeCapability {
 }
 
 // polaAssocTypeList returns Pola's ASSOC-TYPE-LIST TLV.
+//
+// Only the IANA-assigned SR Policy Association type is advertised.
+// Legacy Cisco (0x14) and Juniper (0xffe1) values are peer-specific
+// interop quirks and are handled after the peer's OPEN is received.
 func polaAssocTypeList() *AssocTypeList {
 	return &AssocTypeList{
 		AssocTypes: []AssocType{AssocTypeSRPolicyAssociation},
 	}
+}
+
+// FlattenCapabilities appends PATH-SETUP-TYPE-CAPABILITY sub-capabilities
+// to the top-level list. This normalizes the two nesting forms allowed by
+// RFC 8664 Appendix A. Only one level of nesting is expanded.
+func FlattenCapabilities(caps []CapabilityInterface) []CapabilityInterface {
+	ret := make([]CapabilityInterface, 0, len(caps))
+	ret = append(ret, caps...)
+
+	for _, c := range caps {
+		if pstCap, ok := c.(*PathSetupTypeCapability); ok {
+			ret = append(ret, pstCap.SubCapabilities()...)
+		}
+	}
+
+	return ret
 }
 
 // DefaultCapabilities returns the capabilities Pola advertises in its OPEN.

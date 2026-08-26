@@ -107,18 +107,21 @@ Session #0: fd00::2
     DeadTimer  120    120   120
   Capabilities:
     Common:
-      VENDOR-INFORMATION [RFC7470]: 2636 (Juniper Networks, Inc.)
       STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Stateful, Update, Instantiation
-      SR-PCE-CAPABILITY [RFC8664]: SR, MSD=0
+      SR-PCE-CAPABILITY [RFC8664]: SR
       PATH-SETUP-TYPE-CAPABILITY [RFC8408]: SR-TE, SRv6-TE
       ASSOC-TYPE-LIST [RFC8697]:
-        1 Path Protection Association
         6 SR Policy Association
-      MULTIPATH-CAP [draft-ietf-pce-multipath]: Multipath, MaxMultipaths=128, Weighted
     Local only:
-      color
+      STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Color
+      SR-PCE-CAPABILITY [RFC8664]: Unlimited-SID-Depth
+      SRv6-PCE-CAPABILITY [RFC9603]: SRv6
     Peer only:
-      -
+      VENDOR-INFORMATION [RFC7470]: 2636 (Juniper Networks, Inc.)
+      SR-PCE-CAPABILITY [RFC8664]: MSD=0
+      ASSOC-TYPE-LIST [RFC8697]:
+        1 Path Protection Association
+      MULTIPATH-CAP [draft-ietf-pce-multipath]: Multipath, MaxMultipaths=128, Weighted
 root@pola:/pola# pola sr-policy list -p 50052
 Session: fd00::2 (State: up, LSP-DB Sync: finished)
   No SR Policies.

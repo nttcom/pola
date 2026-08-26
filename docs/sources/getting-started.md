@@ -75,9 +75,6 @@ global:
     deadTimer: 120
 ```
 
-These timers apply to Pola's side of the session. Pola uses the DeadTimer
-advertised by the PCC to detect a peer failure.
-
 #### Validating peer timers
 
 `global.pcep.minKeepalive` and `global.pcep.maxKeepalive` limit the Keepalive

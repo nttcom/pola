@@ -130,6 +130,7 @@ message StatefulCapability {
 message SrCapability {
   bool unlimited_msd = 1;
   bool nai_supported = 2;
+  // Unset when unlimited_msd is true (RFC 8664 §5.1).
   optional uint32 msd = 3;
 }
 
@@ -139,6 +140,8 @@ message Srv6Capability {
 
 message PathSetupTypeCapability {
   repeated uint32 path_setup_types = 1;
+  // Per-PST capability sub-TLVs (RFC 8408 §3).
+  repeated Capability sub_capabilities = 2;
 }
 
 message AssocTypeListCapability {

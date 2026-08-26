@@ -1514,6 +1514,81 @@ func TestEstablished_InvalidZeroMSDIsToleratedWithWarning(t *testing.T) {
 	}
 }
 
+func TestValidateCapabilities_ChecksSRPCECapabilityNestedInPathSetupType(t *testing.T) {
+	core, logs := observer.New(zap.WarnLevel)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.New(core), nil, 0)
+
+	caps := []pcep.CapabilityInterface{
+		&pcep.PathSetupTypeCapability{
+			PathSetupTypes: pcep.Psts{pcep.PathSetupTypeSRTE},
+			SubTLVs: []pcep.TLVInterface{
+				&pcep.SRPCECapability{},
+			},
+		},
+	}
+
+	ss.validateCapabilities(caps)
+
+	assert.Len(t, logs.FilterMessage(
+		"peer advertised SR-PCE-CAPABILITY with X=0 and MSD=0 (RFC 8664 §5.1); tolerating as a known deployed-peer deviation").All(), 1)
+}
+
+func TestValidateCapabilities_WarnsWhenSRTEAdvertisedWithoutSRCapability(t *testing.T) {
+	core, logs := observer.New(zap.WarnLevel)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.New(core), nil, 0)
+
+	caps := []pcep.CapabilityInterface{
+		&pcep.PathSetupTypeCapability{PathSetupTypes: pcep.Psts{pcep.PathSetupTypeSRTE}},
+	}
+
+	ss.validateCapabilities(caps)
+
+	assert.Len(t, logs.FilterMessage(
+		"peer advertised PST=1 (SR-TE) without an SR-PCE-CAPABILITY sub-TLV (RFC 8664 §4.1.2)").All(), 1)
+}
+
+func TestValidateCapabilities_WarnsWhenSRv6TEAdvertisedWithoutSRv6Capability(t *testing.T) {
+	core, logs := observer.New(zap.WarnLevel)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.New(core), nil, 0)
+
+	caps := []pcep.CapabilityInterface{
+		&pcep.PathSetupTypeCapability{PathSetupTypes: pcep.Psts{pcep.PathSetupTypeSRv6TE}},
+	}
+
+	ss.validateCapabilities(caps)
+
+	assert.Len(t, logs.FilterMessage(
+		"peer advertised PST=3 (SRv6-TE) without an SRv6-PCE-CAPABILITY sub-TLV (RFC 9603 §4.1.1)").All(), 1)
+}
+
+func TestValidateCapabilities_NoWarningWhenSRCapabilityAdvertisedAtTopLevel(t *testing.T) {
+	core, logs := observer.New(zap.WarnLevel)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.New(core), nil, 0)
+
+	caps := []pcep.CapabilityInterface{
+		&pcep.PathSetupTypeCapability{PathSetupTypes: pcep.Psts{pcep.PathSetupTypeSRTE}},
+		&pcep.SRPCECapability{HasUnlimitedMaxSIDDepth: true},
+	}
+
+	ss.validateCapabilities(caps)
+
+	assert.Zero(t, logs.Len())
+}
+
+func TestValidateCapabilities_NoWarningWhenSRv6CapabilityAdvertisedAtTopLevel(t *testing.T) {
+	core, logs := observer.New(zap.WarnLevel)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.New(core), nil, 0)
+
+	caps := []pcep.CapabilityInterface{
+		&pcep.PathSetupTypeCapability{PathSetupTypes: pcep.Psts{pcep.PathSetupTypeSRv6TE}},
+		&pcep.SRv6PCECapability{},
+	}
+
+	ss.validateCapabilities(caps)
+
+	assert.Zero(t, logs.Len())
+}
+
 func TestEstablished_PCErrDuringKeepWaitReportsErrorValue6(t *testing.T) {
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() { assert.NoError(t, client.Close()) })

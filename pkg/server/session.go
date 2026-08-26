@@ -574,13 +574,31 @@ func (ss *Session) sendPCErrBestEffort(errorType, errorValue uint8) {
 	}
 }
 
-// validateCapabilities logs known peer deviations from RFC-defined capabilities.
-// X=0 with MSD=0 is invalid per RFC 8664 §5.1, but tolerated for
-// compatibility with deployed Cisco XRd, Juniper vJunos, and FRRouting.
+// validateCapabilities validates peer capabilities and logs known RFC deviations.
 func (ss *Session) validateCapabilities(caps []pcep.CapabilityInterface) {
+	var hasSRCapability, hasSRv6Capability bool
+	for _, capability := range pcep.FlattenCapabilities(caps) {
+		switch c := capability.(type) {
+		case *pcep.SRPCECapability:
+			hasSRCapability = true
+			if c.HasInvalidZeroMSD() {
+				ss.logger.Warn("peer advertised SR-PCE-CAPABILITY with X=0 and MSD=0 (RFC 8664 §5.1); tolerating as a known deployed-peer deviation")
+			}
+		case *pcep.SRv6PCECapability:
+			hasSRv6Capability = true
+		}
+	}
+
 	for _, capability := range caps {
-		if sr, ok := capability.(*pcep.SRPCECapability); ok && sr.HasInvalidZeroMSD() {
-			ss.logger.Warn("peer advertised SR-PCE-CAPABILITY with X=0 and MSD=0 (RFC 8664 §5.1); tolerating as a known deployed-peer deviation")
+		pst, ok := capability.(*pcep.PathSetupTypeCapability)
+		if !ok {
+			continue
+		}
+		if pst.HasPathSetupType(pcep.PathSetupTypeSRTE) && !hasSRCapability {
+			ss.logger.Warn("peer advertised PST=1 (SR-TE) without an SR-PCE-CAPABILITY sub-TLV (RFC 8664 §4.1.2)")
+		}
+		if pst.HasPathSetupType(pcep.PathSetupTypeSRv6TE) && !hasSRv6Capability {
+			ss.logger.Warn("peer advertised PST=3 (SRv6-TE) without an SRv6-PCE-CAPABILITY sub-TLV (RFC 9603 §4.1.1)")
 		}
 	}
 }

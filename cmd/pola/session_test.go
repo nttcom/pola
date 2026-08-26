@@ -135,8 +135,8 @@ func TestShowSession_Text(t *testing.T) {
 	assert.Contains(t, out, "Up Time:           00:12:22")
 	assert.Contains(t, out, "Session ID:        Local=1, Peer=7")
 	assert.Contains(t, out, "STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Stateful, Update")
-	assert.Contains(t, out, "    Local only:\n      msd=10\n")
-	assert.Contains(t, out, "    Peer only:\n      msd=16\n")
+	assert.Contains(t, out, "    Local only:\n      SR-PCE-CAPABILITY [RFC8664]: MSD=10\n")
+	assert.Contains(t, out, "    Peer only:\n      SR-PCE-CAPABILITY [RFC8664]: MSD=16\n")
 	assert.Contains(t, out, "Session Creation:  2026-08-19T09:30:00Z")
 	assert.Contains(t, out, "Initiator:         remote")
 	assert.Contains(t, out, "Session Setup:     ok=1, fail=0")
@@ -181,8 +181,8 @@ func TestShowSession_Text_CapabilityGrouping(t *testing.T) {
 		"        9 P2MP SR Policy Association (draft)\n")
 	assert.Contains(t, out, "      Unrecognized TLVs:\n"+
 		"        type=73: SR-P2MP-POLICY-CAPABILITY (draft-ietf-pce-sr-p2mp-policy-11)\n")
-	assert.Contains(t, out, "    Local only:\n      -\n")
-	assert.Contains(t, out, "    Peer only:\n      -\n")
+	assert.Contains(t, out, "Local only:        -\n")
+	assert.Contains(t, out, "Peer only:         -\n")
 	assert.NotContains(t, out, "ASSOC-TYPE-LIST [RFC8697]: 2 Disjoint Association")
 }
 

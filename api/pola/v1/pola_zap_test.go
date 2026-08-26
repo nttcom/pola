@@ -56,6 +56,40 @@ func TestCapability_MarshalLogObject_Sr(t *testing.T) {
 	assert.Equal(t, uint32(0), sr["Msd"])
 }
 
+func TestPathSetupTypeCapability_MarshalLogObject_SubCapabilities(t *testing.T) {
+	cap := &PathSetupTypeCapability{
+		PathSetupTypes: []uint32{1},
+		SubCapabilities: []*Capability{
+			{
+				Type: CapabilityType_CAPABILITY_TYPE_SR,
+				Detail: &Capability_Sr{Sr: &SrCapability{
+					UnlimitedMsd: true,
+				}},
+			},
+		},
+	}
+
+	enc := zapcore.NewMapObjectEncoder()
+	require.NoError(t, cap.MarshalLogObject(enc))
+
+	subCapabilities, ok := enc.Fields["SubCapabilities"].([]any)
+	require.True(t, ok, "SubCapabilities field must be an array")
+	require.Len(t, subCapabilities, 1)
+
+	sr, ok := subCapabilities[0].(map[string]any)["Sr"].(map[string]any)
+	require.True(t, ok, "Sr field must be a nested object")
+	assert.Equal(t, true, sr["UnlimitedMsd"])
+}
+
+func TestPathSetupTypeCapability_MarshalLogObject_NoSubCapabilities(t *testing.T) {
+	cap := &PathSetupTypeCapability{PathSetupTypes: []uint32{1}}
+
+	enc := zapcore.NewMapObjectEncoder()
+	require.NoError(t, cap.MarshalLogObject(enc))
+
+	assert.NotContains(t, enc.Fields, "SubCapabilities")
+}
+
 func TestCapability_MarshalLogObject_NoDetail(t *testing.T) {
 	cap := &Capability{Type: CapabilityType_CAPABILITY_TYPE_UNSPECIFIED}
 

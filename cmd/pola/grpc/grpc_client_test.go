@@ -620,6 +620,23 @@ func TestCapabilityFromPB(t *testing.T) {
 			want:  Capability{Type: "PATH_SETUP_TYPE", Detail: PathSetupTypeCapability{PathSetupTypes: []uint32{1, 3}}},
 		},
 		{
+			name: "PathSetupType with SR/SRv6 sub-capabilities",
+			pbCap: &pb.Capability{Type: pb.CapabilityType_CAPABILITY_TYPE_PATH_SETUP_TYPE, Detail: &pb.Capability_PathSetupType{PathSetupType: &pb.PathSetupTypeCapability{
+				PathSetupTypes: []uint32{1, 3},
+				SubCapabilities: []*pb.Capability{
+					{Type: pb.CapabilityType_CAPABILITY_TYPE_SR, Detail: &pb.Capability_Sr{Sr: &pb.SrCapability{UnlimitedMsd: true}}},
+					{Type: pb.CapabilityType_CAPABILITY_TYPE_SRV6, Detail: &pb.Capability_Srv6{Srv6: &pb.Srv6Capability{}}},
+				},
+			}}},
+			want: Capability{Type: "PATH_SETUP_TYPE", Detail: PathSetupTypeCapability{
+				PathSetupTypes: []uint32{1, 3},
+				SubCapabilities: []Capability{
+					{Type: "SR", Detail: SRCapability{UnlimitedMSD: true}},
+					{Type: "SRV6", Detail: SRv6Capability{}},
+				},
+			}},
+		},
+		{
 			name:  "AssocTypeList",
 			pbCap: &pb.Capability{Type: pb.CapabilityType_CAPABILITY_TYPE_ASSOC_TYPE_LIST, Detail: &pb.Capability_AssocTypeList{AssocTypeList: &pb.AssocTypeListCapability{AssocTypes: []uint32{6}}}},
 			want:  Capability{Type: "ASSOC_TYPE_LIST", Detail: AssocTypeListCapability{AssocTypes: []uint32{6}}},

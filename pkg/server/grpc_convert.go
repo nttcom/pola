@@ -122,11 +122,14 @@ func buildCapability(cap pcep.CapabilityInterface) *pb.Capability {
 			Color:                tlv.ColorCapability,
 		}}
 	case *pcep.SRPCECapability:
-		c.Detail = &pb.Capability_Sr{Sr: &pb.SrCapability{
+		sr := &pb.SrCapability{
 			UnlimitedMsd: tlv.HasUnlimitedMaxSIDDepth,
 			NaiSupported: tlv.IsNAISupported,
-			Msd:          new(uint32(tlv.MaximumSidDepth)),
-		}}
+		}
+		if !tlv.HasUnlimitedMaxSIDDepth {
+			sr.Msd = new(uint32(tlv.MaximumSidDepth))
+		}
+		c.Detail = &pb.Capability_Sr{Sr: sr}
 	case *pcep.SRv6PCECapability:
 		c.Detail = &pb.Capability_Srv6{Srv6: &pb.Srv6Capability{
 			NaiSupported: tlv.IsNAISupported,
@@ -136,9 +139,11 @@ func buildCapability(cap pcep.CapabilityInterface) *pb.Capability {
 		for i, pst := range tlv.PathSetupTypes {
 			psts[i] = uint32(pst)
 		}
-		c.Detail = &pb.Capability_PathSetupType{PathSetupType: &pb.PathSetupTypeCapability{
-			PathSetupTypes: psts,
-		}}
+		pstCap := &pb.PathSetupTypeCapability{PathSetupTypes: psts}
+		for _, subCap := range tlv.SubCapabilities() {
+			pstCap.SubCapabilities = append(pstCap.SubCapabilities, buildCapability(subCap))
+		}
+		c.Detail = &pb.Capability_PathSetupType{PathSetupType: pstCap}
 	case *pcep.AssocTypeList:
 		assocTypes := make([]uint32, len(tlv.AssocTypes))
 		for i, at := range tlv.AssocTypes {

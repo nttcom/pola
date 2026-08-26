@@ -103,7 +103,20 @@ func (x *Srv6Capability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 
 // MarshalLogObject implements zapcore.ObjectMarshaler for PathSetupTypeCapability.
 func (x *PathSetupTypeCapability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
-	return enc.AddReflected("PathSetupTypes", x.GetPathSetupTypes())
+	if err := enc.AddReflected("PathSetupTypes", x.GetPathSetupTypes()); err != nil {
+		return err
+	}
+	if subCapabilities := x.GetSubCapabilities(); len(subCapabilities) > 0 {
+		return enc.AddArray("SubCapabilities", zapcore.ArrayMarshalerFunc(func(ae zapcore.ArrayEncoder) error {
+			for _, subCapability := range subCapabilities {
+				if err := ae.AppendObject(subCapability); err != nil {
+					return err
+				}
+			}
+			return nil
+		}))
+	}
+	return nil
 }
 
 // MarshalLogObject implements zapcore.ObjectMarshaler for AssocTypeListCapability.

@@ -59,21 +59,23 @@ Session #0: 10.0.255.1
   Capabilities:
     Common:
       STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Stateful, Update, Instantiation
-      SR-PCE-CAPABILITY [RFC8664]: SR, MSD=0
+      SR-PCE-CAPABILITY [RFC8664]: SR
       SRv6-PCE-CAPABILITY [RFC9603]: SRv6
       PATH-SETUP-TYPE-CAPABILITY [RFC8408]: SR-TE, SRv6-TE
+      ASSOC-TYPE-LIST [RFC8697]:
+        6 SR Policy Association
+    Local only:
+      STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Color
+      SR-PCE-CAPABILITY [RFC8664]: Unlimited-SID-Depth
+    Peer only:
+      SR-PCE-CAPABILITY [RFC8664]: MSD=0
       ASSOC-TYPE-LIST [RFC8697]:
         2 Disjoint Association
         3 Policy Association
         5 Double Sided Bidirectional LSP Association
-        6 SR Policy Association
         9 P2MP SR Policy Association (draft)
       Unrecognized TLVs:
         type=73: SR-P2MP-POLICY-CAPABILITY (draft-ietf-pce-sr-p2mp-policy-11)
-    Local only:
-      color
-    Peer only:
-      -
 
 Session #1: 10.0.255.2
   State:             up
@@ -88,18 +90,22 @@ Session #1: 10.0.255.2
     DeadTimer  120    120   120
   Capabilities:
     Common:
-      VENDOR-INFORMATION [RFC7470]: 2636 (Juniper Networks, Inc.)
       STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Stateful, Update, Instantiation
-      SR-PCE-CAPABILITY [RFC8664]: SR, MSD=0
+      SR-PCE-CAPABILITY [RFC8664]: SR
       PATH-SETUP-TYPE-CAPABILITY [RFC8408]: SR-TE
       ASSOC-TYPE-LIST [RFC8697]:
-        1 Path Protection Association
         6 SR Policy Association
-      MULTIPATH-CAP [draft-ietf-pce-multipath]: Multipath, MaxMultipaths=128, Weighted
     Local only:
-      color
+      STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Color
+      SR-PCE-CAPABILITY [RFC8664]: Unlimited-SID-Depth
+      SRv6-PCE-CAPABILITY [RFC9603]: SRv6
+      PATH-SETUP-TYPE-CAPABILITY [RFC8408]: SRv6-TE
     Peer only:
-      -
+      VENDOR-INFORMATION [RFC7470]: 2636 (Juniper Networks, Inc.)
+      SR-PCE-CAPABILITY [RFC8664]: MSD=0
+      ASSOC-TYPE-LIST [RFC8697]:
+        1 Path Protection Association
+      MULTIPATH-CAP [draft-ietf-pce-multipath]: Multipath, MaxMultipaths=128, Weighted
 
 Session #2: 10.0.255.3
   State:             up
@@ -117,7 +123,12 @@ Session #2: 10.0.255.3
       STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Stateful, Update, Instantiation
       PATH-SETUP-TYPE-CAPABILITY [RFC8408]: SR-TE
     Local only:
-      color
+      STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Color
+      SR-PCE-CAPABILITY [RFC8664]: SR, Unlimited-SID-Depth
+      SRv6-PCE-CAPABILITY [RFC9603]: SRv6
+      PATH-SETUP-TYPE-CAPABILITY [RFC8408]: SRv6-TE
+      ASSOC-TYPE-LIST [RFC8697]:
+        6 SR Policy Association
     Peer only:
       -
 root@pola:/pola# pola sr-policy list

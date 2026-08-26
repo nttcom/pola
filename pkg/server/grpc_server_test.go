@@ -2511,11 +2511,39 @@ func TestBuildCapability(t *testing.T) {
 			},
 		},
 		{
+			name: "sr with unlimited MSD",
+			cap:  &pcep.SRPCECapability{HasUnlimitedMaxSIDDepth: true, MaximumSidDepth: 0},
+			want: &pb.Capability{
+				Type:   pb.CapabilityType_CAPABILITY_TYPE_SR,
+				Detail: &pb.Capability_Sr{Sr: &pb.SrCapability{UnlimitedMsd: true}},
+			},
+		},
+		{
 			name: "path setup type",
 			cap:  &pcep.PathSetupTypeCapability{PathSetupTypes: pcep.Psts{1, 3}},
 			want: &pb.Capability{
 				Type:   pb.CapabilityType_CAPABILITY_TYPE_PATH_SETUP_TYPE,
 				Detail: &pb.Capability_PathSetupType{PathSetupType: &pb.PathSetupTypeCapability{PathSetupTypes: []uint32{1, 3}}},
+			},
+		},
+		{
+			name: "path setup type with SR/SRv6 sub-capabilities",
+			cap: &pcep.PathSetupTypeCapability{
+				PathSetupTypes: pcep.Psts{1, 3},
+				SubTLVs: []pcep.TLVInterface{
+					&pcep.SRPCECapability{HasUnlimitedMaxSIDDepth: true},
+					&pcep.SRv6PCECapability{},
+				},
+			},
+			want: &pb.Capability{
+				Type: pb.CapabilityType_CAPABILITY_TYPE_PATH_SETUP_TYPE,
+				Detail: &pb.Capability_PathSetupType{PathSetupType: &pb.PathSetupTypeCapability{
+					PathSetupTypes: []uint32{1, 3},
+					SubCapabilities: []*pb.Capability{
+						{Type: pb.CapabilityType_CAPABILITY_TYPE_SR, Detail: &pb.Capability_Sr{Sr: &pb.SrCapability{UnlimitedMsd: true}}},
+						{Type: pb.CapabilityType_CAPABILITY_TYPE_SRV6, Detail: &pb.Capability_Srv6{Srv6: &pb.Srv6Capability{}}},
+					},
+				}},
 			},
 		},
 		{

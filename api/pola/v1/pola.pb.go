@@ -1034,10 +1034,11 @@ func (x *StatefulCapability) GetColor() bool {
 }
 
 type SrCapability struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	UnlimitedMsd  bool                   `protobuf:"varint,1,opt,name=unlimited_msd,json=unlimitedMsd,proto3" json:"unlimited_msd,omitempty"`
-	NaiSupported  bool                   `protobuf:"varint,2,opt,name=nai_supported,json=naiSupported,proto3" json:"nai_supported,omitempty"`
-	Msd           *uint32                `protobuf:"varint,3,opt,name=msd,proto3,oneof" json:"msd,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	UnlimitedMsd bool                   `protobuf:"varint,1,opt,name=unlimited_msd,json=unlimitedMsd,proto3" json:"unlimited_msd,omitempty"`
+	NaiSupported bool                   `protobuf:"varint,2,opt,name=nai_supported,json=naiSupported,proto3" json:"nai_supported,omitempty"`
+	// Unset when unlimited_msd is true (RFC 8664 §5.1).
+	Msd           *uint32 `protobuf:"varint,3,opt,name=msd,proto3,oneof" json:"msd,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1140,8 +1141,10 @@ func (x *Srv6Capability) GetNaiSupported() bool {
 type PathSetupTypeCapability struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	PathSetupTypes []uint32               `protobuf:"varint,1,rep,packed,name=path_setup_types,json=pathSetupTypes,proto3" json:"path_setup_types,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Per-PST capability sub-TLVs (RFC 8408 §3).
+	SubCapabilities []*Capability `protobuf:"bytes,2,rep,name=sub_capabilities,json=subCapabilities,proto3" json:"sub_capabilities,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *PathSetupTypeCapability) Reset() {
@@ -1177,6 +1180,13 @@ func (*PathSetupTypeCapability) Descriptor() ([]byte, []int) {
 func (x *PathSetupTypeCapability) GetPathSetupTypes() []uint32 {
 	if x != nil {
 		return x.PathSetupTypes
+	}
+	return nil
+}
+
+func (x *PathSetupTypeCapability) GetSubCapabilities() []*Capability {
+	if x != nil {
+		return x.SubCapabilities
 	}
 	return nil
 }
@@ -3256,9 +3266,10 @@ const file_api_pola_v1_pola_proto_rawDesc = "" +
 	"\x03msd\x18\x03 \x01(\rH\x00R\x03msd\x88\x01\x01B\x06\n" +
 	"\x04_msd\"5\n" +
 	"\x0eSrv6Capability\x12#\n" +
-	"\rnai_supported\x18\x01 \x01(\bR\fnaiSupported\"C\n" +
+	"\rnai_supported\x18\x01 \x01(\bR\fnaiSupported\"\x87\x01\n" +
 	"\x17PathSetupTypeCapability\x12(\n" +
-	"\x10path_setup_types\x18\x01 \x03(\rR\x0epathSetupTypes\":\n" +
+	"\x10path_setup_types\x18\x01 \x03(\rR\x0epathSetupTypes\x12B\n" +
+	"\x10sub_capabilities\x18\x02 \x03(\v2\x17.api.pola.v1.CapabilityR\x0fsubCapabilities\":\n" +
 	"\x17AssocTypeListCapability\x12\x1f\n" +
 	"\vassoc_types\x18\x01 \x03(\rR\n" +
 	"assocTypes\"?\n" +
@@ -3547,71 +3558,72 @@ var file_api_pola_v1_pola_proto_depIdxs = []int32{
 	1,  // 4: api.pola.v1.SRPolicy.state:type_name -> api.pola.v1.SRPolicyState
 	10, // 5: api.pola.v1.CreateSRPolicyRequest.sr_policy:type_name -> api.pola.v1.SRPolicy
 	10, // 6: api.pola.v1.DeleteSRPolicyRequest.sr_policy:type_name -> api.pola.v1.SRPolicy
-	4,  // 7: api.pola.v1.Capability.type:type_name -> api.pola.v1.CapabilityType
-	15, // 8: api.pola.v1.Capability.stateful:type_name -> api.pola.v1.StatefulCapability
-	16, // 9: api.pola.v1.Capability.sr:type_name -> api.pola.v1.SrCapability
-	17, // 10: api.pola.v1.Capability.srv6:type_name -> api.pola.v1.Srv6Capability
-	18, // 11: api.pola.v1.Capability.path_setup_type:type_name -> api.pola.v1.PathSetupTypeCapability
-	19, // 12: api.pola.v1.Capability.assoc_type_list:type_name -> api.pola.v1.AssocTypeListCapability
-	20, // 13: api.pola.v1.Capability.lsp_db_version:type_name -> api.pola.v1.LspDbVersionCapability
-	21, // 14: api.pola.v1.Capability.multipath:type_name -> api.pola.v1.MultipathCapability
-	22, // 15: api.pola.v1.Capability.vendor_information:type_name -> api.pola.v1.VendorInformationCapability
-	23, // 16: api.pola.v1.Capability.unknown:type_name -> api.pola.v1.UnknownCapability
-	27, // 17: api.pola.v1.SessionStats.keepalive:type_name -> api.pola.v1.MessageCounter
-	27, // 18: api.pola.v1.SessionStats.pcerr:type_name -> api.pola.v1.MessageCounter
-	27, // 19: api.pola.v1.SessionStats.pcntf:type_name -> api.pola.v1.MessageCounter
-	27, // 20: api.pola.v1.SessionStats.report:type_name -> api.pola.v1.MessageCounter
-	27, // 21: api.pola.v1.SessionStats.update:type_name -> api.pola.v1.MessageCounter
-	27, // 22: api.pola.v1.SessionStats.initiate:type_name -> api.pola.v1.MessageCounter
-	27, // 23: api.pola.v1.SessionStats.open:type_name -> api.pola.v1.MessageCounter
-	27, // 24: api.pola.v1.SessionStats.close:type_name -> api.pola.v1.MessageCounter
-	27, // 25: api.pola.v1.SessionStats.pcreq:type_name -> api.pola.v1.MessageCounter
-	27, // 26: api.pola.v1.SessionStats.pcrep:type_name -> api.pola.v1.MessageCounter
-	2,  // 27: api.pola.v1.Session.state:type_name -> api.pola.v1.SessionState
-	24, // 28: api.pola.v1.Session.local_capabilities:type_name -> api.pola.v1.Capability
-	3,  // 29: api.pola.v1.Session.pcc_type:type_name -> api.pola.v1.PccType
-	24, // 30: api.pola.v1.Session.peer_capabilities:type_name -> api.pola.v1.Capability
-	25, // 31: api.pola.v1.Session.local_timers:type_name -> api.pola.v1.SessionTimers
-	25, // 32: api.pola.v1.Session.peer_timers:type_name -> api.pola.v1.SessionTimers
-	26, // 33: api.pola.v1.Session.effective_timers:type_name -> api.pola.v1.EffectiveTimers
-	5,  // 34: api.pola.v1.Session.initiator:type_name -> api.pola.v1.SessionInitiator
-	6,  // 35: api.pola.v1.Session.sync_state:type_name -> api.pola.v1.LspDbSyncState
-	28, // 36: api.pola.v1.Session.stats:type_name -> api.pola.v1.SessionStats
-	2,  // 37: api.pola.v1.SRPolicySession.state:type_name -> api.pola.v1.SessionState
-	6,  // 38: api.pola.v1.SRPolicySession.sync_state:type_name -> api.pola.v1.LspDbSyncState
-	10, // 39: api.pola.v1.SRPolicySession.sr_policies:type_name -> api.pola.v1.SRPolicy
-	33, // 40: api.pola.v1.LsSrv6SID.sids:type_name -> api.pola.v1.SID
-	31, // 41: api.pola.v1.LsSrv6SID.endpoint_behavior:type_name -> api.pola.v1.EndpointBehavior
-	32, // 42: api.pola.v1.LsSrv6SID.sid_structure:type_name -> api.pola.v1.SidStructure
-	34, // 43: api.pola.v1.LsSrv6SID.multi_topo_ids:type_name -> api.pola.v1.MultiTopoID
-	7,  // 44: api.pola.v1.Metric.type:type_name -> api.pola.v1.MetricType
-	33, // 45: api.pola.v1.Srv6EndXSID.sids:type_name -> api.pola.v1.SID
-	32, // 46: api.pola.v1.Srv6EndXSID.sid_structure:type_name -> api.pola.v1.SidStructure
-	37, // 47: api.pola.v1.LsLink.metrics:type_name -> api.pola.v1.Metric
-	38, // 48: api.pola.v1.LsLink.srv6_end_x_sid:type_name -> api.pola.v1.Srv6EndXSID
-	39, // 49: api.pola.v1.LsNode.links:type_name -> api.pola.v1.LsLink
-	36, // 50: api.pola.v1.LsNode.prefixes:type_name -> api.pola.v1.LsPrefix
-	35, // 51: api.pola.v1.LsNode.srv6_sids:type_name -> api.pola.v1.LsSrv6SID
-	29, // 52: api.pola.v1.GetSessionListResponse.sessions:type_name -> api.pola.v1.Session
-	30, // 53: api.pola.v1.GetSRPolicyListResponse.sessions:type_name -> api.pola.v1.SRPolicySession
-	40, // 54: api.pola.v1.GetTEDResponse.nodes:type_name -> api.pola.v1.LsNode
-	11, // 55: api.pola.v1.PCEService.CreateSRPolicy:input_type -> api.pola.v1.CreateSRPolicyRequest
-	13, // 56: api.pola.v1.PCEService.DeleteSRPolicy:input_type -> api.pola.v1.DeleteSRPolicyRequest
-	41, // 57: api.pola.v1.PCEService.GetSessionList:input_type -> api.pola.v1.GetSessionListRequest
-	43, // 58: api.pola.v1.PCEService.GetSRPolicyList:input_type -> api.pola.v1.GetSRPolicyListRequest
-	45, // 59: api.pola.v1.PCEService.GetTED:input_type -> api.pola.v1.GetTEDRequest
-	47, // 60: api.pola.v1.PCEService.DeleteSession:input_type -> api.pola.v1.DeleteSessionRequest
-	12, // 61: api.pola.v1.PCEService.CreateSRPolicy:output_type -> api.pola.v1.CreateSRPolicyResponse
-	14, // 62: api.pola.v1.PCEService.DeleteSRPolicy:output_type -> api.pola.v1.DeleteSRPolicyResponse
-	42, // 63: api.pola.v1.PCEService.GetSessionList:output_type -> api.pola.v1.GetSessionListResponse
-	44, // 64: api.pola.v1.PCEService.GetSRPolicyList:output_type -> api.pola.v1.GetSRPolicyListResponse
-	46, // 65: api.pola.v1.PCEService.GetTED:output_type -> api.pola.v1.GetTEDResponse
-	48, // 66: api.pola.v1.PCEService.DeleteSession:output_type -> api.pola.v1.DeleteSessionResponse
-	61, // [61:67] is the sub-list for method output_type
-	55, // [55:61] is the sub-list for method input_type
-	55, // [55:55] is the sub-list for extension type_name
-	55, // [55:55] is the sub-list for extension extendee
-	0,  // [0:55] is the sub-list for field type_name
+	24, // 7: api.pola.v1.PathSetupTypeCapability.sub_capabilities:type_name -> api.pola.v1.Capability
+	4,  // 8: api.pola.v1.Capability.type:type_name -> api.pola.v1.CapabilityType
+	15, // 9: api.pola.v1.Capability.stateful:type_name -> api.pola.v1.StatefulCapability
+	16, // 10: api.pola.v1.Capability.sr:type_name -> api.pola.v1.SrCapability
+	17, // 11: api.pola.v1.Capability.srv6:type_name -> api.pola.v1.Srv6Capability
+	18, // 12: api.pola.v1.Capability.path_setup_type:type_name -> api.pola.v1.PathSetupTypeCapability
+	19, // 13: api.pola.v1.Capability.assoc_type_list:type_name -> api.pola.v1.AssocTypeListCapability
+	20, // 14: api.pola.v1.Capability.lsp_db_version:type_name -> api.pola.v1.LspDbVersionCapability
+	21, // 15: api.pola.v1.Capability.multipath:type_name -> api.pola.v1.MultipathCapability
+	22, // 16: api.pola.v1.Capability.vendor_information:type_name -> api.pola.v1.VendorInformationCapability
+	23, // 17: api.pola.v1.Capability.unknown:type_name -> api.pola.v1.UnknownCapability
+	27, // 18: api.pola.v1.SessionStats.keepalive:type_name -> api.pola.v1.MessageCounter
+	27, // 19: api.pola.v1.SessionStats.pcerr:type_name -> api.pola.v1.MessageCounter
+	27, // 20: api.pola.v1.SessionStats.pcntf:type_name -> api.pola.v1.MessageCounter
+	27, // 21: api.pola.v1.SessionStats.report:type_name -> api.pola.v1.MessageCounter
+	27, // 22: api.pola.v1.SessionStats.update:type_name -> api.pola.v1.MessageCounter
+	27, // 23: api.pola.v1.SessionStats.initiate:type_name -> api.pola.v1.MessageCounter
+	27, // 24: api.pola.v1.SessionStats.open:type_name -> api.pola.v1.MessageCounter
+	27, // 25: api.pola.v1.SessionStats.close:type_name -> api.pola.v1.MessageCounter
+	27, // 26: api.pola.v1.SessionStats.pcreq:type_name -> api.pola.v1.MessageCounter
+	27, // 27: api.pola.v1.SessionStats.pcrep:type_name -> api.pola.v1.MessageCounter
+	2,  // 28: api.pola.v1.Session.state:type_name -> api.pola.v1.SessionState
+	24, // 29: api.pola.v1.Session.local_capabilities:type_name -> api.pola.v1.Capability
+	3,  // 30: api.pola.v1.Session.pcc_type:type_name -> api.pola.v1.PccType
+	24, // 31: api.pola.v1.Session.peer_capabilities:type_name -> api.pola.v1.Capability
+	25, // 32: api.pola.v1.Session.local_timers:type_name -> api.pola.v1.SessionTimers
+	25, // 33: api.pola.v1.Session.peer_timers:type_name -> api.pola.v1.SessionTimers
+	26, // 34: api.pola.v1.Session.effective_timers:type_name -> api.pola.v1.EffectiveTimers
+	5,  // 35: api.pola.v1.Session.initiator:type_name -> api.pola.v1.SessionInitiator
+	6,  // 36: api.pola.v1.Session.sync_state:type_name -> api.pola.v1.LspDbSyncState
+	28, // 37: api.pola.v1.Session.stats:type_name -> api.pola.v1.SessionStats
+	2,  // 38: api.pola.v1.SRPolicySession.state:type_name -> api.pola.v1.SessionState
+	6,  // 39: api.pola.v1.SRPolicySession.sync_state:type_name -> api.pola.v1.LspDbSyncState
+	10, // 40: api.pola.v1.SRPolicySession.sr_policies:type_name -> api.pola.v1.SRPolicy
+	33, // 41: api.pola.v1.LsSrv6SID.sids:type_name -> api.pola.v1.SID
+	31, // 42: api.pola.v1.LsSrv6SID.endpoint_behavior:type_name -> api.pola.v1.EndpointBehavior
+	32, // 43: api.pola.v1.LsSrv6SID.sid_structure:type_name -> api.pola.v1.SidStructure
+	34, // 44: api.pola.v1.LsSrv6SID.multi_topo_ids:type_name -> api.pola.v1.MultiTopoID
+	7,  // 45: api.pola.v1.Metric.type:type_name -> api.pola.v1.MetricType
+	33, // 46: api.pola.v1.Srv6EndXSID.sids:type_name -> api.pola.v1.SID
+	32, // 47: api.pola.v1.Srv6EndXSID.sid_structure:type_name -> api.pola.v1.SidStructure
+	37, // 48: api.pola.v1.LsLink.metrics:type_name -> api.pola.v1.Metric
+	38, // 49: api.pola.v1.LsLink.srv6_end_x_sid:type_name -> api.pola.v1.Srv6EndXSID
+	39, // 50: api.pola.v1.LsNode.links:type_name -> api.pola.v1.LsLink
+	36, // 51: api.pola.v1.LsNode.prefixes:type_name -> api.pola.v1.LsPrefix
+	35, // 52: api.pola.v1.LsNode.srv6_sids:type_name -> api.pola.v1.LsSrv6SID
+	29, // 53: api.pola.v1.GetSessionListResponse.sessions:type_name -> api.pola.v1.Session
+	30, // 54: api.pola.v1.GetSRPolicyListResponse.sessions:type_name -> api.pola.v1.SRPolicySession
+	40, // 55: api.pola.v1.GetTEDResponse.nodes:type_name -> api.pola.v1.LsNode
+	11, // 56: api.pola.v1.PCEService.CreateSRPolicy:input_type -> api.pola.v1.CreateSRPolicyRequest
+	13, // 57: api.pola.v1.PCEService.DeleteSRPolicy:input_type -> api.pola.v1.DeleteSRPolicyRequest
+	41, // 58: api.pola.v1.PCEService.GetSessionList:input_type -> api.pola.v1.GetSessionListRequest
+	43, // 59: api.pola.v1.PCEService.GetSRPolicyList:input_type -> api.pola.v1.GetSRPolicyListRequest
+	45, // 60: api.pola.v1.PCEService.GetTED:input_type -> api.pola.v1.GetTEDRequest
+	47, // 61: api.pola.v1.PCEService.DeleteSession:input_type -> api.pola.v1.DeleteSessionRequest
+	12, // 62: api.pola.v1.PCEService.CreateSRPolicy:output_type -> api.pola.v1.CreateSRPolicyResponse
+	14, // 63: api.pola.v1.PCEService.DeleteSRPolicy:output_type -> api.pola.v1.DeleteSRPolicyResponse
+	42, // 64: api.pola.v1.PCEService.GetSessionList:output_type -> api.pola.v1.GetSessionListResponse
+	44, // 65: api.pola.v1.PCEService.GetSRPolicyList:output_type -> api.pola.v1.GetSRPolicyListResponse
+	46, // 66: api.pola.v1.PCEService.GetTED:output_type -> api.pola.v1.GetTEDResponse
+	48, // 67: api.pola.v1.PCEService.DeleteSession:output_type -> api.pola.v1.DeleteSessionResponse
+	62, // [62:68] is the sub-list for method output_type
+	56, // [56:62] is the sub-list for method input_type
+	56, // [56:56] is the sub-list for extension type_name
+	56, // [56:56] is the sub-list for extension extendee
+	0,  // [0:56] is the sub-list for field type_name
 }
 
 func init() { file_api_pola_v1_pola_proto_init() }

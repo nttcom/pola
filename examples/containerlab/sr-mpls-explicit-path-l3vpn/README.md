@@ -52,7 +52,12 @@ Session #0: 10.0.255.1
       STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Stateful, Update, Instantiation
       PATH-SETUP-TYPE-CAPABILITY [RFC8408]: SR-TE
     Local only:
-      color
+      STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Color
+      SR-PCE-CAPABILITY [RFC8664]: SR, Unlimited-SID-Depth
+      SRv6-PCE-CAPABILITY [RFC9603]: SRv6
+      PATH-SETUP-TYPE-CAPABILITY [RFC8408]: SRv6-TE
+      ASSOC-TYPE-LIST [RFC8697]:
+        6 SR Policy Association
     Peer only:
       -
 
@@ -72,7 +77,12 @@ Session #1: 10.0.255.2
       STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Stateful, Update, Instantiation
       PATH-SETUP-TYPE-CAPABILITY [RFC8408]: SR-TE
     Local only:
-      color
+      STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Color
+      SR-PCE-CAPABILITY [RFC8664]: SR, Unlimited-SID-Depth
+      SRv6-PCE-CAPABILITY [RFC9603]: SRv6
+      PATH-SETUP-TYPE-CAPABILITY [RFC8408]: SRv6-TE
+      ASSOC-TYPE-LIST [RFC8697]:
+        6 SR Policy Association
     Peer only:
       -
 root@pola:/pola# pola sr-policy list

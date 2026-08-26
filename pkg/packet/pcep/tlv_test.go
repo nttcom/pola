@@ -1316,6 +1316,63 @@ func TestPathSetupTypeCapability_CapStrings(t *testing.T) {
 	runCapStringsTests(t, cases)
 }
 
+func TestPathSetupTypeCapability_SubCapabilities(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		input    *PathSetupTypeCapability
+		expected []CapabilityInterface
+	}{
+		"NoSubTLVs": {
+			&PathSetupTypeCapability{},
+			[]CapabilityInterface{},
+		},
+		"SRAndSRv6": {
+			&PathSetupTypeCapability{SubTLVs: []TLVInterface{
+				&SRPCECapability{HasUnlimitedMaxSIDDepth: true},
+				&SRv6PCECapability{IsNAISupported: true},
+			}},
+			[]CapabilityInterface{
+				&SRPCECapability{HasUnlimitedMaxSIDDepth: true},
+				&SRv6PCECapability{IsNAISupported: true},
+			},
+		},
+		"KeepsUnknownTLV": {
+			&PathSetupTypeCapability{SubTLVs: []TLVInterface{
+				&UnknownTLV{Typ: TLVType(0x1234), Value: []byte{0x01}},
+			}},
+			[]CapabilityInterface{
+				&UnknownTLV{Typ: TLVType(0x1234), Value: []byte{0x01}},
+			},
+		},
+		"DropsNonCapabilityTLV": {
+			&PathSetupTypeCapability{SubTLVs: []TLVInterface{
+				&PathSetupType{PathSetupType: PathSetupTypeSRTE},
+				&SRPCECapability{HasUnlimitedMaxSIDDepth: true},
+			}},
+			[]CapabilityInterface{
+				&SRPCECapability{HasUnlimitedMaxSIDDepth: true},
+			},
+		},
+	}
+
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, c.expected, c.input.SubCapabilities())
+		})
+	}
+}
+
+func TestPathSetupTypeCapability_HasPathSetupType(t *testing.T) {
+	t.Parallel()
+
+	tlv := &PathSetupTypeCapability{PathSetupTypes: Psts{PathSetupTypeSRTE}}
+
+	assert.True(t, tlv.HasPathSetupType(PathSetupTypeSRTE))
+	assert.False(t, tlv.HasPathSetupType(PathSetupTypeSRv6TE))
+}
+
 func TestAssocType_String(t *testing.T) {
 	cases := map[string]struct {
 		input    AssocType

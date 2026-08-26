@@ -59,11 +59,12 @@ Session #0: 192.0.2.1
       ASSOC-TYPE-LIST [RFC8697]:
         6 SR Policy Association
     Local only:
-      msd=10
+      SR-PCE-CAPABILITY [RFC8664]: MSD=10
     Peer only:
-      assoctype=9
-      color
-      msd=16
+      STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Color
+      SR-PCE-CAPABILITY [RFC8664]: MSD=16
+      ASSOC-TYPE-LIST [RFC8697]:
+        9 P2MP SR Policy Association (draft)
   Session Creation:  2026-08-19T09:30:05Z
   Initiator:         remote
   Stats:
@@ -109,11 +110,11 @@ JSON formatted response (`pola session detail -j`)
         "unrecognizedTlvTypes": [],
         "other": []
       },
-      "localOnly": [{ "name": "msd", "value": "10" }],
+      "localOnly": [{ "capability": "SR", "items": ["MSD=10"] }],
       "peerOnly": [
-        { "name": "assoctype", "value": "9" },
-        { "name": "color" },
-        { "name": "msd", "value": "16" }
+        { "capability": "STATEFUL", "items": ["Color"] },
+        { "capability": "SR", "items": ["MSD=16"] },
+        { "capability": "ASSOC_TYPE_LIST", "items": ["9 P2MP SR Policy Association (draft)"] }
       ]
     },
     "sessionCreation": "2026-08-19T09:30:05Z",

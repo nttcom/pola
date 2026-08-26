@@ -1679,6 +1679,23 @@ func (tlv *PathSetupTypeCapability) CapStrings() []string {
 	return ret
 }
 
+// SubCapabilities returns the receiver's sub-TLVs that implement
+// CapabilityInterface.
+func (tlv *PathSetupTypeCapability) SubCapabilities() []CapabilityInterface {
+	ret := make([]CapabilityInterface, 0, len(tlv.SubTLVs))
+	for _, subTLV := range tlv.SubTLVs {
+		if c, ok := subTLV.(CapabilityInterface); ok {
+			ret = append(ret, c)
+		}
+	}
+	return ret
+}
+
+// HasPathSetupType reports whether the receiver advertises the given PST.
+func (tlv *PathSetupTypeCapability) HasPathSetupType(pst Pst) bool {
+	return slices.Contains(tlv.PathSetupTypes[:tlv.pstCount()], pst)
+}
+
 // AssocType is the association type of an ASSOCIATION object, identifying
 // what the associated LSPs have in common (RFC 8697).
 type AssocType uint16

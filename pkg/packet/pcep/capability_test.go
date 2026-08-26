@@ -43,6 +43,42 @@ func TestDefaultCapabilities(t *testing.T) {
 	require.True(t, ok, "expected DefaultCapabilities[2] to be an AssocTypeList")
 	// RFC 9862 §5.2: a PCEP speaker MUST advertise the SRPA type before using it.
 	assert.Equal(t, []AssocType{AssocTypeSRPolicyAssociation}, assocCap.AssocTypes)
+	assert.NotContains(t, assocCap.AssocTypes, AssocTypeSRPolicyAssociationCisco)
+	assert.NotContains(t, assocCap.AssocTypes, AssocTypeSRPolicyAssociationJuniper)
+}
+
+func TestFlattenCapabilities(t *testing.T) {
+	t.Parallel()
+
+	statefulCap := &StatefulPCECapability{LSPUpdateCapability: true}
+	srCap := &SRPCECapability{HasUnlimitedMaxSIDDepth: true}
+	srv6Cap := &SRv6PCECapability{IsNAISupported: true}
+	pstCap := &PathSetupTypeCapability{
+		PathSetupTypes: Psts{PathSetupTypeSRTE, PathSetupTypeSRv6TE},
+		SubTLVs:        []TLVInterface{srCap, srv6Cap},
+	}
+
+	cases := map[string]struct {
+		input    []CapabilityInterface
+		expected []CapabilityInterface
+	}{
+		"Nil": {nil, []CapabilityInterface{}},
+		"TopLevelOnly": {
+			[]CapabilityInterface{statefulCap},
+			[]CapabilityInterface{statefulCap},
+		},
+		"PSTCapAppendsSubCapabilitiesAfterTopLevel": {
+			[]CapabilityInterface{statefulCap, pstCap},
+			[]CapabilityInterface{statefulCap, pstCap, srCap, srv6Cap},
+		},
+	}
+
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, c.expected, FlattenCapabilities(c.input))
+		})
+	}
 }
 
 func TestDefaultCapabilities_WireRoundTrip(t *testing.T) {

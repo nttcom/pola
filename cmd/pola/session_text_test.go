@@ -34,9 +34,9 @@ func fullSessionViewFixture() sessionView {
 				Stateful: true, Update: true,
 				PathSetupTypes: []string{}, AssociationTypes: []uint32{}, UnrecognizedTLVTypes: []uint32{},
 			},
-			LocalOnly: []capabilityView{{Name: "msd", Value: "10"}},
-			PeerOnly:  []capabilityView{{Name: "msd", Value: "16"}},
-			rawCommon: []capFeature{{group: "STATEFUL", token: "Stateful"}, {group: "STATEFUL", token: "Update"}},
+			LocalOnly:    []capGroupView{{Capability: "SR", Items: []string{"MSD=10"}}},
+			PeerOnly:     []capGroupView{{Capability: "SR", Items: []string{"MSD=16"}}},
+			commonGroups: []capGroupView{{Capability: "STATEFUL", Items: []string{"Stateful", "Update"}}},
 		},
 		SessionCreation: "2026-08-19T09:30:00Z",
 		Initiator:       "remote",
@@ -108,22 +108,32 @@ func TestWriteSessionText_PropagatesWriteErrors(t *testing.T) {
 
 func TestWriteGroupedLine_PropagatesWriteErrorOnNonFirstItem(t *testing.T) {
 	c := capabilitiesView{
-		LocalOnly: []capabilityView{{Name: "msd", Value: "10"}, {Name: "sr-pce-capability"}},
+		LocalOnly: []capGroupView{{Capability: "ASSOC_TYPE_LIST", Items: []string{"6 SR Policy Association"}}},
 	}
 
-	w := &condFailWriter{fail: containsFail("sr-pce-capability")}
+	w := &condFailWriter{fail: containsFail("SR Policy Association")}
 	err := writeCapabilitySections(w, c)
 	require.Error(t, err)
 }
 
-func TestWriteCommonCapabilityLines_PropagatesGroupedLineWriteError(t *testing.T) {
+func TestWriteCapabilityGroupSection_PropagatesGroupedLineWriteError(t *testing.T) {
 	c := capabilitiesView{
-		rawCommon: []capFeature{{group: "ASSOC_TYPE_LIST", token: "AssocType:6"}},
+		commonGroups: []capGroupView{{Capability: "ASSOC_TYPE_LIST", Items: []string{"6 SR Policy Association"}}},
 	}
 
 	w := &condFailWriter{fail: containsFail("ASSOC-TYPE-LIST")}
-	err := writeCommonCapabilityLines(w, c)
+	err := writeCapabilityGroupSection(w, "Common", c.commonLines())
 	require.Error(t, err)
+}
+
+func TestWriteGroupedLine_EmptyItemsRendersDash(t *testing.T) {
+	c := capabilitiesView{
+		LocalOnly: []capGroupView{{Capability: "ASSOC_TYPE_LIST", Items: []string{}}},
+	}
+
+	var buf strings.Builder
+	require.NoError(t, writeCapabilitySections(&buf, c))
+	assert.Contains(t, buf.String(), "      ASSOC-TYPE-LIST [RFC8697]:\n        -\n")
 }
 
 func TestFormatTimerValue(t *testing.T) {
@@ -132,9 +142,4 @@ func TestFormatTimerValue(t *testing.T) {
 	assert.Equal(t, "-", formatTimerValue(nil))
 	assert.Equal(t, "disabled", formatTimerValue(&zero))
 	assert.Equal(t, "30", formatTimerValue(&v))
-}
-
-func TestFormatCapabilityToken(t *testing.T) {
-	assert.Equal(t, "color", formatCapabilityToken(capabilityView{Name: "color"}))
-	assert.Equal(t, "msd=10", formatCapabilityToken(capabilityView{Name: "msd", Value: "10"}))
 }

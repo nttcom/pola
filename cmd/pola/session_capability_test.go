@@ -16,8 +16,6 @@ import (
 )
 
 func TestBuildCapabilitiesView_StatefulFlagDiffersFallsToOnlySets(t *testing.T) {
-	// The TLV is common, but Color is local-only, so capabilities are compared
-	// at token granularity.
 	local := []grpc.Capability{
 		{Type: "STATEFUL", Detail: grpc.StatefulCapability{LSPUpdate: true, LSPInstantiation: true, Color: true}},
 	}
@@ -30,7 +28,7 @@ func TestBuildCapabilitiesView_StatefulFlagDiffersFallsToOnlySets(t *testing.T) 
 	assert.True(t, view.Common.Stateful)
 	assert.True(t, view.Common.Update)
 	assert.True(t, view.Common.Instantiation)
-	assert.Equal(t, []capabilityView{{Name: "color"}}, view.LocalOnly)
+	assert.Equal(t, []capGroupView{{Capability: "STATEFUL", Items: []string{"Color"}}}, view.LocalOnly)
 	assert.Empty(t, view.PeerOnly)
 }
 
@@ -40,9 +38,10 @@ func TestBuildCapabilitiesView_MismatchedMSDFallsToBothOnlySets(t *testing.T) {
 
 	view := buildCapabilitiesView(local, peer)
 
-	assert.Nil(t, view.Common.SRMSD, "MSD mismatch must not appear in common")
-	assert.Equal(t, []capabilityView{{Name: "msd", Value: "10"}}, view.LocalOnly)
-	assert.Equal(t, []capabilityView{{Name: "msd", Value: "16"}}, view.PeerOnly)
+	assert.Equal(t, []capGroupView{{Capability: "SR", Items: []string{"SR"}}}, view.Common.Other,
+		"the shared \"SR\" token must appear in common, but the mismatched MSD must not")
+	assert.Equal(t, []capGroupView{{Capability: "SR", Items: []string{"MSD=10"}}}, view.LocalOnly)
+	assert.Equal(t, []capGroupView{{Capability: "SR", Items: []string{"MSD=16"}}}, view.PeerOnly)
 }
 
 func TestBuildCapabilitiesView_MatchingMSDIsCommon(t *testing.T) {
@@ -51,8 +50,7 @@ func TestBuildCapabilitiesView_MatchingMSDIsCommon(t *testing.T) {
 
 	view := buildCapabilitiesView(local, peer)
 
-	require.NotNil(t, view.Common.SRMSD)
-	assert.Equal(t, uint32(10), *view.Common.SRMSD)
+	assert.Equal(t, []capGroupView{{Capability: "SR", Items: []string{"SR", "MSD=10"}}}, view.Common.Other)
 	assert.Empty(t, view.LocalOnly)
 	assert.Empty(t, view.PeerOnly)
 }
@@ -76,9 +74,43 @@ func TestBuildCapabilitiesView_CapabilityAbsentFromOneSideIsWhollyOnOtherSide(t 
 
 	view := buildCapabilitiesView(local, nil)
 
-	assert.Contains(t, view.LocalOnly, capabilityView{Name: "multipath"})
-	assert.Contains(t, view.LocalOnly, capabilityView{Name: "maxmultipaths", Value: "4"})
+	require.Len(t, view.LocalOnly, 1)
+	assert.Equal(t, "MULTIPATH", view.LocalOnly[0].Capability)
+	assert.Contains(t, view.LocalOnly[0].Items, "Multipath")
+	assert.Contains(t, view.LocalOnly[0].Items, "MaxMultipaths=4")
 	assert.Empty(t, view.PeerOnly)
+}
+
+func TestBuildCapabilitiesView_PathSetupTypeSubCapabilitiesActAsOwnGroups(t *testing.T) {
+	local := []grpc.Capability{
+		{Type: "PATH_SETUP_TYPE", Detail: grpc.PathSetupTypeCapability{
+			PathSetupTypes: []uint32{1, 3},
+			SubCapabilities: []grpc.Capability{
+				{Type: "SR", Detail: grpc.SRCapability{UnlimitedMSD: true}},
+				{Type: "SRV6", Detail: grpc.SRv6Capability{}},
+			},
+		}},
+	}
+	peer := []grpc.Capability{
+		{Type: "PATH_SETUP_TYPE", Detail: grpc.PathSetupTypeCapability{PathSetupTypes: []uint32{1, 3}}},
+		{Type: "SR", Detail: grpc.SRCapability{MSD: proto.Uint32(0)}},
+		{Type: "SRV6", Detail: grpc.SRv6Capability{}},
+	}
+
+	view := buildCapabilitiesView(local, peer)
+
+	lines := view.commonLines()
+	headers := make([]string, len(lines))
+	for i, l := range lines {
+		headers[i] = l.Header
+	}
+	assert.Contains(t, headers, "SR-PCE-CAPABILITY [RFC8664]: SR",
+		"SR sub-capability must render as its own common group")
+	assert.Contains(t, headers, "SRv6-PCE-CAPABILITY [RFC9603]: SRv6",
+		"SRv6 sub-capability must render as its own common group")
+
+	assert.Equal(t, []capGroupView{{Capability: "SR", Items: []string{"Unlimited-SID-Depth"}}}, view.LocalOnly)
+	assert.Equal(t, []capGroupView{{Capability: "SR", Items: []string{"MSD=0"}}}, view.PeerOnly)
 }
 
 func TestBuildCapabilitiesView_EmptyBothSidesProducesEmptySlicesNotNil(t *testing.T) {
@@ -92,15 +124,32 @@ func TestBuildCapabilitiesView_EmptyBothSidesProducesEmptySlicesNotNil(t *testin
 	assert.NotNil(t, view.PeerOnly)
 }
 
-func TestOnlyTokens_DeduplicatesAndSorts(t *testing.T) {
-	features := []capFeature{
-		{group: "STATEFUL", token: "Color"},
-		{group: "OTHER", token: "Color"}, // same token, different group
-		{group: "SR", token: "MSD=10"},
+func TestCapabilitiesFeatures_DeduplicatesByGroupAndToken(t *testing.T) {
+	caps := []grpc.Capability{
+		{Type: "SR", Detail: grpc.SRCapability{UnlimitedMSD: true}},
 	}
 
-	got := onlyTokens(features)
-	assert.Equal(t, []string{"color", "msd=10"}, got)
+	got := capabilitiesFeatures(caps)
+	assert.Equal(t, []capFeature{{group: "SR", token: "SR"}, {group: "SR", token: "Unlimited-SID-Depth"}}, got)
+}
+
+func TestBuildCapabilitiesView_PeerSRAdvertisedTopLevelAndNestedDedupesToOneCommonEntry(t *testing.T) {
+	peer := []grpc.Capability{
+		{Type: "SR", Detail: grpc.SRCapability{UnlimitedMSD: true}},
+		{Type: "PATH_SETUP_TYPE", Detail: grpc.PathSetupTypeCapability{
+			PathSetupTypes: []uint32{1},
+			SubCapabilities: []grpc.Capability{
+				{Type: "SR", Detail: grpc.SRCapability{UnlimitedMSD: true}},
+			},
+		}},
+	}
+
+	view := buildCapabilitiesView(peer, peer)
+
+	require.Len(t, view.Common.Other, 1)
+	assert.Equal(t, capGroupView{Capability: "SR", Items: []string{"SR", "Unlimited-SID-Depth"}}, view.Common.Other[0])
+	assert.Empty(t, view.LocalOnly)
+	assert.Empty(t, view.PeerOnly)
 }
 
 func TestUnrecognizedTLVItem(t *testing.T) {
@@ -138,6 +187,11 @@ func TestParseTokenUint32_NonNumericSuffixReturnsFalse(t *testing.T) {
 	assert.False(t, ok)
 }
 
+func TestParseTokenUint32_PrefixMismatchReturnsFalse(t *testing.T) {
+	_, ok := parseTokenUint32("AssocType:6", "MSD=")
+	assert.False(t, ok)
+}
+
 func TestBuildCapabilitiesView_CommonPathSetupTypesAreCollected(t *testing.T) {
 	caps := []grpc.Capability{
 		{Type: "PATH_SETUP_TYPE", Detail: grpc.PathSetupTypeCapability{PathSetupTypes: []uint32{1, 3}}},
@@ -160,7 +214,7 @@ func TestCommonCapabilityLines_GroupsByTLVExceptAssocTypeAndUnknown(t *testing.T
 		{group: "UNKNOWN", token: "unknown_type_73"},
 	}
 
-	lines := commonCapabilityLines(common)
+	lines := capabilityLines(capabilityGroups(common))
 	assert.Equal(t, []capDisplayLine{
 		{Header: "STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Stateful, Update"},
 		{Header: "ASSOC-TYPE-LIST [RFC8697]", Items: []string{
@@ -181,7 +235,7 @@ func TestCommonCapabilityLines_OrdersByTLVTypeRegardlessOfInputOrder(t *testing.
 		{group: "STATEFUL", token: "Stateful"},
 	}
 
-	lines := commonCapabilityLines(common)
+	lines := capabilityLines(capabilityGroups(common))
 	var headers []string
 	for _, line := range lines {
 		headers = append(headers, line.Header)
@@ -200,7 +254,7 @@ func TestCommonCapabilityLines_UnknownGroupSortsLast(t *testing.T) {
 		{group: "MULTIPATH", token: "Multipath"},
 	}
 
-	lines := commonCapabilityLines(common)
+	lines := capabilityLines(capabilityGroups(common))
 	assert.Equal(t, "MULTIPATH-CAP [draft-ietf-pce-multipath]: Multipath", lines[0].Header)
 	assert.Equal(t, "Unrecognized TLVs", lines[1].Header)
 }
@@ -216,15 +270,19 @@ func TestBuildCapabilitiesView_UntypedCommonCapabilitiesLandInOther(t *testing.T
 
 	view := buildCapabilitiesView(caps, caps)
 
-	assert.Contains(t, view.Common.Other, capabilityView{Name: pcep.EnterpriseNumberJuniper.DisplayLabel()})
-	assert.Contains(t, view.Common.Other, capabilityView{Name: "Multipath"})
-	assert.Contains(t, view.Common.Other, capabilityView{Name: "MaxMultipaths", Value: "4"})
-	assert.Contains(t, view.Common.Other, capabilityView{Name: "Weighted"})
-	assert.Contains(t, view.Common.Other, capabilityView{Name: "LSP-DB-VERSION"})
-	assert.Contains(t, view.Common.Other, capabilityView{Name: "SRv6-NAI-Supported"})
-	assert.Contains(t, view.Common.Other, capabilityView{Name: "Triggered-Resync"})
+	otherByGroup := make(map[string][]string, len(view.Common.Other))
+	for _, g := range view.Common.Other {
+		otherByGroup[g.Capability] = g.Items
+	}
+	assert.Contains(t, otherByGroup["VENDOR_INFORMATION"], pcep.EnterpriseNumberJuniper.DisplayLabel())
+	assert.Contains(t, otherByGroup["MULTIPATH"], "Multipath")
+	assert.Contains(t, otherByGroup["MULTIPATH"], "MaxMultipaths=4")
+	assert.Contains(t, otherByGroup["MULTIPATH"], "Weighted")
+	assert.Contains(t, otherByGroup["LSP_DB_VERSION"], "LSP-DB-VERSION")
+	assert.Contains(t, otherByGroup["SRV6"], "SRv6-NAI-Supported")
+	assert.Contains(t, otherByGroup["STATEFUL"], "Triggered-Resync")
 	assert.True(t, view.Common.Stateful)
-	assert.NotContains(t, view.Common.Other, capabilityView{Name: "Stateful"})
+	assert.NotContains(t, otherByGroup["STATEFUL"], "Stateful")
 }
 
 func TestBuildCapabilitiesView_OtherPreservesOriginalTokenCasing(t *testing.T) {
@@ -235,42 +293,26 @@ func TestBuildCapabilitiesView_OtherPreservesOriginalTokenCasing(t *testing.T) {
 	view := buildCapabilitiesView(caps, caps)
 
 	require.Len(t, view.Common.Other, 1)
-	assert.Contains(t, view.Common.Other[0].Name, "Juniper")
+	require.Len(t, view.Common.Other[0].Items, 1)
+	assert.Contains(t, view.Common.Other[0].Items[0], "Juniper")
 }
 
-func TestBuildCapabilitiesView_OtherIsSortedByNameThenValue(t *testing.T) {
+func TestBuildCapabilitiesView_OtherIsGroupedDeterministically(t *testing.T) {
 	caps := []grpc.Capability{
 		{Type: "MULTIPATH", Detail: grpc.MultipathCapability{MaxMultipaths: 4, Weighted: true, OppositeDir: true}},
 		{Type: "STATEFUL", Detail: grpc.StatefulCapability{TriggeredResync: true, Color: true}},
 	}
 
-	expected := []capabilityView{
-		{Name: "Color"},
-		{Name: "MaxMultipaths", Value: "4"},
-		{Name: "Multipath"},
-		{Name: "OppositeDir"},
-		{Name: "Triggered-Resync"},
-		{Name: "Weighted"},
+	expected := []capGroupView{
+		{Capability: "STATEFUL", Items: []string{"Triggered-Resync", "Color"}},
+		{Capability: "MULTIPATH", Items: []string{"Multipath", "MaxMultipaths=4", "Weighted", "OppositeDir"}},
 	}
 
 	view1 := buildCapabilitiesView(caps, caps)
 	view2 := buildCapabilitiesView(caps, caps)
 
 	assert.Equal(t, expected, view1.Common.Other)
-	assert.Equal(t, view1.Common.Other, view2.Common.Other, "Other must be sorted deterministically across calls")
-}
-
-func TestBuildCapabilitiesView_OtherTiesOnNameSortByValue(t *testing.T) {
-	caps := []grpc.Capability{
-		{Type: "MULTIPATH", Detail: grpc.MultipathCapability{MaxMultipaths: 8}},
-		{Type: "MULTIPATH", Detail: grpc.MultipathCapability{MaxMultipaths: 4}},
-	}
-
-	view := buildCapabilitiesView(caps, caps)
-
-	require.GreaterOrEqual(t, len(view.Common.Other), 2)
-	assert.Equal(t, capabilityView{Name: "MaxMultipaths", Value: "4"}, view.Common.Other[0])
-	assert.Equal(t, capabilityView{Name: "MaxMultipaths", Value: "8"}, view.Common.Other[1])
+	assert.Equal(t, view1.Common.Other, view2.Common.Other, "Other must be grouped deterministically across calls")
 }
 
 func TestBuildCapabilitiesView_TypedFieldsDoNotDuplicateIntoOther(t *testing.T) {
@@ -282,7 +324,7 @@ func TestBuildCapabilitiesView_TypedFieldsDoNotDuplicateIntoOther(t *testing.T) 
 
 	view := buildCapabilitiesView(caps, caps)
 
-	assert.Equal(t, []capabilityView{{Name: "SR"}}, view.Common.Other)
+	assert.Equal(t, []capGroupView{{Capability: "SR", Items: []string{"SR", "MSD=10"}}}, view.Common.Other)
 }
 
 func TestCommonCapabilityLines_SingleAssocTypeStillUsesHeadingForm(t *testing.T) {
@@ -290,8 +332,46 @@ func TestCommonCapabilityLines_SingleAssocTypeStillUsesHeadingForm(t *testing.T)
 		{group: "ASSOC_TYPE_LIST", token: "AssocType:6"},
 	}
 
-	lines := commonCapabilityLines(common)
+	lines := capabilityLines(capabilityGroups(common))
 	assert.Equal(t, []capDisplayLine{
 		{Header: "ASSOC-TYPE-LIST [RFC8697]", Items: []string{"6 SR Policy Association"}},
 	}, lines)
+}
+
+func TestBuildCapabilitiesView_PeerOnlyUnrecognizedTLVUsesRegistryLabel(t *testing.T) {
+	peer := []grpc.Capability{
+		{Type: "UNKNOWN", Detail: grpc.UnknownCapability{TLVType: 73}},
+	}
+
+	view := buildCapabilitiesView(nil, peer)
+
+	assert.Equal(t, []capGroupView{{
+		Capability: "UNKNOWN",
+		Items:      []string{"type=73: SR-P2MP-POLICY-CAPABILITY (draft-ietf-pce-sr-p2mp-policy-11)"},
+	}}, view.PeerOnly)
+}
+
+func TestBuildCapabilitiesView_LocalOnlyAssocTypeUsesRegistryLabel(t *testing.T) {
+	local := []grpc.Capability{
+		{Type: "ASSOC_TYPE_LIST", Detail: grpc.AssocTypeListCapability{AssocTypes: []uint32{6}}},
+	}
+
+	view := buildCapabilitiesView(local, nil)
+
+	assert.Equal(t, []capGroupView{{
+		Capability: "ASSOC_TYPE_LIST",
+		Items:      []string{"6 SR Policy Association"},
+	}}, view.LocalOnly)
+}
+
+func TestBuildCapabilitiesView_VendorInformationTokenIsNotLowercased(t *testing.T) {
+	peer := []grpc.Capability{
+		{Type: "VENDOR_INFORMATION", Detail: grpc.VendorInformationCapability{EnterpriseNumber: uint32(pcep.EnterpriseNumberJuniper)}},
+	}
+
+	view := buildCapabilitiesView(nil, peer)
+
+	require.Len(t, view.PeerOnly, 1)
+	require.Len(t, view.PeerOnly[0].Items, 1)
+	assert.Contains(t, view.PeerOnly[0].Items[0], "Juniper")
 }

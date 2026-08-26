@@ -17,19 +17,37 @@ import (
 	"github.com/nttcom/pola/pkg/packet/pcep"
 )
 
-// capFeature is one comparable capability token. Capabilities are compared
-// at token granularity because a TLV may be present on both sides while
-// individual flags or values differ.
+// capFeature is a comparable capability token.
 type capFeature struct {
 	group string
 	token string
 }
 
+// capabilitiesFeatures flattens capabilities into deduplicated
+// (group, token) features, preserving first-seen order.
 func capabilitiesFeatures(caps []grpc.Capability) []capFeature {
+	seen := make(map[capFeature]struct{})
 	features := make([]capFeature, 0, len(caps))
 	for _, c := range caps {
-		for _, token := range c.Strings() {
-			features = append(features, capFeature{group: c.Type, token: token})
+		features = appendCapabilityFeatures(features, seen, c)
+	}
+	return features
+}
+
+// appendCapabilityFeatures adds c's tokens and recursively processes
+// PATH-SETUP-TYPE-CAPABILITY sub-capabilities.
+func appendCapabilityFeatures(features []capFeature, seen map[capFeature]struct{}, c grpc.Capability) []capFeature {
+	for _, token := range c.Strings() {
+		f := capFeature{group: c.Type, token: token}
+		if _, ok := seen[f]; ok {
+			continue
+		}
+		seen[f] = struct{}{}
+		features = append(features, f)
+	}
+	if pst, ok := c.Detail.(grpc.PathSetupTypeCapability); ok {
+		for _, sub := range pst.SubCapabilities {
+			features = appendCapabilityFeatures(features, seen, sub)
 		}
 	}
 	return features
@@ -70,37 +88,34 @@ func splitCapabilities(localCaps, peerCaps []grpc.Capability) capabilitySets {
 	return sets
 }
 
-type capabilityView struct {
-	Name  string `json:"name"`
-	Value string `json:"value,omitempty"`
+// capGroupView is a capability group and its human-readable items.
+type capGroupView struct {
+	Capability string   `json:"capability"`
+	Items      []string `json:"items"`
 }
 
 type capabilitiesView struct {
-	Common    commonCapView    `json:"common"`
-	LocalOnly []capabilityView `json:"localOnly"`
-	PeerOnly  []capabilityView `json:"peerOnly"`
+	Common    commonCapView  `json:"common"`
+	LocalOnly []capGroupView `json:"localOnly"`
+	PeerOnly  []capGroupView `json:"peerOnly"`
 
-	// rawCommon retains the raw grouped tokens needed by the text renderer.
-	rawCommon []capFeature
+	// commonGroups holds grouped common capabilities for text output.
+	commonGroups []capGroupView
 }
 
 func (c capabilitiesView) commonLines() []capDisplayLine {
-	return commonCapabilityLines(c.rawCommon)
+	return capabilityLines(c.commonGroups)
 }
 
 // commonCapView exposes capabilities shared by both sides.
 type commonCapView struct {
-	Stateful       bool     `json:"stateful"`
-	Update         bool     `json:"update"`
-	Instantiation  bool     `json:"instantiation"`
-	PathSetupTypes []string `json:"pathSetupTypes"`
-	// SRMSD and SRv6MSD are set only when both sides advertise the same value.
-	// SRv6MSD is unavailable until RFC 9603 MSD is supported by the decoder and gRPC schema.
-	SRMSD                *uint32          `json:"srMsd,omitempty"`
-	SRv6MSD              *uint32          `json:"srv6Msd,omitempty"`
-	AssociationTypes     []uint32         `json:"associationTypes"`
-	UnrecognizedTLVTypes []uint32         `json:"unrecognizedTlvTypes"`
-	Other                []capabilityView `json:"other"`
+	Stateful             bool           `json:"stateful"`
+	Update               bool           `json:"update"`
+	Instantiation        bool           `json:"instantiation"`
+	PathSetupTypes       []string       `json:"pathSetupTypes"`
+	AssociationTypes     []uint32       `json:"associationTypes"`
+	UnrecognizedTLVTypes []uint32       `json:"unrecognizedTlvTypes"`
+	Other                []capGroupView `json:"other"`
 }
 
 func buildCapabilitiesView(localCaps, peerCaps []grpc.Capability) capabilitiesView {
@@ -111,26 +126,23 @@ func buildCapabilitiesView(localCaps, peerCaps []grpc.Capability) capabilitiesVi
 			PathSetupTypes:       []string{},
 			AssociationTypes:     []uint32{},
 			UnrecognizedTLVTypes: []uint32{},
-			Other:                []capabilityView{},
 		},
-		LocalOnly: onlyCapabilities(sets.localOnly),
-		PeerOnly:  onlyCapabilities(sets.peerOnly),
-		rawCommon: sets.common,
+		LocalOnly:    capabilityGroups(sets.localOnly),
+		PeerOnly:     capabilityGroups(sets.peerOnly),
+		commonGroups: capabilityGroups(sets.common),
 	}
 
+	var otherFeatures []capFeature
 	for _, f := range sets.common {
-		applyCommonFeature(&view.Common, f)
+		if !applyCommonFeature(&view.Common, f) {
+			otherFeatures = append(otherFeatures, f)
+		}
 	}
+	view.Common.Other = capabilityGroups(otherFeatures)
 
 	slices.Sort(view.Common.PathSetupTypes)
 	slices.Sort(view.Common.AssociationTypes)
 	slices.Sort(view.Common.UnrecognizedTLVTypes)
-	slices.SortFunc(view.Common.Other, func(a, b capabilityView) int {
-		if c := cmp.Compare(a.Name, b.Name); c != 0 {
-			return c
-		}
-		return cmp.Compare(a.Value, b.Value)
-	})
 
 	return view
 }
@@ -160,63 +172,76 @@ func applyStatefulFeature(common *commonCapView, token string) bool {
 	return true
 }
 
-func applyCommonFeature(common *commonCapView, f capFeature) {
+// applyCommonFeature applies f to common and reports whether it was consumed.
+func applyCommonFeature(common *commonCapView, f capFeature) bool {
 	switch f.group {
 	case "STATEFUL":
-		if applyStatefulFeature(common, f.token) {
-			return
-		}
+		return applyStatefulFeature(common, f.token)
 	case "PATH_SETUP_TYPE":
 		common.PathSetupTypes = append(common.PathSetupTypes, f.token)
-		return
-	case "SR":
-		if n, ok := parseTokenUint32(f.token, "MSD="); ok {
-			common.SRMSD = &n
-			return
-		}
+		return true
 	case "ASSOC_TYPE_LIST":
 		if n, ok := parseTokenUint32(f.token, "AssocType:"); ok {
 			common.AssociationTypes = append(common.AssociationTypes, n)
-			return
+			return true
 		}
 	case "UNKNOWN":
 		if n, ok := parseTokenUint32(f.token, "unknown_type_"); ok {
 			common.UnrecognizedTLVTypes = append(common.UnrecognizedTLVTypes, n)
-			return
+			return true
 		}
 	}
-	common.Other = append(common.Other, capabilityViewFromToken(f.token))
+	return false
 }
 
-func onlyTokens(features []capFeature) []string {
-	seen := make(map[string]struct{}, len(features))
-	out := make([]string, 0, len(features))
+// capabilityGroups groups features by capability and formats their items
+// according to the capability type.
+func capabilityGroups(features []capFeature) []capGroupView {
+	order := make([]string, 0)
+	tokensByGroup := make(map[string][]string)
 	for _, f := range features {
-		token := strings.ToLower(f.token)
-		if _, ok := seen[token]; ok {
-			continue
+		if _, ok := tokensByGroup[f.group]; !ok {
+			order = append(order, f.group)
 		}
-		seen[token] = struct{}{}
-		out = append(out, token)
+		tokensByGroup[f.group] = append(tokensByGroup[f.group], f.token)
 	}
-	slices.Sort(out)
-	return out
+	slices.SortFunc(order, func(a, b string) int {
+		return cmp.Compare(capGroupOrderKey(a), capGroupOrderKey(b))
+	})
+
+	groups := make([]capGroupView, 0, len(order))
+	for _, group := range order {
+		groups = append(groups, capGroupView{Capability: group, Items: groupItems(group, tokensByGroup[group])})
+	}
+	return groups
 }
 
-func onlyCapabilities(features []capFeature) []capabilityView {
-	tokens := onlyTokens(features)
-	views := make([]capabilityView, 0, len(tokens))
+func groupItems(group string, tokens []string) []string {
+	switch group {
+	case "ASSOC_TYPE_LIST":
+		return sortedUint32Labels(tokens, "AssocType:", assocTypeLabel)
+	case "UNKNOWN":
+		return sortedUint32Labels(tokens, "unknown_type_", unrecognizedTLVItem)
+	default:
+		return tokens
+	}
+}
+
+// sortedUint32Labels sorts token values numerically and renders them with label.
+func sortedUint32Labels(tokens []string, prefix string, label func(uint32) string) []string {
+	ns := make([]uint32, 0, len(tokens))
 	for _, token := range tokens {
-		views = append(views, capabilityViewFromToken(token))
+		if n, ok := parseTokenUint32(token, prefix); ok {
+			ns = append(ns, n)
+		}
 	}
-	return views
-}
+	slices.Sort(ns)
 
-func capabilityViewFromToken(token string) capabilityView {
-	if i := strings.IndexAny(token, "=:"); i >= 0 {
-		return capabilityView{Name: token[:i], Value: token[i+1:]}
+	items := make([]string, len(ns))
+	for i, n := range ns {
+		items[i] = label(n)
 	}
-	return capabilityView{Name: token}
+	return items
 }
 
 // capGroupLabels maps capability types to their display labels.
@@ -290,42 +315,17 @@ type capDisplayLine struct {
 	Items  []string
 }
 
-// commonCapabilityLines renders capability groups as display lines.
-// ASSOC_TYPE_LIST and UNKNOWN render as a heading with one item per entry.
-func commonCapabilityLines(common []capFeature) []capDisplayLine {
-	order := make([]string, 0)
-	tokensByGroup := make(map[string][]string)
-	for _, f := range common {
-		if _, ok := tokensByGroup[f.group]; !ok {
-			order = append(order, f.group)
-		}
-		tokensByGroup[f.group] = append(tokensByGroup[f.group], f.token)
-	}
-	slices.SortFunc(order, func(a, b string) int {
-		return cmp.Compare(capGroupOrderKey(a), capGroupOrderKey(b))
-	})
-
-	var lines []capDisplayLine
-	for _, group := range order {
-		switch group {
+// capabilityLines renders capability groups as display lines.
+func capabilityLines(groups []capGroupView) []capDisplayLine {
+	lines := make([]capDisplayLine, 0, len(groups))
+	for _, group := range groups {
+		switch group.Capability {
 		case "ASSOC_TYPE_LIST":
-			items := make([]string, 0, len(tokensByGroup[group]))
-			for _, token := range tokensByGroup[group] {
-				if n, ok := parseTokenUint32(token, "AssocType:"); ok {
-					items = append(items, assocTypeLabel(n))
-				}
-			}
-			lines = append(lines, capDisplayLine{Header: capGroupLabel(group), Items: items})
+			lines = append(lines, capDisplayLine{Header: capGroupLabel(group.Capability), Items: group.Items})
 		case "UNKNOWN":
-			items := make([]string, 0, len(tokensByGroup[group]))
-			for _, token := range tokensByGroup[group] {
-				if n, ok := parseTokenUint32(token, "unknown_type_"); ok {
-					items = append(items, unrecognizedTLVItem(n))
-				}
-			}
-			lines = append(lines, capDisplayLine{Header: "Unrecognized TLVs", Items: items})
+			lines = append(lines, capDisplayLine{Header: "Unrecognized TLVs", Items: group.Items})
 		default:
-			lines = append(lines, capDisplayLine{Header: capGroupLabel(group) + ": " + strings.Join(tokensByGroup[group], ", ")})
+			lines = append(lines, capDisplayLine{Header: capGroupLabel(group.Capability) + ": " + strings.Join(group.Items, ", ")})
 		}
 	}
 	return lines
