@@ -708,10 +708,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ---
 
-## google.golang.org/genproto/googleapis/rpc v0.0.0-20260715232425-e75dac1f907d
+## google.golang.org/genproto/googleapis/rpc v0.0.0-20260825221802-da73d73af1c5
 
 - License: Apache-2.0
-- Source: <https://github.com/googleapis/go-genproto/blob/e75dac1f907d/googleapis/rpc/LICENSE>
+- Source: <https://github.com/googleapis/go-genproto/blob/da73d73af1c5/googleapis/rpc/LICENSE>
 
 ```text
 
@@ -921,10 +921,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ---
 
-## google.golang.org/grpc v1.82.1
+## google.golang.org/grpc v1.83.2
 
 - License: Apache-2.0
-- Source: <https://github.com/grpc/grpc-go/blob/v1.82.1/LICENSE>
+- Source: <https://github.com/grpc/grpc-go/blob/v1.83.2/LICENSE>
 
 ```text
 
@@ -1134,10 +1134,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ---
 
-## google.golang.org/protobuf v1.36.11
+## google.golang.org/protobuf v1.36.12
 
 - License: BSD-3-Clause
-- Source: <https://github.com/protocolbuffers/protobuf-go/blob/v1.36.11/LICENSE>
+- Source: <https://github.com/protocolbuffers/protobuf-go/blob/v1.36.12/LICENSE>
 
 ```text
 Copyright (c) 2018 The Go Authors. All rights reserved.
