@@ -805,11 +805,12 @@ func TestLSPDBVersion_CapStrings(t *testing.T) {
 
 // Test data for SRPCECapability.
 var (
-	testSRPCECapability                      = NewSRPCECapability(true, true, 10)
-	testSRPCECapabilityBytes                 = append(tlvHeader(TLVSRPCECapability, 4), 0x03, 0x0a, 0x00, 0x00)
+	testSRPCECapability = NewSRPCECapability(true, true, 10)
+	// RFC 8664 §5.1.1: Reserved (2), Flags (1), MSD (1).
+	testSRPCECapabilityBytes                 = append(tlvHeader(TLVSRPCECapability, 4), 0x00, 0x00, 0x03, 0x0a)
 	testSRPCECapabilityTruncated             = append(tlvHeader(TLVSRPCECapability, 4), 0x00, 0x02)
-	testSRPCECapabilityExtra                 = append(tlvHeader(TLVSRPCECapability, 4), 0x03, 0x05, 0x00, 0x00, 0xde, 0xad, 0xbe, 0xef)
-	testSRPCECapabilityInvalidLength         = append(tlvHeader(TLVSRPCECapability, 8), 0x03, 0x05, 0x00, 0x00, 0xde, 0xad, 0xbe, 0xef)
+	testSRPCECapabilityExtra                 = append(tlvHeader(TLVSRPCECapability, 4), 0x00, 0x00, 0x03, 0x05, 0xde, 0xad, 0xbe, 0xef)
+	testSRPCECapabilityInvalidLength         = append(tlvHeader(TLVSRPCECapability, 8), 0x00, 0x00, 0x03, 0x05, 0xde, 0xad, 0xbe, 0xef)
 	testSRPCECapabilityZeroMSDBytes          = append(tlvHeader(TLVSRPCECapability, 4), 0x00, 0x00, 0x00, 0x00)
 	testSRPCECapabilityAllEnabled            = &SRPCECapability{HasUnlimitedMaxSIDDepth: true, IsNAISupported: true}
 	testSRPCECapabilityUnlimitedOnly         = &SRPCECapability{HasUnlimitedMaxSIDDepth: true}
@@ -844,6 +845,88 @@ func TestSRPCECapability_Serialize(t *testing.T) {
 		"ValidSRPCECapability": {testSRPCECapability, testSRPCECapabilityBytes},
 	}
 	runTLVSerializeTests(t, cases)
+}
+
+func TestSRPCECapability_Serialize_WireFormat(t *testing.T) {
+	cases := map[string]struct {
+		input         *SRPCECapability
+		expectedFlags uint8
+		expectedMSD   uint8
+	}{
+		"NoFlagsMSD5":         {&SRPCECapability{MaximumSidDepth: 5}, 0x00, 5},
+		"NoFlagsMSD10":        {&SRPCECapability{MaximumSidDepth: 10}, 0x00, 10},
+		"UnlimitedMSDOnly":    {&SRPCECapability{HasUnlimitedMaxSIDDepth: true}, 0x01, 0},
+		"NAIOnlyWithMSD":      {&SRPCECapability{IsNAISupported: true, MaximumSidDepth: 8}, 0x02, 8},
+		"BothFlagsWithMSD255": {NewSRPCECapability(true, true, 255), 0x03, 255},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			got, err := tt.input.Serialize()
+			require.NoError(t, err, "Serialize failed for '%s'", name)
+			require.Len(t, got, int(TLVValueOffset+TLVSRPCECapabilityValueLength))
+
+			value := got[TLVValueOffset:]
+			assert.Equal(t, []uint8{0x00, 0x00}, value[0:2], "Reserved octets must be zero")
+			assert.Equal(t, tt.expectedFlags, value[SRPCECapabilityFlagsOffset], "Flags in wrong byte position")
+			assert.Equal(t, tt.expectedMSD, value[SRPCECapabilityMSDOffset], "MSD in wrong byte position")
+		})
+	}
+}
+
+func TestSRPCECapability_DecodeFromBytes_WireFormat(t *testing.T) {
+	cases := map[string]struct {
+		value    []uint8
+		expected *SRPCECapability
+	}{
+		// Junos: MSD=5; Cisco IOS-XR: MSD=10; no flags.
+		"MSD5":  {[]uint8{0x00, 0x00, 0x00, 0x05}, &SRPCECapability{MaximumSidDepth: 5}},
+		"MSD10": {[]uint8{0x00, 0x00, 0x00, 0x0a}, &SRPCECapability{MaximumSidDepth: 10}},
+		"XFlag": {[]uint8{0x00, 0x00, 0x01, 0x00}, &SRPCECapability{HasUnlimitedMaxSIDDepth: true}},
+		"NFlagWithMSD": {
+			[]uint8{0x00, 0x00, 0x02, 0x04},
+			&SRPCECapability{IsNAISupported: true, MaximumSidDepth: 4},
+		},
+		"BothFlags": {
+			[]uint8{0x00, 0x00, 0x03, 0x0a},
+			&SRPCECapability{HasUnlimitedMaxSIDDepth: true, IsNAISupported: true, MaximumSidDepth: 10},
+		},
+		"NonZeroReservedIsIgnored": {
+			[]uint8{0xde, 0xad, 0x00, 0x05},
+			&SRPCECapability{MaximumSidDepth: 5},
+		},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			var tlv SRPCECapability
+			err := tlv.DecodeFromBytes(append(tlvHeader(TLVSRPCECapability, 4), tt.value...))
+			require.NoError(t, err, "DecodeFromBytes failed for '%s'", name)
+			assert.Equal(t, tt.expected, &tlv, "unexpected decode result for '%s'", name)
+		})
+	}
+}
+
+func TestSRPCECapability_RoundTrip(t *testing.T) {
+	cases := map[string]*SRPCECapability{
+		"Empty":        {},
+		"MSD5":         {MaximumSidDepth: 5},
+		"MSD10":        {MaximumSidDepth: 10},
+		"UnlimitedMSD": {HasUnlimitedMaxSIDDepth: true},
+		"NAIWithMSD":   {IsNAISupported: true, MaximumSidDepth: 8},
+		"AllFields":    NewSRPCECapability(true, true, 10),
+	}
+
+	for name, want := range cases {
+		t.Run(name, func(t *testing.T) {
+			raw, err := want.Serialize()
+			require.NoError(t, err, "Serialize failed for '%s'", name)
+
+			var got SRPCECapability
+			require.NoError(t, got.DecodeFromBytes(raw), "DecodeFromBytes failed for '%s'", name)
+			assert.Equal(t, want, &got, "round-trip mismatch for '%s'", name)
+		})
+	}
 }
 
 func TestSRPCECapability_MarshalLogObject(t *testing.T) {
@@ -1128,7 +1211,7 @@ var (
 		0x00, 0x22, 0x00, 0x10,
 		0x00, 0x00, 0x00, 0x01,
 		0x01, 0x00, 0x00, 0x00,
-		0x00, 0x1a, 0x00, 0x04, 0x03, 0x0a, 0x00, 0x00,
+		0x00, 0x1a, 0x00, 0x04, 0x00, 0x00, 0x03, 0x0a,
 	}
 
 	// Invalid / error test cases

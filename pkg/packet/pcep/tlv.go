@@ -911,10 +911,12 @@ const (
 	NAISupportedFlag             byte = 0x02
 )
 
-// Byte offsets of the fields within the SR-PCE-CAPABILITY TLV value.
+// Field offsets in the SR-PCE-CAPABILITY TLV value (RFC 8664 §5.1.1):
+// Reserved (2 octets), Flags (1 octet), MSD (1 octet).
+// Reserved octets MUST be zero when sent and MUST be ignored when received.
 const (
-	SRPCECapabilityFlagsOffset = 0
-	SRPCECapabilityMSDOffset   = 1
+	SRPCECapabilityFlagsOffset = 2
+	SRPCECapabilityMSDOffset   = 3
 )
 
 // DecodeFromBytes decodes the given bytes into the receiver.
