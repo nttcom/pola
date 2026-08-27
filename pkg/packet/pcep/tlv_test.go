@@ -19,13 +19,23 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+const pstDescriptionSRTE = "Traffic engineering path is set up using Segment Routing (0x01) [RFC8664]"
+
+// Labels used by StringWithReference().
+const (
+	labelAssocPathProtection = nameAssocPathProtection + " (0x0001) [RFC8745]"
+	labelAssocDisjoint       = nameAssocDisjoint + " (0x0002) [RFC8800]"
+	labelAssocPolicy         = nameAssocPolicy + " (0x0003) [RFC9005]"
+	labelAssocSRPolicy       = nameAssocSRPolicy + " (0x0006) [RFC9862]"
+)
+
 func TestTLVType_String(t *testing.T) {
 	cases := map[string]struct {
 		tlvType  TLVType
 		expected string
 	}{
-		"StatefulPCECapability": {TLVStatefulPCECapability, "STATEFUL-PCE-CAPABILITY (RFC8231)"},
-		"IPv4LSPIdentifiers":    {TLVIPv4LSPIdentifiers, "IPV4-LSP-IDENTIFIERS (RFC8231)"},
+		"StatefulPCECapability": {TLVStatefulPCECapability, "STATEFUL-PCE-CAPABILITY (0x0010)"},
+		"IPv4LSPIdentifiers":    {TLVIPv4LSPIdentifiers, "IPV4-LSP-IDENTIFIERS (0x0012)"},
 		"UnknownType":           {TLVType(0xdead), "Unknown TLV (0xdead)"},
 	}
 
@@ -37,15 +47,34 @@ func TestTLVType_String(t *testing.T) {
 	}
 }
 
+func TestTLVType_StringWithReference(t *testing.T) {
+	cases := map[string]struct {
+		tlvType  TLVType
+		expected string
+	}{
+		"StatefulPCECapability": {TLVStatefulPCECapability, "STATEFUL-PCE-CAPABILITY (0x0010) [RFC8231]"},
+		"MultipathCap":          {TLVMultipathCap, "MULTIPATH-CAP (0x003c) [draft-ietf-pce-multipath-07]"},
+		"JuniperCPathID":        {TLVSRPolicyCPathIDJuniper, "SRPOLICY-CPATH-ID (Juniper) (0xffe4) [not IANA-assigned]"},
+		"UnknownType":           {TLVType(0xdead), "Unknown TLV (0xdead)"},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.tlvType.StringWithReference(), "unexpected TLVType.StringWithReference() result")
+		})
+	}
+}
+
 func TestTLVType_NameAndReference(t *testing.T) {
 	cases := map[string]struct {
 		tlvType      TLVType
 		expectedName string
-		expectedRef  string
+		expectedRef  Reference
 	}{
-		"StatefulPCECapability": {TLVStatefulPCECapability, "STATEFUL-PCE-CAPABILITY", "RFC8231"},
-		"MultipathCap":          {TLVMultipathCap, "MULTIPATH-CAP", "draft-ietf-pce-multipath-07"},
-		"UnknownType":           {TLVType(0xdead), "", ""},
+		"StatefulPCECapability": {TLVStatefulPCECapability, "STATEFUL-PCE-CAPABILITY", rfc(8231)},
+		"MultipathCap":          {TLVMultipathCap, "MULTIPATH-CAP", refDraftPCEMultipath},
+		"JuniperCPathID":        {TLVSRPolicyCPathIDJuniper, "SRPOLICY-CPATH-ID (Juniper)", refNotIANAAssigned},
+		"UnknownType":           {TLVType(0xdead), "", Reference{}},
 	}
 
 	for name, tt := range cases {
@@ -123,22 +152,6 @@ func runTLVSerializeTests(t *testing.T, cases map[string]struct {
 			actual, err := tt.input.Serialize()
 			require.NoError(t, err, "unexpected error for '%s'", name)
 			assert.Equal(t, tt.expected, actual, "serialized value mismatch for '%s'", name)
-		})
-	}
-}
-
-type CapStringsInterface interface {
-	CapStrings() []string
-}
-
-func runCapStringsTests(t *testing.T, cases map[string]struct {
-	input    CapStringsInterface
-	expected []string
-}) {
-	for name, tt := range cases {
-		t.Run(name, func(t *testing.T) {
-			actual := tt.input.CapStrings()
-			assert.Equal(t, tt.expected, actual, "capabilities mismatch for '%s'", name)
 		})
 	}
 }
@@ -224,14 +237,14 @@ func TestVendorInformation_MarshalLogObject(t *testing.T) {
 			testVendorInformationJuniper,
 			map[string]any{
 				"enterpriseNumber": uint32(EnterpriseNumberJuniper),
-				"enterprise":       "Juniper (2636)",
+				"enterprise":       enterpriseJuniperString,
 			},
 		},
 		"WithEnterpriseSpecificInformation": {
 			testVendorInformationWithInfo,
 			map[string]any{
 				"enterpriseNumber":              uint32(EnterpriseNumberJuniper),
-				"enterprise":                    "Juniper (2636)",
+				"enterprise":                    enterpriseJuniperString,
 				"enterpriseSpecificInformation": "deadbeef",
 			},
 		},
@@ -292,17 +305,6 @@ func TestVendorInformation_Serialize_LengthBoundary(t *testing.T) {
 	})
 }
 
-func TestVendorInformation_CapStrings(t *testing.T) {
-	cases := map[string]struct {
-		input    CapStringsInterface
-		expected []string
-	}{
-		"KnownEnterprise":   {testVendorInformationJuniper, []string{"Vendor-Info(Juniper)"}},
-		"UnknownEnterprise": {testVendorInformationUnknownEnterprise, []string{"Vendor-Info(EN-12345)"}},
-	}
-	runCapStringsTests(t, cases)
-}
-
 func TestVendorInformation_RoundTrip(t *testing.T) {
 	t.Parallel()
 
@@ -347,8 +349,6 @@ var (
 	testStatefulMissingTLVBody = tlvHeader(TLVStatefulPCECapability, 4)
 	testStatefulTooShort       = append(tlvHeader(TLVStatefulPCECapability, 4), 0x00, 0x01, 0x02)
 	testStatefulInvalidLength  = append(tlvHeader(TLVStatefulPCECapability, 3), 0x00, 0x00, 0x00)
-	testCapsAllStrings         = []string{"Stateful", "Update", "Include-DB-Ver", "Instantiation", "Triggered-Resync", "Delta-LSP-Sync", "Triggered-Initial-Sync", "Color"}
-	testCapsNoneStrings        = []string{"Stateful"}
 )
 
 func TestStatefulPCECapability_DecodeFromBytes(t *testing.T) {
@@ -408,17 +408,6 @@ func TestStatefulPCECapability_Len(t *testing.T) {
 		"LSPUpdate": {testStatefulLSPUpdate, TLVValueOffset + 4},
 	}
 	runTLVLenTests(t, cases)
-}
-
-func TestStatefulPCECapability_CapStrings(t *testing.T) {
-	cases := map[string]struct {
-		input    CapStringsInterface
-		expected []string
-	}{
-		"AllCapabilities": {testStatefulAll, testCapsAllStrings},
-		"NoCapabilities":  {testStatefulNone, testCapsNoneStrings},
-	}
-	runCapStringsTests(t, cases)
 }
 
 // Test data for SymbolicPathName.
@@ -625,8 +614,8 @@ func TestIPv4LSPIdentifiers_Len(t *testing.T) {
 var (
 	// Valid IPv6LSPIdentifiers with typical values.
 	testIPv6LSPIdentifiers = NewIPv6LSPIdentifiers(
-		netip.MustParseAddr("2001:db8::1"),
-		netip.MustParseAddr("2001:db8::2"),
+		netip.MustParseAddr(testIPv6Addr1),
+		netip.MustParseAddr(testIPv6Addr2),
 		1, 2, [IPv6AddrLen]byte{},
 	)
 
@@ -698,8 +687,8 @@ func TestIPv6LSPIdentifiers_MarshalLogObject(t *testing.T) {
 		"FullTLV": {
 			testIPv6LSPIdentifiers,
 			map[string]any{
-				"ipv6TunnelSenderAddress":   "2001:db8::1",
-				"ipv6TunnelEndpointAddress": "2001:db8::2",
+				"ipv6TunnelSenderAddress":   testIPv6Addr1,
+				"ipv6TunnelEndpointAddress": testIPv6Addr2,
 				"lspID":                     uint16(1),
 				"tunnelID":                  uint16(2),
 				"extendedTunnelID":          "00000000000000000000000000000000",
@@ -734,7 +723,6 @@ var (
 	testLSPDBVersionTruncated     = append(tlvHeader(TLVLSPDBVersion, 4), 0x00, 0x00, 0x00, 0x00)
 	testLSPDBVersionExtra         = append(tlvHeader(TLVLSPDBVersion, 8), 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x30, 0x39, 0xde, 0xad, 0xbe, 0xef)
 	testLSPDBVersionInvalidLength = append(tlvHeader(TLVLSPDBVersion, 16), 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x30, 0x39, 0xde, 0xad, 0xbe, 0xef)
-	testLSPDBVersionCapStrings    = []string{"LSP-DB-VERSION"}
 )
 
 func TestLSPDBVersion_DecodeFromBytes(t *testing.T) {
@@ -797,33 +785,18 @@ func TestLSPDBVersion_Len(t *testing.T) {
 	runTLVLenTests(t, cases)
 }
 
-func TestLSPDBVersion_CapStrings(t *testing.T) {
-	tlv := &LSPDBVersion{}
-	actual := tlv.CapStrings()
-	assert.Equal(t, testLSPDBVersionCapStrings, actual, "CapStrings() did not return expected value")
-}
-
 // Test data for SRPCECapability.
 var (
 	testSRPCECapability = NewSRPCECapability(true, true, 10)
 	// RFC 8664 §5.1.1: Reserved (2), Flags (1), MSD (1).
-	testSRPCECapabilityBytes                 = append(tlvHeader(TLVSRPCECapability, 4), 0x00, 0x00, 0x03, 0x0a)
-	testSRPCECapabilityTruncated             = append(tlvHeader(TLVSRPCECapability, 4), 0x00, 0x02)
-	testSRPCECapabilityExtra                 = append(tlvHeader(TLVSRPCECapability, 4), 0x00, 0x00, 0x03, 0x05, 0xde, 0xad, 0xbe, 0xef)
-	testSRPCECapabilityInvalidLength         = append(tlvHeader(TLVSRPCECapability, 8), 0x00, 0x00, 0x03, 0x05, 0xde, 0xad, 0xbe, 0xef)
-	testSRPCECapabilityZeroMSDBytes          = append(tlvHeader(TLVSRPCECapability, 4), 0x00, 0x00, 0x00, 0x00)
-	testSRPCECapabilityAllEnabled            = &SRPCECapability{HasUnlimitedMaxSIDDepth: true, IsNAISupported: true}
-	testSRPCECapabilityUnlimitedOnly         = &SRPCECapability{HasUnlimitedMaxSIDDepth: true}
-	testSRPCECapabilityNAIOnly               = &SRPCECapability{IsNAISupported: true}
-	testSRPCECapabilityNoneEnabled           = &SRPCECapability{}
-	testSRPCECapabilityAllEnabledStrs        = []string{"SR", "Unlimited-SID-Depth", "SR-NAI-Supported"}
-	testSRPCECapabilityUnlimitedStrs         = []string{"SR", "Unlimited-SID-Depth"}
-	testSRPCECapabilityNAIStrs               = []string{"SR", "MSD=0", "SR-NAI-Supported"}
-	testSRPCECapabilityMSDOnly               = &SRPCECapability{MaximumSidDepth: 10}
-	testSRPCECapabilityMSDOnlyStrs           = []string{"SR", "MSD=10"}
-	testSRPCECapabilityNoneStrs              = []string{"SR", "MSD=0"}
-	testSRPCECapabilityMSDZeroAdvertised     = &SRPCECapability{MaximumSidDepth: 0}
-	testSRPCECapabilityMSDZeroAdvertisedStrs = []string{"SR", "MSD=0"}
+	testSRPCECapabilityBytes             = append(tlvHeader(TLVSRPCECapability, 4), 0x00, 0x00, 0x03, 0x0a)
+	testSRPCECapabilityTruncated         = append(tlvHeader(TLVSRPCECapability, 4), 0x00, 0x02)
+	testSRPCECapabilityExtra             = append(tlvHeader(TLVSRPCECapability, 4), 0x00, 0x00, 0x03, 0x05, 0xde, 0xad, 0xbe, 0xef)
+	testSRPCECapabilityInvalidLength     = append(tlvHeader(TLVSRPCECapability, 8), 0x00, 0x00, 0x03, 0x05, 0xde, 0xad, 0xbe, 0xef)
+	testSRPCECapabilityZeroMSDBytes      = append(tlvHeader(TLVSRPCECapability, 4), 0x00, 0x00, 0x00, 0x00)
+	testSRPCECapabilityUnlimitedOnly     = &SRPCECapability{HasUnlimitedMaxSIDDepth: true}
+	testSRPCECapabilityNAIOnly           = &SRPCECapability{IsNAISupported: true}
+	testSRPCECapabilityMSDZeroAdvertised = &SRPCECapability{MaximumSidDepth: 0}
 )
 
 func TestSRPCECapability_DecodeFromBytes(t *testing.T) {
@@ -989,21 +962,6 @@ func TestSRPCECapability_Len(t *testing.T) {
 	runTLVLenTests(t, cases)
 }
 
-func TestSRPCECapability_CapStrings(t *testing.T) {
-	cases := map[string]struct {
-		input    CapStringsInterface
-		expected []string
-	}{
-		"AllCapabilitiesEnabled":          {testSRPCECapabilityAllEnabled, testSRPCECapabilityAllEnabledStrs},
-		"OnlyUnlimitedMaxSIDDepthEnabled": {testSRPCECapabilityUnlimitedOnly, testSRPCECapabilityUnlimitedStrs},
-		"OnlyNAISupportedEnabled":         {testSRPCECapabilityNAIOnly, testSRPCECapabilityNAIStrs},
-		"NoCapabilitiesEnabled":           {testSRPCECapabilityNoneEnabled, testSRPCECapabilityNoneStrs},
-		"WithNonZeroMSD":                  {testSRPCECapabilityMSDOnly, testSRPCECapabilityMSDOnlyStrs},
-		"MSDAdvertisedAsZero":             {testSRPCECapabilityMSDZeroAdvertised, testSRPCECapabilityMSDZeroAdvertisedStrs},
-	}
-	runCapStringsTests(t, cases)
-}
-
 func TestSRPCECapability_DecodeSerializeRoundTrip(t *testing.T) {
 	cases := map[string]*SRPCECapability{
 		"MSDNonZero":       {MaximumSidDepth: 200},
@@ -1057,13 +1015,28 @@ func TestPst_String(t *testing.T) {
 		input    Pst
 		expected string
 	}{
-		"Known PathSetupType":   {Pst(0x01), "Traffic engineering path is set up using Segment Routing (RFC8664)"},
+		"Known PathSetupType":   {Pst(0x01), "Traffic engineering path is set up using Segment Routing (0x01)"},
 		"Unknown PathSetupType": {Pst(0xff), "Unknown PathSetupType (0xff)"},
 	}
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
 			actual := tt.input.String()
 			assert.Equal(t, tt.expected, actual, "unexpected Pst.String() result for '%s'", name)
+		})
+	}
+}
+
+func TestPst_StringWithReference(t *testing.T) {
+	cases := map[string]struct {
+		input    Pst
+		expected string
+	}{
+		"Known PathSetupType":   {PathSetupTypeSRTE, pstDescriptionSRTE},
+		"Unknown PathSetupType": {Pst(0xff), "Unknown PathSetupType (0xff)"},
+	}
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.input.StringWithReference(), "unexpected Pst.StringWithReference() result for '%s'", name)
 		})
 	}
 }
@@ -1152,19 +1125,19 @@ func TestPathSetupType_MarshalLogObject(t *testing.T) {
 		"SRTE": {
 			testPathSetupTypeSRTE,
 			map[string]any{
-				"pathSetupType": "Traffic engineering path is set up using Segment Routing (RFC8664)",
+				"pathSetupType": pstDescriptionSRTE,
 			},
 		},
 		"RSVPTE": {
 			testPathSetupTypeRSVPTE,
 			map[string]any{
-				"pathSetupType": "Path is set up using the RSVP-TE signaling protocol (RFC8408)",
+				"pathSetupType": "Path is set up using the RSVP-TE signaling protocol (0x00) [RFC8408]",
 			},
 		},
 		"SRv6TE": {
 			testPathSetupTypeSRv6TE,
 			map[string]any{
-				"pathSetupType": "Traffic engineering path is set up using SRv6 (RFC9603)",
+				"pathSetupType": "Traffic engineering path is set up using SRv6 (0x03) [RFC9603]",
 			},
 		},
 	}
@@ -1301,8 +1274,8 @@ func TestPathSetupTypeCapability_MarshalLogObject(t *testing.T) {
 			testPathSetupTypeCapabilityBasic,
 			map[string]any{
 				"pathSetupTypes": []any{
-					"Path is set up using the RSVP-TE signaling protocol (RFC8408)",
-					"Traffic engineering path is set up using Segment Routing (RFC8664)",
+					"Path is set up using the RSVP-TE signaling protocol (0x00) [RFC8408]",
+					pstDescriptionSRTE,
 				},
 				"subTLVs": []any{},
 			},
@@ -1311,9 +1284,9 @@ func TestPathSetupTypeCapability_MarshalLogObject(t *testing.T) {
 			testPathSetupTypeCapabilityWithSubTLV,
 			map[string]any{
 				"pathSetupTypes": []any{
-					"Traffic engineering path is set up using Segment Routing (RFC8664)",
+					pstDescriptionSRTE,
 				},
-				"subTLVs": []any{"0x001a (SR-PCE-CAPABILITY (RFC8664))"},
+				"subTLVs": []any{"SR-PCE-CAPABILITY (0x001a) [RFC8664]"},
 			},
 		},
 		"NilTLV": {
@@ -1386,19 +1359,6 @@ func TestPathSetupTypeCapability_Serialize_SubTLVError(t *testing.T) {
 	assert.ErrorContains(t, err, "exceeds")
 }
 
-func TestPathSetupTypeCapability_CapStrings(t *testing.T) {
-	cases := map[string]struct {
-		input    CapStringsInterface
-		expected []string
-	}{
-		"SRTEAndSRv6TE":        {&PathSetupTypeCapability{PathSetupTypes: Psts{PathSetupTypeSRTE, PathSetupTypeSRv6TE}}, []string{"SR-TE", "SRv6-TE"}},
-		"SRTEOnly":             {&PathSetupTypeCapability{PathSetupTypes: Psts{PathSetupTypeSRTE}}, []string{"SR-TE"}},
-		"SRv6TEOnly":           {&PathSetupTypeCapability{PathSetupTypes: Psts{PathSetupTypeSRv6TE}}, []string{"SRv6-TE"}},
-		"NeitherSRTENorSRv6TE": {&PathSetupTypeCapability{PathSetupTypes: Psts{PathSetupTypeRSVPTE}}, []string{}},
-	}
-	runCapStringsTests(t, cases)
-}
-
 func TestPathSetupTypeCapability_SubCapabilities(t *testing.T) {
 	t.Parallel()
 
@@ -1461,17 +1421,17 @@ func TestAssocType_String(t *testing.T) {
 		input    AssocType
 		expected string
 	}{
-		"PathProtection":   {AssocTypePathProtectionAssociation, "Path Protection Association"},
-		"Disjoint":         {AssocTypeDisjointAssociation, "Disjoint Association"},
-		"Policy":           {AssocTypePolicyAssociation, "Policy Association"},
-		"SingleSidedBidir": {AssocTypeSingleSidedBidirectionalLSPAssociation, "Single Sided Bidirectional LSP Association"},
-		"DoubleSidedBidir": {AssocTypeDoubleSidedBidirectionalLSPAssociation, "Double Sided Bidirectional LSP Association"},
-		"SRPolicy":         {AssocTypeSRPolicyAssociation, "SR Policy Association"},
-		"VnAssociation":    {AssocTypeVnAssociationType, "VN Association Type"},
-		"BidirSRLSP":       {AssocTypeBidirectionalSRLSPAssociation, "Bidirectional SR LSP Association (draft)"},
-		"P2MPSRPolicy":     {AssocTypeP2MPSRPolicyAssociation, "P2MP SR Policy Association (draft)"},
-		"SRPolicyCisco":    {AssocTypeSRPolicyAssociationCisco, "SR Policy Association (Cisco-specific)"},
-		"SRPolicyJuniper":  {AssocTypeSRPolicyAssociationJuniper, "SR Policy Association (Juniper-specific, deprecated)"},
+		"PathProtection":   {AssocTypePathProtectionAssociation, nameAssocPathProtection + " (0x0001)"},
+		"Disjoint":         {AssocTypeDisjointAssociation, nameAssocDisjoint + " (0x0002)"},
+		"Policy":           {AssocTypePolicyAssociation, nameAssocPolicy + " (0x0003)"},
+		"SingleSidedBidir": {AssocTypeSingleSidedBidirectionalLSPAssociation, "Single Sided Bidirectional LSP Association (0x0004)"},
+		"DoubleSidedBidir": {AssocTypeDoubleSidedBidirectionalLSPAssociation, "Double Sided Bidirectional LSP Association (0x0005)"},
+		"SRPolicy":         {AssocTypeSRPolicyAssociation, nameAssocSRPolicy + " (0x0006)"},
+		"VnAssociation":    {AssocTypeVnAssociationType, "VN Association Type (0x0007)"},
+		"BidirSRLSP":       {AssocTypeBidirectionalSRLSPAssociation, "Bidirectional SR LSP Association (0x0008)"},
+		"P2MPSRPolicy":     {AssocTypeP2MPSRPolicyAssociation, "P2MP SR Policy Association (0x0009)"},
+		"SRPolicyCisco":    {AssocTypeSRPolicyAssociationCisco, "SR Policy Association (Cisco-specific) (0x0014)"},
+		"SRPolicyJuniper":  {AssocTypeSRPolicyAssociationJuniper, "SR Policy Association (Juniper-specific, deprecated) (0xffe1)"},
 		"Unknown":          {AssocType(0xffff), "Unknown AssocType (0xffff)"},
 	}
 
@@ -1483,10 +1443,30 @@ func TestAssocType_String(t *testing.T) {
 	}
 }
 
+// Reference determines whether a type is draft-only or unassigned.
+func TestAssocType_StringWithReference(t *testing.T) {
+	cases := map[string]struct {
+		input    AssocType
+		expected string
+	}{
+		"SRPolicy":        {AssocTypeSRPolicyAssociation, nameAssocSRPolicy + " (0x0006) [RFC9862]"},
+		"BidirSRLSP":      {AssocTypeBidirectionalSRLSPAssociation, "Bidirectional SR LSP Association (0x0008) [draft-ietf-pce-sr-bidir-path-25]"},
+		"SRPolicyCisco":   {AssocTypeSRPolicyAssociationCisco, "SR Policy Association (Cisco-specific) (0x0014) [not IANA-assigned]"},
+		"SRPolicyJuniper": {AssocTypeSRPolicyAssociationJuniper, "SR Policy Association (Juniper-specific, deprecated) (0xffe1) [not IANA-assigned]"},
+		"Unknown":         {AssocType(0xffff), "Unknown AssocType (0xffff)"},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.input.StringWithReference(), "unexpected AssocType.StringWithReference() result for '%s'", name)
+		})
+	}
+}
+
 // Test data for ExtendedAssociationID.
 var (
 	testIPv4ExtendedAssociationID = NewExtendedAssociationID(1, netip.MustParseAddr("127.0.0.1"))
-	testIPv6ExtendedAssociationID = NewExtendedAssociationID(1, netip.MustParseAddr("2001:db8::1"))
+	testIPv6ExtendedAssociationID = NewExtendedAssociationID(1, netip.MustParseAddr(testIPv6Addr1))
 
 	testIPv4ExtendedAssociationIDBytes = []byte{
 		byte(TLVExtendedAssociationID >> 8), byte(TLVExtendedAssociationID & 0xff), 0x00, 0x08,
@@ -1562,10 +1542,10 @@ func TestExtendedAssociationID_MarshalLogObject(t *testing.T) {
 			},
 		},
 		"IPv6": {
-			NewExtendedAssociationID(456, netip.MustParseAddr("2001:db8::1")),
+			NewExtendedAssociationID(456, netip.MustParseAddr(testIPv6Addr1)),
 			map[string]any{
 				"color":    uint32(456),
-				"ipv6Addr": "2001:db8::1",
+				"ipv6Addr": testIPv6Addr1,
 			},
 		},
 		"NilTLV": {
@@ -1768,25 +1748,25 @@ func TestAssocTypeList_MarshalLogObject(t *testing.T) {
 			testAssocTypeList,
 			map[string]any{
 				"assocTypes": []any{
-					"Path Protection Association",
-					"SR Policy Association",
+					labelAssocPathProtection,
+					labelAssocSRPolicy,
 				},
 			},
 		},
 		"SingleEntry": {
 			testAssocTypeListSingle,
 			map[string]any{
-				"assocTypes": []any{"Path Protection Association"},
+				"assocTypes": []any{labelAssocPathProtection},
 			},
 		},
 		"FourEntries": {
 			testAssocTypeListFour,
 			map[string]any{
 				"assocTypes": []any{
-					"Path Protection Association",
-					"Disjoint Association",
-					"Policy Association",
-					"SR Policy Association",
+					labelAssocPathProtection,
+					labelAssocDisjoint,
+					labelAssocPolicy,
+					labelAssocSRPolicy,
 				},
 			},
 		},
@@ -1847,27 +1827,6 @@ func TestAssocTypeList_Serialize_LengthBoundary(t *testing.T) {
 	})
 }
 
-func TestAssocTypeList_CapStrings(t *testing.T) {
-	cases := map[string]struct {
-		input    CapStringsInterface
-		expected []string
-	}{
-		"EmptyList": {&AssocTypeList{}, []string{}},
-		"TwoEntries": {
-			testAssocTypeList,
-			[]string{
-				"AssocType:Path Protection Association",
-				"AssocType:SR Policy Association",
-			},
-		},
-		"SingleEntry": {
-			testAssocTypeListSingle,
-			[]string{"AssocType:Path Protection Association"},
-		},
-	}
-	runCapStringsTests(t, cases)
-}
-
 // Test data for SRPolicyCandidatePathIdentifier.
 var (
 	testSRPolicyCPathIDIPv4 = &SRPolicyCandidatePathIdentifier{
@@ -1879,7 +1838,7 @@ var (
 	testSRPolicyCPathIDIPv6 = &SRPolicyCandidatePathIdentifier{
 		ProtocolOrigin: ProtocolOriginPCEP,
 		OriginatorASN:  65000,
-		OriginatorAddr: netip.MustParseAddr("2001:db8::1"), // IPv6 originator
+		OriginatorAddr: netip.MustParseAddr(testIPv6Addr1), // IPv6 originator
 		Discriminator:  2,
 	}
 
@@ -2402,7 +2361,7 @@ func TestMarshalLogObject_TLVTypeHexFormatting(t *testing.T) {
 	require.NoError(t, err)
 	subTLVs, ok := enc.Fields["subTLVs"].([]any)
 	assert.True(t, ok)
-	assert.Equal(t, []any{"0x001a (SR-PCE-CAPABILITY (RFC8664))"}, subTLVs)
+	assert.Equal(t, []any{"SR-PCE-CAPABILITY (0x001a) [RFC8664]"}, subTLVs)
 
 	enc = zapcore.NewMapObjectEncoder()
 	err = testUnknownTLV.MarshalLogObject(enc)
@@ -2419,31 +2378,6 @@ func TestUnknownTLV_Len(t *testing.T) {
 		"UnalignedLen": {testUnknownTLVOddLength, TLVValueOffset + 4}, // 3-byte value + 1 pad = 4
 	}
 	runTLVLenTests(t, cases)
-}
-
-func TestUnknownTLV_CapStrings(t *testing.T) {
-	cases := map[string]struct {
-		input    CapStringsInterface
-		expected []string
-	}{
-		// Registered in tlvDescriptions but with no dedicated decoder: reported
-		// as its TLV identifier plus registry name rather than as unknown_type_<n>.
-		"RegisteredWithoutDecoder": {
-			input:    &UnknownTLV{Typ: TLVSRP2MPPolicyCapability},
-			expected: []string{"0x0049 (SR-P2MP-POLICY-CAPABILITY (draft-ietf-pce-sr-p2mp-policy-11))"},
-		},
-		"RegisteredVendorSpecific": {
-			input:    &UnknownTLV{Typ: TLVSRPolicyCPathPreferenceJuniper},
-			expected: []string{"0xffe5 (SRPOLICY-CPATH-PREFERENCE (Juniper) (vendor-specific))"},
-		},
-		// Absent from the registry: falls back to the numeric form.
-		"UnregisteredType": {
-			input:    &UnknownTLV{Typ: TLVType(0x1234)},
-			expected: []string{"unknown_type_4660"},
-		},
-	}
-
-	runCapStringsTests(t, cases)
 }
 
 func TestUnknownTLV_Len_DerivedFromValue(t *testing.T) {
@@ -2575,8 +2509,6 @@ var (
 	testSRv6PCECapabilityShortLength = append(tlvHeader(TLVSRv6PCECapability, 3), 0x00, 0x00, 0x00)
 	testSRv6PCECapabilityTruncated   = append(tlvHeader(TLVSRv6PCECapability, 4), 0x00, 0x00)
 	testSRv6PCECapabilityNoNAI       = &SRv6PCECapability{}
-	testSRv6PCECapabilityNAIStrs     = []string{"SRv6", "SRv6-NAI-Supported"}
-	testSRv6PCECapabilityNoNAIStrs   = []string{"SRv6"}
 )
 
 func TestSRv6PCECapability_DecodeFromBytes(t *testing.T) {
@@ -2641,17 +2573,6 @@ func TestSRv6PCECapability_Len(t *testing.T) {
 	runTLVLenTests(t, cases)
 }
 
-func TestSRv6PCECapability_CapStrings(t *testing.T) {
-	cases := map[string]struct {
-		input    CapStringsInterface
-		expected []string
-	}{
-		"NAISupported":    {testSRv6PCECapability, testSRv6PCECapabilityNAIStrs},
-		"NAINotSupported": {testSRv6PCECapabilityNoNAI, testSRv6PCECapabilityNoNAIStrs},
-	}
-	runCapStringsTests(t, cases)
-}
-
 func TestSRv6PCECapability_RoundTrip(t *testing.T) {
 	t.Parallel()
 
@@ -2687,13 +2608,11 @@ func TestSRv6PCECapability_RoundTrip(t *testing.T) {
 var (
 	testMultipathCapability = NewMultipathCapability(8, true, true, true, true)
 	// MaxMultipaths=8 (0x0008), Flags=W|O|F|C = 0x001D
-	testMultipathCapabilityBytes          = append(tlvHeader(TLVMultipathCap, 4), 0x00, 0x08, 0x00, 0x1d)
-	testMultipathCapabilityNoFlags        = NewMultipathCapability(1, false, false, false, false)
-	testMultipathCapabilityNoFlagsBytes   = append(tlvHeader(TLVMultipathCap, 4), 0x00, 0x01, 0x00, 0x00)
-	testMultipathCapabilityTruncated      = append(tlvHeader(TLVMultipathCap, 4), 0x00, 0x08)
-	testMultipathCapabilityInvalidLen     = append(tlvHeader(TLVMultipathCap, 8), 0x00, 0x08, 0x00, 0x0f, 0xde, 0xad, 0xbe, 0xef)
-	testMultipathCapabilityCapStrs        = []string{"Multipath", "MaxMultipaths=8", "Weighted", "OppositeDir", "ForwardClass", "CompositePath"}
-	testMultipathCapabilityNoFlagsCapStrs = []string{"Multipath", "MaxMultipaths=1"}
+	testMultipathCapabilityBytes        = append(tlvHeader(TLVMultipathCap, 4), 0x00, 0x08, 0x00, 0x1d)
+	testMultipathCapabilityNoFlags      = NewMultipathCapability(1, false, false, false, false)
+	testMultipathCapabilityNoFlagsBytes = append(tlvHeader(TLVMultipathCap, 4), 0x00, 0x01, 0x00, 0x00)
+	testMultipathCapabilityTruncated    = append(tlvHeader(TLVMultipathCap, 4), 0x00, 0x08)
+	testMultipathCapabilityInvalidLen   = append(tlvHeader(TLVMultipathCap, 8), 0x00, 0x08, 0x00, 0x0f, 0xde, 0xad, 0xbe, 0xef)
 )
 
 func TestMultipathCapability_DecodeFromBytes(t *testing.T) {
@@ -2763,17 +2682,6 @@ func TestMultipathCapability_Len(t *testing.T) {
 		"ValidMultipathCapabilityLength": {testMultipathCapability, TLVValueOffset + TLVMultipathCapValueLength},
 	}
 	runTLVLenTests(t, cases)
-}
-
-func TestMultipathCapability_CapStrings(t *testing.T) {
-	cases := map[string]struct {
-		input    CapStringsInterface
-		expected []string
-	}{
-		"AllFlagsEnabled": {testMultipathCapability, testMultipathCapabilityCapStrs},
-		"NoFlagsEnabled":  {testMultipathCapabilityNoFlags, testMultipathCapabilityNoFlagsCapStrs},
-	}
-	runCapStringsTests(t, cases)
 }
 
 func TestMultipathCapability_RoundTrip(t *testing.T) {

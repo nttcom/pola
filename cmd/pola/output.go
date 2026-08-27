@@ -30,6 +30,11 @@ type statusResult struct {
 	Status string `json:"status"`
 }
 
+const (
+	statusSuccess = "success"
+	cmdNameDelete = "delete"
+)
+
 func writeJSON(w io.Writer, v any) error {
 	out, err := json.Marshal(v)
 	if err != nil {

@@ -20,7 +20,7 @@ import (
 
 func newSRPolicyDeleteCmd() *cobra.Command {
 	srPolicyDeleteCmd := &cobra.Command{
-		Use: "delete",
+		Use: cmdNameDelete,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			filepath, err := cmd.Flags().GetString("file")
 			if err != nil {
@@ -89,7 +89,7 @@ func deleteSRPolicy(input inputFormat, jsonFlag bool) error {
 	}
 
 	if jsonFlag {
-		return writeJSON(os.Stdout, statusResult{Status: "success"})
+		return writeJSON(os.Stdout, statusResult{Status: statusSuccess})
 	}
 	fmt.Printf("success!\n")
 

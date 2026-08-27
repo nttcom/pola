@@ -13,6 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+const testRevision = "abc123"
+
 func TestVersion_Default(t *testing.T) {
 	assert.Equal(t, devVersion, Version())
 }
@@ -46,21 +48,21 @@ func TestVcsSettings(t *testing.T) {
 		{
 			name: "vcs info present and clean",
 			settings: []debug.BuildSetting{
-				{Key: "vcs.revision", Value: "abc123"},
+				{Key: "vcs.revision", Value: testRevision},
 				{Key: "vcs.time", Value: "2026-08-14T00:00:00Z"},
 				{Key: "vcs.modified", Value: "false"},
 			},
-			wantRevision: "abc123",
+			wantRevision: testRevision,
 			wantTime:     "2026-08-14T00:00:00Z",
 			wantModified: false,
 		},
 		{
 			name: "vcs info present and modified",
 			settings: []debug.BuildSetting{
-				{Key: "vcs.revision", Value: "abc123"},
+				{Key: "vcs.revision", Value: testRevision},
 				{Key: "vcs.modified", Value: "true"},
 			},
-			wantRevision: "abc123",
+			wantRevision: testRevision,
 			wantModified: true,
 		},
 		{

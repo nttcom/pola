@@ -5,6 +5,7 @@ linters:
   enable:
     - copyloopvar
     - errorlint
+    - goconst
     - gocritic
     - gocyclo
     - gosec
@@ -19,6 +20,9 @@ linters:
     - usestdlibvars
     - wastedassign
   settings:
+    goconst:
+      ignore-tests: true
+      min-occurrences: 3
     gocyclo:
       min-complexity: 15
     nolintlint:

@@ -30,7 +30,7 @@ type ObjectType uint8
 // SubobjectType is a PCEP subobject type code.
 type SubobjectType uint8
 
-// PCEP object classes.
+// PCEP object class codes.
 const (
 	ObjectClassOpen                              ObjectClass = 0x01
 	ObjectClassRP                                ObjectClass = 0x02
@@ -80,71 +80,72 @@ const (
 	ObjectClassPeerPrefixAdvertisementObjectType ObjectClass = 0x30
 )
 
-var objectClassDescriptions = map[ObjectClass]struct {
-	Description string
-	Reference   string
-}{
-	ObjectClassOpen:                              {"Open", "RFC5440"},
-	ObjectClassRP:                                {"RP", "RFC5440"},
-	ObjectClassNoPath:                            {"NO-PATH", "RFC5440"},
-	ObjectClassEndpoints:                         {"END-POINTS", "RFC5440"},
-	ObjectClassBandwidth:                         {"BANDWIDTH", "RFC5440"},
-	ObjectClassMetric:                            {"METRIC", "RFC5440"},
-	ObjectClassERO:                               {"ERO", "RFC5440"},
-	ObjectClassRRO:                               {"RRO", "RFC5440"},
-	ObjectClassLSPA:                              {"LSPA", "RFC5440"},
-	ObjectClassIRO:                               {"IRO", "RFC5440"},
-	ObjectClassSVEC:                              {"SVEC", "RFC5440"},
-	ObjectClassNotification:                      {"NOTIFICATION", "RFC5440"},
-	ObjectClassPCEPError:                         {"PCEP-ERROR", "RFC5440"},
-	ObjectClassLoadBalancing:                     {"LOAD-BALANCING", "RFC5440"},
-	ObjectClassClose:                             {"CLOSE", "RFC5440"},
-	ObjectClassPathKey:                           {"PATH-KEY", "RFC5520"},
-	ObjectClassXRO:                               {"XRO", "RFC5521"},
-	ObjectClassMonitoring:                        {"MONITORING", "RFC5886"},
-	ObjectClassPCCReqID:                          {"PCC-REQ-ID", "RFC5886"},
-	ObjectClassOF:                                {"OF", "RFC5541"},
-	ObjectClassClassType:                         {"CLASSTYPE", "RFC5455"},
-	ObjectClassGlobalConstraints:                 {"GLOBAL-CONSTRAINTS", "RFC5557"},
-	ObjectClassPCEID:                             {"PCE-ID", "RFC5886"},
-	ObjectClassProcTime:                          {"PROC-TIME", "RFC5886"},
-	ObjectClassOverload:                          {"OVERLOAD", "RFC5886"},
-	ObjectClassUnreachDestination:                {"UNREACH-DESTINATION", "RFC8306"},
-	ObjectClassSERO:                              {"SERO", "RFC8306"},
-	ObjectClassSRRO:                              {"SRRO", "RFC8306"},
-	ObjectClassBNC:                               {"BNC", "RFC8306"},
-	ObjectClassLSP:                               {"LSP", "RFC8231"},
-	ObjectClassSRP:                               {"SRP", "RFC8231"},
-	ObjectClassVendorInformation:                 {"VENDOR-INFORMATION", "RFC7470"},
-	ObjectClassBU:                                {"BU", "RFC8233"},
-	ObjectClassInterLayer:                        {"INTER-LAYER", "RFC8282"},
-	ObjectClassSwitchLayer:                       {"SWITCH-LAYER", "RFC8282"},
-	ObjectClassReqAdapCap:                        {"REQ-ADAP-CAP", "RFC8282"},
-	ObjectClassServerIndication:                  {"SERVER-INDICATION", "RFC8282"},
-	ObjectClassAssociation:                       {"ASSOCIATION", "RFC8697"},
-	ObjectClassS2LS:                              {"S2LS", "RFC8623"},
-	ObjectClassWA:                                {"WA", "RFC8780"},
-	ObjectClassFlowSpec:                          {"FLOWSPEC", "RFC9168"},
-	ObjectClassCCIObjectType:                     {"CCI", "RFC9050"},
-	ObjectClassPathAttrib:                        {"PATH-ATTRIB", "draft-ietf-pce-multipath-07"},
-	ObjectClassBGPPeerInfoObjectType:             {"BGP-PEER-INFO", "RFC9757"},
-	ObjectClassExplicitPeerRouteObjectType:       {"EXPLICIT-PEER-ROUTE", "RFC9757"},
-	ObjectClassPeerPrefixAdvertisementObjectType: {"PEER-PREFIX-ADVERTISEMENT", "RFC9757"},
+var objectClassDescriptions = map[ObjectClass]codePointInfo{
+	ObjectClassOpen:                              {"Open", rfc(5440)},
+	ObjectClassRP:                                {"RP", rfc(5440)},
+	ObjectClassNoPath:                            {"NO-PATH", rfc(5440)},
+	ObjectClassEndpoints:                         {"END-POINTS", rfc(5440)},
+	ObjectClassBandwidth:                         {"BANDWIDTH", rfc(5440)},
+	ObjectClassMetric:                            {"METRIC", rfc(5440)},
+	ObjectClassERO:                               {"ERO", rfc(5440)},
+	ObjectClassRRO:                               {"RRO", rfc(5440)},
+	ObjectClassLSPA:                              {"LSPA", rfc(5440)},
+	ObjectClassIRO:                               {"IRO", rfc(5440)},
+	ObjectClassSVEC:                              {"SVEC", rfc(5440)},
+	ObjectClassNotification:                      {"NOTIFICATION", rfc(5440)},
+	ObjectClassPCEPError:                         {"PCEP-ERROR", rfc(5440)},
+	ObjectClassLoadBalancing:                     {"LOAD-BALANCING", rfc(5440)},
+	ObjectClassClose:                             {"CLOSE", rfc(5440)},
+	ObjectClassPathKey:                           {"PATH-KEY", rfc(5520)},
+	ObjectClassXRO:                               {"XRO", rfc(5521)},
+	ObjectClassMonitoring:                        {"MONITORING", rfc(5886)},
+	ObjectClassPCCReqID:                          {"PCC-REQ-ID", rfc(5886)},
+	ObjectClassOF:                                {"OF", rfc(5541)},
+	ObjectClassClassType:                         {"CLASSTYPE", rfc(5455)},
+	ObjectClassGlobalConstraints:                 {"GLOBAL-CONSTRAINTS", rfc(5557)},
+	ObjectClassPCEID:                             {"PCE-ID", rfc(5886)},
+	ObjectClassProcTime:                          {"PROC-TIME", rfc(5886)},
+	ObjectClassOverload:                          {"OVERLOAD", rfc(5886)},
+	ObjectClassUnreachDestination:                {"UNREACH-DESTINATION", rfc(8306)},
+	ObjectClassSERO:                              {"SERO", rfc(8306)},
+	ObjectClassSRRO:                              {"SRRO", rfc(8306)},
+	ObjectClassBNC:                               {"BNC", rfc(8306)},
+	ObjectClassLSP:                               {"LSP", rfc(8231)},
+	ObjectClassSRP:                               {"SRP", rfc(8231)},
+	ObjectClassVendorInformation:                 {"VENDOR-INFORMATION", rfc(7470)},
+	ObjectClassBU:                                {"BU", rfc(8233)},
+	ObjectClassInterLayer:                        {"INTER-LAYER", rfc(8282)},
+	ObjectClassSwitchLayer:                       {"SWITCH-LAYER", rfc(8282)},
+	ObjectClassReqAdapCap:                        {"REQ-ADAP-CAP", rfc(8282)},
+	ObjectClassServerIndication:                  {"SERVER-INDICATION", rfc(8282)},
+	ObjectClassAssociation:                       {"ASSOCIATION", rfc(8697)},
+	ObjectClassS2LS:                              {"S2LS", rfc(8623)},
+	ObjectClassWA:                                {"WA", rfc(8780)},
+	ObjectClassFlowSpec:                          {"FLOWSPEC", rfc(9168)},
+	ObjectClassCCIObjectType:                     {"CCI", rfc(9050)},
+	ObjectClassPathAttrib:                        {"PATH-ATTRIB", refDraftPCEMultipath},
+	ObjectClassBGPPeerInfoObjectType:             {"BGP-PEER-INFO", rfc(9757)},
+	ObjectClassExplicitPeerRouteObjectType:       {"EXPLICIT-PEER-ROUTE", rfc(9757)},
+	ObjectClassPeerPrefixAdvertisementObjectType: {"PEER-PREFIX-ADVERTISEMENT", rfc(9757)},
 }
 
+// Name returns the registered name of the object class.
+func (c ObjectClass) Name() string { return objectClassDescriptions[c].Description }
+
+// Reference returns the defining document of the object class.
+func (c ObjectClass) Reference() Reference { return objectClassDescriptions[c].Reference }
+
+// String returns a human-readable representation of the object class.
 func (c ObjectClass) String() string {
-	if desc, ok := objectClassDescriptions[c]; ok {
-		return fmt.Sprintf("%s (0x%02x)", desc.Description, uint8(c))
+	if name := c.Name(); name != "" {
+		return fmt.Sprintf("%s (0x%02x)", name, uint8(c))
 	}
 	return fmt.Sprintf("Unknown Object Class (0x%02x)", uint8(c))
 }
 
-// StringWithReference returns a human-readable representation of the object class with reference.
+// StringWithReference returns the object class with its reference.
 func (c ObjectClass) StringWithReference() string {
-	if desc, ok := objectClassDescriptions[c]; ok {
-		return fmt.Sprintf("%s (0x%02x) [%s]", desc.Description, c, desc.Reference)
-	}
-	return fmt.Sprintf("Unknown Object Class (0x%02x)", uint8(c))
+	return withReference(c.String(), c.Reference())
 }
 
 // CommonObjectHeader is the common header of a PCEP object (RFC 5440 §7.2).
@@ -223,7 +224,6 @@ func objectLength(body ...[]uint8) (uint16, error) {
 
 // OPEN Object (RFC 5440 §7.3)
 const (
-	// ObjectTypeOpenOpen is the object type for OPEN.
 	ObjectTypeOpenOpen ObjectType = 0x01
 )
 
@@ -577,30 +577,30 @@ const (
 	CloseReasonTooManyUnrecognizedPCEPMessages CloseReason = 0x05
 )
 
-var closeReasonDescriptions = map[CloseReason]struct {
-	Description string
-	Reference   string
-}{
-	CloseReasonNoExplanationProvided:           {"No explanation provided", "RFC5440"},
-	CloseReasonDeadTimerExpired:                {"DeadTimer expired", "RFC5440"},
-	CloseReasonMalformedPCEPMessage:            {"Reception of a malformed PCEP message", "RFC5440"},
-	CloseReasonTooManyUnknownRequestsReplies:   {"Reception of an unacceptable number of unknown requests/replies", "RFC5440"},
-	CloseReasonTooManyUnrecognizedPCEPMessages: {"Reception of an unacceptable number of unrecognized PCEP messages", "RFC5440"},
+var closeReasonDescriptions = map[CloseReason]codePointInfo{
+	CloseReasonNoExplanationProvided:           {"No explanation provided", rfc(5440)},
+	CloseReasonDeadTimerExpired:                {"DeadTimer expired", rfc(5440)},
+	CloseReasonMalformedPCEPMessage:            {"Reception of a malformed PCEP message", rfc(5440)},
+	CloseReasonTooManyUnknownRequestsReplies:   {"Reception of an unacceptable number of unknown requests/replies", rfc(5440)},
+	CloseReasonTooManyUnrecognizedPCEPMessages: {"Reception of an unacceptable number of unrecognized PCEP messages", rfc(5440)},
 }
 
+// Name returns the registered name of the close reason.
+func (r CloseReason) Name() string { return closeReasonDescriptions[r].Description }
+
+// Reference returns the defining document of the close reason.
+func (r CloseReason) Reference() Reference { return closeReasonDescriptions[r].Reference }
+
 func (r CloseReason) String() string {
-	if desc, ok := closeReasonDescriptions[r]; ok {
-		return fmt.Sprintf("%s (0x%02x)", desc.Description, uint8(r))
+	if name := r.Name(); name != "" {
+		return fmt.Sprintf("%s (0x%02x)", name, uint8(r))
 	}
 	return fmt.Sprintf("Unknown Close Reason (0x%02x)", uint8(r))
 }
 
 // StringWithReference returns a human-readable representation of the close reason with reference.
 func (r CloseReason) StringWithReference() string {
-	if desc, ok := closeReasonDescriptions[r]; ok {
-		return fmt.Sprintf("%s (0x%02x) [%s]", desc.Description, r, desc.Reference)
-	}
-	return fmt.Sprintf("Unknown Close Reason (0x%02x)", uint8(r))
+	return withReference(r.String(), r.Reference())
 }
 
 // CloseObject is a PCEP Close object (RFC 5440 §7.17).
@@ -648,7 +648,6 @@ func NewCloseObject(reason CloseReason) *CloseObject {
 
 // SRP Object (RFC 8231 §7.2)
 const (
-	// ObjectTypeSRPSRP is the object type for SRP.
 	ObjectTypeSRPSRP ObjectType = 0x01
 )
 
@@ -744,7 +743,6 @@ func NewSrpObject(segs []table.Segment, srpID uint32, isRemove bool) (*SrpObject
 
 // LSP Object (RFC 8281 §5.3.1)
 const (
-	// ObjectTypeLSPLSP is the object type for LSP.
 	ObjectTypeLSPLSP ObjectType = 0x01
 )
 
@@ -1069,32 +1067,33 @@ const (
 	NAITypeSRIPv6AdjacencyLinkLocal NAITypeSR = 0x06
 )
 
-var naiTypeSRDescriptions = map[NAITypeSR]struct {
-	Description string
-	Reference   string
-}{
-	NAITypeSRAbsent:                 {"NAI is absent", "RFC8664"},
-	NAITypeSRIPv4Node:               {"NAI is an IPv4 node ID", "RFC8664"},
-	NAITypeSRIPv6Node:               {"NAI is an IPv6 node ID", "RFC8664"},
-	NAITypeSRIPv4Adjacency:          {"NAI is an IPv4 adjacency", "RFC8664"},
-	NAITypeSRIPv6AdjacencyGlobal:    {"NAI is an IPv6 adjacency with global IPv6 addresses", "RFC8664"},
-	NAITypeSRUnnumberedAdjacency:    {"NAI is an unnumbered adjacency with IPv4 node IDs", "RFC8664"},
-	NAITypeSRIPv6AdjacencyLinkLocal: {"NAI is an IPv6 adjacency with link-local IPv6 addresses", "RFC8664"},
+var naiTypeSRDescriptions = map[NAITypeSR]codePointInfo{
+	NAITypeSRAbsent:                 {"NAI is absent", rfc(8664)},
+	NAITypeSRIPv4Node:               {"NAI is an IPv4 node ID", rfc(8664)},
+	NAITypeSRIPv6Node:               {"NAI is an IPv6 node ID", rfc(8664)},
+	NAITypeSRIPv4Adjacency:          {"NAI is an IPv4 adjacency", rfc(8664)},
+	NAITypeSRIPv6AdjacencyGlobal:    {"NAI is an IPv6 adjacency with global IPv6 addresses", rfc(8664)},
+	NAITypeSRUnnumberedAdjacency:    {"NAI is an unnumbered adjacency with IPv4 node IDs", rfc(8664)},
+	NAITypeSRIPv6AdjacencyLinkLocal: {"NAI is an IPv6 adjacency with link-local IPv6 addresses", rfc(8664)},
 }
 
+// Name returns the registered name of the NAI type, or "" if unregistered.
+func (nt NAITypeSR) Name() string { return naiTypeSRDescriptions[nt].Description }
+
+// Reference returns the defining document of the NAI type. It reports
+// RefKindUnknown if the type is unregistered.
+func (nt NAITypeSR) Reference() Reference { return naiTypeSRDescriptions[nt].Reference }
+
 func (nt NAITypeSR) String() string {
-	if desc, ok := naiTypeSRDescriptions[nt]; ok {
-		return fmt.Sprintf("%s (0x%02x)", desc.Description, uint8(nt))
+	if name := nt.Name(); name != "" {
+		return fmt.Sprintf("%s (0x%02x)", name, uint8(nt))
 	}
 	return fmt.Sprintf("Unknown NAI Type (0x%02x)", uint8(nt))
 }
 
 // StringWithReference returns a human-readable representation with reference.
 func (nt NAITypeSR) StringWithReference() string {
-	if desc, ok := naiTypeSRDescriptions[nt]; ok {
-		return fmt.Sprintf("%s (0x%02x) [%s]", desc.Description, uint8(nt), desc.Reference)
-	}
-	return fmt.Sprintf("Unknown NAI Type (0x%02x)", uint8(nt))
+	return withReference(nt.String(), nt.Reference())
 }
 
 // SREroSubobject is an SR-ERO subobject carrying an SR-MPLS segment (RFC 8664 §4.3.1).
@@ -1393,29 +1392,30 @@ const (
 	NAITypeSRv6IPv6AdjacencyLinkLocal NAITypeSRv6 = 0x06
 )
 
-var naiTypeSRv6Descriptions = map[NAITypeSRv6]struct {
-	Description string
-	Reference   string
-}{
-	NAITypeSRv6Absent:                 {"NAI is absent", "RFC9603"},
-	NAITypeSRv6IPv6Node:               {"NAI is an IPv6 node ID", "RFC9603"},
-	NAITypeSRv6IPv6AdjacencyGlobal:    {"NAI is an IPv6 adjacency with global IPv6 addresses", "RFC9603"},
-	NAITypeSRv6IPv6AdjacencyLinkLocal: {"NAI is an IPv6 adjacency with link-local IPv6 addresses", "RFC9603"},
+var naiTypeSRv6Descriptions = map[NAITypeSRv6]codePointInfo{
+	NAITypeSRv6Absent:                 {"NAI is absent", rfc(9603)},
+	NAITypeSRv6IPv6Node:               {"NAI is an IPv6 node ID", rfc(9603)},
+	NAITypeSRv6IPv6AdjacencyGlobal:    {"NAI is an IPv6 adjacency with global IPv6 addresses", rfc(9603)},
+	NAITypeSRv6IPv6AdjacencyLinkLocal: {"NAI is an IPv6 adjacency with link-local IPv6 addresses", rfc(9603)},
 }
 
+// Name returns the registered name of the NAI type, or "" if unregistered.
+func (nt NAITypeSRv6) Name() string { return naiTypeSRv6Descriptions[nt].Description }
+
+// Reference returns the defining document of the NAI type. It reports
+// RefKindUnknown if the type is unregistered.
+func (nt NAITypeSRv6) Reference() Reference { return naiTypeSRv6Descriptions[nt].Reference }
+
 func (nt NAITypeSRv6) String() string {
-	if desc, ok := naiTypeSRv6Descriptions[nt]; ok {
-		return fmt.Sprintf("%s (0x%02x)", desc.Description, uint8(nt))
+	if name := nt.Name(); name != "" {
+		return fmt.Sprintf("%s (0x%02x)", name, uint8(nt))
 	}
 	return fmt.Sprintf("Unknown NAI Type (0x%02x)", uint8(nt))
 }
 
 // StringWithReference returns a human-readable representation with reference.
 func (nt NAITypeSRv6) StringWithReference() string {
-	if desc, ok := naiTypeSRv6Descriptions[nt]; ok {
-		return fmt.Sprintf("%s (0x%02x) [%s]", desc.Description, uint8(nt), desc.Reference)
-	}
-	return fmt.Sprintf("Unknown NAI Type (0x%02x)", uint8(nt))
+	return withReference(nt.String(), nt.Reference())
 }
 
 // SRv6EroSubobject is an SRv6-ERO subobject carrying an SRv6 segment (RFC 9603 §4.3.1).

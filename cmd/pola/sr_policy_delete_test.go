@@ -82,10 +82,10 @@ func TestNewSRPolicyDeleteCmd_RunE(t *testing.T) {
 func TestDeleteSRPolicy(t *testing.T) {
 	validPolicy := func() srPolicy {
 		return srPolicy{
-			PCEPSessionAddr: netip.MustParseAddr("192.0.2.1"),
-			DstAddr:         netip.MustParseAddr("192.0.2.2"),
+			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
+			DstAddr:         netip.MustParseAddr(testPeerAddr2),
 			Color:           100,
-			Name:            "pol1",
+			Name:            testPolicyName,
 		}
 	}
 
@@ -104,10 +104,10 @@ func TestDeleteSRPolicy(t *testing.T) {
 		assert.Equal(t, "success!\n", out)
 
 		require.NotNil(t, fake.deleteSRPolicyReq)
-		assert.Equal(t, netip.MustParseAddr("192.0.2.1").AsSlice(), fake.deleteSRPolicyReq.SrPolicy.PeerAddr)
-		assert.Equal(t, netip.MustParseAddr("192.0.2.2").AsSlice(), fake.deleteSRPolicyReq.SrPolicy.DstAddr)
+		assert.Equal(t, netip.MustParseAddr(testPeerAddr1).AsSlice(), fake.deleteSRPolicyReq.SrPolicy.PeerAddr)
+		assert.Equal(t, netip.MustParseAddr(testPeerAddr2).AsSlice(), fake.deleteSRPolicyReq.SrPolicy.DstAddr)
 		assert.Equal(t, uint32(100), fake.deleteSRPolicyReq.SrPolicy.Color)
-		assert.Equal(t, "pol1", fake.deleteSRPolicyReq.SrPolicy.PolicyName)
+		assert.Equal(t, testPolicyName, fake.deleteSRPolicyReq.SrPolicy.PolicyName)
 		assert.Equal(t, uint32(65000), fake.deleteSRPolicyReq.Asn)
 	})
 

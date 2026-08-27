@@ -14,6 +14,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	testRouterID1    = "0000.0000.0001"
+	testRouterIDA    = "0000.0000.000a"
+	testRouterIDB    = "0000.0000.000b"
+	testRouterIDC    = "0000.0000.000c"
+	testInvalidAddr  = "not-an-address"
+	testSRv6SID1     = "2001:db8::1"
+	testSRv6SID2     = "2001:db8::2"
+	testSRv6ExactSID = "2001:db8:1::"
+)
+
 func newTestTED(nodes ...*LsNode) *LsTED {
 	m := make(map[string]*LsNode, len(nodes))
 	for _, n := range nodes {
@@ -24,7 +35,7 @@ func newTestTED(nodes ...*LsNode) *LsTED {
 
 func TestSIDIndexHas_SRMPLS(t *testing.T) {
 	node := &LsNode{
-		RouterID:  "0000.0000.0001",
+		RouterID:  testRouterID1,
 		SrgbBegin: 16000,
 		Prefixes: []*LsPrefix{
 			{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 3, HasSidIndex: true},
@@ -55,7 +66,7 @@ func TestSIDIndexHas_SRMPLS(t *testing.T) {
 func TestSIDIndexHas_SRMPLS_SrgbBeginZero(t *testing.T) {
 	// Without an SRGB, a Prefix-SID index cannot be converted to a label.
 	node := &LsNode{
-		RouterID: "0000.0000.0001",
+		RouterID: testRouterID1,
 		Prefixes: []*LsPrefix{
 			{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 16003, HasSidIndex: true},
 		},
@@ -68,7 +79,7 @@ func TestSIDIndexHas_SRMPLS_PrefixSIDIndexZero(t *testing.T) {
 	// Prefix-SID index 0 is a valid index: SRGB begin + 0 must be registered
 	// when the Prefix-SID TLV was actually advertised.
 	node := &LsNode{
-		RouterID:  "0000.0000.0001",
+		RouterID:  testRouterID1,
 		SrgbBegin: 16000,
 		Prefixes: []*LsPrefix{
 			{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 0, HasSidIndex: true},
@@ -81,7 +92,7 @@ func TestSIDIndexHas_SRMPLS_PrefixSIDIndexZero(t *testing.T) {
 func TestSIDIndexHas_SRMPLS_NoPrefixSID(t *testing.T) {
 	// A prefix without a Prefix-SID TLV must not register the SRGB begin label.
 	node := &LsNode{
-		RouterID:  "0000.0000.0001",
+		RouterID:  testRouterID1,
 		SrgbBegin: 16000,
 		Prefixes: []*LsPrefix{
 			{Prefix: netip.MustParsePrefix("10.0.0.1/32")},
@@ -101,7 +112,7 @@ func TestSIDIndexHas_SRMPLS_PrefixSIDRanges(t *testing.T) {
 		{
 			name: "index inside the SRGB",
 			node: &LsNode{
-				RouterID: "0000.0000.0001", SrgbBegin: 16000, SrgbEnd: 24000,
+				RouterID: testRouterID1, SrgbBegin: 16000, SrgbEnd: 24000,
 				Prefixes: []*LsPrefix{{SidIndex: 3, HasSidIndex: true}},
 			},
 			label: 16003,
@@ -110,7 +121,7 @@ func TestSIDIndexHas_SRMPLS_PrefixSIDRanges(t *testing.T) {
 		{
 			name: "last index of the SRGB (SrgbEnd is exclusive)",
 			node: &LsNode{
-				RouterID: "0000.0000.0001", SrgbBegin: 16000, SrgbEnd: 24000,
+				RouterID: testRouterID1, SrgbBegin: 16000, SrgbEnd: 24000,
 				Prefixes: []*LsPrefix{{SidIndex: 7999, HasSidIndex: true}},
 			},
 			label: 23999,
@@ -119,7 +130,7 @@ func TestSIDIndexHas_SRMPLS_PrefixSIDRanges(t *testing.T) {
 		{
 			name: "index at SrgbEnd is outside the SRGB",
 			node: &LsNode{
-				RouterID: "0000.0000.0001", SrgbBegin: 16000, SrgbEnd: 24000,
+				RouterID: testRouterID1, SrgbBegin: 16000, SrgbEnd: 24000,
 				Prefixes: []*LsPrefix{{SidIndex: 8000, HasSidIndex: true}},
 			},
 			label: 24000,
@@ -128,7 +139,7 @@ func TestSIDIndexHas_SRMPLS_PrefixSIDRanges(t *testing.T) {
 		{
 			name: "index beyond the SRGB",
 			node: &LsNode{
-				RouterID: "0000.0000.0001", SrgbBegin: 16000, SrgbEnd: 24000,
+				RouterID: testRouterID1, SrgbBegin: 16000, SrgbEnd: 24000,
 				Prefixes: []*LsPrefix{{SidIndex: 100000, HasSidIndex: true}},
 			},
 			label: 116000,
@@ -137,7 +148,7 @@ func TestSIDIndexHas_SRMPLS_PrefixSIDRanges(t *testing.T) {
 		{
 			name: "label beyond the 20-bit MPLS range without an SRGB end",
 			node: &LsNode{
-				RouterID: "0000.0000.0001", SrgbBegin: 1000000,
+				RouterID: testRouterID1, SrgbBegin: 1000000,
 				Prefixes: []*LsPrefix{{SidIndex: 100000, HasSidIndex: true}},
 			},
 			label: 1100000,
@@ -146,7 +157,7 @@ func TestSIDIndexHas_SRMPLS_PrefixSIDRanges(t *testing.T) {
 		{
 			name: "index that would overflow uint32",
 			node: &LsNode{
-				RouterID: "0000.0000.0001", SrgbBegin: 16000,
+				RouterID: testRouterID1, SrgbBegin: 16000,
 				Prefixes: []*LsPrefix{{SidIndex: 0xFFFFFFFF, HasSidIndex: true}},
 			},
 			label: 15999, // 16000 + 0xFFFFFFFF wrapped around
@@ -182,9 +193,9 @@ func TestLsPrefixHasPrefixSID(t *testing.T) {
 
 func TestSIDIndexHas_SRv6Exact(t *testing.T) {
 	node := &LsNode{
-		RouterID: "0000.0000.0001",
+		RouterID: testRouterID1,
 		SRv6SIDs: []*LsSrv6SID{
-			{Sids: []string{"2001:db8:1::"}, SIDStructure: SIDStructure{}},
+			{Sids: []string{testSRv6ExactSID}, SIDStructure: SIDStructure{}},
 		},
 		Links: []*LsLink{
 			{
@@ -202,7 +213,7 @@ func TestSIDIndexHas_SRv6Exact(t *testing.T) {
 		seg  Segment
 		want bool
 	}{
-		{"End SID exact match", NewSegmentSRv6(netip.MustParseAddr("2001:db8:1::")), true},
+		{"End SID exact match", NewSegmentSRv6(netip.MustParseAddr(testSRv6ExactSID)), true},
 		{"End.X SID exact match", NewSegmentSRv6(netip.MustParseAddr("2001:db8:1::1")), true},
 		{"unknown SID", NewSegmentSRv6(netip.MustParseAddr("2001:db8:1::99")), false},
 	}
@@ -217,7 +228,7 @@ func TestSIDIndexHas_SRv6Exact(t *testing.T) {
 func TestSIDIndexHas_USID(t *testing.T) {
 	// TED advertises a locator of block=32, node=16 bits -> fcbb:bb00:0100::/48.
 	node := &LsNode{
-		RouterID: "0000.0000.0001",
+		RouterID: testRouterID1,
 		SRv6SIDs: []*LsSrv6SID{
 			{
 				Sids:         []string{"fcbb:bb00:0100::"},
@@ -269,14 +280,14 @@ func TestMissingSegmentString(t *testing.T) {
 }
 
 func TestNewSIDIndex_SkipsNilNode(t *testing.T) {
-	ted := &LsTED{Nodes: map[string]*LsNode{"0000.0000.0001": nil}}
+	ted := &LsTED{Nodes: map[string]*LsNode{testRouterID1: nil}}
 	idx := NewSIDIndex(ted)
 	assert.False(t, idx.Has(NewSegmentSRMPLS(16003)), "expected no panic and no match when a map entry is nil")
 }
 
 func TestSIDIndexAddLinkSIDs_SkipsNilLink(t *testing.T) {
 	node := &LsNode{
-		RouterID: "0000.0000.0001",
+		RouterID: testRouterID1,
 		Links:    []*LsLink{nil, {AdjSid: 24001}},
 	}
 	idx := NewSIDIndex(newTestTED(node))
@@ -291,7 +302,7 @@ func TestSIDIndexHas_UnknownSegmentType(t *testing.T) {
 func TestSIDIndexAddSRv6_EdgeCases(t *testing.T) {
 	t.Run("non-IPv6 SID is not registered", func(t *testing.T) {
 		node := &LsNode{
-			RouterID: "0000.0000.0001",
+			RouterID: testRouterID1,
 			SRv6SIDs: []*LsSrv6SID{{Sids: []string{"10.0.0.1"}}},
 		}
 		idx := NewSIDIndex(newTestTED(node))
@@ -300,17 +311,17 @@ func TestSIDIndexAddSRv6_EdgeCases(t *testing.T) {
 
 	t.Run("unparsable SID is not registered", func(t *testing.T) {
 		node := &LsNode{
-			RouterID: "0000.0000.0001",
-			SRv6SIDs: []*LsSrv6SID{{Sids: []string{"not-an-address"}}},
+			RouterID: testRouterID1,
+			SRv6SIDs: []*LsSrv6SID{{Sids: []string{testInvalidAddr}}},
 		}
 		idx := NewSIDIndex(newTestTED(node))
-		assert.False(t, idx.Has(NewSegmentSRv6(netip.MustParseAddr("2001:db8::1"))))
+		assert.False(t, idx.Has(NewSegmentSRv6(netip.MustParseAddr(testSRv6SID1))))
 	})
 
 	t.Run("zero locator length still registers the exact SID but skips the locator", func(t *testing.T) {
 		sid := netip.MustParseAddr("fc00:0:1::")
 		node := &LsNode{
-			RouterID: "0000.0000.0001",
+			RouterID: testRouterID1,
 			SRv6SIDs: []*LsSrv6SID{{Sids: []string{sid.String()}, SIDStructure: SIDStructure{}}},
 		}
 		idx := NewSIDIndex(newTestTED(node))
@@ -324,7 +335,7 @@ func TestSIDIndexAddSRv6_EdgeCases(t *testing.T) {
 	t.Run("locator length beyond 128 bits is not registered", func(t *testing.T) {
 		sid := netip.MustParseAddr("fc00:0:1::")
 		node := &LsNode{
-			RouterID: "0000.0000.0001",
+			RouterID: testRouterID1,
 			SRv6SIDs: []*LsSrv6SID{{Sids: []string{sid.String()}, SIDStructure: SIDStructure{LocalBlock: 200, LocalNode: 200}}},
 		}
 		idx := NewSIDIndex(newTestTED(node))
@@ -348,14 +359,14 @@ func TestSIDIndexHas_EmptyTED(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			idx := NewSIDIndex(tt.ted)
 			assert.False(t, idx.Has(NewSegmentSRMPLS(16003)), "expected no match against an empty TED")
-			assert.False(t, idx.Has(NewSegmentSRv6(netip.MustParseAddr("2001:db8:1::"))), "expected no match against an empty TED")
+			assert.False(t, idx.Has(NewSegmentSRv6(netip.MustParseAddr(testSRv6ExactSID))), "expected no match against an empty TED")
 		})
 	}
 }
 
 func TestMissingSegments(t *testing.T) {
 	node := &LsNode{
-		RouterID:  "0000.0000.0001",
+		RouterID:  testRouterID1,
 		SrgbBegin: 16000,
 		Prefixes: []*LsPrefix{
 			{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 3, HasSidIndex: true},
@@ -394,7 +405,7 @@ func TestHasUnknownSegmentType(t *testing.T) {
 		},
 		{
 			name: "all known, SRv6",
-			segs: []Segment{NewSegmentSRv6(netip.MustParseAddr("2001:db8::1"))},
+			segs: []Segment{NewSegmentSRv6(netip.MustParseAddr(testSRv6SID1))},
 			want: false,
 		},
 		{
@@ -449,7 +460,7 @@ func TestOutOfRangeSRMPLSLabels(t *testing.T) {
 		},
 		{
 			name: "SRv6 and nil segments are ignored",
-			segs: []Segment{nil, NewSegmentSRv6(netip.MustParseAddr("2001:db8::1"))},
+			segs: []Segment{nil, NewSegmentSRv6(netip.MustParseAddr(testSRv6SID1))},
 		},
 		{
 			name: "empty list",
@@ -472,8 +483,8 @@ func TestHasMixedSegmentTypes(t *testing.T) {
 		{
 			name: "all SRv6",
 			segs: []Segment{
-				NewSegmentSRv6(netip.MustParseAddr("2001:db8::1")),
-				NewSegmentSRv6(netip.MustParseAddr("2001:db8::2")),
+				NewSegmentSRv6(netip.MustParseAddr(testSRv6SID1)),
+				NewSegmentSRv6(netip.MustParseAddr(testSRv6SID2)),
 			},
 			want: false,
 		},
@@ -485,7 +496,7 @@ func TestHasMixedSegmentTypes(t *testing.T) {
 		{
 			name: "mixed SRv6 then SR-MPLS",
 			segs: []Segment{
-				NewSegmentSRv6(netip.MustParseAddr("2001:db8::1")),
+				NewSegmentSRv6(netip.MustParseAddr(testSRv6SID1)),
 				NewSegmentSRMPLS(16001),
 			},
 			want: true,
@@ -494,14 +505,14 @@ func TestHasMixedSegmentTypes(t *testing.T) {
 			name: "mixed SR-MPLS then SRv6",
 			segs: []Segment{
 				NewSegmentSRMPLS(16001),
-				NewSegmentSRv6(netip.MustParseAddr("2001:db8::1")),
+				NewSegmentSRv6(netip.MustParseAddr(testSRv6SID1)),
 			},
 			want: true,
 		},
 		{
 			name: "SRv6 with unknown family",
 			segs: []Segment{
-				NewSegmentSRv6(netip.MustParseAddr("2001:db8::1")),
+				NewSegmentSRv6(netip.MustParseAddr(testSRv6SID1)),
 				fakeUnknownSegment{},
 			},
 			want: false,
@@ -538,17 +549,17 @@ func TestValidateExplicitPath(t *testing.T) {
 	// Topology: A --adj24001--> B --adj24002--> C
 	// A has node SID 16001, B has node SID 16002, C has node SID 16003.
 	nodeA := &LsNode{
-		RouterID:  "0000.0000.000a",
+		RouterID:  testRouterIDA,
 		SrgbBegin: 16000,
 		Prefixes:  []*LsPrefix{{Prefix: netip.MustParsePrefix("10.0.0.10/32"), SidIndex: 1, HasSidIndex: true}},
 	}
 	nodeB := &LsNode{
-		RouterID:  "0000.0000.000b",
+		RouterID:  testRouterIDB,
 		SrgbBegin: 16000,
 		Prefixes:  []*LsPrefix{{Prefix: netip.MustParsePrefix("10.0.0.11/32"), SidIndex: 2, HasSidIndex: true}},
 	}
 	nodeC := &LsNode{
-		RouterID:  "0000.0000.000c",
+		RouterID:  testRouterIDC,
 		SrgbBegin: 16000,
 		Prefixes:  []*LsPrefix{{Prefix: netip.MustParsePrefix("10.0.0.12/32"), SidIndex: 3, HasSidIndex: true}},
 	}
@@ -565,7 +576,7 @@ func TestValidateExplicitPath(t *testing.T) {
 	}{
 		{
 			name: "valid: A to B via node SID, B to C via adj SID on B",
-			src:  "0000.0000.000a",
+			src:  testRouterIDA,
 			segs: []Segment{
 				NewSegmentSRMPLS(16002), // node SID of B
 				NewSegmentSRMPLS(24002), // adj SID on B -> C
@@ -574,7 +585,7 @@ func TestValidateExplicitPath(t *testing.T) {
 		},
 		{
 			name: "adj SID on wrong owner: B adj SID used while owner is A",
-			src:  "0000.0000.000a",
+			src:  testRouterIDA,
 			segs: []Segment{
 				NewSegmentSRMPLS(24002), // belongs to B, not A
 			},
@@ -582,7 +593,7 @@ func TestValidateExplicitPath(t *testing.T) {
 		},
 		{
 			name: "SID not in TED",
-			src:  "0000.0000.000a",
+			src:  testRouterIDA,
 			segs: []Segment{
 				NewSegmentSRMPLS(99999),
 			},
@@ -590,7 +601,7 @@ func TestValidateExplicitPath(t *testing.T) {
 		},
 		{
 			name: "single node SID valid",
-			src:  "0000.0000.000a",
+			src:  testRouterIDA,
 			segs: []Segment{
 				NewSegmentSRMPLS(16001), // node SID of A
 			},
@@ -598,7 +609,7 @@ func TestValidateExplicitPath(t *testing.T) {
 		},
 		{
 			name:    "empty segment list",
-			src:     "0000.0000.000a",
+			src:     testRouterIDA,
 			segs:    []Segment{},
 			wantErr: "",
 		},
@@ -626,15 +637,15 @@ func TestValidateExplicitPathSRv6(t *testing.T) {
 	// Topology: A --End.X:fc00::a:b--> B --End.X:fc00::b:c--> C
 	// A has End SID fc00::a:1, B has End SID fc00::b:1, C has End SID fc00::c:1.
 	nodeA := &LsNode{
-		RouterID: "0000.0000.000a",
+		RouterID: testRouterIDA,
 		SRv6SIDs: []*LsSrv6SID{{Sids: []string{"fc00::a:1"}}},
 	}
 	nodeB := &LsNode{
-		RouterID: "0000.0000.000b",
+		RouterID: testRouterIDB,
 		SRv6SIDs: []*LsSrv6SID{{Sids: []string{"fc00::b:1"}}},
 	}
 	nodeC := &LsNode{
-		RouterID: "0000.0000.000c",
+		RouterID: testRouterIDC,
 		SRv6SIDs: []*LsSrv6SID{{Sids: []string{"fc00::c:1"}}},
 	}
 	nodeA.Links = []*LsLink{{LocalNode: nodeA, RemoteNode: nodeB, Srv6EndXSID: &Srv6EndXSID{Sids: []string{"fc00::a:b"}}}}
@@ -650,7 +661,7 @@ func TestValidateExplicitPathSRv6(t *testing.T) {
 	}{
 		{
 			name: "valid: A to B via End SID, B to C via End.X on B",
-			src:  "0000.0000.000a",
+			src:  testRouterIDA,
 			segs: []Segment{
 				NewSegmentSRv6(netip.MustParseAddr("fc00::b:1")), // End SID of B
 				NewSegmentSRv6(netip.MustParseAddr("fc00::b:c")), // End.X on B -> C
@@ -659,7 +670,7 @@ func TestValidateExplicitPathSRv6(t *testing.T) {
 		},
 		{
 			name: "End.X on wrong owner: B End.X used while owner is A",
-			src:  "0000.0000.000a",
+			src:  testRouterIDA,
 			segs: []Segment{
 				NewSegmentSRv6(netip.MustParseAddr("fc00::b:c")), // belongs to B, not A
 			},
@@ -667,7 +678,7 @@ func TestValidateExplicitPathSRv6(t *testing.T) {
 		},
 		{
 			name: "SRv6 SID not in TED",
-			src:  "0000.0000.000a",
+			src:  testRouterIDA,
 			segs: []Segment{
 				NewSegmentSRv6(netip.MustParseAddr("fd00::dead:beef")),
 			},
@@ -675,7 +686,7 @@ func TestValidateExplicitPathSRv6(t *testing.T) {
 		},
 		{
 			name: "single End SID valid",
-			src:  "0000.0000.000a",
+			src:  testRouterIDA,
 			segs: []Segment{
 				NewSegmentSRv6(netip.MustParseAddr("fc00::a:1")), // End SID of A
 			},
@@ -703,12 +714,12 @@ func TestValidateExplicitPathSRv6(t *testing.T) {
 
 func TestSIDIndexNextHop_OwnerUnknownBranches(t *testing.T) {
 	node := &LsNode{
-		RouterID: "0000.0000.0001",
+		RouterID: testRouterID1,
 		Links: []*LsLink{
 			{AdjSid: 24001, Srv6EndXSID: &Srv6EndXSID{Sids: []string{"2001:db8::a"}}},
 		},
 		SRv6SIDs: []*LsSrv6SID{
-			{Sids: []string{"2001:db8::1"}},
+			{Sids: []string{testSRv6SID1}},
 		},
 	}
 	idx := NewSIDIndex(newTestTED(node))
@@ -740,13 +751,13 @@ func TestSIDIndexNextHop_OwnerUnknownBranches(t *testing.T) {
 
 func TestSIDIndexNextHop_UnknownSegmentFamily(t *testing.T) {
 	idx := NewSIDIndex(newTestTED())
-	_, err := idx.NextHop("0000.0000.0001", fakeUnknownSegment{})
+	_, err := idx.NextHop(testRouterID1, fakeUnknownSegment{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown segment family")
 }
 
 func TestValidateExplicitPath_InputErrors(t *testing.T) {
-	node := &LsNode{RouterID: "0000.0000.0001"}
+	node := &LsNode{RouterID: testRouterID1}
 	ted := newTestTED(node)
 
 	t.Run("nil TED", func(t *testing.T) {

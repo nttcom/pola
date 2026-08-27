@@ -38,6 +38,14 @@ func topologyLimitationf(reason, format string, a ...any) error {
 	return &TopologyLimitationError{Err: fmt.Errorf(format, a...), Reason: reason}
 }
 
+const (
+	reasonTEDDataIncomplete      = "TED_DATA_INCOMPLETE"
+	reasonMetricNotCarried       = "METRIC_NOT_CARRIED"
+	reasonDestinationUnreachable = "DESTINATION_UNREACHABLE"
+)
+
+const errNextNodeNotFound = "next node not found"
+
 type node struct {
 	id          string
 	calculated  bool
@@ -159,13 +167,13 @@ func buildWaypointSegment(node *table.LsNode, explicitSID string) (table.Segment
 		}
 		seg, err := table.NewSegmentSRv6WithNodeInfo(addr, node)
 		if err != nil {
-			return nil, topologyLimitationf("TED_DATA_INCOMPLETE", "%w", err)
+			return nil, topologyLimitationf(reasonTEDDataIncomplete, "%w", err)
 		}
 		return seg, nil
 	}
 	seg, err := node.NodeSegment()
 	if err != nil {
-		return nil, topologyLimitationf("TED_DATA_INCOMPLETE", "%w", err)
+		return nil, topologyLimitationf(reasonTEDDataIncomplete, "%w", err)
 	}
 	return seg, nil
 }
@@ -233,7 +241,7 @@ func initNodeMap(srcRouterID string, network map[string]*table.LsNode) (map[stri
 	}
 	startNodeSeg, err := srcNode.NodeSegment()
 	if err != nil {
-		return nil, topologyLimitationf("TED_DATA_INCOMPLETE", "%w", err)
+		return nil, topologyLimitationf(reasonTEDDataIncomplete, "%w", err)
 	}
 	startNode := newNode(srcRouterID, 0, startNodeSeg)
 	startNode.calculated = false
@@ -244,7 +252,7 @@ func initNodeMap(srcRouterID string, network map[string]*table.LsNode) (map[stri
 func updateNeighborCosts(calcNodeID string, calculatingNodes map[string]*node, network map[string]*table.LsNode, metricType table.MetricType) error {
 	calcNode, ok := nodeInTED(network, calcNodeID)
 	if !ok {
-		return topologyLimitationf("TED_DATA_INCOMPLETE", "router %s not found in TED", calcNodeID)
+		return topologyLimitationf(reasonTEDDataIncomplete, "router %s not found in TED", calcNodeID)
 	}
 
 	for _, link := range calcNode.Links {
@@ -257,7 +265,7 @@ func updateNeighborCosts(calcNodeID string, calculatingNodes map[string]*node, n
 
 		metric, err := link.Metric(metricType)
 		if err != nil {
-			return topologyLimitationf("METRIC_NOT_CARRIED", "%w", err)
+			return topologyLimitationf(reasonMetricNotCarried, "%w", err)
 		}
 
 		if remoteNode, exists := calculatingNodes[link.RemoteNode.RouterID]; exists {
@@ -268,7 +276,7 @@ func updateNeighborCosts(calcNodeID string, calculatingNodes map[string]*node, n
 		} else {
 			remoteNodeSeg, err := link.RemoteNode.NodeSegment()
 			if err != nil {
-				return topologyLimitationf("TED_DATA_INCOMPLETE", "%w", err)
+				return topologyLimitationf(reasonTEDDataIncomplete, "%w", err)
 			}
 			remoteNode := newNode(link.RemoteNode.RouterID, calculatingNodes[calcNodeID].cost+metric, remoteNodeSeg)
 			remoteNode.prevNode = calcNodeID
@@ -305,7 +313,7 @@ func nextNode(calculatingNodes map[string]*node) (string, error) {
 		}
 	}
 	if nextNodeID == "" {
-		return "", topologyLimitationf("DESTINATION_UNREACHABLE", "next node not found")
+		return "", topologyLimitationf(reasonDestinationUnreachable, errNextNodeNotFound)
 	}
 	return nextNodeID, nil
 }

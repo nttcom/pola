@@ -22,7 +22,7 @@ func TestNewTEDCmd_RunE(t *testing.T) {
 
 	client = &fakePCEServiceClient{tedResp: &pb.GetTEDResponse{
 		Enabled: true,
-		Nodes:   []*pb.LsNode{{RouterId: "0000.0aff.0001"}},
+		Nodes:   []*pb.LsNode{{RouterId: testRouterID1}},
 	}}
 	captureStdout(t, func() {
 		require.NoError(t, cmd.RunE(cmd, []string{}))
@@ -58,30 +58,30 @@ func TestShowTED(t *testing.T) {
 	t.Run("plain text output", func(t *testing.T) {
 		client = &fakePCEServiceClient{tedResp: &pb.GetTEDResponse{
 			Enabled: true,
-			Nodes:   []*pb.LsNode{{RouterId: "0000.0aff.0001"}},
+			Nodes:   []*pb.LsNode{{RouterId: testRouterID1}},
 		}}
 		var buf bytes.Buffer
 		require.NoError(t, showTED(&buf, outputText))
-		assert.Contains(t, buf.String(), "0000.0aff.0001")
+		assert.Contains(t, buf.String(), testRouterID1)
 	})
 
 	t.Run("json output", func(t *testing.T) {
 		node := &pb.LsNode{
 			Asn:      65000,
-			RouterId: "0000.0aff.0001",
+			RouterId: testRouterID1,
 			Hostname: "routerA",
 			Links: []*pb.LsLink{
 				{
-					LocalRouterId:  "0000.0aff.0001",
-					RemoteRouterId: "0000.0aff.0001",
-					LocalIp:        "192.0.2.1",
+					LocalRouterId:  testRouterID1,
+					RemoteRouterId: testRouterID1,
+					LocalIp:        testPeerAddr1,
 					Metrics:        []*pb.Metric{{Type: pb.MetricType_METRIC_TYPE_IGP, Value: 10}},
 					AdjSid:         24001,
 				},
 				{
-					LocalRouterId:  "0000.0aff.0001",
-					RemoteRouterId: "0000.0aff.0001",
-					RemoteIp:       "192.0.2.2",
+					LocalRouterId:  testRouterID1,
+					RemoteRouterId: testRouterID1,
+					RemoteIp:       testPeerAddr2,
 					AdjSid:         24002,
 				},
 			},
@@ -112,14 +112,14 @@ func TestShowTED(t *testing.T) {
 		require.True(t, ok)
 		require.Len(t, links, 2)
 		linkMap := links[0].(map[string]any)
-		assert.Equal(t, "192.0.2.1", linkMap["localIp"])
+		assert.Equal(t, testPeerAddr1, linkMap["localIp"])
 		_, hasRemoteIP := linkMap["remoteIp"]
 		assert.False(t, hasRemoteIP, "unset remoteIp must be omitted, not a \"None\" sentinel")
 
 		linkMap2 := links[1].(map[string]any)
 		_, hasLocalIP := linkMap2["localIp"]
 		assert.False(t, hasLocalIP)
-		assert.Equal(t, "192.0.2.2", linkMap2["remoteIp"])
+		assert.Equal(t, testPeerAddr2, linkMap2["remoteIp"])
 
 		prefixes, ok := nodeMap["prefixes"].([]any)
 		require.True(t, ok)

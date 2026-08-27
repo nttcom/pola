@@ -21,16 +21,21 @@ import (
 	"github.com/nttcom/pola/pkg/table"
 )
 
+const (
+	testAddr        = "127.0.0.1"
+	testLogFileName = "polad.log"
+)
+
 func validConfig(t *testing.T) config.Config {
 	t.Helper()
 
 	return config.Config{
 		Global: config.Global{
-			PCEP:       config.PCEP{Address: "127.0.0.1", Port: "4189"},
-			GRPCServer: config.GRPCServer{Address: "127.0.0.1", Port: "50051"},
+			PCEP:       config.PCEP{Address: testAddr, Port: "4189"},
+			GRPCServer: config.GRPCServer{Address: testAddr, Port: "50051"},
 			Log: config.Log{
 				Path: t.TempDir() + string(filepath.Separator),
-				Name: "polad.log",
+				Name: testLogFileName,
 			},
 			TED: &config.TED{Enable: false},
 		},
@@ -113,7 +118,7 @@ func TestOpenLogFile(t *testing.T) {
 
 		c := &config.Config{Global: config.Global{Log: config.Log{
 			Path: filepath.Join(blocker, "nested") + string(filepath.Separator),
-			Name: "polad.log",
+			Name: testLogFileName,
 		}}}
 
 		_, err := openLogFile(c)
@@ -132,7 +137,7 @@ func TestOpenLogFile(t *testing.T) {
 
 		c := &config.Config{Global: config.Global{Log: config.Log{
 			Path: dir + string(filepath.Separator),
-			Name: "polad.log",
+			Name: testLogFileName,
 		}}}
 
 		_, err := openLogFile(c)
@@ -144,7 +149,7 @@ func TestOpenLogFile(t *testing.T) {
 		dir := t.TempDir()
 		c := &config.Config{Global: config.Global{Log: config.Log{
 			Path: dir + string(filepath.Separator),
-			Name: "polad.log",
+			Name: testLogFileName,
 		}}}
 
 		fp, err := openLogFile(c)
@@ -177,7 +182,7 @@ func TestNewTEDElemsChan(t *testing.T) {
 	})
 
 	t.Run("returns an error when ASN is missing", func(t *testing.T) {
-		c := &config.Config{Global: config.Global{TED: &config.TED{Enable: true, Source: "gobgp"}}}
+		c := &config.Config{Global: config.Global{TED: &config.TED{Enable: true, Source: tedSourceGoBGP}}}
 
 		ch, err := newTEDElemsChan(context.Background(), c, zap.NewNop(), nil)
 
@@ -197,15 +202,15 @@ func TestNewTEDElemsChan(t *testing.T) {
 	t.Run("starts the configured monitor and returns a channel", func(t *testing.T) {
 		c := &config.Config{
 			Global: config.Global{
-				TED: &config.TED{Enable: true, ASN: 65000, Source: "gobgp"},
+				TED: &config.TED{Enable: true, ASN: 65000, Source: tedSourceGoBGP},
 				GoBGP: config.GoBGP{
-					GRPCClient: config.GRPCClient{Address: "127.0.0.1", Port: "0"},
+					GRPCClient: config.GRPCClient{Address: testAddr, Port: "0"},
 				},
 			},
 		}
 		called := make(chan struct{})
 		monitor := func(_ context.Context, addr, port string, _ chan []table.TEDElem, _ *zap.Logger) {
-			require.Equal(t, "127.0.0.1", addr)
+			require.Equal(t, testAddr, addr)
 			require.Equal(t, "0", port)
 			close(called)
 		}
@@ -220,7 +225,7 @@ func TestNewTEDElemsChan(t *testing.T) {
 
 func TestRun(t *testing.T) {
 	t.Run("prints the version and exits without touching config", func(t *testing.T) {
-		err := run([]string{"--version"}, runDeps{})
+		err := run([]string{versionFlag}, runDeps{})
 
 		require.NoError(t, err)
 	})
@@ -312,7 +317,7 @@ func TestRun(t *testing.T) {
 
 func TestMainRun(t *testing.T) {
 	t.Run("returns 0 on success", func(t *testing.T) {
-		require.Equal(t, 0, mainRun([]string{"--version"}))
+		require.Equal(t, 0, mainRun([]string{versionFlag}))
 	})
 
 	t.Run("returns 1 when run fails", func(t *testing.T) {

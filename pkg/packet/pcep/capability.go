@@ -5,13 +5,13 @@
 
 package pcep
 
-// CapabilityInterface is a common interface for PCEP capability TLVs.
+// CapabilityInterface identifies TLVs valid in an OPEN object's capability list.
 type CapabilityInterface interface {
 	TLVInterface
-	CapStrings() []string
+	isCapability()
 }
 
-// polaStatefulCapability returns Pola's Stateful PCE Capability (RFC 8231).
+// polaStatefulCapability returns Pola's Stateful PCE Capability.
 func polaStatefulCapability() *StatefulPCECapability {
 	return &StatefulPCECapability{
 		LSPUpdateCapability:            true,
@@ -32,8 +32,7 @@ func polaStatefulCapability() *StatefulPCECapability {
 	}
 }
 
-// polaPathSetupTypeCapability returns Pola's supported path setup types
-// and their SR capability sub-TLVs.
+// polaPathSetupTypeCapability returns Pola's supported path setup types.
 func polaPathSetupTypeCapability() *PathSetupTypeCapability {
 	return &PathSetupTypeCapability{
 		PathSetupTypes: Psts{PathSetupTypeSRTE, PathSetupTypeSRv6TE},
@@ -53,14 +52,12 @@ func polaAssocTypeList() *AssocTypeList {
 	}
 }
 
-// polaMultipathCapability returns Pola's MULTIPATH-CAP TLV.
-// Pola currently computes a single path per request.
+// polaMultipathCapability advertises support for a single path per request.
 func polaMultipathCapability() *MultipathCapability {
 	return NewMultipathCapability(1, false, false, false, false)
 }
 
-// FlattenCapabilities appends PATH-SETUP-TYPE-CAPABILITY sub-capabilities
-// to the top-level list. This normalizes the two nesting forms allowed by
+// FlattenCapabilities normalizes the two capability nesting forms allowed by
 // RFC 8664 Appendix A. Only one level of nesting is expanded.
 func FlattenCapabilities(caps []CapabilityInterface) []CapabilityInterface {
 	ret := make([]CapabilityInterface, 0, len(caps))

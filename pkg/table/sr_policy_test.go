@@ -13,6 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const testSRv6Addr = "fc00:0:1::"
+
 func newTestSegmentSRMPLS(sid uint32, local, remote string) SegmentSRMPLS {
 	seg := NewSegmentSRMPLS(sid)
 	if local != "" {
@@ -216,7 +218,7 @@ func TestNewSegment(t *testing.T) {
 		want    Segment
 		wantErr bool
 	}{
-		{"SRv6 address", "fc00:0:1::", NewSegmentSRv6(netip.MustParseAddr("fc00:0:1::")), false},
+		{"SRv6 address", testSRv6Addr, NewSegmentSRv6(netip.MustParseAddr(testSRv6Addr)), false},
 		{"SR-MPLS label", "16001", NewSegmentSRMPLS(16001), false},
 		{"IPv4 address is not a valid SID", "10.0.0.1", nil, true},
 		{"non-numeric, non-IP string", "not-a-sid", nil, true},
@@ -379,7 +381,7 @@ func TestNewSegmentSRv6WithNodeInfo(t *testing.T) {
 			node: &LsNode{
 				SRv6SIDs: []*LsSrv6SID{
 					{
-						Sids:             []string{"fc00:0:1::"},
+						Sids:             []string{testSRv6Addr},
 						SIDStructure:     SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
 						EndpointBehavior: EndpointBehavior{Behavior: BehaviorEND},
 					},
@@ -387,7 +389,7 @@ func TestNewSegmentSRv6WithNodeInfo(t *testing.T) {
 			},
 			want: SegmentSRv6{
 				Sid:       netip.MustParseAddr("2001:db8::1"),
-				LocalAddr: netip.MustParseAddr("fc00:0:1::"),
+				LocalAddr: netip.MustParseAddr(testSRv6Addr),
 				Structure: SIDStructureBytes{32, 16, 16, 0},
 				USid:      false,
 			},
@@ -415,19 +417,19 @@ func TestNewSegmentSRv6WithNodeInfo(t *testing.T) {
 			node: &LsNode{
 				SRv6SIDs: []*LsSrv6SID{
 					{Sids: []string{}},
-					{Sids: []string{"fc00:0:1::"}, EndpointBehavior: EndpointBehavior{Behavior: BehaviorEND}},
+					{Sids: []string{testSRv6Addr}, EndpointBehavior: EndpointBehavior{Behavior: BehaviorEND}},
 				},
 			},
 			want: SegmentSRv6{
 				Sid:       netip.MustParseAddr("2001:db8::1"),
-				LocalAddr: netip.MustParseAddr("fc00:0:1::"),
+				LocalAddr: netip.MustParseAddr(testSRv6Addr),
 				Structure: SIDStructureBytes{0, 0, 0, 0},
 			},
 		},
 		{
 			name: "invalid local SID address",
 			node: &LsNode{
-				SRv6SIDs: []*LsSrv6SID{{Sids: []string{"not-an-address"}}},
+				SRv6SIDs: []*LsSrv6SID{{Sids: []string{testInvalidAddr}}},
 			},
 			wantErr: true,
 		},

@@ -340,7 +340,7 @@ func TestSendSRPolicyRequest_ForgetsIntentOnSendFailure(t *testing.T) {
 			PeerAddr:   ss.peerAddr.AsSlice(),
 			DstAddr:    dstAddr.AsSlice(),
 			Color:      100,
-			PolicyName: "test-policy",
+			PolicyName: testSRPolicyName,
 			Type:       pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT,
 		},
 		DisablePathCompute: true,
@@ -3822,7 +3822,7 @@ func newLinkedSRv6Nodes(srcAddr, dstAddr netip.Addr, metric uint32) (src, dst *t
 	srcPrefix := table.NewLsPrefix(src)
 	srcPrefix.Prefix = netip.PrefixFrom(srcAddr, srcAddr.BitLen())
 	src.Prefixes = append(src.Prefixes, srcPrefix)
-	src.SRv6SIDs = []*table.LsSrv6SID{{Sids: []string{"2001:db8::1"}}}
+	src.SRv6SIDs = []*table.LsSrv6SID{{Sids: []string{testSRv6SID1}}}
 
 	dst = table.NewLsNode(65000, "PE2-v6")
 	dstPrefix := table.NewLsPrefix(dst)

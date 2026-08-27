@@ -25,16 +25,21 @@ import (
 	"github.com/nttcom/pola/pkg/table"
 )
 
+const (
+	invalidHost      = "not-an-ip"
+	testLoopbackAddr = "127.0.0.1"
+)
+
 func TestServer_Serve_InvalidInputRejected(t *testing.T) {
 	tests := []struct {
 		name    string
 		address string
 		port    string
 	}{
-		{name: "invalid address", address: "not-an-ip", port: "4189"},
-		{name: "invalid port", address: "127.0.0.1", port: "notaport"},
-		{name: "negative port", address: "127.0.0.1", port: "-1"},
-		{name: "port out of range", address: "127.0.0.1", port: "70000"},
+		{name: "invalid address", address: invalidHost, port: "4189"},
+		{name: "invalid port", address: testLoopbackAddr, port: "notaport"},
+		{name: "negative port", address: testLoopbackAddr, port: "-1"},
+		{name: "port out of range", address: testLoopbackAddr, port: "70000"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -253,9 +258,9 @@ func TestNewPCE_InvalidTimerConfigRejectedBeforeListening(t *testing.T) {
 	// A direct NewPCE caller (bypassing internal/config's own validation)
 	// must not be able to start a PCE with an invalid timer configuration.
 	o := &PCEOptions{
-		PCEPAddr:  "127.0.0.1",
+		PCEPAddr:  testLoopbackAddr,
 		PCEPPort:  "0",
-		GRPCAddr:  "127.0.0.1",
+		GRPCAddr:  testLoopbackAddr,
 		GRPCPort:  "0",
 		Keepalive: new(uint8(0)),
 		DeadTimer: new(uint8(1)),
@@ -275,9 +280,9 @@ func TestNewPCE_ReturnsTaggedError(t *testing.T) {
 		{
 			name: "PCEP failure reported",
 			o: &PCEOptions{
-				PCEPAddr: "not-an-ip", // fail before listening
+				PCEPAddr: invalidHost, // fail before listening
 				PCEPPort: "0",
-				GRPCAddr: "127.0.0.1",
+				GRPCAddr: testLoopbackAddr,
 				GRPCPort: "0",
 			},
 			wantServer: "pcep",
@@ -285,9 +290,9 @@ func TestNewPCE_ReturnsTaggedError(t *testing.T) {
 		{
 			name: "gRPC failure reported",
 			o: &PCEOptions{
-				PCEPAddr: "127.0.0.1",
+				PCEPAddr: testLoopbackAddr,
 				PCEPPort: "0",
-				GRPCAddr: "not-an-ip", // fail before listening
+				GRPCAddr: invalidHost, // fail before listening
 				GRPCPort: "0",
 			},
 			wantServer: "grpc",
@@ -313,9 +318,9 @@ func TestNewPCE_TEDEnabledUpdatesTEDOnElemsReceived(t *testing.T) {
 	core, logs := observer.New(zap.DebugLevel)
 	tedElemsChan := make(chan []table.TEDElem, 1)
 	o := &PCEOptions{
-		PCEPAddr:  "127.0.0.1",
+		PCEPAddr:  testLoopbackAddr,
 		PCEPPort:  "0",
-		GRPCAddr:  "127.0.0.1",
+		GRPCAddr:  testLoopbackAddr,
 		GRPCPort:  "0",
 		TEDEnable: true,
 	}
@@ -351,7 +356,7 @@ func TestNewPCE_WaitsForBothServersBeforeReturning(t *testing.T) {
 	require.NoError(t, grpcLn.Close(), "failed to release the reserved port")
 
 	o := &PCEOptions{
-		PCEPAddr: "not-an-ip", // fails before listening, well before gRPC would stop on its own
+		PCEPAddr: invalidHost, // fails before listening, well before gRPC would stop on its own
 		PCEPPort: "0",
 		GRPCAddr: grpcAddr,
 		GRPCPort: grpcPort,
@@ -375,9 +380,9 @@ func TestNewPCE_WaitsForBothServersBeforeReturning(t *testing.T) {
 
 func TestNewPCE_ContextCancelShutsDownCleanly(t *testing.T) {
 	o := &PCEOptions{
-		PCEPAddr: "127.0.0.1",
+		PCEPAddr: testLoopbackAddr,
 		PCEPPort: "0",
-		GRPCAddr: "127.0.0.1",
+		GRPCAddr: testLoopbackAddr,
 		GRPCPort: "0",
 	}
 

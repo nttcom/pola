@@ -53,8 +53,8 @@ func TestShowSRPolicyList_UnregisteredFlag(t *testing.T) {
 }
 
 func TestSegmentDisplayString(t *testing.T) {
-	local := netip.MustParseAddr("192.0.2.1")
-	remote := netip.MustParseAddr("192.0.2.2")
+	local := netip.MustParseAddr(testPeerAddr1)
+	remote := netip.MustParseAddr(testPeerAddr2)
 
 	tests := []struct {
 		name string
@@ -130,8 +130,8 @@ func TestSegmentDisplayString_SRv6(t *testing.T) {
 }
 
 func TestSrcDstDisplay(t *testing.T) {
-	assert.Equal(t, "192.0.2.1", srcDstDisplay("192.0.2.1", ""))
-	assert.Equal(t, "192.0.2.1 (0000.0aff.0001)", srcDstDisplay("192.0.2.1", "0000.0aff.0001"))
+	assert.Equal(t, testPeerAddr1, srcDstDisplay(testPeerAddr1, ""))
+	assert.Equal(t, "192.0.2.1 (0000.0aff.0001)", srcDstDisplay(testPeerAddr1, testRouterID1))
 }
 
 func TestShowSRPolicyList(t *testing.T) {
@@ -158,21 +158,21 @@ func TestShowSRPolicyList(t *testing.T) {
 		jsonFmt = false
 		client = &fakePCEServiceClient{srPolicyListResp: &pb.GetSRPolicyListResponse{
 			Sessions: []*pb.SRPolicySession{{
-				PeerAddr:  netip.MustParseAddr("192.0.2.1").AsSlice(),
+				PeerAddr:  netip.MustParseAddr(testPeerAddr1).AsSlice(),
 				State:     pb.SessionState_SESSION_STATE_UP,
 				SyncState: pb.LspDbSyncState_LSP_DB_SYNC_STATE_FINISHED,
 				SrPolicies: []*pb.SRPolicy{
 					{
-						PolicyName:  "pol1",
+						PolicyName:  testPolicyName,
 						PlspId:      1,
 						LspId:       2,
 						State:       pb.SRPolicyState_SR_POLICY_STATE_UP,
 						Type:        pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC,
 						Metric:      pb.MetricType_METRIC_TYPE_TE,
-						SrcAddr:     netip.MustParseAddr("192.0.2.1").AsSlice(),
-						SrcRouterId: "0000.0aff.0001",
-						DstAddr:     netip.MustParseAddr("192.0.2.2").AsSlice(),
-						DstRouterId: "0000.0aff.0002",
+						SrcAddr:     netip.MustParseAddr(testPeerAddr1).AsSlice(),
+						SrcRouterId: testRouterID1,
+						DstAddr:     netip.MustParseAddr(testPeerAddr2).AsSlice(),
+						DstRouterId: testRouterID2,
 						Color:       100,
 						Preference:  200,
 						SegmentList: []*pb.Segment{{Sid: "16003"}, {Sid: "16002"}},
@@ -218,7 +218,7 @@ func TestShowSRPolicyList(t *testing.T) {
 		jsonFmt = false
 		client = &fakePCEServiceClient{srPolicyListResp: &pb.GetSRPolicyListResponse{
 			Sessions: []*pb.SRPolicySession{{
-				PeerAddr:  netip.MustParseAddr("192.0.2.1").AsSlice(),
+				PeerAddr:  netip.MustParseAddr(testPeerAddr1).AsSlice(),
 				State:     pb.SessionState_SESSION_STATE_UP,
 				SyncState: pb.LspDbSyncState_LSP_DB_SYNC_STATE_FINISHED,
 			}},
@@ -237,7 +237,7 @@ func TestShowSRPolicyList(t *testing.T) {
 		jsonFmt = false
 		client = &fakePCEServiceClient{srPolicyListResp: &pb.GetSRPolicyListResponse{
 			Sessions: []*pb.SRPolicySession{{
-				PeerAddr:  netip.MustParseAddr("192.0.2.1").AsSlice(),
+				PeerAddr:  netip.MustParseAddr(testPeerAddr1).AsSlice(),
 				State:     pb.SessionState_SESSION_STATE_UP,
 				SyncState: pb.LspDbSyncState_LSP_DB_SYNC_STATE_PENDING,
 			}},
@@ -257,13 +257,13 @@ func TestShowSRPolicyList(t *testing.T) {
 		t.Cleanup(func() { jsonFmt = false })
 		client = &fakePCEServiceClient{srPolicyListResp: &pb.GetSRPolicyListResponse{
 			Sessions: []*pb.SRPolicySession{{
-				PeerAddr:  netip.MustParseAddr("192.0.2.1").AsSlice(),
+				PeerAddr:  netip.MustParseAddr(testPeerAddr1).AsSlice(),
 				State:     pb.SessionState_SESSION_STATE_UP,
 				SyncState: pb.LspDbSyncState_LSP_DB_SYNC_STATE_FINISHED,
 				SrPolicies: []*pb.SRPolicy{{
-					PolicyName: "pol1",
-					SrcAddr:    netip.MustParseAddr("192.0.2.1").AsSlice(),
-					DstAddr:    netip.MustParseAddr("192.0.2.2").AsSlice(),
+					PolicyName: testPolicyName,
+					SrcAddr:    netip.MustParseAddr(testPeerAddr1).AsSlice(),
+					DstAddr:    netip.MustParseAddr(testPeerAddr2).AsSlice(),
 				}},
 			}},
 		}}
@@ -301,14 +301,14 @@ func TestShowSRPolicyList(t *testing.T) {
 		fake := &fakePCEServiceClient{srPolicyListResp: &pb.GetSRPolicyListResponse{}}
 		client = fake
 		cmd := newSRPolicyListCmd()
-		require.NoError(t, cmd.Flags().Set("peer", "192.0.2.1"))
+		require.NoError(t, cmd.Flags().Set("peer", testPeerAddr1))
 
 		out := captureStdout(t, func() {
 			require.NoError(t, showSRPolicyList(cmd, []string{}))
 		})
 
 		require.NotNil(t, fake.srPolicyListReq)
-		assert.Equal(t, netip.MustParseAddr("192.0.2.1").AsSlice(), fake.srPolicyListReq.GetPeerAddr())
+		assert.Equal(t, netip.MustParseAddr(testPeerAddr1).AsSlice(), fake.srPolicyListReq.GetPeerAddr())
 		assert.Equal(t, "No PCEP session for 192.0.2.1.\n", out)
 	})
 

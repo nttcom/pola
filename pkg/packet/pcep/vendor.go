@@ -7,7 +7,6 @@ package pcep
 
 import (
 	"fmt"
-	"strconv"
 )
 
 // EnterpriseNumber is an IANA Private Enterprise Number, used by the VENDOR-INFORMATION TLV and Object (RFC 7470).
@@ -40,14 +39,6 @@ func (en EnterpriseNumber) String() string {
 		return fmt.Sprintf("%s (%d)", name, uint32(en))
 	}
 	return fmt.Sprintf("Unknown Enterprise (%d)", uint32(en))
-}
-
-// capLabel returns a compact, space-free vendor label for capability listings.
-func (en EnterpriseNumber) capLabel() string {
-	if name, ok := enterpriseNumberNames[en]; ok {
-		return name
-	}
-	return "EN-" + strconv.FormatUint(uint64(en), 10)
 }
 
 var enterpriseNumberFullNames = map[EnterpriseNumber]string{

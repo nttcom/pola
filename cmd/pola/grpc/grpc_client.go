@@ -20,6 +20,8 @@ import (
 	"github.com/nttcom/pola/pkg/table"
 )
 
+const unknownDisplayValue = "unknown"
+
 func withTimeout() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), time.Second)
 }
@@ -385,7 +387,7 @@ func initiatorFromPB(initiator pb.SessionInitiator) string {
 	case pb.SessionInitiator_SESSION_INITIATOR_REMOTE:
 		return "remote"
 	default:
-		return "unknown"
+		return unknownDisplayValue
 	}
 }
 
@@ -401,7 +403,7 @@ func sessionStateFromPB(state pb.SessionState) string {
 	case pb.SessionState_SESSION_STATE_KEEP_WAIT:
 		return "keep-wait"
 	default:
-		return "unknown"
+		return unknownDisplayValue
 	}
 }
 
@@ -414,7 +416,7 @@ func syncStateFromPB(state pb.LspDbSyncState) string {
 	case pb.LspDbSyncState_LSP_DB_SYNC_STATE_FINISHED:
 		return "finished"
 	default:
-		return "unknown"
+		return unknownDisplayValue
 	}
 }
 

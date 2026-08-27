@@ -16,6 +16,12 @@ import (
 	"github.com/nttcom/pola/pkg/table"
 )
 
+const (
+	testGhostRouterID = "GHOST"
+	testInvalidSID    = "not-an-address"
+	testOverrideSID   = "2001:db8::ffff"
+)
+
 // srMPLSNode uses an SRGB starting at 16000.
 func srMPLSNode(routerID string, sidIndex uint32) *table.LsNode {
 	return &table.LsNode{
@@ -232,7 +238,7 @@ func TestCSPF_Errors(t *testing.T) {
 				return buildTED(srMPLSNode("A", 0), srMPLSNode("B", 1))
 			},
 			src: "A", dst: "B", metric: table.IGPMetric,
-			wantErr: "next node not found",
+			wantErr: errNextNodeNotFound,
 		},
 		{
 			name: "source router is absent from the TED",
@@ -263,13 +269,13 @@ func TestCSPF_Errors(t *testing.T) {
 			buildTED: func() *table.LsTED {
 				// GHOST is deliberately left out of ted.Nodes while remaining on the links,
 				// simulating a TED inconsistency.
-				a, ghost, d := srMPLSNode("A", 0), srMPLSNode("GHOST", 1), srMPLSNode("D", 3)
+				a, ghost, d := srMPLSNode("A", 0), srMPLSNode(testGhostRouterID, 1), srMPLSNode("D", 3)
 				connect(a, ghost, 1)
 				connect(ghost, d, 1)
 				return buildTED(a, d)
 			},
 			src: "A", dst: "D", metric: table.IGPMetric,
-			wantErr: "next node not found",
+			wantErr: errNextNodeNotFound,
 		},
 		{
 			name: "a link with a nil remote node is skipped instead of panicking",
@@ -279,7 +285,7 @@ func TestCSPF_Errors(t *testing.T) {
 				return buildTED(a, d)
 			},
 			src: "A", dst: "D", metric: table.IGPMetric,
-			wantErr: "next node not found",
+			wantErr: errNextNodeNotFound,
 		},
 	}
 
@@ -316,7 +322,7 @@ func TestCSPF_MetricValidation(t *testing.T) {
 	})
 
 	t.Run("loose source routing rejects the metric before checking waypoints", func(t *testing.T) {
-		waypoints := []table.Waypoint{{RouterID: "GHOST"}}
+		waypoints := []table.Waypoint{{RouterID: testGhostRouterID}}
 		_, err := WithLooseSourceRouting("A", "B", waypoints, table.MetricType(99), linked())
 		assert.EqualError(t, err, "unsupported metric type 99")
 	})
@@ -346,7 +352,7 @@ func TestCSPF_InvalidInputClassification(t *testing.T) {
 			return err
 		}, true},
 		{"malformed explicit waypoint SID is caller input", func() error {
-			_, err := WithLooseSourceRouting("A", "B", []table.Waypoint{{RouterID: "B", SID: "not-an-address"}}, table.IGPMetric, linear())
+			_, err := WithLooseSourceRouting("A", "B", []table.Waypoint{{RouterID: "B", SID: testInvalidSID}}, table.IGPMetric, linear())
 			return err
 		}, true},
 		{"unusable metric is caller input", func() error { _, err := CSPF("A", "B", table.UnspecifiedMetric, linear()); return err }, true},
@@ -389,14 +395,14 @@ func TestCSPF_TopologyLimitationClassification(t *testing.T) {
 		{"an unreachable destination", func() error {
 			_, err := CSPF("A", "B", table.IGPMetric, buildTED(srMPLSNode("A", 0), srMPLSNode("B", 1)))
 			return err
-		}, "DESTINATION_UNREACHABLE"},
-		{"a metric absent from a traversed link", func() error { _, err := CSPF("A", "B", table.TEMetric, linear()); return err }, "METRIC_NOT_CARRIED"},
+		}, reasonDestinationUnreachable},
+		{"a metric absent from a traversed link", func() error { _, err := CSPF("A", "B", table.TEMetric, linear()); return err }, reasonMetricNotCarried},
 		{"a node without a Node SID", func() error {
 			a, b := nodeWithoutSID("A"), srMPLSNode("B", 0)
 			connect(a, b, 1)
 			_, err := CSPF("A", "B", table.IGPMetric, buildTED(a, b))
 			return err
-		}, "TED_DATA_INCOMPLETE"},
+		}, reasonTEDDataIncomplete},
 	}
 
 	for _, tt := range tests {
@@ -465,14 +471,14 @@ func TestBuildWaypointSegment(t *testing.T) {
 			node:           nodeWithoutSID("A"),
 			explicitSID:    "",
 			wantErr:        "node doesn't have a Node SID",
-			wantTopoReason: "TED_DATA_INCOMPLETE",
+			wantTopoReason: reasonTEDDataIncomplete,
 		},
 		{
 			name:        "explicit SID overrides the SID but keeps the node's SID structure",
 			node:        srv6Node("A", "2001:db8::a"),
-			explicitSID: "2001:db8::ffff",
+			explicitSID: testOverrideSID,
 			want: table.SegmentSRv6{
-				Sid:       netip.MustParseAddr("2001:db8::ffff"),
+				Sid:       netip.MustParseAddr(testOverrideSID),
 				LocalAddr: netip.MustParseAddr("2001:db8::a"),
 				Structure: table.SIDStructureBytes{32, 16, 16, 0},
 			},
@@ -490,9 +496,9 @@ func TestBuildWaypointSegment(t *testing.T) {
 					},
 				},
 			},
-			explicitSID: "2001:db8::ffff",
+			explicitSID: testOverrideSID,
 			want: table.SegmentSRv6{
-				Sid:       netip.MustParseAddr("2001:db8::ffff"),
+				Sid:       netip.MustParseAddr(testOverrideSID),
 				LocalAddr: netip.MustParseAddr("2001:db8::a"),
 				Structure: table.SIDStructureBytes{32, 16, 16, 0},
 				USid:      true,
@@ -501,15 +507,15 @@ func TestBuildWaypointSegment(t *testing.T) {
 		{
 			name:        "invalid explicit SID returns a parse error",
 			node:        srMPLSNode("A", 0),
-			explicitSID: "not-an-address",
+			explicitSID: testInvalidSID,
 			wantErr:     `invalid explicit SID "not-an-address": ParseAddr("not-an-address"): unable to parse IP`,
 		},
 		{
 			name:           "explicit SID on a node without any SRv6 SIDs returns an error",
 			node:           srMPLSNode("A", 0),
-			explicitSID:    "2001:db8::ffff",
+			explicitSID:    testOverrideSID,
 			wantErr:        "no SRv6 SIDs available",
-			wantTopoReason: "TED_DATA_INCOMPLETE",
+			wantTopoReason: reasonTEDDataIncomplete,
 		},
 		{
 			name:        "IPv4 explicit SID is rejected",
@@ -691,19 +697,19 @@ func TestWithLooseSourceRouting(t *testing.T) {
 	t.Run("a waypoint absent from the TED node map is rejected before any section is computed", func(t *testing.T) {
 		// Intentionally leaves GHOST out of ted.Nodes while keeping it on the link.
 		s4 := srMPLSNode("S4", 0)
-		ghost := srMPLSNode("GHOST", 1)
+		ghost := srMPLSNode(testGhostRouterID, 1)
 		connect(s4, ghost, 1)
 		ted := buildTED(s4)
 
-		waypoints := []table.Waypoint{{RouterID: "GHOST"}}
-		got, err := WithLooseSourceRouting("S4", "GHOST", waypoints, table.IGPMetric, ted)
+		waypoints := []table.Waypoint{{RouterID: testGhostRouterID}}
+		got, err := WithLooseSourceRouting("S4", testGhostRouterID, waypoints, table.IGPMetric, ted)
 		assert.Nil(t, got)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "waypoint router GHOST not found in TED")
 	})
 
 	t.Run("an unknown waypoint is rejected even when the destination is reachable", func(t *testing.T) {
-		waypoints := []table.Waypoint{{RouterID: "GHOST"}}
+		waypoints := []table.Waypoint{{RouterID: testGhostRouterID}}
 		got, err := WithLooseSourceRouting("S", "D", waypoints, table.IGPMetric, linearChain())
 		assert.Nil(t, got)
 		require.Error(t, err)
@@ -711,7 +717,7 @@ func TestWithLooseSourceRouting(t *testing.T) {
 	})
 
 	t.Run("an invalid explicit waypoint SID is wrapped with the router", func(t *testing.T) {
-		waypoints := []table.Waypoint{{RouterID: "W1", SID: "not-an-address"}}
+		waypoints := []table.Waypoint{{RouterID: "W1", SID: testInvalidSID}}
 		got, err := WithLooseSourceRouting("S", "D", waypoints, table.IGPMetric, linearChain())
 		assert.Nil(t, got)
 		require.Error(t, err)

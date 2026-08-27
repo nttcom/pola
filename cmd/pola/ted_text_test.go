@@ -17,7 +17,7 @@ func fullTEDNodeViewFixture() tedNodeView {
 	sidIdx := uint32(7)
 	flags, algorithm := uint8(1), uint8(2)
 	return tedNodeView{
-		RouterID:   "0000.0aff.0001",
+		RouterID:   testRouterID1,
 		Hostname:   "router1",
 		IsisAreaID: "49.0001",
 		Srgb:       srgbView{Begin: 16000, End: 23999},
@@ -31,14 +31,14 @@ func fullTEDNodeViewFixture() tedNodeView {
 				AdjSid:         100,
 			},
 			{
-				LocalIP:        "192.0.2.2",
+				LocalIP:        testPeerAddr2,
 				RemoteIP:       "192.0.2.3",
-				RemoteRouterID: "0000.0aff.0002",
-				Metrics:        []tedMetricView{{Type: "igp", Value: 10}},
+				RemoteRouterID: testRouterID2,
+				Metrics:        []tedMetricView{{Type: metricTypeIGP, Value: 10}},
 				AdjSid:         200,
 				Srv6EndXSID: &tedSrv6EndXSIDView{
 					EndpointBehavior: endpointBehaviorView{Name: "END-X-BEHAVIOR"},
-					Sids:             []string{"fc00:0:1:endx::"},
+					Sids:             []string{testSrv6EndXSID},
 					SidStructure:     sidStructureView{LocalBlock: 21, LocalNode: 22, LocalFunc: 23, LocalArg: 24},
 				},
 			},
@@ -90,7 +90,7 @@ func TestWriteTEDText_PropagatesWriteErrors(t *testing.T) {
 		{"link adj-sid", containsFail("Adj-SID: 100")},
 		{"srv6 end.x sid header", containsFail("SRv6 End.X SID:")},
 		{"srv6 end.x endpoint behavior", containsFail("EndpointBehavior: END-X-BEHAVIOR")},
-		{"srv6 end.x sids", containsFail("fc00:0:1:endx::")},
+		{"srv6 end.x sids", containsFail(testSrv6EndXSID)},
 		{"node srv6 sids header", containsFail("SRv6 SIDs:")},
 		{"node srv6 sid sids", containsFail("fc00:0:2:node1::")},
 		{"node srv6 sid structure", containsFail("Block: 31")},

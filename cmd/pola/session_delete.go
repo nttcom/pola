@@ -18,7 +18,7 @@ import (
 
 func newSessionDeleteCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:          "delete",
+		Use:          cmdNameDelete,
 		Aliases:      []string{"del"},
 		SilenceUsage: true,
 		RunE: func(_ *cobra.Command, args []string) error {
@@ -47,7 +47,7 @@ func deleteSession(session netip.Addr, jsonFlag bool) error {
 		return err
 	}
 	if jsonFlag {
-		return writeJSON(os.Stdout, statusResult{Status: "success"})
+		return writeJSON(os.Stdout, statusResult{Status: statusSuccess})
 	}
 	fmt.Printf("success!\n")
 	return nil

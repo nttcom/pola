@@ -28,6 +28,14 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+const (
+	testRouterID1   = "0000.0000.0001"
+	testRouterID2   = "0000.0000.0002"
+	testBadIP       = "bad-ip"
+	testSrv6EndXSID = "2001:db8::1:0"
+	testSrv6SID     = "2001:db8:1::"
+)
+
 func testLsAddrPrefixV4(t *testing.T, prefix string) *api.LsAddrPrefix {
 	t.Helper()
 	return &api.LsAddrPrefix{
@@ -36,7 +44,7 @@ func testLsAddrPrefixV4(t *testing.T, prefix string) *api.LsAddrPrefix {
 				PrefixV4: &api.LsPrefixV4NLRI{
 					LocalNode: &api.LsNodeDescriptor{
 						Asn:         65000,
-						IgpRouterId: "0000.0000.0001",
+						IgpRouterId: testRouterID1,
 					},
 					PrefixDescriptor: &api.LsPrefixDescriptor{
 						IpReachability: []string{prefix},
@@ -133,7 +141,7 @@ func TestGetLsPrefix_SidIndex(t *testing.T) {
 }
 
 func TestGetLsPrefix_NLRITypesAndErrors(t *testing.T) {
-	localNodeDesc := &api.LsNodeDescriptor{Asn: 65000, IgpRouterId: "0000.0000.0001"}
+	localNodeDesc := &api.LsNodeDescriptor{Asn: 65000, IgpRouterId: testRouterID1}
 
 	t.Run("PrefixV6 NLRI", func(t *testing.T) {
 		nlri := &api.LsAddrPrefix{
@@ -150,7 +158,7 @@ func TestGetLsPrefix_NLRITypesAndErrors(t *testing.T) {
 		got, err := getLsPrefix(nlri, &api.LsAttributePrefix{SrPrefixSid: 100})
 		require.NoError(t, err)
 
-		want := table.NewLsPrefix(table.NewLsNode(65000, "0000.0000.0001"))
+		want := table.NewLsPrefix(table.NewLsNode(65000, testRouterID1))
 		want.Prefix = netip.MustParsePrefix("2001:db8::/64")
 		want.SidIndex, want.HasSidIndex = 100, true
 		assert.Equal(t, want, got)
@@ -263,7 +271,7 @@ func TestGetLsNode(t *testing.T) {
 		Nlri: &api.LsAddrPrefix_LsNLRI{
 			Nlri: &api.LsAddrPrefix_LsNLRI_Node{
 				Node: &api.LsNodeNLRI{
-					LocalNode: &api.LsNodeDescriptor{Asn: 65000, IgpRouterId: "0000.0000.0001"},
+					LocalNode: &api.LsNodeDescriptor{Asn: 65000, IgpRouterId: testRouterID1},
 				},
 			},
 		},
@@ -275,7 +283,7 @@ func TestGetLsNode(t *testing.T) {
 		got, err := getLsNode(nlri, attr)
 		require.NoError(t, err)
 
-		want := table.NewLsNode(65000, "0000.0000.0001")
+		want := table.NewLsNode(65000, testRouterID1)
 		want.Hostname = "r1"
 		want.IsisAreaID = "4900"
 		assert.Equal(t, want, got)
@@ -290,7 +298,7 @@ func TestGetLsNode(t *testing.T) {
 		got, err := getLsNode(nlri, attr)
 		require.NoError(t, err)
 
-		want := table.NewLsNode(65000, "0000.0000.0001")
+		want := table.NewLsNode(65000, testRouterID1)
 		want.Hostname = "r1"
 		want.SrgbBegin, want.SrgbEnd = 16000, 23999
 		assert.Equal(t, want, got)
@@ -319,10 +327,10 @@ func TestGetLsNode(t *testing.T) {
 }
 
 func TestGetLsLink(t *testing.T) {
-	localDesc := &api.LsNodeDescriptor{Asn: 65000, IgpRouterId: "0000.0000.0001"}
-	remoteDesc := &api.LsNodeDescriptor{Asn: 65000, IgpRouterId: "0000.0000.0002"}
-	expectedLocal := table.NewLsNode(65000, "0000.0000.0001")
-	expectedRemote := table.NewLsNode(65000, "0000.0000.0002")
+	localDesc := &api.LsNodeDescriptor{Asn: 65000, IgpRouterId: testRouterID1}
+	remoteDesc := &api.LsNodeDescriptor{Asn: 65000, IgpRouterId: testRouterID2}
+	expectedLocal := table.NewLsNode(65000, testRouterID1)
+	expectedRemote := table.NewLsNode(65000, testRouterID2)
 
 	newNLRI := func(desc *api.LsLinkDescriptor) *api.LsAddrPrefix {
 		return &api.LsAddrPrefix{
@@ -386,7 +394,7 @@ func TestGetLsLink(t *testing.T) {
 					IgpMetric: 5,
 					Srv6EndXSid: &api.LsSrv6EndXSID{
 						EndpointBehavior: uint32(table.BehaviorENDX),
-						Sids:             []string{"2001:db8::1:0"},
+						Sids:             []string{testSrv6EndXSID},
 						Srv6SidStructure: &api.LsSrv6SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
 					},
 				},
@@ -398,7 +406,7 @@ func TestGetLsLink(t *testing.T) {
 					Metrics:    []*table.Metric{table.NewMetric(table.IGPMetric, 5)},
 					Srv6EndXSID: &table.Srv6EndXSID{
 						EndpointBehavior: table.BehaviorENDX,
-						Sids:             []string{"2001:db8::1:0"},
+						Sids:             []string{testSrv6EndXSID},
 						Srv6SIDStructure: table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
 					},
 				},
@@ -420,10 +428,10 @@ func TestGetLsLink(t *testing.T) {
 			desc    *api.LsLinkDescriptor
 			wantErr string
 		}{
-			{"invalid local IPv4 address", &api.LsLinkDescriptor{InterfaceAddrIpv4: "bad-ip"}, "failed to parse local IPv4 address"},
-			{"invalid local IPv6 address", &api.LsLinkDescriptor{InterfaceAddrIpv6: "bad-ip"}, "failed to parse local IPv6 address"},
-			{"invalid remote IPv4 address", &api.LsLinkDescriptor{NeighborAddrIpv4: "bad-ip"}, "failed to parse remote IPv4 address"},
-			{"invalid remote IPv6 address", &api.LsLinkDescriptor{NeighborAddrIpv6: "bad-ip"}, "failed to parse remote IPv6 address"},
+			{"invalid local IPv4 address", &api.LsLinkDescriptor{InterfaceAddrIpv4: testBadIP}, "failed to parse local IPv4 address"},
+			{"invalid local IPv6 address", &api.LsLinkDescriptor{InterfaceAddrIpv6: testBadIP}, "failed to parse local IPv6 address"},
+			{"invalid remote IPv4 address", &api.LsLinkDescriptor{NeighborAddrIpv4: testBadIP}, "failed to parse remote IPv4 address"},
+			{"invalid remote IPv6 address", &api.LsLinkDescriptor{NeighborAddrIpv6: testBadIP}, "failed to parse remote IPv6 address"},
 		}
 
 		for _, tt := range tests {
@@ -475,13 +483,13 @@ func TestSrv6EndXSIDFromAPI(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		got, err := srv6EndXSIDFromAPI(&api.LsSrv6EndXSID{
 			EndpointBehavior: uint32(table.BehaviorENDX),
-			Sids:             []string{"2001:db8::1:0"},
+			Sids:             []string{testSrv6EndXSID},
 			Srv6SidStructure: validStructure,
 		})
 		require.NoError(t, err)
 		assert.Equal(t, &table.Srv6EndXSID{
 			EndpointBehavior: table.BehaviorENDX,
-			Sids:             []string{"2001:db8::1:0"},
+			Sids:             []string{testSrv6EndXSID},
 			Srv6SIDStructure: table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
 		}, got)
 	})
@@ -533,8 +541,8 @@ func TestGetLsSrv6SID(t *testing.T) {
 			Nlri: &api.LsAddrPrefix_LsNLRI{
 				Nlri: &api.LsAddrPrefix_LsNLRI_Srv6Sid{
 					Srv6Sid: &api.LsSrv6SIDNLRI{
-						LocalNode:          &api.LsNodeDescriptor{Asn: 65000, IgpRouterId: "0000.0000.0001"},
-						Srv6SidInformation: &api.LsSrv6SIDInformation{Sids: []string{"2001:db8:1::"}},
+						LocalNode:          &api.LsNodeDescriptor{Asn: 65000, IgpRouterId: testRouterID1},
+						Srv6SidInformation: &api.LsSrv6SIDInformation{Sids: []string{testSrv6SID}},
 						MultiTopoId:        &api.LsMultiTopologyIdentifier{MultiTopoIds: []uint32{0}},
 					},
 				},
@@ -544,8 +552,8 @@ func TestGetLsSrv6SID(t *testing.T) {
 		got, err := getLsSrv6SID(nlri, attr)
 		require.NoError(t, err)
 
-		want := table.NewLsSrv6SID(table.NewLsNode(65000, "0000.0000.0001"))
-		want.Sids = []string{"2001:db8:1::"}
+		want := table.NewLsSrv6SID(table.NewLsNode(65000, testRouterID1))
+		want.Sids = []string{testSrv6SID}
 		want.MultiTopoIDs = []uint32{0}
 		want.SIDStructure = table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0}
 		want.EndpointBehavior = table.EndpointBehavior{Behavior: table.BehaviorEND}
@@ -582,8 +590,8 @@ func TestGetLsSrv6SID(t *testing.T) {
 			Nlri: &api.LsAddrPrefix_LsNLRI{
 				Nlri: &api.LsAddrPrefix_LsNLRI_Srv6Sid{
 					Srv6Sid: &api.LsSrv6SIDNLRI{
-						LocalNode:          &api.LsNodeDescriptor{Asn: 65000, IgpRouterId: "0000.0000.0001"},
-						Srv6SidInformation: &api.LsSrv6SIDInformation{Sids: []string{"2001:db8:1::"}},
+						LocalNode:          &api.LsNodeDescriptor{Asn: 65000, IgpRouterId: testRouterID1},
+						Srv6SidInformation: &api.LsSrv6SIDInformation{Sids: []string{testSrv6SID}},
 						MultiTopoId:        &api.LsMultiTopologyIdentifier{},
 					},
 				},
@@ -653,7 +661,7 @@ func TestGetLsSrv6SIDList(t *testing.T) {
 	}
 
 	t.Run("success", func(t *testing.T) {
-		got, err := getLsSrv6SIDList([]*api.NLRI{newNLRI("0000.0000.0001"), newNLRI("0000.0000.0002")}, attr)
+		got, err := getLsSrv6SIDList([]*api.NLRI{newNLRI(testRouterID1), newNLRI(testRouterID2)}, attr)
 		require.NoError(t, err)
 		require.Len(t, got, 2)
 	})
@@ -725,15 +733,15 @@ func TestConvertToTEDElem(t *testing.T) {
 	nodeNLRI := &api.LsAddrPrefix{
 		Type: api.LsNLRIType_LS_NLRI_TYPE_NODE,
 		Nlri: &api.LsAddrPrefix_LsNLRI{Nlri: &api.LsAddrPrefix_LsNLRI_Node{
-			Node: &api.LsNodeNLRI{LocalNode: &api.LsNodeDescriptor{Asn: 65000, IgpRouterId: "0000.0000.0001"}},
+			Node: &api.LsNodeNLRI{LocalNode: &api.LsNodeDescriptor{Asn: 65000, IgpRouterId: testRouterID1}},
 		}},
 	}
 	linkNLRI := &api.LsAddrPrefix{
 		Type: api.LsNLRIType_LS_NLRI_TYPE_LINK,
 		Nlri: &api.LsAddrPrefix_LsNLRI{Nlri: &api.LsAddrPrefix_LsNLRI_Link{
 			Link: &api.LsLinkNLRI{
-				LocalNode:      &api.LsNodeDescriptor{Asn: 65000, IgpRouterId: "0000.0000.0001"},
-				RemoteNode:     &api.LsNodeDescriptor{Asn: 65000, IgpRouterId: "0000.0000.0002"},
+				LocalNode:      &api.LsNodeDescriptor{Asn: 65000, IgpRouterId: testRouterID1},
+				RemoteNode:     &api.LsNodeDescriptor{Asn: 65000, IgpRouterId: testRouterID2},
 				LinkDescriptor: &api.LsLinkDescriptor{},
 			},
 		}},
@@ -742,9 +750,9 @@ func TestConvertToTEDElem(t *testing.T) {
 		Type: api.LsNLRIType_LS_NLRI_TYPE_LINK,
 		Nlri: &api.LsAddrPrefix_LsNLRI{Nlri: &api.LsAddrPrefix_LsNLRI_Link{
 			Link: &api.LsLinkNLRI{
-				LocalNode:      &api.LsNodeDescriptor{Asn: 65000, IgpRouterId: "0000.0000.0001"},
-				RemoteNode:     &api.LsNodeDescriptor{Asn: 65000, IgpRouterId: "0000.0000.0002"},
-				LinkDescriptor: &api.LsLinkDescriptor{InterfaceAddrIpv4: "bad-ip"},
+				LocalNode:      &api.LsNodeDescriptor{Asn: 65000, IgpRouterId: testRouterID1},
+				RemoteNode:     &api.LsNodeDescriptor{Asn: 65000, IgpRouterId: testRouterID2},
+				LinkDescriptor: &api.LsLinkDescriptor{InterfaceAddrIpv4: testBadIP},
 			},
 		}},
 	}
@@ -756,8 +764,8 @@ func TestConvertToTEDElem(t *testing.T) {
 		Type: api.LsNLRIType_LS_NLRI_TYPE_SRV6_SID,
 		Nlri: &api.LsAddrPrefix_LsNLRI{Nlri: &api.LsAddrPrefix_LsNLRI_Srv6Sid{
 			Srv6Sid: &api.LsSrv6SIDNLRI{
-				LocalNode:          &api.LsNodeDescriptor{Asn: 65000, IgpRouterId: "0000.0000.0001"},
-				Srv6SidInformation: &api.LsSrv6SIDInformation{Sids: []string{"2001:db8:1::"}},
+				LocalNode:          &api.LsNodeDescriptor{Asn: 65000, IgpRouterId: testRouterID1},
+				Srv6SidInformation: &api.LsSrv6SIDInformation{Sids: []string{testSrv6SID}},
 				MultiTopoId:        &api.LsMultiTopologyIdentifier{},
 			},
 		}},
@@ -1036,8 +1044,8 @@ func testNodeDestination(t *testing.T, asn uint32, routerID, hostname string) *a
 func TestGetBGPlsNLRIs(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		client := &fakeGoBGPClient{listPathResp: []*api.ListPathResponse{
-			{Destination: testNodeDestination(t, 65000, "0000.0000.0001", "r1")},
-			{Destination: testNodeDestination(t, 65000, "0000.0000.0002", "r2")},
+			{Destination: testNodeDestination(t, 65000, testRouterID1, "r1")},
+			{Destination: testNodeDestination(t, 65000, testRouterID2, "r2")},
 		}}
 		ctx := context.Background()
 
@@ -1140,7 +1148,7 @@ func TestEstablishWatchStream_RetriesThenGivesUpOnContextCancel(t *testing.T) {
 func TestInitialSync(t *testing.T) {
 	t.Run("success delivers the initial TED", func(t *testing.T) {
 		client := &fakeGoBGPClient{listPathResp: []*api.ListPathResponse{
-			{Destination: testNodeDestination(t, 65000, "0000.0000.0001", "r1")},
+			{Destination: testNodeDestination(t, 65000, testRouterID1, "r1")},
 		}}
 		tedChan := make(chan []table.TEDElem, 1)
 
@@ -1164,7 +1172,7 @@ func TestInitialSync(t *testing.T) {
 
 	t.Run("returns without blocking when the context ends before delivery", func(t *testing.T) {
 		client := &fakeGoBGPClient{listPathResp: []*api.ListPathResponse{
-			{Destination: testNodeDestination(t, 65000, "0000.0000.0001", "r1")},
+			{Destination: testNodeDestination(t, 65000, testRouterID1, "r1")},
 		}}
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
@@ -1628,15 +1636,15 @@ func testMonitorBGPLsEventsUnusableAddress(t *testing.T) {
 
 func testMonitorBGPLsEventsReconnectsAfterStreamEnd(t *testing.T) {
 	respInitial := []*api.ListPathResponse{
-		{Destination: testNodeDestination(t, 65000, "0000.0000.0001", "r0")},
+		{Destination: testNodeDestination(t, 65000, testRouterID1, "r0")},
 	}
 	respStream1 := []*api.ListPathResponse{
-		{Destination: testNodeDestination(t, 65000, "0000.0000.0001", "r1")},
-		{Destination: testNodeDestination(t, 65000, "0000.0000.0002", "r2")},
+		{Destination: testNodeDestination(t, 65000, testRouterID1, "r1")},
+		{Destination: testNodeDestination(t, 65000, testRouterID2, "r2")},
 	}
 	respStream2 := []*api.ListPathResponse{
-		{Destination: testNodeDestination(t, 65000, "0000.0000.0001", "r1")},
-		{Destination: testNodeDestination(t, 65000, "0000.0000.0002", "r2")},
+		{Destination: testNodeDestination(t, 65000, testRouterID1, "r1")},
+		{Destination: testNodeDestination(t, 65000, testRouterID2, "r2")},
 		{Destination: testNodeDestination(t, 65000, "0000.0000.0003", "r3")},
 	}
 	tableEvent := &api.WatchEventResponse{Event: &api.WatchEventResponse_Table{Table: &api.WatchEventResponse_TableEvent{}}}
@@ -1707,7 +1715,7 @@ func testMonitorBGPLsEventsReconnectsAfterStreamEnd(t *testing.T) {
 func testMonitorBGPLsEventsContextCanceled(t *testing.T) {
 	host, port := startTestGoBGPServer(t, &testGoBGPServer{
 		listPathResp: []*api.ListPathResponse{
-			{Destination: testNodeDestination(t, 65000, "0000.0000.0001", "r1")},
+			{Destination: testNodeDestination(t, 65000, testRouterID1, "r1")},
 		},
 		watchEventHold: 5 * time.Second, // keep the stream open until cancellation
 	})
@@ -1739,7 +1747,7 @@ func testMonitorBGPLsEventsContextCanceled(t *testing.T) {
 func testMonitorBGPLsEventsDebouncedFetch(t *testing.T) {
 	server := &testGoBGPServer{
 		listPathResp: []*api.ListPathResponse{
-			{Destination: testNodeDestination(t, 65000, "0000.0000.0001", "r1")},
+			{Destination: testNodeDestination(t, 65000, testRouterID1, "r1")},
 		},
 		watchEvents: []*api.WatchEventResponse{
 			{Event: &api.WatchEventResponse_Table{Table: &api.WatchEventResponse_TableEvent{}}},
@@ -1786,7 +1794,7 @@ func testMonitorBGPLsEventsDebouncedFetch(t *testing.T) {
 func testMonitorBGPLsEventsReestablishesStream(t *testing.T) {
 	server := &testGoBGPServer{
 		listPathResp: []*api.ListPathResponse{
-			{Destination: testNodeDestination(t, 65000, "0000.0000.0001", "r1")},
+			{Destination: testNodeDestination(t, 65000, testRouterID1, "r1")},
 		},
 		watchEvents: []*api.WatchEventResponse{
 			{Event: &api.WatchEventResponse_Table{Table: &api.WatchEventResponse_TableEvent{}}},
@@ -1836,15 +1844,15 @@ func testMonitorBGPLsEventsReestablishesStream(t *testing.T) {
 
 func testMonitorBGPLsEventsResyncsAfterReconnect(t *testing.T) {
 	respInitial := []*api.ListPathResponse{
-		{Destination: testNodeDestination(t, 65000, "0000.0000.0001", "r0")},
+		{Destination: testNodeDestination(t, 65000, testRouterID1, "r0")},
 	}
 	respStream1 := []*api.ListPathResponse{
-		{Destination: testNodeDestination(t, 65000, "0000.0000.0001", "r1")},
-		{Destination: testNodeDestination(t, 65000, "0000.0000.0002", "r2")},
+		{Destination: testNodeDestination(t, 65000, testRouterID1, "r1")},
+		{Destination: testNodeDestination(t, 65000, testRouterID2, "r2")},
 	}
 	respResync := []*api.ListPathResponse{
-		{Destination: testNodeDestination(t, 65000, "0000.0000.0001", "r1")},
-		{Destination: testNodeDestination(t, 65000, "0000.0000.0002", "r2")},
+		{Destination: testNodeDestination(t, 65000, testRouterID1, "r1")},
+		{Destination: testNodeDestination(t, 65000, testRouterID2, "r2")},
 		{Destination: testNodeDestination(t, 65000, "0000.0000.0003", "r3")},
 	}
 	tableEvent := &api.WatchEventResponse{Event: &api.WatchEventResponse_Table{Table: &api.WatchEventResponse_TableEvent{}}}

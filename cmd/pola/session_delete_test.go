@@ -17,7 +17,7 @@ func TestNewSessionDeleteCmd_DelAlias(t *testing.T) {
 	cmd := newSessionCmd()
 	found, _, err := cmd.Find([]string{"del"})
 	require.NoError(t, err)
-	assert.Equal(t, "delete", found.Name())
+	assert.Equal(t, cmdNameDelete, found.Name())
 }
 
 func TestNewSessionDeleteCmd_ArgValidation(t *testing.T) {
@@ -40,14 +40,14 @@ func TestNewSessionDeleteCmd_ArgValidation(t *testing.T) {
 		jsonFmt = false
 		cmd := newSessionDeleteCmd()
 		captureStdout(t, func() {
-			require.NoError(t, cmd.RunE(cmd, []string{"192.0.2.1"}))
+			require.NoError(t, cmd.RunE(cmd, []string{testPeerAddr1}))
 		})
 	})
 
 	t.Run("deleteSession error propagates", func(t *testing.T) {
 		client = &fakePCEServiceClient{deleteSessionErr: assert.AnError}
 		cmd := newSessionDeleteCmd()
-		err := cmd.RunE(cmd, []string{"192.0.2.1"})
+		err := cmd.RunE(cmd, []string{testPeerAddr1})
 		require.ErrorIs(t, err, assert.AnError)
 	})
 }
@@ -66,17 +66,17 @@ func TestDeleteSession(t *testing.T) {
 			fake := &fakePCEServiceClient{}
 			client = fake
 			out := captureStdout(t, func() {
-				require.NoError(t, deleteSession(netip.MustParseAddr("192.0.2.1"), tt.jsonFlag))
+				require.NoError(t, deleteSession(netip.MustParseAddr(testPeerAddr1), tt.jsonFlag))
 			})
 			assert.Equal(t, tt.want, out)
 			require.NotNil(t, fake.deleteSessionReq)
-			assert.Equal(t, netip.MustParseAddr("192.0.2.1").AsSlice(), fake.deleteSessionReq.PeerAddr)
+			assert.Equal(t, netip.MustParseAddr(testPeerAddr1).AsSlice(), fake.deleteSessionReq.PeerAddr)
 		})
 	}
 
 	t.Run("grpc error propagates", func(t *testing.T) {
 		client = &fakePCEServiceClient{deleteSessionErr: assert.AnError}
-		err := deleteSession(netip.MustParseAddr("192.0.2.1"), false)
+		err := deleteSession(netip.MustParseAddr(testPeerAddr1), false)
 		require.ErrorIs(t, err, assert.AnError)
 	})
 }

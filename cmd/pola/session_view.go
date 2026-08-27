@@ -87,12 +87,14 @@ type statsView struct {
 	SessionSetup     sessionSetupView `json:"sessionSetup"`
 }
 
+const roleActiveStatefulPCE = "active-stateful-pce"
+
 // sessionRole reports Pola's PCE role based on its own advertised U-flag.
 func sessionRole(localCaps []grpc.Capability) string {
 	for _, c := range localCaps {
 		if sc, ok := c.Detail.(grpc.StatefulCapability); ok {
 			if sc.LSPUpdate {
-				return "active-stateful-pce"
+				return roleActiveStatefulPCE
 			}
 			return "passive-stateful-pce"
 		}

@@ -33,6 +33,19 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+const (
+	testAddrA          = "10.0.0.1"
+	testAddrB          = "10.0.0.2"
+	testSRv6SID1       = "2001:db8::1"
+	testSRv6SID2       = "2001:db8:1005::"
+	invalidAddrLiteral = "not-an-addr"
+	invalidSidStr      = "not-a-sid"
+	testSRPolicyName   = "test"
+	testRouterID1      = "0000.0000.0001"
+	testRouterID2      = "0000.0000.0002"
+	wantErrColorZero   = "Color must not be zero"
+)
+
 func TestStatusFromCSPFError(t *testing.T) {
 	reasonOf := func(t *testing.T, err error) (codes.Code, string) {
 		t.Helper()
@@ -95,9 +108,9 @@ func TestNewEnrichedSegmentSRMPLS(t *testing.T) {
 		},
 		{
 			name:       "adjacency NAI",
-			segment:    &pb.Segment{Sid: "24001", LocalAddr: "10.0.0.1", RemoteAddr: "10.0.0.2"},
-			wantLocal:  "10.0.0.1",
-			wantRemote: "10.0.0.2",
+			segment:    &pb.Segment{Sid: "24001", LocalAddr: testAddrA, RemoteAddr: testAddrB},
+			wantLocal:  testAddrA,
+			wantRemote: testAddrB,
 		},
 		{
 			name:    "malformed localAddr",
@@ -106,7 +119,7 @@ func TestNewEnrichedSegmentSRMPLS(t *testing.T) {
 		},
 		{
 			name:    "malformed remoteAddr",
-			segment: &pb.Segment{Sid: "16001", LocalAddr: "10.0.0.1", RemoteAddr: "not-an-addr"},
+			segment: &pb.Segment{Sid: "16001", LocalAddr: testAddrA, RemoteAddr: invalidAddrLiteral},
 			wantErr: true,
 		},
 	}
@@ -130,7 +143,7 @@ func TestNewEnrichedSegmentSRMPLS(t *testing.T) {
 
 func TestNewEnrichedSegmentSRv6(t *testing.T) {
 	segment := &pb.Segment{
-		Sid:          "2001:db8:1005::",
+		Sid:          testSRv6SID2,
 		LocalAddr:    "2001:db8::5",
 		RemoteAddr:   "2001:db8::6",
 		SidStructure: "32,16,0,80",
@@ -151,7 +164,7 @@ func TestNewEnrichedSegmentSRv6(t *testing.T) {
 }
 
 func TestNewEnrichedSegmentInvalidSID(t *testing.T) {
-	_, err := newEnrichedSegment(&pb.Segment{Sid: "not-a-sid"}, false)
+	_, err := newEnrichedSegment(&pb.Segment{Sid: invalidSidStr}, false)
 	assert.Error(t, err, "expected an error for an unparsable SID")
 }
 
@@ -192,9 +205,9 @@ func explicitPolicyRequest(noSIDValidate bool, sid string) *pb.CreateSRPolicyReq
 	return &pb.CreateSRPolicyRequest{
 		SrPolicy: &pb.SRPolicy{
 			Type:        pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT,
-			PolicyName:  "test",
+			PolicyName:  testSRPolicyName,
 			Color:       100,
-			SrcRouterId: "0000.0000.0001",
+			SrcRouterId: testRouterID1,
 			SegmentList: []*pb.Segment{{Sid: sid}},
 		},
 		NoSidValidate: noSIDValidate,
@@ -205,7 +218,7 @@ func dynamicPolicyRequest() *pb.CreateSRPolicyRequest {
 	return &pb.CreateSRPolicyRequest{
 		SrPolicy: &pb.SRPolicy{
 			Type:       pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC,
-			PolicyName: "test",
+			PolicyName: testSRPolicyName,
 			Color:      100,
 		},
 	}
@@ -231,7 +244,7 @@ func TestValidateSIDs_DynamicPathSkipsCheck(t *testing.T) {
 
 func TestValidateSIDs_DynamicWithDisablePathComputeIsStillValidated(t *testing.T) {
 	node := &table.LsNode{
-		RouterID:  "0000.0000.0001",
+		RouterID:  testRouterID1,
 		SrgbBegin: 16000,
 		Prefixes: []*table.LsPrefix{
 			{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 3, HasSidIndex: true},
@@ -279,7 +292,7 @@ func TestValidateSIDs_TEDEmpty(t *testing.T) {
 
 func TestValidateSIDs_MissingSID(t *testing.T) {
 	node := &table.LsNode{
-		RouterID:  "0000.0000.0001",
+		RouterID:  testRouterID1,
 		SrgbBegin: 16000,
 		Prefixes: []*table.LsPrefix{
 			{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 3, HasSidIndex: true},
@@ -300,7 +313,7 @@ func TestValidateSIDs_MissingSID(t *testing.T) {
 
 func TestValidateSIDs_EndpointFormIsStillValidated(t *testing.T) {
 	node := &table.LsNode{
-		RouterID:  "0000.0000.0001",
+		RouterID:  testRouterID1,
 		SrgbBegin: 16000,
 		Prefixes: []*table.LsPrefix{
 			{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 3, HasSidIndex: true},
@@ -324,7 +337,7 @@ func TestValidateSIDs_EndpointFormIsStillValidated(t *testing.T) {
 
 func TestValidateSIDs_DisablePathComputeInvalidSourceAddress(t *testing.T) {
 	node := &table.LsNode{
-		RouterID:  "0000.0000.0001",
+		RouterID:  testRouterID1,
 		SrgbBegin: 16000,
 		Prefixes: []*table.LsPrefix{
 			{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 3, HasSidIndex: true},
@@ -348,7 +361,7 @@ func TestValidateSIDs_DisablePathComputeInvalidSourceAddress(t *testing.T) {
 
 func TestValidateSIDs_DisablePathComputeSourceAddressNotFound(t *testing.T) {
 	node := &table.LsNode{
-		RouterID:  "0000.0000.0001",
+		RouterID:  testRouterID1,
 		SrgbBegin: 16000,
 		Prefixes: []*table.LsPrefix{
 			{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 3, HasSidIndex: true},
@@ -396,7 +409,7 @@ func TestValidateSIDs_LabelBoundsAreAccepted(t *testing.T) {
 
 func TestValidateSIDs_AllKnownSucceeds(t *testing.T) {
 	node := &table.LsNode{
-		RouterID:  "0000.0000.0001",
+		RouterID:  testRouterID1,
 		SrgbBegin: 16000,
 		Prefixes: []*table.LsPrefix{
 			{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 3, HasSidIndex: true},
@@ -1126,7 +1139,7 @@ func TestDeleteSRPolicy_SrcAddrOmitted(t *testing.T) {
 	ss.srPolicies = []*table.SRPolicy{
 		{
 			PlspID:     1,
-			Name:       "test-policy",
+			Name:       testSRPolicyName,
 			DstAddr:    dstAddr,
 			Color:      100,
 			Preference: 100,
@@ -1141,7 +1154,7 @@ func TestDeleteSRPolicy_SrcAddrOmitted(t *testing.T) {
 			PeerAddr:   peerAddr.AsSlice(),
 			DstAddr:    dstAddr.AsSlice(),
 			Color:      100,
-			PolicyName: "test-policy",
+			PolicyName: testSRPolicyName,
 		},
 	}
 
@@ -1244,7 +1257,7 @@ func TestGetSegmentList_Explicit(t *testing.T) {
 		},
 		{
 			name:    "malformed segment SID propagates the error",
-			policy:  &pb.SRPolicy{Type: pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT, SegmentList: []*pb.Segment{{Sid: "not-a-sid"}}},
+			policy:  &pb.SRPolicy{Type: pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT, SegmentList: []*pb.Segment{{Sid: invalidSidStr}}},
 			wantErr: true,
 		},
 	}
@@ -1618,9 +1631,9 @@ func TestNewEnrichedSegmentSRv6_Errors(t *testing.T) {
 		name    string
 		segment *pb.Segment
 	}{
-		{name: "malformed SID structure", segment: &pb.Segment{Sid: "2001:db8:1005::", SidStructure: "1,2,3"}},
-		{name: "malformed localAddr", segment: &pb.Segment{Sid: "2001:db8:1005::", LocalAddr: "not-an-addr"}},
-		{name: "malformed remoteAddr", segment: &pb.Segment{Sid: "2001:db8:1005::", LocalAddr: "2001:db8::5", RemoteAddr: "not-an-addr"}},
+		{name: "malformed SID structure", segment: &pb.Segment{Sid: testSRv6SID2, SidStructure: "1,2,3"}},
+		{name: "malformed localAddr", segment: &pb.Segment{Sid: testSRv6SID2, LocalAddr: invalidAddrLiteral}},
+		{name: "malformed remoteAddr", segment: &pb.Segment{Sid: testSRv6SID2, LocalAddr: "2001:db8::5", RemoteAddr: invalidAddrLiteral}},
 	}
 
 	for _, tt := range tests {
@@ -1636,8 +1649,8 @@ func TestNewEnrichedSegmentSRv6_SubobjectValidationErrors(t *testing.T) {
 		name    string
 		segment *pb.Segment
 	}{
-		{name: "IPv4 LocalAddr on SRv6 segment", segment: &pb.Segment{Sid: "2001:db8:1005::", LocalAddr: "10.0.0.1"}},
-		{name: "RemoteAddr without LocalAddr", segment: &pb.Segment{Sid: "2001:db8:1005::", RemoteAddr: "2001:db8::6"}},
+		{name: "IPv4 LocalAddr on SRv6 segment", segment: &pb.Segment{Sid: testSRv6SID2, LocalAddr: testAddrA}},
+		{name: "RemoteAddr without LocalAddr", segment: &pb.Segment{Sid: testSRv6SID2, RemoteAddr: "2001:db8::6"}},
 	}
 
 	for _, tt := range tests {
@@ -1653,8 +1666,8 @@ func TestNewEnrichedSegmentSRMPLS_SubobjectValidationErrors(t *testing.T) {
 		name    string
 		segment *pb.Segment
 	}{
-		{name: "RemoteAddr without LocalAddr", segment: &pb.Segment{Sid: "16001", RemoteAddr: "10.0.0.2"}},
-		{name: "mismatched address families", segment: &pb.Segment{Sid: "16001", LocalAddr: "10.0.0.1", RemoteAddr: "2001:db8::1"}},
+		{name: "RemoteAddr without LocalAddr", segment: &pb.Segment{Sid: "16001", RemoteAddr: testAddrB}},
+		{name: "mismatched address families", segment: &pb.Segment{Sid: "16001", LocalAddr: testAddrA, RemoteAddr: testSRv6SID1}},
 	}
 
 	for _, tt := range tests {
@@ -1789,7 +1802,7 @@ func TestResolvePath_DisablePathCompute(t *testing.T) {
 	t.Run("malformed segment SID", func(t *testing.T) {
 		s := newTestAPIServer(nil)
 		req := disabledReq()
-		req.SrPolicy.SegmentList = []*pb.Segment{{Sid: "not-a-sid"}}
+		req.SrPolicy.SegmentList = []*pb.Segment{{Sid: invalidSidStr}}
 		_, err := resolvePath(s, req, true)
 		assert.Error(t, err)
 	})
@@ -1808,7 +1821,7 @@ func TestCreateSRPolicy(t *testing.T) {
 			Asn: 65000,
 			SrPolicy: &pb.SRPolicy{
 				Type:        pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT,
-				PolicyName:  "test",
+				PolicyName:  testSRPolicyName,
 				Color:       100,
 				PeerAddr:    netip.MustParseAddr("10.0.255.1").AsSlice(),
 				SrcRouterId: "r1",
@@ -1912,12 +1925,12 @@ func TestCreateSRPolicy_SRv6WithoutLocalAddr(t *testing.T) {
 	req := &pb.CreateSRPolicyRequest{
 		DisablePathCompute: true,
 		SrPolicy: &pb.SRPolicy{
-			PolicyName:  "test",
+			PolicyName:  testSRPolicyName,
 			Color:       100,
 			PeerAddr:    netip.MustParseAddr("10.0.255.1").AsSlice(),
 			SrcAddr:     netip.MustParseAddr("10.0.0.1").AsSlice(),
 			DstAddr:     netip.MustParseAddr("10.0.0.2").AsSlice(),
-			SegmentList: []*pb.Segment{{Sid: "2001:db8::1"}},
+			SegmentList: []*pb.Segment{{Sid: testSRv6SID1}},
 		},
 		NoSidValidate: true,
 	}
@@ -1952,7 +1965,7 @@ func TestCreateSRPolicy_StatusCodes(t *testing.T) {
 		return &pb.CreateSRPolicyRequest{
 			Asn: 65000,
 			SrPolicy: &pb.SRPolicy{
-				Type: pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT, PolicyName: "test", Color: 100,
+				Type: pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT, PolicyName: testSRPolicyName, Color: 100,
 				PeerAddr:    netip.MustParseAddr("10.0.255.1").AsSlice(),
 				SrcRouterId: "r1", DstRouterId: "r2",
 				SegmentList: []*pb.Segment{{Sid: "16002"}},
@@ -1977,50 +1990,50 @@ func TestCreateSRPolicy_StatusCodes(t *testing.T) {
 		wantMsg    string
 	}{
 		{"ASN is zero", true, func() *pb.CreateSRPolicyRequest { r := explicitReq(); r.Asn = 0; return r },
-			codes.InvalidArgument, "INVALID_REQUEST", "ASN must not be zero"},
+			codes.InvalidArgument, ReasonInvalidRequest, "ASN must not be zero"},
 		{"color is zero", true, func() *pb.CreateSRPolicyRequest { r := explicitReq(); r.SrPolicy.Color = 0; return r },
-			codes.InvalidArgument, "INVALID_REQUEST", "Color must not be zero"},
+			codes.InvalidArgument, ReasonInvalidRequest, wantErrColorZero},
 		{"PCEP session address is absent", true, func() *pb.CreateSRPolicyRequest { r := explicitReq(); r.SrPolicy.PeerAddr = nil; return r },
-			codes.InvalidArgument, "INVALID_REQUEST", "policy.PeerAddr must not be nil"},
+			codes.InvalidArgument, ReasonInvalidRequest, "policy.PeerAddr must not be nil"},
 		{"request ASN does not match the TED", true, func() *pb.CreateSRPolicyRequest { r := explicitReq(); r.Asn = 65001; return r },
-			codes.InvalidArgument, "INVALID_REQUEST", "does not match ted ASN"},
+			codes.InvalidArgument, ReasonInvalidRequest, "does not match ted ASN"},
 		{"source router ID is not in the TED", true, func() *pb.CreateSRPolicyRequest { r := dynamicReq(); r.SrPolicy.SrcRouterId = "r9"; return r },
-			codes.InvalidArgument, "INVALID_REQUEST", "no node with router ID r9"},
+			codes.InvalidArgument, ReasonInvalidRequest, "no node with router ID r9"},
 		{"destination router ID is not in the TED", true, func() *pb.CreateSRPolicyRequest { r := dynamicReq(); r.SrPolicy.DstRouterId = "r9"; return r },
-			codes.InvalidArgument, "INVALID_REQUEST", "no node with router ID r9"},
+			codes.InvalidArgument, ReasonInvalidRequest, "no node with router ID r9"},
 		{"waypoint router ID is not in the TED", true, func() *pb.CreateSRPolicyRequest {
 			r := dynamicReq()
 			r.SrPolicy.Waypoints = []*pb.Waypoint{{RouterId: "r9"}}
 			return r
-		}, codes.InvalidArgument, "INVALID_REQUEST", "waypoint router r9 not found in TED"},
+		}, codes.InvalidArgument, ReasonInvalidRequest, "waypoint router r9 not found in TED"},
 		{"waypoint SID is malformed", true, func() *pb.CreateSRPolicyRequest {
 			r := dynamicReq()
 			r.SrPolicy.Waypoints = []*pb.Waypoint{{RouterId: "r2", Sid: "not-an-address"}}
 			return r
-		}, codes.InvalidArgument, "INVALID_REQUEST", "failed to build segment for waypoint r2"},
+		}, codes.InvalidArgument, ReasonInvalidRequest, "failed to build segment for waypoint r2"},
 		{"dynamic policy without a metric", true, func() *pb.CreateSRPolicyRequest {
 			r := dynamicReq()
 			r.SrPolicy.Metric = pb.MetricType_METRIC_TYPE_UNSPECIFIED
 			return r
-		}, codes.InvalidArgument, "INVALID_REQUEST", "unknown metric type"},
+		}, codes.InvalidArgument, ReasonInvalidRequest, "unknown metric type"},
 		{"dynamic policy with a metric outside the enum", true, func() *pb.CreateSRPolicyRequest {
 			r := dynamicReq()
 			r.SrPolicy.Metric = pb.MetricType(99)
 			return r
-		}, codes.InvalidArgument, "INVALID_REQUEST", "unknown metric type"},
+		}, codes.InvalidArgument, ReasonInvalidRequest, "unknown metric type"},
 		{"policy type is unset", true, func() *pb.CreateSRPolicyRequest {
 			r := explicitReq()
 			r.SrPolicy.Type = pb.SRPolicyType_SR_POLICY_TYPE_UNSPECIFIED
 			return r
 		},
-			codes.InvalidArgument, "INVALID_REQUEST", "undefined SR Policy type"},
+			codes.InvalidArgument, ReasonInvalidRequest, "undefined SR Policy type"},
 		{"explicit policy with an empty segment list", true, func() *pb.CreateSRPolicyRequest { r := explicitReq(); r.SrPolicy.SegmentList = nil; return r },
-			codes.InvalidArgument, "INVALID_REQUEST", "no segments in SRPolicy input"},
+			codes.InvalidArgument, ReasonInvalidRequest, "no segments in SRPolicy input"},
 		{"explicit policy with a malformed SID", true, func() *pb.CreateSRPolicyRequest {
 			r := explicitReq()
-			r.SrPolicy.SegmentList = []*pb.Segment{{Sid: "not-a-sid"}}
+			r.SrPolicy.SegmentList = []*pb.Segment{{Sid: invalidSidStr}}
 			return r
-		}, codes.InvalidArgument, "INVALID_REQUEST", "invalid SID"},
+		}, codes.InvalidArgument, ReasonInvalidRequest, "invalid SID"},
 		{"SID is not present in the TED", true, func() *pb.CreateSRPolicyRequest {
 			r := explicitReq()
 			r.NoSidValidate = false
@@ -2074,7 +2087,7 @@ func TestDeleteSRPolicy(t *testing.T) {
 			PeerAddr:   peerAddr.AsSlice(),
 			DstAddr:    dstAddr.AsSlice(),
 			Color:      100,
-			PolicyName: "test-policy",
+			PolicyName: testSRPolicyName,
 		}
 	}
 
@@ -2106,7 +2119,7 @@ func TestDeleteSRPolicy(t *testing.T) {
 	t.Run("malformed segment SID", func(t *testing.T) {
 		s := &APIServer{logger: zap.NewNop()}
 		policy := validPolicy()
-		policy.SegmentList = []*pb.Segment{{Sid: "not-a-sid"}}
+		policy.SegmentList = []*pb.Segment{{Sid: invalidSidStr}}
 		resp, err := s.DeleteSRPolicy(context.Background(), &pb.DeleteSRPolicyRequest{SrPolicy: policy})
 		require.Error(t, err)
 		assert.Nil(t, resp)
@@ -2146,7 +2159,7 @@ func TestDeleteSRPolicy(t *testing.T) {
 
 		ss := NewSession(testLocalOpen(1), peerAddr, server, zap.NewNop(), nil, 0)
 		ss.syncState = lspDBSyncFinished
-		ss.srPolicies = []*table.SRPolicy{{PlspID: 1, Name: "test-policy", DstAddr: dstAddr, Color: 100, Preference: 100}}
+		ss.srPolicies = []*table.SRPolicy{{PlspID: 1, Name: testSRPolicyName, DstAddr: dstAddr, Color: 100, Preference: 100}}
 		require.NoError(t, server.Close(), "failed to close server connection")
 
 		s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: zap.NewNop()}
@@ -2164,7 +2177,7 @@ func TestDeleteSRPolicy(t *testing.T) {
 
 		ss := NewSession(testLocalOpen(1), peerAddr, server, zap.NewNop(), nil, 0)
 		ss.syncState = lspDBSyncFinished
-		ss.srPolicies = []*table.SRPolicy{{PlspID: 1, Name: "test-policy", DstAddr: dstAddr, Color: 100, Preference: 100}}
+		ss.srPolicies = []*table.SRPolicy{{PlspID: 1, Name: testSRPolicyName, DstAddr: dstAddr, Color: 100, Preference: 100}}
 
 		s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: zap.NewNop()}
 		policy := validPolicy()
@@ -2200,7 +2213,7 @@ func TestValidate_Add(t *testing.T) {
 	}{
 		{name: "valid"},
 		{name: "missing PCEP session address", mutate: func(p *pb.SRPolicy) { p.PeerAddr = nil }, wantErr: "policy.PeerAddr must not be nil"},
-		{name: "zero color", mutate: func(p *pb.SRPolicy) { p.Color = 0 }, wantErr: "Color must not be zero"},
+		{name: "zero color", mutate: func(p *pb.SRPolicy) { p.Color = 0 }, wantErr: wantErrColorZero},
 		{name: "missing source router ID", mutate: func(p *pb.SRPolicy) { p.SrcRouterId = "" }, wantErr: "SrcRouterId must not be empty"},
 		{name: "missing destination router ID", mutate: func(p *pb.SRPolicy) { p.DstRouterId = "" }, wantErr: "DstRouterId must not be empty"},
 	}
@@ -2239,7 +2252,7 @@ func TestValidate_AddDisablePathCompute(t *testing.T) {
 	}{
 		{name: "valid"},
 		{name: "missing PCEP session address", mutate: func(p *pb.SRPolicy) { p.PeerAddr = nil }, wantErr: "policy.PeerAddr must not be nil"},
-		{name: "zero color", mutate: func(p *pb.SRPolicy) { p.Color = 0 }, wantErr: "Color must not be zero"},
+		{name: "zero color", mutate: func(p *pb.SRPolicy) { p.Color = 0 }, wantErr: wantErrColorZero},
 		{name: "missing source address", mutate: func(p *pb.SRPolicy) { p.SrcAddr = nil }, wantErr: "SrcAddr must not be empty"},
 		{name: "missing destination address", mutate: func(p *pb.SRPolicy) { p.DstAddr = nil }, wantErr: "DstAddr must not be empty"},
 		{name: "missing segment list", mutate: func(p *pb.SRPolicy) { p.SegmentList = nil }, wantErr: "SegmentList must not be empty"},
@@ -2267,7 +2280,7 @@ func TestValidate_Delete(t *testing.T) {
 			PeerAddr:   []byte{10, 0, 0, 1},
 			Color:      100,
 			DstAddr:    []byte{10, 0, 0, 2},
-			PolicyName: "test",
+			PolicyName: testSRPolicyName,
 		}
 	}
 
@@ -2278,7 +2291,7 @@ func TestValidate_Delete(t *testing.T) {
 	}{
 		{name: "valid"},
 		{name: "missing PCEP session address", mutate: func(p *pb.SRPolicy) { p.PeerAddr = nil }, wantErr: "policy.PeerAddr must not be nil"},
-		{name: "zero color", mutate: func(p *pb.SRPolicy) { p.Color = 0 }, wantErr: "Color must not be zero"},
+		{name: "zero color", mutate: func(p *pb.SRPolicy) { p.Color = 0 }, wantErr: wantErrColorZero},
 		{name: "missing destination address", mutate: func(p *pb.SRPolicy) { p.DstAddr = nil }, wantErr: "DstAddr must not be empty"},
 		{name: "missing policy name", mutate: func(p *pb.SRPolicy) { p.PolicyName = "" }, wantErr: "PolicyName must not be empty"},
 	}
@@ -2605,13 +2618,13 @@ func TestConvertMetrics_Nil(t *testing.T) {
 func TestGetTED_ConvertsFullNode(t *testing.T) {
 	node := &table.LsNode{
 		ASN:        65000,
-		RouterID:   "0000.0000.0001",
+		RouterID:   testRouterID1,
 		IsisAreaID: "49.0001",
 		Hostname:   "pe1",
 		SrgbBegin:  16000,
 		SrgbEnd:    17000,
 	}
-	remote := &table.LsNode{ASN: 65000, RouterID: "0000.0000.0002"}
+	remote := &table.LsNode{ASN: 65000, RouterID: testRouterID2}
 
 	link := table.NewLsLink(node, remote)
 	link.LocalIP = netip.MustParseAddr("192.0.2.1")
@@ -2624,7 +2637,7 @@ func TestGetTED_ConvertsFullNode(t *testing.T) {
 	}
 	link.Srv6EndXSID = &table.Srv6EndXSID{
 		EndpointBehavior: table.BehaviorENDX,
-		Sids:             []string{"2001:db8::1", ""},
+		Sids:             []string{testSRv6SID1, ""},
 		Srv6SIDStructure: table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
 	}
 	node.Links = []*table.LsLink{
@@ -2669,17 +2682,17 @@ func TestGetTED_ConvertsFullNode(t *testing.T) {
 
 	want := &pb.LsNode{
 		Asn:        65000,
-		RouterId:   "0000.0000.0001",
+		RouterId:   testRouterID1,
 		IsisAreaId: "49.0001",
 		Hostname:   "pe1",
 		SrgbBegin:  16000,
 		SrgbEnd:    17000,
 		Links: []*pb.LsLink{
 			{
-				LocalRouterId:  "0000.0000.0001",
+				LocalRouterId:  testRouterID1,
 				LocalAsn:       65000,
 				LocalIp:        "192.0.2.1",
-				RemoteRouterId: "0000.0000.0002",
+				RemoteRouterId: testRouterID2,
 				RemoteAsn:      65000,
 				RemoteIp:       "192.0.2.2",
 				Metrics: []*pb.Metric{
@@ -2689,7 +2702,7 @@ func TestGetTED_ConvertsFullNode(t *testing.T) {
 				AdjSid: 24001,
 				Srv6EndXSid: &pb.Srv6EndXSID{
 					EndpointBehavior: uint32(table.BehaviorENDX),
-					Sids:             []*pb.SID{{Sid: "2001:db8::1"}},
+					Sids:             []*pb.SID{{Sid: testSRv6SID1}},
 					SidStructure:     &pb.SidStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
 				},
 			},
@@ -2716,7 +2729,7 @@ func TestGetTED_ConvertsFullNode(t *testing.T) {
 		},
 	}
 	assert.Equal(t, want, byRouterID[node.RouterID])
-	assert.Equal(t, &pb.LsNode{Asn: 65000, RouterId: "0000.0000.0002"}, byRouterID[remote.RouterID])
+	assert.Equal(t, &pb.LsNode{Asn: 65000, RouterId: testRouterID2}, byRouterID[remote.RouterID])
 }
 
 func TestDeleteSession(t *testing.T) {

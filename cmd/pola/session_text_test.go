@@ -18,11 +18,11 @@ func fullSessionViewFixture() sessionView {
 	lk, pk, ld, pd := uint32(30), uint32(10), uint32(120), uint32(40)
 	ek, ed := uint32(10), uint32(40)
 	return sessionView{
-		PeerAddress: "192.0.2.1",
+		PeerAddress: testPeerAddr1,
 		State:       "up",
 		LSPDBSync:   "finished",
 		UpTime:      "00:12:22",
-		Role:        "active-stateful-pce",
+		Role:        roleActiveStatefulPCE,
 		SessionID:   sessionIDView{Local: &local, Peer: &peer},
 		Timers: timersView{
 			Keepalive: timerTriple{Local: &lk, Peer: &pk, Effective: &ek},
@@ -36,7 +36,7 @@ func fullSessionViewFixture() sessionView {
 			},
 			LocalOnly:    []capGroupView{{Capability: "SR", Items: []string{"MSD=10"}}},
 			PeerOnly:     []capGroupView{{Capability: "SR", Items: []string{"MSD=16"}}},
-			commonGroups: []capGroupView{{Capability: "STATEFUL", Items: []string{"Stateful", "Update"}}},
+			commonGroups: []capGroupView{{Capability: capGroupStateful, Items: []string{"Stateful", "Update"}}},
 		},
 		SessionCreation: "2026-08-19T09:30:00Z",
 		Initiator:       "remote",
@@ -108,7 +108,7 @@ func TestWriteSessionText_PropagatesWriteErrors(t *testing.T) {
 
 func TestWriteGroupedLine_PropagatesWriteErrorOnNonFirstItem(t *testing.T) {
 	c := capabilitiesView{
-		LocalOnly: []capGroupView{{Capability: "ASSOC_TYPE_LIST", Items: []string{"6 SR Policy Association"}}},
+		LocalOnly: []capGroupView{{Capability: capGroupAssocTypeList, Items: []string{"SR Policy Association (0x0006) [RFC9862]"}}},
 	}
 
 	w := &condFailWriter{fail: containsFail("SR Policy Association")}
@@ -118,7 +118,7 @@ func TestWriteGroupedLine_PropagatesWriteErrorOnNonFirstItem(t *testing.T) {
 
 func TestWriteCapabilityGroupSection_PropagatesGroupedLineWriteError(t *testing.T) {
 	c := capabilitiesView{
-		commonGroups: []capGroupView{{Capability: "ASSOC_TYPE_LIST", Items: []string{"6 SR Policy Association"}}},
+		commonGroups: []capGroupView{{Capability: capGroupAssocTypeList, Items: []string{"SR Policy Association (0x0006) [RFC9862]"}}},
 	}
 
 	w := &condFailWriter{fail: containsFail("ASSOC-TYPE-LIST")}
@@ -128,7 +128,7 @@ func TestWriteCapabilityGroupSection_PropagatesGroupedLineWriteError(t *testing.
 
 func TestWriteGroupedLine_EmptyItemsRendersDash(t *testing.T) {
 	c := capabilitiesView{
-		LocalOnly: []capGroupView{{Capability: "ASSOC_TYPE_LIST", Items: []string{}}},
+		LocalOnly: []capGroupView{{Capability: capGroupAssocTypeList, Items: []string{}}},
 	}
 
 	var buf strings.Builder

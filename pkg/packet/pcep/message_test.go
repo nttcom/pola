@@ -15,6 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const testPolicyName = "policy1"
+
 func TestPCErrMessage_RoundTrip(t *testing.T) {
 	t.Parallel()
 
@@ -139,7 +141,7 @@ func TestNewPCInitiateMessage_OriginatorASNReachesWire(t *testing.T) {
 			t.Parallel()
 
 			m, err := NewPCInitiateMessage(1, table.SRPolicy{
-				Name: "policy1", SegmentList: segmentList, Color: 100, Preference: 200, SrcAddr: srcAddr, DstAddr: dstAddr,
+				Name: testPolicyName, SegmentList: segmentList, Color: 100, Preference: 200, SrcAddr: srcAddr, DstAddr: dstAddr,
 			}, tt.opts...)
 			require.NoError(t, err, "NewPCInitiateMessage failed")
 			require.NotNil(t, m.AssociationObject, "RFC compliant PCInitiate must carry an ASSOCIATION object")
@@ -205,7 +207,7 @@ func TestNewPCInitiateMessage_VendorObjectSelection(t *testing.T) {
 			t.Parallel()
 
 			m, err := NewPCInitiateMessage(1, table.SRPolicy{
-				Name: "policy1", SegmentList: segmentList, Color: 100, Preference: 200, SrcAddr: srcAddr, DstAddr: dstAddr,
+				Name: testPolicyName, SegmentList: segmentList, Color: 100, Preference: 200, SrcAddr: srcAddr, DstAddr: dstAddr,
 			}, VendorSpecific(tt.pccType))
 			require.NoError(t, err, "NewPCInitiateMessage failed")
 
@@ -264,6 +266,14 @@ func TestMessageType_StringWithReference(t *testing.T) {
 			assert.Equal(t, tt.want, tt.typ.StringWithReference())
 		})
 	}
+}
+
+func TestMessageType_Reference(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, rfc(8231), MessageTypeReport.Reference())
+	assert.Equal(t, RefKindUnknown, MessageType(0x7f).Reference().Kind())
+	assert.Empty(t, MessageType(0x7f).Name())
 }
 
 func TestOpenMessage_RoundTrip(t *testing.T) {
@@ -709,7 +719,7 @@ func TestNewPCUpdMessage(t *testing.T) {
 
 	segmentList := []table.Segment{table.NewSegmentSRMPLS(16001), table.NewSegmentSRMPLS(16002)}
 
-	m, err := NewPCUpdMessage(1, table.SRPolicy{Name: "policy1", PlspID: 5, SegmentList: segmentList})
+	m, err := NewPCUpdMessage(1, table.SRPolicy{Name: testPolicyName, PlspID: 5, SegmentList: segmentList})
 	require.NoError(t, err)
 
 	raw, err := m.Serialize()
@@ -755,7 +765,7 @@ func TestNewPCUpdMessage_Errors(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := NewPCUpdMessage(1, table.SRPolicy{Name: "policy1", PlspID: 5, SegmentList: segs})
+			_, err := NewPCUpdMessage(1, table.SRPolicy{Name: testPolicyName, PlspID: 5, SegmentList: segs})
 			assert.Error(t, err)
 		})
 	}
@@ -972,7 +982,7 @@ func TestNewPCInitiateDeleteMessage(t *testing.T) {
 
 	segmentList := []table.Segment{table.NewSegmentSRMPLS(16001)}
 	m, err := NewPCInitiateDeleteMessage(1, table.SRPolicy{
-		Name: "policy1", PlspID: 5, SegmentList: segmentList, Color: 100, Preference: 200,
+		Name: testPolicyName, PlspID: 5, SegmentList: segmentList, Color: 100, Preference: 200,
 	})
 	require.NoError(t, err)
 
@@ -988,7 +998,7 @@ func TestNewPCInitiateDeleteMessage_InvalidSegmentType(t *testing.T) {
 	t.Parallel()
 
 	_, err := NewPCInitiateDeleteMessage(1, table.SRPolicy{
-		Name: "policy1", PlspID: 5, SegmentList: []table.Segment{fakeSegment{}},
+		Name: testPolicyName, PlspID: 5, SegmentList: []table.Segment{fakeSegment{}},
 	})
 	assert.Error(t, err)
 }
@@ -1028,7 +1038,7 @@ func TestNewPCInitiateMessage_Errors(t *testing.T) {
 			t.Parallel()
 
 			m, err := NewPCInitiateMessage(1, table.SRPolicy{
-				Name: "policy1", SegmentList: tt.segmentList, Color: 100, Preference: 200, SrcAddr: tt.srcAddr, DstAddr: tt.dstAddr,
+				Name: testPolicyName, SegmentList: tt.segmentList, Color: 100, Preference: 200, SrcAddr: tt.srcAddr, DstAddr: tt.dstAddr,
 			}, tt.opts...)
 			require.Error(t, err)
 			assert.Nil(t, m)

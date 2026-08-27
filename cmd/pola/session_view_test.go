@@ -22,11 +22,11 @@ func TestSessionRole(t *testing.T) {
 	}{
 		"no stateful capability": {nil, "stateless-pce"},
 		"active (U=1)": {
-			[]grpc.Capability{{Type: "STATEFUL", Detail: grpc.StatefulCapability{LSPUpdate: true}}},
-			"active-stateful-pce",
+			[]grpc.Capability{{Type: capGroupStateful, Detail: grpc.StatefulCapability{LSPUpdate: true}}},
+			roleActiveStatefulPCE,
 		},
 		"passive (U=0)": {
-			[]grpc.Capability{{Type: "STATEFUL", Detail: grpc.StatefulCapability{LSPUpdate: false}}},
+			[]grpc.Capability{{Type: capGroupStateful, Detail: grpc.StatefulCapability{LSPUpdate: false}}},
 			"passive-stateful-pce",
 		},
 	}
@@ -38,15 +38,15 @@ func TestSessionRole(t *testing.T) {
 }
 
 func TestSessionRole_IgnoresPeerCapabilities(t *testing.T) {
-	localCaps := []grpc.Capability{{Type: "STATEFUL", Detail: grpc.StatefulCapability{LSPUpdate: true}}}
+	localCaps := []grpc.Capability{{Type: capGroupStateful, Detail: grpc.StatefulCapability{LSPUpdate: true}}}
 	ss := grpc.Session{
-		PeerAddr:          netip.MustParseAddr("192.0.2.1"),
+		PeerAddr:          netip.MustParseAddr(testPeerAddr1),
 		State:             "up",
 		LocalCapabilities: localCaps,
-		PeerCapabilities:  []grpc.Capability{{Type: "STATEFUL", Detail: grpc.StatefulCapability{LSPUpdate: false}}},
+		PeerCapabilities:  []grpc.Capability{{Type: capGroupStateful, Detail: grpc.StatefulCapability{LSPUpdate: false}}},
 	}
 	v := newSessionView(ss, false)
-	assert.Equal(t, "active-stateful-pce", v.Role)
+	assert.Equal(t, roleActiveStatefulPCE, v.Role)
 }
 
 func TestFormatUpTime(t *testing.T) {
@@ -67,11 +67,11 @@ func TestFormatUpTime(t *testing.T) {
 }
 
 func TestNewSessionView_UpTimeOmittedUnlessEstablished(t *testing.T) {
-	notEstablished := grpc.Session{PeerAddr: netip.MustParseAddr("192.0.2.1"), State: "open-wait"}
+	notEstablished := grpc.Session{PeerAddr: netip.MustParseAddr(testPeerAddr1), State: "open-wait"}
 	assert.Empty(t, newSessionView(notEstablished, false).UpTime)
 
 	established := grpc.Session{
-		PeerAddr:      netip.MustParseAddr("192.0.2.1"),
+		PeerAddr:      netip.MustParseAddr(testPeerAddr1),
 		State:         "up",
 		EstablishedAt: time.Date(2025, 12, 31, 23, 0, 0, 0, time.UTC),
 		UptimeNanos:   3600000000000, // 1 hour in nanoseconds
@@ -81,7 +81,7 @@ func TestNewSessionView_UpTimeOmittedUnlessEstablished(t *testing.T) {
 
 func TestNewSessionView_DetailFieldsOnlyPopulatedWhenRequested(t *testing.T) {
 	ss := grpc.Session{
-		PeerAddr:  netip.MustParseAddr("192.0.2.1"),
+		PeerAddr:  netip.MustParseAddr(testPeerAddr1),
 		State:     "up",
 		CreatedAt: time.Date(2026, 8, 19, 9, 30, 0, 0, time.UTC),
 		Initiator: "remote",

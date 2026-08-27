@@ -24,6 +24,11 @@ import (
 	"github.com/nttcom/pola/pkg/table"
 )
 
+const (
+	versionFlag    = "--version"
+	tedSourceGoBGP = "gobgp"
+)
+
 type flags struct {
 	configFile string
 }
@@ -58,7 +63,7 @@ func mainRun(args []string) int {
 }
 
 func run(args []string, deps runDeps) error {
-	if len(args) > 0 && args[0] == "--version" {
+	if len(args) > 0 && args[0] == versionFlag {
 		fmt.Println("polad " + version.Version())
 		return nil
 	}
@@ -162,7 +167,7 @@ func newTEDElemsChan(ctx context.Context, c *config.Config, logger *zap.Logger, 
 	if c.Global.TED.ASN == 0 {
 		return nil, errors.New("TED is enabled but Global.TED.ASN is missing or invalid")
 	}
-	if c.Global.TED.Source != "gobgp" {
+	if c.Global.TED.Source != tedSourceGoBGP {
 		return nil, fmt.Errorf("specified TED source %q is not defined", c.Global.TED.Source)
 	}
 

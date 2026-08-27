@@ -17,6 +17,13 @@ import (
 	"github.com/nttcom/pola/pkg/table"
 )
 
+const (
+	testIPv4Addr1 = "10.0.0.1"
+	testIPv4Addr2 = "10.0.0.2"
+	testIPv6Addr1 = "2001:db8::1"
+	testIPv6Addr2 = "2001:db8::2"
+)
+
 // fakeSegment is used to test unsupported segment types.
 type fakeSegment struct{}
 
@@ -63,25 +70,25 @@ func TestSREroSubobject_RoundTrip(t *testing.T) {
 			SubobjectType: SubobjectTypeEROSR,
 			NAIType:       NAITypeSRIPv4Node,
 			MFlag:         true,
-			Segment:       mkSRMPLSWithNAI(16001, "10.0.0.1", ""),
+			Segment:       mkSRMPLSWithNAI(16001, testIPv4Addr1, ""),
 		},
 		"IPv6Node": {
 			SubobjectType: SubobjectTypeEROSR,
 			NAIType:       NAITypeSRIPv6Node,
 			MFlag:         true,
-			Segment:       mkSRMPLSWithNAI(16002, "2001:db8::1", ""),
+			Segment:       mkSRMPLSWithNAI(16002, testIPv6Addr1, ""),
 		},
 		"IPv4Adjacency": {
 			SubobjectType: SubobjectTypeEROSR,
 			NAIType:       NAITypeSRIPv4Adjacency,
 			MFlag:         true,
-			Segment:       mkSRMPLSWithNAI(24001, "10.0.0.1", "10.0.0.2"),
+			Segment:       mkSRMPLSWithNAI(24001, testIPv4Addr1, testIPv4Addr2),
 		},
 		"IPv6AdjacencyGlobal": {
 			SubobjectType: SubobjectTypeEROSR,
 			NAIType:       NAITypeSRIPv6AdjacencyGlobal,
 			MFlag:         true,
-			Segment:       mkSRMPLSWithNAI(24002, "2001:db8::1", "2001:db8::2"),
+			Segment:       mkSRMPLSWithNAI(24002, testIPv6Addr1, testIPv6Addr2),
 		},
 		"IPv4Node_CFlag_MPLSStackAttrs": {
 			SubobjectType: SubobjectTypeEROSR,
@@ -143,28 +150,28 @@ func TestNewSREroSubobject_NAIFromSegment(t *testing.T) {
 			seg: mk("", ""), wantNAIType: NAITypeSRAbsent, wantFFlag: true, wantLength: 8,
 		},
 		"IPv4Local": {
-			seg: mk("10.0.0.1", ""), wantNAIType: NAITypeSRIPv4Node, wantLength: 12,
+			seg: mk(testIPv4Addr1, ""), wantNAIType: NAITypeSRIPv4Node, wantLength: 12,
 		},
 		"IPv6Local": {
-			seg: mk("2001:db8::1", ""), wantNAIType: NAITypeSRIPv6Node, wantLength: 24,
+			seg: mk(testIPv6Addr1, ""), wantNAIType: NAITypeSRIPv6Node, wantLength: 24,
 		},
 		"IPv4LocalRemote": {
-			seg: mk("10.0.0.1", "10.0.0.2"), wantNAIType: NAITypeSRIPv4Adjacency, wantLength: 16,
+			seg: mk(testIPv4Addr1, testIPv4Addr2), wantNAIType: NAITypeSRIPv4Adjacency, wantLength: 16,
 		},
 		"IPv6LocalRemote": {
-			seg: mk("2001:db8::1", "2001:db8::2"), wantNAIType: NAITypeSRIPv6AdjacencyGlobal, wantLength: 40,
+			seg: mk(testIPv6Addr1, testIPv6Addr2), wantNAIType: NAITypeSRIPv6AdjacencyGlobal, wantLength: 40,
 		},
 		"RemoteWithoutLocal": {
-			seg: mk("", "10.0.0.2"), wantErr: true,
+			seg: mk("", testIPv4Addr2), wantErr: true,
 		},
 		"MixedAddressFamily": {
-			seg: mk("10.0.0.1", "2001:db8::2"), wantErr: true,
+			seg: mk(testIPv4Addr1, testIPv6Addr2), wantErr: true,
 		},
 		"LinkLocalAdjacency": {
 			seg: mk("fe80::1", "fe80::2"), wantErr: true,
 		},
 		"LinkLocalRemoteOnly": {
-			seg: mk("2001:db8::1", "fe80::2"), wantErr: true,
+			seg: mk(testIPv6Addr1, "fe80::2"), wantErr: true,
 		},
 	}
 
@@ -252,13 +259,13 @@ func TestSREroSubobject_SerializeRejectsNAIMismatch(t *testing.T) {
 
 	cases := map[string]*SREroSubobject{
 		"IPv4NodeWithoutLocalAddr":   mkSubo(NAITypeSRIPv4Node, "", ""),
-		"IPv4NodeWithIPv6LocalAddr":  mkSubo(NAITypeSRIPv4Node, "2001:db8::1", ""),
-		"IPv6NodeWithIPv4LocalAddr":  mkSubo(NAITypeSRIPv6Node, "10.0.0.1", ""),
-		"AdjacencyWithoutRemoteAddr": mkSubo(NAITypeSRIPv4Adjacency, "10.0.0.1", ""),
+		"IPv4NodeWithIPv6LocalAddr":  mkSubo(NAITypeSRIPv4Node, testIPv6Addr1, ""),
+		"IPv6NodeWithIPv4LocalAddr":  mkSubo(NAITypeSRIPv6Node, testIPv4Addr1, ""),
+		"AdjacencyWithoutRemoteAddr": mkSubo(NAITypeSRIPv4Adjacency, testIPv4Addr1, ""),
 		"IPv6AdjacencyWithIPv4Addrs": mkSubo(
-			NAITypeSRIPv6AdjacencyGlobal, "10.0.0.1", "10.0.0.2",
+			NAITypeSRIPv6AdjacencyGlobal, testIPv4Addr1, testIPv4Addr2,
 		),
-		"UnsupportedNAIType": mkSubo(NAITypeSRUnnumberedAdjacency, "10.0.0.1", "10.0.0.2"),
+		"UnsupportedNAIType": mkSubo(NAITypeSRUnnumberedAdjacency, testIPv4Addr1, testIPv4Addr2),
 	}
 
 	for name, subo := range cases {
@@ -270,7 +277,7 @@ func TestSREroSubobject_SerializeRejectsNAIMismatch(t *testing.T) {
 		})
 	}
 
-	_, err := mkSubo(NAITypeSR(0x07), "10.0.0.1", "10.0.0.2").Len()
+	_, err := mkSubo(NAITypeSR(0x07), testIPv4Addr1, testIPv4Addr2).Len()
 	assert.Error(t, err)
 }
 
@@ -328,14 +335,14 @@ func TestSREroSubobject_DecodeFromBytes_SIDAbsent(t *testing.T) {
 		remote    string
 		naiLength uint16
 	}{
-		"IPv4Node_S0":            {NAITypeSRIPv4Node, false, "10.0.0.1", "", 4},
-		"IPv4Node_S1":            {NAITypeSRIPv4Node, true, "10.0.0.1", "", 4},
-		"IPv6Node_S0":            {NAITypeSRIPv6Node, false, "2001:db8::1", "", 16},
-		"IPv6Node_S1":            {NAITypeSRIPv6Node, true, "2001:db8::1", "", 16},
-		"IPv4Adjacency_S0":       {NAITypeSRIPv4Adjacency, false, "10.0.0.1", "10.0.0.2", 8},
-		"IPv4Adjacency_S1":       {NAITypeSRIPv4Adjacency, true, "10.0.0.1", "10.0.0.2", 8},
-		"IPv6AdjacencyGlobal_S0": {NAITypeSRIPv6AdjacencyGlobal, false, "2001:db8::1", "2001:db8::2", 32},
-		"IPv6AdjacencyGlobal_S1": {NAITypeSRIPv6AdjacencyGlobal, true, "2001:db8::1", "2001:db8::2", 32},
+		"IPv4Node_S0":            {NAITypeSRIPv4Node, false, testIPv4Addr1, "", 4},
+		"IPv4Node_S1":            {NAITypeSRIPv4Node, true, testIPv4Addr1, "", 4},
+		"IPv6Node_S0":            {NAITypeSRIPv6Node, false, testIPv6Addr1, "", 16},
+		"IPv6Node_S1":            {NAITypeSRIPv6Node, true, testIPv6Addr1, "", 16},
+		"IPv4Adjacency_S0":       {NAITypeSRIPv4Adjacency, false, testIPv4Addr1, testIPv4Addr2, 8},
+		"IPv4Adjacency_S1":       {NAITypeSRIPv4Adjacency, true, testIPv4Addr1, testIPv4Addr2, 8},
+		"IPv6AdjacencyGlobal_S0": {NAITypeSRIPv6AdjacencyGlobal, false, testIPv6Addr1, testIPv6Addr2, 32},
+		"IPv6AdjacencyGlobal_S1": {NAITypeSRIPv6AdjacencyGlobal, true, testIPv6Addr1, testIPv6Addr2, 32},
 	}
 
 	for name, tc := range cases {
@@ -384,7 +391,7 @@ func TestSREroSubobject_DecodeFromBytes_SIDAbsent(t *testing.T) {
 func TestSREroSubobject_TableRoundTrip_SIDAbsent(t *testing.T) {
 	t.Parallel()
 
-	seg := table.SegmentSRMPLS{SidAbsent: true, LocalAddr: netip.MustParseAddr("10.0.0.1")}
+	seg := table.SegmentSRMPLS{SidAbsent: true, LocalAddr: netip.MustParseAddr(testIPv4Addr1)}
 	subo := &SREroSubobject{
 		SubobjectType: SubobjectTypeEROSR,
 		NAIType:       NAITypeSRIPv4Node,
@@ -428,7 +435,7 @@ func TestNewSREroSubobject_SidAbsentWithMPLSStackEntryAttrs(t *testing.T) {
 
 	seg := table.SegmentSRMPLS{
 		SidAbsent: true,
-		LocalAddr: netip.MustParseAddr("10.0.0.1"),
+		LocalAddr: netip.MustParseAddr(testIPv4Addr1),
 		TTL:       1,
 	}
 	_, err := NewSREroSubobject(seg)
@@ -472,8 +479,8 @@ func TestSRv6EroSubobject_RoundTrip(t *testing.T) {
 	t.Parallel()
 
 	sid := netip.MustParseAddr("fc00:0:1::")
-	local := netip.MustParseAddr("2001:db8::1")
-	remote := netip.MustParseAddr("2001:db8::2")
+	local := netip.MustParseAddr(testIPv6Addr1)
+	remote := netip.MustParseAddr(testIPv6Addr2)
 
 	cases := map[string]SRv6EroSubobject{
 		"IPv6Node_END": {
@@ -539,7 +546,7 @@ func TestRSVPIPv4PrefixEroSubobject_RoundTrip(t *testing.T) {
 	cases := map[string]RSVPIPv4PrefixEroSubobject{
 		"HostPrefix": {
 			SubobjectType: SubobjectTypeEROIPv4Prefix,
-			Address:       netip.MustParseAddr("10.0.0.1"),
+			Address:       netip.MustParseAddr(testIPv4Addr1),
 			PrefixLen:     32,
 		},
 		"NetworkPrefix": {
@@ -974,10 +981,10 @@ func TestCloseObject_DecodeFromBytes_TooShort(t *testing.T) {
 func TestLSPObject_RoundTrip(t *testing.T) {
 	t.Parallel()
 
-	v4Src := netip.MustParseAddr("10.0.0.1")
-	v4Dst := netip.MustParseAddr("10.0.0.2")
-	v6Src := netip.MustParseAddr("2001:db8::1")
-	v6Dst := netip.MustParseAddr("2001:db8::2")
+	v4Src := netip.MustParseAddr(testIPv4Addr1)
+	v4Dst := netip.MustParseAddr(testIPv4Addr2)
+	v6Src := netip.MustParseAddr(testIPv6Addr1)
+	v6Dst := netip.MustParseAddr(testIPv6Addr2)
 
 	cases := map[string]LSPObject{
 		"NoTLVs": {
@@ -1146,13 +1153,13 @@ func TestEroObject_RoundTrip(t *testing.T) {
 		"SingleSRv6": {
 			ObjectType: ObjectTypeEROExplicitRoute,
 			EroSubobjects: []EroSubobject{
-				mkSRv6Ero("fc00:0:1::", "2001:db8::1"),
+				mkSRv6Ero("fc00:0:1::", testIPv6Addr1),
 			},
 		},
 		"SingleRSVPIPv4Prefix": {
 			ObjectType: ObjectTypeEROExplicitRoute,
 			EroSubobjects: []EroSubobject{
-				mkRSVPIPv4PrefixEro("10.0.0.1", 32),
+				mkRSVPIPv4PrefixEro(testIPv4Addr1, 32),
 			},
 		},
 	}
@@ -1191,8 +1198,8 @@ func TestAssociationObject_RoundTrip(t *testing.T) {
 
 	v4 := netip.MustParseAddr("192.0.2.1")
 	v4Endpoint := netip.MustParseAddr("192.0.2.2")
-	v6 := netip.MustParseAddr("2001:db8::1")
-	v6Endpoint := netip.MustParseAddr("2001:db8::2")
+	v6 := netip.MustParseAddr(testIPv6Addr1)
+	v6Endpoint := netip.MustParseAddr(testIPv6Addr2)
 
 	cases := map[string]AssociationObject{
 		"IPv4_NoTLVs": {
@@ -1347,8 +1354,8 @@ func TestNewAssociationObject_JuniperLegacy_OriginatorASN(t *testing.T) {
 func TestNewAssociationObject_JuniperLegacy_RejectsIPv6(t *testing.T) {
 	t.Parallel()
 
-	srcAddr := netip.MustParseAddr("2001:db8::1")
-	dstAddr := netip.MustParseAddr("2001:db8::2")
+	srcAddr := netip.MustParseAddr(testIPv6Addr1)
+	dstAddr := netip.MustParseAddr(testIPv6Addr2)
 
 	_, err := NewAssociationObject(srcAddr, dstAddr, 100, 200, VendorSpecific(JuniperLegacy))
 	assert.Error(t, err)
@@ -1750,7 +1757,6 @@ func TestObjectClass_String(t *testing.T) {
 	}
 }
 
-// Pin the current incorrect hex-encoding of the Stringer result.
 func TestObjectClass_StringWithReference(t *testing.T) {
 	t.Parallel()
 
@@ -1758,7 +1764,7 @@ func TestObjectClass_StringWithReference(t *testing.T) {
 		class ObjectClass
 		want  string
 	}{
-		"Open":    {ObjectClassOpen, "Open (0x4f70656e20283078303129) [RFC5440]"},
+		"Open":    {ObjectClassOpen, "Open (0x01) [RFC5440]"},
 		"Unknown": {ObjectClass(0x99), "Unknown Object Class (0x99)"},
 	}
 
@@ -1981,7 +1987,6 @@ func TestCloseReason_String(t *testing.T) {
 	}
 }
 
-// Pin the current incorrect hex-encoding of the Stringer result.
 func TestCloseReason_StringWithReference(t *testing.T) {
 	t.Parallel()
 
@@ -1989,7 +1994,7 @@ func TestCloseReason_StringWithReference(t *testing.T) {
 		reason CloseReason
 		want   string
 	}{
-		"DeadTimerExpired": {CloseReasonDeadTimerExpired, "DeadTimer expired (0x4465616454696d6572206578706972656420283078303229) [RFC5440]"},
+		"DeadTimerExpired": {CloseReasonDeadTimerExpired, "DeadTimer expired (0x02) [RFC5440]"},
 		"Unknown":          {CloseReason(0x99), "Unknown Close Reason (0x99)"},
 	}
 
@@ -2203,8 +2208,8 @@ func TestNewEroSubobject(t *testing.T) {
 		t.Parallel()
 
 		seg := table.NewSegmentSRMPLS(16001)
-		seg.LocalAddr = netip.MustParseAddr("10.0.0.1")
-		seg.RemoteAddr = netip.MustParseAddr("2001:db8::1") // mismatched address families
+		seg.LocalAddr = netip.MustParseAddr(testIPv4Addr1)
+		seg.RemoteAddr = netip.MustParseAddr(testIPv6Addr1) // mismatched address families
 		_, err := NewEroSubobject(seg)
 		assert.Error(t, err)
 	})
@@ -2243,7 +2248,7 @@ func TestEroObject_ToSegmentList(t *testing.T) {
 
 	srMPLSSubo, err := NewSREroSubobject(table.NewSegmentSRMPLS(16001))
 	require.NoError(t, err)
-	rsvpSubo, err := NewRSVPIPv4PrefixEroSubobject(netip.MustParseAddr("10.0.0.1"), 32)
+	rsvpSubo, err := NewRSVPIPv4PrefixEroSubobject(netip.MustParseAddr(testIPv4Addr1), 32)
 	require.NoError(t, err)
 
 	o := EroObject{
@@ -2385,7 +2390,7 @@ func TestSRv6EroSubobject_Serialize_UnknownBehavior(t *testing.T) {
 func TestEndpointsObject_Len_Error(t *testing.T) {
 	t.Parallel()
 
-	o := EndpointsObject{SrcAddr: netip.MustParseAddr("10.0.0.1"), DstAddr: netip.MustParseAddr("2001:db8::1")}
+	o := EndpointsObject{SrcAddr: netip.MustParseAddr(testIPv4Addr1), DstAddr: netip.MustParseAddr(testIPv6Addr1)}
 	_, err := o.Len()
 	assert.Error(t, err)
 }
@@ -2393,7 +2398,7 @@ func TestEndpointsObject_Len_Error(t *testing.T) {
 func TestEndpointsObject_Serialize_Error(t *testing.T) {
 	t.Parallel()
 
-	o := EndpointsObject{SrcAddr: netip.MustParseAddr("10.0.0.1"), DstAddr: netip.MustParseAddr("2001:db8::1")}
+	o := EndpointsObject{SrcAddr: netip.MustParseAddr(testIPv4Addr1), DstAddr: netip.MustParseAddr(testIPv6Addr1)}
 	_, err := o.Serialize()
 	assert.Error(t, err)
 }
@@ -2402,7 +2407,7 @@ func TestNewEndpointsObject(t *testing.T) {
 	t.Parallel()
 
 	v4a, v4b := netip.MustParseAddr("192.0.2.1"), netip.MustParseAddr("192.0.2.2")
-	v6a, v6b := netip.MustParseAddr("2001:db8::1"), netip.MustParseAddr("2001:db8::2")
+	v6a, v6b := netip.MustParseAddr(testIPv6Addr1), netip.MustParseAddr(testIPv6Addr2)
 
 	cases := map[string]struct {
 		dst, src netip.Addr
@@ -2475,7 +2480,7 @@ func TestAssociationObject_DecodeFromBytes_Errors(t *testing.T) {
 		make([]uint8, 4),
 		Uint16ToByteSlice(uint16(AssocTypeSRPolicyAssociation)),
 		Uint16ToByteSlice(uint16(1)),
-		netip.MustParseAddr("2001:db8::1").AsSlice(),
+		netip.MustParseAddr(testIPv6Addr1).AsSlice(),
 	)
 
 	cases := map[string]struct {
@@ -2542,7 +2547,7 @@ func TestAssociationObject_Serialize_ObjectLengthBoundary(t *testing.T) {
 func TestNewAssociationObject_MismatchedFamilies(t *testing.T) {
 	t.Parallel()
 
-	_, err := NewAssociationObject(netip.MustParseAddr("192.0.2.1"), netip.MustParseAddr("2001:db8::1"), 100, 200)
+	_, err := NewAssociationObject(netip.MustParseAddr("192.0.2.1"), netip.MustParseAddr(testIPv6Addr1), 100, 200)
 	assert.Error(t, err)
 }
 
@@ -2555,7 +2560,7 @@ func TestNewAssociationObject_ObjectType(t *testing.T) {
 		want    ObjectType
 	}{
 		"IPv4": {netip.MustParseAddr("192.0.2.1"), netip.MustParseAddr("192.0.2.2"), ObjectTypeAssociationIPv4},
-		"IPv6": {netip.MustParseAddr("2001:db8::1"), netip.MustParseAddr("2001:db8::2"), ObjectTypeAssociationIPv6},
+		"IPv6": {netip.MustParseAddr(testIPv6Addr1), netip.MustParseAddr(testIPv6Addr2), ObjectTypeAssociationIPv6},
 	}
 
 	for name, tt := range cases {
@@ -2738,8 +2743,8 @@ func TestSRv6EroSubobject_DecodeFromBytes_BothSIDAndNAIAbsent(t *testing.T) {
 func TestSRv6EroSubobject_DecodeFromBytes_LinkLocalAdjacency(t *testing.T) {
 	t.Parallel()
 
-	local := netip.MustParseAddr("2001:db8::1")
-	remote := netip.MustParseAddr("2001:db8::2")
+	local := netip.MustParseAddr(testIPv6Addr1)
+	remote := netip.MustParseAddr(testIPv6Addr2)
 
 	raw := AppendByteSlices(
 		[]uint8{0x28, 8 + 16 + 40, uint8(NAITypeSRv6IPv6AdjacencyLinkLocal) << 4, 0x00},
@@ -2828,7 +2833,7 @@ func TestSRv6EroSubobject_DecodeFromBytes_TruncatedAfterHeader(t *testing.T) {
 		raw := AppendByteSlices(
 			[]uint8{0x28, 25, uint8(NAITypeSRv6IPv6Node) << 4, 0x01},
 			make([]uint8, 4),
-			netip.MustParseAddr("2001:db8::1").AsSlice(),
+			netip.MustParseAddr(testIPv6Addr1).AsSlice(),
 			make([]uint8, 1),
 		)
 		var o SRv6EroSubobject
@@ -2840,8 +2845,8 @@ func TestNewSRv6EroSubobject_NAIFromSegment(t *testing.T) {
 	t.Parallel()
 
 	sid := netip.MustParseAddr("fc00:0:1::")
-	local := netip.MustParseAddr("2001:db8::1")
-	remote := netip.MustParseAddr("2001:db8::2")
+	local := netip.MustParseAddr(testIPv6Addr1)
+	remote := netip.MustParseAddr(testIPv6Addr2)
 
 	cases := map[string]struct {
 		seg         table.SegmentSRv6
@@ -2888,7 +2893,7 @@ func TestNewSRv6EroSubobject_LinkLocalRejected(t *testing.T) {
 			Sid: sid, LocalAddr: netip.MustParseAddr("fe80::1"), RemoteAddr: netip.MustParseAddr("fe80::2"),
 		},
 		"LinkLocalRemoteOnly": {
-			Sid: sid, LocalAddr: netip.MustParseAddr("2001:db8::1"), RemoteAddr: netip.MustParseAddr("fe80::2"),
+			Sid: sid, LocalAddr: netip.MustParseAddr(testIPv6Addr1), RemoteAddr: netip.MustParseAddr("fe80::2"),
 		},
 	}
 
@@ -2909,13 +2914,13 @@ func TestNewSRv6EroSubobject_AddressFamilyRejected(t *testing.T) {
 
 	cases := map[string]table.SegmentSRv6{
 		"IPv4LocalAddr": {
-			Sid: sid, LocalAddr: netip.MustParseAddr("10.0.0.1"),
+			Sid: sid, LocalAddr: netip.MustParseAddr(testIPv4Addr1),
 		},
 		"IPv4RemoteAddr": {
-			Sid: sid, LocalAddr: netip.MustParseAddr("2001:db8::1"), RemoteAddr: netip.MustParseAddr("10.0.0.2"),
+			Sid: sid, LocalAddr: netip.MustParseAddr(testIPv6Addr1), RemoteAddr: netip.MustParseAddr(testIPv4Addr2),
 		},
 		"RemoteAddrWithoutLocalAddr": {
-			Sid: sid, RemoteAddr: netip.MustParseAddr("2001:db8::2"),
+			Sid: sid, RemoteAddr: netip.MustParseAddr(testIPv6Addr2),
 		},
 	}
 
@@ -2933,7 +2938,7 @@ func TestNewSRv6EroSubobject_StructureValidation(t *testing.T) {
 	t.Parallel()
 
 	sid := netip.MustParseAddr("fc00:0:1::")
-	local := netip.MustParseAddr("2001:db8::1")
+	local := netip.MustParseAddr(testIPv6Addr1)
 
 	t.Run("EmptyStructureIsAbsent", func(t *testing.T) {
 		t.Parallel()
@@ -2974,8 +2979,8 @@ func TestRSVPIPv4PrefixEroSubobject_Serialize_Errors(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string]*RSVPIPv4PrefixEroSubobject{
-		"NotIPv4":             {Address: netip.MustParseAddr("2001:db8::1")},
-		"InvalidPrefixLength": {Address: netip.MustParseAddr("10.0.0.1"), PrefixLen: 33},
+		"NotIPv4":             {Address: netip.MustParseAddr(testIPv6Addr1)},
+		"InvalidPrefixLength": {Address: netip.MustParseAddr(testIPv4Addr1), PrefixLen: 33},
 	}
 
 	for name, o := range cases {
@@ -2995,8 +3000,8 @@ func TestNewRSVPIPv4PrefixEroSubobject_Errors(t *testing.T) {
 		address   netip.Addr
 		prefixLen uint8
 	}{
-		"NotIPv4":             {netip.MustParseAddr("2001:db8::1"), 32},
-		"InvalidPrefixLength": {netip.MustParseAddr("10.0.0.1"), 33},
+		"NotIPv4":             {netip.MustParseAddr(testIPv6Addr1), 32},
+		"InvalidPrefixLength": {netip.MustParseAddr(testIPv4Addr1), 33},
 	}
 
 	for name, tt := range cases {

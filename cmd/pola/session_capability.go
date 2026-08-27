@@ -17,6 +17,21 @@ import (
 	"github.com/nttcom/pola/pkg/packet/pcep"
 )
 
+// Capability group identifiers, as reported by grpc.Capability.Type.
+const (
+	capGroupStateful          = "STATEFUL"
+	capGroupSRv6              = "SRV6"
+	capGroupPathSetupType     = "PATH_SETUP_TYPE"
+	capGroupAssocTypeList     = "ASSOC_TYPE_LIST" //nolint:gosec // G101: capability group identifier, not a credential
+	capGroupLSPDBVersion      = "LSP_DB_VERSION"
+	capGroupMultipath         = "MULTIPATH"
+	capGroupVendorInformation = "VENDOR_INFORMATION"
+	capGroupUnknown           = "UNKNOWN"
+)
+
+// assocTypeListLabel is the display header for the ASSOC_TYPE_LIST group.
+const assocTypeListLabel = "ASSOC-TYPE-LIST [RFC8697]"
+
 // capFeature is a comparable capability token.
 type capFeature struct {
 	group string
@@ -175,17 +190,17 @@ func applyStatefulFeature(common *commonCapView, token string) bool {
 // applyCommonFeature applies f to common and reports whether it was consumed.
 func applyCommonFeature(common *commonCapView, f capFeature) bool {
 	switch f.group {
-	case "STATEFUL":
+	case capGroupStateful:
 		return applyStatefulFeature(common, f.token)
-	case "PATH_SETUP_TYPE":
+	case capGroupPathSetupType:
 		common.PathSetupTypes = append(common.PathSetupTypes, f.token)
 		return true
-	case "ASSOC_TYPE_LIST":
+	case capGroupAssocTypeList:
 		if n, ok := parseTokenUint32(f.token, "AssocType:"); ok {
 			common.AssociationTypes = append(common.AssociationTypes, n)
 			return true
 		}
-	case "UNKNOWN":
+	case capGroupUnknown:
 		if n, ok := parseTokenUint32(f.token, "unknown_type_"); ok {
 			common.UnrecognizedTLVTypes = append(common.UnrecognizedTLVTypes, n)
 			return true
@@ -218,9 +233,9 @@ func capabilityGroups(features []capFeature) []capGroupView {
 
 func groupItems(group string, tokens []string) []string {
 	switch group {
-	case "ASSOC_TYPE_LIST":
+	case capGroupAssocTypeList:
 		return sortedUint32Labels(tokens, "AssocType:", assocTypeLabel)
-	case "UNKNOWN":
+	case capGroupUnknown:
 		return sortedUint32Labels(tokens, "unknown_type_", unrecognizedTLVItem)
 	default:
 		return tokens
@@ -247,14 +262,14 @@ func sortedUint32Labels(tokens []string, prefix string, label func(uint32) strin
 // capGroupLabels maps capability types to their display labels.
 // STATEFUL is listed explicitly because it has two defining RFCs.
 var capGroupLabels = map[string]string{
-	"STATEFUL":           "STATEFUL-PCE-CAPABILITY [RFC8231/8281]",
-	"SR":                 "SR-PCE-CAPABILITY [RFC8664]",
-	"SRV6":               "SRv6-PCE-CAPABILITY [RFC9603]",
-	"PATH_SETUP_TYPE":    "PATH-SETUP-TYPE-CAPABILITY [RFC8408]",
-	"ASSOC_TYPE_LIST":    "ASSOC-TYPE-LIST [RFC8697]",
-	"LSP_DB_VERSION":     "LSP-DB-VERSION [RFC8232]",
-	"MULTIPATH":          "MULTIPATH-CAP [draft-ietf-pce-multipath]",
-	"VENDOR_INFORMATION": "VENDOR-INFORMATION [RFC7470]",
+	capGroupStateful:          "STATEFUL-PCE-CAPABILITY [RFC8231/8281]",
+	"SR":                      "SR-PCE-CAPABILITY [RFC8664]",
+	capGroupSRv6:              "SRv6-PCE-CAPABILITY [RFC9603]",
+	capGroupPathSetupType:     "PATH-SETUP-TYPE-CAPABILITY [RFC8408]",
+	capGroupAssocTypeList:     assocTypeListLabel,
+	capGroupLSPDBVersion:      "LSP-DB-VERSION [RFC8232]",
+	capGroupMultipath:         "MULTIPATH-CAP [draft-ietf-pce-multipath]",
+	capGroupVendorInformation: "VENDOR-INFORMATION [RFC7470]",
 }
 
 func capGroupLabel(group string) string {
@@ -265,14 +280,14 @@ func capGroupLabel(group string) string {
 }
 
 var capGroupOrder = map[string]int{
-	"VENDOR_INFORMATION": int(pcep.TLVVendorInformation),
-	"STATEFUL":           int(pcep.TLVStatefulPCECapability),
-	"LSP_DB_VERSION":     int(pcep.TLVLSPDBVersion),
-	"SR":                 int(pcep.TLVSRPCECapability),
-	"SRV6":               int(pcep.TLVSRv6PCECapability),
-	"PATH_SETUP_TYPE":    int(pcep.TLVPathSetupTypeCapability),
-	"ASSOC_TYPE_LIST":    int(pcep.TLVAssocTypeList),
-	"MULTIPATH":          int(pcep.TLVMultipathCap),
+	capGroupVendorInformation: int(pcep.TLVVendorInformation),
+	capGroupStateful:          int(pcep.TLVStatefulPCECapability),
+	capGroupLSPDBVersion:      int(pcep.TLVLSPDBVersion),
+	"SR":                      int(pcep.TLVSRPCECapability),
+	capGroupSRv6:              int(pcep.TLVSRv6PCECapability),
+	capGroupPathSetupType:     int(pcep.TLVPathSetupTypeCapability),
+	capGroupAssocTypeList:     int(pcep.TLVAssocTypeList),
+	capGroupMultipath:         int(pcep.TLVMultipathCap),
 }
 
 func capGroupOrderKey(group string) int {
@@ -286,7 +301,7 @@ func assocTypeLabel(n uint32) string {
 	if n > math.MaxUint16 {
 		return fmt.Sprintf("%d (out-of-range for AssocType)", n)
 	}
-	return fmt.Sprintf("%d %s", n, pcep.AssocType(n).String())
+	return pcep.AssocType(n).StringWithReference()
 }
 
 // unrecognizedTLVItem names a TLV using the registry, or notes why it has no
@@ -302,8 +317,8 @@ func unrecognizedTLVItem(tlvType uint32) string {
 	switch {
 	case name == "":
 		return fmt.Sprintf("type=%d: unassigned/vendor-specific, no RFC", tlvType)
-	case ref == "vendor-specific":
-		return fmt.Sprintf("type=%d: vendor-specific, no RFC", tlvType)
+	case !ref.HasDocument():
+		return fmt.Sprintf("type=%d: %s, no RFC", tlvType, ref)
 	default:
 		return fmt.Sprintf("type=%d: %s (%s)", tlvType, name, ref)
 	}
@@ -320,9 +335,9 @@ func capabilityLines(groups []capGroupView) []capDisplayLine {
 	lines := make([]capDisplayLine, 0, len(groups))
 	for _, group := range groups {
 		switch group.Capability {
-		case "ASSOC_TYPE_LIST":
+		case capGroupAssocTypeList:
 			lines = append(lines, capDisplayLine{Header: capGroupLabel(group.Capability), Items: group.Items})
-		case "UNKNOWN":
+		case capGroupUnknown:
 			lines = append(lines, capDisplayLine{Header: "Unrecognized TLVs", Items: group.Items})
 		default:
 			lines = append(lines, capDisplayLine{Header: capGroupLabel(group.Capability) + ": " + strings.Join(group.Items, ", ")})

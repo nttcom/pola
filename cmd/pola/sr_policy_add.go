@@ -97,6 +97,18 @@ type inputFormat struct {
 	ASN      uint32   `yaml:"asn"`
 }
 
+const (
+	srPolicyTypeExplicit = "explicit"
+	srPolicyTypeDynamic  = "dynamic"
+)
+
+const (
+	metricTypeIGP      = "igp"
+	metricTypeDelay    = "delay"
+	metricTypeTE       = "te"
+	metricTypeHopcount = "hopcount"
+)
+
 func addSRPolicy(input inputFormat, jsonFlag bool, noSIDValidate bool) error {
 	if noSIDValidate {
 		fmt.Fprintln(os.Stderr, "warning: skipping SID validation (--no-sid-validate)")
@@ -119,7 +131,7 @@ func addSRPolicy(input inputFormat, jsonFlag bool, noSIDValidate bool) error {
 	}
 
 	if jsonFlag {
-		return writeJSON(os.Stdout, statusResult{Status: "success"})
+		return writeJSON(os.Stdout, statusResult{Status: statusSuccess})
 	}
 	fmt.Printf("success!\n")
 
@@ -160,7 +172,7 @@ func translateCreateSRPolicyError(err error) error {
 }
 
 func addSRPolicyWithEndpointAddr(input inputFormat, noSIDValidate bool) error {
-	if input.SRPolicy.Type != "" && input.SRPolicy.Type != "explicit" {
+	if input.SRPolicy.Type != "" && input.SRPolicy.Type != srPolicyTypeExplicit {
 		return fmt.Errorf("the srcAddr / dstAddr form supports `type: explicit` only, got %q", input.SRPolicy.Type)
 	}
 	if input.SRPolicy.Metric != "" || len(input.SRPolicy.Waypoints) > 0 {
@@ -307,9 +319,9 @@ func buildPolicyByType(
 	error,
 ) {
 	switch input.SRPolicy.Type {
-	case "explicit":
+	case srPolicyTypeExplicit:
 		return buildExplicitPolicy(input, sampleExplicit)
-	case "dynamic":
+	case srPolicyTypeDynamic:
 		return buildDynamicPolicy(input, sampleDynamic)
 	default:
 		return 0, 0, nil, nil, errors.New("invalid input `type`")
@@ -383,13 +395,13 @@ func buildDynamicPolicy(
 
 func parseMetric(metric string) (pb.MetricType, error) {
 	switch metric {
-	case "igp":
+	case metricTypeIGP:
 		return pb.MetricType_METRIC_TYPE_IGP, nil
-	case "delay":
+	case metricTypeDelay:
 		return pb.MetricType_METRIC_TYPE_DELAY, nil
-	case "te":
+	case metricTypeTE:
 		return pb.MetricType_METRIC_TYPE_TE, nil
-	case "hopcount":
+	case metricTypeHopcount:
 		return pb.MetricType_METRIC_TYPE_HOPCOUNT, nil
 	default:
 		return 0, errors.New("invalid input `metric`")

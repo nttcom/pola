@@ -34,12 +34,14 @@ func newSessionCmd() *cobra.Command {
 	return cmd
 }
 
+const sessionDetailArg = "detail"
+
 // parseSessionArgs parses an optional peer address and "detail" argument.
 func parseSessionArgs(args []string) (netip.Addr, bool, error) {
 	var addr netip.Addr
 	detail := false
 	for _, arg := range args {
-		if arg == "detail" {
+		if arg == sessionDetailArg {
 			if detail {
 				return netip.Addr{}, false, errors.New(`"detail" specified more than once`)
 			}

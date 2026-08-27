@@ -9,7 +9,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/netip"
+	"os"
 )
 
 // LsTED represents a Traffic Engineering Database built from BGP-LS data.
@@ -87,7 +89,7 @@ func printNodes(nodes map[string]*LsNode) {
 		fmt.Printf("Node: %d\n", nodeCnt)
 		printNodeBasic(nodeID, node)
 		printNodePrefixes(node)
-		printNodeLinks(node)
+		printNodeLinks(os.Stdout, node)
 		printNodeSRv6SIDs(node)
 		fmt.Println()
 		nodeCnt++
@@ -120,8 +122,8 @@ func printNodePrefixes(node *LsNode) {
 }
 
 // printNodeLinks prints the links associated with a node.
-func printNodeLinks(node *LsNode) {
-	fmt.Println("  Links:")
+func printNodeLinks(w io.Writer, node *LsNode) {
+	fmt.Fprintln(w, "  Links:")
 	if node.Links == nil {
 		return
 	}
@@ -129,45 +131,47 @@ func printNodeLinks(node *LsNode) {
 		if link == nil {
 			continue
 		}
-		printLink(link)
+		printLink(w, link)
 	}
 }
 
-// printLink prints the details of a single link.
-func printLink(link *LsLink) {
-	localIP := "None"
-	remoteIP := "None"
+const displayNone = "None"
+
+// printLink prints the details of a single link to w.
+func printLink(w io.Writer, link *LsLink) {
+	localIP := displayNone
+	remoteIP := displayNone
 	if link.LocalIP.IsValid() {
 		localIP = link.LocalIP.String()
 	}
 	if link.RemoteIP.IsValid() {
 		remoteIP = link.RemoteIP.String()
 	}
-	fmt.Printf("    Local: %s Remote: %s\n", localIP, remoteIP)
+	fmt.Fprintf(w, "    Local: %s Remote: %s\n", localIP, remoteIP)
 
-	remoteNodeID := "None"
+	remoteNodeID := displayNone
 	if link.RemoteNode != nil {
 		remoteNodeID = link.RemoteNode.RouterID
 	}
-	fmt.Printf("      RemoteNode: %s\n", remoteNodeID)
+	fmt.Fprintf(w, "      RemoteNode: %s\n", remoteNodeID)
 
-	fmt.Println("      Metrics:")
+	fmt.Fprintln(w, "      Metrics:")
 	if link.Metrics != nil {
 		for _, metric := range link.Metrics {
 			if metric == nil {
 				continue
 			}
-			fmt.Printf("        %s: %d\n", metric.Type.DisplayString(), metric.Value)
+			fmt.Fprintf(w, "        %s: %d\n", metric.Type.DisplayString(), metric.Value)
 		}
 	}
 
-	fmt.Printf("      Adj-SID: %d\n", link.AdjSid)
+	fmt.Fprintf(w, "      Adj-SID: %d\n", link.AdjSid)
 
 	if link.Srv6EndXSID != nil {
-		fmt.Println("      SRv6 End.X SID:")
-		fmt.Printf("        EndpointBehavior: %s\n", BehaviorToString(link.Srv6EndXSID.EndpointBehavior))
-		fmt.Printf("        SIDs: %v\n", link.Srv6EndXSID.Sids)
-		fmt.Printf("        SID Structure: Block: %d, Node: %d, Func: %d, Arg: %d\n",
+		fmt.Fprintln(w, "      SRv6 End.X SID:")
+		fmt.Fprintf(w, "        EndpointBehavior: %s\n", BehaviorToString(link.Srv6EndXSID.EndpointBehavior))
+		fmt.Fprintf(w, "        SIDs: %v\n", link.Srv6EndXSID.Sids)
+		fmt.Fprintf(w, "        SID Structure: Block: %d, Node: %d, Func: %d, Arg: %d\n",
 			link.Srv6EndXSID.Srv6SIDStructure.LocalBlock,
 			link.Srv6EndXSID.Srv6SIDStructure.LocalNode,
 			link.Srv6EndXSID.Srv6SIDStructure.LocalFunc,

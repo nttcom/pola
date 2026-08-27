@@ -21,6 +21,15 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+const (
+	testIPv4Addr1  = "192.0.2.1"
+	testIPv4Addr2  = "192.0.2.2"
+	testPrefix     = "10.0.0.1/32"
+	testRouterID1  = "0000.0aff.0001"
+	testRouterID2  = "0000.0aff.0002"
+	testPolicyName = "pol1"
+)
+
 type fakeClient struct {
 	pb.PCEServiceClient
 
@@ -84,19 +93,19 @@ func TestCreateLsPrefix_SidIndexPresence(t *testing.T) {
 	}{
 		{
 			name:            "no Prefix-SID",
-			prefix:          &pb.LsPrefix{Prefix: "10.0.0.1/32"},
+			prefix:          &pb.LsPrefix{Prefix: testPrefix},
 			wantSidIndex:    0,
 			wantHasSidIndex: false,
 		},
 		{
 			name:            "Prefix-SID index 0",
-			prefix:          &pb.LsPrefix{Prefix: "10.0.0.1/32", SidIndex: proto.Uint32(0)},
+			prefix:          &pb.LsPrefix{Prefix: testPrefix, SidIndex: proto.Uint32(0)},
 			wantSidIndex:    0,
 			wantHasSidIndex: true,
 		},
 		{
 			name:            "Prefix-SID index 16000",
-			prefix:          &pb.LsPrefix{Prefix: "10.0.0.1/32", SidIndex: proto.Uint32(16000)},
+			prefix:          &pb.LsPrefix{Prefix: testPrefix, SidIndex: proto.Uint32(16000)},
 			wantSidIndex:    16000,
 			wantHasSidIndex: true,
 		},
@@ -124,9 +133,9 @@ func TestSegmentFromPB_SRMPLS(t *testing.T) {
 		localAddr  string
 		remoteAddr string
 	}{
-		{name: "localAddr only", localAddr: "192.0.2.1"},
-		{name: "remoteAddr only", remoteAddr: "192.0.2.2"},
-		{name: "localAddr and remoteAddr", localAddr: "192.0.2.1", remoteAddr: "192.0.2.2"},
+		{name: "localAddr only", localAddr: testIPv4Addr1},
+		{name: "remoteAddr only", remoteAddr: testIPv4Addr2},
+		{name: "localAddr and remoteAddr", localAddr: testIPv4Addr1, remoteAddr: testIPv4Addr2},
 	}
 
 	for _, tt := range tests {
@@ -158,7 +167,7 @@ func TestSegmentFromPB_SRMPLS(t *testing.T) {
 func TestSegmentFromPB_SRMPLS_SidAbsent(t *testing.T) {
 	seg, err := segmentFromPB(&pb.Segment{
 		Sid:       "0",
-		LocalAddr: "192.0.2.1",
+		LocalAddr: testIPv4Addr1,
 		SidAbsent: true,
 	})
 	require.NoError(t, err)
@@ -166,7 +175,7 @@ func TestSegmentFromPB_SRMPLS_SidAbsent(t *testing.T) {
 	mplsSeg, ok := seg.(table.SegmentSRMPLS)
 	require.Truef(t, ok, "segment type: got %T, want table.SegmentSRMPLS", seg)
 	assert.True(t, mplsSeg.SidAbsent)
-	assert.Equal(t, "192.0.2.1", mplsSeg.LocalAddr.String())
+	assert.Equal(t, testIPv4Addr1, mplsSeg.LocalAddr.String())
 }
 
 func TestSegmentFromPB_SRv6(t *testing.T) {
@@ -206,11 +215,11 @@ func TestSegmentFromPB_InvalidAddr(t *testing.T) {
 		},
 		{
 			name:    "SR-MPLS invalid local address",
-			segment: &pb.Segment{Sid: "16003", LocalAddr: "not-an-addr", RemoteAddr: "192.0.2.2"},
+			segment: &pb.Segment{Sid: "16003", LocalAddr: "not-an-addr", RemoteAddr: testIPv4Addr2},
 		},
 		{
 			name:    "SR-MPLS invalid remote address",
-			segment: &pb.Segment{Sid: "16003", LocalAddr: "192.0.2.1", RemoteAddr: "not-an-addr"},
+			segment: &pb.Segment{Sid: "16003", LocalAddr: testIPv4Addr1, RemoteAddr: "not-an-addr"},
 		},
 	}
 
@@ -262,7 +271,7 @@ func TestGetSessions_NoCapabilitiesIsEmptySlice(t *testing.T) {
 	client := &fakeClient{sessionListResp: &pb.GetSessionListResponse{
 		Sessions: []*pb.Session{
 			{
-				PeerAddr: netip.MustParseAddr("192.0.2.1").AsSlice(),
+				PeerAddr: netip.MustParseAddr(testIPv4Addr1).AsSlice(),
 				State:    pb.SessionState_SESSION_STATE_UP,
 			},
 		},
@@ -286,7 +295,7 @@ func TestGetSessions_WithCapabilities(t *testing.T) {
 	client := &fakeClient{sessionListResp: &pb.GetSessionListResponse{
 		Sessions: []*pb.Session{
 			{
-				PeerAddr: netip.MustParseAddr("192.0.2.1").AsSlice(),
+				PeerAddr: netip.MustParseAddr(testIPv4Addr1).AsSlice(),
 				State:    pb.SessionState_SESSION_STATE_UP,
 				LocalCapabilities: []*pb.Capability{
 					{Type: pb.CapabilityType_CAPABILITY_TYPE_SR, Detail: &pb.Capability_Sr{Sr: &pb.SrCapability{Msd: proto.Uint32(10)}}},
@@ -305,7 +314,7 @@ func TestGetSessions_WithPccCapabilities(t *testing.T) {
 	client := &fakeClient{sessionListResp: &pb.GetSessionListResponse{
 		Sessions: []*pb.Session{
 			{
-				PeerAddr: netip.MustParseAddr("192.0.2.1").AsSlice(),
+				PeerAddr: netip.MustParseAddr(testIPv4Addr1).AsSlice(),
 				State:    pb.SessionState_SESSION_STATE_UP,
 				PeerCapabilities: []*pb.Capability{
 					{Type: pb.CapabilityType_CAPABILITY_TYPE_SR, Detail: &pb.Capability_Sr{Sr: &pb.SrCapability{Msd: proto.Uint32(10)}}},
@@ -324,7 +333,7 @@ func TestGetSessions_WithSessionIDsAndTimers(t *testing.T) {
 	client := &fakeClient{sessionListResp: &pb.GetSessionListResponse{
 		Sessions: []*pb.Session{
 			{
-				PeerAddr:       netip.MustParseAddr("192.0.2.1").AsSlice(),
+				PeerAddr:       netip.MustParseAddr(testIPv4Addr1).AsSlice(),
 				State:          pb.SessionState_SESSION_STATE_UP,
 				LocalSessionId: proto.Uint32(1),
 				PeerSessionId:  proto.Uint32(2),
@@ -352,7 +361,7 @@ func TestGetSessions_EffectiveTimersIgnoredBeforeUp(t *testing.T) {
 	client := &fakeClient{sessionListResp: &pb.GetSessionListResponse{
 		Sessions: []*pb.Session{
 			{
-				PeerAddr: netip.MustParseAddr("192.0.2.1").AsSlice(),
+				PeerAddr: netip.MustParseAddr(testIPv4Addr1).AsSlice(),
 				State:    pb.SessionState_SESSION_STATE_KEEP_WAIT,
 				// A well-behaved server leaves EffectiveTimers nil before Up,
 				// but the client must not trust that convention blindly.
@@ -371,7 +380,7 @@ func TestGetSessions_EffectiveTimersPopulatedWhenUp(t *testing.T) {
 	client := &fakeClient{sessionListResp: &pb.GetSessionListResponse{
 		Sessions: []*pb.Session{
 			{
-				PeerAddr:        netip.MustParseAddr("192.0.2.1").AsSlice(),
+				PeerAddr:        netip.MustParseAddr(testIPv4Addr1).AsSlice(),
 				State:           pb.SessionState_SESSION_STATE_UP,
 				EffectiveTimers: &pb.EffectiveTimers{Keepalive: 30, DeadTimer: 120},
 			},
@@ -392,7 +401,7 @@ func TestGetSessions_TimestampsInitiatorSyncStateAndStats(t *testing.T) {
 	client := &fakeClient{sessionListResp: &pb.GetSessionListResponse{
 		Sessions: []*pb.Session{
 			{
-				PeerAddr:              netip.MustParseAddr("192.0.2.1").AsSlice(),
+				PeerAddr:              netip.MustParseAddr(testIPv4Addr1).AsSlice(),
 				State:                 pb.SessionState_SESSION_STATE_UP,
 				Initiator:             pb.SessionInitiator_SESSION_INITIATOR_REMOTE,
 				SyncState:             pb.LspDbSyncState_LSP_DB_SYNC_STATE_FINISHED,
@@ -444,7 +453,7 @@ func TestInitiatorFromPB(t *testing.T) {
 	}{
 		"local":       {pb.SessionInitiator_SESSION_INITIATOR_LOCAL, "local"},
 		"remote":      {pb.SessionInitiator_SESSION_INITIATOR_REMOTE, "remote"},
-		"unspecified": {pb.SessionInitiator_SESSION_INITIATOR_UNSPECIFIED, "unknown"},
+		"unspecified": {pb.SessionInitiator_SESSION_INITIATOR_UNSPECIFIED, unknownDisplayValue},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -461,7 +470,7 @@ func TestSyncStateFromPB(t *testing.T) {
 		"pending":     {pb.LspDbSyncState_LSP_DB_SYNC_STATE_PENDING, "pending"},
 		"ongoing":     {pb.LspDbSyncState_LSP_DB_SYNC_STATE_ONGOING, "ongoing"},
 		"finished":    {pb.LspDbSyncState_LSP_DB_SYNC_STATE_FINISHED, "finished"},
-		"unspecified": {pb.LspDbSyncState_LSP_DB_SYNC_STATE_UNSPECIFIED, "unknown"},
+		"unspecified": {pb.LspDbSyncState_LSP_DB_SYNC_STATE_UNSPECIFIED, unknownDisplayValue},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -479,7 +488,7 @@ func TestSessionStateFromPB(t *testing.T) {
 		"tcp-pending": {pb.SessionState_SESSION_STATE_TCP_PENDING, "tcp-pending"},
 		"open-wait":   {pb.SessionState_SESSION_STATE_OPEN_WAIT, "open-wait"},
 		"keep-wait":   {pb.SessionState_SESSION_STATE_KEEP_WAIT, "keep-wait"},
-		"unspecified": {pb.SessionState_SESSION_STATE_UNSPECIFIED, "unknown"},
+		"unspecified": {pb.SessionState_SESSION_STATE_UNSPECIFIED, unknownDisplayValue},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -491,7 +500,7 @@ func TestSessionStateFromPB(t *testing.T) {
 func TestGetSessions_ZeroTimestampsAndUnsetEnumsStayZero(t *testing.T) {
 	client := &fakeClient{sessionListResp: &pb.GetSessionListResponse{
 		Sessions: []*pb.Session{
-			{PeerAddr: netip.MustParseAddr("192.0.2.1").AsSlice(), State: pb.SessionState_SESSION_STATE_OPEN_WAIT},
+			{PeerAddr: netip.MustParseAddr(testIPv4Addr1).AsSlice(), State: pb.SessionState_SESSION_STATE_OPEN_WAIT},
 		},
 	}}
 
@@ -500,8 +509,8 @@ func TestGetSessions_ZeroTimestampsAndUnsetEnumsStayZero(t *testing.T) {
 	require.Len(t, sessions, 1)
 
 	ss := sessions[0]
-	assert.Equal(t, "unknown", ss.Initiator)
-	assert.Equal(t, "unknown", ss.SyncState)
+	assert.Equal(t, unknownDisplayValue, ss.Initiator)
+	assert.Equal(t, unknownDisplayValue, ss.SyncState)
 	assert.True(t, ss.CreatedAt.IsZero())
 	assert.True(t, ss.EstablishedAt.IsZero())
 	assert.Nil(t, ss.Stats)
@@ -509,7 +518,7 @@ func TestGetSessions_ZeroTimestampsAndUnsetEnumsStayZero(t *testing.T) {
 
 func TestGetSessions_PassesFilterAddrAndIncludeStats(t *testing.T) {
 	client := &fakeClient{sessionListResp: &pb.GetSessionListResponse{}}
-	addr := netip.MustParseAddr("192.0.2.1")
+	addr := netip.MustParseAddr(testIPv4Addr1)
 
 	_, err := GetSessions(client, addr, true)
 	require.NoError(t, err)
@@ -550,7 +559,7 @@ func TestGetSessions_Errors(t *testing.T) {
 func TestDeleteSession(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		client := &fakeClient{}
-		err := DeleteSession(client, &pb.DeleteSessionRequest{PeerAddr: netip.MustParseAddr("192.0.2.1").AsSlice()})
+		err := DeleteSession(client, &pb.DeleteSessionRequest{PeerAddr: netip.MustParseAddr(testIPv4Addr1).AsSlice()})
 		require.NoError(t, err)
 	})
 
@@ -755,11 +764,11 @@ func TestConvertSRPolicy(t *testing.T) {
 	t.Run("full mapping", func(t *testing.T) {
 		p := &pb.SRPolicy{
 			PlspId:      7,
-			PolicyName:  "pol1",
-			SrcAddr:     netip.MustParseAddr("192.0.2.1").AsSlice(),
-			DstAddr:     netip.MustParseAddr("192.0.2.2").AsSlice(),
-			SrcRouterId: "0000.0aff.0001",
-			DstRouterId: "0000.0aff.0002",
+			PolicyName:  testPolicyName,
+			SrcAddr:     netip.MustParseAddr(testIPv4Addr1).AsSlice(),
+			DstAddr:     netip.MustParseAddr(testIPv4Addr2).AsSlice(),
+			SrcRouterId: testRouterID1,
+			DstRouterId: testRouterID2,
 			Color:       100,
 			Preference:  200,
 			LspId:       3,
@@ -772,12 +781,12 @@ func TestConvertSRPolicy(t *testing.T) {
 		require.NoError(t, err)
 		want := table.SRPolicy{
 			PlspID:      7,
-			Name:        "pol1",
+			Name:        testPolicyName,
 			SegmentList: []table.Segment{table.SegmentSRMPLS{Sid: 16003}},
-			SrcAddr:     netip.MustParseAddr("192.0.2.1"),
-			DstAddr:     netip.MustParseAddr("192.0.2.2"),
-			SrcRouterID: "0000.0aff.0001",
-			DstRouterID: "0000.0aff.0002",
+			SrcAddr:     netip.MustParseAddr(testIPv4Addr1),
+			DstAddr:     netip.MustParseAddr(testIPv4Addr2),
+			SrcRouterID: testRouterID1,
+			DstRouterID: testRouterID2,
 			Color:       100,
 			Preference:  200,
 			LSPID:       3,
@@ -789,19 +798,19 @@ func TestConvertSRPolicy(t *testing.T) {
 	})
 
 	t.Run("invalid source address", func(t *testing.T) {
-		_, err := convertSRPolicy(&pb.SRPolicy{SrcAddr: []byte{1, 2, 3}, DstAddr: netip.MustParseAddr("192.0.2.2").AsSlice()})
+		_, err := convertSRPolicy(&pb.SRPolicy{SrcAddr: []byte{1, 2, 3}, DstAddr: netip.MustParseAddr(testIPv4Addr2).AsSlice()})
 		require.Error(t, err)
 	})
 
 	t.Run("invalid destination address", func(t *testing.T) {
-		_, err := convertSRPolicy(&pb.SRPolicy{SrcAddr: netip.MustParseAddr("192.0.2.1").AsSlice(), DstAddr: []byte{1, 2, 3}})
+		_, err := convertSRPolicy(&pb.SRPolicy{SrcAddr: netip.MustParseAddr(testIPv4Addr1).AsSlice(), DstAddr: []byte{1, 2, 3}})
 		require.Error(t, err)
 	})
 
 	t.Run("invalid segment propagates the error", func(t *testing.T) {
 		_, err := convertSRPolicy(&pb.SRPolicy{
-			SrcAddr:     netip.MustParseAddr("192.0.2.1").AsSlice(),
-			DstAddr:     netip.MustParseAddr("192.0.2.2").AsSlice(),
+			SrcAddr:     netip.MustParseAddr(testIPv4Addr1).AsSlice(),
+			DstAddr:     netip.MustParseAddr(testIPv4Addr2).AsSlice(),
 			SegmentList: []*pb.Segment{{Sid: "not-a-sid"}},
 		})
 		require.Error(t, err)
@@ -809,8 +818,8 @@ func TestConvertSRPolicy(t *testing.T) {
 
 	t.Run("LSP-ID overflow", func(t *testing.T) {
 		_, err := convertSRPolicy(&pb.SRPolicy{
-			SrcAddr: netip.MustParseAddr("192.0.2.1").AsSlice(),
-			DstAddr: netip.MustParseAddr("192.0.2.2").AsSlice(),
+			SrcAddr: netip.MustParseAddr(testIPv4Addr1).AsSlice(),
+			DstAddr: netip.MustParseAddr(testIPv4Addr2).AsSlice(),
 			LspId:   math.MaxUint16 + 1,
 		})
 		require.Error(t, err)
@@ -840,22 +849,22 @@ func TestGetSRPolicyList(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		client := &fakeClient{srPolicyListResp: &pb.GetSRPolicyListResponse{
 			Sessions: []*pb.SRPolicySession{{
-				PeerAddr: netip.MustParseAddr("192.0.2.1").AsSlice(),
+				PeerAddr: netip.MustParseAddr(testIPv4Addr1).AsSlice(),
 				State:    pb.SessionState_SESSION_STATE_UP,
 				SrPolicies: []*pb.SRPolicy{{
-					PolicyName: "pol1",
-					SrcAddr:    netip.MustParseAddr("192.0.2.1").AsSlice(),
-					DstAddr:    netip.MustParseAddr("192.0.2.2").AsSlice(),
+					PolicyName: testPolicyName,
+					SrcAddr:    netip.MustParseAddr(testIPv4Addr1).AsSlice(),
+					DstAddr:    netip.MustParseAddr(testIPv4Addr2).AsSlice(),
 				}},
 			}},
 		}}
-		got, err := GetSRPolicyList(client, netip.MustParseAddr("192.0.2.1"))
+		got, err := GetSRPolicyList(client, netip.MustParseAddr(testIPv4Addr1))
 		require.NoError(t, err)
 		require.Len(t, got, 1)
-		assert.Equal(t, "192.0.2.1", got[0].PeerAddr.String())
+		assert.Equal(t, testIPv4Addr1, got[0].PeerAddr.String())
 		assert.Equal(t, "up", got[0].State)
 		require.Len(t, got[0].SRPolicies, 1)
-		assert.Equal(t, "pol1", got[0].SRPolicies[0].Name)
+		assert.Equal(t, testPolicyName, got[0].SRPolicies[0].Name)
 	})
 
 	t.Run("client error propagates", func(t *testing.T) {
@@ -875,7 +884,7 @@ func TestGetSRPolicyList(t *testing.T) {
 	t.Run("policy conversion error propagates", func(t *testing.T) {
 		client := &fakeClient{srPolicyListResp: &pb.GetSRPolicyListResponse{
 			Sessions: []*pb.SRPolicySession{{
-				PeerAddr:   netip.MustParseAddr("192.0.2.1").AsSlice(),
+				PeerAddr:   netip.MustParseAddr(testIPv4Addr1).AsSlice(),
 				SrPolicies: []*pb.SRPolicy{{SrcAddr: []byte{1, 2, 3}}},
 			}},
 		}}
@@ -920,17 +929,17 @@ func TestGetTED_ClientError(t *testing.T) {
 func TestGetTED_Success(t *testing.T) {
 	nodeA := &pb.LsNode{
 		Asn:        65000,
-		RouterId:   "0000.0aff.0001",
+		RouterId:   testRouterID1,
 		Hostname:   "routerA",
 		IsisAreaId: "49.0001",
 		SrgbBegin:  16000,
 		SrgbEnd:    23999,
 		Links: []*pb.LsLink{
 			{
-				LocalRouterId:  "0000.0aff.0001",
-				RemoteRouterId: "0000.0aff.0002",
-				LocalIp:        "192.0.2.1",
-				RemoteIp:       "192.0.2.2",
+				LocalRouterId:  testRouterID1,
+				RemoteRouterId: testRouterID2,
+				LocalIp:        testIPv4Addr1,
+				RemoteIp:       testIPv4Addr2,
 				AdjSid:         24001,
 				Metrics: []*pb.Metric{
 					{Type: pb.MetricType_METRIC_TYPE_IGP, Value: 10},
@@ -945,12 +954,12 @@ func TestGetTED_Success(t *testing.T) {
 				},
 			},
 			{
-				LocalRouterId:  "0000.0aff.0001",
-				RemoteRouterId: "0000.0aff.0002",
+				LocalRouterId:  testRouterID1,
+				RemoteRouterId: testRouterID2,
 			},
 		},
 		Prefixes: []*pb.LsPrefix{
-			{Prefix: "10.0.0.1/32", SidIndex: proto.Uint32(1)},
+			{Prefix: testPrefix, SidIndex: proto.Uint32(1)},
 			{Prefix: "10.0.0.2/32"},
 		},
 		Srv6Sids: []*pb.LsSrv6SID{
@@ -962,14 +971,14 @@ func TestGetTED_Success(t *testing.T) {
 			},
 		},
 	}
-	nodeB := &pb.LsNode{Asn: 65000, RouterId: "0000.0aff.0002"}
+	nodeB := &pb.LsNode{Asn: 65000, RouterId: testRouterID2}
 
 	client := &fakeClient{tedResp: &pb.GetTEDResponse{Enabled: true, Nodes: []*pb.LsNode{nodeA, nodeB}}}
 	ted, err := GetTED(client)
 	require.NoError(t, err)
 	require.NotNil(t, ted)
 
-	a := ted.Nodes["0000.0aff.0001"]
+	a := ted.Nodes[testRouterID1]
 	require.NotNil(t, a)
 	assert.Equal(t, "routerA", a.Hostname)
 	assert.Equal(t, "49.0001", a.IsisAreaID)
@@ -978,9 +987,9 @@ func TestGetTED_Success(t *testing.T) {
 	require.Len(t, a.Links, 2)
 
 	link0 := a.Links[0]
-	assert.Equal(t, "192.0.2.1", link0.LocalIP.String())
-	assert.Equal(t, "192.0.2.2", link0.RemoteIP.String())
-	assert.Same(t, ted.Nodes["0000.0aff.0002"], link0.RemoteNode)
+	assert.Equal(t, testIPv4Addr1, link0.LocalIP.String())
+	assert.Equal(t, testIPv4Addr2, link0.RemoteIP.String())
+	assert.Same(t, ted.Nodes[testRouterID2], link0.RemoteNode)
 	assert.Equal(t, uint32(24001), link0.AdjSid)
 	assert.Equal(t, []*table.Metric{
 		table.NewMetric(table.IGPMetric, 10),
@@ -1012,15 +1021,15 @@ func TestGetTED_Success(t *testing.T) {
 
 func TestGetTED_PropagatesConversionErrors(t *testing.T) {
 	t.Run("invalid link IP", func(t *testing.T) {
-		node := &pb.LsNode{RouterId: "0000.0aff.0001", Links: []*pb.LsLink{
-			{LocalRouterId: "0000.0aff.0001", RemoteRouterId: "0000.0aff.0001", LocalIp: "not-an-ip"},
+		node := &pb.LsNode{RouterId: testRouterID1, Links: []*pb.LsLink{
+			{LocalRouterId: testRouterID1, RemoteRouterId: testRouterID1, LocalIp: "not-an-ip"},
 		}}
 		_, err := GetTED(&fakeClient{tedResp: &pb.GetTEDResponse{Enabled: true, Nodes: []*pb.LsNode{node}}})
 		require.Error(t, err)
 	})
 
 	t.Run("invalid prefix", func(t *testing.T) {
-		node := &pb.LsNode{RouterId: "0000.0aff.0001", Prefixes: []*pb.LsPrefix{{Prefix: "not-a-prefix"}}}
+		node := &pb.LsNode{RouterId: testRouterID1, Prefixes: []*pb.LsPrefix{{Prefix: "not-a-prefix"}}}
 		_, err := GetTED(&fakeClient{tedResp: &pb.GetTEDResponse{Enabled: true, Nodes: []*pb.LsNode{node}}})
 		require.Error(t, err)
 	})
@@ -1070,10 +1079,10 @@ func TestCreateLsLink_InvalidMetric(t *testing.T) {
 
 func TestAddLsNode_InvalidSrv6SID(t *testing.T) {
 	ted := &table.LsTED{Nodes: map[string]*table.LsNode{
-		"0000.0aff.0001": table.NewLsNode(65000, "0000.0aff.0001"),
+		testRouterID1: table.NewLsNode(65000, testRouterID1),
 	}}
 	node := &pb.LsNode{
-		RouterId: "0000.0aff.0001",
+		RouterId: testRouterID1,
 		Prefixes: []*pb.LsPrefix{{Prefix: "not-a-prefix"}},
 	}
 
@@ -1083,10 +1092,10 @@ func TestAddLsNode_InvalidSrv6SID(t *testing.T) {
 
 func TestAddLsNode_Srv6SIDConversionErrorPropagates(t *testing.T) {
 	ted := &table.LsTED{Nodes: map[string]*table.LsNode{
-		"0000.0aff.0001": table.NewLsNode(65000, "0000.0aff.0001"),
+		testRouterID1: table.NewLsNode(65000, testRouterID1),
 	}}
 	node := &pb.LsNode{
-		RouterId: "0000.0aff.0001",
+		RouterId: testRouterID1,
 		Srv6Sids: []*pb.LsSrv6SID{{
 			EndpointBehavior: &pb.EndpointBehavior{Behavior: math.MaxUint16 + 1},
 		}},
@@ -1125,7 +1134,7 @@ func TestCreateSrv6EndXSID(t *testing.T) {
 }
 
 func TestCreateSrv6SID(t *testing.T) {
-	lsNode := table.NewLsNode(65000, "0000.0aff.0001")
+	lsNode := table.NewLsNode(65000, testRouterID1)
 
 	t.Run("success", func(t *testing.T) {
 		got, err := createSrv6SID(lsNode, &pb.LsSrv6SID{

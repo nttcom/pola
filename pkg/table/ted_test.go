@@ -6,6 +6,8 @@
 package table
 
 import (
+	"bytes"
+	"fmt"
 	"net/netip"
 	"testing"
 
@@ -22,7 +24,7 @@ func TestLsNodeNodeSegment(t *testing.T) {
 		{
 			name: "PrefixSIDIndexZero",
 			node: &LsNode{
-				RouterID:  "0000.0000.0001",
+				RouterID:  testRouterID1,
 				SrgbBegin: 16000,
 				Prefixes: []*LsPrefix{
 					{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 0, HasSidIndex: true},
@@ -33,26 +35,26 @@ func TestLsNodeNodeSegment(t *testing.T) {
 		{
 			name: "SRv6 Node SID is used when no Prefix-SID is present",
 			node: &LsNode{
-				RouterID: "0000.0000.0001",
+				RouterID: testRouterID1,
 				Prefixes: []*LsPrefix{
 					{Prefix: netip.MustParsePrefix("10.0.0.1/32")},
 				},
 				SRv6SIDs: []*LsSrv6SID{
-					{Sids: []string{"2001:db8::1"}},
+					{Sids: []string{testSRv6SID1}},
 				},
 			},
-			want: "2001:db8::1",
+			want: testSRv6SID1,
 		},
 		{
 			name: "SRv6 SID entries with no Sids are skipped",
 			node: &LsNode{
-				RouterID: "0000.0000.0001",
+				RouterID: testRouterID1,
 				SRv6SIDs: []*LsSrv6SID{
 					{Sids: []string{}},
-					{Sids: []string{"2001:db8::2"}},
+					{Sids: []string{testSRv6SID2}},
 				},
 			},
-			want: "2001:db8::2",
+			want: testSRv6SID2,
 		},
 	}
 	for _, tt := range tests {
@@ -72,7 +74,7 @@ func TestLsNodeNodeSegment_Errors(t *testing.T) {
 		{
 			name: "NoPrefixSID",
 			node: &LsNode{
-				RouterID:  "0000.0000.0001",
+				RouterID:  testRouterID1,
 				SrgbBegin: 16000,
 				Prefixes: []*LsPrefix{
 					{Prefix: netip.MustParsePrefix("10.0.0.1/32")},
@@ -82,16 +84,16 @@ func TestLsNodeNodeSegment_Errors(t *testing.T) {
 		{
 			name: "SRv6 SID cannot be parsed as an address",
 			node: &LsNode{
-				RouterID: "0000.0000.0001",
+				RouterID: testRouterID1,
 				SRv6SIDs: []*LsSrv6SID{
-					{Sids: []string{"not-an-address"}},
+					{Sids: []string{testInvalidAddr}},
 				},
 			},
 		},
 		{
 			name: "SRv6 SID is an IPv4 address",
 			node: &LsNode{
-				RouterID: "0000.0000.0001",
+				RouterID: testRouterID1,
 				SRv6SIDs: []*LsSrv6SID{
 					{Sids: []string{"192.0.2.1"}},
 				},
@@ -100,7 +102,7 @@ func TestLsNodeNodeSegment_Errors(t *testing.T) {
 		{
 			name: "SRv6 SID is an IPv4-mapped IPv6 address",
 			node: &LsNode{
-				RouterID: "0000.0000.0001",
+				RouterID: testRouterID1,
 				SRv6SIDs: []*LsSrv6SID{
 					{Sids: []string{"::ffff:192.0.2.1"}},
 				},
@@ -109,13 +111,13 @@ func TestLsNodeNodeSegment_Errors(t *testing.T) {
 		{
 			name: "Prefix-SID index without an SRGB",
 			node: &LsNode{
-				RouterID: "0000.0000.0001",
+				RouterID: testRouterID1,
 				Prefixes: []*LsPrefix{{SidIndex: 10, HasSidIndex: true}},
 			},
 		},
 		{
 			name: "no Prefix-SID and no SRv6 SIDs",
-			node: &LsNode{RouterID: "0000.0000.0001"},
+			node: &LsNode{RouterID: testRouterID1},
 		},
 	}
 	for _, tt := range tests {
@@ -134,7 +136,7 @@ func TestNodeSegment_PrefixSIDOutsideSRGB(t *testing.T) {
 		{
 			name: "label overflows the maximum MPLS label",
 			node: &LsNode{
-				RouterID:  "0000.0000.0001",
+				RouterID:  testRouterID1,
 				SrgbBegin: 0xFFFFF,
 				Prefixes:  []*LsPrefix{{SidIndex: 10, HasSidIndex: true}},
 			},
@@ -142,7 +144,7 @@ func TestNodeSegment_PrefixSIDOutsideSRGB(t *testing.T) {
 		{
 			name: "label reaches a bounded SRGB end",
 			node: &LsNode{
-				RouterID:  "0000.0000.0001",
+				RouterID:  testRouterID1,
 				SrgbBegin: 16000,
 				SrgbEnd:   16010,
 				Prefixes:  []*LsPrefix{{SidIndex: 100, HasSidIndex: true}},
@@ -178,7 +180,7 @@ func TestLsNodeLoopbackAddr(t *testing.T) {
 		{
 			name: "IPv6 /128 is a loopback address",
 			node: &LsNode{Prefixes: []*LsPrefix{{Prefix: netip.MustParsePrefix("2001:db8::1/128")}}},
-			want: netip.MustParseAddr("2001:db8::1"),
+			want: netip.MustParseAddr(testSRv6SID1),
 		},
 		{
 			name:    "IPv6 non-/128 is not a loopback address",
@@ -205,7 +207,7 @@ func TestLsNodeLoopbackAddr(t *testing.T) {
 }
 
 func TestNewLsNode(t *testing.T) {
-	assert.Equal(t, &LsNode{ASN: 1, RouterID: "0000.0000.0001"}, NewLsNode(1, "0000.0000.0001"))
+	assert.Equal(t, &LsNode{ASN: 1, RouterID: testRouterID1}, NewLsNode(1, testRouterID1))
 }
 
 func TestLsNodeUpdateTED_ASNMismatch(t *testing.T) {
@@ -272,6 +274,66 @@ func TestLsLinkMetric(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, uint32(1), got)
 	})
+}
+
+func TestPrintLink(t *testing.T) {
+	t.Run("missing IPs and RemoteNode fall back to None", func(t *testing.T) {
+		var buf bytes.Buffer
+		printLink(&buf, &LsLink{})
+
+		assert.Contains(t, buf.String(), "Local: None Remote: None")
+		assert.Contains(t, buf.String(), "RemoteNode: None")
+	})
+
+	t.Run("populated IPs and RemoteNode are printed", func(t *testing.T) {
+		link := &LsLink{
+			LocalIP:    netip.MustParseAddr("192.0.2.1"),
+			RemoteIP:   netip.MustParseAddr("192.0.2.2"),
+			RemoteNode: &LsNode{RouterID: "R2"},
+		}
+
+		var buf bytes.Buffer
+		printLink(&buf, link)
+
+		assert.Contains(t, buf.String(), "Local: 192.0.2.1 Remote: 192.0.2.2")
+		assert.Contains(t, buf.String(), "RemoteNode: R2")
+	})
+
+	t.Run("metrics are printed", func(t *testing.T) {
+		link := &LsLink{Metrics: []*Metric{nil, {Type: IGPMetric, Value: 10}}}
+
+		var buf bytes.Buffer
+		printLink(&buf, link)
+
+		assert.Contains(t, buf.String(), "igp: 10")
+	})
+
+	t.Run("SRv6 End.X SID is printed", func(t *testing.T) {
+		link := &LsLink{
+			Srv6EndXSID: &Srv6EndXSID{
+				EndpointBehavior: 5,
+				Sids:             []string{testSRv6SID1},
+				Srv6SIDStructure: SIDStructure{LocalBlock: 1, LocalNode: 2, LocalFunc: 3, LocalArg: 4},
+			},
+		}
+
+		var buf bytes.Buffer
+		printLink(&buf, link)
+
+		assert.Contains(t, buf.String(), "SRv6 End.X SID:")
+		assert.Contains(t, buf.String(), "EndpointBehavior: "+BehaviorToString(5))
+		assert.Contains(t, buf.String(), fmt.Sprintf("SIDs: [%s]", testSRv6SID1))
+		assert.Contains(t, buf.String(), "Block: 1, Node: 2, Func: 3, Arg: 4")
+	})
+}
+
+func TestPrintNodeLinks(t *testing.T) {
+	node := &LsNode{Links: []*LsLink{nil, {RemoteNode: &LsNode{RouterID: "R2"}}}}
+
+	var buf bytes.Buffer
+	printNodeLinks(&buf, node)
+
+	assert.Contains(t, buf.String(), "RemoteNode: R2")
 }
 
 func TestLsLinkUpdateTED_ASNMismatch(t *testing.T) {
@@ -369,7 +431,7 @@ func TestLsSrv6SIDUpdateTED_ASNMismatch(t *testing.T) {
 
 func TestLsSrv6SIDUpdateTED_CreatesNodeAndAddsSID(t *testing.T) {
 	ted := newTestTED()
-	sid := &LsSrv6SID{LocalNode: &LsNode{ASN: 1, RouterID: "R1"}, Sids: []string{"2001:db8::1"}}
+	sid := &LsSrv6SID{LocalNode: &LsNode{ASN: 1, RouterID: "R1"}, Sids: []string{testSRv6SID1}}
 
 	sid.UpdateTED(ted, 1)
 
@@ -382,9 +444,9 @@ func TestLsSrv6SIDUpdateTED_ReusesExistingNode(t *testing.T) {
 	existing := &LsNode{ASN: 1, RouterID: "R1"}
 	ted := newTestTED(existing)
 
-	first := &LsSrv6SID{LocalNode: &LsNode{ASN: 1, RouterID: "R1"}, Sids: []string{"2001:db8::1"}}
+	first := &LsSrv6SID{LocalNode: &LsNode{ASN: 1, RouterID: "R1"}, Sids: []string{testSRv6SID1}}
 	first.UpdateTED(ted, 1)
-	second := &LsSrv6SID{LocalNode: &LsNode{ASN: 1, RouterID: "R1"}, Sids: []string{"2001:db8::2"}}
+	second := &LsSrv6SID{LocalNode: &LsNode{ASN: 1, RouterID: "R1"}, Sids: []string{testSRv6SID2}}
 	second.UpdateTED(ted, 1)
 
 	assert.Same(t, existing, first.LocalNode)
@@ -510,7 +572,7 @@ func TestLsTEDRouterIDIndex(t *testing.T) {
 
 	index := ted.RouterIDIndex()
 	assert.Equal(t, "router-v4", index[netip.MustParseAddr("192.0.2.10")])
-	assert.Equal(t, "router-v6", index[netip.MustParseAddr("2001:db8::1")])
+	assert.Equal(t, "router-v6", index[netip.MustParseAddr(testSRv6SID1)])
 	assert.Empty(t, index[netip.MustParseAddr("192.0.2.0")])
 
 	var nilTED *LsTED
@@ -542,7 +604,7 @@ func TestLsTEDAddressRouterIDIndex(t *testing.T) {
 
 	index := ted.AddressRouterIDIndex()
 	assert.Equal(t, "router-v4", index[netip.MustParseAddr("192.0.2.10")])
-	assert.Equal(t, "router-v6", index[netip.MustParseAddr("2001:db8::1")])
+	assert.Equal(t, "router-v6", index[netip.MustParseAddr(testSRv6SID1)])
 	assert.Equal(t, "router-subnet", index[netip.MustParseAddr("192.0.2.0")])
 
 	var nilTED *LsTED
@@ -564,4 +626,52 @@ func TestLsTEDFindRouterIDByLoopback(t *testing.T) {
 
 	_, ok = ted.FindRouterIDByLoopback(netip.MustParseAddr("192.0.2.99"))
 	assert.False(t, ok)
+}
+
+func TestPrintNodes(t *testing.T) {
+	node := &LsNode{
+		RouterID: "R1",
+		Hostname: "router1",
+		Links: []*LsLink{
+			{RemoteNode: &LsNode{RouterID: "R2"}},
+		},
+	}
+	nodes := map[string]*LsNode{"R1": node}
+
+	require.NotNil(t, node)
+	printNodes(nodes)
+}
+
+func TestPrintNodes_WithNilNode(t *testing.T) {
+	nodes := map[string]*LsNode{"R1": nil}
+	require.NotNil(t, nodes)
+	printNodes(nodes)
+}
+
+func TestLsTEDPrint(t *testing.T) {
+	t.Run("nil TED", func(t *testing.T) {
+		t.Helper()
+		var ted *LsTED
+		ted.Print()
+	})
+
+	t.Run("empty TED", func(t *testing.T) {
+		t.Helper()
+		ted := &LsTED{Nodes: make(map[string]*LsNode)}
+		ted.Print()
+	})
+
+	t.Run("TED with nodes and links", func(t *testing.T) {
+		t.Helper()
+		ted := &LsTED{Nodes: map[string]*LsNode{
+			"R1": {
+				RouterID: "R1",
+				Hostname: "router1",
+				Links: []*LsLink{
+					{RemoteNode: &LsNode{RouterID: "R2"}},
+				},
+			},
+		}}
+		ted.Print()
+	})
 }

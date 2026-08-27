@@ -16,6 +16,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	testPeerAddr1 = "192.0.2.1"
+	testPeerAddr2 = "192.0.2.2"
+
+	testRouterID1 = "0000.0aff.0001"
+	testRouterID2 = "0000.0aff.0002"
+
+	testPolicyName = "pol1"
+
+	testSrv6EndXSID = "fc00:0:1:endx::"
+)
+
 func captureStdout(t *testing.T, f func()) string {
 	t.Helper()
 

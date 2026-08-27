@@ -22,6 +22,8 @@ import (
 	"github.com/nttcom/pola/pkg/server"
 )
 
+const testErrorDomain = "pola"
+
 // TestReasonConstantsMatchServer ensures the duplicated Reason constants stay in sync.
 // cmd/pola duplicates these values to avoid depending on pkg/server.
 func TestReasonConstantsMatchServer(t *testing.T) {
@@ -37,7 +39,7 @@ func TestReasonConstantsMatchServer(t *testing.T) {
 func TestTranslateCreateSRPolicyError(t *testing.T) {
 	newErr := func(code codes.Code, reason, msg string) error {
 		st := status.New(code, msg)
-		withDetails, err := st.WithDetails(&errdetails.ErrorInfo{Reason: reason, Domain: "pola"})
+		withDetails, err := st.WithDetails(&errdetails.ErrorInfo{Reason: reason, Domain: testErrorDomain})
 		if err != nil {
 			t.Fatalf("failed to attach ErrorInfo: %v", err)
 		}
@@ -85,9 +87,9 @@ func validEndpointInput() inputFormat {
 	return inputFormat{
 		ASN: 65000,
 		SRPolicy: srPolicy{
-			PCEPSessionAddr: netip.MustParseAddr("192.0.2.1"),
-			SrcAddr:         netip.MustParseAddr("192.0.2.1"),
-			DstAddr:         netip.MustParseAddr("192.0.2.2"),
+			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
+			SrcAddr:         netip.MustParseAddr(testPeerAddr1),
+			DstAddr:         netip.MustParseAddr(testPeerAddr2),
 			Color:           100,
 			SegmentList:     []segment{{SID: "16003"}},
 		},
@@ -170,8 +172,8 @@ func TestNewSRPolicyAddCmd_RunE(t *testing.T) {
 func TestAddSRPolicy(t *testing.T) {
 	t.Run("srcRouterID/dstRouterID and srcAddr/dstAddr are mutually exclusive", func(t *testing.T) {
 		input := inputFormat{SRPolicy: srPolicy{
-			SrcRouterID: "0000.0aff.0001",
-			SrcAddr:     netip.MustParseAddr("192.0.2.1"),
+			SrcRouterID: testRouterID1,
+			SrcAddr:     netip.MustParseAddr(testPeerAddr1),
 		}}
 		err := addSRPolicy(input, false, false)
 		require.Error(t, err)
@@ -209,28 +211,28 @@ func TestAddSRPolicy(t *testing.T) {
 		fake := &fakePCEServiceClient{}
 		client = fake
 		input := inputFormat{ASN: 65000, SRPolicy: srPolicy{
-			PCEPSessionAddr: netip.MustParseAddr("192.0.2.1"),
-			SrcRouterID:     "0000.0aff.0001",
-			DstRouterID:     "0000.0aff.0002",
+			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
+			SrcRouterID:     testRouterID1,
+			DstRouterID:     testRouterID2,
 			Color:           100,
-			Type:            "explicit",
+			Type:            srPolicyTypeExplicit,
 			SegmentList:     []segment{{SID: "16003"}},
 		}}
 		captureStdout(t, func() {
 			require.NoError(t, addSRPolicy(input, false, false))
 		})
 		require.NotNil(t, fake.createSRPolicyReq)
-		assert.Equal(t, "0000.0aff.0001", fake.createSRPolicyReq.SrPolicy.SrcRouterId)
+		assert.Equal(t, testRouterID1, fake.createSRPolicyReq.SrPolicy.SrcRouterId)
 	})
 
 	t.Run("router ID form grpc error is translated too", func(t *testing.T) {
 		client = &fakePCEServiceClient{createSRPolicyErr: assert.AnError}
 		input := inputFormat{ASN: 65000, SRPolicy: srPolicy{
-			PCEPSessionAddr: netip.MustParseAddr("192.0.2.1"),
-			SrcRouterID:     "0000.0aff.0001",
-			DstRouterID:     "0000.0aff.0002",
+			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
+			SrcRouterID:     testRouterID1,
+			DstRouterID:     testRouterID2,
 			Color:           100,
-			Type:            "explicit",
+			Type:            srPolicyTypeExplicit,
 			SegmentList:     []segment{{SID: "16003"}},
 		}}
 		err := addSRPolicy(input, false, false)
@@ -239,7 +241,7 @@ func TestAddSRPolicy(t *testing.T) {
 
 	t.Run("grpc error is translated with its hint", func(t *testing.T) {
 		st := status.New(codes.FailedPrecondition, "SID validation failed")
-		withDetails, err := st.WithDetails(&errdetails.ErrorInfo{Reason: "SID_VALIDATION_FAILED", Domain: "pola"})
+		withDetails, err := st.WithDetails(&errdetails.ErrorInfo{Reason: "SID_VALIDATION_FAILED", Domain: testErrorDomain})
 		require.NoError(t, err)
 		client = &fakePCEServiceClient{createSRPolicyErr: withDetails.Err()}
 
@@ -252,9 +254,9 @@ func TestAddSRPolicy(t *testing.T) {
 func TestAddSRPolicyWithEndpointAddr(t *testing.T) {
 	base := func() srPolicy {
 		return srPolicy{
-			PCEPSessionAddr: netip.MustParseAddr("192.0.2.1"),
-			SrcAddr:         netip.MustParseAddr("192.0.2.1"),
-			DstAddr:         netip.MustParseAddr("192.0.2.2"),
+			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
+			SrcAddr:         netip.MustParseAddr(testPeerAddr1),
+			DstAddr:         netip.MustParseAddr(testPeerAddr2),
 			Color:           100,
 			SegmentList:     []segment{{SID: "16003"}},
 		}
@@ -262,15 +264,15 @@ func TestAddSRPolicyWithEndpointAddr(t *testing.T) {
 
 	t.Run("type must be explicit (or empty)", func(t *testing.T) {
 		p := base()
-		p.Type = "dynamic"
+		p.Type = srPolicyTypeDynamic
 		err := addSRPolicyWithEndpointAddr(inputFormat{SRPolicy: p}, false)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "explicit")
+		assert.Contains(t, err.Error(), srPolicyTypeExplicit)
 	})
 
 	t.Run("metric and waypoints require a dynamic path", func(t *testing.T) {
 		p := base()
-		p.Metric = "igp"
+		p.Metric = metricTypeIGP
 		err := addSRPolicyWithEndpointAddr(inputFormat{SRPolicy: p}, false)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "dynamic path")
@@ -286,19 +288,19 @@ func TestAddSRPolicyWithEndpointAddr(t *testing.T) {
 		fake := &fakePCEServiceClient{}
 		client = fake
 		p := base()
-		p.Name = "pol1"
-		p.SegmentList = []segment{{SID: "16003", LocalAddr: "192.0.2.1", RemoteAddr: "192.0.2.2", SIDStructure: "32,16,0,80"}}
+		p.Name = testPolicyName
+		p.SegmentList = []segment{{SID: "16003", LocalAddr: testPeerAddr1, RemoteAddr: testPeerAddr2, SIDStructure: "32,16,0,80"}}
 
 		require.NoError(t, addSRPolicyWithEndpointAddr(inputFormat{ASN: 65000, SRPolicy: p}, true))
 
 		require.NotNil(t, fake.createSRPolicyReq)
 		want := &pb.SRPolicy{
-			PeerAddr:    netip.MustParseAddr("192.0.2.1").AsSlice(),
-			SrcAddr:     netip.MustParseAddr("192.0.2.1").AsSlice(),
-			DstAddr:     netip.MustParseAddr("192.0.2.2").AsSlice(),
-			SegmentList: []*pb.Segment{{Sid: "16003", LocalAddr: "192.0.2.1", RemoteAddr: "192.0.2.2", SidStructure: "32,16,0,80"}},
+			PeerAddr:    netip.MustParseAddr(testPeerAddr1).AsSlice(),
+			SrcAddr:     netip.MustParseAddr(testPeerAddr1).AsSlice(),
+			DstAddr:     netip.MustParseAddr(testPeerAddr2).AsSlice(),
+			SegmentList: []*pb.Segment{{Sid: "16003", LocalAddr: testPeerAddr1, RemoteAddr: testPeerAddr2, SidStructure: "32,16,0,80"}},
 			Color:       100,
-			PolicyName:  "pol1",
+			PolicyName:  testPolicyName,
 			Type:        pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT,
 		}
 		assert.Equal(t, want, fake.createSRPolicyReq.SrPolicy)
@@ -324,24 +326,24 @@ func TestAddSRPolicyWithRouterID(t *testing.T) {
 		fake := &fakePCEServiceClient{}
 		client = fake
 		input := inputFormat{ASN: 65000, SRPolicy: srPolicy{
-			PCEPSessionAddr: netip.MustParseAddr("192.0.2.1"),
-			SrcRouterID:     "0000.0aff.0001",
-			DstRouterID:     "0000.0aff.0002",
-			Name:            "pol1",
+			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
+			SrcRouterID:     testRouterID1,
+			DstRouterID:     testRouterID2,
+			Name:            testPolicyName,
 			Color:           100,
-			Type:            "dynamic",
-			Metric:          "delay",
+			Type:            srPolicyTypeDynamic,
+			Metric:          metricTypeDelay,
 			Waypoints:       []waypoint{{RouterID: "0000.0aff.0003"}},
 		}}
 		require.NoError(t, addSRPolicyWithRouterID(input, true))
 
 		require.NotNil(t, fake.createSRPolicyReq)
 		want := &pb.SRPolicy{
-			PeerAddr:    netip.MustParseAddr("192.0.2.1").AsSlice(),
-			SrcRouterId: "0000.0aff.0001",
-			DstRouterId: "0000.0aff.0002",
+			PeerAddr:    netip.MustParseAddr(testPeerAddr1).AsSlice(),
+			SrcRouterId: testRouterID1,
+			DstRouterId: testRouterID2,
 			Color:       100,
-			PolicyName:  "pol1",
+			PolicyName:  testPolicyName,
 			Type:        pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC,
 			Metric:      pb.MetricType_METRIC_TYPE_DELAY,
 			Waypoints:   []*pb.Waypoint{{RouterId: "0000.0aff.0003"}},
@@ -356,11 +358,11 @@ func TestAddSRPolicyWithRouterID(t *testing.T) {
 		fake := &fakePCEServiceClient{}
 		client = fake
 		input := inputFormat{ASN: 65000, SRPolicy: srPolicy{
-			PCEPSessionAddr: netip.MustParseAddr("192.0.2.1"),
-			SrcRouterID:     "0000.0aff.0001",
-			DstRouterID:     "0000.0aff.0002",
+			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
+			SrcRouterID:     testRouterID1,
+			DstRouterID:     testRouterID2,
 			Color:           100,
-			Type:            "explicit",
+			Type:            srPolicyTypeExplicit,
 			SegmentList:     []segment{{SID: "16003"}},
 		}}
 		require.NoError(t, addSRPolicyWithRouterID(input, false))
@@ -372,9 +374,9 @@ func TestAddSRPolicyWithRouterID(t *testing.T) {
 
 	t.Run("invalid type is rejected", func(t *testing.T) {
 		input := inputFormat{ASN: 65000, SRPolicy: srPolicy{
-			PCEPSessionAddr: netip.MustParseAddr("192.0.2.1"),
-			SrcRouterID:     "0000.0aff.0001",
-			DstRouterID:     "0000.0aff.0002",
+			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
+			SrcRouterID:     testRouterID1,
+			DstRouterID:     testRouterID2,
 			Color:           100,
 			Type:            "unknown",
 		}}
@@ -385,11 +387,11 @@ func TestAddSRPolicyWithRouterID(t *testing.T) {
 	t.Run("grpc error propagates", func(t *testing.T) {
 		client = &fakePCEServiceClient{createSRPolicyErr: assert.AnError}
 		input := inputFormat{ASN: 65000, SRPolicy: srPolicy{
-			PCEPSessionAddr: netip.MustParseAddr("192.0.2.1"),
-			SrcRouterID:     "0000.0aff.0001",
-			DstRouterID:     "0000.0aff.0002",
+			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
+			SrcRouterID:     testRouterID1,
+			DstRouterID:     testRouterID2,
 			Color:           100,
-			Type:            "explicit",
+			Type:            srPolicyTypeExplicit,
 			SegmentList:     []segment{{SID: "16003"}},
 		}}
 		err := addSRPolicyWithRouterID(input, false)
@@ -405,10 +407,10 @@ func TestSampleInputs(t *testing.T) {
 
 func TestValidateCommonInput(t *testing.T) {
 	valid := srPolicy{
-		PCEPSessionAddr: netip.MustParseAddr("192.0.2.1"),
+		PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
 		Color:           100,
-		SrcRouterID:     "0000.0aff.0001",
-		DstRouterID:     "0000.0aff.0002",
+		SrcRouterID:     testRouterID1,
+		DstRouterID:     testRouterID2,
 	}
 
 	t.Run("all mandatory fields present", func(t *testing.T) {
@@ -421,9 +423,9 @@ func TestValidateCommonInput(t *testing.T) {
 	}{
 		{"missing ASN", inputFormat{SRPolicy: valid}},
 		{"missing pcepSessionAddr", inputFormat{ASN: 65000, SRPolicy: srPolicy{Color: 100, SrcRouterID: "a", DstRouterID: "b"}}},
-		{"missing color", inputFormat{ASN: 65000, SRPolicy: srPolicy{PCEPSessionAddr: netip.MustParseAddr("192.0.2.1"), SrcRouterID: "a", DstRouterID: "b"}}},
-		{"missing srcRouterID", inputFormat{ASN: 65000, SRPolicy: srPolicy{PCEPSessionAddr: netip.MustParseAddr("192.0.2.1"), Color: 100, DstRouterID: "b"}}},
-		{"missing dstRouterID", inputFormat{ASN: 65000, SRPolicy: srPolicy{PCEPSessionAddr: netip.MustParseAddr("192.0.2.1"), Color: 100, SrcRouterID: "a"}}},
+		{"missing color", inputFormat{ASN: 65000, SRPolicy: srPolicy{PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1), SrcRouterID: "a", DstRouterID: "b"}}},
+		{"missing srcRouterID", inputFormat{ASN: 65000, SRPolicy: srPolicy{PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1), Color: 100, DstRouterID: "b"}}},
+		{"missing dstRouterID", inputFormat{ASN: 65000, SRPolicy: srPolicy{PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1), Color: 100, SrcRouterID: "a"}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -436,8 +438,8 @@ func TestValidateCommonInput(t *testing.T) {
 }
 
 func TestBuildPolicyByType(t *testing.T) {
-	t.Run("explicit", func(t *testing.T) {
-		input := inputFormat{SRPolicy: srPolicy{Type: "explicit", SegmentList: []segment{{SID: "16003"}}}}
+	t.Run(srPolicyTypeExplicit, func(t *testing.T) {
+		input := inputFormat{SRPolicy: srPolicy{Type: srPolicyTypeExplicit, SegmentList: []segment{{SID: "16003"}}}}
 		typ, metric, segs, waypoints, err := buildPolicyByType(input, "d", "e")
 		require.NoError(t, err)
 		assert.Equal(t, pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT, typ)
@@ -446,8 +448,8 @@ func TestBuildPolicyByType(t *testing.T) {
 		assert.Nil(t, waypoints)
 	})
 
-	t.Run("dynamic", func(t *testing.T) {
-		input := inputFormat{SRPolicy: srPolicy{Type: "dynamic", Metric: "igp", Waypoints: []waypoint{{RouterID: "r1"}}}}
+	t.Run(srPolicyTypeDynamic, func(t *testing.T) {
+		input := inputFormat{SRPolicy: srPolicy{Type: srPolicyTypeDynamic, Metric: metricTypeIGP, Waypoints: []waypoint{{RouterID: "r1"}}}}
 		typ, metric, segs, waypoints, err := buildPolicyByType(input, "d", "e")
 		require.NoError(t, err)
 		assert.Equal(t, pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC, typ)
@@ -462,19 +464,19 @@ func TestBuildPolicyByType(t *testing.T) {
 	})
 
 	t.Run("explicit with no segments", func(t *testing.T) {
-		_, _, _, _, err := buildPolicyByType(inputFormat{SRPolicy: srPolicy{Type: "explicit"}}, "d", "sample-explicit")
+		_, _, _, _, err := buildPolicyByType(inputFormat{SRPolicy: srPolicy{Type: srPolicyTypeExplicit}}, "d", "sample-explicit")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "sample-explicit")
 	})
 
 	t.Run("dynamic with no metric", func(t *testing.T) {
-		_, _, _, _, err := buildPolicyByType(inputFormat{SRPolicy: srPolicy{Type: "dynamic"}}, "sample-dynamic", "e")
+		_, _, _, _, err := buildPolicyByType(inputFormat{SRPolicy: srPolicy{Type: srPolicyTypeDynamic}}, "sample-dynamic", "e")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "sample-dynamic")
 	})
 
 	t.Run("dynamic with invalid metric", func(t *testing.T) {
-		_, _, _, _, err := buildPolicyByType(inputFormat{SRPolicy: srPolicy{Type: "dynamic", Metric: "bandwidth"}}, "d", "e")
+		_, _, _, _, err := buildPolicyByType(inputFormat{SRPolicy: srPolicy{Type: srPolicyTypeDynamic, Metric: "bandwidth"}}, "d", "e")
 		require.Error(t, err)
 	})
 }
@@ -485,10 +487,10 @@ func TestParseMetric(t *testing.T) {
 		in   string
 		want pb.MetricType
 	}{
-		{"igp", "igp", pb.MetricType_METRIC_TYPE_IGP},
-		{"delay", "delay", pb.MetricType_METRIC_TYPE_DELAY},
+		{metricTypeIGP, metricTypeIGP, pb.MetricType_METRIC_TYPE_IGP},
+		{metricTypeDelay, metricTypeDelay, pb.MetricType_METRIC_TYPE_DELAY},
 		{"te", "te", pb.MetricType_METRIC_TYPE_TE},
-		{"hopcount", "hopcount", pb.MetricType_METRIC_TYPE_HOPCOUNT},
+		{metricTypeHopcount, metricTypeHopcount, pb.MetricType_METRIC_TYPE_HOPCOUNT},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

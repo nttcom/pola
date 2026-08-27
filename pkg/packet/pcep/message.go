@@ -40,38 +40,38 @@ const (
 	MessageTypeStartTLS     MessageType = 0x0d
 )
 
-var messageTypeDescriptions = map[MessageType]struct {
-	Description string
-	Reference   string
-}{
-	MessageTypeOpen:         {"Open", "RFC5440"},
-	MessageTypeKeepalive:    {"Keepalive", "RFC5440"},
-	MessageTypePcreq:        {"Path Computation Request", "RFC5440"},
-	MessageTypePcrep:        {"Path Computation Reply", "RFC5440"},
-	MessageTypeNotification: {"Notification", "RFC5440"},
-	MessageTypeError:        {"Error", "RFC5440"},
-	MessageTypeClose:        {"Close", "RFC5440"},
-	MessageTypePcmReq:       {"Path Computation Monitoring Request", "RFC5886"},
-	MessageTypePcmRep:       {"Path Computation Monitoring Reply", "RFC5886"},
-	MessageTypeReport:       {"Report", "RFC8231"},
-	MessageTypeUpdate:       {"Update", "RFC8281"},
-	MessageTypeLSPInitReq:   {"LSP Initiate Request", "RFC8281"},
-	MessageTypeStartTLS:     {"StartTLS", "RFC8253"},
+var messageTypeDescriptions = map[MessageType]codePointInfo{
+	MessageTypeOpen:         {"Open", rfc(5440)},
+	MessageTypeKeepalive:    {"Keepalive", rfc(5440)},
+	MessageTypePcreq:        {"Path Computation Request", rfc(5440)},
+	MessageTypePcrep:        {"Path Computation Reply", rfc(5440)},
+	MessageTypeNotification: {"Notification", rfc(5440)},
+	MessageTypeError:        {"Error", rfc(5440)},
+	MessageTypeClose:        {"Close", rfc(5440)},
+	MessageTypePcmReq:       {"Path Computation Monitoring Request", rfc(5886)},
+	MessageTypePcmRep:       {"Path Computation Monitoring Reply", rfc(5886)},
+	MessageTypeReport:       {"Report", rfc(8231)},
+	MessageTypeUpdate:       {"Update", rfc(8281)},
+	MessageTypeLSPInitReq:   {"LSP Initiate Request", rfc(8281)},
+	MessageTypeStartTLS:     {"StartTLS", rfc(8253)},
 }
 
+// Name returns the registered name of the message type.
+func (t MessageType) Name() string { return messageTypeDescriptions[t].Description }
+
+// Reference returns the defining document of the message type.
+func (t MessageType) Reference() Reference { return messageTypeDescriptions[t].Reference }
+
 func (t MessageType) String() string {
-	if desc, ok := messageTypeDescriptions[t]; ok {
-		return fmt.Sprintf("%s (0x%02x)", desc.Description, uint8(t))
+	if name := t.Name(); name != "" {
+		return fmt.Sprintf("%s (0x%02x)", name, uint8(t))
 	}
 	return fmt.Sprintf("Unknown MessageType (0x%02x)", uint8(t))
 }
 
 // StringWithReference returns a human-readable representation of the message type with reference.
 func (t MessageType) StringWithReference() string {
-	if desc, ok := messageTypeDescriptions[t]; ok {
-		return fmt.Sprintf("%s (0x%02x) [%s]", desc.Description, uint8(t), desc.Reference)
-	}
-	return fmt.Sprintf("Unknown MessageType (0x%02x)", uint8(t))
+	return withReference(t.String(), t.Reference())
 }
 
 // CommonHeader is the common header of a PCEP message (RFC 5440 §6.1).
