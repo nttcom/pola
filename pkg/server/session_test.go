@@ -3503,6 +3503,98 @@ func TestHandleUnsupportedMessage_SendCloseFailureStillReturnsError(t *testing.T
 		"the too-many-unknown-messages error must surface even when sending the Close message fails")
 }
 
+func TestReceivePCEPMessage_OpenAfterSessionUpIsRejectedWithErrorValue1(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() {
+		assert.NoError(t, server.Close(), "failed to close server connection")
+	})
+	t.Cleanup(func() {
+		assert.NoError(t, client.Close(), "failed to close client connection")
+	})
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss.pccOpen = &OpenParams{SessionID: 1, Keepalive: 30, DeadTimer: 120}
+	ss.setState(sessionStateUp)
+
+	writeMessage(t, client, pcep.NewOpenMessage(2, 60, 240, nil))
+	writeMessage(t, client, pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided))
+
+	require.NoError(t, ss.ReceivePCEPMessage(), "an Open received while Up must not abort the receive loop")
+
+	pcerrMessage := readPCErrMessage(t, client)
+	require.Len(t, pcerrMessage.Errors, 1)
+	assert.Equal(t, pcepErrorTypeSessionEstablishmentFailure, pcerrMessage.Errors[0].ErrorType,
+		"expected Error-Type 1 (PCEP session establishment failure), not Error-Type 2 (Capability not supported)")
+	assert.Equal(t, pcepErrorValueInvalidOpenMessage, pcerrMessage.Errors[0].ErrorValue,
+		"expected Error-value 1 (reception of an invalid Open message)")
+}
+
+func TestReceivePCEPMessage_OpenAfterSessionUpDoesNotOverwriteNegotiatedOpen(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() {
+		assert.NoError(t, server.Close(), "failed to close server connection")
+	})
+	t.Cleanup(func() {
+		assert.NoError(t, client.Close(), "failed to close client connection")
+	})
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss.pccOpen = &OpenParams{SessionID: 1, Keepalive: 30, DeadTimer: 120}
+	ss.setState(sessionStateUp)
+
+	writeMessage(t, client, pcep.NewOpenMessage(2, 60, 240, nil))
+	writeMessage(t, client, pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided))
+
+	require.NoError(t, ss.ReceivePCEPMessage())
+	readPCErrMessage(t, client)
+
+	pccOpen, ok := ss.PccOpen()
+	require.True(t, ok)
+	assert.Equal(t, OpenParams{SessionID: 1, Keepalive: 30, DeadTimer: 120}, pccOpen,
+		"the already negotiated Open parameters must not be overwritten by a later Open")
+}
+
+func TestReceivePCEPMessage_OpenAfterSessionUpDoesNotDisruptSubsequentMessageHandling(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() {
+		assert.NoError(t, server.Close(), "failed to close server connection")
+	})
+	t.Cleanup(func() {
+		assert.NoError(t, client.Close(), "failed to close client connection")
+	})
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss.pccOpen = &OpenParams{SessionID: 1, Keepalive: 30, DeadTimer: 120}
+	ss.setState(sessionStateUp)
+
+	writeMessage(t, client, pcep.NewOpenMessage(2, 60, 240, nil))
+	writeStateReportMessage(t, client, newTestStateReport(t, 5, 0))
+	writeMessage(t, client, pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided))
+
+	require.NoError(t, ss.ReceivePCEPMessage())
+	readPCErrMessage(t, client)
+
+	_, found := ss.SearchSRPolicy(5)
+	assert.True(t, found, "the PCRpt following an unexpected Open must still be processed")
+}
+
+func TestReceivePCEPMessage_UnexpectedOpenMessageBodyReadError(t *testing.T) {
+	openMsg := pcep.NewOpenMessage(2, 60, 240, nil)
+	msgBytes, err := openMsg.Serialize()
+	require.NoError(t, err)
+
+	headerOnly := msgBytes[:pcep.CommonHeaderLength]
+	conn := &fakeConn{r: bytes.NewReader(headerOnly)}
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss.pccOpen = &OpenParams{SessionID: 1, Keepalive: 30, DeadTimer: 120}
+	ss.setState(sessionStateUp)
+
+	err = ss.ReceivePCEPMessage()
+	require.Error(t, err, "reading incomplete Open message body should return an error")
+	assert.ErrorIs(t, err, io.EOF, "expected io.EOF when Open message body is missing")
+}
+
 // RFC 5440 §6.9: close the session when unrecognized messages exceed the allowed rate.
 func TestReceivePCEPMessage_TooManyUnknownMessagesClosesSession(t *testing.T) {
 	server, client := newTCPConnPair(t)

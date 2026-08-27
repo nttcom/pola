@@ -980,6 +980,10 @@ func (ss *Session) receiveOnePCEPMessage() (done bool, err error) {
 		}
 	case pcep.MessageTypeClose:
 		return true, ss.receiveClose(commonHeader.MessageLength, deadline)
+	case pcep.MessageTypeOpen:
+		if err := ss.handleUnexpectedOpen(commonHeader.MessageLength, deadline); err != nil {
+			return false, err
+		}
 	case pcep.MessageTypeNotification:
 		if _, err := ss.readMessageBody(commonHeader.MessageLength, deadline); err != nil {
 			return false, err
@@ -1044,6 +1048,17 @@ func (ss *Session) receiveClose(messageLength uint16, deadline time.Time) error 
 	ss.logger.Debug("Received Close",
 		zap.String("reason", closeMessage.CloseObject.Reason.String()),
 		zap.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#close-object-reason-field"))
+	return nil
+}
+
+// handleUnexpectedOpen rejects an Open received while the session is Up.
+// RFC 5440 Appendix A does not define Open as an event in the Up state.
+func (ss *Session) handleUnexpectedOpen(messageLength uint16, deadline time.Time) error {
+	if _, err := ss.readMessageBody(messageLength, deadline); err != nil {
+		return err
+	}
+	ss.logger.Debug("Received Open message while session is already Up")
+	ss.sendPCErrBestEffort(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
 	return nil
 }
 
