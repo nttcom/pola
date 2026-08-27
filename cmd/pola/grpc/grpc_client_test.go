@@ -366,6 +366,27 @@ func TestGetSessions_EffectiveTimersIgnoredBeforeUp(t *testing.T) {
 	assert.Equal(t, EffectiveTimers{}, sessions[0].EffectiveTimers)
 }
 
+func TestGetSessions_EffectiveTimersPopulatedWhenUp(t *testing.T) {
+	client := &fakeClient{sessionListResp: &pb.GetSessionListResponse{
+		Sessions: []*pb.Session{
+			{
+				PeerAddr:        netip.MustParseAddr("192.0.2.1").AsSlice(),
+				State:           pb.SessionState_SESSION_STATE_UP,
+				EffectiveTimers: &pb.EffectiveTimers{Keepalive: 30, DeadTimer: 120},
+			},
+		},
+	}}
+
+	sessions, err := GetSessions(client, netip.Addr{}, false)
+	require.NoError(t, err)
+	require.Len(t, sessions, 1)
+
+	assert.NotNil(t, sessions[0].EffectiveTimers.Keepalive)
+	assert.Equal(t, uint32(30), *sessions[0].EffectiveTimers.Keepalive)
+	assert.NotNil(t, sessions[0].EffectiveTimers.DeadTimer)
+	assert.Equal(t, uint32(120), *sessions[0].EffectiveTimers.DeadTimer)
+}
+
 func TestGetSessions_TimestampsInitiatorSyncStateAndStats(t *testing.T) {
 	client := &fakeClient{sessionListResp: &pb.GetSessionListResponse{
 		Sessions: []*pb.Session{

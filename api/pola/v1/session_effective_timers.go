@@ -6,20 +6,18 @@
 package v1
 
 // EffectiveKeepalive reports the session's effective Keepalive and whether
-// it is meaningful. Before SESSION_STATE_UP, EffectiveTimers is a zero-value
-// placeholder, while Keepalive=0 is a valid negotiated value (RFC 5440 §7.3).
+// it is available.
 func EffectiveKeepalive(state SessionState, effective *EffectiveTimers) (value uint32, ok bool) {
-	if state != SessionState_SESSION_STATE_UP {
+	if state != SessionState_SESSION_STATE_UP || effective == nil {
 		return 0, false
 	}
 	return effective.GetKeepalive(), true
 }
 
 // EffectiveDeadTimer reports the session's effective DeadTimer and whether
-// it is meaningful. Before SESSION_STATE_UP, EffectiveTimers is a zero-value
-// placeholder.
+// it is available.
 func EffectiveDeadTimer(state SessionState, effective *EffectiveTimers) (value uint32, ok bool) {
-	if state != SessionState_SESSION_STATE_UP {
+	if state != SessionState_SESSION_STATE_UP || effective == nil {
 		return 0, false
 	}
 	return effective.GetDeadTimer(), true
