@@ -88,6 +88,7 @@ fmt: ## Format Go and Python source code
 	ruff format $(PYTHON_DIRS)
 
 fix: fmt ## Apply automatic fixes
+	go fix ./...
 	go tool golangci-lint run --fix --config=.golangci.yml
 	ruff check --fix $(PYTHON_DIRS)
 	go tool pinact run -u
