@@ -184,7 +184,7 @@ Session: 192.0.2.2 (State: up, LSP-DB Sync: finished)
     SegmentList: 16003 -> 16001
 
 Session: 2001:db8::1 (State: keep-wait, LSP-DB Sync: pending)
-  No SR Policies: session is still synchronizing.
+  No SR Policies: session is not established.
 ```
 
 JSON formatted response
