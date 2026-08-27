@@ -14,7 +14,7 @@ import (
 
 func TestDefaultCapabilities(t *testing.T) {
 	caps := DefaultCapabilities()
-	require.Len(t, caps, 3)
+	require.Len(t, caps, 4)
 
 	statefulCap, ok := caps[0].(*StatefulPCECapability)
 	require.True(t, ok, "expected DefaultCapabilities[0] to be a StatefulPCECapability")
@@ -45,6 +45,14 @@ func TestDefaultCapabilities(t *testing.T) {
 	assert.Equal(t, []AssocType{AssocTypeSRPolicyAssociation}, assocCap.AssocTypes)
 	assert.NotContains(t, assocCap.AssocTypes, AssocTypeSRPolicyAssociationCisco)
 	assert.NotContains(t, assocCap.AssocTypes, AssocTypeSRPolicyAssociationJuniper)
+
+	multipathCap, ok := caps[3].(*MultipathCapability)
+	require.True(t, ok, "expected DefaultCapabilities[3] to be a MultipathCapability")
+	assert.Equal(t, uint16(1), multipathCap.MaxMultipaths)
+	assert.False(t, multipathCap.IsWeightedSupported)
+	assert.False(t, multipathCap.IsOppositeDirSupported)
+	assert.False(t, multipathCap.IsForwardClassSupported)
+	assert.False(t, multipathCap.IsCompositePathSupported)
 }
 
 func TestFlattenCapabilities(t *testing.T) {

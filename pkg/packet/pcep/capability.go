@@ -33,7 +33,7 @@ func polaStatefulCapability() *StatefulPCECapability {
 }
 
 // polaPathSetupTypeCapability returns Pola's supported path setup types
-// and their corresponding SR capability sub-TLVs.
+// and their SR capability sub-TLVs.
 func polaPathSetupTypeCapability() *PathSetupTypeCapability {
 	return &PathSetupTypeCapability{
 		PathSetupTypes: Psts{PathSetupTypeSRTE, PathSetupTypeSRv6TE},
@@ -44,15 +44,19 @@ func polaPathSetupTypeCapability() *PathSetupTypeCapability {
 	}
 }
 
-// polaAssocTypeList returns Pola's ASSOC-TYPE-LIST TLV.
-//
-// Only the IANA-assigned SR Policy Association type is advertised.
-// Legacy Cisco (0x14) and Juniper (0xffe1) values are peer-specific
-// interop quirks and are handled after the peer's OPEN is received.
+// polaAssocTypeList returns the IANA-assigned SR Policy Association type.
+// Legacy Cisco (0x14) and Juniper (0xffe1) values are handled separately
+// after the peer's OPEN is received.
 func polaAssocTypeList() *AssocTypeList {
 	return &AssocTypeList{
 		AssocTypes: []AssocType{AssocTypeSRPolicyAssociation},
 	}
+}
+
+// polaMultipathCapability returns Pola's MULTIPATH-CAP TLV.
+// Pola currently computes a single path per request.
+func polaMultipathCapability() *MultipathCapability {
+	return NewMultipathCapability(1, false, false, false, false)
 }
 
 // FlattenCapabilities appends PATH-SETUP-TYPE-CAPABILITY sub-capabilities
@@ -77,5 +81,6 @@ func DefaultCapabilities() []CapabilityInterface {
 		polaStatefulCapability(),
 		polaPathSetupTypeCapability(),
 		polaAssocTypeList(),
+		polaMultipathCapability(),
 	}
 }

@@ -34,7 +34,7 @@ Wait for vJunos-router startup after `sudo containerlab deploy` (it takes severa
 ```bash
 $ docker logs clab-sr-mpls-explicit-path-pe02 -f
 <snip.>
-2026-08-25 05:58:19,052: launch     INFO Startup complete in: 0:01:44.709074
+2026-08-27 01:07:57,095: launch     INFO Startup complete in: 0:01:44.709074
 ```
 
 ### Apply SR Policy
@@ -49,7 +49,7 @@ Session #0: 10.0.255.1
   State:             up
   LSP-DB Sync:       finished
   Role:              active-stateful-pce
-  Up Time:           00:02:13
+  Up Time:           00:10:18
   Session ID:        Local=0, Peer=1
   Transport:         tcp, auth=none
   Timers:
@@ -67,8 +67,9 @@ Session #0: 10.0.255.1
     Local only:
       STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Color
       SR-PCE-CAPABILITY [RFC8664]: Unlimited-SID-Depth
+      MULTIPATH-CAP [draft-ietf-pce-multipath]: Multipath, MaxMultipaths=1
     Peer only:
-      SR-PCE-CAPABILITY [RFC8664]: MSD=0
+      SR-PCE-CAPABILITY [RFC8664]: MSD=10
       ASSOC-TYPE-LIST [RFC8697]:
         2 Disjoint Association
         3 Policy Association
@@ -81,7 +82,7 @@ Session #1: 10.0.255.2
   State:             up
   LSP-DB Sync:       finished
   Role:              active-stateful-pce
-  Up Time:           00:00:12
+  Up Time:           00:00:21
   Session ID:        Local=0, Peer=1
   Transport:         tcp, auth=none
   Timers:
@@ -95,24 +96,26 @@ Session #1: 10.0.255.2
       PATH-SETUP-TYPE-CAPABILITY [RFC8408]: SR-TE
       ASSOC-TYPE-LIST [RFC8697]:
         6 SR Policy Association
+      MULTIPATH-CAP [draft-ietf-pce-multipath]: Multipath
     Local only:
       STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Color
       SR-PCE-CAPABILITY [RFC8664]: Unlimited-SID-Depth
       SRv6-PCE-CAPABILITY [RFC9603]: SRv6
       PATH-SETUP-TYPE-CAPABILITY [RFC8408]: SRv6-TE
+      MULTIPATH-CAP [draft-ietf-pce-multipath]: MaxMultipaths=1
     Peer only:
       VENDOR-INFORMATION [RFC7470]: 2636 (Juniper Networks, Inc.)
-      SR-PCE-CAPABILITY [RFC8664]: MSD=0
+      SR-PCE-CAPABILITY [RFC8664]: MSD=5
       ASSOC-TYPE-LIST [RFC8697]:
         1 Path Protection Association
-      MULTIPATH-CAP [draft-ietf-pce-multipath]: Multipath, MaxMultipaths=128, Weighted
+      MULTIPATH-CAP [draft-ietf-pce-multipath]: MaxMultipaths=128, Weighted
 
 Session #2: 10.0.255.3
   State:             up
   LSP-DB Sync:       finished
   Role:              active-stateful-pce
-  Up Time:           00:02:38
-  Session ID:        Local=0, Peer=2
+  Up Time:           00:10:53
+  Session ID:        Local=0, Peer=1
   Transport:         tcp, auth=none
   Timers:
                Local  Peer  Effective
@@ -121,16 +124,18 @@ Session #2: 10.0.255.3
   Capabilities:
     Common:
       STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Stateful, Update, Instantiation
+      SR-PCE-CAPABILITY [RFC8664]: SR
       PATH-SETUP-TYPE-CAPABILITY [RFC8408]: SR-TE
     Local only:
       STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Color
-      SR-PCE-CAPABILITY [RFC8664]: SR, Unlimited-SID-Depth
+      SR-PCE-CAPABILITY [RFC8664]: Unlimited-SID-Depth
       SRv6-PCE-CAPABILITY [RFC9603]: SRv6
       PATH-SETUP-TYPE-CAPABILITY [RFC8408]: SRv6-TE
       ASSOC-TYPE-LIST [RFC8697]:
         6 SR Policy Association
+      MULTIPATH-CAP [draft-ietf-pce-multipath]: Multipath, MaxMultipaths=1
     Peer only:
-      -
+      SR-PCE-CAPABILITY [RFC8664]: MSD=4
 root@pola:/pola# pola sr-policy list
 Session: 10.0.255.1 (State: up, LSP-DB Sync: finished)
   No SR Policies.
@@ -217,7 +222,7 @@ root@pola:/pola# exit
 $ ssh clab-sr-mpls-explicit-path-pe01 -l admin
 
 RP/0/RP0/CPU0:pe01#show segment-routing traffic-eng policy
-Tue Aug 25 06:01:32.210 UTC
+Thu Aug 27 01:12:33.948 UTC
 
 SR-TE policy database
 ---------------------
@@ -225,7 +230,7 @@ SR-TE policy database
 Color: 1, End-point: 10.255.0.2
   Name: srte_c_1_ep_10.255.0.2
   Status:
-    Admin: up  Operational: up for 00:01:07 (since Aug 25 06:00:24.733)
+    Admin: up  Operational: up for 00:00:52 (since Aug 27 01:11:41.192)
   Candidate-paths:
     Preference: 100 (PCEP) (active)
       Name: pe01-policy1

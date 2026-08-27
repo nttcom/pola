@@ -40,7 +40,7 @@ Session #0: 10.0.255.1
   State:             up
   LSP-DB Sync:       finished
   Role:              active-stateful-pce
-  Up Time:           00:02:46
+  Up Time:           00:12:24
   Session ID:        Local=0, Peer=0
   Transport:         tcp, auth=none
   Timers:
@@ -50,22 +50,24 @@ Session #0: 10.0.255.1
   Capabilities:
     Common:
       STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Stateful, Update, Instantiation
+      SR-PCE-CAPABILITY [RFC8664]: SR
       PATH-SETUP-TYPE-CAPABILITY [RFC8408]: SR-TE
     Local only:
       STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Color
-      SR-PCE-CAPABILITY [RFC8664]: SR, Unlimited-SID-Depth
+      SR-PCE-CAPABILITY [RFC8664]: Unlimited-SID-Depth
       SRv6-PCE-CAPABILITY [RFC9603]: SRv6
       PATH-SETUP-TYPE-CAPABILITY [RFC8408]: SRv6-TE
       ASSOC-TYPE-LIST [RFC8697]:
         6 SR Policy Association
+      MULTIPATH-CAP [draft-ietf-pce-multipath]: Multipath, MaxMultipaths=1
     Peer only:
-      -
+      SR-PCE-CAPABILITY [RFC8664]: MSD=4
 
 Session #1: 10.0.255.2
   State:             up
   LSP-DB Sync:       finished
   Role:              active-stateful-pce
-  Up Time:           00:02:46
+  Up Time:           00:12:24
   Session ID:        Local=0, Peer=0
   Transport:         tcp, auth=none
   Timers:
@@ -75,16 +77,18 @@ Session #1: 10.0.255.2
   Capabilities:
     Common:
       STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Stateful, Update, Instantiation
+      SR-PCE-CAPABILITY [RFC8664]: SR
       PATH-SETUP-TYPE-CAPABILITY [RFC8408]: SR-TE
     Local only:
       STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Color
-      SR-PCE-CAPABILITY [RFC8664]: SR, Unlimited-SID-Depth
+      SR-PCE-CAPABILITY [RFC8664]: Unlimited-SID-Depth
       SRv6-PCE-CAPABILITY [RFC9603]: SRv6
       PATH-SETUP-TYPE-CAPABILITY [RFC8408]: SRv6-TE
       ASSOC-TYPE-LIST [RFC8697]:
         6 SR Policy Association
+      MULTIPATH-CAP [draft-ietf-pce-multipath]: Multipath, MaxMultipaths=1
     Peer only:
-      -
+      SR-PCE-CAPABILITY [RFC8664]: MSD=4
 root@pola:/pola# pola sr-policy list
 Session: 10.0.255.1 (State: up, LSP-DB Sync: finished)
   No SR Policies.
@@ -151,13 +155,13 @@ PCE POLA
  PCE SR Version draft16 and RFC8408
  Next PcReq ID 1
  Next PLSP  ID 2
- Connected for 250 seconds, since 2026-08-25 06:03:57 UTC
+ Connected for 802 seconds, since 2026-08-27 01:19:10 UTC
  PCC Capabilities: [PCC and PCE Initiated LSPs] [Stateful PCE] [SR TE PST]
  PCE Capabilities: [Stateful PCE] [SR TE PST]
  PCEP Message Statistics
                         Sent   Rcvd
          Message Open:     1      1
-    Message KeepAlive:     8      9
+    Message KeepAlive:    26     27
         Message PcReq:     0      0
         Message PcRep:     0      0
        Message Notify:     0      0
@@ -168,7 +172,7 @@ PCE POLA
      Message Initiate:     0      1
      Message StartTls:     0      0
     Message Erroneous:     0      0
-                Total:    13     11
+                Total:    31     29
 PCEP Sessions => Configured 1 ; Connected 1
 pe01# show sr-te policy detail
 
@@ -221,12 +225,12 @@ tcpdump inside the container's network namespace with `nsenter`:
 $ sudo nsenter -t $(docker inspect -f '{{.State.Pid}}' clab-sr-mpls-explicit-path-l3vpn-p01) -n tcpdump -nni eth1
 tcpdump: verbose output suppressed, use -v[v]... for full protocol decode
 listening on eth1, link-type EN10MB (Ethernet), snapshot length 262144 bytes
-15:11:09.335148 MPLS (label 16004, exp 0, ttl 63) (label 16003, exp 0, ttl 63) (label 17, exp 0, [S], ttl 63) IP 192.168.0.2 > 192.168.1.2: ICMP echo request, id 3515, seq 1, length 64
-15:11:09.335223 MPLS (label 17, exp 0, [S], ttl 63) IP 192.168.1.2 > 192.168.0.2: ICMP echo reply, id 3515, seq 1, length 64
-15:11:10.363953 MPLS (label 16004, exp 0, ttl 63) (label 16003, exp 0, ttl 63) (label 17, exp 0, [S], ttl 63) IP 192.168.0.2 > 192.168.1.2: ICMP echo request, id 3515, seq 2, length 64
-15:11:10.363998 MPLS (label 17, exp 0, [S], ttl 63) IP 192.168.1.2 > 192.168.0.2: ICMP echo reply, id 3515, seq 2, length 64
-15:11:11.387951 MPLS (label 16004, exp 0, ttl 63) (label 16003, exp 0, ttl 63) (label 17, exp 0, [S], ttl 63) IP 192.168.0.2 > 192.168.1.2: ICMP echo request, id 3515, seq 3, length 64
-15:11:11.387993 MPLS (label 17, exp 0, [S], ttl 63) IP 192.168.1.2 > 192.168.0.2: ICMP echo reply, id 3515, seq 3, length 64
+10:32:33.335148 MPLS (label 16004, exp 0, ttl 63) (label 16003, exp 0, ttl 63) (label 17, exp 0, [S], ttl 63) IP 192.168.0.2 > 192.168.1.2: ICMP echo request, id 3515, seq 1, length 64
+10:32:33.335223 MPLS (label 17, exp 0, [S], ttl 63) IP 192.168.1.2 > 192.168.0.2: ICMP echo reply, id 3515, seq 1, length 64
+10:32:33.363953 MPLS (label 16004, exp 0, ttl 63) (label 16003, exp 0, ttl 63) (label 17, exp 0, [S], ttl 63) IP 192.168.0.2 > 192.168.1.2: ICMP echo request, id 3515, seq 2, length 64
+10:32:33.363998 MPLS (label 17, exp 0, [S], ttl 63) IP 192.168.1.2 > 192.168.0.2: ICMP echo reply, id 3515, seq 2, length 64
+10:32:33.387951 MPLS (label 16004, exp 0, ttl 63) (label 16003, exp 0, ttl 63) (label 17, exp 0, [S], ttl 63) IP 192.168.0.2 > 192.168.1.2: ICMP echo request, id 3515, seq 3, length 64
+10:32:33.387993 MPLS (label 17, exp 0, [S], ttl 63) IP 192.168.1.2 > 192.168.0.2: ICMP echo reply, id 3515, seq 3, length 64
 ```
 
 Also, you can analyze with Wireshark on your Local PC

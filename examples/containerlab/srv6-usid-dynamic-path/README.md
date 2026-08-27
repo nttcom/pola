@@ -43,7 +43,7 @@ Wait for vJunos-router startup after `sudo containerlab deploy` (it takes severa
 ```bash
 $ docker logs clab-srv6-usid-dynamic-path-pe02 -f
 <snip.>
-2026-08-25 06:26:03,619: launch     INFO Startup complete in: 0:01:46.155728
+2026-08-27 04:16:29,763: launch     INFO Startup complete in: 0:07:40.825956
 ```
 
 ### Show TED
@@ -98,7 +98,7 @@ Session #0: fd00::2
   State:             up
   LSP-DB Sync:       finished
   Role:              active-stateful-pce
-  Up Time:           00:00:24
+  Up Time:           00:00:06
   Session ID:        Local=0, Peer=2
   Transport:         tcp, auth=none
   Timers:
@@ -109,19 +109,21 @@ Session #0: fd00::2
     Common:
       STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Stateful, Update, Instantiation
       SR-PCE-CAPABILITY [RFC8664]: SR
+      SRv6-PCE-CAPABILITY [RFC9603]: SRv6
       PATH-SETUP-TYPE-CAPABILITY [RFC8408]: SR-TE, SRv6-TE
       ASSOC-TYPE-LIST [RFC8697]:
         6 SR Policy Association
+      MULTIPATH-CAP [draft-ietf-pce-multipath]: Multipath
     Local only:
       STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Color
       SR-PCE-CAPABILITY [RFC8664]: Unlimited-SID-Depth
-      SRv6-PCE-CAPABILITY [RFC9603]: SRv6
+      MULTIPATH-CAP [draft-ietf-pce-multipath]: MaxMultipaths=1
     Peer only:
       VENDOR-INFORMATION [RFC7470]: 2636 (Juniper Networks, Inc.)
-      SR-PCE-CAPABILITY [RFC8664]: MSD=0
+      SR-PCE-CAPABILITY [RFC8664]: MSD=5
       ASSOC-TYPE-LIST [RFC8697]:
         1 Path Protection Association
-      MULTIPATH-CAP [draft-ietf-pce-multipath]: Multipath, MaxMultipaths=128, Weighted
+      MULTIPATH-CAP [draft-ietf-pce-multipath]: MaxMultipaths=128, Weighted
 root@pola:/pola# pola sr-policy list -p 50052
 Session: fd00::2 (State: up, LSP-DB Sync: finished)
   No SR Policies.
