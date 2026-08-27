@@ -15,6 +15,7 @@ import (
 	"time"
 
 	pb "github.com/nttcom/pola/api/pola/v1"
+	"github.com/nttcom/pola/internal/safecast"
 	"github.com/nttcom/pola/pkg/packet/pcep"
 	"github.com/nttcom/pola/pkg/table"
 )
@@ -543,6 +544,11 @@ func convertSRPolicy(p *pb.SRPolicy) (table.SRPolicy, error) {
 		segmentList = append(segmentList, seg)
 	}
 
+	lspID, err := safecast.Uint16(p.GetLspId(), "SR policy LSP-ID")
+	if err != nil {
+		return table.SRPolicy{}, err
+	}
+
 	return table.SRPolicy{
 		PlspID:      p.GetPlspId(),
 		Name:        p.GetPolicyName(),
@@ -553,10 +559,35 @@ func convertSRPolicy(p *pb.SRPolicy) (table.SRPolicy, error) {
 		DstRouterID: p.GetDstRouterId(),
 		Color:       p.GetColor(),
 		Preference:  p.GetPreference(),
-		LSPID:       uint16(p.GetLspId()),
+		LSPID:       lspID,
 		State:       policyStateFromPB(p.GetState()),
 		Type:        policyTypeFromPB(p.GetType()),
 		Metric:      metricTypeFromPB(p.GetMetric()),
+	}, nil
+}
+
+func sidStructureFromPB(s *pb.SidStructure) (table.SIDStructure, error) {
+	localBlock, err := safecast.Uint8(s.GetLocalBlock(), "SID structure LocalBlock")
+	if err != nil {
+		return table.SIDStructure{}, err
+	}
+	localNode, err := safecast.Uint8(s.GetLocalNode(), "SID structure LocalNode")
+	if err != nil {
+		return table.SIDStructure{}, err
+	}
+	localFunc, err := safecast.Uint8(s.GetLocalFunc(), "SID structure LocalFunc")
+	if err != nil {
+		return table.SIDStructure{}, err
+	}
+	localArg, err := safecast.Uint8(s.GetLocalArg(), "SID structure LocalArg")
+	if err != nil {
+		return table.SIDStructure{}, err
+	}
+	return table.SIDStructure{
+		LocalBlock: localBlock,
+		LocalNode:  localNode,
+		LocalFunc:  localFunc,
+		LocalArg:   localArg,
 	}, nil
 }
 
@@ -751,7 +782,10 @@ func addLsNode(ted *table.LsTED, node *pb.LsNode) error {
 	}
 
 	for _, srv6SID := range node.GetSrv6Sids() {
-		lsSrv6SID := createSrv6SID(ted.Nodes[node.GetRouterId()], srv6SID)
+		lsSrv6SID, err := createSrv6SID(ted.Nodes[node.GetRouterId()], srv6SID)
+		if err != nil {
+			return err
+		}
 		ted.Nodes[node.GetRouterId()].SRv6SIDs = append(ted.Nodes[node.GetRouterId()].SRv6SIDs, lsSrv6SID)
 	}
 
@@ -796,7 +830,11 @@ func createLsLink(localNode, remoteNode *table.LsNode, link *pb.LsLink) (*table.
 		lsLink.Metrics = append(lsLink.Metrics, metric)
 	}
 	if link.GetSrv6EndXSid() != nil {
-		lsLink.Srv6EndXSID = createSrv6EndXSID(link.GetSrv6EndXSid())
+		srv6EndXSID, err := createSrv6EndXSID(link.GetSrv6EndXSid())
+		if err != nil {
+			return nil, err
+		}
+		lsLink.Srv6EndXSID = srv6EndXSID
 	}
 	return lsLink, nil
 }
@@ -816,26 +854,30 @@ func createMetric(metricInfo *pb.Metric) (*table.Metric, error) {
 	}
 }
 
-func createSrv6EndXSID(srv6EndXSID *pb.Srv6EndXSID) *table.Srv6EndXSID {
+func createSrv6EndXSID(srv6EndXSID *pb.Srv6EndXSID) (*table.Srv6EndXSID, error) {
+	endpointBehavior, err := safecast.Uint16(srv6EndXSID.EndpointBehavior, "SRv6 End.X SID endpoint behavior")
+	if err != nil {
+		return nil, err
+	}
+	structure, err := sidStructureFromPB(srv6EndXSID.GetSidStructure())
+	if err != nil {
+		return nil, err
+	}
+
 	lsSrv6EndXSID := &table.Srv6EndXSID{
-		EndpointBehavior: uint16(srv6EndXSID.EndpointBehavior),
+		EndpointBehavior: endpointBehavior,
 		Sids:             []string{},
-		Srv6SIDStructure: table.SIDStructure{
-			LocalBlock: uint8(srv6EndXSID.GetSidStructure().GetLocalBlock()),
-			LocalNode:  uint8(srv6EndXSID.GetSidStructure().GetLocalNode()),
-			LocalFunc:  uint8(srv6EndXSID.GetSidStructure().GetLocalFunc()),
-			LocalArg:   uint8(srv6EndXSID.GetSidStructure().GetLocalArg()),
-		},
+		Srv6SIDStructure: structure,
 	}
 
 	for _, sid := range srv6EndXSID.GetSids() {
 		lsSrv6EndXSID.Sids = append(lsSrv6EndXSID.Sids, sid.GetSid())
 	}
 
-	return lsSrv6EndXSID
+	return lsSrv6EndXSID, nil
 }
 
-func createSrv6SID(lsNode *table.LsNode, srv6SID *pb.LsSrv6SID) *table.LsSrv6SID {
+func createSrv6SID(lsNode *table.LsNode, srv6SID *pb.LsSrv6SID) (*table.LsSrv6SID, error) {
 	lsSrv6SID := table.NewLsSrv6SID(lsNode)
 
 	for _, sid := range srv6SID.GetSids() {
@@ -845,14 +887,27 @@ func createSrv6SID(lsNode *table.LsNode, srv6SID *pb.LsSrv6SID) *table.LsSrv6SID
 		lsSrv6SID.MultiTopoIDs = append(lsSrv6SID.MultiTopoIDs, topoID.GetMultiTopoId())
 	}
 
-	lsSrv6SID.EndpointBehavior.Behavior = uint16(srv6SID.GetEndpointBehavior().GetBehavior())
-	lsSrv6SID.EndpointBehavior.Flags = uint8(srv6SID.GetEndpointBehavior().GetFlags())
-	lsSrv6SID.EndpointBehavior.Algorithm = uint8(srv6SID.GetEndpointBehavior().GetAlgorithm())
+	behavior, err := safecast.Uint16(srv6SID.GetEndpointBehavior().GetBehavior(), "SRv6 SID endpoint behavior")
+	if err != nil {
+		return nil, err
+	}
+	flags, err := safecast.Uint8(srv6SID.GetEndpointBehavior().GetFlags(), "SRv6 SID endpoint behavior flags")
+	if err != nil {
+		return nil, err
+	}
+	algorithm, err := safecast.Uint8(srv6SID.GetEndpointBehavior().GetAlgorithm(), "SRv6 SID endpoint behavior algorithm")
+	if err != nil {
+		return nil, err
+	}
+	lsSrv6SID.EndpointBehavior.Behavior = behavior
+	lsSrv6SID.EndpointBehavior.Flags = flags
+	lsSrv6SID.EndpointBehavior.Algorithm = algorithm
 
-	lsSrv6SID.SIDStructure.LocalBlock = uint8(srv6SID.GetSidStructure().GetLocalBlock())
-	lsSrv6SID.SIDStructure.LocalNode = uint8(srv6SID.GetSidStructure().GetLocalNode())
-	lsSrv6SID.SIDStructure.LocalFunc = uint8(srv6SID.GetSidStructure().GetLocalFunc())
-	lsSrv6SID.SIDStructure.LocalArg = uint8(srv6SID.GetSidStructure().GetLocalArg())
+	structure, err := sidStructureFromPB(srv6SID.GetSidStructure())
+	if err != nil {
+		return nil, err
+	}
+	lsSrv6SID.SIDStructure = structure
 
-	return lsSrv6SID
+	return lsSrv6SID, nil
 }

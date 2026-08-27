@@ -1122,7 +1122,11 @@ func (ss *Session) recordUnknownMessage() bool {
 	//nolint:gocritic // appendAssign: live aliases unknownMsgTimes[:0] for in-place filtering.
 	ss.unknownMsgTimes = append(live, now)
 
-	return uint32(len(ss.unknownMsgTimes)) > ss.maxUnknownMsgs
+	count := len(ss.unknownMsgTimes)
+	if count > math.MaxUint32 {
+		return true
+	}
+	return uint32(count) > ss.maxUnknownMsgs
 }
 
 // handlePCErr logs the error and forgets intents for the reported SRP-IDs.

@@ -1583,6 +1583,9 @@ func (tlv *PathSetupTypeCapability) DecodeFromBytes(data []byte) error {
 // Serialize encodes the receiver into bytes.
 func (tlv *PathSetupTypeCapability) Serialize() ([]byte, error) {
 	pstCount := tlv.pstCount()
+	if pstCount < 0 || pstCount > MaxPathSetupTypes {
+		return nil, fmt.Errorf("PathSetupTypeCapability: PST count %d exceeds %d", pstCount, MaxPathSetupTypes)
+	}
 
 	fixedPartLen := PathSetupTypeCapabilityFixedPartLength + tlv.paddedPSTLength()
 

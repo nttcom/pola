@@ -7,6 +7,7 @@ package server
 
 import (
 	"fmt"
+	"math"
 	"net/netip"
 	"time"
 
@@ -234,9 +235,13 @@ func (s *APIServer) buildPBSession(pcepSession *Session, includeStats bool) *pb.
 		}
 	}
 	if snap.state == sessionStateUp {
+		deadTimer := snap.readDeadline() / time.Second
+		if deadTimer > math.MaxUint32 {
+			deadTimer = 0
+		}
 		pbSession.EffectiveTimers = &pb.EffectiveTimers{
 			Keepalive: uint32(snap.keepaliveInterval()),
-			DeadTimer: uint32(snap.readDeadline() / time.Second),
+			DeadTimer: uint32(deadTimer),
 		}
 	}
 	if !snap.createdAt.IsZero() {

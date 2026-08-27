@@ -18,6 +18,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/nttcom/pola/internal/safecast"
 	"github.com/nttcom/pola/pkg/table"
 	api "github.com/osrg/gobgp/v4/api"
 	"google.golang.org/grpc"
@@ -567,21 +568,56 @@ func getLsLink(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrLink *api.LsAttribute
 
 	lsLink.AdjSid = lsAttrLink.GetSrAdjacencySid()
 
-	srv6EndXSID := lsAttrLink.GetSrv6EndXSid()
-	if srv6EndXSID != nil {
-		lsLink.Srv6EndXSID = &table.Srv6EndXSID{
-			EndpointBehavior: uint16(srv6EndXSID.EndpointBehavior),
-			Sids:             srv6EndXSID.Sids,
-			Srv6SIDStructure: table.SIDStructure{
-				LocalBlock: uint8(srv6EndXSID.Srv6SidStructure.GetLocalBlock()),
-				LocalNode:  uint8(srv6EndXSID.Srv6SidStructure.GetLocalNode()),
-				LocalFunc:  uint8(srv6EndXSID.Srv6SidStructure.GetLocalFunc()),
-				LocalArg:   uint8(srv6EndXSID.Srv6SidStructure.GetLocalArg()),
-			},
+	if srv6EndXSID := lsAttrLink.GetSrv6EndXSid(); srv6EndXSID != nil {
+		converted, err := srv6EndXSIDFromAPI(srv6EndXSID)
+		if err != nil {
+			return nil, err
 		}
+		lsLink.Srv6EndXSID = converted
 	}
 
 	return lsLink, nil
+}
+
+func srv6EndXSIDFromAPI(srv6EndXSID *api.LsSrv6EndXSID) (*table.Srv6EndXSID, error) {
+	endpointBehavior, err := safecast.Uint16(srv6EndXSID.EndpointBehavior, "SRv6 End.X SID endpoint behavior")
+	if err != nil {
+		return nil, err
+	}
+	structure, err := srv6SIDStructureFromAPI(srv6EndXSID.GetSrv6SidStructure())
+	if err != nil {
+		return nil, err
+	}
+	return &table.Srv6EndXSID{
+		EndpointBehavior: endpointBehavior,
+		Sids:             srv6EndXSID.Sids,
+		Srv6SIDStructure: structure,
+	}, nil
+}
+
+func srv6SIDStructureFromAPI(s *api.LsSrv6SIDStructure) (table.SIDStructure, error) {
+	localBlock, err := safecast.Uint8(s.GetLocalBlock(), "SRv6 SID structure LocalBlock")
+	if err != nil {
+		return table.SIDStructure{}, err
+	}
+	localNode, err := safecast.Uint8(s.GetLocalNode(), "SRv6 SID structure LocalNode")
+	if err != nil {
+		return table.SIDStructure{}, err
+	}
+	localFunc, err := safecast.Uint8(s.GetLocalFunc(), "SRv6 SID structure LocalFunc")
+	if err != nil {
+		return table.SIDStructure{}, err
+	}
+	localArg, err := safecast.Uint8(s.GetLocalArg(), "SRv6 SID structure LocalArg")
+	if err != nil {
+		return table.SIDStructure{}, err
+	}
+	return table.SIDStructure{
+		LocalBlock: localBlock,
+		LocalNode:  localNode,
+		LocalFunc:  localFunc,
+		LocalArg:   localArg,
+	}, nil
 }
 
 func getLsPrefixList(nlris []*api.NLRI, lsAttrPrefix *api.LsAttributePrefix) ([]table.TEDElem, error) {
@@ -691,15 +727,29 @@ func getLsSrv6SID(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrSrv6SID *api.LsAtt
 	srv6SIDs := srv6SIDNLRI.GetSrv6SidInformation().GetSids()
 	multiTopoIDs := srv6SIDNLRI.GetMultiTopoId().GetMultiTopoIds()
 
+	structure, err := srv6SIDStructureFromAPI(srv6SIDStructure)
+	if err != nil {
+		return nil, err
+	}
+	behavior, err := safecast.Uint16(endpointBehavior.GetEndpointBehavior(), "SRv6 SID endpoint behavior")
+	if err != nil {
+		return nil, err
+	}
+	flags, err := safecast.Uint8(endpointBehavior.GetFlags(), "SRv6 SID endpoint behavior flags")
+	if err != nil {
+		return nil, err
+	}
+	algorithm, err := safecast.Uint8(endpointBehavior.GetAlgorithm(), "SRv6 SID endpoint behavior algorithm")
+	if err != nil {
+		return nil, err
+	}
+
 	localNode := table.NewLsNode(localNodeASN, localNodeID)
 	lsSrv6SID := table.NewLsSrv6SID(localNode)
-	lsSrv6SID.SIDStructure.LocalBlock = uint8(srv6SIDStructure.GetLocalBlock())
-	lsSrv6SID.SIDStructure.LocalNode = uint8(srv6SIDStructure.GetLocalNode())
-	lsSrv6SID.SIDStructure.LocalFunc = uint8(srv6SIDStructure.GetLocalFunc())
-	lsSrv6SID.SIDStructure.LocalArg = uint8(srv6SIDStructure.GetLocalArg())
-	lsSrv6SID.EndpointBehavior.Behavior = uint16(endpointBehavior.GetEndpointBehavior())
-	lsSrv6SID.EndpointBehavior.Flags = uint8(endpointBehavior.GetFlags())
-	lsSrv6SID.EndpointBehavior.Algorithm = uint8(endpointBehavior.GetAlgorithm())
+	lsSrv6SID.SIDStructure = structure
+	lsSrv6SID.EndpointBehavior.Behavior = behavior
+	lsSrv6SID.EndpointBehavior.Flags = flags
+	lsSrv6SID.EndpointBehavior.Algorithm = algorithm
 	lsSrv6SID.Sids = srv6SIDs
 	lsSrv6SID.MultiTopoIDs = multiTopoIDs
 

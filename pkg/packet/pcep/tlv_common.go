@@ -56,7 +56,7 @@ func paddedLength(n int, align int) int {
 }
 
 func tlvValueLength(n int) (uint16, error) {
-	if n > math.MaxUint16 {
+	if n < 0 || n > math.MaxUint16 {
 		return 0, fmt.Errorf("PCEP TLV value length %d exceeds %d", n, math.MaxUint16)
 	}
 	return uint16(n), nil

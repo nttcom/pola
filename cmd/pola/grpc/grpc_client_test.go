@@ -8,6 +8,7 @@ package grpc
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"net/netip"
 	"testing"
 	"time"
@@ -805,6 +806,34 @@ func TestConvertSRPolicy(t *testing.T) {
 		})
 		require.Error(t, err)
 	})
+
+	t.Run("LSP-ID overflow", func(t *testing.T) {
+		_, err := convertSRPolicy(&pb.SRPolicy{
+			SrcAddr: netip.MustParseAddr("192.0.2.1").AsSlice(),
+			DstAddr: netip.MustParseAddr("192.0.2.2").AsSlice(),
+			LspId:   math.MaxUint16 + 1,
+		})
+		require.Error(t, err)
+	})
+}
+
+func TestSidStructureFromPB(t *testing.T) {
+	tests := []struct {
+		name string
+		s    *pb.SidStructure
+	}{
+		{"LocalBlock overflow", &pb.SidStructure{LocalBlock: math.MaxUint8 + 1}},
+		{"LocalNode overflow", &pb.SidStructure{LocalNode: math.MaxUint8 + 1}},
+		{"LocalFunc overflow", &pb.SidStructure{LocalFunc: math.MaxUint8 + 1}},
+		{"LocalArg overflow", &pb.SidStructure{LocalArg: math.MaxUint8 + 1}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := sidStructureFromPB(tt.s)
+			require.Error(t, err)
+		})
+	}
 }
 
 func TestGetSRPolicyList(t *testing.T) {
@@ -1017,6 +1046,13 @@ func TestCreateLsLink(t *testing.T) {
 		})
 		require.Error(t, err)
 	})
+
+	t.Run("SRv6 End.X SID conversion error propagates", func(t *testing.T) {
+		_, err := createLsLink(localNode, remoteNode, &pb.LsLink{
+			Srv6EndXSid: &pb.Srv6EndXSID{EndpointBehavior: math.MaxUint16 + 1},
+		})
+		require.Error(t, err)
+	})
 }
 
 func TestCreateLsLink_InvalidMetric(t *testing.T) {
@@ -1043,6 +1079,98 @@ func TestAddLsNode_InvalidSrv6SID(t *testing.T) {
 
 	err := addLsNode(ted, node)
 	require.Error(t, err)
+}
+
+func TestAddLsNode_Srv6SIDConversionErrorPropagates(t *testing.T) {
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{
+		"0000.0aff.0001": table.NewLsNode(65000, "0000.0aff.0001"),
+	}}
+	node := &pb.LsNode{
+		RouterId: "0000.0aff.0001",
+		Srv6Sids: []*pb.LsSrv6SID{{
+			EndpointBehavior: &pb.EndpointBehavior{Behavior: math.MaxUint16 + 1},
+		}},
+	}
+
+	err := addLsNode(ted, node)
+	require.Error(t, err)
+}
+
+func TestCreateSrv6EndXSID(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		got, err := createSrv6EndXSID(&pb.Srv6EndXSID{
+			EndpointBehavior: uint32(table.BehaviorENDX),
+			Sids:             []*pb.SID{{Sid: "2001:db8::1:0"}},
+			SidStructure:     &pb.SidStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, &table.Srv6EndXSID{
+			EndpointBehavior: table.BehaviorENDX,
+			Sids:             []string{"2001:db8::1:0"},
+			Srv6SIDStructure: table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
+		}, got)
+	})
+
+	t.Run("endpoint behavior overflow", func(t *testing.T) {
+		_, err := createSrv6EndXSID(&pb.Srv6EndXSID{EndpointBehavior: math.MaxUint16 + 1})
+		require.Error(t, err)
+	})
+
+	t.Run("SID structure overflow propagates", func(t *testing.T) {
+		_, err := createSrv6EndXSID(&pb.Srv6EndXSID{
+			SidStructure: &pb.SidStructure{LocalBlock: math.MaxUint8 + 1},
+		})
+		require.Error(t, err)
+	})
+}
+
+func TestCreateSrv6SID(t *testing.T) {
+	lsNode := table.NewLsNode(65000, "0000.0aff.0001")
+
+	t.Run("success", func(t *testing.T) {
+		got, err := createSrv6SID(lsNode, &pb.LsSrv6SID{
+			Sids:             []*pb.SID{{Sid: "2001:db8:1::"}},
+			MultiTopoIds:     []*pb.MultiTopoID{{MultiTopoId: 0}},
+			EndpointBehavior: &pb.EndpointBehavior{Behavior: uint32(table.BehaviorEND)},
+			SidStructure:     &pb.SidStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
+		})
+		require.NoError(t, err)
+
+		want := table.NewLsSrv6SID(lsNode)
+		want.Sids = []string{"2001:db8:1::"}
+		want.MultiTopoIDs = []uint32{0}
+		want.EndpointBehavior = table.EndpointBehavior{Behavior: table.BehaviorEND}
+		want.SIDStructure = table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0}
+		assert.Equal(t, want, got)
+	})
+
+	t.Run("behavior overflow", func(t *testing.T) {
+		_, err := createSrv6SID(lsNode, &pb.LsSrv6SID{
+			EndpointBehavior: &pb.EndpointBehavior{Behavior: math.MaxUint16 + 1},
+		})
+		require.Error(t, err)
+	})
+
+	t.Run("flags overflow", func(t *testing.T) {
+		_, err := createSrv6SID(lsNode, &pb.LsSrv6SID{
+			EndpointBehavior: &pb.EndpointBehavior{Flags: math.MaxUint8 + 1},
+		})
+		require.Error(t, err)
+	})
+
+	t.Run("algorithm overflow", func(t *testing.T) {
+		_, err := createSrv6SID(lsNode, &pb.LsSrv6SID{
+			EndpointBehavior: &pb.EndpointBehavior{Algorithm: math.MaxUint8 + 1},
+		})
+		require.Error(t, err)
+	})
+
+	t.Run("SID structure overflow propagates", func(t *testing.T) {
+		_, err := createSrv6SID(lsNode, &pb.LsSrv6SID{
+			SidStructure: &pb.SidStructure{LocalBlock: math.MaxUint8 + 1},
+		})
+		require.Error(t, err)
+	})
 }
 
 func TestCreateMetric(t *testing.T) {

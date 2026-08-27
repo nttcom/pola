@@ -21,10 +21,6 @@ linters:
   settings:
     gocyclo:
       min-complexity: 15
-    gosec:
-      excludes:
-        # TODO: Remove after validating integer narrowing conversions.
-        - G115
     nolintlint:
       require-explanation: true
       require-specific: true

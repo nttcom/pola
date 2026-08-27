@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"math"
 	"net"
 	"net/netip"
 	"sync"
@@ -459,6 +460,66 @@ func TestGetLsLink(t *testing.T) {
 			})
 		}
 	})
+
+	t.Run("SRv6 End.X SID conversion error propagates", func(t *testing.T) {
+		_, err := getLsLink(newNLRI(&api.LsLinkDescriptor{}), &api.LsAttributeLink{
+			Srv6EndXSid: &api.LsSrv6EndXSID{EndpointBehavior: math.MaxUint16 + 1},
+		})
+		require.Error(t, err)
+	})
+}
+
+func TestSrv6EndXSIDFromAPI(t *testing.T) {
+	validStructure := &api.LsSrv6SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0}
+
+	t.Run("success", func(t *testing.T) {
+		got, err := srv6EndXSIDFromAPI(&api.LsSrv6EndXSID{
+			EndpointBehavior: uint32(table.BehaviorENDX),
+			Sids:             []string{"2001:db8::1:0"},
+			Srv6SidStructure: validStructure,
+		})
+		require.NoError(t, err)
+		assert.Equal(t, &table.Srv6EndXSID{
+			EndpointBehavior: table.BehaviorENDX,
+			Sids:             []string{"2001:db8::1:0"},
+			Srv6SIDStructure: table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
+		}, got)
+	})
+
+	t.Run("endpoint behavior overflow", func(t *testing.T) {
+		_, err := srv6EndXSIDFromAPI(&api.LsSrv6EndXSID{
+			EndpointBehavior: math.MaxUint16 + 1,
+			Srv6SidStructure: validStructure,
+		})
+		require.Error(t, err)
+	})
+
+	t.Run("SID structure overflow propagates", func(t *testing.T) {
+		_, err := srv6EndXSIDFromAPI(&api.LsSrv6EndXSID{
+			EndpointBehavior: uint32(table.BehaviorENDX),
+			Srv6SidStructure: &api.LsSrv6SIDStructure{LocalBlock: math.MaxUint8 + 1},
+		})
+		require.Error(t, err)
+	})
+}
+
+func TestSrv6SIDStructureFromAPI(t *testing.T) {
+	tests := []struct {
+		name string
+		s    *api.LsSrv6SIDStructure
+	}{
+		{"LocalBlock overflow", &api.LsSrv6SIDStructure{LocalBlock: math.MaxUint8 + 1}},
+		{"LocalNode overflow", &api.LsSrv6SIDStructure{LocalNode: math.MaxUint8 + 1}},
+		{"LocalFunc overflow", &api.LsSrv6SIDStructure{LocalFunc: math.MaxUint8 + 1}},
+		{"LocalArg overflow", &api.LsSrv6SIDStructure{LocalArg: math.MaxUint8 + 1}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := srv6SIDStructureFromAPI(tt.s)
+			require.Error(t, err)
+		})
+	}
 }
 
 func TestGetLsSrv6SID(t *testing.T) {
@@ -511,6 +572,61 @@ func TestGetLsSrv6SID(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				_, err := getLsSrv6SID(tt.nlri, attr)
+				require.Error(t, err)
+			})
+		}
+	})
+
+	t.Run("attribute conversion errors", func(t *testing.T) {
+		nlri := &api.LsAddrPrefix{
+			Nlri: &api.LsAddrPrefix_LsNLRI{
+				Nlri: &api.LsAddrPrefix_LsNLRI_Srv6Sid{
+					Srv6Sid: &api.LsSrv6SIDNLRI{
+						LocalNode:          &api.LsNodeDescriptor{Asn: 65000, IgpRouterId: "0000.0000.0001"},
+						Srv6SidInformation: &api.LsSrv6SIDInformation{Sids: []string{"2001:db8:1::"}},
+						MultiTopoId:        &api.LsMultiTopologyIdentifier{},
+					},
+				},
+			},
+		}
+
+		tests := []struct {
+			name string
+			attr *api.LsAttributeSrv6SID
+		}{
+			{
+				name: "SID structure overflow",
+				attr: &api.LsAttributeSrv6SID{
+					Srv6EndpointBehavior: &api.LsSrv6EndpointBehavior{EndpointBehavior: uint32(table.BehaviorEND)},
+					Srv6SidStructure:     &api.LsSrv6SIDStructure{LocalBlock: math.MaxUint8 + 1},
+				},
+			},
+			{
+				name: "endpoint behavior overflow",
+				attr: &api.LsAttributeSrv6SID{
+					Srv6EndpointBehavior: &api.LsSrv6EndpointBehavior{EndpointBehavior: math.MaxUint16 + 1},
+					Srv6SidStructure:     &api.LsSrv6SIDStructure{},
+				},
+			},
+			{
+				name: "flags overflow",
+				attr: &api.LsAttributeSrv6SID{
+					Srv6EndpointBehavior: &api.LsSrv6EndpointBehavior{Flags: math.MaxUint8 + 1},
+					Srv6SidStructure:     &api.LsSrv6SIDStructure{},
+				},
+			},
+			{
+				name: "algorithm overflow",
+				attr: &api.LsAttributeSrv6SID{
+					Srv6EndpointBehavior: &api.LsSrv6EndpointBehavior{Algorithm: math.MaxUint8 + 1},
+					Srv6SidStructure:     &api.LsSrv6SIDStructure{},
+				},
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				_, err := getLsSrv6SID(nlri, tt.attr)
 				require.Error(t, err)
 			})
 		}

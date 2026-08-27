@@ -12,6 +12,7 @@ import (
 	"math"
 	"net/netip"
 
+	"github.com/nttcom/pola/internal/safecast"
 	"github.com/nttcom/pola/pkg/table"
 )
 
@@ -1364,7 +1365,10 @@ func NewSREroSubobject(seg table.SegmentSRMPLS) (*SREroSubobject, error) {
 	if err != nil {
 		return subo, err
 	}
-	subo.Length = uint8(length)
+	subo.Length, err = safecast.Uint8(uint32(length), "SREroSubobject: length")
+	if err != nil {
+		return subo, err
+	}
 	return subo, nil
 }
 
@@ -1652,7 +1656,10 @@ func NewSRv6EroSubobject(seg table.SegmentSRv6) (*SRv6EroSubobject, error) {
 	if err != nil {
 		return subo, err
 	}
-	subo.Length = uint8(length)
+	subo.Length, err = safecast.Uint8(uint32(length), "SRv6EroSubobject: length")
+	if err != nil {
+		return subo, err
+	}
 	return subo, nil
 }
 
