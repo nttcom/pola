@@ -32,12 +32,19 @@ func writeSRPolicySession(w io.Writer, v srPolicySessionView) error {
 		return err
 	}
 	if len(v.SRPolicies) == 0 {
-		if v.LSPDBSync == "finished" {
+		switch {
+		case v.LSPDBSync == "finished":
 			if _, err := fmt.Fprintln(w, "  No SR Policies."); err != nil {
 				return err
 			}
-		} else if _, err := fmt.Fprintln(w, "  No SR Policies: session is still synchronizing."); err != nil {
-			return err
+		case v.State != "up":
+			if _, err := fmt.Fprintln(w, "  No SR Policies: session is not established."); err != nil {
+				return err
+			}
+		default:
+			if _, err := fmt.Fprintln(w, "  No SR Policies: session is still synchronizing."); err != nil {
+				return err
+			}
 		}
 	}
 	for _, policy := range v.SRPolicies {

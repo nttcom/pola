@@ -58,6 +58,11 @@ func TestWriteSRPolicySession_EmptyPolicies_PropagatesWriteError(t *testing.T) {
 			v:    srPolicySessionView{PeerAddress: "192.0.2.1", State: "up", LSPDBSync: "pending"},
 			fail: exactFail("  No SR Policies: session is still synchronizing.\n"),
 		},
+		{
+			name: "not established",
+			v:    srPolicySessionView{PeerAddress: "192.0.2.1", State: "tcp-pending", LSPDBSync: "pending"},
+			fail: exactFail("  No SR Policies: session is not established.\n"),
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
