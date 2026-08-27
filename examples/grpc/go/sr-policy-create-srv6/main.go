@@ -44,14 +44,14 @@ func main() {
 	srcAddr := netip.MustParseAddr("2001:db8::1")
 	dstAddr := netip.MustParseAddr("2001:db8::2")
 
-	r, err := c.CreateSRPolicy(ctx, &pb.CreateSRPolicyRequest{
+	_, err = c.CreateSRPolicy(ctx, &pb.CreateSRPolicyRequest{
 		SrPolicy: &pb.SRPolicy{
-			PcepSessionAddr: ssAddr.AsSlice(),
-			SrcAddr:         srcAddr.AsSlice(),
-			DstAddr:         dstAddr.AsSlice(),
-			Color:           100,
-			PolicyName:      "sample-srv6",
-			Type:            pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT,
+			PeerAddr:   ssAddr.AsSlice(),
+			SrcAddr:    srcAddr.AsSlice(),
+			DstAddr:    dstAddr.AsSlice(),
+			Color:      100,
+			PolicyName: "sample-srv6",
+			Type:       pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT,
 			SegmentList: []*pb.Segment{
 				{
 					Sid:          "2001:db8:1005::",
@@ -72,5 +72,5 @@ func main() {
 		log.Fatalf("c.CreateSRPolicy error: %v", err)
 	}
 
-	log.Printf("success: isSuccess=%t", r.GetIsSuccess())
+	log.Print("success")
 }

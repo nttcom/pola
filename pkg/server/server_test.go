@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"math"
 	"net"
 	"net/netip"
 	"sync"
@@ -143,7 +144,7 @@ func TestServer_Shutdown_BeforeServeStillReturnsCleanly(t *testing.T) {
 
 func TestServer_Shutdown_LogsWarnOnSendCloseFailure(t *testing.T) {
 	conn := &fakeConn{r: bytes.NewReader(nil), writeErr: errors.New("write: broken pipe")}
-	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
 	core, logs := observer.New(zap.WarnLevel)
 	s := &Server{sessionList: []*Session{ss}, logger: zap.New(core)}
 
@@ -190,7 +191,7 @@ func TestServer_CloseSession_SuppressesWarnOnAlreadyClosedConnection(t *testing.
 	})
 	require.NoError(t, server.Close(), "failed to pre-close server connection")
 
-	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
 	core, logs := observer.New(zap.WarnLevel)
 	s := &Server{sessionList: []*Session{ss}, logger: zap.New(core)}
 
@@ -203,7 +204,7 @@ func TestServer_CloseSession_SuppressesWarnOnAlreadyClosedConnection(t *testing.
 
 func TestServer_CloseSession_LogsWarnOnOtherCloseFailure(t *testing.T) {
 	conn := &fakeConn{r: bytes.NewReader(nil), closeErr: errors.New("boom")}
-	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
 	core, logs := observer.New(zap.WarnLevel)
 	s := &Server{sessionList: []*Session{ss}, logger: zap.New(core)}
 
@@ -211,6 +212,58 @@ func TestServer_CloseSession_LogsWarnOnOtherCloseFailure(t *testing.T) {
 
 	assert.Len(t, logs.FilterMessage("failed to close TCP connection").All(), 1)
 	assert.Empty(t, s.Sessions())
+}
+
+func TestValidatePCEOptions(t *testing.T) {
+	tests := []struct {
+		name    string
+		o       *PCEOptions
+		wantErr bool
+	}{
+		{name: "nil options rejected", o: nil, wantErr: true},
+		{name: "Keepalive=0/DeadTimer=0 OK", o: &PCEOptions{Keepalive: new(uint8(0)), DeadTimer: new(uint8(0))}, wantErr: false},
+		{name: "Keepalive=0/DeadTimer>0 rejected", o: &PCEOptions{Keepalive: new(uint8(0)), DeadTimer: new(uint8(1))}, wantErr: true},
+		{name: "DeadTimer<Keepalive rejected", o: &PCEOptions{Keepalive: new(uint8(30)), DeadTimer: new(uint8(29))}, wantErr: true},
+		{name: "DeadTimer==Keepalive rejected", o: &PCEOptions{Keepalive: new(uint8(30)), DeadTimer: new(uint8(30))}, wantErr: true},
+		{name: "DeadTimer>Keepalive OK", o: &PCEOptions{Keepalive: new(uint8(30)), DeadTimer: new(uint8(31))}, wantErr: false},
+		{name: "Keepalive=255 with default DeadTimer rejected", o: &PCEOptions{Keepalive: new(uint8(255))}, wantErr: true},
+		{name: "MinKeepalive==MaxKeepalive OK", o: &PCEOptions{MinKeepalive: new(uint8(30)), MaxKeepalive: new(uint8(30))}, wantErr: false},
+		{name: "MinKeepalive>MaxKeepalive rejected", o: &PCEOptions{MinKeepalive: new(uint8(31)), MaxKeepalive: new(uint8(30))}, wantErr: true},
+		{name: "no options set is OK", o: &PCEOptions{}, wantErr: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validatePCEOptions(tt.o)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestNewPCE_NilOptionsReturnsConfigErrorWithoutPanicking(t *testing.T) {
+	err := NewPCE(context.Background(), nil, zap.NewNop(), make(chan []table.TEDElem))
+	assert.Equal(t, "config", err.Server)
+	require.Error(t, err.Error)
+}
+
+func TestNewPCE_InvalidTimerConfigRejectedBeforeListening(t *testing.T) {
+	// A direct NewPCE caller (bypassing internal/config's own validation)
+	// must not be able to start a PCE with an invalid timer configuration.
+	o := &PCEOptions{
+		PCEPAddr:  "127.0.0.1",
+		PCEPPort:  "0",
+		GRPCAddr:  "127.0.0.1",
+		GRPCPort:  "0",
+		Keepalive: new(uint8(0)),
+		DeadTimer: new(uint8(1)),
+	}
+
+	err := NewPCE(context.Background(), o, zap.NewNop(), make(chan []table.TEDElem))
+	assert.Equal(t, "config", err.Server)
+	require.Error(t, err.Error)
 }
 
 func TestNewPCE_ReturnsTaggedError(t *testing.T) {
@@ -369,7 +422,7 @@ func TestServer_Shutdown_PropagatesOtherListenerCloseError(t *testing.T) {
 func TestServer_AwaitShutdown_LogsWarnOnShutdownError(t *testing.T) {
 	wantErr := errors.New("boom")
 	core, logs := observer.New(zap.WarnLevel)
-	s := &Server{logger: zap.NewNop(), listener: &fakeListener{closeErr: wantErr}}
+	s := &Server{logger: zap.New(core), listener: &fakeListener{closeErr: wantErr}}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -377,7 +430,7 @@ func TestServer_AwaitShutdown_LogsWarnOnShutdownError(t *testing.T) {
 	stopped := false
 	done := make(chan struct{})
 	go func() {
-		s.awaitShutdown(ctx, zap.New(core), func() { stopped = true })
+		s.awaitShutdown(ctx, func() { stopped = true })
 		close(done)
 	}()
 
@@ -392,22 +445,21 @@ func TestServer_AwaitShutdown_LogsWarnOnShutdownError(t *testing.T) {
 }
 
 func TestServer_SyncTEDLoop_AppliesReceivedElems(t *testing.T) {
-	s := &Server{}
-	core, logs := observer.New(zap.DebugLevel)
+	s := &Server{logger: zap.NewNop()}
 	tedElemsChan := make(chan []table.TEDElem, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	done := make(chan struct{})
 	go func() {
-		s.syncTEDLoop(ctx, tedElemsChan, 65000, zap.New(core))
+		s.syncTEDLoop(ctx, tedElemsChan, 65000)
 		close(done)
 	}()
 
 	tedElemsChan <- []table.TEDElem{}
 
 	require.Eventually(t, func() bool {
-		return len(logs.FilterMessage("Update TED").All()) > 0
+		return s.TED() != nil
 	}, 2*time.Second, 10*time.Millisecond, "expected the received TED elements to be applied")
 
 	cancel()
@@ -419,12 +471,12 @@ func TestServer_SyncTEDLoop_AppliesReceivedElems(t *testing.T) {
 }
 
 func TestServer_SyncTEDLoop_ExitsWhenChannelClosed(t *testing.T) {
-	s := &Server{}
+	s := &Server{logger: zap.NewNop()}
 	tedElemsChan := make(chan []table.TEDElem)
 
 	done := make(chan struct{})
 	go func() {
-		s.syncTEDLoop(context.Background(), tedElemsChan, 65000, zap.NewNop())
+		s.syncTEDLoop(context.Background(), tedElemsChan, 65000)
 		close(done)
 	}()
 
@@ -442,7 +494,7 @@ func TestServer_RegisterSession_ClosesConnWhenAlreadyShutdown(t *testing.T) {
 	t.Cleanup(func() { _ = client.Close() })
 
 	s := &Server{logger: zap.NewNop(), closed: true}
-	ss := s.registerSession(server, 1, netip.MustParseAddr("10.0.255.1"))
+	ss := s.registerSession(server, netip.MustParseAddr("10.0.255.1"))
 
 	assert.Nil(t, ss, "expected registerSession to reject a connection accepted after Shutdown")
 	assert.Empty(t, s.Sessions())
@@ -452,17 +504,141 @@ func TestServer_RegisterSession_ClosesConnWhenAlreadyShutdown(t *testing.T) {
 	assert.ErrorIs(t, err, io.EOF, "expected the connection accepted after shutdown to be closed immediately")
 }
 
+func TestServer_CloseRejectedConn_LogsNonClosedError(t *testing.T) {
+	wantErr := errors.New("boom")
+	core, logs := observer.New(zap.WarnLevel)
+	s := &Server{logger: zap.New(core)}
+
+	s.closeRejectedConn(&fakeConn{closeErr: wantErr}, "test reason")
+
+	entries := logs.FilterMessage("failed to close rejected TCP connection").All()
+	require.Len(t, entries, 1)
+	assert.Equal(t, "test reason", entries[0].ContextMap()["reason"])
+}
+
+func TestServer_CloseRejectedConn_ErrClosedIsNotLogged(t *testing.T) {
+	core, logs := observer.New(zap.WarnLevel)
+	s := &Server{logger: zap.New(core)}
+
+	s.closeRejectedConn(&fakeConn{closeErr: net.ErrClosed}, "test reason")
+
+	assert.Empty(t, logs.All(), "an already-closed connection must not be logged as a failure")
+}
+
 func TestServer_RegisterSession_AppendsWhenNotShutdown(t *testing.T) {
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() { assert.NoError(t, client.Close()) })
 
 	s := &Server{logger: zap.NewNop()}
-	ss := s.registerSession(server, 1, netip.MustParseAddr("10.0.255.1"))
+	ss := s.registerSession(server, netip.MustParseAddr("10.0.255.1"))
 
 	require.NotNil(t, ss)
 	assert.Equal(t, []*Session{ss}, s.Sessions())
 
 	s.closeSession(ss)
+}
+
+func TestServer_RegisterSession_RejectsSecondSessionFromSamePeer(t *testing.T) {
+	peerAddr := netip.MustParseAddr("10.0.255.1")
+	core, logs := observer.New(zap.WarnLevel)
+	s := &Server{logger: zap.New(core)}
+
+	server1, client1 := newTCPConnPair(t)
+	t.Cleanup(func() { _ = client1.Close() })
+	ss1 := s.registerSession(server1, peerAddr)
+	require.NotNil(t, ss1)
+
+	server2, client2 := newTCPConnPair(t)
+	t.Cleanup(func() { _ = client2.Close() })
+	ss2 := s.registerSession(server2, peerAddr)
+
+	assert.Nil(t, ss2, "a second session with the same peer must not be accepted")
+	assert.Equal(t, []*Session{ss1}, s.Sessions(), "the existing session must be preserved")
+	assert.Len(t, logs.FilterMessage("rejecting second PCEP session attempt from peer").All(), 1)
+
+	require.NoError(t, client2.SetReadDeadline(time.Now().Add(2*time.Second)))
+	pcerrMessage := readPCErrMessage(t, client2)
+	require.Len(t, pcerrMessage.Errors, 1)
+	assert.Equal(t, uint8(9), pcerrMessage.Errors[0].ErrorType)
+	assert.Equal(t, uint8(1), pcerrMessage.Errors[0].ErrorValue)
+
+	_, err := client2.Read(make([]byte, 1))
+	require.ErrorIs(t, err, io.EOF, "expected the rejected connection to be closed")
+
+	s.closeSession(ss1)
+}
+
+func TestServer_RegisterSession_RejectSecondSession_LogsWarnOnSendFailure(t *testing.T) {
+	peerAddr := netip.MustParseAddr("10.0.255.1")
+	core, logs := observer.New(zap.WarnLevel)
+	s := &Server{logger: zap.New(core)}
+
+	server1, client1 := newTCPConnPair(t)
+	t.Cleanup(func() { _ = client1.Close() })
+	ss1 := s.registerSession(server1, peerAddr)
+	require.NotNil(t, ss1)
+
+	conn2 := &fakeConn{r: bytes.NewReader(nil), writeErr: errors.New("write: broken pipe")}
+	ss2 := s.registerSession(conn2, peerAddr)
+
+	assert.Nil(t, ss2, "a second session with the same peer must not be accepted")
+	assert.Len(t, logs.FilterMessage("failed to send PCErr for second session attempt").All(), 1)
+
+	s.closeSession(ss1)
+}
+
+func TestServer_RegisterSession_SessionIDSequenceIsPerPeer(t *testing.T) {
+	s := &Server{logger: zap.NewNop()}
+
+	server1, client1 := newTCPConnPair(t)
+	t.Cleanup(func() { _ = client1.Close() })
+	ss1 := s.registerSession(server1, netip.MustParseAddr("10.0.255.1"))
+	require.NotNil(t, ss1)
+	assert.Zero(t, ss1.localSessionID)
+
+	server2, client2 := newTCPConnPair(t)
+	t.Cleanup(func() { _ = client2.Close() })
+	ss2 := s.registerSession(server2, netip.MustParseAddr("10.0.255.2"))
+	require.NotNil(t, ss2)
+	assert.Zero(t, ss2.localSessionID, "each peer has its own SID sequence")
+
+	s.closeSession(ss1)
+	s.closeSession(ss2)
+}
+
+func TestServer_CloseSession_MatchesByIdentityNotIDValue(t *testing.T) {
+	connA := &fakeConn{r: bytes.NewReader(nil)}
+	connB := &fakeConn{r: bytes.NewReader(nil)}
+	ssA := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), connA, zap.NewNop(), nil, 0)
+	ssB := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.2"), connB, zap.NewNop(), nil, 0)
+	s := &Server{logger: zap.NewNop(), sessionList: []*Session{ssA, ssB}}
+
+	s.closeSession(ssA)
+
+	assert.Equal(t, []*Session{ssB}, s.Sessions(), "expected only the closed session's own instance to be removed")
+}
+
+func TestSessionIDAllocator_IncrementsByOneAndWraps(t *testing.T) {
+	peerAddr := netip.MustParseAddr("10.0.255.1")
+	var a sessionIDAllocator
+
+	for want := range math.MaxUint8 + 1 {
+		assert.Equal(t, uint8(want), a.allocate(peerAddr))
+	}
+
+	assert.Zero(t, a.allocate(peerAddr), "the sequence wraps back to zero after 255")
+}
+
+func TestSessionIDAllocator_SequenceIsIndependentPerPeer(t *testing.T) {
+	peerA := netip.MustParseAddr("10.0.255.1")
+	peerB := netip.MustParseAddr("10.0.255.2")
+	var a sessionIDAllocator
+
+	for want := range uint8(3) {
+		assert.Equal(t, want, a.allocate(peerA))
+	}
+
+	assert.Zero(t, a.allocate(peerB), "peer B's sequence must not be advanced by peer A")
 }
 
 // blockingWriteConn simulates a peer that stopped reading.
@@ -492,7 +668,7 @@ func (c *blockingWriteConn) SetWriteDeadline(time.Time) error { return nil }
 
 func TestServer_Shutdown_BoundsBlockedSendClose(t *testing.T) {
 	conn := &blockingWriteConn{r: bytes.NewReader(nil), unblock: make(chan struct{})}
-	ss := NewSession(1, netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
 	core, logs := observer.New(zap.WarnLevel)
 	s := &Server{
 		sessionList:              []*Session{ss},
@@ -514,4 +690,55 @@ func TestServer_Shutdown_BoundsBlockedSendClose(t *testing.T) {
 
 	assert.Len(t, logs.FilterMessage("timed out sending PCEP close message during shutdown").All(), 1)
 	assert.Empty(t, s.Sessions(), "expected the session to be force-closed and untracked despite the blocked write")
+}
+
+func TestResolveLocalTimers(t *testing.T) {
+	ptr := func(v uint8) *uint8 { return &v }
+
+	tests := []struct {
+		name          string
+		keepalive     *uint8
+		deadTimer     *uint8
+		wantKeepalive uint8
+		wantDeadTimer uint8
+	}{
+		{"unset uses defaults", nil, nil, 30, 120},
+		{"a configured keepalive derives a 4x dead timer", ptr(10), nil, 10, 40},
+		{"keepalive of zero derives a dead timer of zero", ptr(0), nil, 0, 0},
+		{"both configured are used verbatim", ptr(5), ptr(60), 5, 60},
+		{"a configured dead timer of zero is honored", ptr(30), ptr(0), 30, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			keepalive, deadTimer := resolveLocalTimers(tt.keepalive, tt.deadTimer)
+			assert.Equal(t, tt.wantKeepalive, keepalive)
+			assert.Equal(t, tt.wantDeadTimer, deadTimer)
+		})
+	}
+}
+
+func TestResolveKeepaliveRange(t *testing.T) {
+	ptr := func(v uint8) *uint8 { return &v }
+
+	tests := []struct {
+		name        string
+		min         *uint8
+		max         *uint8
+		wantLo      uint8
+		wantHi      uint8
+		wantEnabled bool
+	}{
+		{"both unset disables the check", nil, nil, 0, 0, false},
+		{"only a minimum caps the upper bound at the widest value", ptr(10), nil, 10, math.MaxUint8, true},
+		{"only a maximum leaves the lower bound at zero", nil, ptr(60), 0, 60, true},
+		{"both set are used verbatim", ptr(10), ptr(60), 10, 60, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lo, hi, enabled := resolveKeepaliveRange(tt.min, tt.max)
+			assert.Equal(t, tt.wantLo, lo)
+			assert.Equal(t, tt.wantHi, hi)
+			assert.Equal(t, tt.wantEnabled, enabled)
+		})
+	}
 }

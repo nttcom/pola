@@ -15,6 +15,7 @@ import (
 	"time"
 
 	pb "github.com/nttcom/pola/api/pola/v1"
+	"github.com/nttcom/pola/pkg/packet/pcep"
 	"github.com/nttcom/pola/pkg/table"
 )
 
@@ -64,16 +65,17 @@ func (c StatefulCapability) Strings() []string {
 type SRCapability struct {
 	UnlimitedMSD bool
 	NAISupported bool
-	MSD          uint32
+	MSD          *uint32
 }
 
 // Strings returns the human-readable flags for this capability.
 func (c SRCapability) Strings() []string {
 	ret := []string{"SR"}
-	if c.UnlimitedMSD {
+	switch {
+	case c.UnlimitedMSD:
 		ret = append(ret, "Unlimited-SID-Depth")
-	} else {
-		ret = append(ret, fmt.Sprintf("MSD=%d", c.MSD))
+	case c.MSD != nil:
+		ret = append(ret, fmt.Sprintf("MSD=%d", *c.MSD))
 	}
 	if c.NAISupported {
 		ret = append(ret, "SR-NAI-Supported")
@@ -95,9 +97,11 @@ func (c SRv6Capability) Strings() []string {
 	return ret
 }
 
-// PathSetupTypeCapability holds the raw PathSetupType values advertised by the peer.
+// PathSetupTypeCapability holds the raw PathSetupType values advertised by the peer,
+// along with any per-PST capability sub-TLVs (RFC 8408).
 type PathSetupTypeCapability struct {
-	PathSetupTypes []uint32
+	PathSetupTypes  []uint32
+	SubCapabilities []Capability
 }
 
 // Strings returns the human-readable flags for this capability.
@@ -173,7 +177,7 @@ type VendorInformationCapability struct {
 
 // Strings returns the human-readable flags for this capability.
 func (c VendorInformationCapability) Strings() []string {
-	return []string{fmt.Sprintf("Vendor-Info(%d)", c.EnterpriseNumber)}
+	return []string{pcep.EnterpriseNumber(c.EnterpriseNumber).DisplayLabel()}
 }
 
 // UnknownCapability holds the raw TLV type of a capability Pola does not recognize.
@@ -181,7 +185,7 @@ type UnknownCapability struct {
 	TLVType uint32
 }
 
-// Strings returns the human-readable flags for this capability.
+// Strings returns a human-readable representation of this capability.
 func (c UnknownCapability) Strings() []string {
 	return []string{fmt.Sprintf("unknown_type_%d", c.TLVType)}
 }
@@ -197,7 +201,7 @@ type Capability struct {
 	Detail capabilityDetail
 }
 
-// Strings returns the human-readable flags for this capability's TLV.
+// Strings returns a human-readable representation of this capability.
 func (c Capability) Strings() []string {
 	if c.Detail == nil {
 		return []string{c.Type}
@@ -205,21 +209,69 @@ func (c Capability) Strings() []string {
 	return c.Detail.Strings()
 }
 
-// Session represents a PCEP session with its capabilities and synchronization state.
-type Session struct {
-	Addr         netip.Addr
-	State        string
-	Capabilities []Capability
-	IsSynced     bool
+// SessionTimers holds the timers advertised by a PCEP speaker.
+type SessionTimers struct {
+	Keepalive uint32
+	DeadTimer uint32
 }
 
-// CapStrings flattens the human-readable flags of all capabilities into a single list.
-func (s Session) CapStrings() []string {
-	var caps []string
-	for _, c := range s.Capabilities {
-		caps = append(caps, c.Strings()...)
-	}
-	return caps
+// EffectiveTimers holds the timers currently applied by Pola.
+// Keepalive and DeadTimer are nil until the session reaches SESSION_STATE_UP.
+type EffectiveTimers struct {
+	Keepalive *uint32
+	DeadTimer *uint32
+}
+
+// MessageCounter mirrors one RFC 9826 sent/rcvd counter pair.
+type MessageCounter struct {
+	Sent uint64
+	Rcvd uint64
+}
+
+// SessionStats contains per-session PCEP statistics.
+type SessionStats struct {
+	Open             MessageCounter
+	Keepalive        MessageCounter
+	Close            MessageCounter
+	PCErr            MessageCounter
+	PCNtf            MessageCounter
+	PCReq            MessageCounter
+	PCRep            MessageCounter
+	Report           MessageCounter
+	Update           MessageCounter
+	Initiate         MessageCounter
+	UnrecognizedRcvd uint64
+	CorruptRcvd      uint64
+	SessSetupOK      uint64
+	SessSetupFail    uint64
+}
+
+// Session represents a PCEP session.
+type Session struct {
+	PeerAddr          netip.Addr
+	State             string
+	LocalSessionID    *uint32
+	PeerSessionID     *uint32
+	LocalTimers       *SessionTimers
+	PeerTimers        *SessionTimers
+	EffectiveTimers   EffectiveTimers
+	PccType           string
+	LocalCapabilities []Capability
+	PeerCapabilities  []Capability
+	Initiator         string
+	SyncState         string
+	CreatedAt         time.Time
+	EstablishedAt     time.Time
+	UptimeNanos       int64
+	Stats             *SessionStats
+}
+
+// SRPolicySession groups SR Policies by PCEP peer.
+type SRPolicySession struct {
+	PeerAddr   netip.Addr
+	State      string
+	SyncState  string
+	SRPolicies []table.SRPolicy
 }
 
 // capabilityFromPB converts a gRPC Capability into its typed client-side representation.
@@ -240,12 +292,16 @@ func capabilityFromPB(c *pb.Capability) Capability {
 		cap.Detail = SRCapability{
 			UnlimitedMSD: detail.Sr.GetUnlimitedMsd(),
 			NAISupported: detail.Sr.GetNaiSupported(),
-			MSD:          detail.Sr.GetMsd(),
+			MSD:          detail.Sr.Msd,
 		}
 	case *pb.Capability_Srv6:
 		cap.Detail = SRv6Capability{NAISupported: detail.Srv6.GetNaiSupported()}
 	case *pb.Capability_PathSetupType:
-		cap.Detail = PathSetupTypeCapability{PathSetupTypes: detail.PathSetupType.GetPathSetupTypes()}
+		pst := PathSetupTypeCapability{PathSetupTypes: detail.PathSetupType.GetPathSetupTypes()}
+		for _, sub := range detail.PathSetupType.GetSubCapabilities() {
+			pst.SubCapabilities = append(pst.SubCapabilities, capabilityFromPB(sub))
+		}
+		cap.Detail = pst
 	case *pb.Capability_AssocTypeList:
 		cap.Detail = AssocTypeListCapability{AssocTypes: detail.AssocTypeList.GetAssocTypes()}
 	case *pb.Capability_LspDbVersion:
@@ -266,31 +322,144 @@ func capabilityFromPB(c *pb.Capability) Capability {
 	return cap
 }
 
-// GetSessions retrieves the list of PCEP sessions from the PCE server.
-func GetSessions(client pb.PCEServiceClient) ([]Session, error) {
+func sessionFromPB(pbss *pb.Session) (Session, error) {
+	addr, ok := netip.AddrFromSlice(pbss.GetPeerAddr())
+	if !ok {
+		return Session{}, fmt.Errorf("invalid session address: %v", pbss.GetPeerAddr())
+	}
+
+	ss := Session{
+		PeerAddr:          addr,
+		State:             sessionStateFromPB(pbss.GetState()),
+		PccType:           strings.TrimPrefix(pbss.GetPccType().String(), "PCC_TYPE_"),
+		LocalCapabilities: []Capability{},
+		PeerCapabilities:  []Capability{},
+	}
+	if v, ok := pb.EffectiveKeepalive(pbss.GetState(), pbss.GetEffectiveTimers()); ok {
+		ss.EffectiveTimers.Keepalive = new(v)
+	}
+	if v, ok := pb.EffectiveDeadTimer(pbss.GetState(), pbss.GetEffectiveTimers()); ok {
+		ss.EffectiveTimers.DeadTimer = new(v)
+	}
+	if pbss.LocalSessionId != nil {
+		ss.LocalSessionID = new(pbss.GetLocalSessionId())
+	}
+	if pbss.PeerSessionId != nil {
+		ss.PeerSessionID = new(pbss.GetPeerSessionId())
+	}
+	if t := pbss.GetLocalTimers(); t != nil {
+		ss.LocalTimers = &SessionTimers{Keepalive: t.GetKeepalive(), DeadTimer: t.GetDeadTimer()}
+	}
+	if t := pbss.GetPeerTimers(); t != nil {
+		ss.PeerTimers = &SessionTimers{Keepalive: t.GetKeepalive(), DeadTimer: t.GetDeadTimer()}
+	}
+	for _, c := range pbss.GetLocalCapabilities() {
+		ss.LocalCapabilities = append(ss.LocalCapabilities, capabilityFromPB(c))
+	}
+	for _, c := range pbss.GetPeerCapabilities() {
+		ss.PeerCapabilities = append(ss.PeerCapabilities, capabilityFromPB(c))
+	}
+
+	ss.Initiator = initiatorFromPB(pbss.GetInitiator())
+	ss.SyncState = syncStateFromPB(pbss.GetSyncState())
+	if n := pbss.GetCreatedAtUnixNano(); n != 0 {
+		ss.CreatedAt = time.Unix(0, n)
+	}
+	if n := pbss.GetEstablishedAtUnixNano(); n != 0 {
+		ss.EstablishedAt = time.Unix(0, n)
+	}
+	ss.UptimeNanos = pbss.GetUptimeNanos()
+	if s := pbss.GetStats(); s != nil {
+		ss.Stats = sessionStatsFromPB(s)
+	}
+
+	return ss, nil
+}
+
+// initiatorFromPB converts a gRPC SessionInitiator to its CLI/JSON display value.
+func initiatorFromPB(initiator pb.SessionInitiator) string {
+	switch initiator {
+	case pb.SessionInitiator_SESSION_INITIATOR_LOCAL:
+		return "local"
+	case pb.SessionInitiator_SESSION_INITIATOR_REMOTE:
+		return "remote"
+	default:
+		return "unknown"
+	}
+}
+
+// sessionStateFromPB converts a gRPC SessionState to its CLI/JSON display value.
+func sessionStateFromPB(state pb.SessionState) string {
+	switch state {
+	case pb.SessionState_SESSION_STATE_UP:
+		return "up"
+	case pb.SessionState_SESSION_STATE_TCP_PENDING:
+		return "tcp-pending"
+	case pb.SessionState_SESSION_STATE_OPEN_WAIT:
+		return "open-wait"
+	case pb.SessionState_SESSION_STATE_KEEP_WAIT:
+		return "keep-wait"
+	default:
+		return "unknown"
+	}
+}
+
+func syncStateFromPB(state pb.LspDbSyncState) string {
+	switch state {
+	case pb.LspDbSyncState_LSP_DB_SYNC_STATE_PENDING:
+		return "pending"
+	case pb.LspDbSyncState_LSP_DB_SYNC_STATE_ONGOING:
+		return "ongoing"
+	case pb.LspDbSyncState_LSP_DB_SYNC_STATE_FINISHED:
+		return "finished"
+	default:
+		return "unknown"
+	}
+}
+
+func messageCounterFromPB(c *pb.MessageCounter) MessageCounter {
+	return MessageCounter{Sent: c.GetSent(), Rcvd: c.GetRcvd()}
+}
+
+func sessionStatsFromPB(s *pb.SessionStats) *SessionStats {
+	return &SessionStats{
+		Open:             messageCounterFromPB(s.GetOpen()),
+		Keepalive:        messageCounterFromPB(s.GetKeepalive()),
+		Close:            messageCounterFromPB(s.GetClose()),
+		PCErr:            messageCounterFromPB(s.GetPcerr()),
+		PCNtf:            messageCounterFromPB(s.GetPcntf()),
+		PCReq:            messageCounterFromPB(s.GetPcreq()),
+		PCRep:            messageCounterFromPB(s.GetPcrep()),
+		Report:           messageCounterFromPB(s.GetReport()),
+		Update:           messageCounterFromPB(s.GetUpdate()),
+		Initiate:         messageCounterFromPB(s.GetInitiate()),
+		UnrecognizedRcvd: s.GetUnrecognizedRcvd(),
+		CorruptRcvd:      s.GetCorruptRcvd(),
+		SessSetupOK:      s.GetSessSetupOk(),
+		SessSetupFail:    s.GetSessSetupFail(),
+	}
+}
+
+// GetSessions retrieves PCEP sessions, optionally filtered by peer address.
+func GetSessions(client pb.PCEServiceClient, addr netip.Addr, includeStats bool) ([]Session, error) {
 	ctx, cancel := withTimeout()
 	defer cancel()
 
-	ret, err := client.GetSessionList(ctx, &pb.GetSessionListRequest{})
+	req := &pb.GetSessionListRequest{IncludeStats: includeStats}
+	if addr.IsValid() {
+		req.PeerAddr = addr.AsSlice()
+	}
+
+	ret, err := client.GetSessionList(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
 	var sessions []Session
 	for _, pbss := range ret.GetSessions() {
-		addr, ok := netip.AddrFromSlice(pbss.GetAddr())
-		if !ok {
-			return nil, fmt.Errorf("invalid session address: %v", pbss.GetAddr())
-		}
-
-		ss := Session{
-			Addr:         addr,
-			State:        pbss.State.String(),
-			IsSynced:     pbss.GetIsSynced(),
-			Capabilities: []Capability{},
-		}
-		for _, c := range pbss.GetCapabilities() {
-			ss.Capabilities = append(ss.Capabilities, capabilityFromPB(c))
+		ss, err := sessionFromPB(pbss)
+		if err != nil {
+			return nil, err
 		}
 		sessions = append(sessions, ss)
 	}
@@ -298,7 +467,7 @@ func GetSessions(client pb.PCEServiceClient) ([]Session, error) {
 	return sessions, nil
 }
 
-// DeleteSession sends a delete session request to the PCE server.
+// DeleteSession requests deletion of a PCEP session.
 func DeleteSession(client pb.PCEServiceClient, req *pb.DeleteSessionRequest) error {
 	ctx, cancel := withTimeout()
 	defer cancel()
@@ -310,21 +479,15 @@ func DeleteSession(client pb.PCEServiceClient, req *pb.DeleteSessionRequest) err
 	return nil
 }
 
-// SessionSRPolicies groups the SR Policies managed over a single PCEP session.
-type SessionSRPolicies struct {
-	Addr       netip.Addr       `json:"peerAddr"`
-	SRPolicies []table.SRPolicy `json:"srPolicies"`
-}
-
-// GetSRPolicyList returns SR Policies grouped by PCEP session in stable order.
-// If sessionAddr is valid, only the matching session is returned.
-func GetSRPolicyList(client pb.PCEServiceClient, sessionAddr netip.Addr) ([]SessionSRPolicies, error) {
+// GetSRPolicyList returns SR Policies grouped by PCEP peer,
+// optionally filtered by peer address.
+func GetSRPolicyList(client pb.PCEServiceClient, peerAddr netip.Addr) ([]SRPolicySession, error) {
 	ctx, cancel := withTimeout()
 	defer cancel()
 
 	req := &pb.GetSRPolicyListRequest{}
-	if sessionAddr.IsValid() {
-		req.SessionAddr = sessionAddr.AsSlice()
+	if peerAddr.IsValid() {
+		req.PeerAddr = peerAddr.AsSlice()
 	}
 
 	ret, err := client.GetSRPolicyList(ctx, req)
@@ -332,23 +495,29 @@ func GetSRPolicyList(client pb.PCEServiceClient, sessionAddr netip.Addr) ([]Sess
 		return nil, err
 	}
 
-	sessions := make([]SessionSRPolicies, 0, len(ret.GetSessions()))
+	sessions := make([]SRPolicySession, 0, len(ret.GetSessions()))
 	for _, pbSession := range ret.GetSessions() {
-		peerAddr, ok := netip.AddrFromSlice(pbSession.GetAddr())
+		addr, ok := netip.AddrFromSlice(pbSession.GetPeerAddr())
 		if !ok {
-			return nil, fmt.Errorf("invalid session address: %v", pbSession.GetAddr())
+			return nil, fmt.Errorf("invalid session address: %v", pbSession.GetPeerAddr())
 		}
 
-		policies := make([]table.SRPolicy, 0, len(pbSession.GetSrPolicies()))
+		ss := SRPolicySession{
+			PeerAddr:  addr,
+			State:     sessionStateFromPB(pbSession.GetState()),
+			SyncState: syncStateFromPB(pbSession.GetSyncState()),
+		}
+
+		ss.SRPolicies = make([]table.SRPolicy, 0, len(pbSession.GetSrPolicies()))
 		for _, p := range pbSession.GetSrPolicies() {
 			policy, err := convertSRPolicy(p)
 			if err != nil {
 				return nil, err
 			}
-			policies = append(policies, policy)
+			ss.SRPolicies = append(ss.SRPolicies, policy)
 		}
 
-		sessions = append(sessions, SessionSRPolicies{Addr: peerAddr, SRPolicies: policies})
+		sessions = append(sessions, ss)
 	}
 
 	return sessions, nil
@@ -530,7 +699,7 @@ func GetTED(client pb.PCEServiceClient) (*table.LsTED, error) {
 		return nil, err
 	}
 
-	if !ret.GetEnable() {
+	if !ret.GetEnabled() {
 		return nil, nil
 	}
 
@@ -538,9 +707,9 @@ func GetTED(client pb.PCEServiceClient) (*table.LsTED, error) {
 		Nodes: make(map[string]*table.LsNode),
 	}
 
-	initializeLsNodes(ted, ret.GetLsNodes())
+	initializeLsNodes(ted, ret.GetNodes())
 
-	for _, node := range ret.GetLsNodes() {
+	for _, node := range ret.GetNodes() {
 		if err := addLsNode(ted, node); err != nil {
 			return nil, err
 		}
@@ -563,7 +732,7 @@ func initializeLsNodes(ted *table.LsTED, nodes []*pb.LsNode) {
 }
 
 func addLsNode(ted *table.LsTED, node *pb.LsNode) error {
-	for _, link := range node.GetLsLinks() {
+	for _, link := range node.GetLinks() {
 		localNode := ted.Nodes[link.LocalRouterId]
 		remoteNode := ted.Nodes[link.RemoteRouterId]
 		lsLink, err := createLsLink(localNode, remoteNode, link)
@@ -573,7 +742,7 @@ func addLsNode(ted *table.LsTED, node *pb.LsNode) error {
 		ted.Nodes[node.GetRouterId()].Links = append(ted.Nodes[node.GetRouterId()].Links, lsLink)
 	}
 
-	for _, prefix := range node.LsPrefixes {
+	for _, prefix := range node.GetPrefixes() {
 		lsPrefix, err := createLsPrefix(ted.Nodes[node.GetRouterId()], prefix)
 		if err != nil {
 			return err
@@ -581,7 +750,7 @@ func addLsNode(ted *table.LsTED, node *pb.LsNode) error {
 		ted.Nodes[node.GetRouterId()].Prefixes = append(ted.Nodes[node.GetRouterId()].Prefixes, lsPrefix)
 	}
 
-	for _, srv6SID := range node.LsSrv6Sids {
+	for _, srv6SID := range node.GetSrv6Sids() {
 		lsSrv6SID := createSrv6SID(ted.Nodes[node.GetRouterId()], srv6SID)
 		ted.Nodes[node.GetRouterId()].SRv6SIDs = append(ted.Nodes[node.GetRouterId()].SRv6SIDs, lsSrv6SID)
 	}

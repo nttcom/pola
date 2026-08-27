@@ -15,12 +15,14 @@ import (
 type fakePCEServiceClient struct {
 	pb.PCEServiceClient
 
+	sessionListReq  *pb.GetSessionListRequest
 	sessionListResp *pb.GetSessionListResponse
 	sessionListErr  error
 
 	deleteSessionReq *pb.DeleteSessionRequest
 	deleteSessionErr error
 
+	srPolicyListReq  *pb.GetSRPolicyListRequest
 	srPolicyListResp *pb.GetSRPolicyListResponse
 	srPolicyListErr  error
 
@@ -34,7 +36,8 @@ type fakePCEServiceClient struct {
 	tedErr  error
 }
 
-func (f *fakePCEServiceClient) GetSessionList(_ context.Context, _ *pb.GetSessionListRequest, _ ...grpc.CallOption) (*pb.GetSessionListResponse, error) {
+func (f *fakePCEServiceClient) GetSessionList(_ context.Context, in *pb.GetSessionListRequest, _ ...grpc.CallOption) (*pb.GetSessionListResponse, error) {
+	f.sessionListReq = in
 	return f.sessionListResp, f.sessionListErr
 }
 
@@ -46,7 +49,8 @@ func (f *fakePCEServiceClient) DeleteSession(_ context.Context, in *pb.DeleteSes
 	return &pb.DeleteSessionResponse{}, nil
 }
 
-func (f *fakePCEServiceClient) GetSRPolicyList(_ context.Context, _ *pb.GetSRPolicyListRequest, _ ...grpc.CallOption) (*pb.GetSRPolicyListResponse, error) {
+func (f *fakePCEServiceClient) GetSRPolicyList(_ context.Context, in *pb.GetSRPolicyListRequest, _ ...grpc.CallOption) (*pb.GetSRPolicyListResponse, error) {
+	f.srPolicyListReq = in
 	return f.srPolicyListResp, f.srPolicyListErr
 }
 
@@ -55,7 +59,7 @@ func (f *fakePCEServiceClient) CreateSRPolicy(_ context.Context, in *pb.CreateSR
 	if f.createSRPolicyErr != nil {
 		return nil, f.createSRPolicyErr
 	}
-	return &pb.CreateSRPolicyResponse{IsSuccess: true}, nil
+	return &pb.CreateSRPolicyResponse{}, nil
 }
 
 func (f *fakePCEServiceClient) DeleteSRPolicy(_ context.Context, in *pb.DeleteSRPolicyRequest, _ ...grpc.CallOption) (*pb.DeleteSRPolicyResponse, error) {
@@ -63,7 +67,7 @@ func (f *fakePCEServiceClient) DeleteSRPolicy(_ context.Context, in *pb.DeleteSR
 	if f.deleteSRPolicyErr != nil {
 		return nil, f.deleteSRPolicyErr
 	}
-	return &pb.DeleteSRPolicyResponse{IsSuccess: true}, nil
+	return &pb.DeleteSRPolicyResponse{}, nil
 }
 
 func (f *fakePCEServiceClient) GetTED(_ context.Context, _ *pb.GetTEDRequest, _ ...grpc.CallOption) (*pb.GetTEDResponse, error) {

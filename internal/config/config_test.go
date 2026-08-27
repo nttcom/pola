@@ -321,3 +321,219 @@ func TestReadConfigFile_UnquotedIntegerPort(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "50052", c.Global.GRPCServer.Port)
 }
+
+func TestPCEPTimers_AreOptionalAndDistinguishZeroFromUnset(t *testing.T) {
+	path := writeConfig(t, `
+global:
+  pcep:
+    address: "127.0.0.1"
+    port: 4189
+    keepalive: 0
+    deadTimer: 0
+  grpcServer:
+    address: "127.0.0.1"
+    port: 50052
+  log:
+    path: "/var/log/pola/"
+    name: "polad.log"
+  ted:
+    enable: false
+`)
+
+	c, err := ReadConfigFile(path)
+	require.NoError(t, err)
+	require.NoError(t, c.Validate())
+	require.NotNil(t, c.Global.PCEP.Keepalive)
+	assert.Zero(t, *c.Global.PCEP.Keepalive)
+	require.NotNil(t, c.Global.PCEP.DeadTimer)
+	assert.Zero(t, *c.Global.PCEP.DeadTimer)
+}
+
+func TestPCEPTimers_UnsetLeavesTimersNil(t *testing.T) {
+	path := writeConfig(t, validConfig)
+
+	c, err := ReadConfigFile(path)
+	require.NoError(t, err)
+
+	assert.Nil(t, c.Global.PCEP.Keepalive)
+	assert.Nil(t, c.Global.PCEP.DeadTimer)
+}
+
+func TestValidate_RejectsNonZeroDeadTimerWithZeroKeepalive(t *testing.T) {
+	path := writeConfig(t, `
+global:
+  pcep:
+    address: "127.0.0.1"
+    port: 4189
+    keepalive: 0
+    deadTimer: 120
+  grpcServer:
+    address: "127.0.0.1"
+    port: 50052
+  log:
+    path: "/var/log/pola/"
+    name: "polad.log"
+  ted:
+    enable: false
+`)
+
+	c, err := ReadConfigFile(path)
+	require.NoError(t, err)
+	require.ErrorContains(t, c.Validate(), "global.pcep.deadTimer must be 0")
+}
+
+func TestValidate_RejectsDeadTimerLessThanKeepalive(t *testing.T) {
+	path := writeConfig(t, `
+global:
+  pcep:
+    address: "127.0.0.1"
+    port: 4189
+    keepalive: 30
+    deadTimer: 10
+  grpcServer:
+    address: "127.0.0.1"
+    port: 50052
+  log:
+    path: "/var/log/pola/"
+    name: "polad.log"
+  ted:
+    enable: false
+`)
+
+	c, err := ReadConfigFile(path)
+	require.NoError(t, err)
+	require.ErrorContains(t, c.Validate(), "global.pcep.deadTimer must be greater than keepalive")
+}
+
+func TestValidate_RejectsDeadTimerLessThanDefaultKeepaliveWhenKeepaliveUnset(t *testing.T) {
+	path := writeConfig(t, `
+global:
+  pcep:
+    address: "127.0.0.1"
+    port: 4189
+    deadTimer: 10
+  grpcServer:
+    address: "127.0.0.1"
+    port: 50052
+  log:
+    path: "/var/log/pola/"
+    name: "polad.log"
+  ted:
+    enable: false
+`)
+
+	c, err := ReadConfigFile(path)
+	require.NoError(t, err)
+	require.ErrorContains(t, c.Validate(), "global.pcep.deadTimer must be greater than keepalive")
+}
+
+func TestValidate_RejectsDeadTimerEqualToKeepalive(t *testing.T) {
+	path := writeConfig(t, `
+global:
+  pcep:
+    address: "127.0.0.1"
+    port: 4189
+    keepalive: 30
+    deadTimer: 30
+  grpcServer:
+    address: "127.0.0.1"
+    port: 50052
+  log:
+    path: "/var/log/pola/"
+    name: "polad.log"
+  ted:
+    enable: false
+`)
+
+	c, err := ReadConfigFile(path)
+	require.NoError(t, err)
+	require.ErrorContains(t, c.Validate(), "global.pcep.deadTimer must be greater than keepalive")
+}
+
+func TestValidate_RejectsKeepalive255WithDefaultedDeadTimer(t *testing.T) {
+	path := writeConfig(t, `
+global:
+  pcep:
+    address: "127.0.0.1"
+    port: 4189
+    keepalive: 255
+  grpcServer:
+    address: "127.0.0.1"
+    port: 50052
+  log:
+    path: "/var/log/pola/"
+    name: "polad.log"
+  ted:
+    enable: false
+`)
+
+	c, err := ReadConfigFile(path)
+	require.NoError(t, err)
+	require.ErrorContains(t, c.Validate(), "global.pcep.deadTimer must be greater than keepalive")
+}
+
+func TestPCEPKeepaliveRange_ReadsConfiguredValues(t *testing.T) {
+	path := writeConfig(t, `
+global:
+  pcep:
+    address: "127.0.0.1"
+    port: 4189
+    minKeepalive: 10
+    maxKeepalive: 60
+    allowNegotiation: false
+  grpcServer:
+    address: "127.0.0.1"
+    port: 50052
+  log:
+    path: "/var/log/pola/"
+    name: "polad.log"
+  ted:
+    enable: false
+`)
+
+	c, err := ReadConfigFile(path)
+	require.NoError(t, err)
+	require.NoError(t, c.Validate())
+
+	require.NotNil(t, c.Global.PCEP.MinKeepalive)
+	assert.Equal(t, uint8(10), *c.Global.PCEP.MinKeepalive)
+	require.NotNil(t, c.Global.PCEP.MaxKeepalive)
+	assert.Equal(t, uint8(60), *c.Global.PCEP.MaxKeepalive)
+	require.NotNil(t, c.Global.PCEP.AllowNegotiation)
+	assert.False(t, *c.Global.PCEP.AllowNegotiation)
+}
+
+func TestPCEPKeepaliveRange_UnsetLeavesFieldsNil(t *testing.T) {
+	path := writeConfig(t, validConfig)
+
+	c, err := ReadConfigFile(path)
+	require.NoError(t, err)
+
+	assert.Nil(t, c.Global.PCEP.MinKeepalive)
+	assert.Nil(t, c.Global.PCEP.MaxKeepalive)
+	assert.Nil(t, c.Global.PCEP.AllowNegotiation)
+}
+
+func TestValidate_RejectsMinKeepaliveGreaterThanMaxKeepalive(t *testing.T) {
+	path := writeConfig(t, `
+global:
+  pcep:
+    address: "127.0.0.1"
+    port: 4189
+    minKeepalive: 60
+    maxKeepalive: 10
+  grpcServer:
+    address: "127.0.0.1"
+    port: 50052
+  log:
+    path: "/var/log/pola/"
+    name: "polad.log"
+  ted:
+    enable: false
+`)
+
+	c, err := ReadConfigFile(path)
+	require.NoError(t, err)
+
+	require.ErrorContains(t, c.Validate(), "global.pcep.minKeepalive must be <= global.pcep.maxKeepalive")
+}

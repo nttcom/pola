@@ -42,16 +42,16 @@ func main() {
 
 	ssAddr := netip.MustParseAddr("192.0.2.1")
 
-	r, err := c.CreateSRPolicy(ctx, &pb.CreateSRPolicyRequest{
+	_, err = c.CreateSRPolicy(ctx, &pb.CreateSRPolicyRequest{
 		Asn: 65000,
 		SrPolicy: &pb.SRPolicy{
-			PcepSessionAddr: ssAddr.AsSlice(),
-			SrcRouterId:     "0000.0aff.0001",
-			DstRouterId:     "0000.0aff.0004",
-			Color:           100,
-			PolicyName:      "sample-name",
-			Type:            pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC,
-			Metric:          pb.MetricType_METRIC_TYPE_TE,
+			PeerAddr:    ssAddr.AsSlice(),
+			SrcRouterId: "0000.0aff.0001",
+			DstRouterId: "0000.0aff.0004",
+			Color:       100,
+			PolicyName:  "sample-name",
+			Type:        pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC,
+			Metric:      pb.MetricType_METRIC_TYPE_TE,
 			// Optional: constrain the computed path through these routers.
 			Waypoints: []*pb.Waypoint{
 				{RouterId: "0000.0aff.0002"},
@@ -63,5 +63,5 @@ func main() {
 		log.Fatalf("c.CreateSRPolicy error: %v", err)
 	}
 
-	log.Printf("success: isSuccess=%t", r.GetIsSuccess())
+	log.Print("success")
 }

@@ -119,10 +119,9 @@ func addSRPolicy(input inputFormat, jsonFlag bool, noSIDValidate bool) error {
 	}
 
 	if jsonFlag {
-		fmt.Printf("{\"status\": \"success\"}\n")
-	} else {
-		fmt.Printf("success!\n")
+		return writeJSON(os.Stdout, statusResult{Status: "success"})
 	}
+	fmt.Printf("success!\n")
 
 	return nil
 }
@@ -149,6 +148,8 @@ func translateCreateSRPolicyError(err error) error {
 			return fmt.Errorf("%s\n  hint: the PCE has not finished syncing the TED yet; retry shortly", msg)
 		case reasonPCEPSessionNotSynced:
 			return fmt.Errorf("%s\n  hint: check that a PCEP session to the target PCC is established and synced", msg)
+		case reasonPCEPSessionNotFound:
+			return fmt.Errorf("%s\n  hint: run `pola session` to check the PCEP session address", msg)
 		case reasonDestinationUnreach:
 			return fmt.Errorf("%s\n  hint: no path exists to the destination in the current topology", msg)
 		case reasonMetricNotCarried:
@@ -196,13 +197,13 @@ func addSRPolicyWithEndpointAddr(input inputFormat, noSIDValidate bool) error {
 		segmentList = append(segmentList, pbSeg)
 	}
 	srPolicy := &pb.SRPolicy{
-		PcepSessionAddr: input.SRPolicy.PCEPSessionAddr.AsSlice(),
-		SrcAddr:         input.SRPolicy.SrcAddr.AsSlice(),
-		DstAddr:         input.SRPolicy.DstAddr.AsSlice(),
-		SegmentList:     segmentList,
-		Color:           input.SRPolicy.Color,
-		PolicyName:      input.SRPolicy.Name,
-		Type:            pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT,
+		PeerAddr:    input.SRPolicy.PCEPSessionAddr.AsSlice(),
+		SrcAddr:     input.SRPolicy.SrcAddr.AsSlice(),
+		DstAddr:     input.SRPolicy.DstAddr.AsSlice(),
+		SegmentList: segmentList,
+		Color:       input.SRPolicy.Color,
+		PolicyName:  input.SRPolicy.Name,
+		Type:        pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT,
 	}
 
 	request := &pb.CreateSRPolicyRequest{
@@ -228,15 +229,15 @@ func addSRPolicyWithRouterID(input inputFormat, noSIDValidate bool) error {
 	}
 
 	srPolicy := &pb.SRPolicy{
-		PcepSessionAddr: input.SRPolicy.PCEPSessionAddr.AsSlice(),
-		SrcRouterId:     input.SRPolicy.SrcRouterID,
-		DstRouterId:     input.SRPolicy.DstRouterID,
-		Color:           input.SRPolicy.Color,
-		PolicyName:      input.SRPolicy.Name,
-		Type:            srPolicyType,
-		SegmentList:     segmentList,
-		Metric:          metric,
-		Waypoints:       waypoints,
+		PeerAddr:    input.SRPolicy.PCEPSessionAddr.AsSlice(),
+		SrcRouterId: input.SRPolicy.SrcRouterID,
+		DstRouterId: input.SRPolicy.DstRouterID,
+		Color:       input.SRPolicy.Color,
+		PolicyName:  input.SRPolicy.Name,
+		Type:        srPolicyType,
+		SegmentList: segmentList,
+		Metric:      metric,
+		Waypoints:   waypoints,
 	}
 
 	req := &pb.CreateSRPolicyRequest{

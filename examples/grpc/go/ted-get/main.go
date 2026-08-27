@@ -47,13 +47,13 @@ func main() {
 	}
 
 	// A disabled TED returns an empty node list instead of an error.
-	if !ret.GetEnable() {
+	if !ret.GetEnabled() {
 		fmt.Println("TED is disabled on this polad instance")
 		return
 	}
 
 	marshaler := protojson.MarshalOptions{Multiline: true, Indent: "  "}
-	for _, node := range ret.GetLsNodes() {
+	for _, node := range ret.GetNodes() {
 		fmt.Println(marshaler.Format(node))
 	}
 }

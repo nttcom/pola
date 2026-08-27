@@ -36,23 +36,72 @@ Connect to PCEP container, check PCEP session and SR policy
 $ docker exec -it clab-sr-mpls-explicit-path-l3vpn-pola bash
 
 root@pola:/pola# pola session
-sessionAddr(0): 10.0.255.1
-  State: SESSION_STATE_UP
-  Capabilities: [Stateful Update Instantiation Color SR-TE]
-  IsSynced: true
-sessionAddr(1): 10.0.255.2
-  State: SESSION_STATE_UP
-  Capabilities: [Stateful Update Instantiation Color SR-TE]
-  IsSynced: true
+Session #0: 10.0.255.1
+  State:             up
+  LSP-DB Sync:       finished
+  Role:              active-stateful-pce
+  Up Time:           00:12:24
+  Session ID:        Local=0, Peer=0
+  Transport:         tcp, auth=none
+  Timers:
+               Local  Peer  Effective
+    Keepalive  30     30    30
+    DeadTimer  120    120   120
+  Capabilities:
+    Common:
+      STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Stateful, Update, Instantiation
+      SR-PCE-CAPABILITY [RFC8664]: SR
+      PATH-SETUP-TYPE-CAPABILITY [RFC8408]: SR-TE
+    Local only:
+      STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Color
+      SR-PCE-CAPABILITY [RFC8664]: Unlimited-SID-Depth
+      SRv6-PCE-CAPABILITY [RFC9603]: SRv6
+      PATH-SETUP-TYPE-CAPABILITY [RFC8408]: SRv6-TE
+      ASSOC-TYPE-LIST [RFC8697]:
+        6 SR Policy Association
+      MULTIPATH-CAP [draft-ietf-pce-multipath]: Multipath, MaxMultipaths=1
+    Peer only:
+      SR-PCE-CAPABILITY [RFC8664]: MSD=4
+
+Session #1: 10.0.255.2
+  State:             up
+  LSP-DB Sync:       finished
+  Role:              active-stateful-pce
+  Up Time:           00:12:24
+  Session ID:        Local=0, Peer=0
+  Transport:         tcp, auth=none
+  Timers:
+               Local  Peer  Effective
+    Keepalive  30     30    30
+    DeadTimer  120    120   120
+  Capabilities:
+    Common:
+      STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Stateful, Update, Instantiation
+      SR-PCE-CAPABILITY [RFC8664]: SR
+      PATH-SETUP-TYPE-CAPABILITY [RFC8408]: SR-TE
+    Local only:
+      STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Color
+      SR-PCE-CAPABILITY [RFC8664]: Unlimited-SID-Depth
+      SRv6-PCE-CAPABILITY [RFC9603]: SRv6
+      PATH-SETUP-TYPE-CAPABILITY [RFC8408]: SRv6-TE
+      ASSOC-TYPE-LIST [RFC8697]:
+        6 SR Policy Association
+      MULTIPATH-CAP [draft-ietf-pce-multipath]: Multipath, MaxMultipaths=1
+    Peer only:
+      SR-PCE-CAPABILITY [RFC8664]: MSD=4
 root@pola:/pola# pola sr-policy list
-No SR Policies found.
+Session: 10.0.255.1 (State: up, LSP-DB Sync: finished)
+  No SR Policies.
+
+Session: 10.0.255.2 (State: up, LSP-DB Sync: finished)
+  No SR Policies.
 ```
 
 Both PE nodes establish a PCEP session, but this example only applies an SR Policy to pe01.
 
-Apply and check SR Policy
+### Applying SR Policies
 
-`pe01-policy1.yaml` is mounted in the Pola container. It steers traffic from pe01 to
+The Pola container includes `pe01-policy1.yaml`. It steers traffic from pe01 to
 pe02 (10.255.0.3) along the explicit path p01 -> p02 -> pe02, using the
 Prefix-SID labels 16002 (p01), 16004 (p02) and 16003 (pe02).
 
@@ -61,13 +110,20 @@ root@pola:/pola# pola sr-policy add -f pe01-policy1.yaml --no-sid-validate
 warning: skipping SID validation (--no-sid-validate)
 success!
 root@pola:/pola# pola sr-policy list
-Session: 10.0.255.1
+Session: 10.0.255.1 (State: up, LSP-DB Sync: finished)
   PolicyName: pe01-policy1
+    PlspID: 1
+    LSPID: 0
+    State: active
+    Type: explicit
     SrcAddr: 10.0.255.1
     DstAddr: 10.255.0.3
     Color: 0
     Preference: 0
-    SegmentList: 16002 -> 16004 -> 16003
+    SegmentList: 16002 (local=10.255.0.2) -> 16004 (local=10.255.0.4) -> 16003 (local=10.255.0.3)
+
+Session: 10.0.255.2 (State: up, LSP-DB Sync: finished)
+  No SR Policies.
 ```
 
 FRRouting does not report the color, the preference and the source address of an SR Policy back
@@ -80,6 +136,7 @@ Enter container pe01 and check SR Policy
 root@pola:/pola# exit
 
 $ docker exec -it clab-sr-mpls-explicit-path-l3vpn-pe01 vtysh
+
 pe01# show sr-te pcep session
 
 PCE POLA
@@ -98,13 +155,13 @@ PCE POLA
  PCE SR Version draft16 and RFC8408
  Next PcReq ID 1
  Next PLSP  ID 2
- Connected for 144 seconds, since 2026-07-30 09:51:31 UTC
+ Connected for 802 seconds, since 2026-08-27 01:19:10 UTC
  PCC Capabilities: [PCC and PCE Initiated LSPs] [Stateful PCE] [SR TE PST]
  PCE Capabilities: [Stateful PCE] [SR TE PST]
  PCEP Message Statistics
                         Sent   Rcvd
          Message Open:     1      1
-    Message KeepAlive:     5      5
+    Message KeepAlive:    26     27
         Message PcReq:     0      0
         Message PcRep:     0      0
        Message Notify:     0      0
@@ -115,9 +172,8 @@ PCE POLA
      Message Initiate:     0      1
      Message StartTls:     0      0
     Message Erroneous:     0      0
-                Total:    10      7
+                Total:    31     29
 PCEP Sessions => Configured 1 ; Connected 1
-
 pe01# show sr-te policy detail
 
 Endpoint: 10.255.0.3  Color: 1  Name: pe01-policy1  BSID: -  Status: Active
@@ -129,7 +185,6 @@ Add Color setting
 ```bash
 $ docker exec -it clab-sr-mpls-explicit-path-l3vpn-pe01 bash
 bash-5.1# vtysh -c 'conf t' -c 'router bgp 65000' -c 'address-family ipv4 vpn' -c 'neighbor 10.255.0.3 route-map color1 in'
-
 bash-5.1# exit
 ```
 
@@ -141,7 +196,7 @@ $ docker exec -it clab-sr-mpls-explicit-path-l3vpn-pe01 vtysh
 pe01# show ip route vrf cust-a 192.168.1.0/24
 Routing entry for 192.168.1.0/24
   Known via "bgp", distance 20, metric 0, vrf cust-a, best
-  Last update 00:00:20 ago
+  Last update 00:00:16 ago
     10.255.0.3(vrf default) (recursive), label 17, weight 1
   *   10.0.0.2, via eth1(vrf default), label 16004/16003/17, weight 1
 ```
@@ -170,11 +225,12 @@ tcpdump inside the container's network namespace with `nsenter`:
 $ sudo nsenter -t $(docker inspect -f '{{.State.Pid}}' clab-sr-mpls-explicit-path-l3vpn-p01) -n tcpdump -nni eth1
 tcpdump: verbose output suppressed, use -v[v]... for full protocol decode
 listening on eth1, link-type EN10MB (Ethernet), snapshot length 262144 bytes
-18:55:44.909823 MPLS (label 17, exp 0, [S], ttl 63) IP 192.168.1.2 > 192.168.0.2: ICMP echo reply, id 2218, seq 1, length 64
-18:55:45.915956 MPLS (label 16004, exp 0, ttl 63) (label 16003, exp 0, ttl 63) (label 17, exp 0, [S], ttl 63) IP 192.168.0.2 > 192.168.1.2: ICMP echo request, id 2218, seq 2, length 64
-18:55:45.916001 MPLS (label 17, exp 0, [S], ttl 63) IP 192.168.1.2 > 192.168.0.2: ICMP echo reply, id 2218, seq 2, length 64
-18:55:46.939959 MPLS (label 16004, exp 0, ttl 63) (label 16003, exp 0, ttl 63) (label 17, exp 0, [S], ttl 63) IP 192.168.0.2 > 192.168.1.2: ICMP echo request, id 2218, seq 3, length 64
-18:55:46.940001 MPLS (label 17, exp 0, [S], ttl 63) IP 192.168.1.2 > 192.168.0.2: ICMP echo reply, id 2218, seq 3, length 64
+10:32:33.335148 MPLS (label 16004, exp 0, ttl 63) (label 16003, exp 0, ttl 63) (label 17, exp 0, [S], ttl 63) IP 192.168.0.2 > 192.168.1.2: ICMP echo request, id 3515, seq 1, length 64
+10:32:33.335223 MPLS (label 17, exp 0, [S], ttl 63) IP 192.168.1.2 > 192.168.0.2: ICMP echo reply, id 3515, seq 1, length 64
+10:32:33.363953 MPLS (label 16004, exp 0, ttl 63) (label 16003, exp 0, ttl 63) (label 17, exp 0, [S], ttl 63) IP 192.168.0.2 > 192.168.1.2: ICMP echo request, id 3515, seq 2, length 64
+10:32:33.363998 MPLS (label 17, exp 0, [S], ttl 63) IP 192.168.1.2 > 192.168.0.2: ICMP echo reply, id 3515, seq 2, length 64
+10:32:33.387951 MPLS (label 16004, exp 0, ttl 63) (label 16003, exp 0, ttl 63) (label 17, exp 0, [S], ttl 63) IP 192.168.0.2 > 192.168.1.2: ICMP echo request, id 3515, seq 3, length 64
+10:32:33.387993 MPLS (label 17, exp 0, [S], ttl 63) IP 192.168.1.2 > 192.168.0.2: ICMP echo reply, id 3515, seq 3, length 64
 ```
 
 Also, you can analyze with Wireshark on your Local PC

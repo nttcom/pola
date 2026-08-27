@@ -6,9 +6,11 @@
 package main
 
 import (
-	"encoding/json"
+	"errors"
 	"fmt"
-	"strings"
+	"io"
+	"net/netip"
+	"os"
 
 	"github.com/nttcom/pola/cmd/pola/grpc"
 	"github.com/spf13/cobra"
@@ -16,12 +18,15 @@ import (
 
 func newSessionCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use: "session",
-		RunE: func(_ *cobra.Command, _ []string) error {
-			if err := showSession(jsonFmt); err != nil {
+		Use:   "session [peer-address] [detail]",
+		Short: "Show PCEP sessions",
+		Args:  cobra.MaximumNArgs(2),
+		RunE: func(_ *cobra.Command, args []string) error {
+			addr, detail, err := parseSessionArgs(args)
+			if err != nil {
 				return err
 			}
-			return nil
+			return showSession(os.Stdout, addr, detail, resolveOutputFormat(jsonFmt))
 		},
 	}
 
@@ -29,28 +34,60 @@ func newSessionCmd() *cobra.Command {
 	return cmd
 }
 
-func showSession(jsonFlag bool) error {
-	sessions, err := grpc.GetSessions(client)
+// parseSessionArgs parses an optional peer address and "detail" argument.
+func parseSessionArgs(args []string) (netip.Addr, bool, error) {
+	var addr netip.Addr
+	detail := false
+	for _, arg := range args {
+		if arg == "detail" {
+			if detail {
+				return netip.Addr{}, false, errors.New(`"detail" specified more than once`)
+			}
+			detail = true
+			continue
+		}
+		if addr.IsValid() {
+			return netip.Addr{}, false, fmt.Errorf("unexpected argument %q\nUsage: pola session [peer-address] [detail]", arg)
+		}
+		parsed, err := netip.ParseAddr(arg)
+		if err != nil {
+			return netip.Addr{}, false, fmt.Errorf("invalid peer address %q: %w", arg, err)
+		}
+		addr = parsed
+	}
+	return addr, detail, nil
+}
 
+func showSession(w io.Writer, addr netip.Addr, detail bool, format outputFormat) error {
+	sessions, err := grpc.GetSessions(client, addr, detail)
 	if err != nil {
 		return err
 	}
 
-	if jsonFlag {
-		// Output JSON format
-		outputJSON, err := json.Marshal(sessions)
-		if err != nil {
-			return err
-		}
-		fmt.Println(string(outputJSON))
-	} else {
-		// Output user-friendly format
-		for i, ss := range sessions {
-			fmt.Printf("sessionAddr(%d): %s\n", i, ss.Addr.String())
-			fmt.Printf("  State: %s\n", ss.State)
-			fmt.Printf("  Capabilities: %s\n", strings.Join(ss.CapStrings(), ", "))
-			fmt.Printf("  IsSynced: %t\n", ss.IsSynced)
-		}
+	if len(sessions) == 0 {
+		return writeNoSessions(w, addr, format)
 	}
-	return nil
+
+	views := make([]sessionView, 0, len(sessions))
+	for _, ss := range sessions {
+		views = append(views, newSessionView(ss, detail))
+	}
+
+	if format == outputJSON {
+		return writeJSON(w, views)
+	}
+	return writeSessionText(w, views)
+}
+
+func writeNoSessions(w io.Writer, addr netip.Addr, format outputFormat) error {
+	if format == outputJSON {
+		_, err := fmt.Fprintln(w, "[]")
+		return err
+	}
+	if addr.IsValid() {
+		_, err := fmt.Fprintf(w, "No PCEP session for %s.\n", addr)
+		return err
+	}
+	_, err := fmt.Fprintln(w, "No PCEP sessions connected.")
+	return err
 }

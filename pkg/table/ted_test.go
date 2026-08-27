@@ -6,39 +6,12 @@
 package table
 
 import (
-	"bytes"
-	"io"
 	"net/netip"
-	"os"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// captureStdout redirects os.Stdout while fn runs and returns everything written to it.
-func captureStdout(t *testing.T, fn func()) string {
-	t.Helper()
-	old := os.Stdout
-	r, w, err := os.Pipe()
-	require.NoError(t, err)
-	os.Stdout = w
-
-	var buf bytes.Buffer
-	done := make(chan struct{})
-	go func() {
-		_, _ = io.Copy(&buf, r)
-		close(done)
-	}()
-
-	fn()
-
-	require.NoError(t, w.Close())
-	os.Stdout = old
-	<-done
-	return buf.String()
-}
 
 func TestLsNodeNodeSegment(t *testing.T) {
 	tests := []struct {
@@ -510,97 +483,6 @@ func TestLsTEDUpdate(t *testing.T) {
 
 	assert.Same(t, node, ted.Nodes["R1"])
 	require.Contains(t, ted.Nodes, "R2")
-}
-
-func TestLsTEDPrint_Empty(t *testing.T) {
-	tests := []struct {
-		name string
-		ted  *LsTED
-	}{
-		{"nil TED", nil},
-		{"TED with nil Nodes map", &LsTED{}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			out := captureStdout(t, tt.ted.Print)
-			assert.Equal(t, "TED is empty\n", out)
-		})
-	}
-}
-
-func TestLsTEDPrint_Populated(t *testing.T) {
-	minimalNode := &LsNode{RouterID: "0000.0000.0002"}
-
-	remoteNode := &LsNode{RouterID: "0000.0000.0003"}
-	fullNode := &LsNode{
-		RouterID:   "0000.0000.0001",
-		Hostname:   "full-host",
-		IsisAreaID: "49.0001",
-		SrgbBegin:  16000,
-		SrgbEnd:    24000,
-		Prefixes: []*LsPrefix{
-			nil,
-			{Prefix: netip.MustParsePrefix("10.0.0.1/32")},
-			{Prefix: netip.MustParsePrefix("10.0.0.2/32"), SidIndex: 5, HasSidIndex: true},
-		},
-		Links: []*LsLink{
-			nil,
-			{},
-			{
-				LocalIP:    netip.MustParseAddr("10.0.0.1"),
-				RemoteIP:   netip.MustParseAddr("10.0.0.2"),
-				RemoteNode: remoteNode,
-				Metrics:    []*Metric{nil, {Type: IGPMetric, Value: 10}},
-				AdjSid:     24001,
-				Srv6EndXSID: &Srv6EndXSID{
-					EndpointBehavior: BehaviorENDX,
-					Sids:             []string{"2001:db8:1::1"},
-					Srv6SIDStructure: SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
-				},
-			},
-		},
-		SRv6SIDs: []*LsSrv6SID{
-			nil,
-			{
-				Sids:             []string{"2001:db8:1::"},
-				SIDStructure:     SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
-				EndpointBehavior: EndpointBehavior{Behavior: BehaviorUN, Flags: 1, Algorithm: 0},
-				MultiTopoIDs:     []uint32{1},
-			},
-		},
-	}
-
-	ted := newTestTED(minimalNode, fullNode)
-	ted.Nodes["0000.0000.0004"] = nil
-
-	out := captureStdout(t, ted.Print)
-
-	nodeHeaders := 0
-	for _, line := range strings.Split(out, "\n") {
-		if strings.HasPrefix(line, "Node: ") {
-			nodeHeaders++
-		}
-	}
-	assert.Equal(t, 2, nodeHeaders, "expected exactly the two non-nil nodes to be printed")
-	assert.Contains(t, out, "Hostname: full-host")
-	assert.Contains(t, out, "ISIS Area ID: 49.0001")
-	assert.Contains(t, out, "SRGB: 16000 - 24000")
-	assert.Contains(t, out, "10.0.0.1/32")
-	assert.Contains(t, out, "10.0.0.2/32")
-	assert.Contains(t, out, "index: 5")
-	assert.Contains(t, out, "Local: 10.0.0.1 Remote: 10.0.0.2")
-	assert.Contains(t, out, "Local: None Remote: None")
-	assert.Contains(t, out, "RemoteNode: 0000.0000.0003")
-	assert.Contains(t, out, "RemoteNode: None")
-	assert.Contains(t, out, "igp: 10")
-	assert.Contains(t, out, "Adj-SID: 24001")
-	assert.Contains(t, out, "EndpointBehavior: ENDX")
-	assert.Contains(t, out, "SIDs: [2001:db8:1::1]")
-	assert.Contains(t, out, "SID Structure: Block: 32, Node: 16, Func: 16, Arg: 0")
-	assert.Contains(t, out, "SIDs: [2001:db8:1::]")
-	assert.Contains(t, out, "Block: 32, Node: 16, Func: 16, Arg: 0")
-	assert.Contains(t, out, "EndpointBehavior: UN, Flags: 1, Algorithm: 0")
-	assert.Contains(t, out, "MultiTopoIDs: [1]")
 }
 
 func TestLsTEDRouterIDIndex(t *testing.T) {

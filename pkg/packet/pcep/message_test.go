@@ -38,6 +38,12 @@ func TestPCErrMessage_RoundTrip(t *testing.T) {
 				{ObjectType: ObjectTypeErrorError, ErrorType: 24, ErrorValue: 1},
 			},
 		},
+		"SingleErrorWithOpen": {
+			Errors: []*ErrorObject{
+				{ObjectType: ObjectTypeErrorError, ErrorType: 1, ErrorValue: 4},
+			},
+			Open: &OpenObject{ObjectType: ObjectTypeOpenOpen, Version: 1, Keepalive: 10, Deadtime: 40},
+		},
 		"MultipleSRPsAndErrors": {
 			SRPs: []*SrpObject{
 				{ObjectType: ObjectTypeSRPSRP, SrpID: 1},
@@ -98,6 +104,17 @@ func TestPCErrMessage_Serialize_Errors(t *testing.T) {
 		m := PCErrMessage{Errors: []*ErrorObject{{Tlvs: []TLVInterface{&UnknownTLV{Value: make([]byte, 65520)}}}}}
 		_, err := m.Serialize()
 		assert.ErrorContains(t, err, "exceeds")
+	})
+
+	t.Run("OpenSerializeError", func(t *testing.T) {
+		t.Parallel()
+
+		m := PCErrMessage{
+			Errors: []*ErrorObject{{ObjectType: ObjectTypeErrorError, ErrorType: 1, ErrorValue: 4}},
+			Open:   &OpenObject{Caps: []CapabilityInterface{&UnknownTLV{Value: make([]byte, 65536)}}},
+		}
+		_, err := m.Serialize()
+		assert.Error(t, err)
 	})
 }
 
@@ -169,7 +186,7 @@ func TestNewPCInitiateMessage_VendorObjectSelection(t *testing.T) {
 		"JuniperLegacy": {
 			pccType:         JuniperLegacy,
 			wantAssociation: true,
-			wantAssocType:   AssociationTypeSRPolicyAssociationJuniper,
+			wantAssocType:   AssocTypeSRPolicyAssociationJuniper,
 		},
 		"CiscoLegacy": {
 			pccType:        CiscoLegacy,
@@ -178,7 +195,7 @@ func TestNewPCInitiateMessage_VendorObjectSelection(t *testing.T) {
 		"RFCCompliant": {
 			pccType:         RFCCompliant,
 			wantAssociation: true,
-			wantAssocType:   AssociationTypeSRPolicyAssociation,
+			wantAssocType:   AssocTypeSRPolicyAssociation,
 			wantVendorInfo:  true,
 		},
 	}
@@ -252,8 +269,8 @@ func TestMessageType_StringWithReference(t *testing.T) {
 func TestOpenMessage_RoundTrip(t *testing.T) {
 	t.Parallel()
 
-	want := NewOpenMessage(7, 30, []CapabilityInterface{
-		&SRPCECapability{MaximumSidDepth: 10},
+	want := NewOpenMessage(7, 30, 120, []CapabilityInterface{
+		NewSRPCECapability(false, false, 10),
 	})
 
 	raw, err := want.Serialize()
@@ -444,6 +461,19 @@ func TestNewPCErrMessage(t *testing.T) {
 	assert.Equal(t, want, m)
 }
 
+func TestNewPCErrMessageWithOpen(t *testing.T) {
+	t.Parallel()
+
+	openObject := NewOpenObject(0, 10, 40, nil)
+	m := NewPCErrMessageWithOpen(1, 4, openObject)
+
+	want := &PCErrMessage{
+		Errors: []*ErrorObject{{ObjectType: ObjectTypeErrorError, ErrorType: 1, ErrorValue: 4}},
+		Open:   openObject,
+	}
+	assert.Equal(t, want, m)
+}
+
 func TestNewPCRptMessage(t *testing.T) {
 	t.Parallel()
 
@@ -542,7 +572,7 @@ func TestPCRptMessage_DecodeFromBytes(t *testing.T) {
 		metric2 := &MetricObject{ObjectType: ObjectType(1), BFlag: true, MetricType: 1}
 		lspa := &LSPAObject{ObjectType: ObjectType(1), SetupPriority: 7, HoldingPriority: 7, LFlag: true}
 		assoc := &AssociationObject{
-			ObjectType: ObjectTypeAssociationIPv4, AssocType: AssociationTypeSRPolicyAssociation,
+			ObjectType: ObjectTypeAssociationIPv4, AssocType: AssocTypeSRPolicyAssociation,
 			AssocID: 1, AssocSrc: netip.MustParseAddr("192.0.2.1"),
 		}
 		vendorInfo := &VendorInformationObject{ObjectType: ObjectTypeVendorSpecificConstraints, EnterpriseNumber: EnterpriseNumberCisco}
@@ -834,6 +864,8 @@ func TestPCErrMessage_DecodeFromBytes_Errors(t *testing.T) {
 
 	validSRP, err := (&SrpObject{ObjectType: ObjectTypeSRPSRP, SrpID: 1}).Serialize()
 	require.NoError(t, err)
+	validError, err := (&ErrorObject{ObjectType: ObjectTypeErrorError, ErrorType: 6, ErrorValue: 1}).Serialize()
+	require.NoError(t, err)
 
 	cases := map[string][]uint8{
 		"TruncatedObjectHeader":        {0x01, 0x02},
@@ -850,6 +882,16 @@ func TestPCErrMessage_DecodeFromBytes_Errors(t *testing.T) {
 		),
 		// RFC 5440 §6.7 requires at least one PCEP-ERROR object.
 		"NoErrorObjectPresent": validSRP,
+		"MalformedOpenBody": AppendByteSlices(
+			validError,
+			NewCommonObjectHeader(ObjectClassOpen, ObjectTypeOpenOpen, commonObjectHeaderLength+4).Serialize(),
+			[]uint8{0x40, 0x00, 0x00, 0x00}, // unsupported PCEP version (2) in the OPEN object
+		),
+		"UnsupportedOpenObjectType": AppendByteSlices(
+			validError,
+			NewCommonObjectHeader(ObjectClassOpen, ObjectType(2), commonObjectHeaderLength+4).Serialize(),
+			[]uint8{0x20, 0x00, 0x00, 0x00},
+		),
 	}
 
 	for name, body := range cases {

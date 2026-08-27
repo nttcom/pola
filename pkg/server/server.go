@@ -24,23 +24,57 @@ import (
 	"github.com/nttcom/pola/pkg/table"
 )
 
-// Maximum time to wait for the PCEP Close message during shutdown.
 const defaultShutdownSendCloseTimeout = 2 * time.Second
 
 // Server manages PCEP sessions and server lifecycle.
 type Server struct {
-	sessionMu   sync.RWMutex // guards sessionList
-	sessionList []*Session
-	tedMu       sync.RWMutex // guards ted
-	ted         *table.LsTED
-	logger      *zap.Logger
-	asn         uint32
+	sessionMu                sync.RWMutex
+	sessionList              []*Session
+	sessionIDs               sessionIDAllocator
+	tedMu                    sync.RWMutex
+	ted                      *table.LsTED
+	logger                   *zap.Logger
+	asn                      uint32
+	localKeepalive           uint8
+	localDeadTimer           uint8
+	keepaliveRangeEnabled    bool
+	minKeepalive             uint8
+	maxKeepalive             uint8
+	allowNegotiation         bool
+	listenerMu               sync.Mutex
+	listener                 tcpListener
+	closed                   bool
+	shutdownSendCloseTimeout time.Duration
+	peerStatsMu              sync.Mutex
+	peerStats                map[netip.Addr]*peerSetupStats
+}
 
-	listenerMu sync.Mutex // guards listener and closed
-	listener   tcpListener
-	closed     bool // set by Shutdown; suppresses Serve/AcceptTCP errors
+// peerSetupStats counts session establishment outcomes per peer.
+// Entries outlive individual Session objects.
+type peerSetupStats struct {
+	ok   uint64
+	fail uint64
+}
 
-	shutdownSendCloseTimeout time.Duration // zero uses the default
+// sessionIDAllocator allocates session IDs per peer.
+// IDs advance across reconnects so a new session does not immediately reuse
+// the previous session's ID.
+type sessionIDAllocator struct {
+	mu   sync.Mutex
+	next map[netip.Addr]uint8
+}
+
+func (a *sessionIDAllocator) allocate(peerAddr netip.Addr) uint8 {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if a.next == nil {
+		a.next = make(map[netip.Addr]uint8)
+	}
+
+	id := a.next[peerAddr]
+	a.next[peerAddr] = id + 1
+	return id
 }
 
 type tcpListener interface {
@@ -48,7 +82,7 @@ type tcpListener interface {
 	Close() error
 }
 
-// TED returns the current TED snapshot. Safe for concurrent use with setTED.
+// TED returns the current TED snapshot.
 func (s *Server) TED() *table.LsTED {
 	s.tedMu.RLock()
 	defer s.tedMu.RUnlock()
@@ -63,30 +97,90 @@ func (s *Server) setTED(ted *table.LsTED) {
 
 // PCEOptions contains configuration options for the PCE server.
 type PCEOptions struct {
-	PCEPAddr  string
-	PCEPPort  string
-	GRPCAddr  string
-	GRPCPort  string
-	TEDEnable bool
-	USidMode  bool
-	ASN       uint32
+	PCEPAddr         string
+	PCEPPort         string
+	GRPCAddr         string
+	GRPCPort         string
+	TEDEnable        bool
+	USidMode         bool
+	ASN              uint32
+	Keepalive        *uint8
+	DeadTimer        *uint8
+	MinKeepalive     *uint8
+	MaxKeepalive     *uint8
+	AllowNegotiation *bool
 }
 
-// NewPCE starts the PCEP and gRPC servers and blocks until they stop.
-// It returns an error if either server exits with a failure.
+func resolveKeepaliveRange(minKeepalive, maxKeepalive *uint8) (lo, hi uint8, enabled bool) {
+	if minKeepalive == nil && maxKeepalive == nil {
+		return 0, 0, false
+	}
+	hi = math.MaxUint8
+	if minKeepalive != nil {
+		lo = *minKeepalive
+	}
+	if maxKeepalive != nil {
+		hi = *maxKeepalive
+	}
+	return lo, hi, true
+}
+
+// validatePCEOptions validates timer constraints before starting the server.
+func validatePCEOptions(o *PCEOptions) error {
+	if o == nil {
+		return errors.New("PCEOptions must not be nil")
+	}
+	keepalive := defaultLocalKeepalive
+	if o.Keepalive != nil {
+		keepalive = *o.Keepalive
+	}
+	if err := pcep.ValidateTimers(keepalive, o.DeadTimer); err != nil {
+		return err
+	}
+	if o.MinKeepalive != nil && o.MaxKeepalive != nil && *o.MinKeepalive > *o.MaxKeepalive {
+		return errors.New("MinKeepalive must be <= MaxKeepalive")
+	}
+	return nil
+}
+
+func resolveLocalTimers(keepalive, deadTimer *uint8) (uint8, uint8) {
+	localKeepalive := defaultLocalKeepalive
+	if keepalive != nil {
+		localKeepalive = *keepalive
+	}
+	if deadTimer != nil {
+		return localKeepalive, *deadTimer
+	}
+	return localKeepalive, pcep.DeadTimerFor(localKeepalive)
+}
+
+// NewPCE starts the PCEP and gRPC servers.
 func NewPCE(ctx context.Context, o *PCEOptions, logger *zap.Logger, tedElemsChan chan []table.TEDElem) Error {
+	if err := validatePCEOptions(o); err != nil {
+		return Error{Server: "config", Error: err}
+	}
+
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	localKeepalive, localDeadTimer := resolveLocalTimers(o.Keepalive, o.DeadTimer)
+	minKeepalive, maxKeepalive, keepaliveRangeEnabled := resolveKeepaliveRange(o.MinKeepalive, o.MaxKeepalive)
+	allowNegotiation := o.AllowNegotiation == nil || *o.AllowNegotiation
 	s := &Server{
-		logger: logger,
-		asn:    o.ASN,
+		logger:                logger,
+		asn:                   o.ASN,
+		localKeepalive:        localKeepalive,
+		localDeadTimer:        localDeadTimer,
+		keepaliveRangeEnabled: keepaliveRangeEnabled,
+		minKeepalive:          minKeepalive,
+		maxKeepalive:          maxKeepalive,
+		allowNegotiation:      allowNegotiation,
 	}
 	if o.TEDEnable {
 		s.setTED(&table.LsTED{
 			Nodes: map[string]*table.LsNode{},
 		})
-		go s.syncTEDLoop(ctx, tedElemsChan, o.ASN, logger)
+		go s.syncTEDLoop(ctx, tedElemsChan, o.ASN)
 	}
 
 	grpcServer := grpc.NewServer()
@@ -106,9 +200,8 @@ func NewPCE(ctx context.Context, o *PCEOptions, logger *zap.Logger, tedElemsChan
 		resultChan <- result{server: "grpc", err: apiServer.Serve(o.GRPCAddr, o.GRPCPort)}
 	}()
 
-	go s.awaitShutdown(ctx, logger, grpcServer.GracefulStop)
+	go s.awaitShutdown(ctx, grpcServer.GracefulStop)
 
-	// Wait for both servers to stop before returning the first error.
 	var firstErr Error
 	for range 2 {
 		r := <-resultChan
@@ -124,7 +217,7 @@ func NewPCE(ctx context.Context, o *PCEOptions, logger *zap.Logger, tedElemsChan
 	return firstErr
 }
 
-func (s *Server) syncTEDLoop(ctx context.Context, tedElemsChan <-chan []table.TEDElem, asn uint32, logger *zap.Logger) {
+func (s *Server) syncTEDLoop(ctx context.Context, tedElemsChan <-chan []table.TEDElem, asn uint32) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -138,7 +231,7 @@ func (s *Server) syncTEDLoop(ctx context.Context, tedElemsChan <-chan []table.TE
 			}
 			ted.Update(tedElems, asn)
 			s.setTED(ted)
-			logger.Debug("Update TED")
+			s.logger.Debug("Update TED")
 		}
 	}
 }
@@ -182,7 +275,6 @@ func (s *Server) Serve(address string, port string) error {
 		}
 	}()
 
-	sessionID := uint8(1)
 	for {
 		tcpConn, err := l.AcceptTCP()
 		if err != nil {
@@ -196,43 +288,77 @@ func (s *Server) Serve(address string, port string) error {
 			return fmt.Errorf("failed to parse remote address %s: %w", tcpConn.RemoteAddr().String(), err)
 		}
 
-		ss := s.registerSession(tcpConn, sessionID, peerAddrPort.Addr())
-		sessionID++
+		ss := s.registerSession(tcpConn, peerAddrPort.Addr())
 		if ss == nil {
 			continue
 		}
 		ss.logger.Info("start PCEP session")
 		go func() {
-			ss.Established()
+			if err := ss.Established(); err != nil {
+				s.recordSetupResult(ss.peerAddr, false)
+			}
 			s.closeSession(ss)
 			ss.logger.Info("close PCEP session")
 		}()
 	}
 }
 
-func (s *Server) registerSession(tcpConn *net.TCPConn, sessionID uint8, peerAddr netip.Addr) *Session {
+func (s *Server) registerSession(conn net.Conn, peerAddr netip.Addr) *Session {
 	s.listenerMu.Lock()
 	defer s.listenerMu.Unlock()
 
 	if s.closed {
-		if err := tcpConn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
-			s.logger.Warn("failed to close TCP connection accepted after shutdown", zap.Error(err))
-		}
+		s.closeRejectedConn(conn, "accepted after shutdown")
 		return nil
 	}
 
-	ss := NewSession(sessionID, peerAddr, tcpConn, s.logger, s.TED(), s.asn)
+	ted := s.TED()
+
 	s.sessionMu.Lock()
+	if slices.ContainsFunc(s.sessionList, func(ss *Session) bool { return ss.peerAddr == peerAddr }) {
+		s.sessionMu.Unlock()
+		s.recordSetupResult(peerAddr, false)
+		s.rejectSecondSession(conn, peerAddr)
+		return nil
+	}
+	sessionID := s.sessionIDs.allocate(peerAddr)
+	localOpen := OpenParams{SessionID: sessionID, Keepalive: s.localKeepalive, DeadTimer: s.localDeadTimer}
+	ss := NewSession(localOpen, peerAddr, conn, s.logger, ted, s.asn)
+	ss.keepaliveRangeEnabled = s.keepaliveRangeEnabled
+	ss.minKeepalive = s.minKeepalive
+	ss.maxKeepalive = s.maxKeepalive
+	ss.allowNegotiation = s.allowNegotiation
+	ss.onEstablished = func() { s.recordSetupResult(peerAddr, true) }
 	s.sessionList = append(s.sessionList, ss)
 	s.sessionMu.Unlock()
 	return ss
 }
 
-func (s *Server) awaitShutdown(ctx context.Context, logger *zap.Logger, stopGRPC func()) {
+func (s *Server) rejectSecondSession(conn net.Conn, peerAddr netip.Addr) {
+	s.logger.Warn("rejecting second PCEP session attempt from peer", zap.String("peer", peerAddr.String()))
+
+	pcerrMessage := pcep.NewPCErrMessage(pcepErrorTypeSecondSessionAttempt, pcepErrorValueSecondSessionAttempt, nil)
+	if byteMessage, err := pcerrMessage.Serialize(); err != nil {
+		s.logger.Warn("failed to serialize PCErr for second session attempt", zap.Error(err))
+	} else if _, err := conn.Write(byteMessage); err != nil {
+		s.logger.Warn("failed to send PCErr for second session attempt", zap.Error(err))
+	}
+
+	s.closeRejectedConn(conn, "second PCEP session attempt from peer")
+}
+
+func (s *Server) closeRejectedConn(conn net.Conn, why string) {
+	if err := conn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+		s.logger.Warn("failed to close rejected TCP connection",
+			zap.String("reason", why), zap.Error(err))
+	}
+}
+
+func (s *Server) awaitShutdown(ctx context.Context, stopGRPC func()) {
 	<-ctx.Done()
-	logger.Info("shutdown requested, stopping PCE server")
+	s.logger.Info("shutdown requested, stopping PCE server")
 	if err := s.Shutdown(); err != nil {
-		logger.Warn("failed to shut down PCEP server", zap.Error(err))
+		s.logger.Warn("failed to shut down PCEP server", zap.Error(err))
 	}
 	stopGRPC()
 }
@@ -256,18 +382,16 @@ func (s *Server) Shutdown() error {
 
 	var wg sync.WaitGroup
 	for _, ss := range sessions {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			s.gracefulCloseSession(ss)
-		}()
+		})
 	}
 	wg.Wait()
 
 	return err
 }
 
-// Sends a PCEP Close message with a bounded wait before force-closing the session.
+// gracefulCloseSession sends Close with a bounded wait before closing the connection.
 func (s *Server) gracefulCloseSession(ss *Session) {
 	sendDone := make(chan struct{})
 	go func() {
@@ -297,49 +421,57 @@ func (s *Server) closeSession(session *Session) {
 	session.clearSRPolicyIntents()
 
 	s.sessionMu.Lock()
-	for i, v := range s.sessionList {
-		if v.sessionID == session.sessionID {
-			s.sessionList[i] = s.sessionList[len(s.sessionList)-1]
-			s.sessionList = s.sessionList[:len(s.sessionList)-1]
-			break
-		}
+	if i := slices.Index(s.sessionList, session); i >= 0 {
+		s.sessionList[i] = s.sessionList[len(s.sessionList)-1]
+		s.sessionList = s.sessionList[:len(s.sessionList)-1]
 	}
 	s.sessionMu.Unlock()
 }
 
-// SearchSession returns a struct pointer of (Synced) session.
-// If not exist, return nil
-func (s *Server) SearchSession(peerAddr netip.Addr, onlySynced bool) *Session {
+// SearchSession returns the session for the given peer address.
+func (s *Server) SearchSession(peerAddr netip.Addr) *Session {
 	s.sessionMu.RLock()
 	defer s.sessionMu.RUnlock()
 	for _, pcepSession := range s.sessionList {
 		if pcepSession.peerAddr == peerAddr {
-			if !onlySynced || pcepSession.IsSynced() {
-				return pcepSession
-			}
+			return pcepSession
 		}
 	}
 	return nil
 }
 
-// Sessions returns a snapshot copy of the current session list, safe for concurrent use.
+// Sessions returns a copy of the current session list.
 func (s *Server) Sessions() []*Session {
 	s.sessionMu.RLock()
 	defer s.sessionMu.RUnlock()
 	return slices.Clone(s.sessionList)
 }
 
-// SRPolicies returns a map of registered SR Policy with key sessionAddr
-func (s *Server) SRPolicies() map[netip.Addr][]*table.SRPolicy {
-	s.sessionMu.RLock()
-	sessions := slices.Clone(s.sessionList)
-	s.sessionMu.RUnlock()
-
-	srPolicies := make(map[netip.Addr][]*table.SRPolicy)
-	for _, ss := range sessions {
-		if ss.IsSynced() {
-			srPolicies[ss.peerAddr] = ss.SRPolicies()
-		}
+func (s *Server) recordSetupResult(addr netip.Addr, ok bool) {
+	s.peerStatsMu.Lock()
+	defer s.peerStatsMu.Unlock()
+	if s.peerStats == nil {
+		s.peerStats = make(map[netip.Addr]*peerSetupStats)
 	}
-	return srPolicies
+	stats, exists := s.peerStats[addr]
+	if !exists {
+		stats = &peerSetupStats{}
+		s.peerStats[addr] = stats
+	}
+	if ok {
+		stats.ok++
+	} else {
+		stats.fail++
+	}
+}
+
+// PeerSetupStats returns cumulative session establishment outcomes for addr.
+// Counters persist across session teardown to match RFC 9826 sess-setup-ok/fail.
+func (s *Server) PeerSetupStats(addr netip.Addr) (ok, fail uint64) {
+	s.peerStatsMu.Lock()
+	defer s.peerStatsMu.Unlock()
+	if stats, exists := s.peerStats[addr]; exists {
+		return stats.ok, stats.fail
+	}
+	return 0, 0
 }

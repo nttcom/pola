@@ -59,7 +59,7 @@ func TestDeleteSession(t *testing.T) {
 		want     string
 	}{
 		{"plain text success", false, "success!\n"},
-		{"json success", true, "{\"status\": \"success\"}\n"},
+		{"json success", true, "{\"status\":\"success\"}\n"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -70,7 +70,7 @@ func TestDeleteSession(t *testing.T) {
 			})
 			assert.Equal(t, tt.want, out)
 			require.NotNil(t, fake.deleteSessionReq)
-			assert.Equal(t, netip.MustParseAddr("192.0.2.1").AsSlice(), fake.deleteSessionReq.Addr)
+			assert.Equal(t, netip.MustParseAddr("192.0.2.1").AsSlice(), fake.deleteSessionReq.PeerAddr)
 		})
 	}
 

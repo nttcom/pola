@@ -10,12 +10,12 @@ package api.pola.v1;
 option go_package = "github.com/nttcom/pola/api/pola/v1";
 
 service PCEService {
-  rpc CreateSRPolicy (CreateSRPolicyRequest) returns (CreateSRPolicyResponse);
-  rpc DeleteSRPolicy (DeleteSRPolicyRequest) returns (DeleteSRPolicyResponse);
-  rpc GetSessionList (GetSessionListRequest) returns (GetSessionListResponse);
-  rpc GetSRPolicyList (GetSRPolicyListRequest) returns (GetSRPolicyListResponse);
-  rpc GetTED (GetTEDRequest) returns (GetTEDResponse);
-  rpc DeleteSession (DeleteSessionRequest) returns (DeleteSessionResponse);
+  rpc CreateSRPolicy(CreateSRPolicyRequest) returns (CreateSRPolicyResponse);
+  rpc DeleteSRPolicy(DeleteSRPolicyRequest) returns (DeleteSRPolicyResponse);
+  rpc GetSessionList(GetSessionListRequest) returns (GetSessionListResponse);
+  rpc GetSRPolicyList(GetSRPolicyListRequest) returns (GetSRPolicyListResponse);
+  rpc GetTED(GetTEDRequest) returns (GetTEDResponse);
+  rpc DeleteSession(DeleteSessionRequest) returns (DeleteSessionResponse);
 }
 
 message Segment {
@@ -23,7 +23,6 @@ message Segment {
   string sid_structure = 2;
   string local_addr = 3;
   string remote_addr = 4;
-  // sid_absent indicates that the SID is omitted and the NAI identifies the segment.
   bool sid_absent = 5;
 }
 
@@ -35,7 +34,7 @@ enum SRPolicyType {
 
 message Waypoint {
   string router_id = 1;
-  string sid = 2; // optional: explicit SID override
+  string sid = 2; // Optional: explicit SID override
 }
 
 enum SRPolicyState {
@@ -47,7 +46,7 @@ enum SRPolicyState {
 }
 
 message SRPolicy {
-  bytes pcep_session_addr = 1;
+  bytes peer_addr = 1;
   bytes src_addr = 2;
   bytes dst_addr = 3;
   string src_router_id = 4;
@@ -66,23 +65,16 @@ message SRPolicy {
 
 message CreateSRPolicyRequest {
   SRPolicy sr_policy = 1;
-
-  // Not required when disable_path_compute is true.
   uint32 asn = 2;
-
   reserved 3;
-  reserved "sid_validate";
-
-  // Use endpoints and segments provided in the request without TED lookup
-  // or path computation (no CSPF or router-ID resolution).
   bool disable_path_compute = 4;
-
-  // Skip checking that explicit SIDs exist in the TED.
   bool no_sid_validate = 5;
+  reserved "sid_validate";
 }
 
 message CreateSRPolicyResponse {
-  bool is_success = 1;
+  reserved 1;
+  reserved "is_success";
 }
 
 message DeleteSRPolicyRequest {
@@ -91,13 +83,25 @@ message DeleteSRPolicyRequest {
 }
 
 message DeleteSRPolicyResponse {
-  bool is_success = 1;
+  reserved 1;
+  reserved "is_success";
 }
 
 enum SessionState {
   SESSION_STATE_UNSPECIFIED = 0;
-  SESSION_STATE_DOWN = 1;
+  reserved 1;
   SESSION_STATE_UP = 2;
+  SESSION_STATE_TCP_PENDING = 3;
+  SESSION_STATE_OPEN_WAIT = 4;
+  SESSION_STATE_KEEP_WAIT = 5;
+  reserved "SESSION_STATE_DOWN";
+}
+
+enum PccType {
+  PCC_TYPE_UNSPECIFIED = 0;
+  PCC_TYPE_CISCO_LEGACY = 1;
+  PCC_TYPE_JUNIPER_LEGACY = 2;
+  PCC_TYPE_RFC_COMPLIANT = 3;
 }
 
 enum CapabilityType {
@@ -126,7 +130,8 @@ message StatefulCapability {
 message SrCapability {
   bool unlimited_msd = 1;
   bool nai_supported = 2;
-  uint32 msd = 3;
+  // Unset when unlimited_msd is true (RFC 8664 §5.1).
+  optional uint32 msd = 3;
 }
 
 message Srv6Capability {
@@ -135,6 +140,8 @@ message Srv6Capability {
 
 message PathSetupTypeCapability {
   repeated uint32 path_setup_types = 1;
+  // Per-PST capability sub-TLVs (RFC 8408 §3).
+  repeated Capability sub_capabilities = 2;
 }
 
 message AssocTypeListCapability {
@@ -177,15 +184,86 @@ message Capability {
   }
 }
 
+message SessionTimers {
+  uint32 keepalive = 1;
+  uint32 dead_timer = 2;
+}
+
+message EffectiveTimers {
+  uint32 keepalive = 1;
+  uint32 dead_timer = 2;
+}
+
+// RFC 9826 ietf-pcep: /pcep/entity/peers/peer/sessions/session/initiator
+enum SessionInitiator {
+  SESSION_INITIATOR_UNSPECIFIED = 0;
+  SESSION_INITIATOR_LOCAL = 1;
+  SESSION_INITIATOR_REMOTE = 2;
+}
+
+// LSP-DB synchronization state defined by RFC 8231 and exposed by RFC 9826.
+enum LspDbSyncState {
+  LSP_DB_SYNC_STATE_UNSPECIFIED = 0;
+  LSP_DB_SYNC_STATE_PENDING = 1;
+  LSP_DB_SYNC_STATE_ONGOING = 2;
+  LSP_DB_SYNC_STATE_FINISHED = 3;
+}
+
+// MessageCounter contains sent and received message counters.
+message MessageCounter {
+  uint64 sent = 1;
+  uint64 rcvd = 2;
+}
+
+// SessionStats contains per-session PCEP message counters.
+// Open and close are Pola-specific additions.
+message SessionStats {
+  MessageCounter keepalive = 1; // keepalive-sent / keepalive-rcvd (RFC 9826)
+  MessageCounter pcerr = 2; // pcerr-sent / pcerr-rcvd (RFC 9826)
+  MessageCounter pcntf = 3; // pcntf-sent / pcntf-rcvd (RFC 9826)
+  MessageCounter report = 4; // rpt-sent / rpt-rcvd (RFC 9826, stateful)
+  MessageCounter update = 5; // upd-sent / upd-rcvd (RFC 9826, stateful)
+  MessageCounter initiate = 6; // pcinitiate-sent / pcinitiate-rcvd (RFC 9826, initiation)
+  uint64 unrecognized_rcvd = 7; // unknown-rcvd (RFC 9826)
+  uint64 corrupt_rcvd = 8; // corrupt-rcvd (RFC 9826)
+  uint64 sess_setup_ok = 9; // sess-setup-ok (RFC 9826; per peer, survives session teardown)
+  uint64 sess_setup_fail = 10; // sess-setup-fail (RFC 9826; per peer, survives session teardown)
+  MessageCounter open = 11; // open-sent / open-rcvd (Pola-specific, not in RFC 9826)
+  MessageCounter close = 12; // close-sent / close-rcvd (Pola-specific, not in RFC 9826)
+  MessageCounter pcreq = 13; // pcreq-sent / pcreq-rcvd (RFC 9826)
+  MessageCounter pcrep = 14; // pcrep-sent / pcrep-rcvd (RFC 9826)
+}
+
 message Session {
-  bytes addr = 1;
+  bytes peer_addr = 1;
   SessionState state = 2;
   reserved 3;
-  reserved "caps";
-  bool is_synced = 4;
-  repeated Capability capabilities = 5;
-  // Populated by GetSRPolicyList; empty when returned from GetSessionList.
-  repeated SRPolicy sr_policies = 6;
+  reserved 4;
+  repeated Capability local_capabilities = 5;
+  reserved 6;
+  PccType pcc_type = 7;
+  repeated Capability peer_capabilities = 8;
+  SessionTimers local_timers = 9;
+  SessionTimers peer_timers = 10;
+  optional uint32 local_session_id = 11;
+  optional uint32 peer_session_id = 12;
+  // Valid when state is SESSION_STATE_UP. Do not infer readiness from
+  // presence or zero values; RFC 5440 permits a negotiated Keepalive of 0.
+  EffectiveTimers effective_timers = 13;
+  SessionInitiator initiator = 14;
+  LspDbSyncState sync_state = 15;
+  int64 created_at_unix_nano = 16; // Unix time in nanoseconds; 0 = unset.
+  int64 established_at_unix_nano = 17; // Unix time in nanoseconds; 0 = not established.
+  SessionStats stats = 18; // Populated only when include_stats is true.
+  int64 uptime_nanos = 19; // Duration since session establishment in nanoseconds; 0 = not established.
+  reserved "caps", "is_synced", "sr_policies";
+}
+
+message SRPolicySession {
+  bytes peer_addr = 1;
+  SessionState state = 2;
+  LspDbSyncState sync_state = 3;
+  repeated SRPolicy sr_policies = 4;
 }
 
 message EndpointBehavior {
@@ -211,9 +289,9 @@ message MultiTopoID {
 
 message LsSrv6SID {
   repeated SID sids = 1;
-	EndpointBehavior endpoint_behavior = 2;
+  EndpointBehavior endpoint_behavior = 2;
   SidStructure sid_structure = 3;
-	repeated MultiTopoID multi_topo_ids = 4;
+  repeated MultiTopoID multi_topo_ids = 4;
 }
 
 message LsPrefix {
@@ -259,17 +337,14 @@ message LsNode {
   string hostname = 4;
   uint32 srgb_begin = 5;
   uint32 srgb_end = 6;
-  repeated LsLink ls_links = 7;
-  repeated LsPrefix ls_prefixes = 8;
-  repeated LsSrv6SID ls_srv6_sids = 9;
-}
-
-message TED {
-  bool enable = 1;
-  repeated LsNode ls_nodes = 2;
+  repeated LsLink links = 7;
+  repeated LsPrefix prefixes = 8;
+  repeated LsSrv6SID srv6_sids = 9;
 }
 
 message GetSessionListRequest {
+  bytes peer_addr = 1; // Empty selects every session.
+  bool include_stats = 2; // Include session message statistics.
 }
 
 message GetSessionListResponse {
@@ -277,28 +352,27 @@ message GetSessionListResponse {
 }
 
 message GetSRPolicyListRequest {
-  // Optional filter: only return policies for the PCEP session with this peer address.
-  bytes session_addr = 1;
+  bytes peer_addr = 1;
 }
 
 message GetSRPolicyListResponse {
   reserved 1;
   reserved "sr_policies";
-  repeated Session sessions = 2;
+  repeated SRPolicySession sessions = 2;
 }
 
-message GetTEDRequest {
-}
+message GetTEDRequest {}
 
 message GetTEDResponse {
-  bool enable = 1;
-  repeated LsNode ls_nodes = 2;
+  bool enabled = 1;
+  repeated LsNode nodes = 2;
 }
 
 message DeleteSessionRequest {
-  bytes addr = 1;
+  bytes peer_addr = 1;
 }
 
 message DeleteSessionResponse {
-  bool is_success = 1;
+  reserved 1;
+  reserved "is_success";
 }

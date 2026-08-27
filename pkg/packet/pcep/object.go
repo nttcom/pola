@@ -302,13 +302,13 @@ func (o *OpenObject) Len() int {
 }
 
 // NewOpenObject creates a new OpenObject.
-func NewOpenObject(sessionID uint8, keepalive uint8, capabilities []CapabilityInterface) *OpenObject {
+func NewOpenObject(sessionID uint8, keepalive uint8, deadTimer uint8, capabilities []CapabilityInterface) *OpenObject {
 	return &OpenObject{
 		ObjectType: ObjectTypeOpenOpen,
 		Version:    uint8(1), // PCEP version. Current version is 1
 		Flag:       uint8(0),
 		Keepalive:  keepalive,
-		Deadtime:   DeadTimerFor(keepalive),
+		Deadtime:   deadTimer,
 		Sid:        sessionID,
 		Caps:       capabilities,
 	}
@@ -323,6 +323,22 @@ func DeadTimerFor(keepalive uint8) uint8 {
 		return math.MaxUint8
 	}
 	return uint8(d)
+}
+
+// ValidateTimers validates keepalive/deadTimer according to RFC 5440 §7.3.
+// A nil deadTimer uses the RFC-recommended default, DeadTimerFor(keepalive).
+func ValidateTimers(keepalive uint8, deadTimer *uint8) error {
+	resolved := DeadTimerFor(keepalive)
+	if deadTimer != nil {
+		resolved = *deadTimer
+	}
+	switch {
+	case keepalive == 0 && resolved != 0:
+		return errors.New("deadTimer must be 0 when keepalive is 0")
+	case keepalive != 0 && resolved != 0 && resolved <= keepalive:
+		return fmt.Errorf("deadTimer must be greater than keepalive (got deadTimer=%d, keepalive=%d)", resolved, keepalive)
+	}
+	return nil
 }
 
 // BandwidthObject is a PCEP Bandwidth object (RFC 5440 §7.7).
@@ -1816,13 +1832,6 @@ const (
 	ObjectTypeAssociationIPv6 ObjectType = 0x02
 )
 
-// Association types for SR Policy associations, including legacy PCC values.
-const (
-	AssociationTypeSRPolicyAssociation        AssocType = 0x06   // standard
-	AssociationTypeSRPolicyAssociationCisco   AssocType = 0x14   // Cisco-specific
-	AssociationTypeSRPolicyAssociationJuniper AssocType = 0xffe1 // Juniper-specific (deprecated)
-)
-
 // PccType values, selecting how SR Policy attributes are encoded towards a PCC.
 const (
 	// CiscoLegacy encodes color and preference in a Cisco VENDOR-INFORMATION object.
@@ -1839,9 +1848,9 @@ func DeterminePccType(caps []CapabilityInterface) (pccType PccType) {
 	for _, cap := range caps {
 		if t, ok := cap.(*AssocTypeList); ok {
 			for _, v := range t.AssocTypes {
-				if v == AssociationTypeSRPolicyAssociationCisco {
+				if v == AssocTypeSRPolicyAssociationCisco {
 					pccType = CiscoLegacy
-				} else if v == AssociationTypeSRPolicyAssociationJuniper {
+				} else if v == AssocTypeSRPolicyAssociationJuniper {
 					pccType = JuniperLegacy
 					break
 				}
@@ -1990,7 +1999,7 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 			return nil, fmt.Errorf("invalid endpoint address for JuniperLegacy (NewAssociationObject): only IPv4 is supported, got dst=%v", dstAddr)
 		}
 		o.AssocID = 0
-		o.AssocType = AssociationTypeSRPolicyAssociationJuniper
+		o.AssocType = AssocTypeSRPolicyAssociationJuniper
 		associationObjectTLVs := []TLVInterface{
 			&ExtendedAssociationIDIPv4Juniper{
 				ExtendedAssociationID: ExtendedAssociationID{
@@ -2015,8 +2024,8 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 		}
 		o.TLVs = append(o.TLVs, associationObjectTLVs...)
 	} else {
-		o.AssocID = 1                                    // (I.D. pce-segment-routing-policy-cp-07 5.1)
-		o.AssocType = AssociationTypeSRPolicyAssociation // (I.D. pce-segment-routing-policy-cp-07 5.1)
+		o.AssocID = 1                              // (I.D. pce-segment-routing-policy-cp-07 5.1)
+		o.AssocType = AssocTypeSRPolicyAssociation // (I.D. pce-segment-routing-policy-cp-07 5.1)
 		associationObjectTLVs := []TLVInterface{
 			&ExtendedAssociationID{
 				Color:    color,

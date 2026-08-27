@@ -48,11 +48,12 @@ func main() {
 
 	i := 0
 	for _, session := range ret.GetSessions() {
-		sessionAddr := formatAddr(session.GetAddr())
+		peerAddr := formatAddr(session.GetPeerAddr())
+		fmt.Printf("session: %s (state: %s, syncState: %s)\n", peerAddr, session.GetState(), session.GetSyncState())
 		for _, srPolicy := range session.GetSrPolicies() {
 			fmt.Printf("srPolicy(%d):\n", i)
 			i++
-			fmt.Printf("  sessionAddr: %s\n", sessionAddr)
+			fmt.Printf("  peerAddr: %s\n", peerAddr)
 			fmt.Printf("  policyName: %s\n", srPolicy.GetPolicyName())
 			fmt.Printf("  srcAddr: %s\n", formatAddr(srPolicy.GetSrcAddr()))
 			fmt.Printf("  dstAddr: %s\n", formatAddr(srPolicy.GetDstAddr()))
@@ -79,7 +80,21 @@ func formatSegmentList(segmentList []*pb.Segment) string {
 
 	sids := make([]string, 0, len(segmentList))
 	for _, segment := range segmentList {
-		sids = append(sids, segment.GetSid())
+		sids = append(sids, formatSegment(segment))
 	}
 	return strings.Join(sids, " -> ")
+}
+
+func formatSegment(segment *pb.Segment) string {
+	local, remote := segment.GetLocalAddr(), segment.GetRemoteAddr()
+	switch {
+	case local == "" && remote == "":
+		return segment.GetSid()
+	case remote == "":
+		return fmt.Sprintf("%s (local=%s)", segment.GetSid(), local)
+	case local == "":
+		return fmt.Sprintf("%s (remote=%s)", segment.GetSid(), remote)
+	default:
+		return fmt.Sprintf("%s (local=%s, remote=%s)", segment.GetSid(), local, remote)
+	}
 }

@@ -30,6 +30,7 @@ func TestReasonConstantsMatchServer(t *testing.T) {
 	assert.Equal(t, server.ReasonDestinationUnreachable, reasonDestinationUnreach)
 	assert.Equal(t, server.ReasonMetricNotCarried, reasonMetricNotCarried)
 	assert.Equal(t, server.ReasonPCEPSessionNotSynced, reasonPCEPSessionNotSynced)
+	assert.Equal(t, server.ReasonPCEPSessionNotFound, reasonPCEPSessionNotFound)
 	assert.Equal(t, server.ReasonSIDValidationFailed, reasonSIDValidationFailed)
 }
 
@@ -52,6 +53,7 @@ func TestTranslateCreateSRPolicyError(t *testing.T) {
 		{"TED disabled gets a TED hint, not the SID hint", newErr(codes.FailedPrecondition, "TED_DISABLED", "ted is disabled"), "enable TED sync"},
 		{"TED not synced gets a retry hint", newErr(codes.FailedPrecondition, "TED_NOT_SYNCED", "no node in TED"), "retry shortly"},
 		{"unsynced PCEP session gets a session hint", newErr(codes.FailedPrecondition, "PCEP_SESSION_NOT_SYNCED", "no synced session with 10.0.0.1"), "PCEP session"},
+		{"missing PCEP session gets a `pola session` hint", newErr(codes.NotFound, "PCEP_SESSION_NOT_FOUND", "no session with address 10.0.0.1 found"), "pola session"},
 		{"unreachable destination gets a topology hint", newErr(codes.FailedPrecondition, "DESTINATION_UNREACHABLE", "next node not found"), "no path exists"},
 		{"uncarried metric gets a metric hint", newErr(codes.FailedPrecondition, "METRIC_NOT_CARRIED", "metric METRIC_TYPE_TE not defined"), "not advertised"},
 		{"invalid argument gets no hint", newErr(codes.InvalidArgument, "INVALID_REQUEST", "ASN must not be zero"), ""},
@@ -291,13 +293,13 @@ func TestAddSRPolicyWithEndpointAddr(t *testing.T) {
 
 		require.NotNil(t, fake.createSRPolicyReq)
 		want := &pb.SRPolicy{
-			PcepSessionAddr: netip.MustParseAddr("192.0.2.1").AsSlice(),
-			SrcAddr:         netip.MustParseAddr("192.0.2.1").AsSlice(),
-			DstAddr:         netip.MustParseAddr("192.0.2.2").AsSlice(),
-			SegmentList:     []*pb.Segment{{Sid: "16003", LocalAddr: "192.0.2.1", RemoteAddr: "192.0.2.2", SidStructure: "32,16,0,80"}},
-			Color:           100,
-			PolicyName:      "pol1",
-			Type:            pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT,
+			PeerAddr:    netip.MustParseAddr("192.0.2.1").AsSlice(),
+			SrcAddr:     netip.MustParseAddr("192.0.2.1").AsSlice(),
+			DstAddr:     netip.MustParseAddr("192.0.2.2").AsSlice(),
+			SegmentList: []*pb.Segment{{Sid: "16003", LocalAddr: "192.0.2.1", RemoteAddr: "192.0.2.2", SidStructure: "32,16,0,80"}},
+			Color:       100,
+			PolicyName:  "pol1",
+			Type:        pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT,
 		}
 		assert.Equal(t, want, fake.createSRPolicyReq.SrPolicy)
 		assert.Equal(t, uint32(65000), fake.createSRPolicyReq.Asn)
@@ -335,14 +337,14 @@ func TestAddSRPolicyWithRouterID(t *testing.T) {
 
 		require.NotNil(t, fake.createSRPolicyReq)
 		want := &pb.SRPolicy{
-			PcepSessionAddr: netip.MustParseAddr("192.0.2.1").AsSlice(),
-			SrcRouterId:     "0000.0aff.0001",
-			DstRouterId:     "0000.0aff.0002",
-			Color:           100,
-			PolicyName:      "pol1",
-			Type:            pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC,
-			Metric:          pb.MetricType_METRIC_TYPE_DELAY,
-			Waypoints:       []*pb.Waypoint{{RouterId: "0000.0aff.0003"}},
+			PeerAddr:    netip.MustParseAddr("192.0.2.1").AsSlice(),
+			SrcRouterId: "0000.0aff.0001",
+			DstRouterId: "0000.0aff.0002",
+			Color:       100,
+			PolicyName:  "pol1",
+			Type:        pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC,
+			Metric:      pb.MetricType_METRIC_TYPE_DELAY,
+			Waypoints:   []*pb.Waypoint{{RouterId: "0000.0aff.0003"}},
 		}
 		assert.Equal(t, want, fake.createSRPolicyReq.SrPolicy)
 		assert.Equal(t, uint32(65000), fake.createSRPolicyReq.Asn)

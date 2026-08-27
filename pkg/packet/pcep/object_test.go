@@ -754,6 +754,39 @@ func TestOpenObject_Serialize_ObjectLengthBoundary(t *testing.T) {
 	assert.ErrorContains(t, err, "exceeds")
 }
 
+func TestValidateTimers(t *testing.T) {
+	t.Parallel()
+
+	uint8Ptr := func(v uint8) *uint8 { return &v }
+
+	cases := map[string]struct {
+		keepalive uint8
+		deadTimer *uint8
+		wantErr   bool
+	}{
+		"NilDeadTimer_KeepaliveZero":       {keepalive: 0, deadTimer: nil, wantErr: false},
+		"NilDeadTimer_KeepaliveNonzero":    {keepalive: 30, deadTimer: nil, wantErr: false},
+		"ExplicitZero_KeepaliveZero":       {keepalive: 0, deadTimer: uint8Ptr(0), wantErr: false},
+		"ExplicitNonzero_KeepaliveZero":    {keepalive: 0, deadTimer: uint8Ptr(1), wantErr: true},
+		"ExplicitGreater_KeepaliveNonzero": {keepalive: 30, deadTimer: uint8Ptr(60), wantErr: false},
+		"ExplicitEqual_KeepaliveNonzero":   {keepalive: 30, deadTimer: uint8Ptr(30), wantErr: true},
+		"ExplicitLess_KeepaliveNonzero":    {keepalive: 30, deadTimer: uint8Ptr(10), wantErr: true},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			err := ValidateTimers(tt.keepalive, tt.deadTimer)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestLSPAObject_RoundTrip(t *testing.T) {
 	t.Parallel()
 
@@ -1164,20 +1197,20 @@ func TestAssociationObject_RoundTrip(t *testing.T) {
 	cases := map[string]AssociationObject{
 		"IPv4_NoTLVs": {
 			ObjectType: ObjectTypeAssociationIPv4,
-			AssocType:  AssociationTypeSRPolicyAssociation,
+			AssocType:  AssocTypeSRPolicyAssociation,
 			AssocID:    1,
 			AssocSrc:   v4,
 		},
 		"IPv4_RFlag": {
 			ObjectType: ObjectTypeAssociationIPv4,
 			RFlag:      true,
-			AssocType:  AssociationTypeSRPolicyAssociation,
+			AssocType:  AssocTypeSRPolicyAssociation,
 			AssocID:    1,
 			AssocSrc:   v4,
 		},
 		"IPv4_WithSRPolicyTLVs": {
 			ObjectType: ObjectTypeAssociationIPv4,
-			AssocType:  AssociationTypeSRPolicyAssociation,
+			AssocType:  AssocTypeSRPolicyAssociation,
 			AssocID:    1,
 			AssocSrc:   v4,
 			TLVs: []TLVInterface{
@@ -1198,13 +1231,13 @@ func TestAssociationObject_RoundTrip(t *testing.T) {
 		},
 		"IPv6_NoTLVs": {
 			ObjectType: ObjectTypeAssociationIPv6,
-			AssocType:  AssociationTypeSRPolicyAssociation,
+			AssocType:  AssocTypeSRPolicyAssociation,
 			AssocID:    1,
 			AssocSrc:   v6,
 		},
 		"IPv6_WithExtendedAssociationID": {
 			ObjectType: ObjectTypeAssociationIPv6,
-			AssocType:  AssociationTypeSRPolicyAssociation,
+			AssocType:  AssocTypeSRPolicyAssociation,
 			AssocID:    1,
 			AssocSrc:   v6,
 			TLVs: []TLVInterface{
@@ -1772,7 +1805,7 @@ func TestNewOpenObject(t *testing.T) {
 	t.Parallel()
 
 	caps := []CapabilityInterface{&SRPCECapability{MaximumSidDepth: 10}}
-	o := NewOpenObject(7, 30, caps)
+	o := NewOpenObject(7, 30, DeadTimerFor(30), caps)
 
 	want := &OpenObject{
 		ObjectType: ObjectTypeOpenOpen,
@@ -1785,11 +1818,11 @@ func TestNewOpenObject(t *testing.T) {
 	assert.Equal(t, want, o)
 }
 
-func TestNewOpenObject_DeadtimeClampsInsteadOfWrapping(t *testing.T) {
+func TestNewOpenObject_UsesGivenDeadtime(t *testing.T) {
 	t.Parallel()
 
-	o := NewOpenObject(7, 65, nil)
-	assert.Equal(t, uint8(math.MaxUint8), o.Deadtime)
+	o := NewOpenObject(7, 30, 0, nil)
+	assert.Zero(t, o.Deadtime)
 }
 
 func TestDeadTimerFor(t *testing.T) {
@@ -2411,16 +2444,16 @@ func TestDeterminePccType(t *testing.T) {
 		"NoCaps":          {nil, RFCCompliant},
 		"NoAssocTypeList": {[]CapabilityInterface{&SRPCECapability{}}, RFCCompliant},
 		"CiscoAssocType": {
-			[]CapabilityInterface{&AssocTypeList{AssocTypes: []AssocType{AssociationTypeSRPolicyAssociationCisco}}},
+			[]CapabilityInterface{&AssocTypeList{AssocTypes: []AssocType{AssocTypeSRPolicyAssociationCisco}}},
 			CiscoLegacy,
 		},
 		"JuniperAssocType": {
-			[]CapabilityInterface{&AssocTypeList{AssocTypes: []AssocType{AssociationTypeSRPolicyAssociationJuniper}}},
+			[]CapabilityInterface{&AssocTypeList{AssocTypes: []AssocType{AssocTypeSRPolicyAssociationJuniper}}},
 			JuniperLegacy,
 		},
 		"JuniperWinsOverCisco": {
 			[]CapabilityInterface{&AssocTypeList{AssocTypes: []AssocType{
-				AssociationTypeSRPolicyAssociationCisco, AssociationTypeSRPolicyAssociationJuniper,
+				AssocTypeSRPolicyAssociationCisco, AssocTypeSRPolicyAssociationJuniper,
 			}}},
 			JuniperLegacy,
 		},
@@ -2440,7 +2473,7 @@ func TestAssociationObject_DecodeFromBytes_Errors(t *testing.T) {
 	v4Body := []uint8{0x00, 0x00, 0x00, 0x00, 0x00, 0x06, 0x00, 0x01, 0xc0, 0x00, 0x02, 0x01}
 	v6Body := AppendByteSlices(
 		make([]uint8, 4),
-		Uint16ToByteSlice(uint16(AssociationTypeSRPolicyAssociation)),
+		Uint16ToByteSlice(uint16(AssocTypeSRPolicyAssociation)),
 		Uint16ToByteSlice(uint16(1)),
 		netip.MustParseAddr("2001:db8::1").AsSlice(),
 	)

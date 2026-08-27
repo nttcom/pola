@@ -232,8 +232,7 @@ func newEnrichedSegment(segment *pb.Segment, usidMode bool) (table.Segment, erro
 	}
 }
 
-// resolvedPath is the path of the requested SR Policy: its endpoints, its
-// segment list, and the metric it was optimized for.
+// resolvedPath contains the resolved SR Policy path.
 type resolvedPath struct {
 	SegmentList []table.Segment
 	SrcAddr     netip.Addr
@@ -241,9 +240,7 @@ type resolvedPath struct {
 	Metric      table.MetricType
 }
 
-// resolvePath resolves the SR Policy path either by computing it over the TED,
-// or, when path computation is disabled, by taking the request values verbatim.
-// Metric is table.UnspecifiedMetric in the latter case, since nothing was optimized.
+// resolvePath resolves the SR Policy path using the TED or request values.
 func resolvePath(s *APIServer, input *pb.CreateSRPolicyRequest, disablePathCompute bool) (resolvedPath, error) {
 	var srcAddr, dstAddr netip.Addr
 	var segmentList []table.Segment
@@ -262,7 +259,7 @@ func resolvePath(s *APIServer, input *pb.CreateSRPolicyRequest, disablePathCompu
 			return resolvedPath{}, newStatus(codes.FailedPrecondition, ReasonTEDNotSynced, "no node in TED")
 		}
 
-		// Check the ASN against the first TED node; all nodes are expected to share the same ASN.
+		// All TED nodes are expected to share the same ASN.
 		for _, node := range ted.Nodes {
 			if node == nil {
 				continue
@@ -320,8 +317,7 @@ func resolvePath(s *APIServer, input *pb.CreateSRPolicyRequest, disablePathCompu
 // resolveSRPolicyIntent resolves the candidate-path type and metric per RFC 9256 §2.4.2.
 func resolveSRPolicyIntent(inputSRPolicy *pb.SRPolicy, disablePathCompute bool, metricType table.MetricType) (table.PolicyType, table.MetricType, error) {
 	if disablePathCompute {
-		// disable_path_compute uses the given SegmentList as an explicit candidate path,
-		// regardless of the requested policy type.
+		// disable_path_compute treats the given SegmentList as an explicit path.
 		return table.PolicyTypeExplicit, table.UnspecifiedMetric, nil
 	}
 
@@ -338,7 +334,7 @@ func resolveSRPolicyIntent(inputSRPolicy *pb.SRPolicy, disablePathCompute bool, 
 func sendSRPolicyRequest(s *APIServer, input *pb.CreateSRPolicyRequest, path resolvedPath, disablePathCompute bool) error {
 	inputSRPolicy := input.GetSrPolicy()
 
-	pcepSession, err := getSyncedPCEPSession(s.pce, inputSRPolicy.GetPcepSessionAddr())
+	pcepSession, err := getSyncedPCEPSession(s.pce, inputSRPolicy.GetPeerAddr())
 	if err != nil {
 		return wrapStatusError(err, "failed to get synchronized PCEP session")
 	}
@@ -395,7 +391,7 @@ func (s *APIServer) CreateSRPolicy(_ context.Context, req *pb.CreateSRPolicyRequ
 		return nil, wrapStatusError(err, "failed to send SR policy request")
 	}
 
-	return &pb.CreateSRPolicyResponse{IsSuccess: true}, nil
+	return &pb.CreateSRPolicyResponse{}, nil
 }
 
 func (s *APIServer) validateSIDs(req *pb.CreateSRPolicyRequest, segmentList []table.Segment) error {
@@ -469,7 +465,7 @@ func (s *APIServer) validateSIDs(req *pb.CreateSRPolicyRequest, segmentList []ta
 func (s *APIServer) DeleteSRPolicy(_ context.Context, input *pb.DeleteSRPolicyRequest) (*pb.DeleteSRPolicyResponse, error) {
 	err := validate(input.GetSrPolicy(), input.GetAsn(), ValidationDelete)
 	if err != nil {
-		return &pb.DeleteSRPolicyResponse{IsSuccess: false}, err
+		return nil, err
 	}
 
 	inputSRPolicy := input.GetSrPolicy()
@@ -480,23 +476,19 @@ func (s *APIServer) DeleteSRPolicy(_ context.Context, input *pb.DeleteSRPolicyRe
 		var ok bool
 		srcAddr, ok = netip.AddrFromSlice(inputSRPolicy.GetSrcAddr())
 		if !ok {
-			return &pb.DeleteSRPolicyResponse{
-				IsSuccess: false,
-			}, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "invalid source address")
+			return nil, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "invalid source address")
 		}
 	}
 
 	dstAddr, ok := netip.AddrFromSlice(inputSRPolicy.GetDstAddr())
 	if !ok {
-		return &pb.DeleteSRPolicyResponse{
-			IsSuccess: false,
-		}, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "invalid destination address")
+		return nil, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "invalid destination address")
 	}
 
 	for _, segment := range inputSRPolicy.GetSegmentList() {
 		seg, err := newEnrichedSegment(segment, s.usidMode)
 		if err != nil {
-			return &pb.DeleteSRPolicyResponse{IsSuccess: false}, err
+			return nil, err
 		}
 		segmentList = append(segmentList, seg)
 	}
@@ -504,9 +496,9 @@ func (s *APIServer) DeleteSRPolicy(_ context.Context, input *pb.DeleteSRPolicyRe
 	s.logger.Info("Received DeleteSRPolicy API request")
 	s.logger.Debug("Received parameter", zap.Any("input", input))
 
-	pcepSession, err := getSyncedPCEPSession(s.pce, inputSRPolicy.GetPcepSessionAddr())
+	pcepSession, err := getSyncedPCEPSession(s.pce, inputSRPolicy.GetPeerAddr())
 	if err != nil {
-		return &pb.DeleteSRPolicyResponse{IsSuccess: false}, err
+		return nil, err
 	}
 
 	srPolicy := table.SRPolicy{
@@ -523,45 +515,52 @@ func (s *APIServer) DeleteSRPolicy(_ context.Context, input *pb.DeleteSRPolicyRe
 		srPolicy.PlspID = id
 
 		if err := pcepSession.RequestSRPolicyDeleted(srPolicy); err != nil {
-			return &pb.DeleteSRPolicyResponse{IsSuccess: false}, newStatus(codes.Internal, ReasonPCEPRequestFailed, "failed to send PC delete: %v", err)
+			return nil, newStatus(codes.Internal, ReasonPCEPRequestFailed, "failed to send PC delete: %v", err)
 		}
 	} else {
-		return &pb.DeleteSRPolicyResponse{IsSuccess: false}, newStatus(codes.NotFound, ReasonSRPolicyNotFound, "requested SR Policy not found")
+		return nil, newStatus(codes.NotFound, ReasonSRPolicyNotFound, "requested SR Policy not found")
 	}
 
-	return &pb.DeleteSRPolicyResponse{IsSuccess: true}, nil
+	return &pb.DeleteSRPolicyResponse{}, nil
 }
 
-// GetSRPolicyList returns a list of SR Policies registered with PCEP sessions.
-func (s *APIServer) GetSRPolicyList(_ context.Context, req *pb.GetSRPolicyListRequest) (*pb.GetSRPolicyListResponse, error) {
-	s.logger.Info("Received GetSRPolicyList API request")
-
+// srPolicyListFilter validates and parses the session filter.
+func srPolicyListFilter(req *pb.GetSRPolicyListRequest) (netip.Addr, error) {
 	var filterAddr netip.Addr
-	if raw := req.GetSessionAddr(); len(raw) > 0 {
+	if raw := req.GetPeerAddr(); len(raw) > 0 {
 		var ok bool
 		filterAddr, ok = netip.AddrFromSlice(raw)
 		if !ok {
-			return nil, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "invalid session filter address %v", raw)
+			return netip.Addr{}, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "invalid session filter address %v", raw)
 		}
+	}
+	return filterAddr, nil
+}
+
+// GetSRPolicyList returns SR Policies grouped by PCEP session.
+func (s *APIServer) GetSRPolicyList(_ context.Context, req *pb.GetSRPolicyListRequest) (*pb.GetSRPolicyListResponse, error) {
+	s.logger.Info("Received GetSRPolicyList API request")
+
+	filterAddr, err := srPolicyListFilter(req)
+	if err != nil {
+		return nil, err
 	}
 
-	policiesByPeer := s.pce.SRPolicies()
-	peerAddrs := make([]netip.Addr, 0, len(policiesByPeer))
-	for peerAddr := range policiesByPeer {
-		if filterAddr.IsValid() && peerAddr != filterAddr {
-			continue
-		}
-		peerAddrs = append(peerAddrs, peerAddr)
-	}
-	slices.SortFunc(peerAddrs, func(a, b netip.Addr) int { return a.Compare(b) })
+	pcepSessions := s.pce.Sessions()
+	sortSessionsByAddr(pcepSessions)
 
 	routerIDIndex := s.pce.TED().RouterIDIndex()
 
-	sessions := make([]*pb.Session, 0, len(peerAddrs))
-	for _, peerAddr := range peerAddrs {
-		pbPolicies := make([]*pb.SRPolicy, 0, len(policiesByPeer[peerAddr]))
-		for _, policy := range policiesByPeer[peerAddr] {
-			pbPolicies = append(pbPolicies, s.buildPBSRPolicy(peerAddr, policy, routerIDIndex))
+	sessions := make([]*pb.SRPolicySession, 0, len(pcepSessions))
+	for _, pcepSession := range pcepSessions {
+		if filterAddr.IsValid() && pcepSession.peerAddr != filterAddr {
+			continue
+		}
+
+		policies := pcepSession.SRPolicies()
+		pbPolicies := make([]*pb.SRPolicy, 0, len(policies))
+		for _, policy := range policies {
+			pbPolicies = append(pbPolicies, s.buildPBSRPolicy(pcepSession, policy, routerIDIndex))
 		}
 		slices.SortFunc(pbPolicies, func(a, b *pb.SRPolicy) int {
 			if a.GetColor() < b.GetColor() {
@@ -579,10 +578,7 @@ func (s *APIServer) GetSRPolicyList(_ context.Context, req *pb.GetSRPolicyListRe
 			return strings.Compare(a.GetPolicyName(), b.GetPolicyName())
 		})
 
-		sessions = append(sessions, &pb.Session{
-			Addr:       peerAddr.AsSlice(),
-			SrPolicies: pbPolicies,
-		})
+		sessions = append(sessions, buildPBSRPolicySession(pcepSession, pbPolicies))
 	}
 
 	s.logger.Debug("Send SRPolicyList API reply")
@@ -623,8 +619,8 @@ const (
 
 var validator = map[ValidationKind]func(policy *pb.SRPolicy, asn uint32) error{
 	ValidationAdd: func(policy *pb.SRPolicy, _ uint32) error {
-		if policy.PcepSessionAddr == nil {
-			return errors.New("policy.PCEP session address must not be nil")
+		if policy.PeerAddr == nil {
+			return errors.New("policy.PeerAddr must not be nil")
 		}
 		if policy.Color == 0 {
 			return errors.New("policy.Color must not be zero")
@@ -639,8 +635,8 @@ var validator = map[ValidationKind]func(policy *pb.SRPolicy, asn uint32) error{
 	},
 
 	ValidationAddDisablePathCompute: func(policy *pb.SRPolicy, _ uint32) error {
-		if policy.PcepSessionAddr == nil {
-			return errors.New("policy.PCEP session address must not be nil")
+		if policy.PeerAddr == nil {
+			return errors.New("policy.PeerAddr must not be nil")
 		}
 		if policy.Color == 0 {
 			return errors.New("policy.Color must not be zero")
@@ -658,8 +654,8 @@ var validator = map[ValidationKind]func(policy *pb.SRPolicy, asn uint32) error{
 	},
 
 	ValidationDelete: func(policy *pb.SRPolicy, _ uint32) error {
-		if policy.PcepSessionAddr == nil {
-			return errors.New("policy.PCEP session address must not be nil")
+		if policy.PeerAddr == nil {
+			return errors.New("policy.PeerAddr must not be nil")
 		}
 		if policy.Color == 0 {
 			return errors.New("policy.Color must not be zero")
@@ -674,17 +670,36 @@ var validator = map[ValidationKind]func(policy *pb.SRPolicy, asn uint32) error{
 	},
 }
 
-func getSyncedPCEPSession(pce *Server, addr []byte) (*Session, error) {
-	pcepSessionAddr, ok := netip.AddrFromSlice(addr)
+// sortSessionsByAddr orders sessions by peer address.
+func sortSessionsByAddr(sessions []*Session) {
+	slices.SortFunc(sessions, func(a, b *Session) int {
+		return a.peerAddr.Compare(b.peerAddr)
+	})
+}
+
+// resolveSession resolves the PCEP session a request targets.
+// RFC 5440 §7.15 allows at most one session per peer.
+func resolveSession(pce *Server, addr []byte, requireSynced bool) (*Session, error) {
+	peerAddr, ok := netip.AddrFromSlice(addr)
 	if !ok {
 		return nil, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "invalid PCEP session address: %v", addr)
 	}
 
-	pcepSession := pce.SearchSession(pcepSessionAddr, true)
+	pcepSession := pce.SearchSession(peerAddr)
 	if pcepSession == nil {
-		return nil, newStatus(codes.FailedPrecondition, ReasonPCEPSessionNotSynced, "no synced session with %s", pcepSessionAddr)
+		return nil, newStatus(codes.NotFound, ReasonPCEPSessionNotFound,
+			"no session with address %s found", peerAddr)
+	}
+	if requireSynced && !pcepSession.IsSynced() {
+		return nil, newStatus(codes.FailedPrecondition, ReasonPCEPSessionNotSynced,
+			"no synced session with %s", peerAddr)
 	}
 	return pcepSession, nil
+}
+
+// getSyncedPCEPSession resolves the synced PCEP session a write request targets.
+func getSyncedPCEPSession(pce *Server, addr []byte) (*Session, error) {
+	return resolveSession(pce, addr, true)
 }
 
 // tedNode returns the non-nil node for routerID.
@@ -788,35 +803,37 @@ func getMetricType(metricType pb.MetricType) (table.MetricType, error) {
 	}
 }
 
+// sessionListFilter validates and parses the peer address filter.
+func sessionListFilter(req *pb.GetSessionListRequest) (netip.Addr, error) {
+	var filterAddr netip.Addr
+	if raw := req.GetPeerAddr(); len(raw) > 0 {
+		var ok bool
+		filterAddr, ok = netip.AddrFromSlice(raw)
+		if !ok {
+			return netip.Addr{}, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "invalid session filter address %v", raw)
+		}
+	}
+	return filterAddr, nil
+}
+
 // GetSessionList returns a list of PCEP sessions.
-func (s *APIServer) GetSessionList(_ context.Context, _ *pb.GetSessionListRequest) (*pb.GetSessionListResponse, error) {
+func (s *APIServer) GetSessionList(_ context.Context, req *pb.GetSessionListRequest) (*pb.GetSessionListResponse, error) {
 	s.logger.Info("Received GetSessionList API request")
 
-	pcepSessions := s.pce.Sessions()
-	slices.SortFunc(pcepSessions, func(a, b *Session) int { return a.peerAddr.Compare(b.peerAddr) })
+	filterAddr, err := sessionListFilter(req)
+	if err != nil {
+		return nil, err
+	}
 
-	var sessions []*pb.Session
+	pcepSessions := s.pce.Sessions()
+	sortSessionsByAddr(pcepSessions)
+
+	sessions := make([]*pb.Session, 0, len(pcepSessions))
 	for _, pcepSession := range pcepSessions {
-		ss := &pb.Session{
-			Addr:     pcepSession.peerAddr.AsSlice(),
-			State:    pb.SessionState_SESSION_STATE_UP, // Only the UP state in the current specification
-			IsSynced: pcepSession.IsSynced(),
+		if filterAddr.IsValid() && pcepSession.peerAddr != filterAddr {
+			continue
 		}
-		seenCapabilities := make(map[string]struct{})
-		for _, cap := range pcepSession.AdvertisedCapabilities() {
-			b, err := cap.Serialize()
-			if err != nil {
-				s.logger.Warn("failed to serialize advertised capability", zap.Error(err))
-				continue
-			}
-			capabilityKey := fmt.Sprintf("%d:%s", cap.Type(), b)
-			if _, ok := seenCapabilities[capabilityKey]; ok {
-				continue
-			}
-			seenCapabilities[capabilityKey] = struct{}{}
-			ss.Capabilities = append(ss.Capabilities, buildCapability(cap))
-		}
-		sessions = append(sessions, ss)
+		sessions = append(sessions, s.buildPBSession(pcepSession, req.GetIncludeStats()))
 	}
 
 	s.logger.Debug("Send GetSessionList API reply")
@@ -827,46 +844,42 @@ func (s *APIServer) GetSessionList(_ context.Context, _ *pb.GetSessionListReques
 
 // DeleteSession deletes a PCEP session.
 func (s *APIServer) DeleteSession(_ context.Context, req *pb.DeleteSessionRequest) (*pb.DeleteSessionResponse, error) {
-	ssAddr, ok := netip.AddrFromSlice(req.GetAddr())
-	if !ok {
-		return nil, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "invalid address: %v", req.GetAddr())
-	}
-
 	pce := s.pce
-	ss := pce.SearchSession(ssAddr, false)
-	if ss == nil {
-		return nil, newStatus(codes.NotFound, ReasonPCEPSessionNotFound, "no session with address %s found", ssAddr)
+	// A session being torn down need not be synced.
+	ss, err := resolveSession(pce, req.GetPeerAddr(), false)
+	if err != nil {
+		return nil, err
 	}
 
 	if err := ss.SendClose(pcep.CloseReasonNoExplanationProvided); err != nil {
-		return &pb.DeleteSessionResponse{IsSuccess: false}, newStatus(codes.Internal, ReasonPCEPRequestFailed, "failed to send close message: %v", err)
+		return nil, newStatus(codes.Internal, ReasonPCEPRequestFailed, "failed to send close message: %v", err)
 	}
 
 	// A PCEP Close only notifies the peer; the TCP connection and the server-side
 	// session state have to be torn down here as well.
 	pce.closeSession(ss)
 
-	return &pb.DeleteSessionResponse{IsSuccess: true}, nil
+	return &pb.DeleteSessionResponse{}, nil
 }
 
 // GetTED returns the TED information in a structured way.
 func (s *APIServer) GetTED(_ context.Context, _ *pb.GetTEDRequest) (*pb.GetTEDResponse, error) {
 	s.logger.Info("Received GetTED API request")
 
-	ret := &pb.GetTEDResponse{Enable: true}
+	ret := &pb.GetTEDResponse{Enabled: true}
 	if s.pce == nil {
-		ret.Enable = false
+		ret.Enabled = false
 		return ret, nil
 	}
 	ted := s.pce.TED()
 	if ted == nil {
-		ret.Enable = false
+		ret.Enabled = false
 		return ret, nil
 	}
 
 	for _, node := range ted.Nodes {
 		if n := convertLsNode(node, s.logger); n != nil {
-			ret.LsNodes = append(ret.LsNodes, n)
+			ret.Nodes = append(ret.Nodes, n)
 		}
 	}
 

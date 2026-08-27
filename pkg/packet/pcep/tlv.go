@@ -14,6 +14,7 @@ import (
 	"net/netip"
 	"slices"
 	"strconv"
+	"strings"
 	"unicode/utf8"
 
 	"go.uber.org/zap/zapcore"
@@ -186,6 +187,22 @@ func (t TLVType) String() string {
 		return fmt.Sprintf("%s (%s)", desc.Description, desc.Reference)
 	}
 	return fmt.Sprintf("Unknown TLV (0x%04x)", uint16(t))
+}
+
+// Name returns the registered name of the TLV type, or "" if unregistered.
+func (t TLVType) Name() string {
+	if desc, ok := tlvDescriptions[t]; ok {
+		return desc.Description
+	}
+	return ""
+}
+
+// Reference returns the defining document of the TLV type, or "" if unregistered.
+func (t TLVType) Reference() string {
+	if desc, ok := tlvDescriptions[t]; ok {
+		return desc.Reference
+	}
+	return ""
 }
 
 // IPv4AddrLen is the byte length of an IPv4 address.
@@ -881,25 +898,25 @@ func NewLSPDBVersion(version uint64) *LSPDBVersion {
 
 // SRPCECapability represents the SR-PCE-CAPABILITY TLV, advertising the
 // maximum SID depth (MSD) for SR-MPLS paths and NAI support (RFC 8664).
+// The MSD octet is always present on the wire and is 0 when unlimited.
 type SRPCECapability struct {
 	HasUnlimitedMaxSIDDepth bool
 	IsNAISupported          bool
 	MaximumSidDepth         uint8
 }
 
-// Flag bits of the SR-PCE-CAPABILITY TLV, as masks against its Flags byte.
+// Flag bits of the SR-PCE-CAPABILITY TLV.
 const (
-	// UnlimitedMaximumSIDDepthFlag means the speaker imposes no MSD limit, so
-	// the Maximum SID Depth field must be ignored.
 	UnlimitedMaximumSIDDepthFlag byte = 0x01
-	// NAISupportedFlag means the speaker can resolve a NAI in an SR-ERO subobject.
-	NAISupportedFlag byte = 0x02
+	NAISupportedFlag             byte = 0x02
 )
 
-// Byte offsets of the fields within the SR-PCE-CAPABILITY TLV value.
+// Field offsets in the SR-PCE-CAPABILITY TLV value (RFC 8664 §5.1.1):
+// Reserved (2 octets), Flags (1 octet), MSD (1 octet).
+// Reserved octets MUST be zero when sent and MUST be ignored when received.
 const (
-	SRPCECapabilityFlagsOffset = 0
-	SRPCECapabilityMSDOffset   = 1
+	SRPCECapabilityFlagsOffset = 2
+	SRPCECapabilityMSDOffset   = 3
 )
 
 // DecodeFromBytes decodes the given bytes into the receiver.
@@ -972,6 +989,12 @@ func (tlv *SRPCECapability) CapStrings() []string {
 		ret = append(ret, "SR-NAI-Supported")
 	}
 	return ret
+}
+
+// HasInvalidZeroMSD reports the invalid RFC 8664 §5.1 combination of
+// X=0 and MSD=0.
+func (tlv *SRPCECapability) HasInvalidZeroMSD() bool {
+	return !tlv.HasUnlimitedMaxSIDDepth && tlv.MaximumSidDepth == 0
 }
 
 // NewSRPCECapability creates and returns a new SRPCECapability.
@@ -1658,11 +1681,28 @@ func (tlv *PathSetupTypeCapability) CapStrings() []string {
 	return ret
 }
 
+// SubCapabilities returns the receiver's sub-TLVs that implement
+// CapabilityInterface.
+func (tlv *PathSetupTypeCapability) SubCapabilities() []CapabilityInterface {
+	ret := make([]CapabilityInterface, 0, len(tlv.SubTLVs))
+	for _, subTLV := range tlv.SubTLVs {
+		if c, ok := subTLV.(CapabilityInterface); ok {
+			ret = append(ret, c)
+		}
+	}
+	return ret
+}
+
+// HasPathSetupType reports whether the receiver advertises the given PST.
+func (tlv *PathSetupTypeCapability) HasPathSetupType(pst Pst) bool {
+	return slices.Contains(tlv.PathSetupTypes[:tlv.pstCount()], pst)
+}
+
 // AssocType is the association type of an ASSOCIATION object, identifying
 // what the associated LSPs have in common (RFC 8697).
 type AssocType uint16
 
-// IANA-assigned association types. assocTypeNames holds their names.
+// IANA-assigned association types (see the IANA PCEP "Association Type Field" registry).
 const (
 	AssocTypePathProtectionAssociation              AssocType = 0x01
 	AssocTypeDisjointAssociation                    AssocType = 0x02
@@ -1671,24 +1711,44 @@ const (
 	AssocTypeDoubleSidedBidirectionalLSPAssociation AssocType = 0x05
 	AssocTypeSRPolicyAssociation                    AssocType = 0x06
 	AssocTypeVnAssociationType                      AssocType = 0x07
+	AssocTypeBidirectionalSRLSPAssociation          AssocType = 0x08
+	AssocTypeP2MPSRPolicyAssociation                AssocType = 0x09
 )
 
-//nolint:gosec // G101: these are RFC 8697 association-type display names, not credentials.
-var assocTypeNames = map[AssocType]string{
-	AssocTypePathProtectionAssociation:              "Path Protection Association",
-	AssocTypeDisjointAssociation:                    "Disjoint Association",
-	AssocTypePolicyAssociation:                      "Policy Association",
-	AssocTypeSingleSidedBidirectionalLSPAssociation: "Single Sided Bidirectional LSP Association",
-	AssocTypeDoubleSidedBidirectionalLSPAssociation: "Double Sided Bidirectional LSP Association",
-	AssocTypeSRPolicyAssociation:                    "SR Policy Association",
-	AssocTypeVnAssociationType:                      "VN Association Type",
+// Vendor-specific Association Type values used for legacy PCC interoperability.
+const (
+	AssocTypeSRPolicyAssociationCisco   AssocType = 0x14   // Cisco-specific
+	AssocTypeSRPolicyAssociationJuniper AssocType = 0xffe1 // Juniper-specific (deprecated)
+)
+
+var assocTypeDescriptions = map[AssocType]struct {
+	Description string
+	Reference   string
+}{
+	AssocTypePathProtectionAssociation:              {"Path Protection Association", "RFC8745"},
+	AssocTypeDisjointAssociation:                    {"Disjoint Association", "RFC8800"},
+	AssocTypePolicyAssociation:                      {"Policy Association", "RFC9005"},
+	AssocTypeSingleSidedBidirectionalLSPAssociation: {"Single Sided Bidirectional LSP Association", "RFC9059"},
+	AssocTypeDoubleSidedBidirectionalLSPAssociation: {"Double Sided Bidirectional LSP Association", "RFC9059"},
+	AssocTypeSRPolicyAssociation:                    {"SR Policy Association", "RFC9862"},
+	AssocTypeVnAssociationType:                      {"VN Association Type", "RFC9358"},
+	AssocTypeBidirectionalSRLSPAssociation:          {"Bidirectional SR LSP Association", "draft-ietf-pce-sr-bidir-path-25"},
+	AssocTypeP2MPSRPolicyAssociation:                {"P2MP SR Policy Association", "draft-ietf-pce-sr-p2mp-policy-11"},
+	AssocTypeSRPolicyAssociationCisco:               {"SR Policy Association (Cisco-specific)", "not IANA-assigned"},
+	AssocTypeSRPolicyAssociationJuniper:             {"SR Policy Association (Juniper-specific, deprecated)", "not IANA-assigned"},
 }
 
+// String returns the display name of the association type, suffixing
+// draft-defined types with " (draft)".
 func (at AssocType) String() string {
-	if name, ok := assocTypeNames[at]; ok {
-		return name
+	desc, ok := assocTypeDescriptions[at]
+	if !ok {
+		return fmt.Sprintf("Unknown AssocType (0x%04x)", uint16(at))
 	}
-	return fmt.Sprintf("Unknown AssocType (0x%04x)", uint16(at))
+	if strings.HasPrefix(desc.Reference, "draft-") {
+		return desc.Description + " (draft)"
+	}
+	return desc.Description
 }
 
 // AssocTypeList represents the ASSOC-TYPE-LIST TLV, advertising the

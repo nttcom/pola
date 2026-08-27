@@ -216,9 +216,9 @@ func (m *OpenMessage) Serialize() ([]uint8, error) {
 }
 
 // NewOpenMessage creates a new OpenMessage.
-func NewOpenMessage(sessionID uint8, keepalive uint8, capabilities []CapabilityInterface) *OpenMessage {
+func NewOpenMessage(sessionID uint8, keepalive uint8, deadTimer uint8, capabilities []CapabilityInterface) *OpenMessage {
 	return &OpenMessage{
-		OpenObject: NewOpenObject(sessionID, keepalive, capabilities),
+		OpenObject: NewOpenObject(sessionID, keepalive, deadTimer, capabilities),
 	}
 }
 
@@ -244,6 +244,7 @@ func NewKeepaliveMessage() *KeepaliveMessage {
 type PCErrMessage struct {
 	Errors []*ErrorObject
 	SRPs   []*SrpObject
+	Open   *OpenObject
 }
 
 // DecodeFromBytes decodes the given bytes into the PCErrMessage.
@@ -274,6 +275,15 @@ func (m *PCErrMessage) DecodeFromBytes(messageBody []uint8) error {
 				return err
 			}
 			m.SRPs = append(m.SRPs, srp)
+		case ObjectClassOpen:
+			if commonObjectHeader.ObjectType != ObjectTypeOpenOpen {
+				return fmt.Errorf("PCErr: unsupported OPEN ObjectType: %d", commonObjectHeader.ObjectType)
+			}
+			openObj := &OpenObject{}
+			if err := openObj.DecodeFromBytes(commonObjectHeader.ObjectType, body); err != nil {
+				return err
+			}
+			m.Open = openObj
 		}
 		offset += int(commonObjectHeader.ObjectLength)
 	}
@@ -286,7 +296,7 @@ func (m *PCErrMessage) DecodeFromBytes(messageBody []uint8) error {
 
 // Serialize encodes the PCErrMessage into bytes.
 func (m *PCErrMessage) Serialize() ([]uint8, error) {
-	objects := make([][]uint8, 0, len(m.SRPs)+len(m.Errors))
+	objects := make([][]uint8, 0, len(m.SRPs)+len(m.Errors)+1)
 	for _, srp := range m.SRPs {
 		b, err := srp.Serialize()
 		if err != nil {
@@ -296,6 +306,13 @@ func (m *PCErrMessage) Serialize() ([]uint8, error) {
 	}
 	for _, errObj := range m.Errors {
 		b, err := errObj.Serialize()
+		if err != nil {
+			return nil, err
+		}
+		objects = append(objects, b)
+	}
+	if m.Open != nil {
+		b, err := m.Open.Serialize()
 		if err != nil {
 			return nil, err
 		}
@@ -327,6 +344,14 @@ func (m *PCErrMessage) SRPIDs() []uint32 {
 func NewPCErrMessage(errorType uint8, errorValue uint8, tlvs []TLVInterface) *PCErrMessage {
 	return &PCErrMessage{
 		Errors: []*ErrorObject{NewErrorObject(errorType, errorValue, tlvs)},
+	}
+}
+
+// NewPCErrMessageWithOpen creates a PCErrMessage with an attached OPEN object.
+func NewPCErrMessageWithOpen(errorType uint8, errorValue uint8, openObject *OpenObject) *PCErrMessage {
+	return &PCErrMessage{
+		Errors: []*ErrorObject{NewErrorObject(errorType, errorValue, nil)},
+		Open:   openObject,
 	}
 }
 

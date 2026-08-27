@@ -11,12 +11,19 @@ import (
 	"os"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/nttcom/pola/pkg/packet/pcep"
 )
 
 // PCEP holds the configuration for PCEP protocol settings.
 type PCEP struct {
-	Address string `yaml:"address"`
-	Port    string `yaml:"port"`
+	Address          string `yaml:"address"`
+	Port             string `yaml:"port"`
+	Keepalive        *uint8 `yaml:"keepalive"`
+	DeadTimer        *uint8 `yaml:"deadTimer"`
+	MinKeepalive     *uint8 `yaml:"minKeepalive"`
+	MaxKeepalive     *uint8 `yaml:"maxKeepalive"`
+	AllowNegotiation *bool  `yaml:"allowNegotiation"`
 }
 
 // GRPCServer holds the configuration for the gRPC server.
@@ -88,16 +95,36 @@ func ReadConfigFile(configFile string) (Config, error) {
 	return *c, nil
 }
 
-// Validate checks required configuration fields.
-func (c *Config) Validate() error {
+// RFC 5440 §7.3 default Keepalive.
+const defaultKeepalive uint8 = 30
+
+func (p PCEP) validate() []error {
 	var errs []error
 
-	if c.Global.PCEP.Address == "" {
+	if p.Address == "" {
 		errs = append(errs, errors.New("global.pcep.address is required"))
 	}
-	if c.Global.PCEP.Port == "" {
+	if p.Port == "" {
 		errs = append(errs, errors.New("global.pcep.port is required"))
 	}
+	keepalive := defaultKeepalive
+	if p.Keepalive != nil {
+		keepalive = *p.Keepalive
+	}
+	if err := pcep.ValidateTimers(keepalive, p.DeadTimer); err != nil {
+		errs = append(errs, fmt.Errorf("global.pcep.%w", err))
+	}
+	if p.MinKeepalive != nil && p.MaxKeepalive != nil && *p.MinKeepalive > *p.MaxKeepalive {
+		errs = append(errs, errors.New("global.pcep.minKeepalive must be <= global.pcep.maxKeepalive"))
+	}
+
+	return errs
+}
+
+// Validate checks the configuration.
+func (c *Config) Validate() error {
+	errs := c.Global.PCEP.validate()
+
 	if c.Global.GRPCServer.Address == "" {
 		errs = append(errs, errors.New("global.grpcServer.address is required"))
 	}
