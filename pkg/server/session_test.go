@@ -459,7 +459,7 @@ func TestHandleStateReportRemove(t *testing.T) {
 	assert.False(t, found, "SR Policy is still registered after being reported as removed")
 }
 
-func TestReceiveOpenDoesNotOverwriteAdvertisedCapabilities(t *testing.T) {
+func TestPeerOpenDoesNotOverwriteAdvertisedCapabilities(t *testing.T) {
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		assert.NoError(t, server.Close(), "failed to close server connection")
@@ -475,14 +475,11 @@ func TestReceiveOpenDoesNotOverwriteAdvertisedCapabilities(t *testing.T) {
 			ColorCapability:     true,
 		},
 	}
-	openMessage := pcep.NewOpenMessage(1, 30, pcep.DeadTimerFor(30), pccCaps)
-	byteOpenMessage, err := openMessage.Serialize()
-	require.NoError(t, err, "failed to serialize open message")
-	_, err = client.Write(byteOpenMessage)
-	require.NoError(t, err, "failed to write open message")
+	writeMessage(t, client, pcep.NewOpenMessage(1, 30, pcep.DeadTimerFor(30), pccCaps))
+	writeMessage(t, client, pcep.NewKeepaliveMessage())
 
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
-	require.NoError(t, ss.ReceiveOpen())
+	require.NoError(t, ss.Open())
 
 	assert.Equal(t, pccCaps, ss.receivedPccCapabilities)
 	assert.Equal(t, pccCaps, ss.ReceivedCapabilities())
@@ -1075,41 +1072,98 @@ func TestSendOpen_ErrorPropagatesFromSendFailure(t *testing.T) {
 	require.Error(t, ss.SendOpen())
 }
 
-func TestReceiveOpen_StoresPccOpenParams(t *testing.T) {
-	server, client := newTCPConnPair(t)
-	t.Cleanup(func() {
-		assert.NoError(t, client.Close(), "failed to close client connection")
-	})
-	t.Cleanup(func() {
-		assert.NoError(t, server.Close(), "failed to close server connection")
-	})
+// openMessageBody returns the body of a serialized Open message, ready to be
+// handed to handlePeerOpen.
+func openMessageBody(t *testing.T, sessionID, keepalive, deadTimer uint8) []uint8 {
+	t.Helper()
 
-	writeMessage(t, client, pcep.NewOpenMessage(42, 10, 40, nil))
+	full, err := pcep.NewOpenMessage(sessionID, keepalive, deadTimer, nil).Serialize()
+	require.NoError(t, err, "failed to serialize Open message")
+	return full[pcep.CommonHeaderLength:]
+}
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+func TestHandlePeerOpen_AcknowledgesAndStoresPeerOpenParams(t *testing.T) {
+	conn := &fakeConn{r: bytes.NewReader(nil)}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+
 	_, ok := ss.PccOpen()
-	require.False(t, ok, "nothing is known before the PCC's Open message arrives")
+	require.False(t, ok, "nothing is known before the peer's Open message arrives")
 
-	require.NoError(t, ss.ReceiveOpen())
+	neg := &openNegotiation{}
+	require.NoError(t, ss.handlePeerOpen(openMessageBody(t, 42, 10, 40), neg))
+
+	assert.True(t, neg.remoteOK, "an acceptable Open sets Appendix A's RemoteOK")
+	assert.False(t, neg.localOK, "LocalOK is only set by the peer's Keepalive")
+	assert.Zero(t, neg.peerOpensRejected, "an acceptable Open does not consume OpenRetry")
+	assert.Equal(t, sessionStateKeepWait, neg.state())
 
 	pccOpen, ok := ss.PccOpen()
 	require.True(t, ok)
 	assert.Equal(t, OpenParams{SessionID: 42, Keepalive: 10, DeadTimer: 40}, pccOpen)
+
+	writes := conn.writes()
+	require.Len(t, writes, 1, "Appendix A acknowledges an acceptable Open with a Keepalive")
+	var header pcep.CommonHeader
+	require.NoError(t, header.DecodeFromBytes(writes[0]))
+	assert.Equal(t, pcep.MessageTypeKeepalive, header.MessageType)
 }
 
-func TestReceiveOpen_StoresSessionIDZeroAsAdvertised(t *testing.T) {
-	server, client := newTCPConnPair(t)
-	t.Cleanup(func() { assert.NoError(t, client.Close()) })
-	t.Cleanup(func() { assert.NoError(t, server.Close()) })
+func TestHandlePeerOpen_StoresSessionIDZeroAsAdvertised(t *testing.T) {
+	conn := &fakeConn{r: bytes.NewReader(nil)}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
 
-	writeMessage(t, client, pcep.NewOpenMessage(0, 30, 120, nil))
-
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
-	require.NoError(t, ss.ReceiveOpen())
+	require.NoError(t, ss.handlePeerOpen(openMessageBody(t, 0, 30, 120), &openNegotiation{}))
 
 	pccOpen, ok := ss.PccOpen()
 	require.True(t, ok, "a SID of 0 must be recorded, not treated as absent")
 	assert.Zero(t, pccOpen.SessionID)
+}
+
+func TestHandlePeerOpen_KeepaliveFailureIsPropagated(t *testing.T) {
+	conn := &fakeConn{r: bytes.NewReader(nil), writeErr: errors.New("write: broken pipe")}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+
+	neg := &openNegotiation{}
+	require.ErrorContains(t, ss.handlePeerOpen(openMessageBody(t, 1, 30, 120), neg), "write: broken pipe")
+	assert.False(t, neg.remoteOK, "RemoteOK must not be set when the acknowledging Keepalive cannot be sent")
+}
+
+func TestHandlePeerOpen_RejectedOpenDoesNotOverwriteNegotiatedTimers(t *testing.T) {
+	conn := &fakeConn{r: bytes.NewReader(nil)}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+
+	neg := &openNegotiation{}
+	require.NoError(t, ss.handlePeerOpen(openMessageBody(t, 1, 30, 120), neg))
+	require.True(t, neg.remoteOK)
+
+	require.Error(t, ss.handlePeerOpen(openMessageBody(t, 1, 200, 255), neg))
+	assert.False(t, neg.localOK)
+
+	pccOpen, ok := ss.PccOpen()
+	require.True(t, ok)
+	assert.Equal(t, OpenParams{SessionID: 1, Keepalive: 30, DeadTimer: 120}, pccOpen,
+		"the rejected second Open must not overwrite the already-accepted session parameters")
+
+	writes := conn.writes()
+	require.Len(t, writes, 2, "the Keepalive acknowledging the first Open, then the PCErr rejecting the second")
+	var header pcep.CommonHeader
+	require.NoError(t, header.DecodeFromBytes(writes[0]))
+	assert.Equal(t, pcep.MessageTypeKeepalive, header.MessageType)
+	assertPCErr(t, writes[1], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
+}
+
+func TestHandlePeerOpen_RejectedOpenIsNotPublishedAsSessionState(t *testing.T) {
+	conn := &fakeConn{r: bytes.NewReader(nil)}
+	ss := negotiatingSession(t, conn) // Keepalive range [10, 60]
+
+	neg := &openNegotiation{}
+	require.NoError(t, ss.handlePeerOpen(openMessageBody(t, 1, 5, 20), neg))
+	assert.Equal(t, 1, neg.peerOpensRejected)
+
+	_, ok := ss.PccOpen()
+	assert.False(t, ok, "an unacceptable-but-negotiable Open must not be published as the PCC's Open")
+	assert.Equal(t, pcep.RFCCompliant, ss.PccType(), "PccType must stay at its default until an Open is accepted")
+	assert.Empty(t, ss.ReceivedCapabilities())
 }
 
 func TestAcceptableOpen(t *testing.T) {
@@ -1132,16 +1186,22 @@ func TestAcceptableOpen(t *testing.T) {
 			want:    false,
 		},
 		{
-			name:    "zero keepalive requires zero deadtimer per RFC",
+			name:    "zero keepalive ignores a nonzero deadtimer per RFC 5440 §7.3",
 			session: &Session{},
 			pccOpen: OpenParams{Keepalive: 0, DeadTimer: 1},
-			want:    false,
+			want:    true,
 		},
 		{
 			name:    "zero keepalive with zero deadtimer is acceptable",
 			session: &Session{},
 			pccOpen: OpenParams{Keepalive: 0, DeadTimer: 0},
 			want:    true,
+		},
+		{
+			name:    "zero keepalive is still rejected when outside a configured range",
+			session: &Session{keepaliveRangeEnabled: true, minKeepalive: 10, maxKeepalive: 60},
+			pccOpen: OpenParams{Keepalive: 0, DeadTimer: 120},
+			want:    false,
 		},
 		{
 			name:    "zero deadtimer is exempt from the ratio check",
@@ -1739,6 +1799,44 @@ func TestEstablished_SecondOpenStillUnacceptableReportsErrorValue5(t *testing.T)
 	assert.False(t, ss.Up())
 }
 
+func TestEstablished_SecondOpenAfterAcceptanceDoesNotChangeNegotiatedTimers(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() { assert.NoError(t, client.Close()) })
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+
+	writeMessage(t, client, pcep.NewOpenMessage(1, 30, 120, nil))
+
+	done := make(chan struct{})
+	go func() {
+		_ = ss.Established()
+		close(done)
+	}()
+
+	require.NoError(t, readPCEPMessage(client), "failed to read Pola's initial Open")
+	require.NoError(t, readPCEPMessage(client), "failed to read the Keepalive acknowledging the peer's Open")
+
+	writeMessage(t, client, pcep.NewOpenMessage(1, 200, 255, nil))
+
+	pcerrMessage := readPCErrMessage(t, client)
+	require.Len(t, pcerrMessage.Errors, 1)
+	assert.Equal(t, uint8(1), pcerrMessage.Errors[0].ErrorType)
+	assert.Equal(t, uint8(1), pcerrMessage.Errors[0].ErrorValue,
+		"Appendix A has no Open event once RemoteOK=1; this is an invalid message in this state, not a second unacceptable proposal")
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		require.Fail(t, "Established did not return after a further Open arrived post-acceptance")
+	}
+	assert.False(t, ss.Up())
+
+	pccOpen, ok := ss.PccOpen()
+	require.True(t, ok)
+	assert.Equal(t, OpenParams{SessionID: 1, Keepalive: 30, DeadTimer: 120}, pccOpen,
+		"the rejected second Open must not overwrite the already-accepted session parameters")
+}
+
 func TestEstablished_ReturnsOnCloseMessage(t *testing.T) {
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
@@ -1891,10 +1989,11 @@ func TestEstablished_ReturnsWhenInitialKeepaliveSendFails(t *testing.T) {
 	}
 }
 
-func TestReceiveOpen_MalformedOpenMessage(t *testing.T) {
+func TestOpen_MalformedOrUnexpectedPeerMessageIsRejected(t *testing.T) {
 	cases := []struct {
-		name  string
-		setup func(t *testing.T, client *net.TCPConn) (clientClosed bool)
+		name    string
+		wantErr string
+		setup   func(t *testing.T, client *net.TCPConn) (clientClosed bool)
 	}{
 		{
 			name: "PCEP version mismatch",
@@ -1906,11 +2005,18 @@ func TestReceiveOpen_MalformedOpenMessage(t *testing.T) {
 			},
 		},
 		{
-			name: "unexpected message type",
+			name:    "Keepalive before the peer's Open",
+			wantErr: "received a Keepalive before the peer's Open message",
 			setup: func(t *testing.T, client *net.TCPConn) bool {
-				header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeKeepalive, MessageLength: pcep.CommonHeaderLength}
-				_, err := client.Write(header.Serialize())
-				require.NoError(t, err, "failed to write header")
+				writeMessage(t, client, pcep.NewKeepaliveMessage())
+				return false
+			},
+		},
+		{
+			name:    "message that cannot appear during establishment",
+			wantErr: "while establishing the PCEP session",
+			setup: func(t *testing.T, client *net.TCPConn) bool {
+				writeMessage(t, client, pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided))
 				return false
 			},
 		},
@@ -1960,7 +2066,12 @@ func TestReceiveOpen_MalformedOpenMessage(t *testing.T) {
 			}
 
 			ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
-			assert.Error(t, ss.ReceiveOpen())
+			err := ss.Open()
+			require.Error(t, err)
+			if tc.wantErr != "" {
+				require.ErrorContains(t, err, tc.wantErr)
+			}
+			assert.False(t, ss.Up())
 		})
 	}
 }
@@ -1981,112 +2092,779 @@ func (r *errAfterReader) Read(p []byte) (int, error) {
 	return 0, r.err
 }
 
-func TestOpen_SendOpenFailureAfterSuccessfulNegotiation(t *testing.T) {
-	openBytes, err := pcep.NewOpenMessage(1, 30, 120, nil).Serialize()
-	require.NoError(t, err)
+// concatMessages serializes messages into one byte stream, mimicking a peer
+// that sends them back-to-back.
+func concatMessages(t *testing.T, messages ...pcep.Message) []byte {
+	t.Helper()
 
-	conn := &fakeConn{r: bytes.NewReader(openBytes), writeErr: errors.New("write: broken pipe")}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
-
-	require.Error(t, ss.Open(), "expected Open to fail once negotiation succeeds but SendOpen cannot write")
+	var stream []byte
+	for _, message := range messages {
+		b, err := message.Serialize()
+		require.NoError(t, err, "failed to serialize message")
+		stream = append(stream, b...)
+	}
+	return stream
 }
 
-func TestAwaitKeepalive_ReadCommonHeaderErrorIsPropagated(t *testing.T) {
-	openBytes, err := pcep.NewOpenMessage(1, 30, 120, nil).Serialize()
-	require.NoError(t, err)
+// negotiableRejection builds the PCErr(1,4) used in Open negotiation.
+func negotiableRejection(keepalive, deadTimer uint8) *pcep.PCErrMessage {
+	return pcep.NewPCErrMessageWithOpen(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableNegotiable,
+		pcep.NewOpenObject(1, keepalive, deadTimer, nil))
+}
 
-	// The peer disconnects during KeepWait without sending a Keepalive.
-	conn := &fakeConn{r: bytes.NewReader(openBytes)}
+// negotiatingSession returns a session with a configured Keepalive range.
+func negotiatingSession(t *testing.T, conn net.Conn) *Session {
+	t.Helper()
+
+	return negotiatingSessionWithLogger(t, conn, zap.NewNop())
+}
+
+func negotiatingSessionWithLogger(t *testing.T, conn net.Conn, logger *zap.Logger) *Session {
+	t.Helper()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger, nil, 0)
+	ss.keepaliveRangeEnabled = true
+	ss.minKeepalive, ss.maxKeepalive = 10, 60
+	ss.allowNegotiation = true
+	return ss
+}
+
+// assertPCErr decodes write and asserts it is a PCErr carrying errorType/errorValue.
+func assertPCErr(t *testing.T, write []byte, errorType, errorValue uint8) {
+	t.Helper()
+
+	var header pcep.CommonHeader
+	require.NoError(t, header.DecodeFromBytes(write))
+	require.Equal(t, pcep.MessageTypeError, header.MessageType, "expected a PCErr message")
+
+	pcerrMessage := &pcep.PCErrMessage{}
+	require.NoError(t, pcerrMessage.DecodeFromBytes(write[pcep.CommonHeaderLength:]))
+	require.Len(t, pcerrMessage.Errors, 1)
+	assert.Equal(t, errorType, pcerrMessage.Errors[0].ErrorType)
+	assert.Equal(t, errorValue, pcerrMessage.Errors[0].ErrorValue)
+}
+
+func TestOpenNegotiation_DerivesAppendixAStateFromRemoteOKAndLocalOK(t *testing.T) {
+	cases := []struct {
+		name            string
+		neg             openNegotiation
+		wantState       sessionState
+		wantEstablished bool
+		wantPeerOpened  bool
+	}{
+		{
+			name:      "nothing acknowledged yet",
+			wantState: sessionStateOpenWait,
+		},
+		{
+			// Appendix A: OpenWait + unacceptable-but-negotiable + LocalOK=0
+			// clears the OpenWait timer, starts KeepWait and moves to KeepWait.
+			name:           "peer's Open answered with PCErr(1,4) while Pola's Open is unacknowledged",
+			neg:            openNegotiation{peerOpensRejected: 1},
+			wantState:      sessionStateKeepWait,
+			wantPeerOpened: true,
+		},
+		{
+			// Appendix A: KeepWait + Keepalive + RemoteOK=0 clears the KeepWait
+			// timer, starts OpenWait and moves back to OpenWait.
+			name:           "Pola's Open acknowledged while the peer's revised Open is awaited",
+			neg:            openNegotiation{peerOpensRejected: 1, localOK: true},
+			wantState:      sessionStateOpenWait,
+			wantPeerOpened: true,
+		},
+		{
+			name:           "peer's Open accepted, only its Keepalive outstanding",
+			neg:            openNegotiation{remoteOK: true},
+			wantState:      sessionStateKeepWait,
+			wantPeerOpened: true,
+		},
+		{
+			name:      "Pola's Open acknowledged, peer's Open still awaited",
+			neg:       openNegotiation{localOK: true},
+			wantState: sessionStateOpenWait,
+		},
+		{
+			name:            "both directions acknowledged",
+			neg:             openNegotiation{remoteOK: true, localOK: true},
+			wantState:       sessionStateUp,
+			wantEstablished: true,
+			wantPeerOpened:  true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.wantState, tc.neg.state())
+			assert.Equal(t, tc.wantEstablished, tc.neg.established())
+			assert.Equal(t, tc.wantPeerOpened, tc.neg.peerOpened())
+		})
+	}
+}
+
+func TestOpenNegotiation_TracksAppendixAState(t *testing.T) {
+	conn := &fakeConn{r: bytes.NewReader(nil)}
+	ss := negotiatingSession(t, conn)
+
+	neg := &openNegotiation{}
+	assert.Equal(t, sessionStateOpenWait, neg.state(), "(0,0) awaits the peer's Open: OpenWait/1-2")
+	assert.False(t, neg.established())
+
+	require.NoError(t, ss.handlePeerOpen(openMessageBody(t, 1, 5, 20), neg))
+	assert.False(t, neg.remoteOK)
+	assert.Equal(t, 1, neg.peerOpensRejected)
+	assert.Equal(t, sessionStateKeepWait, neg.state(),
+		"Appendix A moves to KeepWait after PCErr(1,4) while LocalOK=0: KeepWait/1-7")
+
+	rejection, err := negotiableRejection(40, 160).Serialize()
+	require.NoError(t, err)
+	require.NoError(t, ss.handleNegotiationPCErr(rejection[pcep.CommonHeaderLength:], neg))
+	assert.Equal(t, 1, neg.localOpenRetries)
+	assert.Equal(t, sessionStateKeepWait, neg.state(),
+		"the re-sent Open is still unacknowledged, and an Open has been received, so 1/2 would misreport")
+
+	require.NoError(t, ss.handlePeerOpen(openMessageBody(t, 1, 30, 120), neg))
+	assert.True(t, neg.remoteOK)
+	assert.False(t, neg.localOK)
+	assert.Equal(t, sessionStateKeepWait, neg.state(), "only the acknowledgment of Pola's Open remains outstanding: KeepWait/1-7")
+	assert.False(t, neg.established())
+
+	neg.localOK = true
+	assert.True(t, neg.established())
+	assert.Equal(t, sessionStateUp, neg.state())
+}
+
+func TestOpen_SendOpenFailureIsPropagated(t *testing.T) {
+	conn := &fakeConn{r: bytes.NewReader(nil), writeErr: errors.New("write: broken pipe")}
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
 
-	err = ss.Open()
+	require.ErrorContains(t, ss.Open(), "write: broken pipe")
+	assert.False(t, ss.Up())
+}
+
+func TestNegotiateOpen_PeerDisconnectIsNotReportedAsTimerExpiry(t *testing.T) {
+	conn := &fakeConn{r: bytes.NewReader(concatMessages(t, pcep.NewOpenMessage(1, 30, 120, nil)))}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+
+	err := ss.negotiateOpen(&openNegotiation{})
 	require.Error(t, err)
-	assert.NotContains(t, err.Error(), "KeepWait timer expired", "an abrupt disconnect is not a timer expiry")
+	assert.NotContains(t, err.Error(), "timer expired", "an abrupt disconnect is not a timer expiry")
 }
 
-func TestAwaitKeepalive_TruncatedMessageBodyReturnsError(t *testing.T) {
-	openBytes, err := pcep.NewOpenMessage(1, 30, 120, nil).Serialize()
-	require.NoError(t, err)
-
+func TestNegotiateOpen_TruncatedMessageBodyReturnsError(t *testing.T) {
 	truncated := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeReport, MessageLength: pcep.CommonHeaderLength + 4}
-	stream := append([]byte{}, openBytes...)
-	stream = append(stream, truncated.Serialize()...)
-	stream = append(stream, 0x00, 0x00)
+	stream := slices.Concat(truncated.Serialize(), []byte{0x00, 0x00})
 
 	conn := &fakeConn{r: bytes.NewReader(stream)}
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
 
-	require.Error(t, ss.Open(), "expected a truncated KeepWait message body to be reported as an error")
+	require.Error(t, ss.negotiateOpen(&openNegotiation{}), "a truncated message body must be reported as an error")
 }
 
-func TestAwaitKeepalive_UnexpectedMessageTypeIsRejected(t *testing.T) {
-	openBytes, err := pcep.NewOpenMessage(1, 30, 120, nil).Serialize()
-	require.NoError(t, err)
-	closeBytes, err := pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided).Serialize()
-	require.NoError(t, err)
-
-	conn := &fakeConn{r: bytes.NewReader(append(openBytes, closeBytes...))}
+func TestNegotiateOpen_UnexpectedMessageTypeIsCounted(t *testing.T) {
+	header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeReport, MessageLength: pcep.CommonHeaderLength}
+	conn := &fakeConn{r: bytes.NewReader(header.Serialize())}
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
 
-	err = ss.Open()
-	assert.ErrorContains(t, err, "expected a Keepalive or PCErr message in KeepWait")
+	require.Error(t, ss.negotiateOpen(&openNegotiation{}))
+	assert.Equal(t, uint64(1), ss.Stats().RptRcvd)
 }
 
-func TestAwaitKeepalive_SendPCErrFailureIsLoggedNotFatal(t *testing.T) {
-	openBytes, err := pcep.NewOpenMessage(1, 30, 120, nil).Serialize()
-	require.NoError(t, err)
+func TestNegotiateOpen_PreOpenKeepaliveIsCounted(t *testing.T) {
+	conn := &fakeConn{r: bytes.NewReader(concatMessages(t, pcep.NewKeepaliveMessage()))}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
 
-	// Allow the Open and Keepalive writes to succeed; fail the KeepWait-expiry PCErr.
-	conn := &fakeConn{
-		r:         &errAfterReader{prefix: openBytes, err: os.ErrDeadlineExceeded},
-		failAfter: 2,
-		writeErr:  errors.New("write: broken pipe"),
+	require.Error(t, ss.negotiateOpen(&openNegotiation{}))
+	assert.Equal(t, uint64(1), ss.Stats().KeepaliveRcvd)
+}
+
+func TestNegotiateOpen_PreOpenPCErrIsCounted(t *testing.T) {
+	full, err := pcep.NewPCErrMessage(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueSecondOpenStillUnacceptable, nil).Serialize()
+	require.NoError(t, err)
+	conn := &fakeConn{r: bytes.NewReader(full)}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+
+	require.Error(t, ss.negotiateOpen(&openNegotiation{}))
+	assert.Equal(t, uint64(1), ss.Stats().PCErrRcvd)
+}
+
+func TestNegotiateOpen_ReadMessageBodyErrorIsPropagated(t *testing.T) {
+	header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeOpen, MessageLength: pcep.CommonHeaderLength + 10}
+	wantErr := errors.New("connection reset by peer")
+	conn := &fakeConn{r: &errAfterReader{prefix: header.Serialize(), err: wantErr}}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+
+	assert.ErrorIs(t, ss.negotiateOpen(&openNegotiation{}), wantErr)
+}
+
+func TestNegotiateOpen_TimerExpiryFollowsTheDerivedState(t *testing.T) {
+	header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeOpen, MessageLength: pcep.CommonHeaderLength + 10}
+
+	cases := []struct {
+		name           string
+		neg            openNegotiation
+		prefix         []byte
+		wantErr        string
+		wantErrorValue uint8
+	}{
+		{
+			name:           "OpenWait expires before any message arrives",
+			wantErr:        "OpenWait timer expired without a message from the peer",
+			wantErrorValue: pcepErrorValueOpenWaitTimerExpired,
+		},
+		{
+			name:           "OpenWait expires mid-message",
+			prefix:         header.Serialize(),
+			wantErr:        "OpenWait timer expired before the message was complete",
+			wantErrorValue: pcepErrorValueOpenWaitTimerExpired,
+		},
+		{
+			name:           "KeepWait expires after Pola answered the peer's Open with PCErr(1,4)",
+			neg:            openNegotiation{peerOpensRejected: 1},
+			wantErr:        "KeepWait timer expired without a message from the peer",
+			wantErrorValue: pcepErrorValueKeepWaitTimerExpired,
+		},
+		{
+			name:           "OpenWait expires while the peer's revised Open is awaited",
+			neg:            openNegotiation{peerOpensRejected: 1, localOK: true},
+			wantErr:        "OpenWait timer expired without a message from the peer",
+			wantErrorValue: pcepErrorValueOpenWaitTimerExpired,
+		},
+		{
+			name:           "KeepWait expires before any message arrives",
+			neg:            openNegotiation{remoteOK: true},
+			wantErr:        "KeepWait timer expired without a message from the peer",
+			wantErrorValue: pcepErrorValueKeepWaitTimerExpired,
+		},
+		{
+			name:           "KeepWait expires mid-message",
+			neg:            openNegotiation{remoteOK: true},
+			prefix:         header.Serialize(),
+			wantErr:        "KeepWait timer expired before the message was complete",
+			wantErrorValue: pcepErrorValueKeepWaitTimerExpired,
+		},
 	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			conn := &fakeConn{r: &errAfterReader{prefix: tc.prefix, err: os.ErrDeadlineExceeded}}
+			ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+
+			neg := tc.neg
+			require.ErrorContains(t, ss.negotiateOpen(&neg), tc.wantErr)
+
+			writes := conn.writes()
+			require.Len(t, writes, 1)
+			assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, tc.wantErrorValue)
+		})
+	}
+}
+
+func TestNegotiateOpen_KeepWaitExpiryAfterOwnProposalReportsErrorValue7(t *testing.T) {
+	stream := concatMessages(t,
+		pcep.NewOpenMessage(1, 30, 120, nil), // accepted: RemoteOK=1
+		negotiableRejection(20, 80),          // Pola adopts and re-sends its Open
+	)
+	conn := &fakeConn{r: &errAfterReader{prefix: stream, err: os.ErrDeadlineExceeded}}
+	ss := negotiatingSession(t, conn)
+
+	neg := &openNegotiation{}
+	require.ErrorContains(t, ss.negotiateOpen(neg), "KeepWait timer expired")
+	assert.True(t, neg.remoteOK)
+	assert.Equal(t, 1, neg.localOpenRetries)
+
+	writes := conn.writes()
+	require.Len(t, writes, 3, "expected the acknowledging Keepalive, the re-sent Open, and the KeepWait PCErr")
+	assertPCErr(t, writes[2], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueKeepWaitTimerExpired)
+}
+
+func TestNegotiateOpen_PCErr14SelectsTheKeepWaitTimer(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() {
+		assert.NoError(t, client.Close(), "failed to close client connection")
+	})
+
+	ss := negotiatingSession(t, server)
+	ss.openWait = time.Hour
+	ss.keepWait = 50 * time.Millisecond
+
+	writeMessage(t, client, pcep.NewOpenMessage(1, 5, 20, nil))
+
+	neg := &openNegotiation{}
+	require.ErrorContains(t, ss.negotiateOpen(neg), "KeepWait timer expired",
+		"the OpenWait timer must no longer guard the read once PCErr(1,4) has been sent")
+	assert.Equal(t, 1, neg.peerOpensRejected)
+	assert.False(t, neg.remoteOK)
+}
+
+func TestRestartInitializationTimer_SelectsTimerForCurrentState(t *testing.T) {
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	ss.openWait = time.Hour
+	ss.keepWait = 30 * time.Minute
+
+	neg := &openNegotiation{}
+	ss.restartInitializationTimer(neg)
+	openWaitDeadline := neg.deadline
+	assert.WithinDuration(t, time.Now().Add(time.Hour), openWaitDeadline, time.Second)
+
+	neg.remoteOK = true
+	ss.restartInitializationTimer(neg)
+	assert.WithinDuration(t, time.Now().Add(30*time.Minute), neg.deadline, time.Second)
+	assert.NotEqual(t, openWaitDeadline, neg.deadline)
+}
+
+func TestNegotiateOpen_DuplicateKeepalivesDoNotExtendTheInitializationTimer(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() { assert.NoError(t, client.Close()) })
+
+	ss := negotiatingSession(t, server)
+	ss.keepWait = time.Hour
+	ss.openWait = 100 * time.Millisecond
+
+	writeMessage(t, client, pcep.NewOpenMessage(1, 5, 20, nil))
+	writeMessage(t, client, pcep.NewKeepaliveMessage())
+
+	neg := &openNegotiation{}
+	start := time.Now()
+	errCh := make(chan error, 1)
+	go func() { errCh <- ss.negotiateOpen(neg) }()
+
+	require.NoError(t, readPCEPMessage(client), "failed to read Pola's PCErr(1,4)")
+
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		ticker := time.NewTicker(20 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				b, err := pcep.NewKeepaliveMessage().Serialize()
+				if err != nil {
+					return
+				}
+				if _, err := client.Write(b); err != nil {
+					return
+				}
+			}
+		}
+	}()
+
+	select {
+	case err := <-errCh:
+		require.ErrorContains(t, err, "OpenWait timer expired")
+		assert.Less(t, time.Since(start), 250*time.Millisecond,
+			"duplicate Keepalives that leave vars() unchanged must not extend the initialization timer")
+	case <-time.After(2 * time.Second):
+		require.Fail(t, "duplicate Keepalives must not indefinitely extend the initialization timer")
+	}
+}
+
+func TestStartNegotiationKeepalive_NoopWhenKeepaliveIsZero(_ *testing.T) {
+	ss := &Session{localOpen: &OpenParams{Keepalive: 0, DeadTimer: 0}}
+	stop := ss.startNegotiationKeepalive()
+	stop()
+}
+
+func TestStartNegotiationKeepalive_HandlesKeepaliveSendFailure(t *testing.T) {
+	conn := &fakeConn{r: bytes.NewReader(nil), writeErr: errors.New("write: connection reset")}
+	core, logs := observer.New(zap.DebugLevel)
+	ss := NewSession(
+		OpenParams{SessionID: 1, Keepalive: 1, DeadTimer: 4},
+		netip.MustParseAddr("10.0.255.1"),
+		conn,
+		zap.New(core),
+		nil,
+		0,
+	)
+
+	ss.localOpen = &OpenParams{SessionID: 1, Keepalive: 1, DeadTimer: 4}
+
+	stop := ss.startNegotiationKeepalive()
+	defer stop()
+
+	require.Eventually(t, func() bool {
+		return len(logs.FilterMessage("ERROR! Send Keepalive Message during negotiation").All()) > 0
+	}, 2*time.Second, 50*time.Millisecond, "expected negotiation keepalive send to fail and be logged")
+}
+
+func TestNegotiateOpen_SendsKeepalivesWhileAwaitingAcknowledgmentOfItsOwnOpen(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() { assert.NoError(t, client.Close()) })
+
+	localOpen := OpenParams{SessionID: 1, Keepalive: 1, DeadTimer: pcep.DeadTimerFor(1)}
+	ss := NewSession(localOpen, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss.keepWait = 5 * time.Second
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- ss.Open() }()
+
+	require.NoError(t, readPCEPMessage(client), "failed to read Pola's initial Open")
+
+	writeMessage(t, client, pcep.NewOpenMessage(1, 30, 120, nil))
+
+	require.NoError(t, readPCEPMessage(client), "failed to read the Keepalive acknowledging the peer's Open")
+
+	require.NoError(t, readPCEPMessage(client), "expected a periodic Keepalive while awaiting the peer's acknowledgment")
+
+	writeMessage(t, client, pcep.NewKeepaliveMessage())
+
+	select {
+	case err := <-errCh:
+		require.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		require.Fail(t, "Open did not return once both sides acknowledged")
+	}
+	assert.True(t, ss.Up())
+}
+
+func TestNegotiateOpen_NegotiationKeepaliveStopsWhenNegotiationFails(t *testing.T) {
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() { assert.NoError(t, client.Close()) })
+
+	localOpen := OpenParams{SessionID: 1, Keepalive: 1, DeadTimer: pcep.DeadTimerFor(1)}
+	ss := NewSession(localOpen, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- ss.Open() }()
+
+	require.NoError(t, readPCEPMessage(client), "failed to read Pola's initial Open")
+
+	writeMessage(t, client, pcep.NewOpenMessage(1, 30, 120, nil))
+
+	require.NoError(t, readPCEPMessage(client), "failed to read the Keepalive acknowledging the peer's Open")
+
+	writeMessage(t, client, pcep.NewOpenMessage(1, 200, 255, nil))
+
+	select {
+	case err := <-errCh:
+		require.Error(t, err)
+	case <-time.After(2 * time.Second):
+		require.Fail(t, "Open did not return")
+	}
+
+	require.NoError(t, readPCEPMessage(client), "failed to read the PCErr rejecting the second Open")
+
+	require.NoError(t, client.SetReadDeadline(time.Now().Add(1200*time.Millisecond)))
+	_, err := client.Read(make([]byte, 1))
+	assert.ErrorIs(t, err, os.ErrDeadlineExceeded,
+		"the negotiation Keepalive goroutine must stop before Open returns, not fire once more a second later")
+}
+
+func TestNegotiateOpen_SendPCErrFailureIsLoggedNotFatal(t *testing.T) {
+	conn := &fakeConn{r: &errAfterReader{err: os.ErrDeadlineExceeded}, writeErr: errors.New("write: broken pipe")}
 	core, logs := observer.New(zap.DebugLevel)
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.New(core), nil, 0)
 
-	err = ss.Open()
-	require.ErrorContains(t, err, "KeepWait timer expired",
+	require.ErrorContains(t, ss.negotiateOpen(&openNegotiation{remoteOK: true}), "KeepWait timer expired",
 		"the session must still report timer expiry even though the best-effort PCErr send failed")
 	assert.NotEmpty(t, logs.FilterMessage("ERROR! Send PCErr Message").All())
 }
 
-func TestAwaitKeepalive_KeepWaitExpiresWhileReadingBody(t *testing.T) {
-	openBytes, err := pcep.NewOpenMessage(1, 30, 120, nil).Serialize()
-	require.NoError(t, err)
-
-	// Simulate a body read timeout after receiving the header.
-	header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeReport, MessageLength: pcep.CommonHeaderLength + 4}
-	conn := &fakeConn{r: &errAfterReader{prefix: append(openBytes, header.Serialize()...), err: os.ErrDeadlineExceeded}}
+func TestNegotiateOpen_MalformedCommonHeaderIsRejectedWithErrorValue1(t *testing.T) {
+	header := &pcep.CommonHeader{Version: 2, MessageType: pcep.MessageTypeOpen, MessageLength: pcep.CommonHeaderLength}
+	conn := &fakeConn{r: bytes.NewReader(header.Serialize())}
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
 
-	err = ss.Open()
-	require.ErrorContains(t, err, "KeepWait timer expired while reading the message body")
+	require.Error(t, ss.negotiateOpen(&openNegotiation{}))
+	assert.Equal(t, uint64(1), ss.stats.corruptRcvd)
+
+	writes := conn.writes()
+	require.Len(t, writes, 1)
+	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
 }
 
-func TestHandleKeepWaitPCErr_MalformedPCErrReturnsError(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+func TestNegotiateOpen_PeerOpenDecodeErrorIsRejectedWithErrorValue1(t *testing.T) {
+	body := pcep.NewCommonObjectHeader(pcep.ObjectClassClose, pcep.ObjectTypeOpenOpen, pcep.CommonHeaderLength).Serialize()
+	header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeOpen, MessageLength: pcep.CommonHeaderLength + uint16(len(body))}
 
-	_, err := ss.handleKeepWaitPCErr([]byte{}, true)
-	require.ErrorContains(t, err, "malformed PCErr in KeepWait")
+	conn := &fakeConn{r: bytes.NewReader(slices.Concat(header.Serialize(), body))}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+
+	require.Error(t, ss.negotiateOpen(&openNegotiation{}))
+	assert.Equal(t, uint64(1), ss.stats.corruptRcvd)
+
+	writes := conn.writes()
+	require.Len(t, writes, 1)
+	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
 }
 
-func TestHandleKeepWaitPCErr_OtherErrorIsReportedAsIs(t *testing.T) {
+func TestNegotiateOpen_ProposeAcceptableOpenSendFailure(t *testing.T) {
+	conn := &fakeConn{
+		r:        bytes.NewReader(concatMessages(t, pcep.NewOpenMessage(1, 5, 20, nil))),
+		writeErr: errors.New("write: broken pipe"),
+	}
+	ss := negotiatingSession(t, conn)
+
+	neg := &openNegotiation{}
+	require.ErrorContains(t, ss.negotiateOpen(neg), "write: broken pipe")
+	assert.Zero(t, neg.peerOpensRejected, "OpenRetry must not be spent when the PCErr(1,4) cannot be sent")
+}
+
+func TestNegotiateOpen_SecondOpenAfterAnAcceptableOpenIsRejected(t *testing.T) {
+	stream := concatMessages(t,
+		pcep.NewOpenMessage(1, 30, 120, nil),
+		pcep.NewOpenMessage(1, 200, 255, nil),
+	)
+	conn := &fakeConn{r: bytes.NewReader(stream)}
+	ss := negotiatingSession(t, conn)
+
+	neg := &openNegotiation{}
+	require.Error(t, ss.negotiateOpen(neg))
+	assert.False(t, neg.localOK)
+	assert.NotEqual(t, sessionStateUp, ss.State())
+
+	pccOpen, ok := ss.PccOpen()
+	require.True(t, ok)
+	assert.Equal(t, OpenParams{SessionID: 1, Keepalive: 30, DeadTimer: 120}, pccOpen)
+
+	writes := conn.writes()
+	require.Len(t, writes, 2)
+	var header pcep.CommonHeader
+	require.NoError(t, header.DecodeFromBytes(writes[0]))
+	assert.Equal(t, pcep.MessageTypeKeepalive, header.MessageType)
+	assertPCErr(t, writes[1], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
+}
+
+func TestNegotiateOpen_SecondPeerOpenStillUnacceptableReportsErrorValue5(t *testing.T) {
+	stream := concatMessages(t,
+		pcep.NewOpenMessage(1, 5, 20, nil),
+		pcep.NewOpenMessage(1, 5, 20, nil),
+	)
+	conn := &fakeConn{r: bytes.NewReader(stream)}
+	ss := negotiatingSession(t, conn)
+
+	neg := &openNegotiation{}
+	require.ErrorContains(t, ss.negotiateOpen(neg), "peer's second Open still advertises unacceptable session characteristics")
+	assert.Equal(t, 1, neg.peerOpensRejected, "OpenRetry stops at 1; the second rejection ends the session")
+	assert.Zero(t, neg.localOpenRetries, "rejecting the peer's Open must not spend Pola's own Open retry budget")
+
+	writes := conn.writes()
+	require.Len(t, writes, 2)
+	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableNegotiable)
+	assertPCErr(t, writes[1], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueSecondOpenStillUnacceptable)
+}
+
+func TestNegotiateOpen_ZeroKeepaliveWithNonzeroDeadTimerIsAccepted(t *testing.T) {
+	stream := concatMessages(t,
+		pcep.NewOpenMessage(1, 0, 120, nil),
+		pcep.NewKeepaliveMessage(),
+	)
+	conn := &fakeConn{r: bytes.NewReader(stream)}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+
+	neg := &openNegotiation{}
+	require.NoError(t, ss.negotiateOpen(neg))
+	assert.True(t, neg.established())
+
+	writes := conn.writes()
+	require.Len(t, writes, 1, "only the acknowledging Keepalive; a Keepalive=0 Open must not draw a PCErr")
+	var header pcep.CommonHeader
+	require.NoError(t, header.DecodeFromBytes(writes[0]))
+	assert.Equal(t, pcep.MessageTypeKeepalive, header.MessageType)
+}
+
+func TestNegotiateOpen_UnacceptableOpenIsRejectedWithErrorValue3WhenNegotiationIsDisabled(t *testing.T) {
+	conn := &fakeConn{r: bytes.NewReader(concatMessages(t, pcep.NewOpenMessage(1, 5, 20, nil)))}
+	ss := negotiatingSession(t, conn)
+	ss.allowNegotiation = false
+
+	neg := &openNegotiation{}
+	require.ErrorContains(t, ss.negotiateOpen(neg), "unacceptable and non-negotiable")
+	assert.Zero(t, neg.peerOpensRejected)
+
+	writes := conn.writes()
+	require.Len(t, writes, 1)
+	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableNonNegotiable)
+}
+
+func TestNegotiateOpen_PCErrBeforeThePeersOpenIsRejected(t *testing.T) {
+	stream := concatMessages(t,
+		negotiableRejection(20, 80),
+		pcep.NewOpenMessage(1, 30, 120, nil),
+		pcep.NewKeepaliveMessage(),
+	)
+	conn := &fakeConn{r: bytes.NewReader(stream)}
+	ss := negotiatingSession(t, conn)
+
+	neg := &openNegotiation{}
+	require.ErrorContains(t, ss.negotiateOpen(neg), "received a PCErr before the peer's Open message")
+
+	assert.Zero(t, neg.localOpenRetries, "the proposal must not be adopted")
+	writes := conn.writes()
+	require.Len(t, writes, 1)
+	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
+}
+
+func TestNegotiateOpen_KeepWaitRenegotiationSpendsTheLocalOpenRetryBudget(t *testing.T) {
+	stream := concatMessages(t,
+		pcep.NewOpenMessage(1, 30, 120, nil),
+		negotiableRejection(20, 80),
+	)
+	conn := &fakeConn{r: bytes.NewReader(stream)}
+	ss := negotiatingSession(t, conn)
+
+	neg := &openNegotiation{}
+	require.Error(t, ss.negotiateOpen(neg), "the peer never acknowledges the re-sent Open")
+
+	assert.Equal(t, 1, neg.localOpenRetries, "adopting the proposal spends one local Open retry")
+	assert.True(t, neg.remoteOK)
+	assert.Equal(t, sessionStateKeepWait, ss.State(), "RemoteOK=1 keeps the session in KeepWait across the re-sent Open")
+
+	writes := conn.writes()
+	require.Len(t, writes, 2, "expected the Keepalive acknowledging the peer's Open and the re-sent Open")
+	var header pcep.CommonHeader
+	require.NoError(t, header.DecodeFromBytes(writes[0]))
+	assert.Equal(t, pcep.MessageTypeKeepalive, header.MessageType)
+	require.NoError(t, header.DecodeFromBytes(writes[1]))
+	assert.Equal(t, pcep.MessageTypeOpen, header.MessageType, "Pola must not re-acknowledge an Open it already accepted")
+}
+
+func TestNegotiateOpen_OpenWaitAndKeepWaitShareOneLocalOpenRetryBudget(t *testing.T) {
+	stream := concatMessages(t,
+		pcep.NewOpenMessage(1, 5, 20, nil),
+		negotiableRejection(20, 80),
+		pcep.NewOpenMessage(1, 30, 120, nil),
+		negotiableRejection(40, 160),
+	)
+	conn := &fakeConn{r: bytes.NewReader(stream)}
+	ss := negotiatingSession(t, conn)
+
+	neg := &openNegotiation{}
+	err := ss.negotiateOpen(neg)
+	require.ErrorContains(t, err, "further proposal",
+		"the KeepWait renegotiation must see the budget already spent in OpenWait")
+
+	assert.Equal(t, 1, neg.localOpenRetries, "the budget is spent once, not once per state")
+	assert.Equal(t, 1, neg.peerOpensRejected, "OpenRetry is independent of the local Open retry budget")
+	assert.Equal(t, uint8(20), ss.localKeepalive, "the second proposal must not be adopted")
+	assert.Equal(t, uint8(80), ss.localDeadTimer)
+
+	writes := conn.writes()
+	require.Len(t, writes, 4)
+	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableNegotiable)
+	assertPCErr(t, writes[3], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableProposal)
+}
+
+func TestNegotiateOpen_SimultaneousRejectionInterleavesPCErrBeforeRevisedOpen(t *testing.T) {
+	stream := concatMessages(t,
+		pcep.NewOpenMessage(1, 5, 20, nil),
+		negotiableRejection(20, 80),
+		pcep.NewOpenMessage(1, 30, 120, nil),
+		pcep.NewKeepaliveMessage(),
+	)
+	conn := &fakeConn{r: bytes.NewReader(stream)}
+	ss := negotiatingSession(t, conn)
+
+	neg := &openNegotiation{}
+	require.NoError(t, ss.negotiateOpen(neg), "the interleaved PCErr must not be mistaken for an invalid Open")
+
+	assert.Equal(t, 1, neg.localOpenRetries)
+	assert.Equal(t, 1, neg.peerOpensRejected)
+	assert.Equal(t, uint8(20), ss.localKeepalive)
+	assert.Equal(t, uint8(80), ss.localDeadTimer)
+	assert.Equal(t, sessionStateUp, ss.State())
+
+	pccOpen, ok := ss.PccOpen()
+	require.True(t, ok)
+	assert.Equal(t, OpenParams{SessionID: 1, Keepalive: 30, DeadTimer: 120}, pccOpen)
+}
+
+func TestNegotiateOpen_KeepaliveMayArriveBeforeThePeersRevisedOpen(t *testing.T) {
+	stream := concatMessages(t,
+		pcep.NewOpenMessage(1, 5, 20, nil),
+		pcep.NewKeepaliveMessage(),
+		pcep.NewOpenMessage(1, 30, 120, nil),
+	)
+	conn := &fakeConn{r: bytes.NewReader(stream)}
+	ss := negotiatingSession(t, conn)
+
+	neg := &openNegotiation{}
+	require.NoError(t, ss.negotiateOpen(neg), "a Keepalive after the peer's first Open acknowledges Pola's Open")
+
+	assert.True(t, neg.localOK)
+	assert.True(t, neg.remoteOK)
+	assert.Zero(t, neg.localOpenRetries, "acknowledging Pola's Open costs no retry budget")
+	assert.Equal(t, sessionStateUp, ss.State())
+}
+
+func TestNegotiateOpen_RevisedOpenMayArriveBeforeTheAcknowledgmentOfPolasOpen(t *testing.T) {
+	stream := concatMessages(t,
+		pcep.NewOpenMessage(1, 5, 20, nil),
+		pcep.NewOpenMessage(1, 30, 120, nil),
+		pcep.NewKeepaliveMessage(),
+	)
+	conn := &fakeConn{r: bytes.NewReader(stream)}
+	ss := negotiatingSession(t, conn)
+
+	neg := &openNegotiation{}
+	require.NoError(t, ss.negotiateOpen(neg), "the peer's revised Open must be accepted before its Keepalive")
+
+	assert.Equal(t, 1, neg.peerOpensRejected, "the revised Open is acceptable, so it must not draw PCErr(1,5)")
+	assert.Zero(t, neg.localOpenRetries, "Pola never re-sent its own Open")
+	assert.Equal(t, sessionStateUp, ss.State())
+
+	writes := conn.writes()
+	require.Len(t, writes, 2)
+	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableNegotiable)
+	var header pcep.CommonHeader
+	require.NoError(t, header.DecodeFromBytes(writes[1]))
+	assert.Equal(t, pcep.MessageTypeKeepalive, header.MessageType, "the revised Open must be acknowledged")
+
+	pccOpen, ok := ss.PccOpen()
+	require.True(t, ok)
+	assert.Equal(t, OpenParams{SessionID: 1, Keepalive: 30, DeadTimer: 120}, pccOpen)
+}
+
+func TestNegotiateOpen_ResentOpenMustBeAcknowledgedBeforeUp(t *testing.T) {
+	reader := bytes.NewReader(concatMessages(t,
+		pcep.NewOpenMessage(1, 5, 20, nil),
+		pcep.NewKeepaliveMessage(),
+		negotiableRejection(40, 160),
+		pcep.NewOpenMessage(1, 30, 120, nil),
+		pcep.NewKeepaliveMessage(),
+	))
+	conn := &fakeConn{r: reader}
+	ss := negotiatingSession(t, conn)
+
+	neg := &openNegotiation{}
+	require.NoError(t, ss.negotiateOpen(neg))
+
+	assert.True(t, neg.established())
+	assert.Equal(t, sessionStateUp, ss.State())
+	assert.Equal(t, uint64(2), ss.Stats().KeepaliveRcvd,
+		"only the Keepalive acknowledging the re-sent Open may complete establishment")
+}
+
+func TestHandleNegotiationPCErr_MalformedPCErrIsRejectedWithErrorValue1(t *testing.T) {
 	conn := &fakeConn{r: bytes.NewReader(nil)}
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
 
-	pcerrMessage := pcep.NewPCErrMessage(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueSecondOpenStillUnacceptable, nil)
-	full, err := pcerrMessage.Serialize()
-	require.NoError(t, err)
+	require.ErrorContains(t, ss.handleNegotiationPCErr([]byte{}, &openNegotiation{}),
+		"malformed PCErr while establishing the PCEP session")
+	assert.Equal(t, uint64(1), ss.stats.corruptRcvd)
 
-	_, err = ss.handleKeepWaitPCErr(full[pcep.CommonHeaderLength:], true)
-	require.ErrorContains(t, err, "peer rejected session establishment")
+	writes := conn.writes()
+	require.Len(t, writes, 1)
+	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
 }
 
-func TestHandleKeepWaitPCErr_NegotiableProposalIsFoundBehindOtherErrors(t *testing.T) {
+func TestHandleNegotiationPCErr_NonNegotiableRejectionIsReportedAsIs(t *testing.T) {
 	conn := &fakeConn{r: bytes.NewReader(nil)}
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
-	ss.allowNegotiation = true
+
+	full, err := pcep.NewPCErrMessage(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueSecondOpenStillUnacceptable, nil).Serialize()
+	require.NoError(t, err)
+
+	require.ErrorContains(t, ss.handleNegotiationPCErr(full[pcep.CommonHeaderLength:], &openNegotiation{}),
+		"peer rejected session establishment")
+	assert.Zero(t, conn.writeCount, "a rejection Pola cannot answer must not be answered with PCErr 1/6")
+}
+
+func TestHandleNegotiationPCErr_NegotiableProposalIsFoundBehindOtherErrors(t *testing.T) {
+	conn := &fakeConn{r: bytes.NewReader(nil)}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
 
 	pcerrMessage := &pcep.PCErrMessage{
 		Errors: []*pcep.ErrorObject{
@@ -2098,13 +2876,13 @@ func TestHandleKeepWaitPCErr_NegotiableProposalIsFoundBehindOtherErrors(t *testi
 	full, err := pcerrMessage.Serialize()
 	require.NoError(t, err)
 
-	retry, err := ss.handleKeepWaitPCErr(full[pcep.CommonHeaderLength:], true)
-	require.NoError(t, err)
-	assert.True(t, retry, "an Error 1/4 must drive renegotiation even when it is not the first PCEP-ERROR object")
+	neg := &openNegotiation{}
+	require.NoError(t, ss.handleNegotiationPCErr(full[pcep.CommonHeaderLength:], neg))
+	assert.Equal(t, 1, neg.localOpenRetries, "an Error 1/4 must drive renegotiation even when it is not the first PCEP-ERROR object")
 	assert.Equal(t, uint8(20), ss.localKeepalive)
 }
 
-func TestHandleKeepWaitPCErr_AllErrorsAreReported(t *testing.T) {
+func TestHandleNegotiationPCErr_AllErrorsAreReported(t *testing.T) {
 	conn := &fakeConn{r: bytes.NewReader(nil)}
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
 
@@ -2117,44 +2895,133 @@ func TestHandleKeepWaitPCErr_AllErrorsAreReported(t *testing.T) {
 	full, err := pcerrMessage.Serialize()
 	require.NoError(t, err)
 
-	_, err = ss.handleKeepWaitPCErr(full[pcep.CommonHeaderLength:], true)
+	err = ss.handleNegotiationPCErr(full[pcep.CommonHeaderLength:], &openNegotiation{})
 	require.ErrorContains(t, err, "error-type=2, error-value=0")
 	require.ErrorContains(t, err, "error-type=1, error-value=3")
 	assert.Zero(t, conn.writeCount, "a non-negotiable rejection must not be answered with PCErr 1/6")
 }
 
+func TestAdoptProposedOpen_MissingOpenObjectIsRejected(t *testing.T) {
+	conn := &fakeConn{r: bytes.NewReader(nil)}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+
+	neg := &openNegotiation{}
+	require.ErrorContains(t, ss.adoptProposedOpen(nil, neg), "without proposing acceptable ones")
+	assert.Zero(t, neg.localOpenRetries)
+
+	writes := conn.writes()
+	require.Len(t, writes, 1)
+	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableProposal)
+}
+
+func TestAdoptProposedOpen_UnacceptableProposalIsRejected(t *testing.T) {
+	conn := &fakeConn{r: bytes.NewReader(nil)}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+
+	neg := &openNegotiation{}
+	require.ErrorContains(t, ss.adoptProposedOpen(pcep.NewOpenObject(1, 50, 10, nil), neg),
+		"peer proposed unacceptable session characteristics")
+	assert.Zero(t, neg.localOpenRetries, "a proposal Pola cannot adopt must not spend the retry budget")
+
+	writes := conn.writes()
+	require.Len(t, writes, 1)
+	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableProposal)
+}
+
+func TestAdoptProposedOpen_ProposalOutsideTheConfiguredKeepaliveRangeIsRejectedWithErrorValue6(t *testing.T) {
+	conn := &fakeConn{r: bytes.NewReader(nil)}
+	ss := negotiatingSession(t, conn) // range [10,60]
+
+	neg := &openNegotiation{}
+	err := ss.adoptProposedOpen(pcep.NewOpenObject(1, 5, 20, nil), neg)
+	require.ErrorContains(t, err, "peer proposed unacceptable session characteristics (Keepalive=5, DeadTimer=20)")
+	assert.Zero(t, neg.localOpenRetries, "a proposal outside the configured range must not be adopted")
+	assert.Equal(t, defaultLocalKeepalive, ss.localKeepalive, "Pola's own advertised Keepalive must be unchanged")
+
+	writes := conn.writes()
+	require.Len(t, writes, 1)
+	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableProposal)
+}
+
+func TestAdoptProposedOpen_AcceptsProposalWithinTheConfiguredKeepaliveRange(t *testing.T) {
+	conn := &fakeConn{r: bytes.NewReader(nil)}
+	ss := negotiatingSession(t, conn) // range [10,60]
+
+	neg := &openNegotiation{}
+	require.NoError(t, ss.adoptProposedOpen(pcep.NewOpenObject(1, 40, 160, nil), neg))
+	assert.Equal(t, 1, neg.localOpenRetries)
+	assert.Equal(t, uint8(40), ss.localKeepalive)
+	assert.Equal(t, uint8(160), ss.localDeadTimer)
+}
+
+func TestAdoptProposedOpen_ExhaustedBudgetIsRejectedWithErrorValue6(t *testing.T) {
+	conn := &fakeConn{r: bytes.NewReader(nil)}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+
+	neg := &openNegotiation{localOpenRetries: maxLocalOpenRetries}
+	require.ErrorContains(t, ss.adoptProposedOpen(pcep.NewOpenObject(1, 20, 80, nil), neg), "further proposal")
+	assert.Equal(t, maxLocalOpenRetries, neg.localOpenRetries, "an exhausted budget must not be overspent")
+
+	writes := conn.writes()
+	require.Len(t, writes, 1)
+	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableProposal)
+}
+
+func TestAdoptProposedOpen_SendOpenFailureDoesNotSpendTheBudget(t *testing.T) {
+	conn := &fakeConn{r: bytes.NewReader(nil), writeErr: errors.New("write: broken pipe")}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+
+	neg := &openNegotiation{}
+	require.ErrorContains(t, ss.adoptProposedOpen(pcep.NewOpenObject(1, 20, 80, nil), neg), "write: broken pipe")
+	assert.Zero(t, neg.localOpenRetries, "the budget tracks Opens that actually reached the peer")
+}
+
+func TestAdoptProposedOpen_ClearsTheAcknowledgmentOfThePreviousOpen(t *testing.T) {
+	for _, initialLocalOK := range []bool{true, false} {
+		t.Run(fmt.Sprintf("localOK=%v", initialLocalOK), func(t *testing.T) {
+			conn := &fakeConn{r: bytes.NewReader(nil)}
+			ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+
+			neg := &openNegotiation{localOK: initialLocalOK}
+			require.NoError(t, ss.adoptProposedOpen(pcep.NewOpenObject(1, 20, 80, nil), neg))
+			assert.False(t, neg.localOK, "the re-sent Open must be acknowledged by a fresh Keepalive")
+		})
+	}
+}
+
+func TestAdoptProposedOpen_ZeroKeepaliveProposalIsAdopted(t *testing.T) {
+	conn := &fakeConn{r: bytes.NewReader(nil)}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+
+	neg := &openNegotiation{}
+	require.NoError(t, ss.adoptProposedOpen(pcep.NewOpenObject(1, 0, 0, nil), neg))
+	assert.Equal(t, 1, neg.localOpenRetries)
+	assert.Equal(t, uint8(0), ss.localKeepalive)
+	assert.Zero(t, ss.keepaliveInterval(), "Pola must not send periodic Keepalives once it has adopted Keepalive=0")
+}
+
 func TestOpen_RetriesAfterAcceptablePCErrProposal(t *testing.T) {
-	peerOpenBytes, err := pcep.NewOpenMessage(1, 30, 120, nil).Serialize()
-	require.NoError(t, err)
-
-	proposedOpen := pcep.NewOpenObject(1, 20, 80, nil)
-	pcerrMessage := pcep.NewPCErrMessageWithOpen(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableNegotiable, proposedOpen)
-	pcerrBytes, err := pcerrMessage.Serialize()
-	require.NoError(t, err)
-
-	keepaliveBytes, err := pcep.NewKeepaliveMessage().Serialize()
-	require.NoError(t, err)
-
-	stream := append(append(peerOpenBytes, pcerrBytes...), keepaliveBytes...)
+	stream := concatMessages(t,
+		pcep.NewOpenMessage(1, 30, 120, nil),
+		negotiableRejection(20, 80),
+		pcep.NewKeepaliveMessage(),
+	)
 	conn := &fakeConn{r: bytes.NewReader(stream)}
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
 
 	require.NoError(t, ss.Open(), "Open must retry with the peer's acceptable proposal instead of failing")
+	assert.True(t, ss.Up())
 	assert.Equal(t, uint8(20), ss.localKeepalive)
 	assert.Equal(t, uint8(80), ss.localDeadTimer)
+	assert.Len(t, conn.writes(), 3, "expected the initial Open, the Keepalive acknowledging the peer's Open, and the re-sent Open")
 }
 
 func TestOpen_SendOpenFailsAfterRetryingWithProposal(t *testing.T) {
-	// Use distinct SIDs to verify that retrying keeps Pola's own SID.
-	peerOpenBytes, err := pcep.NewOpenMessage(2, 30, 120, nil).Serialize()
-	require.NoError(t, err)
-
-	proposedOpen := pcep.NewOpenObject(2, 20, 80, nil)
-	pcerrMessage := pcep.NewPCErrMessageWithOpen(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableNegotiable, proposedOpen)
-	pcerrBytes, err := pcerrMessage.Serialize()
-	require.NoError(t, err)
-
-	stream := append(append([]byte(nil), peerOpenBytes...), pcerrBytes...)
+	stream := concatMessages(t,
+		pcep.NewOpenMessage(2, 30, 120, nil),
+		pcep.NewPCErrMessageWithOpen(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableNegotiable,
+			pcep.NewOpenObject(2, 20, 80, nil)),
+	)
 	conn := &fakeConn{
 		r:         bytes.NewReader(stream),
 		failAfter: 2,
@@ -2162,9 +3029,7 @@ func TestOpen_SendOpenFailsAfterRetryingWithProposal(t *testing.T) {
 	}
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
 
-	err = ss.Open()
-	require.Error(t, err)
-	require.ErrorContains(t, err, "write: broken pipe")
+	require.ErrorContains(t, ss.Open(), "write: broken pipe")
 
 	writes := conn.writes()
 	require.Len(t, writes, 3, "expected initial Open, Keepalive, and retry Open")
@@ -2180,66 +3045,21 @@ func TestOpen_SendOpenFailsAfterRetryingWithProposal(t *testing.T) {
 	assert.Equal(t, uint8(1), retryOpen.OpenObject.Sid, "retry SendOpen must still use Pola's own SID, not the peer's proposed one")
 }
 
-func TestHandleProposedOpen_UnacceptableProposalIsRejected(t *testing.T) {
-	conn := &fakeConn{r: bytes.NewReader(nil)}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
-
-	proposedOpen := pcep.NewOpenObject(1, 50, 10, nil)
-	retry, err := ss.handleProposedOpen(proposedOpen, true)
-	assert.False(t, retry)
-	require.ErrorContains(t, err, "peer proposed unacceptable session characteristics")
-}
-
-func TestHandleProposedOpen_IgnoresPCCKeepaliveRange(t *testing.T) {
-	conn := &fakeConn{r: bytes.NewReader(nil)}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
-	ss.keepaliveRangeEnabled = true
-	ss.minKeepalive, ss.maxKeepalive = 10, 60
-
-	proposedOpen := pcep.NewOpenObject(1, 5, 20, nil)
-	retry, err := ss.handleProposedOpen(proposedOpen, true)
-	require.NoError(t, err)
-	assert.True(t, retry)
-	assert.Equal(t, uint8(5), ss.localKeepalive)
-	assert.Equal(t, uint8(20), ss.localDeadTimer)
-}
-
-func TestHandleProposedOpen_MissingOpenObjectIsRejected(t *testing.T) {
-	conn := &fakeConn{r: bytes.NewReader(nil)}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
-
-	retry, err := ss.handleProposedOpen(nil, true)
-	assert.False(t, retry)
-	require.ErrorContains(t, err, "without proposing acceptable ones")
-}
-
-func TestHandleProposedOpen_FurtherProposalAfterRetryIsRejected(t *testing.T) {
-	conn := &fakeConn{r: bytes.NewReader(nil)}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
-
-	retry, err := ss.handleProposedOpen(pcep.NewOpenObject(1, 20, 80, nil), false)
-	assert.False(t, retry)
-	require.ErrorContains(t, err, "further proposal")
-	assert.Equal(t, 1, conn.writeCount, "an exhausted negotiation must be answered with PCErr 1/6")
-}
-
 func TestOpen_RejectsSecondProposalWithErrorValue6(t *testing.T) {
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() { assert.NoError(t, client.Close()) })
 
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
 
-	proposedOpen := pcep.NewOpenObject(1, 20, 80, nil)
-	pcerrMessage := pcep.NewPCErrMessageWithOpen(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableNegotiable, proposedOpen)
-
 	writeMessage(t, client, pcep.NewOpenMessage(1, 30, 120, nil))
-	writeMessage(t, client, pcerrMessage)
-	writeMessage(t, client, pcerrMessage)
+	writeMessage(t, client, negotiableRejection(20, 80))
+	writeMessage(t, client, negotiableRejection(20, 80))
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- ss.Open() }()
 
-	for range 4 {
+	// Pola's initial Open, the Keepalive acknowledging the peer's Open, and the re-sent Open.
+	for range 3 {
 		require.NoError(t, readPCEPMessage(client))
 	}
 
@@ -2255,41 +3075,6 @@ func TestOpen_RejectsSecondProposalWithErrorValue6(t *testing.T) {
 		require.Fail(t, "Open did not return after rejecting the second proposal")
 	}
 	assert.False(t, ss.Up())
-}
-
-func TestReceiveOpen_OpenWaitExpiresWhileReadingBody(t *testing.T) {
-	header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeOpen, MessageLength: pcep.CommonHeaderLength + 10}
-	conn := &fakeConn{r: &errAfterReader{prefix: header.Serialize(), err: os.ErrDeadlineExceeded}}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
-
-	err := ss.ReceiveOpen()
-	assert.ErrorContains(t, err, "OpenWait timer expired before the Open message was complete")
-}
-
-func TestNegotiateOpen_ProposeAcceptableOpenSendFailure(t *testing.T) {
-	openBytes, err := pcep.NewOpenMessage(1, 5, 20, nil).Serialize()
-	require.NoError(t, err)
-
-	conn := &fakeConn{r: bytes.NewReader(openBytes), writeErr: errors.New("write: broken pipe")}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
-	ss.keepaliveRangeEnabled = true
-	ss.minKeepalive, ss.maxKeepalive = 10, 60
-	ss.allowNegotiation = true
-
-	require.Error(t, ss.negotiateOpen(), "expected negotiateOpen to fail once proposeAcceptableOpen cannot send")
-}
-
-func TestNegotiateOpen_SecondReceiveOpenFailure(t *testing.T) {
-	openBytes, err := pcep.NewOpenMessage(1, 5, 20, nil).Serialize()
-	require.NoError(t, err)
-
-	conn := &fakeConn{r: bytes.NewReader(openBytes)}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
-	ss.keepaliveRangeEnabled = true
-	ss.minKeepalive, ss.maxKeepalive = 10, 60
-	ss.allowNegotiation = true
-
-	require.Error(t, ss.negotiateOpen(), "expected negotiateOpen to fail once the peer's second Open never arrives")
 }
 
 func TestReceivePCEPMessage_SendCloseFailureIsLoggedNotFatal(t *testing.T) {
@@ -3449,29 +4234,12 @@ func TestSessionStats_SendCountersIncrementOnSuccess(t *testing.T) {
 	assert.Equal(t, uint64(1), ss.Stats().PCInitiateSent)
 }
 
-func TestSessionStats_OpenRcvdIncrementsOnSuccess(t *testing.T) {
-	server, client := newTCPConnPair(t)
-	t.Cleanup(func() {
-		assert.NoError(t, server.Close(), "failed to close server connection")
-		assert.NoError(t, client.Close(), "failed to close client connection")
-	})
-
-	openMessage := pcep.NewOpenMessage(1, 30, pcep.DeadTimerFor(30), nil)
-	byteOpenMessage, err := openMessage.Serialize()
-	require.NoError(t, err, "failed to serialize open message")
-	_, err = client.Write(byteOpenMessage)
-	require.NoError(t, err, "failed to write open message")
-
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
-	require.NoError(t, ss.ReceiveOpen())
-	assert.Equal(t, uint64(1), ss.Stats().OpenRcvd)
-}
-
 func TestCountReceived_IncrementsExpectedCounter(t *testing.T) {
 	cases := map[string]struct {
 		messageType pcep.MessageType
 		get         func(sessionStatsSnapshot) uint64
 	}{
+		"Open":         {pcep.MessageTypeOpen, func(s sessionStatsSnapshot) uint64 { return s.OpenRcvd }},
 		"Keepalive":    {pcep.MessageTypeKeepalive, func(s sessionStatsSnapshot) uint64 { return s.KeepaliveRcvd }},
 		"Report":       {pcep.MessageTypeReport, func(s sessionStatsSnapshot) uint64 { return s.RptRcvd }},
 		"Error":        {pcep.MessageTypeError, func(s sessionStatsSnapshot) uint64 { return s.PCErrRcvd }},
