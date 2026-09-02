@@ -1,30 +1,58 @@
 version: "2"
-
 linters:
   default: standard
   enable:
+    - asasalint
+    - asciicheck
+    - bidichk
+    - contextcheck
     - copyloopvar
+    - dupword
+    - durationcheck
+    - errchkjson
+    - errname
     - errorlint
+    - fatcontext
+    - gocheckcompilerdirectives
+    - gochecknoinits
+    - gochecksumtype
     - goconst
     - gocritic
     - gocyclo
     - gosec
+    - iface
     - intrange
+    - loggercheck
+    - makezero
+    - mirror
     - misspell
+    - modernize
     - nilerr
+    - nilnesserr
     - nolintlint
     - perfsprint
+    - reassign
     - revive
+    - spancheck
     - testifylint
     - unconvert
     - usestdlibvars
     - wastedassign
   settings:
+    gochecksumtype:
+      default-signifies-exhaustive: false
     goconst:
       ignore-tests: true
       min-occurrences: 3
     gocyclo:
       min-complexity: 15
+    iface:
+      enable:
+        - identical
+        - unused
+    loggercheck:
+      require-string-key: true
+      no-printf-like: true
     nolintlint:
       require-explanation: true
       require-specific: true
