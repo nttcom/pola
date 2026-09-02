@@ -221,7 +221,7 @@ func objectLength(body ...[]uint8) (uint16, error) {
 	return uint16(total), nil
 }
 
-// OPEN Object (RFC 5440 §7.3)
+// OPEN Object (RFC 5440 §7.3).
 const (
 	ObjectTypeOpenOpen ObjectType = 0x01
 )
@@ -477,7 +477,7 @@ func NewLSPAObject() *LSPAObject {
 	}
 }
 
-// PCEP Error Object (RFC 5440 §7.15)
+// PCEP Error Object (RFC 5440 §7.15).
 const (
 	ObjectTypeErrorError ObjectType = 0x01
 )
@@ -553,7 +553,7 @@ func NewErrorObject(errorType uint8, errorValue uint8, tlvs []TLVInterface) *Err
 	}
 }
 
-// Close Object (RFC 5440 §7.17)
+// Close Object (RFC 5440 §7.17).
 const (
 	// ObjectTypeCloseClose is the object type for CLOSE.
 	ObjectTypeCloseClose ObjectType = 0x01
@@ -645,7 +645,7 @@ func NewCloseObject(reason CloseReason) *CloseObject {
 	}
 }
 
-// SRP Object (RFC 8231 §7.2)
+// SRP Object (RFC 8231 §7.2).
 const (
 	ObjectTypeSRPSRP ObjectType = 0x01
 )
@@ -740,7 +740,7 @@ func NewSrpObject(segs []table.Segment, srpID uint32, isRemove bool) (*SrpObject
 	return o, nil
 }
 
-// LSP Object (RFC 8281 §5.3.1)
+// LSP Object (RFC 8281 §5.3.1).
 const (
 	ObjectTypeLSPLSP ObjectType = 0x01
 )
@@ -894,7 +894,7 @@ func (o *LSPObject) Color() uint32 {
 	return 0
 }
 
-// ERO Object (RFC 5440 §7.9)
+// ERO Object (RFC 5440 §7.9).
 const (
 	ObjectTypeEROExplicitRoute ObjectType = 0x01
 )
@@ -1045,7 +1045,7 @@ func NewEroSubobject(seg table.Segment) (EroSubobject, error) {
 	return nil, errors.New("invalid Segment type")
 }
 
-// SR-ERO Subobject (RFC 8664 §4.3.1)
+// SR-ERO Subobject (RFC 8664 §4.3.1).
 const (
 	SubobjectTypeEROSR SubobjectType = 0x24
 )
@@ -1374,7 +1374,7 @@ func (o *SREroSubobject) ToSegment() table.Segment {
 	return o.Segment
 }
 
-// SRv6-ERO Subobject (RFC 9603 §4.3.1)
+// SRv6-ERO Subobject (RFC 9603 §4.3.1).
 const (
 	SubobjectTypeEROSRv6 SubobjectType = 0x28
 )
@@ -1768,7 +1768,7 @@ func (o *RSVPIPv4PrefixEroSubobject) ToSegment() table.Segment {
 	return nil
 }
 
-// END-POINTS Object (RFC 5440 §7.6)
+// END-POINTS Object (RFC 5440 §7.6).
 const (
 	ObjectTypeEndpointIPv4 ObjectType = 0x01
 	ObjectTypeEndpointIPv6 ObjectType = 0x02
@@ -2099,7 +2099,7 @@ func (o *AssociationObject) Endpoint() netip.Addr {
 	return netip.Addr{}
 }
 
-// VENDOR-INFORMATION Object (RFC 7470 §4)
+// VENDOR-INFORMATION Object (RFC 7470 §4).
 const (
 	ObjectTypeVendorSpecificConstraints ObjectType = 0x01
 )

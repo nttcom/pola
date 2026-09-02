@@ -242,7 +242,7 @@ const (
 	TLVSRPolicyCPathPreferenceJuniper   TLVType = 0xffe5
 )
 
-// Cisco specific SubTLV
+// Cisco specific SubTLV.
 const (
 	SubTLVColorCisco      TLVType = 0x01
 	SubTLVPreferenceCisco TLVType = 0x03

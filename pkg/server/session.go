@@ -1187,7 +1187,7 @@ func (ss *Session) handleStateReport(sr *pcep.StateReport, message *pcep.PCRptMe
 	}
 }
 
-// Synchronization (S-Flag)
+// Synchronization (S-Flag).
 func (ss *Session) handleSynchronization(sr *pcep.StateReport, message *pcep.PCRptMessage) error {
 	ss.setSyncState(lspDBSyncOngoing)
 	ss.logger.Debug("Synchronize SR Policy information", logger.Any("Message", message))
@@ -1198,7 +1198,7 @@ func (ss *Session) handleSynchronization(sr *pcep.StateReport, message *pcep.PCR
 	return nil
 }
 
-// Finish synchronization (PlspID == 0)
+// Finish synchronization (PlspID == 0).
 func (ss *Session) handleFinishSynchronization() {
 	ss.logger.Debug("Finish PCRpt state synchronization")
 	ss.setSynced()
@@ -1389,7 +1389,7 @@ func (ss *Session) AdvertisedCapabilities() []pcep.CapabilityInterface {
 	return slices.Clone(ss.advertisedCapabilities)
 }
 
-// Response to request from PCE (SrpID != 0)
+// Response to request from PCE (SrpID != 0).
 func (ss *Session) handleStatefulPCERequest(sr *pcep.StateReport) error {
 	ss.logger.Debug("Finish Stateful PCE request", logger.Uint32("srpID", sr.SrpObject.SrpID))
 	if sr.LSPObject.RFlag {
@@ -1401,7 +1401,7 @@ func (ss *Session) handleStatefulPCERequest(sr *pcep.StateReport) error {
 	return nil
 }
 
-// Receive SR Policy with PLSP-ID
+// Receive SR Policy with PLSP-ID.
 func (ss *Session) handleSRPolicyWithPLSPID(sr *pcep.StateReport) error {
 	ss.logger.Debug("Received SR Policy", logger.Uint32("plspID", sr.LSPObject.PlspID))
 
@@ -1440,7 +1440,7 @@ func (ss *Session) handleSRPolicyWithPLSPID(sr *pcep.StateReport) error {
 	return nil
 }
 
-// Register (or delete) an SR Policy exactly as reported by the PCC
+// Register (or delete) an SR Policy exactly as reported by the PCC.
 func (ss *Session) handleReportedSRPolicy(sr *pcep.StateReport) error {
 	if sr.LSPObject.RFlag {
 		ss.DeleteSRPolicy(*sr)
@@ -1699,7 +1699,7 @@ func (ss *Session) RegisterSRPolicy(sr pcep.StateReport) error {
 	return ss.updateOrCreatePolicy(sr, segmentList, color, preference, state)
 }
 
-// resolveColorPreference returns the color and preference for the SR Policy
+// resolveColorPreference returns the color and preference for the SR Policy.
 func (ss *Session) resolveColorPreference(sr *pcep.StateReport) (uint32, uint32) {
 	var color, preference uint32
 
@@ -1730,7 +1730,7 @@ func (ss *Session) resolveColorPreference(sr *pcep.StateReport) (uint32, uint32)
 	return color, preference
 }
 
-// resolvePolicyState converts O-Flag to internal PolicyState
+// resolvePolicyState converts O-Flag to internal PolicyState.
 func resolvePolicyState(oflag uint8) table.PolicyState {
 	switch oflag {
 	case 0x00:
@@ -1744,7 +1744,7 @@ func resolvePolicyState(oflag uint8) table.PolicyState {
 	}
 }
 
-// validateSegmentList checks if the Segment List exists and is non-empty
+// validateSegmentList checks if the Segment List exists and is non-empty.
 func validateSegmentList(sr pcep.StateReport) ([]table.Segment, error) {
 	if sr.EroObject == nil {
 		return nil, fmt.Errorf("EroObject is nil for PlspID %d", sr.LSPObject.PlspID)
@@ -1756,7 +1756,7 @@ func validateSegmentList(sr pcep.StateReport) ([]table.Segment, error) {
 	return list, nil
 }
 
-// updateOrCreatePolicy updates an existing SR Policy or creates a new one
+// updateOrCreatePolicy updates an existing SR Policy or creates a new one.
 func (ss *Session) updateOrCreatePolicy(sr pcep.StateReport, segmentList []table.Segment, color, preference uint32, state table.PolicyState) error {
 	lspID := sr.LSPObject.LSPID
 

@@ -25,6 +25,7 @@ linters:
     - goconst
     - gocritic
     - gocyclo
+    - godot
     - gosec
     - iface
     - intrange
@@ -75,6 +76,8 @@ linters:
       min-occurrences: 3
     gocyclo:
       min-complexity: 15
+    godot:
+      scope: declarations
     iface:
       enable:
         - identical

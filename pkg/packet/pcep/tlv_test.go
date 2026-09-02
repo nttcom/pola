@@ -176,18 +176,18 @@ func tlvHeader(tlvType TLVType, length uint16) []byte {
 
 // Test data for VendorInformation.
 var (
-	// Enterprise Number only, no Enterprise-Specific Information (Juniper sends this in Open)
+	// Enterprise Number only, no Enterprise-Specific Information (Juniper sends this in Open).
 	testVendorInformationJuniper      = NewVendorInformation(EnterpriseNumberJuniper, nil)
 	testVendorInformationJuniperBytes = append(tlvHeader(TLVVendorInformation, 4), 0x00, 0x00, 0x0a, 0x4c)
-	// Enterprise-Specific Information already 4-byte aligned
+	// Enterprise-Specific Information already 4-byte aligned.
 	testVendorInformationWithInfo      = NewVendorInformation(EnterpriseNumberJuniper, []byte{0xde, 0xad, 0xbe, 0xef})
 	testVendorInformationWithInfoBytes = append(tlvHeader(TLVVendorInformation, 8), 0x00, 0x00, 0x0a, 0x4c, 0xde, 0xad, 0xbe, 0xef)
-	// 2-byte Enterprise-Specific Information (value length 6 → 2 bytes padding)
+	// 2-byte Enterprise-Specific Information (value length 6 → 2 bytes padding).
 	testVendorInformationUnaligned      = NewVendorInformation(EnterpriseNumberCisco, []byte{0x01, 0x02})
 	testVendorInformationUnalignedBytes = append(tlvHeader(TLVVendorInformation, 6), 0x00, 0x00, 0x00, 0x09, 0x01, 0x02, 0x00, 0x00)
-	// Enterprise Number not present in enterpriseNumberNames
+	// Enterprise Number not present in enterpriseNumberNames.
 	testVendorInformationUnknownEnterprise = NewVendorInformation(12345, nil)
-	// Value shorter than the mandatory Enterprise Number
+	// Value shorter than the mandatory Enterprise Number.
 	testVendorInformationTooShort        = append(tlvHeader(TLVVendorInformation, 2), 0x00, 0x00)
 	testVendorInformationTruncatedValue  = append(tlvHeader(TLVVendorInformation, 8), 0x00, 0x00, 0x0a, 0x4c)
 	testVendorInformationTruncatedHeader = []byte{0x00, 0x07, 0x00}
@@ -488,7 +488,7 @@ var (
 		0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, // Endpoint Address
 	)
 
-	// TLV bytes with intentionally invalid value length (to cover valueLen != expected case)
+	// TLV bytes with intentionally invalid value length (to cover valueLen != expected case).
 	testIPv6LSPIdentifiersInvalidLength = []byte{
 		byte(TLVIPv6LSPIdentifiers >> 8),
 		byte(TLVIPv6LSPIdentifiers & 0xff),
@@ -822,7 +822,7 @@ var (
 	}
 	// Invalid input for PathSetupType (too long).
 	testPathSetupTypeTooLong = append(mustSerializeTLV(NewPathSetupType(PathSetupTypeSRTE)), 0x00, 0x00)
-	// Invalid input for PathSetupType (value length mismatch)
+	// Invalid input for PathSetupType (value length mismatch).
 	testPathSetupTypeInvalidLength = []byte{
 		byte(TLVPathSetupType >> 8), byte(TLVPathSetupType & 0xff),
 		0x00, 0x06,
@@ -865,7 +865,7 @@ func TestPathSetupType_Len(t *testing.T) {
 
 // test data for PathSetupTypeCapability.
 var (
-	// PathSetupTypeCapability instances
+	// PathSetupTypeCapability instances.
 	testPathSetupTypeCapabilityBasic = &PathSetupTypeCapability{
 		PathSetupTypes: Psts{PathSetupTypeRSVPTE, PathSetupTypeSRTE},
 		SubTLVs:        []TLVInterface{},
@@ -875,7 +875,7 @@ var (
 		SubTLVs:        []TLVInterface{NewSRPCECapability(true, true, 10)},
 	}
 
-	// Serialized TLV bytes
+	// Serialized TLV bytes.
 	testPathSetupTypeCapabilityBasicBytes = []byte{
 		0x00, 0x22, 0x00, 0x08,
 		0x00, 0x00, 0x00, 0x02,
@@ -888,7 +888,7 @@ var (
 		0x00, 0x1a, 0x00, 0x04, 0x00, 0x00, 0x03, 0x0a,
 	}
 
-	// Invalid / error test cases
+	// Invalid / error test cases.
 	testPathSetupTypeCapabilityTooShort       = []byte{0x00, 0x22, 0x00, 0x02, 0x00, 0x00}
 	testPathSetupTypeCapabilityPSTOverflow    = []byte{0x00, 0x22, 0x00, 0x04, 0x00, 0x00, 0x00, 0x05}
 	testPathSetupTypeCapabilityInvalidLength  = []byte{0x00, 0x22, 0xFF, 0xFF}
@@ -1687,18 +1687,18 @@ func TestColor_Len(t *testing.T) {
 
 // Test data for UnknownTLV.
 var (
-	// Standard 4-byte UnknownTLV
+	// Standard 4-byte UnknownTLV.
 	testUnknownTLV = &UnknownTLV{
 		Typ:   TLVType(0xffff),
 		Value: []byte{0xde, 0xad, 0xbe, 0xef},
 	}
-	// 3-byte value (odd → 1 byte padding required)
+	// 3-byte value (odd → 1 byte padding required).
 	testUnknownTLVOddLength = &UnknownTLV{
 		Typ:   TLVType(0xffff),
 		Value: []byte{0x01, 0x02, 0x03},
 	}
 
-	// Serialized TLV bytes
+	// Serialized TLV bytes.
 	testUnknownTLVBytes           = []byte{0xff, 0xff, 0x00, 0x04, 0xde, 0xad, 0xbe, 0xef}
 	testUnknownTLVOddLengthBytes  = []byte{0xff, 0xff, 0x00, 0x03, 0x01, 0x02, 0x03, 0x00}
 	testUnknownTLVTruncatedHeader = []byte{0xff, 0xff, 0x00}
@@ -1954,7 +1954,7 @@ func TestSRv6PCECapability_RoundTrip(t *testing.T) {
 // Test data for MultipathCapability.
 var (
 	testMultipathCapability = NewMultipathCapability(8, true, true, true, true)
-	// MaxMultipaths=8 (0x0008), Flags=W|O|F|C = 0x001D
+	// MaxMultipaths=8 (0x0008), Flags=W|O|F|C = 0x001D.
 	testMultipathCapabilityBytes        = append(tlvHeader(TLVMultipathCap, 4), 0x00, 0x08, 0x00, 0x1d)
 	testMultipathCapabilityNoFlags      = NewMultipathCapability(1, false, false, false, false)
 	testMultipathCapabilityNoFlagsBytes = append(tlvHeader(TLVMultipathCap, 4), 0x00, 0x01, 0x00, 0x00)
