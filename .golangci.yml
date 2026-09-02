@@ -5,6 +5,7 @@ linters:
     - asasalint
     - asciicheck
     - bidichk
+    - containedctx
     - contextcheck
     - copyloopvar
     - dupword
@@ -73,6 +74,7 @@ linters:
     rules:
       - path: _test\.go$
         linters:
+          - containedctx
           - gosec
       - path: ^tools/coverage-diff/
         linters:
