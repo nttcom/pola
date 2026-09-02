@@ -9,6 +9,7 @@ linters:
     - contextcheck
     - copyloopvar
     - depguard
+    - dupl
     - dupword
     - durationcheck
     - errchkjson
@@ -56,6 +57,8 @@ linters:
           deny:
             - pkg: github.com/osrg/gobgp/v4
               desc: use internal/gobgp instead
+    dupl:
+      threshold: 150
     gochecksumtype:
       default-signifies-exhaustive: false
     goconst:
@@ -88,6 +91,7 @@ linters:
       - path: _test\.go$
         linters:
           - containedctx
+          - dupl
           - gosec
       - path: ^tools/coverage-diff/
         linters:
