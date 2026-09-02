@@ -1525,7 +1525,10 @@ func TestSRPolicyCandidatePathIdentifierJuniper_Type(t *testing.T) {
 
 func TestSRPolicyCandidatePathIdentifierJuniper_Serialize(t *testing.T) {
 	tlv := &SRPolicyCandidatePathIdentifierJuniper{
-		SRPolicyCandidatePathIdentifier: *testSRPolicyCPathIDIPv4,
+		ProtocolOrigin: testSRPolicyCPathIDIPv4.ProtocolOrigin,
+		OriginatorASN:  testSRPolicyCPathIDIPv4.OriginatorASN,
+		OriginatorAddr: testSRPolicyCPathIDIPv4.OriginatorAddr,
+		Discriminator:  testSRPolicyCPathIDIPv4.Discriminator,
 	}
 
 	expected := append([]byte(nil), testSRPolicyCPathIDIPv4Bytes...)
@@ -1538,7 +1541,10 @@ func TestSRPolicyCandidatePathIdentifierJuniper_Serialize(t *testing.T) {
 
 func TestSRPolicyCandidatePathIdentifierJuniper_Len(t *testing.T) {
 	tlv := &SRPolicyCandidatePathIdentifierJuniper{
-		SRPolicyCandidatePathIdentifier: *testSRPolicyCPathIDIPv4,
+		ProtocolOrigin: testSRPolicyCPathIDIPv4.ProtocolOrigin,
+		OriginatorASN:  testSRPolicyCPathIDIPv4.OriginatorASN,
+		OriginatorAddr: testSRPolicyCPathIDIPv4.OriginatorAddr,
+		Discriminator:  testSRPolicyCPathIDIPv4.Discriminator,
 	}
 	assert.Equal(t, testSRPolicyCPathIDIPv4.Len(), tlv.Len())
 }
@@ -1601,7 +1607,7 @@ func TestSRPolicyCandidatePathPreferenceJuniper_Type(t *testing.T) {
 
 func TestSRPolicyCandidatePathPreferenceJuniper_Serialize(t *testing.T) {
 	tlv := &SRPolicyCandidatePathPreferenceJuniper{
-		SRPolicyCandidatePathPreference: *testSRPolicyCPathPreference,
+		Preference: testSRPolicyCPathPreference.Preference,
 	}
 
 	expected := append([]byte(nil), testSRPolicyCPathPreferenceBytes...)
@@ -1614,7 +1620,7 @@ func TestSRPolicyCandidatePathPreferenceJuniper_Serialize(t *testing.T) {
 
 func TestSRPolicyCandidatePathPreferenceJuniper_Len(t *testing.T) {
 	tlv := &SRPolicyCandidatePathPreferenceJuniper{
-		SRPolicyCandidatePathPreference: *testSRPolicyCPathPreference,
+		Preference: testSRPolicyCPathPreference.Preference,
 	}
 	assert.Equal(t, testSRPolicyCPathPreference.Len(), tlv.Len())
 }
@@ -1629,7 +1635,7 @@ func TestSRPolicyCandidatePathPreferenceJuniper_DecodeFromBytes(t *testing.T) {
 	cases := map[string]TLVTestCase{
 		"PreferenceJuniper": {
 			input,
-			&SRPolicyCandidatePathPreferenceJuniper{SRPolicyCandidatePathPreference: *testSRPolicyCPathPreference},
+			&SRPolicyCandidatePathPreferenceJuniper{Preference: testSRPolicyCPathPreference.Preference},
 			false,
 		},
 	}

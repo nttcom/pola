@@ -33,6 +33,7 @@ linters:
     - mirror
     - misspell
     - modernize
+    - musttag
     - nilerr
     - nilnesserr
     - nolintlint

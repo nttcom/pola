@@ -1565,89 +1565,12 @@ const ProtocolOriginPCEP = 0x0a
 
 // DecodeFromBytes implements TLVInterface.
 func (tlv *SRPolicyCandidatePathIdentifier) DecodeFromBytes(data []byte) error {
-	valueLen, err := decodeTLVLength(data, false)
-	if err != nil {
-		return fmt.Errorf("SRPolicyCandidatePathIdentifier: %w", err)
-	}
-
-	value := data[TLVValueOffset : TLVValueOffset+valueLen]
-	if len(value) != int(TLVSRPolicyCPathIDValueLength) {
-		return fmt.Errorf("SRPolicyCandidatePathIdentifier: invalid value length, expected %d, got %d", TLVSRPolicyCPathIDValueLength, len(value))
-	}
-
-	tlv.ProtocolOrigin = value[SRPolicyCPathIDProtocolOriginOffset]
-
-	tlv.OriginatorASN = binary.BigEndian.Uint32(
-		value[SRPolicyCPathIDASNOffset : SRPolicyCPathIDASNOffset+SRPolicyCPathIDASNLen],
-	)
-
-	addrBytes := value[SRPolicyCPathIDAddrOffset : SRPolicyCPathIDAddrOffset+IPv6AddrLen]
-
-	if isIPv4Bytes(addrBytes) {
-		var v4 [IPv4AddrLen]byte
-		copy(v4[:], addrBytes[SRPolicyCPathIDIPv4Offset:])
-		tlv.OriginatorAddr = netip.AddrFrom4(v4)
-	} else {
-		var addr16 [IPv6AddrLen]byte
-		copy(addr16[:], addrBytes)
-		tlv.OriginatorAddr = netip.AddrFrom16(addr16)
-	}
-
-	tlv.Discriminator = binary.BigEndian.Uint32(
-		value[SRPolicyCPathIDDiscriminatorOffset : SRPolicyCPathIDDiscriminatorOffset+SRPolicyCPathIDDiscriminatorLen],
-	)
-
-	return nil
+	return decodeSRPolicyCPathID(data, &tlv.ProtocolOrigin, &tlv.OriginatorASN, &tlv.OriginatorAddr, &tlv.Discriminator)
 }
 
 // Serialize implements TLVInterface.
 func (tlv *SRPolicyCandidatePathIdentifier) Serialize() ([]byte, error) {
-	return tlv.serialize(tlv.Type()), nil
-}
-
-func (tlv *SRPolicyCandidatePathIdentifier) serialize(typ TLVType) []byte {
-	value := make([]byte, TLVSRPolicyCPathIDValueLength)
-
-	value[SRPolicyCPathIDProtocolOriginOffset] = tlv.ProtocolOrigin
-
-	binary.BigEndian.PutUint32(
-		value[SRPolicyCPathIDASNOffset:SRPolicyCPathIDASNOffset+SRPolicyCPathIDASNLen],
-		tlv.OriginatorASN,
-	)
-
-	addr := tlv.OriginatorAddr
-
-	switch {
-	case !addr.IsValid():
-		// keep zero
-
-	case addr.Is4():
-		ipv4 := addr.As4()
-
-		copy(
-			value[SRPolicyCPathIDAddrOffset+SRPolicyCPathIDIPv4Offset:SRPolicyCPathIDAddrOffset+SRPolicyCPathIDIPv4Offset+IPv4AddrLen],
-			ipv4[:],
-		)
-
-	case addr.Is6():
-		ipv6 := addr.As16()
-
-		copy(
-			value[SRPolicyCPathIDAddrOffset:SRPolicyCPathIDAddrOffset+IPv6AddrLen],
-			ipv6[:],
-		)
-	}
-
-	binary.BigEndian.PutUint32(
-		value[SRPolicyCPathIDDiscriminatorOffset:SRPolicyCPathIDDiscriminatorOffset+SRPolicyCPathIDDiscriminatorLen],
-		tlv.Discriminator,
-	)
-
-	return AppendByteSlices(
-		Uint16ToByteSlice(typ),
-		Uint16ToByteSlice(TLVSRPolicyCPathIDValueLength),
-		value,
-	)
+	return serializeSRPolicyCPathID(tlv.Type(), tlv.ProtocolOrigin, tlv.OriginatorASN, tlv.OriginatorAddr, tlv.Discriminator), nil
 }
 
 // Type implements TLVInterface.
@@ -1661,19 +1584,117 @@ func (tlv *SRPolicyCandidatePathIdentifier) Len() int {
 }
 
 // SRPolicyCandidatePathIdentifierJuniper is the Juniper vendor-specific
-// SR Policy candidate path identifier TLV (0xffe4).
+// SR Policy candidate path identifier TLV (0xffe4). Same wire format as
+// SRPolicyCandidatePathIdentifier, distinguished only by TLV type.
 type SRPolicyCandidatePathIdentifierJuniper struct {
-	SRPolicyCandidatePathIdentifier
+	ProtocolOrigin uint8
+	OriginatorASN  uint32
+	// OriginatorAddr stores IPv4 as native IPv4 and IPv6 in full 16-byte format.
+	OriginatorAddr netip.Addr
+	Discriminator  uint32
+}
+
+// DecodeFromBytes implements TLVInterface.
+func (tlv *SRPolicyCandidatePathIdentifierJuniper) DecodeFromBytes(data []byte) error {
+	return decodeSRPolicyCPathID(data, &tlv.ProtocolOrigin, &tlv.OriginatorASN, &tlv.OriginatorAddr, &tlv.Discriminator)
 }
 
 // Serialize implements TLVInterface.
 func (tlv *SRPolicyCandidatePathIdentifierJuniper) Serialize() ([]byte, error) {
-	return tlv.serialize(tlv.Type()), nil
+	return serializeSRPolicyCPathID(tlv.Type(), tlv.ProtocolOrigin, tlv.OriginatorASN, tlv.OriginatorAddr, tlv.Discriminator), nil
 }
 
 // Type implements TLVInterface.
 func (tlv *SRPolicyCandidatePathIdentifierJuniper) Type() TLVType {
 	return TLVSRPolicyCPathIDJuniper
+}
+
+// Len implements TLVInterface.
+func (tlv *SRPolicyCandidatePathIdentifierJuniper) Len() int {
+	return int(TLVValueOffset + TLVSRPolicyCPathIDValueLength)
+}
+
+// decodeSRPolicyCPathID decodes the shared SRPOLICY-CPATH-ID wire format,
+// used by both the standard and Juniper vendor-specific TLV variants.
+func decodeSRPolicyCPathID(data []byte, protocolOrigin *uint8, originatorASN *uint32, originatorAddr *netip.Addr, discriminator *uint32) error {
+	valueLen, err := decodeTLVLength(data, false)
+	if err != nil {
+		return fmt.Errorf("SRPolicyCandidatePathIdentifier: %w", err)
+	}
+
+	value := data[TLVValueOffset : TLVValueOffset+valueLen]
+	if len(value) != int(TLVSRPolicyCPathIDValueLength) {
+		return fmt.Errorf("SRPolicyCandidatePathIdentifier: invalid value length, expected %d, got %d", TLVSRPolicyCPathIDValueLength, len(value))
+	}
+
+	*protocolOrigin = value[SRPolicyCPathIDProtocolOriginOffset]
+
+	*originatorASN = binary.BigEndian.Uint32(
+		value[SRPolicyCPathIDASNOffset : SRPolicyCPathIDASNOffset+SRPolicyCPathIDASNLen],
+	)
+
+	addrBytes := value[SRPolicyCPathIDAddrOffset : SRPolicyCPathIDAddrOffset+IPv6AddrLen]
+
+	if isIPv4Bytes(addrBytes) {
+		var v4 [IPv4AddrLen]byte
+		copy(v4[:], addrBytes[SRPolicyCPathIDIPv4Offset:])
+		*originatorAddr = netip.AddrFrom4(v4)
+	} else {
+		var addr16 [IPv6AddrLen]byte
+		copy(addr16[:], addrBytes)
+		*originatorAddr = netip.AddrFrom16(addr16)
+	}
+
+	*discriminator = binary.BigEndian.Uint32(
+		value[SRPolicyCPathIDDiscriminatorOffset : SRPolicyCPathIDDiscriminatorOffset+SRPolicyCPathIDDiscriminatorLen],
+	)
+
+	return nil
+}
+
+// serializeSRPolicyCPathID encodes the shared SRPOLICY-CPATH-ID wire format,
+// used by both the standard and Juniper vendor-specific TLV variants.
+func serializeSRPolicyCPathID(typ TLVType, protocolOrigin uint8, originatorASN uint32, originatorAddr netip.Addr, discriminator uint32) []byte {
+	value := make([]byte, TLVSRPolicyCPathIDValueLength)
+
+	value[SRPolicyCPathIDProtocolOriginOffset] = protocolOrigin
+
+	binary.BigEndian.PutUint32(
+		value[SRPolicyCPathIDASNOffset:SRPolicyCPathIDASNOffset+SRPolicyCPathIDASNLen],
+		originatorASN,
+	)
+
+	switch {
+	case !originatorAddr.IsValid():
+		// keep zero
+
+	case originatorAddr.Is4():
+		ipv4 := originatorAddr.As4()
+
+		copy(
+			value[SRPolicyCPathIDAddrOffset+SRPolicyCPathIDIPv4Offset:SRPolicyCPathIDAddrOffset+SRPolicyCPathIDIPv4Offset+IPv4AddrLen],
+			ipv4[:],
+		)
+
+	case originatorAddr.Is6():
+		ipv6 := originatorAddr.As16()
+
+		copy(
+			value[SRPolicyCPathIDAddrOffset:SRPolicyCPathIDAddrOffset+IPv6AddrLen],
+			ipv6[:],
+		)
+	}
+
+	binary.BigEndian.PutUint32(
+		value[SRPolicyCPathIDDiscriminatorOffset:SRPolicyCPathIDDiscriminatorOffset+SRPolicyCPathIDDiscriminatorLen],
+		discriminator,
+	)
+
+	return AppendByteSlices(
+		Uint16ToByteSlice(typ),
+		Uint16ToByteSlice(TLVSRPolicyCPathIDValueLength),
+		value,
+	)
 }
 
 // SRPolicyCandidatePathPreference represents the SRPOLICY-CPATH-PREFERENCE TLV (draft-ietf-pce-segment-routing-policy-cp).
@@ -1683,39 +1704,12 @@ type SRPolicyCandidatePathPreference struct {
 
 // DecodeFromBytes implements TLVInterface.
 func (tlv *SRPolicyCandidatePathPreference) DecodeFromBytes(data []byte) error {
-	valueLen, err := decodeTLVLength(data, false)
-	if err != nil {
-		return fmt.Errorf("SRPolicyCandidatePathPreference: %w", err)
-	}
-
-	if valueLen != int(TLVSRPolicyCPathPreferenceValueLength) {
-		return fmt.Errorf("SRPolicyCandidatePathPreference: invalid value length %d", valueLen)
-	}
-
-	value := data[TLVValueOffset : TLVValueOffset+valueLen]
-
-	tlv.Preference = binary.BigEndian.Uint32(value)
-	return nil
+	return decodeSRPolicyCPathPreference(data, &tlv.Preference)
 }
 
 // Serialize implements TLVInterface.
 func (tlv *SRPolicyCandidatePathPreference) Serialize() ([]byte, error) {
-	return tlv.serialize(tlv.Type()), nil
-}
-
-func (tlv *SRPolicyCandidatePathPreference) serialize(typ TLVType) []byte {
-	value := make([]byte, TLVSRPolicyCPathPreferenceValueLength)
-
-	binary.BigEndian.PutUint32(
-		value,
-		tlv.Preference,
-	)
-
-	return AppendByteSlices(
-		Uint16ToByteSlice(typ),
-		Uint16ToByteSlice(TLVSRPolicyCPathPreferenceValueLength),
-		value,
-	)
+	return serializeSRPolicyCPathPreference(tlv.Type(), tlv.Preference), nil
 }
 
 // Type implements TLVInterface.
@@ -1729,19 +1723,58 @@ func (tlv *SRPolicyCandidatePathPreference) Len() int {
 }
 
 // SRPolicyCandidatePathPreferenceJuniper is the Juniper vendor-specific
-// SR Policy candidate path preference TLV (0xffe5).
+// SR Policy candidate path preference TLV (0xffe5). Same wire format as
+// SRPolicyCandidatePathPreference, distinguished only by TLV type.
 type SRPolicyCandidatePathPreferenceJuniper struct {
-	SRPolicyCandidatePathPreference
+	Preference uint32
+}
+
+// DecodeFromBytes implements TLVInterface.
+func (tlv *SRPolicyCandidatePathPreferenceJuniper) DecodeFromBytes(data []byte) error {
+	return decodeSRPolicyCPathPreference(data, &tlv.Preference)
 }
 
 // Serialize implements TLVInterface.
 func (tlv *SRPolicyCandidatePathPreferenceJuniper) Serialize() ([]byte, error) {
-	return tlv.serialize(tlv.Type()), nil
+	return serializeSRPolicyCPathPreference(tlv.Type(), tlv.Preference), nil
 }
 
 // Type implements TLVInterface.
 func (tlv *SRPolicyCandidatePathPreferenceJuniper) Type() TLVType {
 	return TLVSRPolicyCPathPreferenceJuniper
+}
+
+// Len implements TLVInterface.
+func (tlv *SRPolicyCandidatePathPreferenceJuniper) Len() int {
+	return int(TLVValueOffset + TLVSRPolicyCPathPreferenceValueLength)
+}
+
+func decodeSRPolicyCPathPreference(data []byte, preference *uint32) error {
+	valueLen, err := decodeTLVLength(data, false)
+	if err != nil {
+		return fmt.Errorf("SRPolicyCandidatePathPreference: %w", err)
+	}
+
+	if valueLen != int(TLVSRPolicyCPathPreferenceValueLength) {
+		return fmt.Errorf("SRPolicyCandidatePathPreference: invalid value length %d", valueLen)
+	}
+
+	value := data[TLVValueOffset : TLVValueOffset+valueLen]
+
+	*preference = binary.BigEndian.Uint32(value)
+	return nil
+}
+
+func serializeSRPolicyCPathPreference(typ TLVType, preference uint32) []byte {
+	value := make([]byte, TLVSRPolicyCPathPreferenceValueLength)
+
+	binary.BigEndian.PutUint32(value, preference)
+
+	return AppendByteSlices(
+		Uint16ToByteSlice(typ),
+		Uint16ToByteSlice(TLVSRPolicyCPathPreferenceValueLength),
+		value,
+	)
 }
 
 // Color represents the Color TLV (RFC 9863).

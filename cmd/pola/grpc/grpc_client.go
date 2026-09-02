@@ -28,13 +28,13 @@ func withTimeout() (context.Context, context.CancelFunc) {
 
 // StatefulCapability holds the RFC 8231/8232 Stateful PCE capability flags.
 type StatefulCapability struct {
-	LSPUpdate            bool
-	IncludeDBVersion     bool
-	LSPInstantiation     bool
-	TriggeredResync      bool
-	DeltaLSPSync         bool
-	TriggeredInitialSync bool
-	Color                bool
+	LSPUpdate            bool `json:"LSPUpdate"`
+	IncludeDBVersion     bool `json:"IncludeDBVersion"`
+	LSPInstantiation     bool `json:"LSPInstantiation"`
+	TriggeredResync      bool `json:"TriggeredResync"`
+	DeltaLSPSync         bool `json:"DeltaLSPSync"`
+	TriggeredInitialSync bool `json:"TriggeredInitialSync"`
+	Color                bool `json:"Color"`
 }
 
 // Strings returns the human-readable flags for this capability.
@@ -66,9 +66,9 @@ func (c StatefulCapability) Strings() []string {
 
 // SRCapability holds the RFC 8664 SR-PCE capability flags.
 type SRCapability struct {
-	UnlimitedMSD bool
-	NAISupported bool
-	MSD          *uint32
+	UnlimitedMSD bool    `json:"UnlimitedMSD"`
+	NAISupported bool    `json:"NAISupported"`
+	MSD          *uint32 `json:"MSD"`
 }
 
 // Strings returns the human-readable flags for this capability.
@@ -88,7 +88,7 @@ func (c SRCapability) Strings() []string {
 
 // SRv6Capability holds the RFC 9603 SRv6-PCE capability flags.
 type SRv6Capability struct {
-	NAISupported bool
+	NAISupported bool `json:"NAISupported"`
 }
 
 // Strings returns the human-readable flags for this capability.
@@ -103,8 +103,8 @@ func (c SRv6Capability) Strings() []string {
 // PathSetupTypeCapability holds the raw PathSetupType values advertised by the peer,
 // along with any per-PST capability sub-TLVs (RFC 8408).
 type PathSetupTypeCapability struct {
-	PathSetupTypes  []uint32
-	SubCapabilities []Capability
+	PathSetupTypes  []uint32     `json:"PathSetupTypes"`
+	SubCapabilities []Capability `json:"SubCapabilities"`
 }
 
 // Strings returns the human-readable flags for this capability.
@@ -123,7 +123,7 @@ func (c PathSetupTypeCapability) Strings() []string {
 
 // AssocTypeListCapability holds the raw Association types advertised by the peer.
 type AssocTypeListCapability struct {
-	AssocTypes []uint32
+	AssocTypes []uint32 `json:"AssocTypes"`
 }
 
 // Strings returns the human-readable flags for this capability.
@@ -137,7 +137,7 @@ func (c AssocTypeListCapability) Strings() []string {
 
 // LSPDBVersionCapability holds the LSP-DB version number advertised by the peer.
 type LSPDBVersionCapability struct {
-	VersionNumber uint64
+	VersionNumber uint64 `json:"VersionNumber"`
 }
 
 // Strings returns the human-readable flags for this capability.
@@ -148,11 +148,11 @@ func (c LSPDBVersionCapability) Strings() []string {
 // MultipathCapability holds the multipath capability flags
 // (draft-ietf-pce-multipath).
 type MultipathCapability struct {
-	MaxMultipaths uint32
-	Weighted      bool
-	OppositeDir   bool
-	ForwardClass  bool
-	CompositePath bool
+	MaxMultipaths uint32 `json:"MaxMultipaths"`
+	Weighted      bool   `json:"Weighted"`
+	OppositeDir   bool   `json:"OppositeDir"`
+	ForwardClass  bool   `json:"ForwardClass"`
+	CompositePath bool   `json:"CompositePath"`
 }
 
 // Strings returns the human-readable flags for this capability.
@@ -175,7 +175,7 @@ func (c MultipathCapability) Strings() []string {
 
 // VendorInformationCapability holds the enterprise number of a vendor-specific capability TLV.
 type VendorInformationCapability struct {
-	EnterpriseNumber uint32
+	EnterpriseNumber uint32 `json:"EnterpriseNumber"`
 }
 
 // Strings returns the human-readable flags for this capability.
@@ -185,7 +185,7 @@ func (c VendorInformationCapability) Strings() []string {
 
 // UnknownCapability holds the raw TLV type of a capability Pola does not recognize.
 type UnknownCapability struct {
-	TLVType uint32
+	TLVType uint32 `json:"TLVType"`
 }
 
 // Strings returns a human-readable representation of this capability.
@@ -200,8 +200,8 @@ type capabilityDetail interface {
 
 // Capability represents a PCEP capability with optional detailed information.
 type Capability struct {
-	Type   string
-	Detail capabilityDetail
+	Type   string           `json:"Type"`
+	Detail capabilityDetail `json:"Detail"`
 }
 
 // Strings returns a human-readable representation of this capability.
@@ -214,67 +214,67 @@ func (c Capability) Strings() []string {
 
 // SessionTimers holds the timers advertised by a PCEP speaker.
 type SessionTimers struct {
-	Keepalive uint32
-	DeadTimer uint32
+	Keepalive uint32 `json:"Keepalive"`
+	DeadTimer uint32 `json:"DeadTimer"`
 }
 
 // EffectiveTimers holds the timers currently applied by Pola.
 // Keepalive and DeadTimer are nil until the session reaches SESSION_STATE_UP.
 type EffectiveTimers struct {
-	Keepalive *uint32
-	DeadTimer *uint32
+	Keepalive *uint32 `json:"Keepalive"`
+	DeadTimer *uint32 `json:"DeadTimer"`
 }
 
 // MessageCounter mirrors one RFC 9826 sent/rcvd counter pair.
 type MessageCounter struct {
-	Sent uint64
-	Rcvd uint64
+	Sent uint64 `json:"Sent"`
+	Rcvd uint64 `json:"Rcvd"`
 }
 
 // SessionStats contains per-session PCEP statistics.
 type SessionStats struct {
-	Open             MessageCounter
-	Keepalive        MessageCounter
-	Close            MessageCounter
-	PCErr            MessageCounter
-	PCNtf            MessageCounter
-	PCReq            MessageCounter
-	PCRep            MessageCounter
-	Report           MessageCounter
-	Update           MessageCounter
-	Initiate         MessageCounter
-	UnrecognizedRcvd uint64
-	CorruptRcvd      uint64
-	SessSetupOK      uint64
-	SessSetupFail    uint64
+	Open             MessageCounter `json:"Open"`
+	Keepalive        MessageCounter `json:"Keepalive"`
+	Close            MessageCounter `json:"Close"`
+	PCErr            MessageCounter `json:"PCErr"`
+	PCNtf            MessageCounter `json:"PCNtf"`
+	PCReq            MessageCounter `json:"PCReq"`
+	PCRep            MessageCounter `json:"PCRep"`
+	Report           MessageCounter `json:"Report"`
+	Update           MessageCounter `json:"Update"`
+	Initiate         MessageCounter `json:"Initiate"`
+	UnrecognizedRcvd uint64         `json:"UnrecognizedRcvd"`
+	CorruptRcvd      uint64         `json:"CorruptRcvd"`
+	SessSetupOK      uint64         `json:"SessSetupOK"`
+	SessSetupFail    uint64         `json:"SessSetupFail"`
 }
 
 // Session represents a PCEP session.
 type Session struct {
-	PeerAddr          netip.Addr
-	State             string
-	LocalSessionID    *uint32
-	PeerSessionID     *uint32
-	LocalTimers       *SessionTimers
-	PeerTimers        *SessionTimers
-	EffectiveTimers   EffectiveTimers
-	PccType           string
-	LocalCapabilities []Capability
-	PeerCapabilities  []Capability
-	Initiator         string
-	SyncState         string
-	CreatedAt         time.Time
-	EstablishedAt     time.Time
-	UptimeNanos       int64
-	Stats             *SessionStats
+	PeerAddr          netip.Addr      `json:"PeerAddr"`
+	State             string          `json:"State"`
+	LocalSessionID    *uint32         `json:"LocalSessionID"`
+	PeerSessionID     *uint32         `json:"PeerSessionID"`
+	LocalTimers       *SessionTimers  `json:"LocalTimers"`
+	PeerTimers        *SessionTimers  `json:"PeerTimers"`
+	EffectiveTimers   EffectiveTimers `json:"EffectiveTimers"`
+	PccType           string          `json:"PccType"`
+	LocalCapabilities []Capability    `json:"LocalCapabilities"`
+	PeerCapabilities  []Capability    `json:"PeerCapabilities"`
+	Initiator         string          `json:"Initiator"`
+	SyncState         string          `json:"SyncState"`
+	CreatedAt         time.Time       `json:"CreatedAt"`
+	EstablishedAt     time.Time       `json:"EstablishedAt"`
+	UptimeNanos       int64           `json:"UptimeNanos"`
+	Stats             *SessionStats   `json:"Stats"`
 }
 
 // SRPolicySession groups SR Policies by PCEP peer.
 type SRPolicySession struct {
-	PeerAddr   netip.Addr
-	State      string
-	SyncState  string
-	SRPolicies []table.SRPolicy
+	PeerAddr   netip.Addr       `json:"PeerAddr"`
+	State      string           `json:"State"`
+	SyncState  string           `json:"SyncState"`
+	SRPolicies []table.SRPolicy `json:"SRPolicies"`
 }
 
 // capabilityFromPB converts a gRPC Capability into its typed client-side representation.
