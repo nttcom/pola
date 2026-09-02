@@ -20,7 +20,7 @@ import (
 	"github.com/nttcom/pola/cmd/pola/grpc"
 )
 
-func newSRPolicyAddCmd() *cobra.Command {
+func newSRPolicyAddCmd(client *pb.PCEServiceClient, jsonFmt *bool) *cobra.Command {
 	srPolicyAddCmd := &cobra.Command{
 		Use: "add",
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -53,7 +53,7 @@ func newSRPolicyAddCmd() *cobra.Command {
 				return fmt.Errorf("YAML syntax error in file \"%s\": %w", filepath, err)
 			}
 
-			if err := addSRPolicy(inputData, jsonFmt, noSIDValidateFlag); err != nil {
+			if err := addSRPolicy(inputData, *jsonFmt, noSIDValidateFlag, *client); err != nil {
 				return fmt.Errorf("failed to add SR policy: %w", err)
 			}
 			return nil
@@ -109,7 +109,7 @@ const (
 	metricTypeHopcount = "hopcount"
 )
 
-func addSRPolicy(input inputFormat, jsonFlag bool, noSIDValidate bool) error {
+func addSRPolicy(input inputFormat, jsonFlag bool, noSIDValidate bool, client pb.PCEServiceClient) error {
 	if noSIDValidate {
 		fmt.Fprintln(os.Stderr, "warning: skipping SID validation (--no-sid-validate)")
 	}
@@ -121,11 +121,11 @@ func addSRPolicy(input inputFormat, jsonFlag bool, noSIDValidate bool) error {
 	}
 
 	if usesRouterID {
-		if err := addSRPolicyWithRouterID(input, noSIDValidate); err != nil {
+		if err := addSRPolicyWithRouterID(input, noSIDValidate, client); err != nil {
 			return translateCreateSRPolicyError(err)
 		}
 	} else {
-		if err := addSRPolicyWithEndpointAddr(input, noSIDValidate); err != nil {
+		if err := addSRPolicyWithEndpointAddr(input, noSIDValidate, client); err != nil {
 			return translateCreateSRPolicyError(err)
 		}
 	}
@@ -171,7 +171,7 @@ func translateCreateSRPolicyError(err error) error {
 	return errors.New(msg)
 }
 
-func addSRPolicyWithEndpointAddr(input inputFormat, noSIDValidate bool) error {
+func addSRPolicyWithEndpointAddr(input inputFormat, noSIDValidate bool, client pb.PCEServiceClient) error {
 	if input.SRPolicy.Type != "" && input.SRPolicy.Type != srPolicyTypeExplicit {
 		return fmt.Errorf("the srcAddr / dstAddr form supports `type: explicit` only, got %q", input.SRPolicy.Type)
 	}
@@ -227,7 +227,7 @@ func addSRPolicyWithEndpointAddr(input inputFormat, noSIDValidate bool) error {
 	return grpc.CreateSRPolicy(client, request)
 }
 
-func addSRPolicyWithRouterID(input inputFormat, noSIDValidate bool) error {
+func addSRPolicyWithRouterID(input inputFormat, noSIDValidate bool, client pb.PCEServiceClient) error {
 	sampleInputDynamic, sampleInputExplicit := sampleInputs()
 
 	if err := validateCommonInput(input, sampleInputDynamic, sampleInputExplicit); err != nil {

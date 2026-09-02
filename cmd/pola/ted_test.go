@@ -17,8 +17,9 @@ import (
 )
 
 func TestNewTEDCmd_RunE(t *testing.T) {
-	jsonFmt = false
-	cmd := newTEDCmd()
+	var client pb.PCEServiceClient
+	jsonFmt := false
+	cmd := newTEDCmd(&client, &jsonFmt)
 
 	client = &fakePCEServiceClient{tedResp: &pb.GetTEDResponse{
 		Enabled: true,
@@ -35,33 +36,33 @@ func TestNewTEDCmd_RunE(t *testing.T) {
 
 func TestShowTED(t *testing.T) {
 	t.Run("grpc error propagates", func(t *testing.T) {
-		client = &fakePCEServiceClient{tedErr: assert.AnError}
+		client := &fakePCEServiceClient{tedErr: assert.AnError}
 		var buf bytes.Buffer
-		err := showTED(&buf, outputText)
+		err := showTED(&buf, outputText, client)
 		require.Error(t, err)
 	})
 
 	t.Run("disabled TED returns an error", func(t *testing.T) {
-		client = &fakePCEServiceClient{tedResp: &pb.GetTEDResponse{Enabled: false}}
+		client := &fakePCEServiceClient{tedResp: &pb.GetTEDResponse{Enabled: false}}
 		var buf bytes.Buffer
-		err := showTED(&buf, outputText)
+		err := showTED(&buf, outputText, client)
 		require.ErrorContains(t, err, "TED is disabled by polad")
 	})
 
 	t.Run("disabled TED returns an error even in JSON mode", func(t *testing.T) {
-		client = &fakePCEServiceClient{tedResp: &pb.GetTEDResponse{Enabled: false}}
+		client := &fakePCEServiceClient{tedResp: &pb.GetTEDResponse{Enabled: false}}
 		var buf bytes.Buffer
-		err := showTED(&buf, outputJSON)
+		err := showTED(&buf, outputJSON, client)
 		require.ErrorContains(t, err, "TED is disabled by polad")
 	})
 
 	t.Run("plain text output", func(t *testing.T) {
-		client = &fakePCEServiceClient{tedResp: &pb.GetTEDResponse{
+		client := &fakePCEServiceClient{tedResp: &pb.GetTEDResponse{
 			Enabled: true,
 			Nodes:   []*pb.LsNode{{RouterId: testRouterID1}},
 		}}
 		var buf bytes.Buffer
-		require.NoError(t, showTED(&buf, outputText))
+		require.NoError(t, showTED(&buf, outputText, client))
 		assert.Contains(t, buf.String(), testRouterID1)
 	})
 
@@ -95,10 +96,10 @@ func TestShowTED(t *testing.T) {
 				SidStructure:     &pb.SidStructure{},
 			}},
 		}
-		client = &fakePCEServiceClient{tedResp: &pb.GetTEDResponse{Enabled: true, Nodes: []*pb.LsNode{node}}}
+		client := &fakePCEServiceClient{tedResp: &pb.GetTEDResponse{Enabled: true, Nodes: []*pb.LsNode{node}}}
 
 		var buf bytes.Buffer
-		require.NoError(t, showTED(&buf, outputJSON))
+		require.NoError(t, showTED(&buf, outputJSON, client))
 
 		var nodes []map[string]any
 		require.NoError(t, json.Unmarshal(buf.Bytes(), &nodes))

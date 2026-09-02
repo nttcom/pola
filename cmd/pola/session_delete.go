@@ -16,7 +16,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newSessionDeleteCmd() *cobra.Command {
+func newSessionDeleteCmd(client *pb.PCEServiceClient, jsonFmt *bool) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          cmdNameDelete,
 		Aliases:      []string{"del"},
@@ -29,7 +29,7 @@ func newSessionDeleteCmd() *cobra.Command {
 			if err != nil {
 				return errors.New("invalid input\nUsage: pola session delete [session address]")
 			}
-			if err := deleteSession(ssAddr, jsonFmt); err != nil {
+			if err := deleteSession(ssAddr, *jsonFmt, *client); err != nil {
 				return err
 			}
 			return nil
@@ -38,7 +38,7 @@ func newSessionDeleteCmd() *cobra.Command {
 	return cmd
 }
 
-func deleteSession(session netip.Addr, jsonFlag bool) error {
+func deleteSession(session netip.Addr, jsonFlag bool, client pb.PCEServiceClient) error {
 	request := &pb.DeleteSessionRequest{
 		PeerAddr: session.AsSlice(),
 	}

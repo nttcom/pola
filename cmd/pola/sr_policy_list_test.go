@@ -17,8 +17,12 @@ import (
 	"github.com/nttcom/pola/pkg/table"
 )
 
+func newTestSRPolicyListCmd(client pb.PCEServiceClient, jsonFmt bool) *cobra.Command {
+	return newSRPolicyListCmd(&client, &jsonFmt)
+}
+
 func TestPeerAddrFlag_Unset(t *testing.T) {
-	cmd := newSRPolicyListCmd()
+	cmd := newTestSRPolicyListCmd(nil, false)
 
 	addr, err := peerAddrFlag(cmd)
 	require.NoError(t, err)
@@ -26,7 +30,7 @@ func TestPeerAddrFlag_Unset(t *testing.T) {
 }
 
 func TestPeerAddrFlag_Valid(t *testing.T) {
-	cmd := newSRPolicyListCmd()
+	cmd := newTestSRPolicyListCmd(nil, false)
 	require.NoError(t, cmd.Flags().Set("peer", "10.0.0.1"))
 
 	addr, err := peerAddrFlag(cmd)
@@ -35,7 +39,7 @@ func TestPeerAddrFlag_Valid(t *testing.T) {
 }
 
 func TestPeerAddrFlag_Invalid(t *testing.T) {
-	cmd := newSRPolicyListCmd()
+	cmd := newTestSRPolicyListCmd(nil, false)
 	require.NoError(t, cmd.Flags().Set("peer", "not-an-address"))
 
 	_, err := peerAddrFlag(cmd)
@@ -48,7 +52,7 @@ func TestPeerAddrFlag_UnregisteredFlag(t *testing.T) {
 }
 
 func TestShowSRPolicyList_UnregisteredFlag(t *testing.T) {
-	err := showSRPolicyList(&cobra.Command{}, []string{})
+	err := showSRPolicyList(&cobra.Command{}, []string{}, nil, false)
 	require.Error(t, err)
 }
 
@@ -136,27 +140,23 @@ func TestSrcDstDisplay(t *testing.T) {
 
 func TestShowSRPolicyList(t *testing.T) {
 	t.Run("no policies found", func(t *testing.T) {
-		jsonFmt = false
-		client = &fakePCEServiceClient{srPolicyListResp: &pb.GetSRPolicyListResponse{}}
+		client := &fakePCEServiceClient{srPolicyListResp: &pb.GetSRPolicyListResponse{}}
 		out := captureStdout(t, func() {
-			require.NoError(t, showSRPolicyList(newSRPolicyListCmd(), []string{}))
+			require.NoError(t, showSRPolicyList(newTestSRPolicyListCmd(client, false), []string{}, client, false))
 		})
 		assert.Equal(t, "No PCEP sessions connected.\n", out)
 	})
 
 	t.Run("no policies found, json output", func(t *testing.T) {
-		jsonFmt = true
-		t.Cleanup(func() { jsonFmt = false })
-		client = &fakePCEServiceClient{srPolicyListResp: &pb.GetSRPolicyListResponse{}}
+		client := &fakePCEServiceClient{srPolicyListResp: &pb.GetSRPolicyListResponse{}}
 		out := captureStdout(t, func() {
-			require.NoError(t, showSRPolicyList(newSRPolicyListCmd(), []string{}))
+			require.NoError(t, showSRPolicyList(newTestSRPolicyListCmd(client, true), []string{}, client, true))
 		})
 		assert.Equal(t, "[]\n", out)
 	})
 
 	t.Run("plain text output", func(t *testing.T) {
-		jsonFmt = false
-		client = &fakePCEServiceClient{srPolicyListResp: &pb.GetSRPolicyListResponse{
+		client := &fakePCEServiceClient{srPolicyListResp: &pb.GetSRPolicyListResponse{
 			Sessions: []*pb.SRPolicySession{{
 				PeerAddr:  netip.MustParseAddr(testPeerAddr1).AsSlice(),
 				State:     pb.SessionState_SESSION_STATE_UP,
@@ -187,7 +187,7 @@ func TestShowSRPolicyList(t *testing.T) {
 		}}
 
 		out := captureStdout(t, func() {
-			require.NoError(t, showSRPolicyList(newSRPolicyListCmd(), []string{}))
+			require.NoError(t, showSRPolicyList(newTestSRPolicyListCmd(client, false), []string{}, client, false))
 		})
 
 		want := "Session: 192.0.2.1 (State: up, LSP-DB Sync: finished)\n" +
@@ -215,8 +215,7 @@ func TestShowSRPolicyList(t *testing.T) {
 	})
 
 	t.Run("synced session with no policies", func(t *testing.T) {
-		jsonFmt = false
-		client = &fakePCEServiceClient{srPolicyListResp: &pb.GetSRPolicyListResponse{
+		client := &fakePCEServiceClient{srPolicyListResp: &pb.GetSRPolicyListResponse{
 			Sessions: []*pb.SRPolicySession{{
 				PeerAddr:  netip.MustParseAddr(testPeerAddr1).AsSlice(),
 				State:     pb.SessionState_SESSION_STATE_UP,
@@ -225,7 +224,7 @@ func TestShowSRPolicyList(t *testing.T) {
 		}}
 
 		out := captureStdout(t, func() {
-			require.NoError(t, showSRPolicyList(newSRPolicyListCmd(), []string{}))
+			require.NoError(t, showSRPolicyList(newTestSRPolicyListCmd(client, false), []string{}, client, false))
 		})
 
 		want := "Session: 192.0.2.1 (State: up, LSP-DB Sync: finished)\n" +
@@ -234,8 +233,7 @@ func TestShowSRPolicyList(t *testing.T) {
 	})
 
 	t.Run("unsynced session is shown with an explanatory note", func(t *testing.T) {
-		jsonFmt = false
-		client = &fakePCEServiceClient{srPolicyListResp: &pb.GetSRPolicyListResponse{
+		client := &fakePCEServiceClient{srPolicyListResp: &pb.GetSRPolicyListResponse{
 			Sessions: []*pb.SRPolicySession{{
 				PeerAddr:  netip.MustParseAddr(testPeerAddr1).AsSlice(),
 				State:     pb.SessionState_SESSION_STATE_UP,
@@ -244,7 +242,7 @@ func TestShowSRPolicyList(t *testing.T) {
 		}}
 
 		out := captureStdout(t, func() {
-			require.NoError(t, showSRPolicyList(newSRPolicyListCmd(), []string{}))
+			require.NoError(t, showSRPolicyList(newTestSRPolicyListCmd(client, false), []string{}, client, false))
 		})
 
 		want := "Session: 192.0.2.1 (State: up, LSP-DB Sync: pending)\n" +
@@ -253,9 +251,7 @@ func TestShowSRPolicyList(t *testing.T) {
 	})
 
 	t.Run("json output", func(t *testing.T) {
-		jsonFmt = true
-		t.Cleanup(func() { jsonFmt = false })
-		client = &fakePCEServiceClient{srPolicyListResp: &pb.GetSRPolicyListResponse{
+		client := &fakePCEServiceClient{srPolicyListResp: &pb.GetSRPolicyListResponse{
 			Sessions: []*pb.SRPolicySession{{
 				PeerAddr:  netip.MustParseAddr(testPeerAddr1).AsSlice(),
 				State:     pb.SessionState_SESSION_STATE_UP,
@@ -268,9 +264,9 @@ func TestShowSRPolicyList(t *testing.T) {
 			}},
 		}}
 
-		cmd := newSRPolicyListCmd()
+		cmd := newTestSRPolicyListCmd(client, true)
 		out := captureStdout(t, func() {
-			require.NoError(t, showSRPolicyList(cmd, []string{}))
+			require.NoError(t, showSRPolicyList(cmd, []string{}, client, true))
 		})
 		want := `[{
 			"peerAddress": "192.0.2.1",
@@ -289,22 +285,19 @@ func TestShowSRPolicyList(t *testing.T) {
 	})
 
 	t.Run("invalid peer filter is rejected", func(t *testing.T) {
-		jsonFmt = false
-		cmd := newSRPolicyListCmd()
+		cmd := newTestSRPolicyListCmd(nil, false)
 		require.NoError(t, cmd.Flags().Set("peer", "not-an-address"))
-		err := showSRPolicyList(cmd, []string{})
+		err := showSRPolicyList(cmd, []string{}, nil, false)
 		require.Error(t, err)
 	})
 
 	t.Run("peer filter propagates to the request", func(t *testing.T) {
-		jsonFmt = false
 		fake := &fakePCEServiceClient{srPolicyListResp: &pb.GetSRPolicyListResponse{}}
-		client = fake
-		cmd := newSRPolicyListCmd()
+		cmd := newTestSRPolicyListCmd(fake, false)
 		require.NoError(t, cmd.Flags().Set("peer", testPeerAddr1))
 
 		out := captureStdout(t, func() {
-			require.NoError(t, showSRPolicyList(cmd, []string{}))
+			require.NoError(t, showSRPolicyList(cmd, []string{}, fake, false))
 		})
 
 		require.NotNil(t, fake.srPolicyListReq)
@@ -313,10 +306,22 @@ func TestShowSRPolicyList(t *testing.T) {
 	})
 
 	t.Run("grpc error propagates", func(t *testing.T) {
-		jsonFmt = false
-		client = &fakePCEServiceClient{srPolicyListErr: assert.AnError}
-		err := showSRPolicyList(newSRPolicyListCmd(), []string{})
+		client := &fakePCEServiceClient{srPolicyListErr: assert.AnError}
+		err := showSRPolicyList(newTestSRPolicyListCmd(client, false), []string{}, client, false)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to retrieve SR policy list")
 	})
+}
+
+func TestNewSRPolicyListCmd_RunE(t *testing.T) {
+	client := pb.PCEServiceClient(&fakePCEServiceClient{
+		srPolicyListResp: &pb.GetSRPolicyListResponse{},
+	})
+	jsonFmt := false
+	cmd := newSRPolicyListCmd(&client, &jsonFmt)
+
+	out := captureStdout(t, func() {
+		require.NoError(t, cmd.RunE(cmd, []string{}))
+	})
+	assert.Equal(t, "No PCEP sessions connected.\n", out)
 }

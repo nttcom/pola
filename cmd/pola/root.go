@@ -15,12 +15,12 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-var (
-	client  pb.PCEServiceClient
-	jsonFmt bool
-)
-
 func newRootCmd() *cobra.Command {
+	var (
+		client  pb.PCEServiceClient
+		jsonFmt bool
+	)
+
 	rootCmd := &cobra.Command{
 		Use: "pola",
 	}
@@ -28,24 +28,26 @@ func newRootCmd() *cobra.Command {
 	rootCmd.PersistentFlags().String("host", "127.0.0.1", "polad connection address")
 	rootCmd.PersistentFlags().StringP("port", "p", "50051", "polad connection port")
 
-	rootCmd.AddCommand(newSessionCmd(), newSRPolicyCmd(), newTEDCmd())
-	rootCmd.PersistentPreRunE = persistentPreRunE
+	rootCmd.AddCommand(newSessionCmd(&client, &jsonFmt), newSRPolicyCmd(&client, &jsonFmt), newTEDCmd(&client, &jsonFmt))
+	rootCmd.PersistentPreRunE = persistentPreRunE(&client)
 	rootCmd.Run = runRootCmd
 
 	return rootCmd
 }
 
-func persistentPreRunE(cmd *cobra.Command, _ []string) error {
-	conn, err := grpc.NewClient(
-		net.JoinHostPort(cmd.Flag("host").Value.String(), cmd.Flag("port").Value.String()),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
-	if err != nil {
-		return fmt.Errorf("failed to dial polad connection: %w", err)
-	}
+func persistentPreRunE(client *pb.PCEServiceClient) func(cmd *cobra.Command, args []string) error {
+	return func(cmd *cobra.Command, _ []string) error {
+		conn, err := grpc.NewClient(
+			net.JoinHostPort(cmd.Flag("host").Value.String(), cmd.Flag("port").Value.String()),
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		)
+		if err != nil {
+			return fmt.Errorf("failed to dial polad connection: %w", err)
+		}
 
-	client = pb.NewPCEServiceClient(conn)
-	return nil
+		*client = pb.NewPCEServiceClient(conn)
+		return nil
+	}
 }
 
 func runRootCmd(cmd *cobra.Command, args []string) {

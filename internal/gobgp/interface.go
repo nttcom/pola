@@ -34,14 +34,12 @@ type monitorOptions struct {
 	retryInterval    time.Duration
 }
 
-var defaultMonitorOptions = monitorOptions{
-	debounceCooldown: defaultDebounceCooldown,
-	retryInterval:    defaultRetryInterval,
-}
-
 // MonitorBGPLsEvents monitors BGP-LS events and sends updates to the TED channel.
 func MonitorBGPLsEvents(ctx context.Context, serverAddr string, serverPort string, tedChan chan []table.TEDElem, lg *logger.Logger) {
-	monitorBGPLsEvents(ctx, serverAddr, serverPort, tedChan, lg, defaultMonitorOptions)
+	monitorBGPLsEvents(ctx, serverAddr, serverPort, tedChan, lg, monitorOptions{
+		debounceCooldown: defaultDebounceCooldown,
+		retryInterval:    defaultRetryInterval,
+	})
 }
 
 func monitorBGPLsEvents(ctx context.Context, serverAddr string, serverPort string, tedChan chan []table.TEDElem, lg *logger.Logger, opts monitorOptions) {

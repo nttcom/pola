@@ -13,27 +13,30 @@ import (
 
 	"github.com/spf13/cobra"
 
+	pb "github.com/nttcom/pola/api/pola/v1"
 	"github.com/nttcom/pola/cmd/pola/grpc"
 )
 
-func newSRPolicyListCmd() *cobra.Command {
+func newSRPolicyListCmd(client *pb.PCEServiceClient, jsonFmt *bool) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:  "list",
-		RunE: showSRPolicyList,
+		Use: "list",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return showSRPolicyList(cmd, args, *client, *jsonFmt)
+		},
 	}
 	cmd.Flags().String("peer", "", "filter by PCEP peer address")
 	return cmd
 }
 
-func showSRPolicyList(cmd *cobra.Command, _ []string) error {
+func showSRPolicyList(cmd *cobra.Command, _ []string, client pb.PCEServiceClient, jsonFmt bool) error {
 	peerAddr, err := peerAddrFlag(cmd)
 	if err != nil {
 		return err
 	}
-	return writeSRPolicyList(os.Stdout, peerAddr, resolveOutputFormat(jsonFmt))
+	return writeSRPolicyList(os.Stdout, peerAddr, resolveOutputFormat(jsonFmt), client)
 }
 
-func writeSRPolicyList(w io.Writer, peerAddr netip.Addr, format outputFormat) error {
+func writeSRPolicyList(w io.Writer, peerAddr netip.Addr, format outputFormat, client pb.PCEServiceClient) error {
 	sessions, err := grpc.GetSRPolicyList(client, peerAddr)
 	if err != nil {
 		return fmt.Errorf("failed to retrieve SR policy list: %w", err)

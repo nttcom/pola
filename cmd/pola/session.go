@@ -12,11 +12,12 @@ import (
 	"net/netip"
 	"os"
 
+	pb "github.com/nttcom/pola/api/pola/v1"
 	"github.com/nttcom/pola/cmd/pola/grpc"
 	"github.com/spf13/cobra"
 )
 
-func newSessionCmd() *cobra.Command {
+func newSessionCmd(client *pb.PCEServiceClient, jsonFmt *bool) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "session [peer-address] [detail]",
 		Short: "Show PCEP sessions",
@@ -26,11 +27,11 @@ func newSessionCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return showSession(os.Stdout, addr, detail, resolveOutputFormat(jsonFmt))
+			return showSession(os.Stdout, addr, detail, resolveOutputFormat(*jsonFmt), *client)
 		},
 	}
 
-	cmd.AddCommand(newSessionDeleteCmd())
+	cmd.AddCommand(newSessionDeleteCmd(client, jsonFmt))
 	return cmd
 }
 
@@ -60,7 +61,7 @@ func parseSessionArgs(args []string) (netip.Addr, bool, error) {
 	return addr, detail, nil
 }
 
-func showSession(w io.Writer, addr netip.Addr, detail bool, format outputFormat) error {
+func showSession(w io.Writer, addr netip.Addr, detail bool, format outputFormat, client pb.PCEServiceClient) error {
 	sessions, err := grpc.GetSessions(client, addr, detail)
 	if err != nil {
 		return err

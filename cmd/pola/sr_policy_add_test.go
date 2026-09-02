@@ -22,6 +22,11 @@ import (
 	"github.com/nttcom/pola/pkg/server"
 )
 
+func newTestSRPolicyAddCmd(client pb.PCEServiceClient) *cobra.Command {
+	jsonFmt := false
+	return newSRPolicyAddCmd(&client, &jsonFmt)
+}
+
 const testErrorDomain = "pola"
 
 // TestReasonConstantsMatchServer ensures the duplicated Reason constants stay in sync.
@@ -98,14 +103,14 @@ func validEndpointInput() inputFormat {
 
 func TestNewSRPolicyAddCmd_RunE(t *testing.T) {
 	t.Run("no-sid-validate flag not registered", func(t *testing.T) {
-		cmd := newSRPolicyAddCmd()
+		cmd := newTestSRPolicyAddCmd(nil)
 		err := cmd.RunE(&cobra.Command{}, []string{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no-sid-validate")
 	})
 
 	t.Run("file flag not registered", func(t *testing.T) {
-		cmd := newSRPolicyAddCmd()
+		cmd := newTestSRPolicyAddCmd(nil)
 		bare := &cobra.Command{}
 		bare.Flags().Bool("no-sid-validate", false, "")
 		err := cmd.RunE(bare, []string{})
@@ -114,14 +119,14 @@ func TestNewSRPolicyAddCmd_RunE(t *testing.T) {
 	})
 
 	t.Run("missing file flag", func(t *testing.T) {
-		cmd := newSRPolicyAddCmd()
+		cmd := newTestSRPolicyAddCmd(nil)
 		err := cmd.RunE(cmd, []string{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "mandatory")
 	})
 
 	t.Run("file does not exist", func(t *testing.T) {
-		cmd := newSRPolicyAddCmd()
+		cmd := newTestSRPolicyAddCmd(nil)
 		require.NoError(t, cmd.Flags().Set("file", filepath.Join(t.TempDir(), "missing.yaml")))
 		err := cmd.RunE(cmd, []string{})
 		require.Error(t, err)
@@ -131,7 +136,7 @@ func TestNewSRPolicyAddCmd_RunE(t *testing.T) {
 	t.Run("invalid YAML syntax", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "policy.yaml")
 		require.NoError(t, os.WriteFile(path, []byte("not: [valid"), 0o600))
-		cmd := newSRPolicyAddCmd()
+		cmd := newTestSRPolicyAddCmd(nil)
 		require.NoError(t, cmd.Flags().Set("file", path))
 		err := cmd.RunE(cmd, []string{})
 		require.Error(t, err)
@@ -150,8 +155,7 @@ func TestNewSRPolicyAddCmd_RunE(t *testing.T) {
 			"    - sid: \"16003\"\n"
 		require.NoError(t, os.WriteFile(path, []byte(yamlContent), 0o600))
 
-		client = &fakePCEServiceClient{}
-		cmd := newSRPolicyAddCmd()
+		cmd := newTestSRPolicyAddCmd(&fakePCEServiceClient{})
 		require.NoError(t, cmd.Flags().Set("file", path))
 		captureStdout(t, func() {
 			require.NoError(t, cmd.RunE(cmd, []string{}))
@@ -161,7 +165,7 @@ func TestNewSRPolicyAddCmd_RunE(t *testing.T) {
 	t.Run("addSRPolicy error is wrapped", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "policy.yaml")
 		require.NoError(t, os.WriteFile(path, []byte("srPolicy:\n  name: incomplete\n"), 0o600))
-		cmd := newSRPolicyAddCmd()
+		cmd := newTestSRPolicyAddCmd(nil)
 		require.NoError(t, cmd.Flags().Set("file", path))
 		err := cmd.RunE(cmd, []string{})
 		require.Error(t, err)
@@ -175,41 +179,37 @@ func TestAddSRPolicy(t *testing.T) {
 			SrcRouterID: testRouterID1,
 			SrcAddr:     netip.MustParseAddr(testPeerAddr1),
 		}}
-		err := addSRPolicy(input, false, false)
+		err := addSRPolicy(input, false, false, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "mutually exclusive")
 	})
 
 	t.Run("no-sid-validate prints a warning to stderr", func(t *testing.T) {
-		client = &fakePCEServiceClient{}
 		var stderr string
 		captureStdout(t, func() {
 			stderr = captureStderr(t, func() {
-				require.NoError(t, addSRPolicy(validEndpointInput(), false, true))
+				require.NoError(t, addSRPolicy(validEndpointInput(), false, true, &fakePCEServiceClient{}))
 			})
 		})
 		assert.Contains(t, stderr, "no-sid-validate")
 	})
 
 	t.Run("json output on success", func(t *testing.T) {
-		client = &fakePCEServiceClient{}
 		out := captureStdout(t, func() {
-			require.NoError(t, addSRPolicy(validEndpointInput(), true, false))
+			require.NoError(t, addSRPolicy(validEndpointInput(), true, false, &fakePCEServiceClient{}))
 		})
 		assert.JSONEq(t, "{\"status\": \"success\"}\n", out)
 	})
 
 	t.Run("plain text output on success", func(t *testing.T) {
-		client = &fakePCEServiceClient{}
 		out := captureStdout(t, func() {
-			require.NoError(t, addSRPolicy(validEndpointInput(), false, false))
+			require.NoError(t, addSRPolicy(validEndpointInput(), false, false, &fakePCEServiceClient{}))
 		})
 		assert.Equal(t, "success!\n", out)
 	})
 
 	t.Run("router ID form is used when router IDs are set", func(t *testing.T) {
 		fake := &fakePCEServiceClient{}
-		client = fake
 		input := inputFormat{ASN: 65000, SRPolicy: srPolicy{
 			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
 			SrcRouterID:     testRouterID1,
@@ -219,14 +219,14 @@ func TestAddSRPolicy(t *testing.T) {
 			SegmentList:     []segment{{SID: "16003"}},
 		}}
 		captureStdout(t, func() {
-			require.NoError(t, addSRPolicy(input, false, false))
+			require.NoError(t, addSRPolicy(input, false, false, fake))
 		})
 		require.NotNil(t, fake.createSRPolicyReq)
 		assert.Equal(t, testRouterID1, fake.createSRPolicyReq.SrPolicy.SrcRouterId)
 	})
 
 	t.Run("router ID form grpc error is translated too", func(t *testing.T) {
-		client = &fakePCEServiceClient{createSRPolicyErr: assert.AnError}
+		fake := &fakePCEServiceClient{createSRPolicyErr: assert.AnError}
 		input := inputFormat{ASN: 65000, SRPolicy: srPolicy{
 			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
 			SrcRouterID:     testRouterID1,
@@ -235,7 +235,7 @@ func TestAddSRPolicy(t *testing.T) {
 			Type:            srPolicyTypeExplicit,
 			SegmentList:     []segment{{SID: "16003"}},
 		}}
-		err := addSRPolicy(input, false, false)
+		err := addSRPolicy(input, false, false, fake)
 		require.ErrorIs(t, err, assert.AnError)
 	})
 
@@ -243,9 +243,9 @@ func TestAddSRPolicy(t *testing.T) {
 		st := status.New(codes.FailedPrecondition, "SID validation failed")
 		withDetails, err := st.WithDetails(&errdetails.ErrorInfo{Reason: "SID_VALIDATION_FAILED", Domain: testErrorDomain})
 		require.NoError(t, err)
-		client = &fakePCEServiceClient{createSRPolicyErr: withDetails.Err()}
+		fake := &fakePCEServiceClient{createSRPolicyErr: withDetails.Err()}
 
-		err = addSRPolicy(validEndpointInput(), false, false)
+		err = addSRPolicy(validEndpointInput(), false, false, fake)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "--no-sid-validate")
 	})
@@ -265,7 +265,7 @@ func TestAddSRPolicyWithEndpointAddr(t *testing.T) {
 	t.Run("type must be explicit (or empty)", func(t *testing.T) {
 		p := base()
 		p.Type = srPolicyTypeDynamic
-		err := addSRPolicyWithEndpointAddr(inputFormat{SRPolicy: p}, false)
+		err := addSRPolicyWithEndpointAddr(inputFormat{SRPolicy: p}, false, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), srPolicyTypeExplicit)
 	})
@@ -273,25 +273,24 @@ func TestAddSRPolicyWithEndpointAddr(t *testing.T) {
 	t.Run("metric and waypoints require a dynamic path", func(t *testing.T) {
 		p := base()
 		p.Metric = metricTypeIGP
-		err := addSRPolicyWithEndpointAddr(inputFormat{SRPolicy: p}, false)
+		err := addSRPolicyWithEndpointAddr(inputFormat{SRPolicy: p}, false, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "dynamic path")
 	})
 
 	t.Run("missing mandatory fields", func(t *testing.T) {
-		err := addSRPolicyWithEndpointAddr(inputFormat{}, false)
+		err := addSRPolicyWithEndpointAddr(inputFormat{}, false, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid input")
 	})
 
 	t.Run("success builds the explicit request", func(t *testing.T) {
 		fake := &fakePCEServiceClient{}
-		client = fake
 		p := base()
 		p.Name = testPolicyName
 		p.SegmentList = []segment{{SID: "16003", LocalAddr: testPeerAddr1, RemoteAddr: testPeerAddr2, SIDStructure: "32,16,0,80"}}
 
-		require.NoError(t, addSRPolicyWithEndpointAddr(inputFormat{ASN: 65000, SRPolicy: p}, true))
+		require.NoError(t, addSRPolicyWithEndpointAddr(inputFormat{ASN: 65000, SRPolicy: p}, true, fake))
 
 		require.NotNil(t, fake.createSRPolicyReq)
 		want := &pb.SRPolicy{
@@ -310,21 +309,20 @@ func TestAddSRPolicyWithEndpointAddr(t *testing.T) {
 	})
 
 	t.Run("grpc error propagates", func(t *testing.T) {
-		client = &fakePCEServiceClient{createSRPolicyErr: assert.AnError}
-		err := addSRPolicyWithEndpointAddr(inputFormat{SRPolicy: base()}, false)
+		fake := &fakePCEServiceClient{createSRPolicyErr: assert.AnError}
+		err := addSRPolicyWithEndpointAddr(inputFormat{SRPolicy: base()}, false, fake)
 		require.ErrorIs(t, err, assert.AnError)
 	})
 }
 
 func TestAddSRPolicyWithRouterID(t *testing.T) {
 	t.Run("invalid common input", func(t *testing.T) {
-		err := addSRPolicyWithRouterID(inputFormat{}, false)
+		err := addSRPolicyWithRouterID(inputFormat{}, false, nil)
 		require.Error(t, err)
 	})
 
 	t.Run("dynamic path builds the request", func(t *testing.T) {
 		fake := &fakePCEServiceClient{}
-		client = fake
 		input := inputFormat{ASN: 65000, SRPolicy: srPolicy{
 			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
 			SrcRouterID:     testRouterID1,
@@ -335,7 +333,7 @@ func TestAddSRPolicyWithRouterID(t *testing.T) {
 			Metric:          metricTypeDelay,
 			Waypoints:       []waypoint{{RouterID: "0000.0aff.0003"}},
 		}}
-		require.NoError(t, addSRPolicyWithRouterID(input, true))
+		require.NoError(t, addSRPolicyWithRouterID(input, true, fake))
 
 		require.NotNil(t, fake.createSRPolicyReq)
 		want := &pb.SRPolicy{
@@ -356,7 +354,6 @@ func TestAddSRPolicyWithRouterID(t *testing.T) {
 
 	t.Run("explicit path builds the request", func(t *testing.T) {
 		fake := &fakePCEServiceClient{}
-		client = fake
 		input := inputFormat{ASN: 65000, SRPolicy: srPolicy{
 			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
 			SrcRouterID:     testRouterID1,
@@ -365,7 +362,7 @@ func TestAddSRPolicyWithRouterID(t *testing.T) {
 			Type:            srPolicyTypeExplicit,
 			SegmentList:     []segment{{SID: "16003"}},
 		}}
-		require.NoError(t, addSRPolicyWithRouterID(input, false))
+		require.NoError(t, addSRPolicyWithRouterID(input, false, fake))
 
 		require.NotNil(t, fake.createSRPolicyReq)
 		assert.Equal(t, pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT, fake.createSRPolicyReq.SrPolicy.Type)
@@ -380,12 +377,12 @@ func TestAddSRPolicyWithRouterID(t *testing.T) {
 			Color:           100,
 			Type:            "unknown",
 		}}
-		err := addSRPolicyWithRouterID(input, false)
+		err := addSRPolicyWithRouterID(input, false, nil)
 		require.Error(t, err)
 	})
 
 	t.Run("grpc error propagates", func(t *testing.T) {
-		client = &fakePCEServiceClient{createSRPolicyErr: assert.AnError}
+		fake := &fakePCEServiceClient{createSRPolicyErr: assert.AnError}
 		input := inputFormat{ASN: 65000, SRPolicy: srPolicy{
 			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
 			SrcRouterID:     testRouterID1,
@@ -394,7 +391,7 @@ func TestAddSRPolicyWithRouterID(t *testing.T) {
 			Type:            srPolicyTypeExplicit,
 			SegmentList:     []segment{{SID: "16003"}},
 		}}
-		err := addSRPolicyWithRouterID(input, false)
+		err := addSRPolicyWithRouterID(input, false, fake)
 		require.ErrorIs(t, err, assert.AnError)
 	})
 }
