@@ -1,0 +1,134 @@
+// Copyright (c) 2022 NTT Communications Corporation
+//
+// This software is released under the MIT License.
+// see https://github.com/nttcom/pola/blob/main/LICENSE
+
+package logger
+
+import (
+	"sync"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/zap/zapcore"
+)
+
+func TestNewRecorderFiltersByLevel(t *testing.T) {
+	lg, rec := NewRecorder(LevelWarn)
+	lg.Debug("debug")
+	lg.Info("info")
+	lg.Warn("warn")
+	lg.Error("error")
+
+	require.Equal(t, 2, rec.Len())
+	msgs := []string{rec.All()[0].Message, rec.All()[1].Message}
+	assert.Equal(t, []string{"warn", "error"}, msgs)
+}
+
+func TestNewRecorderLevels(t *testing.T) {
+	lg, rec := NewRecorder(LevelDebug)
+	lg.Debug("debug")
+	lg.Info("info")
+	lg.Warn("warn")
+	lg.Error("error")
+
+	entries := rec.All()
+	require.Len(t, entries, 4)
+	assert.Equal(t, []Level{LevelDebug, LevelInfo, LevelWarn, LevelError}, []Level{
+		entries[0].Level, entries[1].Level, entries[2].Level, entries[3].Level,
+	})
+}
+
+func TestLoggerWithMergesFields(t *testing.T) {
+	lg, rec := NewRecorder(LevelDebug)
+	child := lg.With(String("server", "grpc"))
+	child.Info("started")
+	lg.Info("root")
+
+	entries := rec.All()
+	require.Len(t, entries, 2)
+	assert.Equal(t, map[string]any{"server": "grpc"}, entries[0].Fields)
+	assert.Empty(t, entries[1].Fields)
+}
+
+func TestRecorderFilterByMessage(t *testing.T) {
+	_, rec := NewRecorder(LevelDebug)
+	assert.Nil(t, rec.FilterByMessage("missing"))
+
+	lg, rec := NewRecorder(LevelDebug)
+	lg.Info("hello")
+	lg.Info("world")
+	lg.Info("hello")
+
+	assert.Len(t, rec.FilterByMessage("hello"), 2)
+	assert.Len(t, rec.FilterByMessage("world"), 1)
+	assert.Nil(t, rec.FilterByMessage("missing"))
+}
+
+func TestRecorderAllReturnsCopy(t *testing.T) {
+	lg, rec := NewRecorder(LevelDebug)
+	lg.Info("first")
+
+	entries := rec.All()
+	entries[0].Message = "mutated"
+
+	assert.Equal(t, "first", rec.All()[0].Message)
+}
+
+func TestRecorderAllFieldsNotShared(t *testing.T) {
+	lg, rec := NewRecorder(LevelDebug)
+	lg.Info("first", String("key", "orig"))
+
+	entries := rec.All()
+	entries[0].Fields["key"] = "mutated"
+	entries[0].Fields["extra"] = "added"
+
+	again := rec.All()
+	assert.Equal(t, map[string]any{"key": "orig"}, again[0].Fields)
+}
+
+func TestRecorderFilterByMessageFieldsNotShared(t *testing.T) {
+	lg, rec := NewRecorder(LevelDebug)
+	lg.Info("hello", String("key", "orig"))
+
+	entries := rec.FilterByMessage("hello")
+	entries[0].Fields["key"] = "mutated"
+
+	again := rec.FilterByMessage("hello")
+	assert.Equal(t, map[string]any{"key": "orig"}, again[0].Fields)
+}
+
+func TestRecorderConcurrentAccess(t *testing.T) {
+	lg, rec := NewRecorder(LevelDebug)
+
+	var wg sync.WaitGroup
+	for range 100 {
+		wg.Go(func() {
+			lg.Info("concurrent")
+			_ = rec.Len()
+			_ = rec.All()
+		})
+	}
+	wg.Wait()
+
+	assert.Equal(t, 100, rec.Len())
+}
+
+func TestRecorderSync(t *testing.T) {
+	lg, _ := NewRecorder(LevelDebug)
+	require.NoError(t, lg.Sync())
+}
+
+func TestRecordCore_Check_DisabledLevel(t *testing.T) {
+	_, rec := NewRecorder(LevelWarn)
+	core := &recordCore{min: LevelWarn.zapLevel(), rec: rec}
+
+	entry := zapcore.Entry{Level: LevelDebug.zapLevel(), Message: "debug"}
+	checked := &zapcore.CheckedEntry{}
+
+	result := core.Check(entry, checked)
+
+	require.Equal(t, checked, result)
+	require.Equal(t, 0, rec.Len())
+}

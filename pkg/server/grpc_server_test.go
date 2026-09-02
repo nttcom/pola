@@ -20,12 +20,11 @@ import (
 
 	pb "github.com/nttcom/pola/api/pola/v1"
 	"github.com/nttcom/pola/pkg/cspf"
+	"github.com/nttcom/pola/pkg/logger"
 	"github.com/nttcom/pola/pkg/packet/pcep"
 	"github.com/nttcom/pola/pkg/table"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest/observer"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	grpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -197,7 +196,7 @@ func TestCreateEroFromSegmentListWithNAI(t *testing.T) {
 func newTestAPIServer(ted *table.LsTED) *APIServer {
 	return &APIServer{
 		pce:    &Server{ted: ted},
-		logger: zap.NewNop(),
+		logger: logger.NewNop(),
 	}
 }
 
@@ -453,17 +452,17 @@ func TestValidateSIDs_MixedSegmentTypesAreRejected(t *testing.T) {
 }
 
 func TestServe_InvalidAddress(t *testing.T) {
-	s := &APIServer{grpcServer: grpc.NewServer(), logger: zap.NewNop()}
+	s := &APIServer{grpcServer: grpc.NewServer(), logger: logger.NewNop()}
 	require.Error(t, s.Serve("", "50052"))
 }
 
 func TestServe_InvalidPort(t *testing.T) {
-	s := &APIServer{grpcServer: grpc.NewServer(), logger: zap.NewNop()}
+	s := &APIServer{grpcServer: grpc.NewServer(), logger: logger.NewNop()}
 	require.Error(t, s.Serve("127.0.0.1", "notaport"))
 }
 
 func TestServe_PortOutOfRange(t *testing.T) {
-	s := &APIServer{grpcServer: grpc.NewServer(), logger: zap.NewNop()}
+	s := &APIServer{grpcServer: grpc.NewServer(), logger: logger.NewNop()}
 	require.Error(t, s.Serve("127.0.0.1", "70000"))
 }
 
@@ -477,7 +476,7 @@ func TestServe_ListenFailure(t *testing.T) {
 	addr, port, err := net.SplitHostPort(ln.Addr().String())
 	require.NoError(t, err)
 
-	s := &APIServer{grpcServer: grpc.NewServer(), logger: zap.NewNop()}
+	s := &APIServer{grpcServer: grpc.NewServer(), logger: logger.NewNop()}
 	require.ErrorContains(t, s.Serve(addr, port), "failed to listen on gRPC port", "expected the already-bound port to be rejected")
 }
 
@@ -485,27 +484,27 @@ func TestServe_ReturnsNilWhenAlreadyStoppedBeforeServing(t *testing.T) {
 	grpcServer := grpc.NewServer()
 	grpcServer.GracefulStop() // simulate cancellation winning the startup race
 
-	s := &APIServer{grpcServer: grpcServer, logger: zap.NewNop()}
+	s := &APIServer{grpcServer: grpcServer, logger: logger.NewNop()}
 	assert.NoError(t, s.Serve("127.0.0.1", "0"), "grpc.ErrServerStopped from the startup race should not be reported as a failure")
 }
 
 func TestServe_ListensAndLogsActualAddr(t *testing.T) {
-	core, logs := observer.New(zap.InfoLevel)
-	s := &APIServer{grpcServer: grpc.NewServer(), logger: zap.New(core)}
+	lg, logs := logger.NewRecorder(logger.LevelInfo)
+	s := &APIServer{grpcServer: grpc.NewServer(), logger: lg}
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- s.Serve("127.0.0.1", "0") }()
 
 	require.Eventually(t, func() bool {
-		return len(logs.FilterMessage("Start listening on gRPC port").All()) > 0
+		return len(logs.FilterByMessage("Start listening on gRPC port")) > 0
 	}, 2*time.Second, 10*time.Millisecond, "expected listenInfo to be logged")
 
 	s.grpcServer.GracefulStop()
 	require.NoError(t, <-errCh)
 
-	entries := logs.FilterMessage("Start listening on gRPC port").All()
+	entries := logs.FilterByMessage("Start listening on gRPC port")
 	require.Len(t, entries, 1)
-	listenInfo, _ := entries[0].ContextMap()["listenInfo"].(string)
+	listenInfo, _ := entries[0].Fields["listenInfo"].(string)
 	require.NotEmpty(t, listenInfo, "expected listenInfo to be logged")
 	assert.False(t, strings.HasSuffix(listenInfo, ":0"), "expected the actual bound port, got %s", listenInfo)
 }
@@ -560,7 +559,7 @@ func TestGetSessionList_DeduplicatesNonAdjacentCapabilities(t *testing.T) {
 	}
 	s := &APIServer{
 		pce:    &Server{sessionList: []*Session{session}},
-		logger: zap.NewNop(),
+		logger: logger.NewNop(),
 	}
 
 	resp, err := s.GetSessionList(context.Background(), &pb.GetSessionListRequest{})
@@ -588,7 +587,7 @@ func TestGetSessionList_BuildsStructuredCapabilities(t *testing.T) {
 	}
 	s := &APIServer{
 		pce:    &Server{sessionList: []*Session{session}},
-		logger: zap.NewNop(),
+		logger: logger.NewNop(),
 	}
 
 	resp, err := s.GetSessionList(context.Background(), &pb.GetSessionListRequest{})
@@ -615,7 +614,7 @@ func (c *failingCapability) Serialize() ([]byte, error) {
 }
 
 func TestGetSessionList_SkipsCapabilityOnSerializeError(t *testing.T) {
-	core, logs := observer.New(zap.WarnLevel)
+	lg, logs := logger.NewRecorder(logger.LevelWarn)
 	session := &Session{
 		peerAddr:  netip.MustParseAddr("10.0.0.1"),
 		syncState: lspDBSyncFinished,
@@ -626,7 +625,7 @@ func TestGetSessionList_SkipsCapabilityOnSerializeError(t *testing.T) {
 	}
 	s := &APIServer{
 		pce:    &Server{sessionList: []*Session{session}},
-		logger: zap.New(core),
+		logger: lg,
 	}
 
 	resp, err := s.GetSessionList(context.Background(), &pb.GetSessionListRequest{})
@@ -636,7 +635,7 @@ func TestGetSessionList_SkipsCapabilityOnSerializeError(t *testing.T) {
 
 	srv6 := resp.Sessions[0].LocalCapabilities[0]
 	assert.Equal(t, pb.CapabilityType_CAPABILITY_TYPE_SRV6, srv6.GetType())
-	assert.Len(t, logs.FilterMessage("failed to serialize advertised capability").All(), 1)
+	assert.Len(t, logs.FilterByMessage("failed to serialize advertised capability"), 1)
 }
 
 func TestGetSessionList_MultipathCapabilityDoesNotSetMsd(t *testing.T) {
@@ -649,7 +648,7 @@ func TestGetSessionList_MultipathCapabilityDoesNotSetMsd(t *testing.T) {
 	}
 	s := &APIServer{
 		pce:    &Server{sessionList: []*Session{session}},
-		logger: zap.NewNop(),
+		logger: logger.NewNop(),
 	}
 
 	resp, err := s.GetSessionList(context.Background(), &pb.GetSessionListRequest{})
@@ -673,7 +672,7 @@ func TestGetSessionList_ReportsLocalAndPccTimersAndSessionID(t *testing.T) {
 	}
 	s := &APIServer{
 		pce:    &Server{sessionList: []*Session{session}},
-		logger: zap.NewNop(),
+		logger: logger.NewNop(),
 	}
 
 	resp, err := s.GetSessionList(context.Background(), &pb.GetSessionListRequest{})
@@ -697,7 +696,7 @@ func TestGetSessionList_LeavesAdvertisedValuesUnsetBeforeTheOpenExchange(t *test
 		pce: &Server{sessionList: []*Session{
 			{peerAddr: netip.MustParseAddr("10.0.0.1"), state: sessionStateOpenWait},
 		}},
-		logger: zap.NewNop(),
+		logger: logger.NewNop(),
 	}
 
 	resp, err := s.GetSessionList(context.Background(), &pb.GetSessionListRequest{})
@@ -720,7 +719,7 @@ func TestGetSessionList_ReportsZeroPccSessionIDAsAdvertised(t *testing.T) {
 			localOpen: &OpenParams{SessionID: 0, Keepalive: 30, DeadTimer: 120},
 			pccOpen:   &OpenParams{SessionID: 0, Keepalive: 0, DeadTimer: 0},
 		}}},
-		logger: zap.NewNop(),
+		logger: logger.NewNop(),
 	}
 
 	resp, err := s.GetSessionList(context.Background(), &pb.GetSessionListRequest{})
@@ -741,7 +740,7 @@ func TestGetSessionList_SortsSessionsByAddr(t *testing.T) {
 			{peerAddr: netip.MustParseAddr("10.0.0.2")},
 			{peerAddr: netip.MustParseAddr("10.0.0.1")},
 		}},
-		logger: zap.NewNop(),
+		logger: logger.NewNop(),
 	}
 
 	resp, err := s.GetSessionList(context.Background(), &pb.GetSessionListRequest{})
@@ -760,7 +759,7 @@ func TestGetSessionList_FiltersBySessionAddr(t *testing.T) {
 			{peerAddr: netip.MustParseAddr("10.0.0.1")},
 			{peerAddr: netip.MustParseAddr("10.0.0.2")},
 		}},
-		logger: zap.NewNop(),
+		logger: logger.NewNop(),
 	}
 
 	resp, err := s.GetSessionList(context.Background(), &pb.GetSessionListRequest{PeerAddr: netip.MustParseAddr("10.0.0.2").AsSlice()})
@@ -773,7 +772,7 @@ func TestGetSessionList_FiltersBySessionAddr(t *testing.T) {
 func TestGetSessionList_RejectsInvalidSessionFilter(t *testing.T) {
 	s := &APIServer{
 		pce:    &Server{},
-		logger: zap.NewNop(),
+		logger: logger.NewNop(),
 	}
 
 	_, err := s.GetSessionList(context.Background(), &pb.GetSessionListRequest{PeerAddr: []byte{1, 2, 3}})
@@ -786,7 +785,7 @@ func TestGetSessionList_IncludeStatsControlsStatsPresence(t *testing.T) {
 		pce: &Server{sessionList: []*Session{
 			{peerAddr: netip.MustParseAddr("10.0.0.1")},
 		}},
-		logger: zap.NewNop(),
+		logger: logger.NewNop(),
 	}
 
 	resp, err := s.GetSessionList(context.Background(), &pb.GetSessionListRequest{})
@@ -832,7 +831,7 @@ func TestGetSRPolicyList_FillsMissingFieldsAndOrdersDeterministically(t *testing
 
 	s := &APIServer{
 		pce:    &Server{sessionList: []*Session{session2, session1}, ted: ted},
-		logger: zap.NewNop(),
+		logger: logger.NewNop(),
 	}
 
 	resp, err := s.GetSRPolicyList(context.Background(), &pb.GetSRPolicyListRequest{})
@@ -857,7 +856,7 @@ func TestGetSRPolicyList_IncludesUnsyncedSessions(t *testing.T) {
 		pce: &Server{sessionList: []*Session{
 			{peerAddr: netip.MustParseAddr("10.0.0.1"), syncState: lspDBSyncPending},
 		}},
-		logger: zap.NewNop(),
+		logger: logger.NewNop(),
 	}
 
 	resp, err := s.GetSRPolicyList(context.Background(), &pb.GetSRPolicyListRequest{})
@@ -888,7 +887,7 @@ func TestGetSRPolicyList_FiltersBySessionAddr(t *testing.T) {
 				},
 			},
 		}},
-		logger: zap.NewNop(),
+		logger: logger.NewNop(),
 	}
 
 	resp, err := s.GetSRPolicyList(context.Background(), &pb.GetSRPolicyListRequest{PeerAddr: netip.MustParseAddr("10.0.0.2").AsSlice()})
@@ -901,7 +900,7 @@ func TestGetSRPolicyList_FiltersBySessionAddr(t *testing.T) {
 func TestGetSRPolicyList_RejectsInvalidSessionFilter(t *testing.T) {
 	s := &APIServer{
 		pce:    &Server{},
-		logger: zap.NewNop(),
+		logger: logger.NewNop(),
 	}
 
 	_, err := s.GetSRPolicyList(context.Background(), &pb.GetSRPolicyListRequest{PeerAddr: []byte{1, 2, 3}})
@@ -980,7 +979,7 @@ func TestGetSRPolicyList_RoundTripsTypeAndMetric(t *testing.T) {
 				srPolicies: []*table.SRPolicy{knownPolicy, unknownPolicy},
 			},
 		}},
-		logger: zap.NewNop(),
+		logger: logger.NewNop(),
 	}
 
 	resp, err := s.GetSRPolicyList(context.Background(), &pb.GetSRPolicyListRequest{})
@@ -1134,7 +1133,7 @@ func TestDeleteSRPolicy_SrcAddrOmitted(t *testing.T) {
 	peerAddr := netip.MustParseAddr("10.0.255.1")
 	dstAddr := netip.MustParseAddr("10.255.0.2")
 
-	ss := NewSession(testLocalOpen(1), peerAddr, server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), peerAddr, server, logger.NewNop(), nil, 0)
 	ss.syncState = lspDBSyncFinished
 	ss.srPolicies = []*table.SRPolicy{
 		{
@@ -1147,7 +1146,7 @@ func TestDeleteSRPolicy_SrcAddrOmitted(t *testing.T) {
 	}
 
 	pce := &Server{sessionList: []*Session{ss}}
-	apiServer := &APIServer{pce: pce, logger: zap.NewNop()}
+	apiServer := &APIServer{pce: pce, logger: logger.NewNop()}
 
 	req := &pb.DeleteSRPolicyRequest{
 		SrPolicy: &pb.SRPolicy{
@@ -1398,7 +1397,7 @@ func TestGetSRPolicyList_SortsBySameColorThenPlspIdThenName(t *testing.T) {
 				},
 			},
 		}},
-		logger: zap.NewNop(),
+		logger: logger.NewNop(),
 	}
 
 	resp, err := s.GetSRPolicyList(context.Background(), &pb.GetSRPolicyListRequest{})
@@ -1415,9 +1414,9 @@ func TestGetSRPolicyList_SortsBySameColorThenPlspIdThenName(t *testing.T) {
 func TestNewAPIServer(t *testing.T) {
 	grpcServer := grpc.NewServer()
 	pce := &Server{}
-	logger := zap.NewNop()
+	lg := logger.NewNop()
 
-	s := NewAPIServer(pce, grpcServer, true, logger)
+	s := NewAPIServer(pce, grpcServer, true, lg)
 
 	assert.Same(t, pce, s.pce)
 	assert.Same(t, grpcServer, s.grpcServer)
@@ -1870,10 +1869,10 @@ func TestCreateSRPolicy(t *testing.T) {
 		})
 
 		peerAddr := netip.MustParseAddr("10.0.255.1")
-		ss := NewSession(testLocalOpen(1), peerAddr, server, zap.NewNop(), nil, 0)
+		ss := NewSession(testLocalOpen(1), peerAddr, server, logger.NewNop(), nil, 0)
 		ss.syncState = lspDBSyncFinished
 
-		s := &APIServer{pce: &Server{ted: ted, sessionList: []*Session{ss}}, logger: zap.NewNop()}
+		s := &APIServer{pce: &Server{ted: ted, sessionList: []*Session{ss}}, logger: logger.NewNop()}
 
 		_, err := s.CreateSRPolicy(context.Background(), baseReq())
 		require.NoError(t, err)
@@ -1917,10 +1916,10 @@ func TestCreateSRPolicy_SRv6WithoutLocalAddr(t *testing.T) {
 	})
 
 	peerAddr := netip.MustParseAddr("10.0.255.1")
-	ss := NewSession(testLocalOpen(1), peerAddr, server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), peerAddr, server, logger.NewNop(), nil, 0)
 	ss.syncState = lspDBSyncFinished
 
-	s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: zap.NewNop()}
+	s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: logger.NewNop()}
 
 	req := &pb.CreateSRPolicyRequest{
 		DisablePathCompute: true,
@@ -2110,14 +2109,14 @@ func TestDeleteSRPolicy(t *testing.T) {
 	}
 
 	t.Run("validation error", func(t *testing.T) {
-		s := &APIServer{logger: zap.NewNop()}
+		s := &APIServer{logger: logger.NewNop()}
 		resp, err := s.DeleteSRPolicy(context.Background(), &pb.DeleteSRPolicyRequest{SrPolicy: &pb.SRPolicy{}})
 		require.Error(t, err)
 		assert.Nil(t, resp)
 	})
 
 	t.Run("malformed source address", func(t *testing.T) {
-		s := &APIServer{logger: zap.NewNop()}
+		s := &APIServer{logger: logger.NewNop()}
 		policy := validPolicy()
 		policy.SrcAddr = []byte{1, 2, 3}
 		resp, err := s.DeleteSRPolicy(context.Background(), &pb.DeleteSRPolicyRequest{SrPolicy: policy})
@@ -2126,7 +2125,7 @@ func TestDeleteSRPolicy(t *testing.T) {
 	})
 
 	t.Run("malformed destination address", func(t *testing.T) {
-		s := &APIServer{logger: zap.NewNop()}
+		s := &APIServer{logger: logger.NewNop()}
 		policy := validPolicy()
 		policy.DstAddr = []byte{1, 2, 3}
 		resp, err := s.DeleteSRPolicy(context.Background(), &pb.DeleteSRPolicyRequest{SrPolicy: policy})
@@ -2135,7 +2134,7 @@ func TestDeleteSRPolicy(t *testing.T) {
 	})
 
 	t.Run("malformed segment SID", func(t *testing.T) {
-		s := &APIServer{logger: zap.NewNop()}
+		s := &APIServer{logger: logger.NewNop()}
 		policy := validPolicy()
 		policy.SegmentList = []*pb.Segment{{Sid: invalidSidStr}}
 		resp, err := s.DeleteSRPolicy(context.Background(), &pb.DeleteSRPolicyRequest{SrPolicy: policy})
@@ -2144,7 +2143,7 @@ func TestDeleteSRPolicy(t *testing.T) {
 	})
 
 	t.Run("no synced session", func(t *testing.T) {
-		s := &APIServer{pce: &Server{}, logger: zap.NewNop()}
+		s := &APIServer{pce: &Server{}, logger: logger.NewNop()}
 		resp, err := s.DeleteSRPolicy(context.Background(), &pb.DeleteSRPolicyRequest{SrPolicy: validPolicy()})
 		require.Error(t, err)
 		assert.Nil(t, resp)
@@ -2152,7 +2151,7 @@ func TestDeleteSRPolicy(t *testing.T) {
 
 	t.Run("SR Policy not found", func(t *testing.T) {
 		ss := &Session{peerAddr: peerAddr, syncState: lspDBSyncFinished}
-		s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: zap.NewNop()}
+		s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: logger.NewNop()}
 		resp, err := s.DeleteSRPolicy(context.Background(), &pb.DeleteSRPolicyRequest{SrPolicy: validPolicy()})
 		require.ErrorContains(t, err, "requested SR Policy not found")
 		assert.Nil(t, resp)
@@ -2175,12 +2174,12 @@ func TestDeleteSRPolicy(t *testing.T) {
 			assert.NoError(t, client.Close(), "failed to close client connection")
 		})
 
-		ss := NewSession(testLocalOpen(1), peerAddr, server, zap.NewNop(), nil, 0)
+		ss := NewSession(testLocalOpen(1), peerAddr, server, logger.NewNop(), nil, 0)
 		ss.syncState = lspDBSyncFinished
 		ss.srPolicies = []*table.SRPolicy{{PlspID: 1, Name: testSRPolicyName, DstAddr: dstAddr, Color: 100, Preference: 100}}
 		require.NoError(t, server.Close(), "failed to close server connection")
 
-		s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: zap.NewNop()}
+		s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: logger.NewNop()}
 		resp, err := s.DeleteSRPolicy(context.Background(), &pb.DeleteSRPolicyRequest{SrPolicy: validPolicy()})
 		require.Error(t, err)
 		assert.Nil(t, resp)
@@ -2193,11 +2192,11 @@ func TestDeleteSRPolicy(t *testing.T) {
 			assert.NoError(t, client.Close(), "failed to close client connection")
 		})
 
-		ss := NewSession(testLocalOpen(1), peerAddr, server, zap.NewNop(), nil, 0)
+		ss := NewSession(testLocalOpen(1), peerAddr, server, logger.NewNop(), nil, 0)
 		ss.syncState = lspDBSyncFinished
 		ss.srPolicies = []*table.SRPolicy{{PlspID: 1, Name: testSRPolicyName, DstAddr: dstAddr, Color: 100, Preference: 100}}
 
-		s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: zap.NewNop()}
+		s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: logger.NewNop()}
 		policy := validPolicy()
 		policy.SegmentList = []*pb.Segment{{Sid: "16003"}}
 		_, err := s.DeleteSRPolicy(context.Background(), &pb.DeleteSRPolicyRequest{SrPolicy: policy})
@@ -2331,7 +2330,7 @@ func TestValidate_Delete(t *testing.T) {
 }
 
 func TestSendSRPolicyRequest_GetSyncedPCEPSessionError(t *testing.T) {
-	s := &APIServer{pce: &Server{}, logger: zap.NewNop()}
+	s := &APIServer{pce: &Server{}, logger: logger.NewNop()}
 	req := &pb.CreateSRPolicyRequest{SrPolicy: &pb.SRPolicy{PeerAddr: netip.MustParseAddr("10.0.255.1").AsSlice()}}
 
 	err := sendSRPolicyRequest(s, req, resolvedPath{}, false)
@@ -2341,7 +2340,7 @@ func TestSendSRPolicyRequest_GetSyncedPCEPSessionError(t *testing.T) {
 func TestSendSRPolicyRequest_ResolveIntentError(t *testing.T) {
 	peerAddr := netip.MustParseAddr("10.0.255.1")
 	ss := &Session{peerAddr: peerAddr, syncState: lspDBSyncFinished}
-	s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: zap.NewNop()}
+	s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: logger.NewNop()}
 	req := &pb.CreateSRPolicyRequest{SrPolicy: &pb.SRPolicy{PeerAddr: peerAddr.AsSlice(), Type: pb.SRPolicyType_SR_POLICY_TYPE_UNSPECIFIED}}
 
 	err := sendSRPolicyRequest(s, req, resolvedPath{}, false)
@@ -2356,10 +2355,10 @@ func TestSendSRPolicyRequest_CreatesNewPolicy(t *testing.T) {
 
 	peerAddr := netip.MustParseAddr("10.0.255.1")
 	dstAddr := netip.MustParseAddr("10.255.0.2")
-	ss := NewSession(testLocalOpen(1), peerAddr, server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), peerAddr, server, logger.NewNop(), nil, 0)
 	ss.syncState = lspDBSyncFinished
 
-	s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: zap.NewNop()}
+	s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: logger.NewNop()}
 	req := &pb.CreateSRPolicyRequest{SrPolicy: &pb.SRPolicy{PeerAddr: peerAddr.AsSlice(), Color: 100, Type: pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT}}
 	segmentList := []table.Segment{table.NewSegmentSRMPLS(16003)}
 
@@ -2375,11 +2374,11 @@ func TestSendSRPolicyRequest_UpdatesExistingPolicy(t *testing.T) {
 
 	peerAddr := netip.MustParseAddr("10.0.255.1")
 	dstAddr := netip.MustParseAddr("10.255.0.2")
-	ss := NewSession(testLocalOpen(1), peerAddr, server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), peerAddr, server, logger.NewNop(), nil, 0)
 	ss.syncState = lspDBSyncFinished
 	ss.srPolicies = []*table.SRPolicy{{PlspID: 7, Color: 100, DstAddr: dstAddr}}
 
-	s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: zap.NewNop()}
+	s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: logger.NewNop()}
 	req := &pb.CreateSRPolicyRequest{SrPolicy: &pb.SRPolicy{PeerAddr: peerAddr.AsSlice(), Color: 100, Type: pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT}}
 	segmentList := []table.Segment{table.NewSegmentSRMPLS(16003)}
 
@@ -2395,12 +2394,12 @@ func TestSendSRPolicyRequest_UpdateSendFailure(t *testing.T) {
 
 	peerAddr := netip.MustParseAddr("10.0.255.1")
 	dstAddr := netip.MustParseAddr("10.255.0.2")
-	ss := NewSession(testLocalOpen(1), peerAddr, server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), peerAddr, server, logger.NewNop(), nil, 0)
 	ss.syncState = lspDBSyncFinished
 	ss.srPolicies = []*table.SRPolicy{{PlspID: 7, Color: 100, DstAddr: dstAddr}}
 	require.NoError(t, server.Close(), "failed to close server connection")
 
-	s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: zap.NewNop()}
+	s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: logger.NewNop()}
 	req := &pb.CreateSRPolicyRequest{SrPolicy: &pb.SRPolicy{PeerAddr: peerAddr.AsSlice(), Color: 100, Type: pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT}}
 	segmentList := []table.Segment{table.NewSegmentSRMPLS(16003)}
 
@@ -2417,11 +2416,11 @@ func TestSendSRPolicyRequest_CreateSendFailure(t *testing.T) {
 
 	peerAddr := netip.MustParseAddr("10.0.255.1")
 	dstAddr := netip.MustParseAddr("10.255.0.2")
-	ss := NewSession(testLocalOpen(1), peerAddr, server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), peerAddr, server, logger.NewNop(), nil, 0)
 	ss.syncState = lspDBSyncFinished
 	require.NoError(t, server.Close(), "failed to close server connection")
 
-	s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: zap.NewNop()}
+	s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: logger.NewNop()}
 	req := &pb.CreateSRPolicyRequest{SrPolicy: &pb.SRPolicy{PeerAddr: peerAddr.AsSlice(), Color: 100, Type: pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT}}
 	segmentList := []table.Segment{table.NewSegmentSRMPLS(16003)}
 
@@ -2431,7 +2430,7 @@ func TestSendSRPolicyRequest_CreateSendFailure(t *testing.T) {
 }
 
 func TestGetSRPolicyList_InvalidFilterAddrReason(t *testing.T) {
-	s := &APIServer{logger: zap.NewNop()}
+	s := &APIServer{logger: logger.NewNop()}
 	_, err := s.GetSRPolicyList(context.Background(), &pb.GetSRPolicyListRequest{PeerAddr: []byte{1, 2, 3}})
 	require.Error(t, err)
 	require.ErrorContains(t, err, "invalid session filter address")
@@ -2615,7 +2614,7 @@ func TestGetTED_Disabled(t *testing.T) {
 		name string
 		s    *APIServer
 	}{
-		{name: "pce is nil", s: &APIServer{logger: zap.NewNop()}},
+		{name: "pce is nil", s: &APIServer{logger: logger.NewNop()}},
 		{name: "TED is nil", s: newTestAPIServer(nil)},
 	}
 
@@ -2752,14 +2751,14 @@ func TestGetTED_ConvertsFullNode(t *testing.T) {
 
 func TestDeleteSession(t *testing.T) {
 	t.Run("malformed address", func(t *testing.T) {
-		s := &APIServer{pce: &Server{}, logger: zap.NewNop()}
+		s := &APIServer{pce: &Server{}, logger: logger.NewNop()}
 		_, err := s.DeleteSession(context.Background(), &pb.DeleteSessionRequest{PeerAddr: []byte{1, 2, 3}})
 		require.ErrorContains(t, err, "invalid PCEP session address")
 		assert.Equal(t, ReasonInvalidRequest, errInfoReason(t, err))
 	})
 
 	t.Run("no such session", func(t *testing.T) {
-		s := &APIServer{pce: &Server{}, logger: zap.NewNop()}
+		s := &APIServer{pce: &Server{}, logger: logger.NewNop()}
 		_, err := s.DeleteSession(context.Background(), &pb.DeleteSessionRequest{PeerAddr: netip.MustParseAddr("10.0.255.1").AsSlice()})
 		require.ErrorContains(t, err, "no session with address")
 		assert.Equal(t, ReasonPCEPSessionNotFound, errInfoReason(t, err))
@@ -2772,10 +2771,10 @@ func TestDeleteSession(t *testing.T) {
 		})
 
 		peerAddr := netip.MustParseAddr("10.0.255.1")
-		ss := NewSession(testLocalOpen(1), peerAddr, server, zap.NewNop(), nil, 0)
+		ss := NewSession(testLocalOpen(1), peerAddr, server, logger.NewNop(), nil, 0)
 		require.NoError(t, server.Close(), "failed to close server connection")
 
-		s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: zap.NewNop()}
+		s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: logger.NewNop()}
 		resp, err := s.DeleteSession(context.Background(), &pb.DeleteSessionRequest{PeerAddr: peerAddr.AsSlice()})
 		require.Error(t, err)
 		assert.Nil(t, resp)
@@ -2789,9 +2788,9 @@ func TestDeleteSession(t *testing.T) {
 		})
 
 		peerAddr := netip.MustParseAddr("10.0.255.1")
-		ss := NewSession(testLocalOpen(1), peerAddr, server, zap.NewNop(), nil, 0)
+		ss := NewSession(testLocalOpen(1), peerAddr, server, logger.NewNop(), nil, 0)
 		pce := &Server{sessionList: []*Session{ss}}
-		s := &APIServer{pce: pce, logger: zap.NewNop()}
+		s := &APIServer{pce: pce, logger: logger.NewNop()}
 
 		_, err := s.DeleteSession(context.Background(), &pb.DeleteSessionRequest{PeerAddr: peerAddr.AsSlice()})
 		require.NoError(t, err)

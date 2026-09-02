@@ -17,10 +17,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nttcom/pola/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest/observer"
 
 	"github.com/nttcom/pola/pkg/table"
 )
@@ -43,7 +42,7 @@ func TestServer_Serve_InvalidInputRejected(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := &Server{logger: zap.NewNop()}
+			s := &Server{logger: logger.NewNop()}
 			assert.Error(t, s.Serve(tt.address, tt.port))
 		})
 	}
@@ -59,7 +58,7 @@ func TestServer_Serve_ListenFailure(t *testing.T) {
 	addr, port, err := net.SplitHostPort(ln.Addr().String())
 	require.NoError(t, err)
 
-	s := &Server{logger: zap.NewNop()}
+	s := &Server{logger: logger.NewNop()}
 	require.ErrorContains(t, s.Serve(addr, port), "failed to listen on PCEP port")
 }
 
@@ -70,7 +69,7 @@ func TestServer_Serve_AcceptsConnectionAndUntracksOnClose(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, ln.Close(), "failed to release the reserved port")
 
-	s := &Server{logger: zap.NewNop()}
+	s := &Server{logger: logger.NewNop()}
 	go func() { _ = s.Serve(addr, port) }()
 	t.Cleanup(func() { assert.NoError(t, s.Shutdown()) })
 
@@ -105,7 +104,7 @@ func TestServer_Shutdown_ClosesListenerAndStopsServe(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, ln.Close(), "failed to release the reserved port")
 
-	s := &Server{logger: zap.NewNop()}
+	s := &Server{logger: logger.NewNop()}
 	serveErrCh := make(chan error, 1)
 	go func() { serveErrCh <- s.Serve(addr, port) }()
 
@@ -138,7 +137,7 @@ func TestServer_Shutdown_BeforeServeStillReturnsCleanly(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, ln.Close(), "failed to release the reserved port")
 
-	s := &Server{logger: zap.NewNop()}
+	s := &Server{logger: logger.NewNop()}
 	require.NoError(t, s.Shutdown(), "Shutdown before Serve starts should be a no-op that succeeds")
 
 	require.NoError(t, s.Serve(addr, port), "Serve should return cleanly if Shutdown already ran")
@@ -149,13 +148,13 @@ func TestServer_Shutdown_BeforeServeStillReturnsCleanly(t *testing.T) {
 
 func TestServer_Shutdown_LogsWarnOnSendCloseFailure(t *testing.T) {
 	conn := &fakeConn{r: bytes.NewReader(nil), writeErr: errors.New("write: broken pipe")}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
-	core, logs := observer.New(zap.WarnLevel)
-	s := &Server{sessionList: []*Session{ss}, logger: zap.New(core)}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
+	lg, logs := logger.NewRecorder(logger.LevelWarn)
+	s := &Server{sessionList: []*Session{ss}, logger: lg}
 
 	require.NoError(t, s.Shutdown())
 
-	assert.Len(t, logs.FilterMessage("failed to send PCEP close message during shutdown").All(), 1)
+	assert.Len(t, logs.FilterByMessage("failed to send PCEP close message during shutdown"), 1)
 	assert.Empty(t, s.Sessions())
 }
 
@@ -166,7 +165,7 @@ func TestServer_Shutdown_ClosesActiveSessions(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, ln.Close(), "failed to release the reserved port")
 
-	s := &Server{logger: zap.NewNop()}
+	s := &Server{logger: logger.NewNop()}
 	go func() { _ = s.Serve(addr, port) }()
 
 	var client net.Conn
@@ -196,26 +195,26 @@ func TestServer_CloseSession_SuppressesWarnOnAlreadyClosedConnection(t *testing.
 	})
 	require.NoError(t, server.Close(), "failed to pre-close server connection")
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
-	core, logs := observer.New(zap.WarnLevel)
-	s := &Server{sessionList: []*Session{ss}, logger: zap.New(core)}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
+	lg, logs := logger.NewRecorder(logger.LevelWarn)
+	s := &Server{sessionList: []*Session{ss}, logger: lg}
 
 	s.closeSession(ss)
 
-	assert.Empty(t, logs.FilterMessage("failed to close TCP connection").All(),
+	assert.Empty(t, logs.FilterByMessage("failed to close TCP connection"),
 		"a double close (Shutdown racing the session's own close) should not be logged as a failure")
 	assert.Empty(t, s.Sessions())
 }
 
 func TestServer_CloseSession_LogsWarnOnOtherCloseFailure(t *testing.T) {
 	conn := &fakeConn{r: bytes.NewReader(nil), closeErr: errors.New("boom")}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
-	core, logs := observer.New(zap.WarnLevel)
-	s := &Server{sessionList: []*Session{ss}, logger: zap.New(core)}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
+	lg, logs := logger.NewRecorder(logger.LevelWarn)
+	s := &Server{sessionList: []*Session{ss}, logger: lg}
 
 	s.closeSession(ss)
 
-	assert.Len(t, logs.FilterMessage("failed to close TCP connection").All(), 1)
+	assert.Len(t, logs.FilterByMessage("failed to close TCP connection"), 1)
 	assert.Empty(t, s.Sessions())
 }
 
@@ -249,7 +248,7 @@ func TestValidatePCEOptions(t *testing.T) {
 }
 
 func TestNewPCE_NilOptionsReturnsConfigErrorWithoutPanicking(t *testing.T) {
-	err := NewPCE(context.Background(), nil, zap.NewNop(), make(chan []table.TEDElem))
+	err := NewPCE(context.Background(), nil, logger.NewNop(), make(chan []table.TEDElem))
 	assert.Equal(t, "config", err.Server)
 	require.Error(t, err.Error)
 }
@@ -266,7 +265,7 @@ func TestNewPCE_InvalidTimerConfigRejectedBeforeListening(t *testing.T) {
 		DeadTimer: new(uint8(1)),
 	}
 
-	err := NewPCE(context.Background(), o, zap.NewNop(), make(chan []table.TEDElem))
+	err := NewPCE(context.Background(), o, logger.NewNop(), make(chan []table.TEDElem))
 	assert.Equal(t, "config", err.Server)
 	require.Error(t, err.Error)
 }
@@ -301,7 +300,7 @@ func TestNewPCE_ReturnsTaggedError(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			errCh := make(chan Error, 1)
-			go func() { errCh <- NewPCE(context.Background(), tt.o, zap.NewNop(), make(chan []table.TEDElem)) }()
+			go func() { errCh <- NewPCE(context.Background(), tt.o, logger.NewNop(), make(chan []table.TEDElem)) }()
 
 			select {
 			case err := <-errCh:
@@ -315,7 +314,7 @@ func TestNewPCE_ReturnsTaggedError(t *testing.T) {
 }
 
 func TestNewPCE_TEDEnabledUpdatesTEDOnElemsReceived(t *testing.T) {
-	core, logs := observer.New(zap.DebugLevel)
+	lg, logs := logger.NewRecorder(logger.LevelDebug)
 	tedElemsChan := make(chan []table.TEDElem, 1)
 	o := &PCEOptions{
 		PCEPAddr:  testLoopbackAddr,
@@ -328,12 +327,12 @@ func TestNewPCE_TEDEnabledUpdatesTEDOnElemsReceived(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	errCh := make(chan Error, 1)
-	go func() { errCh <- NewPCE(ctx, o, zap.New(core), tedElemsChan) }()
+	go func() { errCh <- NewPCE(ctx, o, lg, tedElemsChan) }()
 
 	tedElemsChan <- []table.TEDElem{}
 
 	require.Eventually(t, func() bool {
-		return len(logs.FilterMessage("Update TED").All()) > 0
+		return len(logs.FilterByMessage("Update TED")) > 0
 	}, 2*time.Second, 10*time.Millisecond, "expected the TED update goroutine to run")
 
 	cancel()
@@ -363,7 +362,7 @@ func TestNewPCE_WaitsForBothServersBeforeReturning(t *testing.T) {
 	}
 
 	errCh := make(chan Error, 1)
-	go func() { errCh <- NewPCE(context.Background(), o, zap.NewNop(), make(chan []table.TEDElem)) }()
+	go func() { errCh <- NewPCE(context.Background(), o, logger.NewNop(), make(chan []table.TEDElem)) }()
 
 	select {
 	case err := <-errCh:
@@ -389,7 +388,7 @@ func TestNewPCE_ContextCancelShutsDownCleanly(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	errCh := make(chan Error, 1)
-	go func() { errCh <- NewPCE(ctx, o, zap.NewNop(), make(chan []table.TEDElem)) }()
+	go func() { errCh <- NewPCE(ctx, o, logger.NewNop(), make(chan []table.TEDElem)) }()
 
 	// Give both servers a moment to start listening before requesting shutdown.
 	time.Sleep(50 * time.Millisecond)
@@ -412,22 +411,22 @@ func (l *fakeListener) AcceptTCP() (*net.TCPConn, error) { <-make(chan struct{})
 func (l *fakeListener) Close() error                     { return l.closeErr }
 
 func TestServer_Shutdown_TreatsRepeatCloseAsNoError(t *testing.T) {
-	s := &Server{logger: zap.NewNop(), listener: &fakeListener{closeErr: net.ErrClosed}}
+	s := &Server{logger: logger.NewNop(), listener: &fakeListener{closeErr: net.ErrClosed}}
 
 	assert.NoError(t, s.Shutdown(), "a listener already closed elsewhere should not fail Shutdown")
 }
 
 func TestServer_Shutdown_PropagatesOtherListenerCloseError(t *testing.T) {
 	wantErr := errors.New("boom")
-	s := &Server{logger: zap.NewNop(), listener: &fakeListener{closeErr: wantErr}}
+	s := &Server{logger: logger.NewNop(), listener: &fakeListener{closeErr: wantErr}}
 
 	assert.ErrorIs(t, s.Shutdown(), wantErr)
 }
 
 func TestServer_AwaitShutdown_LogsWarnOnShutdownError(t *testing.T) {
 	wantErr := errors.New("boom")
-	core, logs := observer.New(zap.WarnLevel)
-	s := &Server{logger: zap.New(core), listener: &fakeListener{closeErr: wantErr}}
+	lg, logs := logger.NewRecorder(logger.LevelWarn)
+	s := &Server{logger: lg, listener: &fakeListener{closeErr: wantErr}}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -445,12 +444,12 @@ func TestServer_AwaitShutdown_LogsWarnOnShutdownError(t *testing.T) {
 		t.Fatal("timed out waiting for awaitShutdown to return")
 	}
 
-	assert.Len(t, logs.FilterMessage("failed to shut down PCEP server").All(), 1)
+	assert.Len(t, logs.FilterByMessage("failed to shut down PCEP server"), 1)
 	assert.True(t, stopped, "expected the gRPC server to be stopped even when Shutdown fails")
 }
 
 func TestServer_SyncTEDLoop_AppliesReceivedElems(t *testing.T) {
-	s := &Server{logger: zap.NewNop()}
+	s := &Server{logger: logger.NewNop()}
 	tedElemsChan := make(chan []table.TEDElem, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -476,7 +475,7 @@ func TestServer_SyncTEDLoop_AppliesReceivedElems(t *testing.T) {
 }
 
 func TestServer_SyncTEDLoop_ExitsWhenChannelClosed(t *testing.T) {
-	s := &Server{logger: zap.NewNop()}
+	s := &Server{logger: logger.NewNop()}
 	tedElemsChan := make(chan []table.TEDElem)
 
 	done := make(chan struct{})
@@ -498,7 +497,7 @@ func TestServer_RegisterSession_ClosesConnWhenAlreadyShutdown(t *testing.T) {
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() { _ = client.Close() })
 
-	s := &Server{logger: zap.NewNop(), closed: true}
+	s := &Server{logger: logger.NewNop(), closed: true}
 	ss := s.registerSession(server, netip.MustParseAddr("10.0.255.1"))
 
 	assert.Nil(t, ss, "expected registerSession to reject a connection accepted after Shutdown")
@@ -511,19 +510,19 @@ func TestServer_RegisterSession_ClosesConnWhenAlreadyShutdown(t *testing.T) {
 
 func TestServer_CloseRejectedConn_LogsNonClosedError(t *testing.T) {
 	wantErr := errors.New("boom")
-	core, logs := observer.New(zap.WarnLevel)
-	s := &Server{logger: zap.New(core)}
+	lg, logs := logger.NewRecorder(logger.LevelWarn)
+	s := &Server{logger: lg}
 
 	s.closeRejectedConn(&fakeConn{closeErr: wantErr}, "test reason")
 
-	entries := logs.FilterMessage("failed to close rejected TCP connection").All()
+	entries := logs.FilterByMessage("failed to close rejected TCP connection")
 	require.Len(t, entries, 1)
-	assert.Equal(t, "test reason", entries[0].ContextMap()["reason"])
+	assert.Equal(t, "test reason", entries[0].Fields["reason"])
 }
 
 func TestServer_CloseRejectedConn_ErrClosedIsNotLogged(t *testing.T) {
-	core, logs := observer.New(zap.WarnLevel)
-	s := &Server{logger: zap.New(core)}
+	lg, logs := logger.NewRecorder(logger.LevelWarn)
+	s := &Server{logger: lg}
 
 	s.closeRejectedConn(&fakeConn{closeErr: net.ErrClosed}, "test reason")
 
@@ -534,7 +533,7 @@ func TestServer_RegisterSession_AppendsWhenNotShutdown(t *testing.T) {
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() { assert.NoError(t, client.Close()) })
 
-	s := &Server{logger: zap.NewNop()}
+	s := &Server{logger: logger.NewNop()}
 	ss := s.registerSession(server, netip.MustParseAddr("10.0.255.1"))
 
 	require.NotNil(t, ss)
@@ -545,8 +544,8 @@ func TestServer_RegisterSession_AppendsWhenNotShutdown(t *testing.T) {
 
 func TestServer_RegisterSession_RejectsSecondSessionFromSamePeer(t *testing.T) {
 	peerAddr := netip.MustParseAddr("10.0.255.1")
-	core, logs := observer.New(zap.WarnLevel)
-	s := &Server{logger: zap.New(core)}
+	lg, logs := logger.NewRecorder(logger.LevelWarn)
+	s := &Server{logger: lg}
 
 	server1, client1 := newTCPConnPair(t)
 	t.Cleanup(func() { _ = client1.Close() })
@@ -559,7 +558,7 @@ func TestServer_RegisterSession_RejectsSecondSessionFromSamePeer(t *testing.T) {
 
 	assert.Nil(t, ss2, "a second session with the same peer must not be accepted")
 	assert.Equal(t, []*Session{ss1}, s.Sessions(), "the existing session must be preserved")
-	assert.Len(t, logs.FilterMessage("rejecting second PCEP session attempt from peer").All(), 1)
+	assert.Len(t, logs.FilterByMessage("rejecting second PCEP session attempt from peer"), 1)
 
 	require.NoError(t, client2.SetReadDeadline(time.Now().Add(2*time.Second)))
 	pcerrMessage := readPCErrMessage(t, client2)
@@ -575,8 +574,8 @@ func TestServer_RegisterSession_RejectsSecondSessionFromSamePeer(t *testing.T) {
 
 func TestServer_RegisterSession_RejectSecondSession_LogsWarnOnSendFailure(t *testing.T) {
 	peerAddr := netip.MustParseAddr("10.0.255.1")
-	core, logs := observer.New(zap.WarnLevel)
-	s := &Server{logger: zap.New(core)}
+	lg, logs := logger.NewRecorder(logger.LevelWarn)
+	s := &Server{logger: lg}
 
 	server1, client1 := newTCPConnPair(t)
 	t.Cleanup(func() { _ = client1.Close() })
@@ -587,13 +586,13 @@ func TestServer_RegisterSession_RejectSecondSession_LogsWarnOnSendFailure(t *tes
 	ss2 := s.registerSession(conn2, peerAddr)
 
 	assert.Nil(t, ss2, "a second session with the same peer must not be accepted")
-	assert.Len(t, logs.FilterMessage("failed to send PCErr for second session attempt").All(), 1)
+	assert.Len(t, logs.FilterByMessage("failed to send PCErr for second session attempt"), 1)
 
 	s.closeSession(ss1)
 }
 
 func TestServer_RegisterSession_SessionIDSequenceIsPerPeer(t *testing.T) {
-	s := &Server{logger: zap.NewNop()}
+	s := &Server{logger: logger.NewNop()}
 
 	server1, client1 := newTCPConnPair(t)
 	t.Cleanup(func() { _ = client1.Close() })
@@ -614,9 +613,9 @@ func TestServer_RegisterSession_SessionIDSequenceIsPerPeer(t *testing.T) {
 func TestServer_CloseSession_MatchesByIdentityNotIDValue(t *testing.T) {
 	connA := &fakeConn{r: bytes.NewReader(nil)}
 	connB := &fakeConn{r: bytes.NewReader(nil)}
-	ssA := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), connA, zap.NewNop(), nil, 0)
-	ssB := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.2"), connB, zap.NewNop(), nil, 0)
-	s := &Server{logger: zap.NewNop(), sessionList: []*Session{ssA, ssB}}
+	ssA := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), connA, logger.NewNop(), nil, 0)
+	ssB := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.2"), connB, logger.NewNop(), nil, 0)
+	s := &Server{logger: logger.NewNop(), sessionList: []*Session{ssA, ssB}}
 
 	s.closeSession(ssA)
 
@@ -673,11 +672,11 @@ func (c *blockingWriteConn) SetWriteDeadline(time.Time) error { return nil }
 
 func TestServer_Shutdown_BoundsBlockedSendClose(t *testing.T) {
 	conn := &blockingWriteConn{r: bytes.NewReader(nil), unblock: make(chan struct{})}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
-	core, logs := observer.New(zap.WarnLevel)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
+	lg, logs := logger.NewRecorder(logger.LevelWarn)
 	s := &Server{
 		sessionList:              []*Session{ss},
-		logger:                   zap.New(core),
+		logger:                   lg,
 		shutdownSendCloseTimeout: 50 * time.Millisecond,
 	}
 
@@ -693,7 +692,7 @@ func TestServer_Shutdown_BoundsBlockedSendClose(t *testing.T) {
 		t.Fatal("Shutdown did not return after the SendClose timeout elapsed, despite the blocked write")
 	}
 
-	assert.Len(t, logs.FilterMessage("timed out sending PCEP close message during shutdown").All(), 1)
+	assert.Len(t, logs.FilterByMessage("timed out sending PCEP close message during shutdown"), 1)
 	assert.Empty(t, s.Sessions(), "expected the session to be force-closed and untracked despite the blocked write")
 }
 

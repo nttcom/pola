@@ -18,9 +18,9 @@ import (
 
 	pb "github.com/nttcom/pola/api/pola/v1"
 	"github.com/nttcom/pola/pkg/cspf"
+	"github.com/nttcom/pola/pkg/logger"
 	"github.com/nttcom/pola/pkg/packet/pcep"
 	"github.com/nttcom/pola/pkg/table"
-	"go.uber.org/zap"
 	grpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -77,17 +77,17 @@ type APIServer struct {
 	pce        *Server
 	grpcServer *grpc.Server
 	usidMode   bool
-	logger     *zap.Logger
+	logger     *logger.Logger
 	pb.UnimplementedPCEServiceServer
 }
 
 // NewAPIServer creates and registers a new gRPC API server for PCE operations.
-func NewAPIServer(pce *Server, grpcServer *grpc.Server, usidMode bool, logger *zap.Logger) *APIServer {
+func NewAPIServer(pce *Server, grpcServer *grpc.Server, usidMode bool, lg *logger.Logger) *APIServer {
 	s := &APIServer{
 		pce:        pce,
 		grpcServer: grpcServer,
 		usidMode:   usidMode,
-		logger:     logger.With(zap.String("server", "grpc")),
+		logger:     lg.With(logger.String("server", "grpc")),
 	}
 	pb.RegisterPCEServiceServer(grpcServer, s)
 	return s
@@ -112,7 +112,7 @@ func (s *APIServer) Serve(address string, port string) error {
 	if err != nil {
 		return fmt.Errorf("failed to listen on gRPC port %s: %w", localAddr.String(), err)
 	}
-	s.logger.Info("Start listening on gRPC port", zap.String("listenInfo", grpcListener.Addr().String()))
+	s.logger.Info("Start listening on gRPC port", logger.String("listenInfo", grpcListener.Addr().String()))
 	if err := s.grpcServer.Serve(grpcListener); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
 		return err
 	}
@@ -356,7 +356,7 @@ func sendSRPolicyRequest(s *APIServer, input *pb.CreateSRPolicyRequest, path res
 	}
 
 	if id, exists := pcepSession.SearchPlspID(inputSRPolicy.GetColor(), path.DstAddr); exists {
-		s.logger.Debug("Request to update SR Policy", zap.Uint32("plspID", id))
+		s.logger.Debug("Request to update SR Policy", logger.Uint32("plspID", id))
 		srPolicy.PlspID = id
 		if err := pcepSession.SendPCUpdate(srPolicy); err != nil {
 			return newStatus(codes.Internal, ReasonPCEPRequestFailed, "failed to send PC update: %v", err)
@@ -423,8 +423,8 @@ func (s *APIServer) validateSIDs(req *pb.CreateSRPolicyRequest, segmentList []ta
 
 	if req.GetNoSidValidate() {
 		s.logger.Warn("skipping SID validation: no_sid_validate specified",
-			zap.String("policyName", policy.GetPolicyName()),
-			zap.Uint32("color", policy.GetColor()),
+			logger.String("policyName", policy.GetPolicyName()),
+			logger.Uint32("color", policy.GetColor()),
 		)
 		return nil
 	}
@@ -494,7 +494,7 @@ func (s *APIServer) DeleteSRPolicy(_ context.Context, input *pb.DeleteSRPolicyRe
 	}
 
 	s.logger.Info("Received DeleteSRPolicy API request")
-	s.logger.Debug("Received parameter", zap.Any("input", input))
+	s.logger.Debug("Received parameter", logger.Any("input", input))
 
 	pcepSession, err := getSyncedPCEPSession(s.pce, inputSRPolicy.GetPeerAddr())
 	if err != nil {
@@ -511,7 +511,7 @@ func (s *APIServer) DeleteSRPolicy(_ context.Context, input *pb.DeleteSRPolicyRe
 	}
 
 	if id, exists := pcepSession.SearchPlspID(inputSRPolicy.GetColor(), dstAddr); exists {
-		s.logger.Debug("Request to delete SR Policy", zap.Uint32("plspID", id))
+		s.logger.Debug("Request to delete SR Policy", logger.Uint32("plspID", id))
 		srPolicy.PlspID = id
 
 		if err := pcepSession.RequestSRPolicyDeleted(srPolicy); err != nil {

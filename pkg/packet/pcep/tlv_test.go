@@ -16,18 +16,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap/zapcore"
 )
 
 const pstDescriptionSRTE = "Traffic engineering path is set up using Segment Routing (0x01) [RFC8664]"
-
-// Labels used by StringWithReference().
-const (
-	labelAssocPathProtection = nameAssocPathProtection + " (0x0001) [RFC8745]"
-	labelAssocDisjoint       = nameAssocDisjoint + " (0x0002) [RFC8800]"
-	labelAssocPolicy         = nameAssocPolicy + " (0x0003) [RFC9005]"
-	labelAssocSRPolicy       = nameAssocSRPolicy + " (0x0006) [RFC9862]"
-)
 
 func TestTLVType_String(t *testing.T) {
 	cases := map[string]struct {
@@ -230,49 +221,6 @@ func TestVendorInformation_Serialize(t *testing.T) {
 	runTLVSerializeTests(t, cases)
 }
 
-func TestVendorInformation_MarshalLogObject(t *testing.T) {
-	cases := map[string]struct {
-		input    *VendorInformation
-		expected map[string]any
-	}{
-		"EnterpriseNumberOnly": {
-			testVendorInformationJuniper,
-			map[string]any{
-				"enterpriseNumber": uint32(EnterpriseNumberJuniper),
-				"enterprise":       enterpriseJuniperString,
-			},
-		},
-		"WithEnterpriseSpecificInformation": {
-			testVendorInformationWithInfo,
-			map[string]any{
-				"enterpriseNumber":              uint32(EnterpriseNumberJuniper),
-				"enterprise":                    enterpriseJuniperString,
-				"enterpriseSpecificInformation": "deadbeef",
-			},
-		},
-		"UnknownEnterprise": {
-			testVendorInformationUnknownEnterprise,
-			map[string]any{
-				"enterpriseNumber": uint32(12345),
-				"enterprise":       "Unknown Enterprise (12345)",
-			},
-		},
-		"NilTLV": {
-			nil,
-			map[string]any{},
-		},
-	}
-
-	for name, tt := range cases {
-		t.Run(name, func(t *testing.T) {
-			enc := zapcore.NewMapObjectEncoder()
-			err := tt.input.MarshalLogObject(enc)
-			require.NoError(t, err, "unexpected error during MarshalLogObject for '%s'", name)
-			assert.Equal(t, tt.expected, enc.Fields, "unexpected fields for '%s'", name)
-		})
-	}
-}
-
 func TestVendorInformation_Len(t *testing.T) {
 	cases := map[string]struct {
 		input    TLVInterface
@@ -376,32 +324,6 @@ func TestStatefulPCECapability_Serialize(t *testing.T) {
 	runTLVSerializeTests(t, cases)
 }
 
-func TestStatefulPCECapability_MarshalLogObject(t *testing.T) {
-	cases := map[string]struct {
-		input    *StatefulPCECapability
-		expected bool
-	}{
-		"LSPUpdateEnabled":  {testStatefulLSPUpdate, true},
-		"LSPUpdateDisabled": {testStatefulNone, false},
-		"NilTLV":            {nil, false},
-	}
-
-	for name, tt := range cases {
-		t.Run(name, func(t *testing.T) {
-			enc := zapcore.NewMapObjectEncoder()
-			err := tt.input.MarshalLogObject(enc)
-			require.NoError(t, err, "unexpected error for '%s'", name)
-
-			got, ok := enc.Fields["lspUpdateCapability"]
-			if tt.input == nil {
-				assert.False(t, ok, "expected no lspUpdateCapability field for nil TLV")
-			} else {
-				assert.Equal(t, tt.expected, got, "unexpected value for '%s'", name)
-			}
-		})
-	}
-}
-
 func TestStatefulPCECapability_Len(t *testing.T) {
 	cases := map[string]struct {
 		input    TLVInterface
@@ -449,32 +371,6 @@ func TestSymbolicPathName_Serialize(t *testing.T) {
 	runTLVSerializeTests(t, cases)
 }
 
-func TestSymbolicPathName_MarshalLogObject(t *testing.T) {
-	cases := map[string]struct {
-		input    *SymbolicPathName
-		expected string
-	}{
-		"Valid":  {testSymbolicPathName, "Test"},
-		"Empty":  {testSymbolicPathNameEmptyString, ""},
-		"NilTLV": {nil, ""},
-	}
-
-	for name, tt := range cases {
-		t.Run(name, func(t *testing.T) {
-			enc := zapcore.NewMapObjectEncoder()
-			err := tt.input.MarshalLogObject(enc)
-			require.NoError(t, err, "unexpected error for '%s'", name)
-
-			if tt.input == nil {
-				_, ok := enc.Fields["symbolicPathName"]
-				assert.False(t, ok, "expected no symbolicPathName field for nil TLV")
-			} else {
-				assert.Equal(t, tt.expected, enc.Fields["symbolicPathName"], "unexpected value for '%s'", name)
-			}
-		})
-	}
-}
-
 func TestSymbolicPathName_Len(t *testing.T) {
 	cases := map[string]struct {
 		input    TLVInterface
@@ -511,7 +407,8 @@ func TestSymbolicPathName_Serialize_LengthBoundary(t *testing.T) {
 // Test data for IPv4LSPIdentifiers.
 var (
 	testIPv4LSPIdentifiers      = NewIPv4LSPIdentifiers(netip.MustParseAddr("192.0.2.1"), netip.MustParseAddr("192.0.2.2"), 1, 2, 1234)
-	testIPv4LSPIdentifiersBytes = append(tlvHeader(TLVIPv4LSPIdentifiers, TLVIPv4LSPIdentifiersValueLength),
+	testIPv4LSPIdentifiersBytes = append(
+		tlvHeader(TLVIPv4LSPIdentifiers, TLVIPv4LSPIdentifiersValueLength),
 		0xc0, 0x00, 0x02, 0x01, // Sender Address
 		0x00, 0x01, // LSP ID
 		0x00, 0x02, // Tunnel ID
@@ -560,46 +457,6 @@ func TestIPv4LSPIdentifiers_Serialize(t *testing.T) {
 		"ValidIPv4LSPIdentifiers": {testIPv4LSPIdentifiers, testIPv4LSPIdentifiersBytes},
 	}
 	runTLVSerializeTests(t, cases)
-}
-
-func TestIPv4LSPIdentifiers_MarshalLogObject(t *testing.T) {
-	cases := map[string]struct {
-		input    *IPv4LSPIdentifiers
-		expected map[string]any
-	}{
-		"NilTLV": {nil, map[string]any{}},
-		"EmptyTLV": {
-			&IPv4LSPIdentifiers{
-				LSPID:            1,
-				TunnelID:         2,
-				ExtendedTunnelID: 1234,
-			},
-			map[string]any{
-				"lspID":            uint16(1),
-				"tunnelID":         uint16(2),
-				"extendedTunnelID": uint32(1234),
-			},
-		},
-		"FullTLV": {
-			testIPv4LSPIdentifiers,
-			map[string]any{
-				"ipv4TunnelSenderAddress":   "192.0.2.1",
-				"ipv4TunnelEndpointAddress": "192.0.2.2",
-				"lspID":                     uint16(1),
-				"tunnelID":                  uint16(2),
-				"extendedTunnelID":          uint32(1234),
-			},
-		},
-	}
-
-	for name, tt := range cases {
-		t.Run(name, func(t *testing.T) {
-			enc := zapcore.NewMapObjectEncoder()
-			err := tt.input.MarshalLogObject(enc)
-			require.NoError(t, err, "unexpected error for '%s'", name)
-			assert.Equal(t, tt.expected, enc.Fields, "unexpected fields for '%s'", name)
-		})
-	}
 }
 
 func TestIPv4LSPIdentifiers_Len(t *testing.T) {
@@ -668,46 +525,6 @@ func TestIPv6LSPIdentifiers_Serialize(t *testing.T) {
 	runTLVSerializeTests(t, cases)
 }
 
-func TestIPv6LSPIdentifiers_MarshalLogObject(t *testing.T) {
-	cases := map[string]struct {
-		input    *IPv6LSPIdentifiers
-		expected map[string]any
-	}{
-		"NilTLV": {nil, map[string]any{}},
-		"EmptyTLV": {
-			&IPv6LSPIdentifiers{
-				LSPID:            1,
-				TunnelID:         2,
-				ExtendedTunnelID: [IPv6AddrLen]byte{},
-			},
-			map[string]any{
-				"lspID":            uint16(1),
-				"tunnelID":         uint16(2),
-				"extendedTunnelID": "00000000000000000000000000000000",
-			},
-		},
-		"FullTLV": {
-			testIPv6LSPIdentifiers,
-			map[string]any{
-				"ipv6TunnelSenderAddress":   testIPv6Addr1,
-				"ipv6TunnelEndpointAddress": testIPv6Addr2,
-				"lspID":                     uint16(1),
-				"tunnelID":                  uint16(2),
-				"extendedTunnelID":          "00000000000000000000000000000000",
-			},
-		},
-	}
-
-	for name, tt := range cases {
-		t.Run(name, func(t *testing.T) {
-			enc := zapcore.NewMapObjectEncoder()
-			err := tt.input.MarshalLogObject(enc)
-			require.NoError(t, err, "unexpected error for '%s'", name)
-			assert.Equal(t, tt.expected, enc.Fields, "unexpected fields for '%s'", name)
-		})
-	}
-}
-
 func TestIPv6LSPIdentifiers_Len(t *testing.T) {
 	cases := map[string]struct {
 		input    TLVInterface
@@ -747,36 +564,6 @@ func TestLSPDBVersion_Serialize(t *testing.T) {
 	runTLVSerializeTests(t, cases)
 }
 
-func TestLSPDBVersion_MarshalLogObject(t *testing.T) {
-	cases := map[string]struct {
-		input    *LSPDBVersion
-		expected map[string]any
-	}{
-		"NilTLV": {nil, map[string]any{}},
-		"EmptyTLV": {
-			&LSPDBVersion{},
-			map[string]any{
-				"versionNumber": uint64(0),
-			},
-		},
-		"FullTLV": {
-			testLSPDBVersion,
-			map[string]any{
-				"versionNumber": uint64(12345),
-			},
-		},
-	}
-
-	for name, tt := range cases {
-		t.Run(name, func(t *testing.T) {
-			enc := zapcore.NewMapObjectEncoder()
-			err := tt.input.MarshalLogObject(enc)
-			require.NoError(t, err, "unexpected error for '%s'", name)
-			assert.Equal(t, tt.expected, enc.Fields, "unexpected fields for '%s'", name)
-		})
-	}
-}
-
 func TestLSPDBVersion_Len(t *testing.T) {
 	cases := map[string]struct {
 		input    TLVInterface
@@ -796,8 +583,6 @@ var (
 	testSRPCECapabilityExtra             = append(tlvHeader(TLVSRPCECapability, 4), 0x00, 0x00, 0x03, 0x05, 0xde, 0xad, 0xbe, 0xef)
 	testSRPCECapabilityInvalidLength     = append(tlvHeader(TLVSRPCECapability, 8), 0x00, 0x00, 0x03, 0x05, 0xde, 0xad, 0xbe, 0xef)
 	testSRPCECapabilityZeroMSDBytes      = append(tlvHeader(TLVSRPCECapability, 4), 0x00, 0x00, 0x00, 0x00)
-	testSRPCECapabilityUnlimitedOnly     = &SRPCECapability{HasUnlimitedMaxSIDDepth: true}
-	testSRPCECapabilityNAIOnly           = &SRPCECapability{IsNAISupported: true}
 	testSRPCECapabilityMSDZeroAdvertised = &SRPCECapability{MaximumSidDepth: 0}
 )
 
@@ -900,56 +685,6 @@ func TestSRPCECapability_RoundTrip(t *testing.T) {
 			var got SRPCECapability
 			require.NoError(t, got.DecodeFromBytes(raw), "DecodeFromBytes failed for '%s'", name)
 			assert.Equal(t, want, &got, "round-trip mismatch for '%s'", name)
-		})
-	}
-}
-
-func TestSRPCECapability_MarshalLogObject(t *testing.T) {
-	cases := map[string]struct {
-		input    *SRPCECapability
-		expected map[string]any
-	}{
-		"NilTLV": {nil, map[string]any{}},
-		"EmptyTLV": {
-			&SRPCECapability{},
-			map[string]any{
-				"unlimited_max_sid_depth": false,
-				"nai_is_supported":        false,
-				"maximum_sid_depth":       uint8(0),
-			},
-		},
-		"FullTLV": {
-			testSRPCECapability,
-			map[string]any{
-				"unlimited_max_sid_depth": true,
-				"nai_is_supported":        true,
-				"maximum_sid_depth":       uint8(10),
-			},
-		},
-		"OnlyUnlimited": {
-			testSRPCECapabilityUnlimitedOnly,
-			map[string]any{
-				"unlimited_max_sid_depth": true,
-				"nai_is_supported":        false,
-				"maximum_sid_depth":       uint8(0),
-			},
-		},
-		"OnlyNAI": {
-			testSRPCECapabilityNAIOnly,
-			map[string]any{
-				"unlimited_max_sid_depth": false,
-				"nai_is_supported":        true,
-				"maximum_sid_depth":       uint8(0),
-			},
-		},
-	}
-
-	for name, tt := range cases {
-		t.Run(name, func(t *testing.T) {
-			enc := zapcore.NewMapObjectEncoder()
-			err := tt.input.MarshalLogObject(enc)
-			require.NoError(t, err, "unexpected error for '%s'", name)
-			assert.Equal(t, tt.expected, enc.Fields, "unexpected fields for '%s'", name)
 		})
 	}
 }
@@ -1118,42 +853,6 @@ func TestPathSetupType_Serialize(t *testing.T) {
 	runTLVSerializeTests(t, cases)
 }
 
-func TestPathSetupType_MarshalLogObject(t *testing.T) {
-	cases := map[string]struct {
-		input    *PathSetupType
-		expected map[string]any
-	}{
-		"NilTLV": {nil, map[string]any{}},
-		"SRTE": {
-			testPathSetupTypeSRTE,
-			map[string]any{
-				"pathSetupType": pstDescriptionSRTE,
-			},
-		},
-		"RSVPTE": {
-			testPathSetupTypeRSVPTE,
-			map[string]any{
-				"pathSetupType": "Path is set up using the RSVP-TE signaling protocol (0x00) [RFC8408]",
-			},
-		},
-		"SRv6TE": {
-			testPathSetupTypeSRv6TE,
-			map[string]any{
-				"pathSetupType": "Traffic engineering path is set up using SRv6 (0x03) [RFC9603]",
-			},
-		},
-	}
-
-	for name, tt := range cases {
-		t.Run(name, func(t *testing.T) {
-			enc := zapcore.NewMapObjectEncoder()
-			err := tt.input.MarshalLogObject(enc)
-			require.NoError(t, err, "unexpected error for '%s'", name)
-			assert.Equal(t, tt.expected, enc.Fields, "unexpected fields for '%s'", name)
-		})
-	}
-}
-
 func TestPathSetupType_Len(t *testing.T) {
 	cases := map[string]struct {
 		input    TLVInterface
@@ -1265,46 +964,6 @@ func TestPathSetupTypeCapability_Serialize(t *testing.T) {
 		"WithSub": {testPathSetupTypeCapabilityWithSubTLV, testPathSetupTypeCapabilityWithSubTLVBytes},
 	}
 	runTLVSerializeTests(t, cases)
-}
-
-func TestPathSetupTypeCapability_MarshalLogObject(t *testing.T) {
-	cases := map[string]struct {
-		input    *PathSetupTypeCapability
-		expected map[string]any
-	}{
-		"Basic": {
-			testPathSetupTypeCapabilityBasic,
-			map[string]any{
-				"pathSetupTypes": []any{
-					"Path is set up using the RSVP-TE signaling protocol (0x00) [RFC8408]",
-					pstDescriptionSRTE,
-				},
-				"subTLVs": []any{},
-			},
-		},
-		"WithSub": {
-			testPathSetupTypeCapabilityWithSubTLV,
-			map[string]any{
-				"pathSetupTypes": []any{
-					pstDescriptionSRTE,
-				},
-				"subTLVs": []any{"SR-PCE-CAPABILITY (0x001a) [RFC8664]"},
-			},
-		},
-		"NilTLV": {
-			nil,
-			map[string]any{},
-		},
-	}
-
-	for name, tt := range cases {
-		t.Run(name, func(t *testing.T) {
-			enc := zapcore.NewMapObjectEncoder()
-			err := tt.input.MarshalLogObject(enc)
-			require.NoError(t, err)
-			assert.Equal(t, tt.expected, enc.Fields)
-		})
-	}
 }
 
 func TestPathSetupTypeCapability_Len(t *testing.T) {
@@ -1531,41 +1190,6 @@ func TestExtendedAssociationID_Serialize(t *testing.T) {
 	}
 }
 
-func TestExtendedAssociationID_MarshalLogObject(t *testing.T) {
-	cases := map[string]struct {
-		input    *ExtendedAssociationID
-		expected map[string]any
-	}{
-		"IPv4": {
-			NewExtendedAssociationID(123, netip.MustParseAddr("192.0.2.1")),
-			map[string]any{
-				"color":    uint32(123),
-				"ipv4Addr": "192.0.2.1",
-			},
-		},
-		"IPv6": {
-			NewExtendedAssociationID(456, netip.MustParseAddr(testIPv6Addr1)),
-			map[string]any{
-				"color":    uint32(456),
-				"ipv6Addr": testIPv6Addr1,
-			},
-		},
-		"NilTLV": {
-			nil,
-			map[string]any{},
-		},
-	}
-
-	for name, tt := range cases {
-		t.Run(name, func(t *testing.T) {
-			enc := zapcore.NewMapObjectEncoder()
-			err := tt.input.MarshalLogObject(enc)
-			require.NoError(t, err, "unexpected error during MarshalLogObject for '%s'", name)
-			assert.Equal(t, tt.expected, enc.Fields, "unexpected fields for '%s'", name)
-		})
-	}
-}
-
 func TestExtendedAssociationID_Len(t *testing.T) {
 	cases := map[string]struct {
 		input    TLVInterface
@@ -1623,23 +1247,6 @@ func TestExtendedAssociationIDIPv4Juniper_Len(t *testing.T) {
 }
 
 // Verifies Juniper vendor TLVs preserve structured logging fields.
-func TestExtendedAssociationIDIPv4Juniper_MarshalLogObject(t *testing.T) {
-	t.Parallel()
-
-	tlv := &ExtendedAssociationIDIPv4Juniper{ExtendedAssociationID: *testIPv4ExtendedAssociationID}
-
-	enc := zapcore.NewMapObjectEncoder()
-	err := tlv.MarshalLogObject(enc)
-	require.NoError(t, err, "unexpected error during MarshalLogObject")
-	assert.Equal(t, map[string]any{
-		"color":    testIPv4ExtendedAssociationID.Color,
-		"ipv4Addr": testIPv4ExtendedAssociationID.Endpoint.String(),
-	}, enc.Fields)
-}
-
-// testExtendedAssociationIDIPv4JuniperIPv6Bytes is the IPv6 wire format (value length 20) with
-// the Juniper TLV type. Juniper devices always send the IPv4 zero-padded format, even over IPv6
-// PCEP sessions, so this layout must be rejected.
 var testExtendedAssociationIDIPv4JuniperIPv6Bytes = func() []byte {
 	b := append([]byte(nil), testIPv6ExtendedAssociationIDBytes...)
 	b[0], b[1] = 0xff, 0xe3 // type=0xffe3, IPv6 value layout (length 20)
@@ -1739,59 +1346,6 @@ func TestAssocTypeList_Serialize(t *testing.T) {
 		"SingleEntry": {testAssocTypeListSingle, testAssocTypeListSingleBytesWithPadding},
 	}
 	runTLVSerializeTests(t, cases)
-}
-
-func TestAssocTypeList_MarshalLogObject(t *testing.T) {
-	cases := map[string]struct {
-		input    *AssocTypeList
-		expected map[string]any
-	}{
-		"TwoEntries": {
-			testAssocTypeList,
-			map[string]any{
-				"assocTypes": []any{
-					labelAssocPathProtection,
-					labelAssocSRPolicy,
-				},
-			},
-		},
-		"SingleEntry": {
-			testAssocTypeListSingle,
-			map[string]any{
-				"assocTypes": []any{labelAssocPathProtection},
-			},
-		},
-		"FourEntries": {
-			testAssocTypeListFour,
-			map[string]any{
-				"assocTypes": []any{
-					labelAssocPathProtection,
-					labelAssocDisjoint,
-					labelAssocPolicy,
-					labelAssocSRPolicy,
-				},
-			},
-		},
-		"EmptyList": {
-			testAssocTypeListEmpty,
-			map[string]any{
-				"assocTypes": []any{},
-			},
-		},
-		"NilTLV": {
-			nil,
-			map[string]any{},
-		},
-	}
-
-	for name, tt := range cases {
-		t.Run(name, func(t *testing.T) {
-			enc := zapcore.NewMapObjectEncoder()
-			err := tt.input.MarshalLogObject(enc)
-			require.NoError(t, err)
-			assert.Equal(t, tt.expected, enc.Fields)
-		})
-	}
 }
 
 func TestAssocTypeList_Len(t *testing.T) {
@@ -1930,45 +1484,6 @@ func TestSRPolicyCandidatePathIdentifier_Serialize_Invalid(t *testing.T) {
 	runTLVSerializeTests(t, cases)
 }
 
-func TestSRPolicyCandidatePathIdentifier_MarshalLogObject(t *testing.T) {
-	cases := map[string]struct {
-		input    *SRPolicyCandidatePathIdentifier
-		expected map[string]any
-	}{
-		"IPv4": {
-			testSRPolicyCPathIDIPv4,
-			map[string]any{
-				"protocolOrigin": testSRPolicyCPathIDIPv4.ProtocolOrigin,
-				"originatorAsn":  testSRPolicyCPathIDIPv4.OriginatorASN,
-				"originatorAddr": testSRPolicyCPathIDIPv4.OriginatorAddr.String(),
-				"discriminator":  testSRPolicyCPathIDIPv4.Discriminator,
-			},
-		},
-		"IPv6": {
-			testSRPolicyCPathIDIPv6,
-			map[string]any{
-				"protocolOrigin": testSRPolicyCPathIDIPv6.ProtocolOrigin,
-				"originatorAsn":  testSRPolicyCPathIDIPv6.OriginatorASN,
-				"originatorAddr": testSRPolicyCPathIDIPv6.OriginatorAddr.String(),
-				"discriminator":  testSRPolicyCPathIDIPv6.Discriminator,
-			},
-		},
-		"NilTLV": {
-			nil,
-			map[string]any{},
-		},
-	}
-
-	for name, tt := range cases {
-		t.Run(name, func(t *testing.T) {
-			enc := zapcore.NewMapObjectEncoder()
-			err := tt.input.MarshalLogObject(enc)
-			require.NoError(t, err, "unexpected error during MarshalLogObject for '%s'", name)
-			assert.Equal(t, tt.expected, enc.Fields, "unexpected fields for '%s'", name)
-		})
-	}
-}
-
 func TestSRPolicyCandidatePathIdentifier_Len(t *testing.T) {
 	cases := map[string]struct {
 		input    TLVInterface
@@ -2029,23 +1544,6 @@ func TestSRPolicyCandidatePathIdentifierJuniper_Len(t *testing.T) {
 }
 
 // Verifies Juniper vendor TLVs preserve structured logging fields.
-func TestSRPolicyCandidatePathIdentifierJuniper_MarshalLogObject(t *testing.T) {
-	t.Parallel()
-
-	tlv := &SRPolicyCandidatePathIdentifierJuniper{SRPolicyCandidatePathIdentifier: *testSRPolicyCPathIDIPv4}
-
-	enc := zapcore.NewMapObjectEncoder()
-	err := tlv.MarshalLogObject(enc)
-	require.NoError(t, err, "unexpected error during MarshalLogObject")
-	assert.Equal(t, map[string]any{
-		"protocolOrigin": testSRPolicyCPathIDIPv4.ProtocolOrigin,
-		"originatorAsn":  testSRPolicyCPathIDIPv4.OriginatorASN,
-		"originatorAddr": testSRPolicyCPathIDIPv4.OriginatorAddr.String(),
-		"discriminator":  testSRPolicyCPathIDIPv4.Discriminator,
-	}, enc.Fields)
-}
-
-// Test data for SRPolicyCandidatePathPreference.
 var (
 	testSRPolicyCPathPreference = &SRPolicyCandidatePathPreference{Preference: 100}
 
@@ -2082,33 +1580,6 @@ func TestSRPolicyCandidatePathPreference_Serialize(t *testing.T) {
 		"ValidPreference": {testSRPolicyCPathPreference, testSRPolicyCPathPreferenceBytes},
 	}
 	runTLVSerializeTests(t, cases)
-}
-
-func TestSRPolicyCandidatePathPreference_MarshalLogObject(t *testing.T) {
-	cases := map[string]struct {
-		input    *SRPolicyCandidatePathPreference
-		expected map[string]any
-	}{
-		"Preference": {
-			testSRPolicyCPathPreference,
-			map[string]any{
-				"preference": testSRPolicyCPathPreference.Preference,
-			},
-		},
-		"NilTLV": {
-			nil,
-			map[string]any{},
-		},
-	}
-
-	for name, tt := range cases {
-		t.Run(name, func(t *testing.T) {
-			enc := zapcore.NewMapObjectEncoder()
-			err := tt.input.MarshalLogObject(enc)
-			require.NoError(t, err, "unexpected error during MarshalLogObject for '%s'", name)
-			assert.Equal(t, tt.expected, enc.Fields, "unexpected fields for '%s'", name)
-		})
-	}
 }
 
 func TestSRPolicyCandidatePathPreference_Len(t *testing.T) {
@@ -2149,19 +1620,6 @@ func TestSRPolicyCandidatePathPreferenceJuniper_Len(t *testing.T) {
 }
 
 // Verifies Juniper vendor TLVs preserve structured logging fields.
-func TestSRPolicyCandidatePathPreferenceJuniper_MarshalLogObject(t *testing.T) {
-	t.Parallel()
-
-	tlv := &SRPolicyCandidatePathPreferenceJuniper{SRPolicyCandidatePathPreference: *testSRPolicyCPathPreference}
-
-	enc := zapcore.NewMapObjectEncoder()
-	err := tlv.MarshalLogObject(enc)
-	require.NoError(t, err, "unexpected error during MarshalLogObject")
-	assert.Equal(t, map[string]any{
-		"preference": testSRPolicyCPathPreference.Preference,
-	}, enc.Fields)
-}
-
 func TestSRPolicyCandidatePathPreferenceJuniper_DecodeFromBytes(t *testing.T) {
 	t.Parallel()
 
@@ -2215,39 +1673,6 @@ func TestColor_Serialize(t *testing.T) {
 		"ValidColor": {testColor, testColorBytes},
 	}
 	runTLVSerializeTests(t, cases)
-}
-
-func TestColor_MarshalLogObject(t *testing.T) {
-	cases := map[string]struct {
-		input    *Color
-		expected map[string]any
-	}{
-		"ValidColor": {
-			testColor,
-			map[string]any{
-				"color": testColor.Color,
-			},
-		},
-		"ZeroColor": {
-			&Color{Color: 0},
-			map[string]any{
-				"color": uint32(0),
-			},
-		},
-		"NilTLV": {
-			nil,
-			map[string]any{},
-		},
-	}
-
-	for name, tt := range cases {
-		t.Run(name, func(t *testing.T) {
-			enc := zapcore.NewMapObjectEncoder()
-			err := tt.input.MarshalLogObject(enc)
-			require.NoError(t, err, "unexpected error during MarshalLogObject for '%s'", name)
-			assert.Equal(t, tt.expected, enc.Fields, "unexpected fields for '%s'", name)
-		})
-	}
 }
 
 func TestColor_Len(t *testing.T) {
@@ -2319,56 +1744,6 @@ func TestUnknownTLV_Serialize_LengthBoundary(t *testing.T) {
 		_, err := tlv.Serialize()
 		assert.ErrorContains(t, err, "exceeds")
 	})
-}
-
-func TestUnknownTLV_MarshalLogObject(t *testing.T) {
-	cases := map[string]struct {
-		input    *UnknownTLV
-		expected map[string]any
-	}{
-		"StandardTLV": {
-			testUnknownTLV,
-			map[string]any{
-				"type":   "0xffff",
-				"length": len(testUnknownTLV.Value),
-			},
-		},
-		"OddLength": {
-			testUnknownTLVOddLength,
-			map[string]any{
-				"type":   "0xffff",
-				"length": len(testUnknownTLVOddLength.Value),
-			},
-		},
-		"NilTLV": {
-			nil,
-			map[string]any{},
-		},
-	}
-
-	for name, tt := range cases {
-		t.Run(name, func(t *testing.T) {
-			enc := zapcore.NewMapObjectEncoder()
-			err := tt.input.MarshalLogObject(enc)
-			require.NoError(t, err, "unexpected error during MarshalLogObject for '%s'", name)
-			assert.Equal(t, tt.expected, enc.Fields, "unexpected fields for '%s'", name)
-		})
-	}
-}
-
-// Ensure TLVType is not formatted as ASCII hex via its String() method.
-func TestMarshalLogObject_TLVTypeHexFormatting(t *testing.T) {
-	enc := zapcore.NewMapObjectEncoder()
-	err := testPathSetupTypeCapabilityWithSubTLV.MarshalLogObject(enc)
-	require.NoError(t, err)
-	subTLVs, ok := enc.Fields["subTLVs"].([]any)
-	assert.True(t, ok)
-	assert.Equal(t, []any{"SR-PCE-CAPABILITY (0x001a) [RFC8664]"}, subTLVs)
-
-	enc = zapcore.NewMapObjectEncoder()
-	err = testUnknownTLV.MarshalLogObject(enc)
-	require.NoError(t, err)
-	assert.Equal(t, "0xffff", enc.Fields["type"])
 }
 
 func TestUnknownTLV_Len(t *testing.T) {
@@ -2535,36 +1910,6 @@ func TestSRv6PCECapability_Serialize(t *testing.T) {
 	runTLVSerializeTests(t, cases)
 }
 
-func TestSRv6PCECapability_MarshalLogObject(t *testing.T) {
-	cases := map[string]struct {
-		input    *SRv6PCECapability
-		expected map[string]any
-	}{
-		"NilTLV": {nil, map[string]any{}},
-		"EmptyTLV": {
-			&SRv6PCECapability{},
-			map[string]any{
-				"nai_is_supported": false,
-			},
-		},
-		"FullTLV": {
-			testSRv6PCECapability,
-			map[string]any{
-				"nai_is_supported": true,
-			},
-		},
-	}
-
-	for name, tt := range cases {
-		t.Run(name, func(t *testing.T) {
-			enc := zapcore.NewMapObjectEncoder()
-			err := tt.input.MarshalLogObject(enc)
-			require.NoError(t, err, "unexpected error for '%s'", name)
-			assert.Equal(t, tt.expected, enc.Fields, "unexpected fields for '%s'", name)
-		})
-	}
-}
-
 func TestSRv6PCECapability_Len(t *testing.T) {
 	cases := map[string]struct {
 		input    TLVInterface
@@ -2636,44 +1981,6 @@ func TestMultipathCapability_Serialize(t *testing.T) {
 		"ValidMultipathCapabilityNoFlags":  {testMultipathCapabilityNoFlags, testMultipathCapabilityNoFlagsBytes},
 	}
 	runTLVSerializeTests(t, cases)
-}
-
-func TestMultipathCapability_MarshalLogObject(t *testing.T) {
-	cases := map[string]struct {
-		input    *MultipathCapability
-		expected map[string]any
-	}{
-		"NilTLV": {nil, map[string]any{}},
-		"EmptyTLV": {
-			&MultipathCapability{},
-			map[string]any{
-				"max_multipaths":              uint16(0),
-				"weighted_is_supported":       false,
-				"opposite_dir_is_supported":   false,
-				"forward_class_is_supported":  false,
-				"composite_path_is_supported": false,
-			},
-		},
-		"FullTLV": {
-			testMultipathCapability,
-			map[string]any{
-				"max_multipaths":              uint16(8),
-				"weighted_is_supported":       true,
-				"opposite_dir_is_supported":   true,
-				"forward_class_is_supported":  true,
-				"composite_path_is_supported": true,
-			},
-		},
-	}
-
-	for name, tt := range cases {
-		t.Run(name, func(t *testing.T) {
-			enc := zapcore.NewMapObjectEncoder()
-			err := tt.input.MarshalLogObject(enc)
-			require.NoError(t, err, "unexpected error for '%s'", name)
-			assert.Equal(t, tt.expected, enc.Fields, "unexpected fields for '%s'", name)
-		})
-	}
 }
 
 func TestMultipathCapability_Len(t *testing.T) {

@@ -22,7 +22,7 @@ import (
 	"github.com/nttcom/pola/pkg/packet/pcep"
 	"github.com/nttcom/pola/pkg/table"
 
-	"go.uber.org/zap"
+	"github.com/nttcom/pola/pkg/logger"
 )
 
 const (
@@ -186,7 +186,7 @@ type Session struct {
 	unknownMsgTimes   []time.Time
 	maxUnknownMsgs    uint32
 	unknownMsgWindow  time.Duration
-	logger            *zap.Logger
+	logger            *logger.Logger
 	state             sessionState
 
 	// Session lifetime timestamps.
@@ -343,7 +343,7 @@ func (ss *Session) clearSRPolicyIntents() {
 }
 
 // NewSession creates a new PCEP session with the given local Open parameters.
-func NewSession(localOpen OpenParams, peerAddr netip.Addr, tcpConn net.Conn, logger *zap.Logger, ted *table.LsTED, asn uint32) *Session {
+func NewSession(localOpen OpenParams, peerAddr netip.Addr, tcpConn net.Conn, lg *logger.Logger, ted *table.LsTED, asn uint32) *Session {
 	return &Session{
 		localSessionID:         localOpen.SessionID,
 		localKeepalive:         localOpen.Keepalive,
@@ -357,7 +357,7 @@ func NewSession(localOpen OpenParams, peerAddr netip.Addr, tcpConn net.Conn, log
 		sweepInterval:          defaultSRPolicyIntentSweepInterval,
 		maxUnknownMsgs:         defaultMaxUnknownMsgs,
 		unknownMsgWindow:       defaultUnknownMsgWindow,
-		logger:                 logger.With(zap.String("server", "pcep"), zap.String("session", peerAddr.String())),
+		logger:                 lg.With(logger.String("server", "pcep"), logger.String("session", peerAddr.String())),
 		pccType:                pcep.RFCCompliant,
 		peerAddr:               peerAddr,
 		tcpConn:                tcpConn,
@@ -371,7 +371,7 @@ func NewSession(localOpen OpenParams, peerAddr netip.Addr, tcpConn net.Conn, log
 // The returned error indicates the session establishment outcome (RFC 9826).
 func (ss *Session) Established() error {
 	if err := ss.Open(); err != nil {
-		ss.logger.Debug("ERROR! PCEP session establishment failed", zap.Error(err))
+		ss.logger.Debug("ERROR! PCEP session establishment failed", logger.Error(err))
 		return err
 	}
 	if ss.onEstablished != nil {
@@ -387,7 +387,7 @@ func (ss *Session) Established() error {
 	// Receive PCEP messages in a separate goroutine
 	go func() {
 		if err := ss.ReceivePCEPMessage(); err != nil {
-			ss.logger.Debug("ERROR! Receive PCEP Message", zap.Error(err))
+			ss.logger.Debug("ERROR! Receive PCEP Message", logger.Error(err))
 		}
 		done <- struct{}{}
 	}()
@@ -407,7 +407,7 @@ func (ss *Session) Established() error {
 			return nil
 		case <-ticker.C:
 			if err := ss.SendKeepalive(); err != nil {
-				ss.logger.Debug("ERROR! Send Keepalive Message", zap.Error(err))
+				ss.logger.Debug("ERROR! Send Keepalive Message", logger.Error(err))
 				return nil
 			}
 		}
@@ -573,7 +573,7 @@ func (ss *Session) startNegotiationKeepalive() func() {
 				return
 			case <-ticker.C:
 				if err := ss.SendKeepalive(); err != nil {
-					ss.logger.Debug("ERROR! Send Keepalive Message during negotiation", zap.Error(err))
+					ss.logger.Debug("ERROR! Send Keepalive Message during negotiation", logger.Error(err))
 					return
 				}
 			}
@@ -680,7 +680,7 @@ func (ss *Session) decodePeerOpen(openMessage *pcep.OpenMessage) (OpenParams, pc
 	ss.validateCapabilities(receivedCaps)
 
 	pccType := pcep.DeterminePccType(receivedCaps)
-	ss.logger.Debug("Determine PCC Type", zap.Int("pcc-type", int(pccType)))
+	ss.logger.Debug("Determine PCC Type", logger.Int("pcc-type", int(pccType)))
 
 	peerOpen := OpenParams{
 		SessionID: openMessage.OpenObject.Sid,
@@ -689,7 +689,7 @@ func (ss *Session) decodePeerOpen(openMessage *pcep.OpenMessage) (OpenParams, pc
 	}
 	if peerOpen.Keepalive == 0 && peerOpen.DeadTimer != 0 {
 		ss.logger.Warn("peer advertised Keepalive=0 with a nonzero DeadTimer (RFC 5440 §7.3 SHOULD); ignoring the DeadTimer",
-			zap.Uint8("deadtimer", peerOpen.DeadTimer))
+			logger.Uint8("deadtimer", peerOpen.DeadTimer))
 	}
 
 	return peerOpen, pccType, receivedCaps
@@ -714,7 +714,7 @@ func (ss *Session) handleNegotiationPCErr(body []uint8, neg *openNegotiation) er
 		return fmt.Errorf("received malformed PCErr while establishing the PCEP session: %w", err)
 	}
 	ss.logger.Debug("Received PCErr while establishing the PCEP session",
-		zap.String("errors", formatPCErrErrors(pcerrMessage.Errors)))
+		logger.String("errors", formatPCErrErrors(pcerrMessage.Errors)))
 
 	// A negotiable Error 1/4 may be accompanied by unrelated PCEP-ERROR objects.
 	negotiable := slices.ContainsFunc(pcerrMessage.Errors, func(errObj *pcep.ErrorObject) bool {
@@ -765,7 +765,7 @@ func (ss *Session) adoptProposedOpen(proposedOpen *pcep.OpenObject, neg *openNeg
 	ss.localDeadTimer = proposed.DeadTimer
 	ss.stateMu.Unlock()
 	ss.logger.Debug("Adopting peer-proposed session characteristics",
-		zap.Uint8("keepalive", proposed.Keepalive), zap.Uint8("deadtimer", proposed.DeadTimer))
+		logger.Uint8("keepalive", proposed.Keepalive), logger.Uint8("deadtimer", proposed.DeadTimer))
 
 	if err := ss.SendOpen(); err != nil {
 		return err
@@ -792,7 +792,7 @@ func isDeadlineExceeded(err error) bool {
 
 func (ss *Session) sendPCErrBestEffort(errorType, errorValue uint8) {
 	if err := ss.SendPCErr(errorType, errorValue); err != nil {
-		ss.logger.Debug("ERROR! Send PCErr Message", zap.Error(err))
+		ss.logger.Debug("ERROR! Send PCErr Message", logger.Error(err))
 	}
 }
 
@@ -889,10 +889,10 @@ func (ss *Session) proposeAcceptableOpen(peerOpen OpenParams) error {
 
 	pcerrMessage := pcep.NewPCErrMessageWithOpen(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableNegotiable, openObject)
 	ss.logger.Debug("Send PCErr Message proposing session characteristics",
-		zap.Uint8("error-Type", pcepErrorTypeSessionEstablishmentFailure),
-		zap.Uint8("error-value", pcepErrorValueUnacceptableNegotiable),
-		zap.Uint8("proposed-keepalive", keepalive),
-		zap.Uint8("proposed-deadtimer", deadTimer))
+		logger.Uint8("error-Type", pcepErrorTypeSessionEstablishmentFailure),
+		logger.Uint8("error-value", pcepErrorValueUnacceptableNegotiable),
+		logger.Uint8("proposed-keepalive", keepalive),
+		logger.Uint8("proposed-deadtimer", deadTimer))
 	if err := ss.sendPCEPMessage(pcerrMessage); err != nil {
 		return err
 	}
@@ -916,8 +916,8 @@ func (ss *Session) SendClose(reason pcep.CloseReason) error {
 	closeMessage := pcep.NewCloseMessage(reason)
 
 	ss.logger.Debug("Send Close Message",
-		zap.Uint8("reason", uint8(closeMessage.CloseObject.Reason)),
-		zap.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#close-object-reason-field"))
+		logger.Uint8("reason", uint8(closeMessage.CloseObject.Reason)),
+		logger.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#close-object-reason-field"))
 	if err := ss.sendPCEPMessage(closeMessage); err != nil {
 		return err
 	}
@@ -930,9 +930,9 @@ func (ss *Session) SendPCErr(errorType, errorValue uint8) error {
 	pcerrMessage := pcep.NewPCErrMessage(errorType, errorValue, nil)
 
 	ss.logger.Debug("Send PCErr Message",
-		zap.Uint8("error-Type", errorType),
-		zap.Uint8("error-value", errorValue),
-		zap.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#pcep-error-object"))
+		logger.Uint8("error-Type", errorType),
+		logger.Uint8("error-value", errorValue),
+		logger.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#pcep-error-object"))
 	if err := ss.sendPCEPMessage(pcerrMessage); err != nil {
 		return err
 	}
@@ -948,7 +948,7 @@ func (ss *Session) ReceivePCEPMessage() error {
 			if isDeadlineExceeded(err) {
 				// RFC 5440 Appendix A: DeadTimer expiry terminates the session per §6.8.
 				if closeErr := ss.SendClose(pcep.CloseReasonDeadTimerExpired); closeErr != nil {
-					ss.logger.Debug("ERROR! Send Close Message", zap.Error(closeErr))
+					ss.logger.Debug("ERROR! Send Close Message", logger.Error(closeErr))
 				}
 			}
 			return err
@@ -1046,8 +1046,8 @@ func (ss *Session) receiveClose(messageLength uint16, deadline time.Time) error 
 		return err
 	}
 	ss.logger.Debug("Received Close",
-		zap.String("reason", closeMessage.CloseObject.Reason.String()),
-		zap.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#close-object-reason-field"))
+		logger.String("reason", closeMessage.CloseObject.Reason.String()),
+		logger.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#close-object-reason-field"))
 	return nil
 }
 
@@ -1067,15 +1067,15 @@ func (ss *Session) handleUnsupportedMessage(commonHeader *pcep.CommonHeader, dea
 		return err
 	}
 	ss.logger.Debug("Received unsupported MessageType",
-		zap.String("MessageType", commonHeader.MessageType.String()))
+		logger.String("MessageType", commonHeader.MessageType.String()))
 
 	if err := ss.SendPCErr(pcepErrorTypeCapabilityNotSupported, pcepErrorValueUnassigned); err != nil {
-		ss.logger.Debug("ERROR! Send PCErr Message", zap.Error(err))
+		ss.logger.Debug("ERROR! Send PCErr Message", logger.Error(err))
 	}
 
 	if ss.recordUnknownMessage() {
 		if err := ss.SendClose(pcep.CloseReasonTooManyUnrecognizedPCEPMessages); err != nil {
-			ss.logger.Debug("ERROR! Send Close Message", zap.Error(err))
+			ss.logger.Debug("ERROR! Send Close Message", logger.Error(err))
 		}
 		return fmt.Errorf("too many unrecognized PCEP messages received within %s", ss.unknownMsgWindow)
 	}
@@ -1134,10 +1134,10 @@ func (ss *Session) handlePCErr(pcerrMessage *pcep.PCErrMessage) {
 	srpIDs := pcerrMessage.SRPIDs()
 	for _, errObj := range pcerrMessage.Errors {
 		ss.logger.Debug("Received PCErr",
-			zap.Uint8("error-Type", errObj.ErrorType),
-			zap.Uint8("error-value", errObj.ErrorValue),
-			zap.Uint32s("srp-ids", srpIDs),
-			zap.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#pcep-error-object"))
+			logger.Uint8("error-Type", errObj.ErrorType),
+			logger.Uint8("error-value", errObj.ErrorValue),
+			logger.Uint32s("srp-ids", srpIDs),
+			logger.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#pcep-error-object"))
 	}
 	for _, srpID := range srpIDs {
 		ss.forgetSRPolicyIntent(srpID)
@@ -1161,7 +1161,7 @@ func (ss *Session) handlePCRpt(length uint16, deadline time.Time) error {
 	for _, sr := range message.StateReports {
 		if err := ss.handleStateReport(sr, message); err != nil {
 			ss.logger.Warn("Failed to handle state report",
-				zap.Uint32("plspID", sr.LSPObject.PlspID), zap.Error(err))
+				logger.Uint32("plspID", sr.LSPObject.PlspID), logger.Error(err))
 		}
 	}
 
@@ -1187,9 +1187,9 @@ func (ss *Session) handleStateReport(sr *pcep.StateReport, message *pcep.PCRptMe
 // Synchronization (S-Flag)
 func (ss *Session) handleSynchronization(sr *pcep.StateReport, message *pcep.PCRptMessage) error {
 	ss.setSyncState(lspDBSyncOngoing)
-	ss.logger.Debug("Synchronize SR Policy information", zap.Any("Message", message))
+	ss.logger.Debug("Synchronize SR Policy information", logger.Any("Message", message))
 	if err := ss.RegisterSRPolicy(*sr); err != nil {
-		ss.logger.Error("Failed to register SR Policy during synchronization", zap.Error(err), zap.Uint32("plspID", sr.LSPObject.PlspID))
+		ss.logger.Error("Failed to register SR Policy during synchronization", logger.Error(err), logger.Uint32("plspID", sr.LSPObject.PlspID))
 		return err
 	}
 	return nil
@@ -1388,11 +1388,11 @@ func (ss *Session) AdvertisedCapabilities() []pcep.CapabilityInterface {
 
 // Response to request from PCE (SrpID != 0)
 func (ss *Session) handleStatefulPCERequest(sr *pcep.StateReport) error {
-	ss.logger.Debug("Finish Stateful PCE request", zap.Uint32("srpID", sr.SrpObject.SrpID))
+	ss.logger.Debug("Finish Stateful PCE request", logger.Uint32("srpID", sr.SrpObject.SrpID))
 	if sr.LSPObject.RFlag {
 		ss.DeleteSRPolicy(*sr)
 	} else if err := ss.RegisterSRPolicy(*sr); err != nil {
-		ss.logger.Error("Failed to register SR Policy for Stateful PCE request", zap.Error(err), zap.Uint32("plspID", sr.LSPObject.PlspID))
+		ss.logger.Error("Failed to register SR Policy for Stateful PCE request", logger.Error(err), logger.Uint32("plspID", sr.LSPObject.PlspID))
 		return err
 	}
 	return nil
@@ -1400,7 +1400,7 @@ func (ss *Session) handleStatefulPCERequest(sr *pcep.StateReport) error {
 
 // Receive SR Policy with PLSP-ID
 func (ss *Session) handleSRPolicyWithPLSPID(sr *pcep.StateReport) error {
-	ss.logger.Debug("Received SR Policy", zap.Uint32("plspID", sr.LSPObject.PlspID))
+	ss.logger.Debug("Received SR Policy", logger.Uint32("plspID", sr.LSPObject.PlspID))
 
 	// Skip path computation for removed SR Policies or when no TED is available.
 	if sr.LSPObject.RFlag || ss.ted == nil {
@@ -1409,29 +1409,29 @@ func (ss *Session) handleSRPolicyWithPLSPID(sr *pcep.StateReport) error {
 
 	computedSegmentList, err := ss.computePathFromTED(*sr)
 	if err != nil {
-		ss.logger.Error("Failed to compute path from TED", zap.Error(err))
+		ss.logger.Error("Failed to compute path from TED", logger.Error(err))
 		return err
 	}
 	eroObject, err := createEroFromSegmentList(computedSegmentList)
 	if err != nil {
-		ss.logger.Error("Failed to create ERO from computed segment list", zap.Error(err))
+		ss.logger.Error("Failed to create ERO from computed segment list", logger.Error(err))
 		return err
 	}
 	sr.EroObject = eroObject
 
 	if err := ss.RegisterSRPolicy(*sr); err != nil {
-		ss.logger.Error("Failed to register SR Policy", zap.Error(err), zap.Uint32("plspID", sr.LSPObject.PlspID))
+		ss.logger.Error("Failed to register SR Policy", logger.Error(err), logger.Uint32("plspID", sr.LSPObject.PlspID))
 		return err
 	}
 
 	policy, found := ss.SearchSRPolicy(sr.LSPObject.PlspID)
 	if !found {
-		ss.logger.Warn("SR Policy not found after registration", zap.Uint32("plspID", sr.LSPObject.PlspID))
+		ss.logger.Warn("SR Policy not found after registration", logger.Uint32("plspID", sr.LSPObject.PlspID))
 		return fmt.Errorf("SR Policy %d not found after registration", sr.LSPObject.PlspID)
 	}
 
 	if err := ss.SendPCUpdate(*policy); err != nil {
-		ss.logger.Error("Failed to send PC update", zap.Uint32("plspID", sr.LSPObject.PlspID), zap.Error(err))
+		ss.logger.Error("Failed to send PC update", logger.Uint32("plspID", sr.LSPObject.PlspID), logger.Error(err))
 		return err
 	}
 	return nil
@@ -1442,7 +1442,7 @@ func (ss *Session) handleReportedSRPolicy(sr *pcep.StateReport) error {
 	if sr.LSPObject.RFlag {
 		ss.DeleteSRPolicy(*sr)
 	} else if err := ss.RegisterSRPolicy(*sr); err != nil {
-		ss.logger.Error("Failed to register reported SR Policy", zap.Error(err), zap.Uint32("plspID", sr.LSPObject.PlspID))
+		ss.logger.Error("Failed to register reported SR Policy", logger.Error(err), logger.Uint32("plspID", sr.LSPObject.PlspID))
 		return err
 	}
 	return nil
@@ -1461,9 +1461,9 @@ func (ss *Session) computePathFromTED(sr pcep.StateReport) ([]table.Segment, err
 	metricType := ss.selectMetricType(sr)
 
 	ss.logger.Debug("Computed CSPF parameters",
-		zap.String("srcRouterID", srcRouterID),
-		zap.String("dstRouterID", dstRouterID),
-		zap.String("metricType", metricType.String()))
+		logger.String("srcRouterID", srcRouterID),
+		logger.String("dstRouterID", dstRouterID),
+		logger.String("metricType", metricType.String()))
 
 	segmentList, err := cspf.CSPF(srcRouterID, dstRouterID, metricType, ss.ted)
 	if err != nil {
@@ -1524,7 +1524,7 @@ func (ss *Session) selectMetricType(sr pcep.StateReport) table.MetricType {
 		case 3:
 			return table.HopcountMetric
 		default:
-			ss.logger.Warn("unsupported METRIC type, falling back to TE", zap.Int("metricType", int(sr.MetricObjects[0].MetricType)))
+			ss.logger.Warn("unsupported METRIC type, falling back to TE", logger.Int("metricType", int(sr.MetricObjects[0].MetricType)))
 			return table.TEMetric
 		}
 	}

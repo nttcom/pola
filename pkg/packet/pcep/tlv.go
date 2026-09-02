@@ -7,15 +7,12 @@ package pcep
 
 import (
 	"encoding/binary"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/netip"
 	"slices"
 	"unicode/utf8"
-
-	"go.uber.org/zap/zapcore"
 )
 
 // TLVType is a PCEP TLV type code.
@@ -257,7 +254,6 @@ type TLVInterface interface {
 	DecodeFromBytes(data []byte) error
 	// Serialize encodes the TLV (Type, Length, Value, padding).
 	Serialize() ([]byte, error)
-	MarshalLogObject(enc zapcore.ObjectEncoder) error
 	Type() TLVType
 	Len() int
 }
@@ -333,22 +329,6 @@ func (tlv *VendorInformation) Serialize() ([]byte, error) {
 		Uint16ToByteSlice(length),
 		value,
 	), nil
-}
-
-// MarshalLogObject implements TLVInterface.
-func (tlv *VendorInformation) MarshalLogObject(enc zapcore.ObjectEncoder) error {
-	if tlv == nil {
-		return nil
-	}
-
-	enc.AddUint32("enterpriseNumber", uint32(tlv.EnterpriseNumber))
-	enc.AddString("enterprise", tlv.EnterpriseNumber.String())
-
-	if len(tlv.EnterpriseSpecificInformation) > 0 {
-		enc.AddString("enterpriseSpecificInformation", hex.EncodeToString(tlv.EnterpriseSpecificInformation))
-	}
-
-	return nil
 }
 
 // Type implements TLVInterface.
@@ -458,23 +438,6 @@ func (tlv *StatefulPCECapability) Serialize() ([]byte, error) {
 	), nil
 }
 
-// MarshalLogObject implements TLVInterface.
-func (tlv *StatefulPCECapability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
-	if tlv == nil {
-		return nil
-	}
-
-	enc.AddBool("lspUpdateCapability", tlv.LSPUpdateCapability)
-	enc.AddBool("includeDBVersion", tlv.IncludeDBVersion)
-	enc.AddBool("lspInstantiationCapability", tlv.LSPInstantiationCapability)
-	enc.AddBool("triggeredResync", tlv.TriggeredResync)
-	enc.AddBool("deltaLSPSyncCapability", tlv.DeltaLSPSyncCapability)
-	enc.AddBool("triggeredInitialSync", tlv.TriggeredInitialSync)
-	enc.AddBool("colorCapability", tlv.ColorCapability)
-
-	return nil
-}
-
 // Type implements TLVInterface.
 func (tlv *StatefulPCECapability) Type() TLVType {
 	return TLVStatefulPCECapability
@@ -573,16 +536,6 @@ func (tlv *SymbolicPathName) Len() int {
 	return TLVValueOffset + length + padding
 }
 
-// MarshalLogObject implements TLVInterface.
-func (tlv *SymbolicPathName) MarshalLogObject(enc zapcore.ObjectEncoder) error {
-	if tlv == nil {
-		return nil
-	}
-
-	enc.AddString("symbolicPathName", tlv.Name)
-	return nil
-}
-
 // NewSymbolicPathName creates a SYMBOLIC-PATH-NAME TLV.
 func NewSymbolicPathName(name string) *SymbolicPathName {
 	return &SymbolicPathName{Name: name}
@@ -648,26 +601,6 @@ func (tlv *IPv4LSPIdentifiers) Serialize() ([]byte, error) {
 		Uint16ToByteSlice(TLVIPv4LSPIdentifiersValueLength),
 		value,
 	), nil
-}
-
-// MarshalLogObject implements TLVInterface.
-func (tlv *IPv4LSPIdentifiers) MarshalLogObject(enc zapcore.ObjectEncoder) error {
-	if tlv == nil {
-		return nil
-	}
-
-	if tlv.IPv4TunnelSenderAddress.IsValid() {
-		enc.AddString("ipv4TunnelSenderAddress", tlv.IPv4TunnelSenderAddress.String())
-	}
-	if tlv.IPv4TunnelEndpointAddress.IsValid() {
-		enc.AddString("ipv4TunnelEndpointAddress", tlv.IPv4TunnelEndpointAddress.String())
-	}
-
-	enc.AddUint16("lspID", tlv.LSPID)
-	enc.AddUint16("tunnelID", tlv.TunnelID)
-	enc.AddUint32("extendedTunnelID", tlv.ExtendedTunnelID)
-
-	return nil
 }
 
 // Type implements TLVInterface.
@@ -753,26 +686,6 @@ func (tlv *IPv6LSPIdentifiers) Serialize() ([]byte, error) {
 	), nil
 }
 
-// MarshalLogObject implements TLVInterface.
-func (tlv *IPv6LSPIdentifiers) MarshalLogObject(enc zapcore.ObjectEncoder) error {
-	if tlv == nil {
-		return nil
-	}
-
-	if tlv.IPv6TunnelSenderAddress.IsValid() {
-		enc.AddString("ipv6TunnelSenderAddress", tlv.IPv6TunnelSenderAddress.String())
-	}
-	if tlv.IPv6TunnelEndpointAddress.IsValid() {
-		enc.AddString("ipv6TunnelEndpointAddress", tlv.IPv6TunnelEndpointAddress.String())
-	}
-
-	enc.AddUint16("lspID", tlv.LSPID)
-	enc.AddUint16("tunnelID", tlv.TunnelID)
-	enc.AddString("extendedTunnelID", hex.EncodeToString(tlv.ExtendedTunnelID[:]))
-
-	return nil
-}
-
 // Type implements TLVInterface.
 func (tlv *IPv6LSPIdentifiers) Type() TLVType {
 	return TLVIPv6LSPIdentifiers
@@ -828,16 +741,6 @@ func (tlv *LSPDBVersion) Serialize() ([]byte, error) {
 		Uint16ToByteSlice(TLVLSPDBVersionValueLength),
 		value,
 	), nil
-}
-
-// MarshalLogObject implements TLVInterface.
-func (tlv *LSPDBVersion) MarshalLogObject(enc zapcore.ObjectEncoder) error {
-	if tlv == nil {
-		return nil
-	}
-
-	enc.AddUint64("versionNumber", tlv.VersionNumber)
-	return nil
 }
 
 // Type implements TLVInterface.
@@ -918,18 +821,6 @@ func (tlv *SRPCECapability) Serialize() ([]byte, error) {
 	), nil
 }
 
-// MarshalLogObject implements TLVInterface.
-func (tlv *SRPCECapability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
-	if tlv == nil {
-		return nil
-	}
-
-	enc.AddBool("unlimited_max_sid_depth", tlv.HasUnlimitedMaxSIDDepth)
-	enc.AddBool("nai_is_supported", tlv.IsNAISupported)
-	enc.AddUint8("maximum_sid_depth", tlv.MaximumSidDepth)
-	return nil
-}
-
 // Type implements TLVInterface.
 func (tlv *SRPCECapability) Type() TLVType {
 	return TLVSRPCECapability
@@ -1006,16 +897,6 @@ func (tlv *SRv6PCECapability) Serialize() ([]byte, error) {
 		Uint16ToByteSlice(TLVSRv6PCECapabilityValueLength),
 		value,
 	), nil
-}
-
-// MarshalLogObject implements TLVInterface.
-func (tlv *SRv6PCECapability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
-	if tlv == nil {
-		return nil
-	}
-
-	enc.AddBool("nai_is_supported", tlv.IsNAISupported)
-	return nil
 }
 
 // Type implements TLVInterface.
@@ -1112,20 +993,6 @@ func (tlv *MultipathCapability) Serialize() ([]byte, error) {
 		Uint16ToByteSlice(TLVMultipathCapValueLength),
 		value,
 	), nil
-}
-
-// MarshalLogObject implements TLVInterface.
-func (tlv *MultipathCapability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
-	if tlv == nil {
-		return nil
-	}
-
-	enc.AddUint16("max_multipaths", tlv.MaxMultipaths)
-	enc.AddBool("weighted_is_supported", tlv.IsWeightedSupported)
-	enc.AddBool("opposite_dir_is_supported", tlv.IsOppositeDirSupported)
-	enc.AddBool("forward_class_is_supported", tlv.IsForwardClassSupported)
-	enc.AddBool("composite_path_is_supported", tlv.IsCompositePathSupported)
-	return nil
 }
 
 // Type implements TLVInterface.
@@ -1248,16 +1115,6 @@ func (tlv *PathSetupType) Serialize() ([]byte, error) {
 	), nil
 }
 
-// MarshalLogObject implements TLVInterface.
-func (tlv *PathSetupType) MarshalLogObject(enc zapcore.ObjectEncoder) error {
-	if tlv == nil {
-		return nil
-	}
-
-	enc.AddString("pathSetupType", tlv.PathSetupType.StringWithReference())
-	return nil
-}
-
 // Type implements TLVInterface.
 func (tlv *PathSetupType) Type() TLVType {
 	return TLVPathSetupType
@@ -1347,25 +1204,6 @@ func (tlv *ExtendedAssociationID) serialize(typ TLVType) []byte {
 		Uint16ToByteSlice(length),
 		value,
 	)
-}
-
-// MarshalLogObject implements TLVInterface.
-func (tlv *ExtendedAssociationID) MarshalLogObject(enc zapcore.ObjectEncoder) error {
-	if tlv == nil {
-		return nil
-	}
-
-	enc.AddUint32("color", tlv.Color)
-
-	if tlv.Endpoint.IsValid() {
-		if tlv.Endpoint.Is4() {
-			enc.AddString("ipv4Addr", tlv.Endpoint.String())
-		} else if tlv.Endpoint.Is6() {
-			enc.AddString("ipv6Addr", tlv.Endpoint.String())
-		}
-	}
-
-	return nil
 }
 
 // Type implements TLVInterface.
@@ -1540,37 +1378,6 @@ func (tlv *PathSetupTypeCapability) Serialize() ([]byte, error) {
 	), nil
 }
 
-// MarshalLogObject implements TLVInterface.
-func (tlv *PathSetupTypeCapability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
-	if tlv == nil {
-		return nil
-	}
-
-	pstStrings := make([]string, len(tlv.PathSetupTypes))
-	for i, pst := range tlv.PathSetupTypes {
-		pstStrings[i] = pst.StringWithReference()
-	}
-	_ = enc.AddArray("pathSetupTypes", zapcore.ArrayMarshalerFunc(func(ae zapcore.ArrayEncoder) error {
-		for _, s := range pstStrings {
-			ae.AppendString(s)
-		}
-		return nil
-	}))
-
-	subTLVTypes := make([]string, len(tlv.SubTLVs))
-	for i, stlv := range tlv.SubTLVs {
-		subTLVTypes[i] = stlv.Type().StringWithReference()
-	}
-	_ = enc.AddArray("subTLVs", zapcore.ArrayMarshalerFunc(func(ae zapcore.ArrayEncoder) error {
-		for _, s := range subTLVTypes {
-			ae.AppendString(s)
-		}
-		return nil
-	}))
-
-	return nil
-}
-
 // Type implements TLVInterface.
 func (tlv *PathSetupTypeCapability) Type() TLVType {
 	return TLVPathSetupTypeCapability
@@ -1714,22 +1521,6 @@ func (tlv *AssocTypeList) Serialize() ([]byte, error) {
 	), nil
 }
 
-// MarshalLogObject implements TLVInterface.
-func (tlv *AssocTypeList) MarshalLogObject(enc zapcore.ObjectEncoder) error {
-	if tlv == nil {
-		return nil
-	}
-
-	_ = enc.AddArray("assocTypes", zapcore.ArrayMarshalerFunc(func(ae zapcore.ArrayEncoder) error {
-		for _, at := range tlv.AssocTypes {
-			ae.AppendString(at.StringWithReference())
-		}
-		return nil
-	}))
-
-	return nil
-}
-
 // Type implements TLVInterface.
 func (tlv *AssocTypeList) Type() TLVType {
 	return TLVAssocTypeList
@@ -1859,19 +1650,6 @@ func (tlv *SRPolicyCandidatePathIdentifier) serialize(typ TLVType) []byte {
 	)
 }
 
-// MarshalLogObject implements TLVInterface.
-func (tlv *SRPolicyCandidatePathIdentifier) MarshalLogObject(enc zapcore.ObjectEncoder) error {
-	if tlv == nil {
-		return nil
-	}
-
-	enc.AddUint8("protocolOrigin", tlv.ProtocolOrigin)
-	enc.AddUint32("originatorAsn", tlv.OriginatorASN)
-	enc.AddString("originatorAddr", tlv.OriginatorAddr.String())
-	enc.AddUint32("discriminator", tlv.Discriminator)
-	return nil
-}
-
 // Type implements TLVInterface.
 func (tlv *SRPolicyCandidatePathIdentifier) Type() TLVType {
 	return TLVSRPolicyCPathID
@@ -1940,16 +1718,6 @@ func (tlv *SRPolicyCandidatePathPreference) serialize(typ TLVType) []byte {
 	)
 }
 
-// MarshalLogObject implements TLVInterface.
-func (tlv *SRPolicyCandidatePathPreference) MarshalLogObject(enc zapcore.ObjectEncoder) error {
-	if tlv == nil {
-		return nil
-	}
-
-	enc.AddUint32("preference", tlv.Preference)
-	return nil
-}
-
 // Type implements TLVInterface.
 func (tlv *SRPolicyCandidatePathPreference) Type() TLVType {
 	return TLVSRPolicyCPathPreference
@@ -2014,16 +1782,6 @@ func (tlv *Color) Serialize() ([]byte, error) {
 	), nil
 }
 
-// MarshalLogObject implements TLVInterface.
-func (tlv *Color) MarshalLogObject(enc zapcore.ObjectEncoder) error {
-	if tlv == nil {
-		return nil
-	}
-
-	enc.AddUint32("color", tlv.Color)
-	return nil
-}
-
 // Type implements TLVInterface.
 func (tlv *Color) Type() TLVType {
 	return TLVColor
@@ -2068,17 +1826,6 @@ func (tlv *UnknownTLV) Serialize() ([]byte, error) {
 		tlv.Value,
 		make([]byte, padding),
 	), nil
-}
-
-// MarshalLogObject implements TLVInterface.
-func (tlv *UnknownTLV) MarshalLogObject(enc zapcore.ObjectEncoder) error {
-	if tlv == nil {
-		return nil
-	}
-
-	enc.AddString("type", fmt.Sprintf("0x%04x", uint16(tlv.Typ)))
-	enc.AddInt("length", len(tlv.Value))
-	return nil
 }
 
 // Type implements TLVInterface.

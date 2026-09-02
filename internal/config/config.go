@@ -42,7 +42,7 @@ type GRPCClient struct {
 type Log struct {
 	Path  string `yaml:"path"`
 	Name  string `yaml:"name"`
-	Debug bool   `yaml:"debug"`
+	Level string `yaml:"level"`
 }
 
 // GoBGP holds the configuration for GoBGP.

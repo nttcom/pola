@@ -9,8 +9,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
-
-	"go.uber.org/zap/zapcore"
 )
 
 // RefKind classifies the document defining a PCEP code point.
@@ -145,18 +143,6 @@ func (r Reference) MarshalJSON() ([]byte, error) {
 		Name: r.name,
 		URL:  r.URL(),
 	})
-}
-
-// MarshalLogObject marshals the reference into a log object.
-func (r Reference) MarshalLogObject(enc zapcore.ObjectEncoder) error {
-	enc.AddString("kind", r.kind.String())
-	if r.name != "" {
-		enc.AddString("name", r.name)
-	}
-	if url := r.URL(); url != "" {
-		enc.AddString("url", url)
-	}
-	return nil
 }
 
 // withReference appends a reference unless the code point is unregistered.

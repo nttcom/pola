@@ -14,8 +14,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	"go.uber.org/zap"
-
 	"github.com/nttcom/pola/internal/config"
 	"github.com/nttcom/pola/internal/gobgp"
 	"github.com/nttcom/pola/internal/version"
@@ -33,9 +31,9 @@ type flags struct {
 	configFile string
 }
 
-type monitorBGPLsEventsFunc func(ctx context.Context, serverAddr string, serverPort string, tedChan chan []table.TEDElem, logger *zap.Logger)
+type monitorBGPLsEventsFunc func(ctx context.Context, serverAddr string, serverPort string, tedChan chan []table.TEDElem, lg *logger.Logger)
 
-type newPCEFunc func(ctx context.Context, o *server.PCEOptions, logger *zap.Logger, tedElemsChan chan []table.TEDElem) server.Error
+type newPCEFunc func(ctx context.Context, o *server.PCEOptions, lg *logger.Logger, tedElemsChan chan []table.TEDElem) server.Error
 
 type runDeps struct {
 	newPCE     newPCEFunc
@@ -90,19 +88,24 @@ func run(args []string, deps runDeps) error {
 		}
 	}()
 
-	logger := logger.LogInit(fp, c.Global.Log.Debug)
+	level, err := parseLogLevel(c.Global.Log.Level)
+	if err != nil {
+		return fmt.Errorf("invalid config file: %w", err)
+	}
+
+	lg := logger.New(fp, level)
 	defer func() {
-		if err := logger.Sync(); err != nil {
+		if err := lg.Sync(); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: failed to sync logger: %v\n", err)
 		}
 	}()
 
-	// Cancelling ctx on SIGINT/SIGTERM is what drives graceful shutdown: it stops
-	// the PCE servers and the BGP-LS monitor goroutine.
+	// Cancelling ctx on SIGINT/SIGTERM triggers graceful shutdown of the PCE
+	// servers and BGP-LS monitor.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	tedElemsChan, err := newTEDElemsChan(ctx, &c, logger, deps.monitorBGP)
+	tedElemsChan, err := newTEDElemsChan(ctx, &c, lg, deps.monitorBGP)
 	if err != nil {
 		return err
 	}
@@ -121,11 +124,28 @@ func run(args []string, deps runDeps) error {
 		MaxKeepalive:     c.Global.PCEP.MaxKeepalive,
 		AllowNegotiation: c.Global.PCEP.AllowNegotiation,
 	}
-	if serverErr := deps.newPCE(ctx, o, logger, tedElemsChan); serverErr.Error != nil {
+	if serverErr := deps.newPCE(ctx, o, lg, tedElemsChan); serverErr.Error != nil {
 		return fmt.Errorf("server %q failed: %w", serverErr.Server, serverErr.Error)
 	}
 
 	return nil
+}
+
+// parseLogLevel converts a config-file log level into a logger.Level.
+// An empty string is treated as info.
+func parseLogLevel(level string) (logger.Level, error) {
+	switch level {
+	case "", "info":
+		return logger.LevelInfo, nil
+	case "debug":
+		return logger.LevelDebug, nil
+	case "warn":
+		return logger.LevelWarn, nil
+	case "error":
+		return logger.LevelError, nil
+	default:
+		return 0, fmt.Errorf("global.log.level %q is not supported", level)
+	}
 }
 
 func loadConfig(configFile string) (config.Config, error) {
@@ -141,8 +161,7 @@ func loadConfig(configFile string) (config.Config, error) {
 }
 
 func openLogFile(c *config.Config) (*os.File, error) {
-	// Create the log directory if it does not exist. Logs can carry topology
-	// and peer details, so access is limited to the owner and group.
+	// Create the log directory if it does not exist.
 	if err := os.MkdirAll(c.Global.Log.Path, 0o750); err != nil {
 		return nil, fmt.Errorf("failed to create log directory: %w", err)
 	}
@@ -160,7 +179,7 @@ func openLogFile(c *config.Config) (*os.File, error) {
 	return fp, nil
 }
 
-func newTEDElemsChan(ctx context.Context, c *config.Config, logger *zap.Logger, monitorBGP monitorBGPLsEventsFunc) (chan []table.TEDElem, error) {
+func newTEDElemsChan(ctx context.Context, c *config.Config, lg *logger.Logger, monitorBGP monitorBGPLsEventsFunc) (chan []table.TEDElem, error) {
 	if c.Global.TED == nil || !c.Global.TED.Enable {
 		return nil, nil
 	}
@@ -178,7 +197,7 @@ func newTEDElemsChan(ctx context.Context, c *config.Config, logger *zap.Logger, 
 		c.Global.GoBGP.GRPCClient.Address,
 		c.Global.GoBGP.GRPCClient.Port,
 		tedElemsChan,
-		logger,
+		lg,
 	)
 
 	return tedElemsChan, nil

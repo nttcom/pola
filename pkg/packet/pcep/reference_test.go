@@ -11,7 +11,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap/zapcore"
 )
 
 func TestRefKind_String(t *testing.T) {
@@ -141,38 +140,6 @@ func TestReference_MarshalJSON(t *testing.T) {
 			got, err := json.Marshal(tt.ref)
 			require.NoError(t, err)
 			assert.JSONEq(t, tt.want, string(got))
-		})
-	}
-}
-
-func TestReference_MarshalLogObject(t *testing.T) {
-	t.Parallel()
-
-	cases := map[string]struct {
-		ref  Reference
-		want map[string]any
-	}{
-		"RFC": {
-			ref: rfc(8231),
-			want: map[string]any{
-				"kind": "rfc",
-				"name": "RFC8231",
-				"url":  "https://www.rfc-editor.org/rfc/rfc8231.html",
-			},
-		},
-		"NotIANAAssigned": {
-			ref:  refNotIANAAssigned,
-			want: map[string]any{"kind": "not-iana-assigned"},
-		},
-	}
-
-	for name, tt := range cases {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			enc := zapcore.NewMapObjectEncoder()
-			require.NoError(t, tt.ref.MarshalLogObject(enc))
-			assert.Equal(t, tt.want, enc.Fields)
 		})
 	}
 }

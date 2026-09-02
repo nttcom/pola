@@ -10,10 +10,10 @@ import (
 	"testing"
 
 	pb "github.com/nttcom/pola/api/pola/v1"
+	"github.com/nttcom/pola/pkg/logger"
 	"github.com/nttcom/pola/pkg/packet/pcep"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
 )
 
 func TestToPBSessionState(t *testing.T) {
@@ -129,9 +129,9 @@ func TestToPBSessionStats_AlwaysZeroCountersForRolesPolaNeverPlays(t *testing.T)
 }
 
 func TestBuildPBSession_StatsOmittedUnlessRequested(t *testing.T) {
-	server := &Server{logger: zap.NewNop()}
-	apiServer := &APIServer{pce: server, logger: zap.NewNop()}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	server := &Server{logger: logger.NewNop()}
+	apiServer := &APIServer{pce: server, logger: logger.NewNop()}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 
 	without := apiServer.buildPBSession(ss, false)
 	assert.Nil(t, without.GetStats(), "Stats must be nil unless includeStats is set")
@@ -141,8 +141,8 @@ func TestBuildPBSession_StatsOmittedUnlessRequested(t *testing.T) {
 }
 
 func TestBuildPBSession_TimestampsAndInitiatorAndSyncState(t *testing.T) {
-	apiServer := &APIServer{pce: &Server{logger: zap.NewNop()}, logger: zap.NewNop()}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	apiServer := &APIServer{pce: &Server{logger: logger.NewNop()}, logger: logger.NewNop()}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 
 	pbSession := apiServer.buildPBSession(ss, false)
 	assert.NotZero(t, pbSession.GetCreatedAtUnixNano())

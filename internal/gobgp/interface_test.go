@@ -17,12 +17,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nttcom/pola/pkg/logger"
 	"github.com/nttcom/pola/pkg/table"
 	api "github.com/osrg/gobgp/v4/api"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest/observer"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -1126,7 +1125,7 @@ func TestEstablishWatchStream_RetriesThenGivesUpOnContextCancel(t *testing.T) {
 	}
 	done := make(chan result, 1)
 	go func() {
-		stream, ok := establishWatchStream(ctx, client, newWatchRequest(), 5*time.Millisecond, zap.NewNop())
+		stream, ok := establishWatchStream(ctx, client, newWatchRequest(), 5*time.Millisecond, logger.NewNop())
 		done <- result{stream, ok}
 	}()
 
@@ -1152,7 +1151,7 @@ func TestInitialSync(t *testing.T) {
 		}}
 		tedChan := make(chan []table.TEDElem, 1)
 
-		initialSync(context.Background(), client, tedChan, zap.NewNop())
+		initialSync(context.Background(), client, tedChan, logger.NewNop())
 
 		require.Len(t, tedChan, 1)
 		assert.Len(t, <-tedChan, 1)
@@ -1160,10 +1159,10 @@ func TestInitialSync(t *testing.T) {
 
 	t.Run("logs and skips delivery on failure", func(t *testing.T) {
 		client := &fakeGoBGPClient{listPathErr: errors.New("connection refused")}
-		core, logs := observer.New(zap.ErrorLevel)
+		lg, logs := logger.NewRecorder(logger.LevelError)
 		tedChan := make(chan []table.TEDElem, 1)
 
-		initialSync(context.Background(), client, tedChan, zap.New(core))
+		initialSync(context.Background(), client, tedChan, lg)
 
 		assert.Empty(t, tedChan)
 		require.Equal(t, 1, logs.Len())
@@ -1180,7 +1179,7 @@ func TestInitialSync(t *testing.T) {
 
 		done := make(chan struct{})
 		go func() {
-			initialSync(ctx, client, tedChan, zap.NewNop())
+			initialSync(ctx, client, tedChan, logger.NewNop())
 			close(done)
 		}()
 
@@ -1205,7 +1204,7 @@ func TestReconnectWatchStream_GivesUpOnContextCancel(t *testing.T) {
 	}
 	done := make(chan result, 1)
 	go func() {
-		stream, ok := reconnectWatchStream(ctx, client, newWatchRequest(), 5*time.Millisecond, zap.NewNop(), d, fetch, deliver)
+		stream, ok := reconnectWatchStream(ctx, client, newWatchRequest(), 5*time.Millisecond, logger.NewNop(), d, fetch, deliver)
 		done <- result{stream, ok}
 	}()
 
@@ -1249,7 +1248,7 @@ func testDebouncerTriggerFetchesOnceAfterCooldown(t *testing.T) {
 	}
 	delivered := make(chan []table.TEDElem, 1)
 
-	d.Trigger(t.Context(), fetch, func(elems []table.TEDElem) { delivered <- elems }, zap.NewNop())
+	d.Trigger(t.Context(), fetch, func(elems []table.TEDElem) { delivered <- elems }, logger.NewNop())
 
 	select {
 	case got := <-delivered:
@@ -1271,11 +1270,11 @@ func testDebouncerTriggerCollapsesTriggersWithinCooldown(t *testing.T) {
 	}
 	delivered := make(chan []table.TEDElem, 1)
 	deliver := func(elems []table.TEDElem) { delivered <- elems }
-	logger := zap.NewNop()
+	lg := logger.NewNop()
 
-	d.Trigger(ctx, fetch, deliver, logger)
+	d.Trigger(ctx, fetch, deliver, lg)
 	time.Sleep(10 * time.Millisecond)
-	d.Trigger(ctx, fetch, deliver, logger)
+	d.Trigger(ctx, fetch, deliver, lg)
 
 	select {
 	case <-delivered:
@@ -1296,7 +1295,7 @@ func testDebouncerTriggerStopsWithoutFetchingOnCancelFirst(t *testing.T) {
 	}
 	deliver := func([]table.TEDElem) { t.Fatal("deliver should not be called") }
 
-	d.Trigger(ctx, fetch, deliver, zap.NewNop())
+	d.Trigger(ctx, fetch, deliver, logger.NewNop())
 	cancel()
 
 	require.Eventually(t, func() bool {
@@ -1310,11 +1309,11 @@ func testDebouncerTriggerStopsWithoutFetchingOnCancelFirst(t *testing.T) {
 func testDebouncerTriggerLogsAndSkipsOnFetchFailure(t *testing.T) {
 	d := NewDebouncer(10 * time.Millisecond)
 
-	core, logs := observer.New(zap.ErrorLevel)
+	lg, logs := logger.NewRecorder(logger.LevelError)
 	fetch := func() ([]table.TEDElem, error) { return nil, errors.New("fetch failed") }
 	deliver := func([]table.TEDElem) { t.Fatal("deliver should not be called") }
 
-	d.Trigger(t.Context(), fetch, deliver, zap.New(core))
+	d.Trigger(t.Context(), fetch, deliver, lg)
 
 	require.Eventually(t, func() bool { return logs.Len() > 0 }, time.Second, time.Millisecond)
 	assert.Equal(t, "failed to get TED info", logs.All()[0].Message)
@@ -1324,14 +1323,14 @@ func testDebouncerTriggerSkipsDeliveryOnContextEndDuringFetch(t *testing.T) {
 	d := NewDebouncer(10 * time.Millisecond)
 	ctx, cancel := context.WithCancel(context.Background())
 
-	core, logs := observer.New(zap.DebugLevel)
+	lg, logs := logger.NewRecorder(logger.LevelDebug)
 	fetch := func() ([]table.TEDElem, error) {
 		cancel() // simulate the context ending while the fetch is in flight
 		return []table.TEDElem{table.NewLsNode(1, "r1")}, nil
 	}
 	deliver := func([]table.TEDElem) { t.Fatal("deliver should not be called") }
 
-	d.Trigger(ctx, fetch, deliver, zap.New(core))
+	d.Trigger(ctx, fetch, deliver, lg)
 
 	require.Eventually(t, func() bool { return logs.Len() > 0 }, time.Second, time.Millisecond)
 	assert.Equal(t, "deliver aborted due to context cancel", logs.All()[0].Message)
@@ -1359,12 +1358,12 @@ func testDebouncerTriggerHandlesTriggerDuringDelivery(t *testing.T) {
 		}
 		delivered <- struct{}{}
 	}
-	logger := zap.NewNop()
+	lg := logger.NewNop()
 
-	d.Trigger(ctx, fetch, deliver, logger)
+	d.Trigger(ctx, fetch, deliver, lg)
 
 	<-deliverStarted
-	d.Trigger(ctx, fetch, deliver, logger)
+	d.Trigger(ctx, fetch, deliver, lg)
 	close(releaseDeliver)
 
 	for range 2 {
@@ -1400,12 +1399,11 @@ func testDebouncerTriggerRetriesAfterFetchFailure(t *testing.T) {
 	}
 	delivered := make(chan []table.TEDElem, 1)
 	deliver := func(elems []table.TEDElem) { delivered <- elems }
-	core, logs := observer.New(zap.ErrorLevel)
-	logger := zap.New(core)
+	lg, logs := logger.NewRecorder(logger.LevelError)
 
-	d.Trigger(ctx, fetch, deliver, logger)
+	d.Trigger(ctx, fetch, deliver, lg)
 	<-fetchStarted
-	d.Trigger(ctx, fetch, deliver, logger) // arrives while the failing fetch is in flight
+	d.Trigger(ctx, fetch, deliver, lg) // arrives while the failing fetch is in flight
 	close(releaseFetch)
 
 	select {
@@ -1432,7 +1430,7 @@ func testDebouncerTriggerKeepsLoopingOnContextEndDuringSuccessfulFetch(t *testin
 	}
 	deliver := func([]table.TEDElem) { t.Fatal("deliver should not be called") }
 
-	d.Trigger(ctx, fetch, deliver, zap.NewNop())
+	d.Trigger(ctx, fetch, deliver, logger.NewNop())
 
 	require.Eventually(t, func() bool {
 		d.mu.Lock()
@@ -1453,7 +1451,7 @@ func testDebouncerTriggerKeepsLoopingOnContextEndDuringCooldownWait(t *testing.T
 		return nil, nil
 	}
 	deliver := func([]table.TEDElem) {}
-	logger := zap.NewNop()
+	lg := logger.NewNop()
 
 	// Set a pending cooldown deterministically to exercise the ctx.Done() path.
 	d.mu.Lock()
@@ -1461,7 +1459,7 @@ func testDebouncerTriggerKeepsLoopingOnContextEndDuringCooldownWait(t *testing.T
 	d.last = time.Now().Add(50 * time.Millisecond)
 	d.mu.Unlock()
 
-	go d.run(ctx, fetch, deliver, logger)
+	go d.run(ctx, fetch, deliver, lg)
 
 	require.Eventually(t, func() bool {
 		d.mu.Lock()
@@ -1483,12 +1481,12 @@ func testDebouncerTriggerDoesNotLoseLastTrigger(t *testing.T) {
 		return nil, nil
 	}
 	deliver := func([]table.TEDElem) {}
-	logger := zap.NewNop()
+	lg := logger.NewNop()
 
 	const rounds = 500
 	for i := int64(1); i <= rounds; i++ {
 		generation.Store(i)
-		d.Trigger(ctx, fetch, deliver, logger)
+		d.Trigger(ctx, fetch, deliver, lg)
 	}
 
 	require.Eventually(t, func() bool {
@@ -1508,7 +1506,7 @@ func testDebouncerRunReleasesLockOnPanic(t *testing.T) {
 			}
 		}()
 		fetch := func() ([]table.TEDElem, error) { panic("boom") }
-		d.run(context.Background(), fetch, func([]table.TEDElem) {}, zap.NewNop())
+		d.run(context.Background(), fetch, func([]table.TEDElem) {}, logger.NewNop())
 		return false
 	}()
 	require.True(t, panicked, "expected run to panic")
@@ -1604,7 +1602,7 @@ func testMonitorBGPLsEventsAlreadyCanceledContext(t *testing.T) {
 	done := make(chan struct{})
 
 	go func() {
-		MonitorBGPLsEvents(ctx, "127.0.0.1", "50051", tedChan, zap.NewNop())
+		MonitorBGPLsEvents(ctx, "127.0.0.1", "50051", tedChan, logger.NewNop())
 		close(done)
 	}()
 
@@ -1616,12 +1614,12 @@ func testMonitorBGPLsEventsAlreadyCanceledContext(t *testing.T) {
 }
 
 func testMonitorBGPLsEventsUnusableAddress(t *testing.T) {
-	core, logs := observer.New(zap.ErrorLevel)
+	lg, logs := logger.NewRecorder(logger.LevelError)
 	tedChan := make(chan []table.TEDElem, 1)
 	done := make(chan struct{})
 
 	go func() {
-		MonitorBGPLsEvents(context.Background(), "\x00", "50051", tedChan, zap.New(core))
+		MonitorBGPLsEvents(context.Background(), "\x00", "50051", tedChan, lg)
 		close(done)
 	}()
 
@@ -1685,7 +1683,7 @@ func testMonitorBGPLsEventsReconnectsAfterStreamEnd(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		monitorBGPLsEvents(ctx, host, port, tedChan, zap.NewNop(), monitorOptions{
+		monitorBGPLsEvents(ctx, host, port, tedChan, logger.NewNop(), monitorOptions{
 			debounceCooldown: 10 * time.Millisecond,
 			retryInterval:    10 * time.Millisecond,
 		})
@@ -1725,7 +1723,7 @@ func testMonitorBGPLsEventsContextCanceled(t *testing.T) {
 	done := make(chan struct{})
 
 	go func() {
-		MonitorBGPLsEvents(ctx, host, port, tedChan, zap.NewNop())
+		MonitorBGPLsEvents(ctx, host, port, tedChan, logger.NewNop())
 		close(done)
 	}()
 
@@ -1761,7 +1759,7 @@ func testMonitorBGPLsEventsDebouncedFetch(t *testing.T) {
 	done := make(chan struct{})
 
 	go func() {
-		monitorBGPLsEvents(ctx, host, port, tedChan, zap.NewNop(), monitorOptions{
+		monitorBGPLsEvents(ctx, host, port, tedChan, logger.NewNop(), monitorOptions{
 			debounceCooldown: 20 * time.Millisecond,
 			retryInterval:    10 * time.Millisecond,
 		})
@@ -1804,13 +1802,13 @@ func testMonitorBGPLsEventsReestablishesStream(t *testing.T) {
 	}
 	host, port := startTestGoBGPServer(t, server)
 
-	core, logs := observer.New(zap.ErrorLevel)
+	lg, logs := logger.NewRecorder(logger.LevelError)
 	ctx, cancel := context.WithCancel(context.Background())
 	tedChan := make(chan []table.TEDElem, 4)
 	done := make(chan struct{})
 
 	go func() {
-		monitorBGPLsEvents(ctx, host, port, tedChan, zap.New(core), monitorOptions{
+		monitorBGPLsEvents(ctx, host, port, tedChan, lg, monitorOptions{
 			debounceCooldown: 20 * time.Millisecond,
 			retryInterval:    10 * time.Millisecond,
 		})
@@ -1893,7 +1891,7 @@ func testMonitorBGPLsEventsResyncsAfterReconnect(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		monitorBGPLsEvents(ctx, host, port, tedChan, zap.NewNop(), monitorOptions{
+		monitorBGPLsEvents(ctx, host, port, tedChan, logger.NewNop(), monitorOptions{
 			debounceCooldown: 10 * time.Millisecond,
 			retryInterval:    10 * time.Millisecond,
 		})

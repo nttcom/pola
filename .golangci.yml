@@ -8,6 +8,7 @@ linters:
     - containedctx
     - contextcheck
     - copyloopvar
+    - depguard
     - dupword
     - durationcheck
     - errchkjson
@@ -23,7 +24,6 @@ linters:
     - gosec
     - iface
     - intrange
-    - loggercheck
     - makezero
     - mirror
     - misspell
@@ -40,6 +40,22 @@ linters:
     - usestdlibvars
     - wastedassign
   settings:
+    depguard:
+      rules:
+        logging:
+          files:
+            - '!**/pkg/logger/*.go'
+          deny:
+            - pkg: log
+              desc: use pkg/logger instead
+            - pkg: go.uber.org/zap
+              desc: use pkg/logger instead
+        gobgp:
+          files:
+            - '!**/internal/gobgp/*.go'
+          deny:
+            - pkg: github.com/osrg/gobgp/v4
+              desc: use internal/gobgp instead
     gochecksumtype:
       default-signifies-exhaustive: false
     goconst:
@@ -51,9 +67,6 @@ linters:
       enable:
         - identical
         - unused
-    loggercheck:
-      require-string-key: true
-      no-printf-like: true
     nolintlint:
       require-explanation: true
       require-specific: true
@@ -79,10 +92,6 @@ linters:
       - path: ^tools/coverage-diff/
         linters:
           - gosec
-      - path: ^examples/
-        text: exitAfterDefer
-        linters:
-          - gocritic
 formatters:
   enable:
     - gofumpt

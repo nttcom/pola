@@ -12,18 +12,18 @@ import (
 	"time"
 
 	pb "github.com/nttcom/pola/api/pola/v1"
+	"github.com/nttcom/pola/pkg/logger"
 	"github.com/nttcom/pola/pkg/packet/pcep"
 	"github.com/nttcom/pola/pkg/table"
-	"go.uber.org/zap"
 )
 
-func dedupCapabilities(logger *zap.Logger, kind string, caps []pcep.CapabilityInterface) []*pb.Capability {
+func dedupCapabilities(lg *logger.Logger, kind string, caps []pcep.CapabilityInterface) []*pb.Capability {
 	var pbCaps []*pb.Capability
 	seen := make(map[string]struct{})
 	for _, cap := range caps {
 		b, err := cap.Serialize()
 		if err != nil {
-			logger.Warn(fmt.Sprintf("failed to serialize %s capability", kind), zap.Error(err))
+			lg.Warn(fmt.Sprintf("failed to serialize %s capability", kind), logger.Error(err))
 			continue
 		}
 		key := fmt.Sprintf("%d:%s", cap.Type(), b)
@@ -364,7 +364,7 @@ func convertSegment(seg table.Segment) *pb.Segment {
 }
 
 // convertLsNode converts a table.LsNode to a protobuf LsNode.
-func convertLsNode(lsNode *table.LsNode, logger *zap.Logger) *pb.LsNode {
+func convertLsNode(lsNode *table.LsNode, lg *logger.Logger) *pb.LsNode {
 	if lsNode == nil {
 		return nil
 	}
@@ -376,21 +376,21 @@ func convertLsNode(lsNode *table.LsNode, logger *zap.Logger) *pb.LsNode {
 		Hostname:   lsNode.Hostname,
 		SrgbBegin:  lsNode.SrgbBegin,
 		SrgbEnd:    lsNode.SrgbEnd,
-		Links:      convertLsLinks(lsNode.Links, logger),
+		Links:      convertLsLinks(lsNode.Links, lg),
 		Prefixes:   convertLsPrefixes(lsNode.Prefixes),
 		Srv6Sids:   convertLsSrv6SIDs(lsNode.SRv6SIDs),
 	}
 }
 
 // convertLsLinks converts a slice of table.LsLink to protobuf LsLink.
-func convertLsLinks(links []*table.LsLink, logger *zap.Logger) []*pb.LsLink {
+func convertLsLinks(links []*table.LsLink, lg *logger.Logger) []*pb.LsLink {
 	if links == nil {
 		return nil
 	}
 	result := make([]*pb.LsLink, 0, len(links))
 	for _, link := range links {
 		if link == nil || link.LocalNode == nil || link.RemoteNode == nil {
-			logger.Debug("skip link with nil node", zap.Any("link", link))
+			lg.Debug("skip link with nil node", logger.Any("link", link))
 			continue
 		}
 		result = append(result, buildLsLink(link))

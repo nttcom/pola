@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	"go.uber.org/zap"
+	"github.com/nttcom/pola/pkg/logger"
 	grpc "google.golang.org/grpc"
 
 	"github.com/nttcom/pola/pkg/packet/pcep"
@@ -33,7 +33,7 @@ type Server struct {
 	sessionIDs               sessionIDAllocator
 	tedMu                    sync.RWMutex
 	ted                      *table.LsTED
-	logger                   *zap.Logger
+	logger                   *logger.Logger
 	asn                      uint32
 	localKeepalive           uint8
 	localDeadTimer           uint8
@@ -155,7 +155,7 @@ func resolveLocalTimers(keepalive, deadTimer *uint8) (uint8, uint8) {
 }
 
 // NewPCE starts the PCEP and gRPC servers.
-func NewPCE(ctx context.Context, o *PCEOptions, logger *zap.Logger, tedElemsChan chan []table.TEDElem) Error {
+func NewPCE(ctx context.Context, o *PCEOptions, lg *logger.Logger, tedElemsChan chan []table.TEDElem) Error {
 	if err := validatePCEOptions(o); err != nil {
 		return Error{Server: "config", Error: err}
 	}
@@ -167,7 +167,7 @@ func NewPCE(ctx context.Context, o *PCEOptions, logger *zap.Logger, tedElemsChan
 	minKeepalive, maxKeepalive, keepaliveRangeEnabled := resolveKeepaliveRange(o.MinKeepalive, o.MaxKeepalive)
 	allowNegotiation := o.AllowNegotiation == nil || *o.AllowNegotiation
 	s := &Server{
-		logger:                logger,
+		logger:                lg,
 		asn:                   o.ASN,
 		localKeepalive:        localKeepalive,
 		localDeadTimer:        localDeadTimer,
@@ -184,7 +184,7 @@ func NewPCE(ctx context.Context, o *PCEOptions, logger *zap.Logger, tedElemsChan
 	}
 
 	grpcServer := grpc.NewServer()
-	apiServer := NewAPIServer(s, grpcServer, o.USidMode, logger)
+	apiServer := NewAPIServer(s, grpcServer, o.USidMode, lg)
 
 	type result struct {
 		server string
@@ -208,7 +208,7 @@ func NewPCE(ctx context.Context, o *PCEOptions, logger *zap.Logger, tedElemsChan
 		if r.err == nil {
 			continue
 		}
-		logger.Error("Server encountered an error", zap.String("server", r.server), zap.Error(r.err))
+		lg.Error("Server encountered an error", logger.String("server", r.server), logger.Error(r.err))
 		if firstErr.Error == nil {
 			firstErr = Error{Server: r.server, Error: r.err}
 			cancel()
@@ -251,7 +251,7 @@ func (s *Server) Serve(address string, port string) error {
 	}
 	localAddr := netip.AddrPortFrom(a, uint16(p))
 
-	s.logger.Info("start listening on PCEP port", zap.String("address", localAddr.String()))
+	s.logger.Info("start listening on PCEP port", logger.String("address", localAddr.String()))
 	l, err := net.ListenTCP("tcp", net.TCPAddrFromAddrPort(localAddr))
 	if err != nil {
 		return fmt.Errorf("failed to listen on PCEP port %s: %w", localAddr.String(), err)
@@ -271,7 +271,7 @@ func (s *Server) Serve(address string, port string) error {
 		s.listener = nil
 		s.listenerMu.Unlock()
 		if err := l.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
-			s.logger.Warn("failed to close PCEP listener", zap.Error(err))
+			s.logger.Warn("failed to close PCEP listener", logger.Error(err))
 		}
 	}()
 
@@ -335,13 +335,13 @@ func (s *Server) registerSession(conn net.Conn, peerAddr netip.Addr) *Session {
 }
 
 func (s *Server) rejectSecondSession(conn net.Conn, peerAddr netip.Addr) {
-	s.logger.Warn("rejecting second PCEP session attempt from peer", zap.String("peer", peerAddr.String()))
+	s.logger.Warn("rejecting second PCEP session attempt from peer", logger.String("peer", peerAddr.String()))
 
 	pcerrMessage := pcep.NewPCErrMessage(pcepErrorTypeSecondSessionAttempt, pcepErrorValueSecondSessionAttempt, nil)
 	if byteMessage, err := pcerrMessage.Serialize(); err != nil {
-		s.logger.Warn("failed to serialize PCErr for second session attempt", zap.Error(err))
+		s.logger.Warn("failed to serialize PCErr for second session attempt", logger.Error(err))
 	} else if _, err := conn.Write(byteMessage); err != nil {
-		s.logger.Warn("failed to send PCErr for second session attempt", zap.Error(err))
+		s.logger.Warn("failed to send PCErr for second session attempt", logger.Error(err))
 	}
 
 	s.closeRejectedConn(conn, "second PCEP session attempt from peer")
@@ -350,7 +350,7 @@ func (s *Server) rejectSecondSession(conn net.Conn, peerAddr netip.Addr) {
 func (s *Server) closeRejectedConn(conn net.Conn, why string) {
 	if err := conn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
 		s.logger.Warn("failed to close rejected TCP connection",
-			zap.String("reason", why), zap.Error(err))
+			logger.String("reason", why), logger.Error(err))
 	}
 }
 
@@ -358,7 +358,7 @@ func (s *Server) awaitShutdown(ctx context.Context, stopGRPC func()) {
 	<-ctx.Done()
 	s.logger.Info("shutdown requested, stopping PCE server")
 	if err := s.Shutdown(); err != nil {
-		s.logger.Warn("failed to shut down PCEP server", zap.Error(err))
+		s.logger.Warn("failed to shut down PCEP server", logger.Error(err))
 	}
 	stopGRPC()
 }
@@ -397,7 +397,7 @@ func (s *Server) gracefulCloseSession(ss *Session) {
 	go func() {
 		defer close(sendDone)
 		if sendErr := ss.SendClose(pcep.CloseReasonNoExplanationProvided); sendErr != nil {
-			s.logger.Warn("failed to send PCEP close message during shutdown", zap.Error(sendErr))
+			s.logger.Warn("failed to send PCEP close message during shutdown", logger.Error(sendErr))
 		}
 	}()
 
@@ -408,7 +408,7 @@ func (s *Server) gracefulCloseSession(ss *Session) {
 	select {
 	case <-sendDone:
 	case <-time.After(timeout):
-		s.logger.Warn("timed out sending PCEP close message during shutdown", zap.String("session", ss.peerAddr.String()))
+		s.logger.Warn("timed out sending PCEP close message during shutdown", logger.String("session", ss.peerAddr.String()))
 	}
 
 	s.closeSession(ss)
@@ -416,7 +416,7 @@ func (s *Server) gracefulCloseSession(ss *Session) {
 
 func (s *Server) closeSession(session *Session) {
 	if err := session.tcpConn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
-		s.logger.Warn("failed to close TCP connection", zap.Error(err))
+		s.logger.Warn("failed to close TCP connection", logger.Error(err))
 	}
 	session.clearSRPolicyIntents()
 

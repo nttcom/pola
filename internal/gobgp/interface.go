@@ -16,9 +16,8 @@ import (
 	"sync"
 	"time"
 
-	"go.uber.org/zap"
-
 	"github.com/nttcom/pola/internal/safecast"
+	"github.com/nttcom/pola/pkg/logger"
 	"github.com/nttcom/pola/pkg/table"
 	api "github.com/osrg/gobgp/v4/api"
 	"google.golang.org/grpc"
@@ -41,30 +40,30 @@ var defaultMonitorOptions = monitorOptions{
 }
 
 // MonitorBGPLsEvents monitors BGP-LS events and sends updates to the TED channel.
-func MonitorBGPLsEvents(ctx context.Context, serverAddr string, serverPort string, tedChan chan []table.TEDElem, logger *zap.Logger) {
-	monitorBGPLsEvents(ctx, serverAddr, serverPort, tedChan, logger, defaultMonitorOptions)
+func MonitorBGPLsEvents(ctx context.Context, serverAddr string, serverPort string, tedChan chan []table.TEDElem, lg *logger.Logger) {
+	monitorBGPLsEvents(ctx, serverAddr, serverPort, tedChan, lg, defaultMonitorOptions)
 }
 
-func monitorBGPLsEvents(ctx context.Context, serverAddr string, serverPort string, tedChan chan []table.TEDElem, logger *zap.Logger, opts monitorOptions) {
+func monitorBGPLsEvents(ctx context.Context, serverAddr string, serverPort string, tedChan chan []table.TEDElem, lg *logger.Logger, opts monitorOptions) {
 	cc, client, err := newGoBGPClient(serverAddr, serverPort)
 	if err != nil {
-		logger.Error("failed to create gRPC client", zap.String("address", fmt.Sprintf("%s:%s", serverAddr, serverPort)), zap.Error(err))
+		lg.Error("failed to create gRPC client", logger.String("address", fmt.Sprintf("%s:%s", serverAddr, serverPort)), logger.Error(err))
 		return
 	}
 	defer func() {
 		if err := cc.Close(); err != nil {
-			logger.Error("failed to close gRPC connection", zap.Error(err))
+			lg.Error("failed to close gRPC connection", logger.Error(err))
 		}
 	}()
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	initialSync(ctx, client, tedChan, logger)
+	initialSync(ctx, client, tedChan, lg)
 
 	req := newWatchRequest()
 
-	stream, ok := establishWatchStream(ctx, client, req, opts.retryInterval, logger)
+	stream, ok := establishWatchStream(ctx, client, req, opts.retryInterval, lg)
 	if !ok {
 		return
 	}
@@ -87,12 +86,12 @@ func monitorBGPLsEvents(ctx context.Context, serverAddr string, serverPort strin
 		res, err := stream.Recv()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				logger.Info("BGP-LS watch stream closed by peer, reconnecting")
+				lg.Info("BGP-LS watch stream closed by peer, reconnecting")
 			} else {
-				logger.Error("error receiving BGP-LS event", zap.Error(err))
+				lg.Error("error receiving BGP-LS event", logger.Error(err))
 			}
 
-			stream, ok = reconnectWatchStream(ctx, client, req, opts.retryInterval, logger, debouncer, fetch, deliver)
+			stream, ok = reconnectWatchStream(ctx, client, req, opts.retryInterval, lg, debouncer, fetch, deliver)
 			if !ok {
 				return
 			}
@@ -100,7 +99,7 @@ func monitorBGPLsEvents(ctx context.Context, serverAddr string, serverPort strin
 		}
 
 		if t := res.GetTable(); t != nil {
-			debouncer.Trigger(ctx, fetch, deliver, logger)
+			debouncer.Trigger(ctx, fetch, deliver, lg)
 		}
 	}
 }
@@ -110,7 +109,7 @@ func reconnectWatchStream(
 	client api.GoBgpServiceClient,
 	req *api.WatchEventRequest,
 	retryInterval time.Duration,
-	logger *zap.Logger,
+	lg *logger.Logger,
 	debouncer *Debouncer,
 	fetch func() ([]table.TEDElem, error),
 	deliver func([]table.TEDElem),
@@ -119,12 +118,12 @@ func reconnectWatchStream(
 		return nil, false
 	}
 
-	stream, ok := establishWatchStream(ctx, client, req, retryInterval, logger)
+	stream, ok := establishWatchStream(ctx, client, req, retryInterval, lg)
 	if !ok {
 		return nil, false
 	}
 
-	debouncer.Trigger(ctx, fetch, deliver, logger)
+	debouncer.Trigger(ctx, fetch, deliver, lg)
 
 	return stream, true
 }
@@ -134,14 +133,14 @@ func establishWatchStream(
 	client api.GoBgpServiceClient,
 	req *api.WatchEventRequest,
 	retryInterval time.Duration,
-	logger *zap.Logger,
+	lg *logger.Logger,
 ) (grpc.ServerStreamingClient[api.WatchEventResponse], bool) {
 	for {
 		stream, err := client.WatchEvent(ctx, req)
 		if err == nil {
 			return stream, true
 		}
-		logger.Error("failed to establish watch stream", zap.Error(err))
+		lg.Error("failed to establish watch stream", logger.Error(err))
 		if !waitForRetry(ctx, retryInterval) {
 			return nil, false
 		}
@@ -175,10 +174,10 @@ func newGoBGPClient(serverAddress string, serverPort string) (*grpc.ClientConn, 
 	return cc, client, nil
 }
 
-func initialSync(ctx context.Context, client api.GoBgpServiceClient, tedChan chan []table.TEDElem, logger *zap.Logger) {
+func initialSync(ctx context.Context, client api.GoBgpServiceClient, tedChan chan []table.TEDElem, lg *logger.Logger) {
 	tedElems, err := GetBGPlsNLRIs(ctx, client)
 	if err != nil {
-		logger.Error("failed to get initial TED info", zap.Error(err))
+		lg.Error("failed to get initial TED info", logger.Error(err))
 		return
 	}
 
@@ -206,7 +205,7 @@ func (d *Debouncer) Trigger(
 	ctx context.Context,
 	fetch func() ([]table.TEDElem, error),
 	deliver func([]table.TEDElem),
-	logger *zap.Logger,
+	lg *logger.Logger,
 ) {
 	d.mu.Lock()
 	d.last = time.Now()
@@ -217,14 +216,14 @@ func (d *Debouncer) Trigger(
 	d.active = true
 	d.mu.Unlock()
 
-	go d.run(ctx, fetch, deliver, logger)
+	go d.run(ctx, fetch, deliver, lg)
 }
 
 func (d *Debouncer) run(
 	ctx context.Context,
 	fetch func() ([]table.TEDElem, error),
 	deliver func([]table.TEDElem),
-	logger *zap.Logger,
+	lg *logger.Logger,
 ) {
 	released := false
 	defer func() {
@@ -274,7 +273,7 @@ outer:
 		fetchStart := time.Now()
 		tedElems, err := fetch()
 		if err != nil {
-			logger.Error("failed to get TED info", zap.Error(err))
+			lg.Error("failed to get TED info", logger.Error(err))
 			if finish(fetchStart) {
 				continue outer
 			}
@@ -282,7 +281,7 @@ outer:
 		}
 
 		if ctx.Err() != nil {
-			logger.Debug("deliver aborted due to context cancel")
+			lg.Debug("deliver aborted due to context cancel")
 			if finish(fetchStart) {
 				continue outer
 			}

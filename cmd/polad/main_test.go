@@ -13,8 +13,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/nttcom/pola/pkg/logger"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
 
 	"github.com/nttcom/pola/internal/config"
 	"github.com/nttcom/pola/pkg/server"
@@ -60,10 +60,11 @@ func writeConfigFile(t *testing.T, c config.Config) string {
   log:
     path: %q
     name: %q
+    level: %q
 %s`,
 		c.Global.PCEP.Address, c.Global.PCEP.Port,
 		c.Global.GRPCServer.Address, c.Global.GRPCServer.Port,
-		c.Global.Log.Path, c.Global.Log.Name,
+		c.Global.Log.Path, c.Global.Log.Name, c.Global.Log.Level,
 		tedBlock,
 	)
 
@@ -71,6 +72,34 @@ func writeConfigFile(t *testing.T, c config.Config) string {
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
 
 	return path
+}
+
+func TestParseLogLevel(t *testing.T) {
+	cases := map[string]struct {
+		level   string
+		want    logger.Level
+		wantErr bool
+	}{
+		"empty defaults to info": {level: "", want: logger.LevelInfo},
+		"info":                   {level: "info", want: logger.LevelInfo},
+		"debug":                  {level: "debug", want: logger.LevelDebug},
+		"warn":                   {level: "warn", want: logger.LevelWarn},
+		"error":                  {level: "error", want: logger.LevelError},
+		"unsupported":            {level: "trace", wantErr: true},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			got, err := parseLogLevel(tt.level)
+
+			if tt.wantErr {
+				require.ErrorContains(t, err, "global.log.level")
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got)
+		})
+	}
 }
 
 func TestLoadConfig(t *testing.T) {
@@ -166,7 +195,7 @@ func TestNewTEDElemsChan(t *testing.T) {
 	t.Run("returns nil when TED is not configured", func(t *testing.T) {
 		c := &config.Config{Global: config.Global{}}
 
-		ch, err := newTEDElemsChan(context.Background(), c, zap.NewNop(), nil)
+		ch, err := newTEDElemsChan(context.Background(), c, logger.NewNop(), nil)
 
 		require.NoError(t, err)
 		require.Nil(t, ch)
@@ -175,7 +204,7 @@ func TestNewTEDElemsChan(t *testing.T) {
 	t.Run("returns nil when TED is disabled", func(t *testing.T) {
 		c := &config.Config{Global: config.Global{TED: &config.TED{Enable: false}}}
 
-		ch, err := newTEDElemsChan(context.Background(), c, zap.NewNop(), nil)
+		ch, err := newTEDElemsChan(context.Background(), c, logger.NewNop(), nil)
 
 		require.NoError(t, err)
 		require.Nil(t, ch)
@@ -184,7 +213,7 @@ func TestNewTEDElemsChan(t *testing.T) {
 	t.Run("returns an error when ASN is missing", func(t *testing.T) {
 		c := &config.Config{Global: config.Global{TED: &config.TED{Enable: true, Source: tedSourceGoBGP}}}
 
-		ch, err := newTEDElemsChan(context.Background(), c, zap.NewNop(), nil)
+		ch, err := newTEDElemsChan(context.Background(), c, logger.NewNop(), nil)
 
 		require.ErrorContains(t, err, "Global.TED.ASN")
 		require.Nil(t, ch)
@@ -193,7 +222,7 @@ func TestNewTEDElemsChan(t *testing.T) {
 	t.Run("returns an error when the source is not supported", func(t *testing.T) {
 		c := &config.Config{Global: config.Global{TED: &config.TED{Enable: true, ASN: 65000, Source: "unknown"}}}
 
-		ch, err := newTEDElemsChan(context.Background(), c, zap.NewNop(), nil)
+		ch, err := newTEDElemsChan(context.Background(), c, logger.NewNop(), nil)
 
 		require.ErrorContains(t, err, "not defined")
 		require.Nil(t, ch)
@@ -209,13 +238,13 @@ func TestNewTEDElemsChan(t *testing.T) {
 			},
 		}
 		called := make(chan struct{})
-		monitor := func(_ context.Context, addr, port string, _ chan []table.TEDElem, _ *zap.Logger) {
+		monitor := func(_ context.Context, addr, port string, _ chan []table.TEDElem, _ *logger.Logger) {
 			require.Equal(t, testAddr, addr)
 			require.Equal(t, "0", port)
 			close(called)
 		}
 
-		ch, err := newTEDElemsChan(context.Background(), c, zap.NewNop(), monitor)
+		ch, err := newTEDElemsChan(context.Background(), c, logger.NewNop(), monitor)
 
 		require.NoError(t, err)
 		require.NotNil(t, ch)
@@ -269,6 +298,17 @@ func TestRun(t *testing.T) {
 		require.ErrorContains(t, err, "invalid config file")
 	})
 
+	t.Run("returns an error when the log level is invalid", func(t *testing.T) {
+		c := validConfig(t)
+		c.Global.Log.Level = "trace"
+		path := writeConfigFile(t, c)
+
+		err := run([]string{"-f", path}, defaultRunDeps())
+
+		require.ErrorContains(t, err, "invalid config file")
+		require.ErrorContains(t, err, "global.log.level")
+	})
+
 	t.Run("returns an error when TED is misconfigured", func(t *testing.T) {
 		c := validConfig(t)
 		c.Global.TED = &config.TED{Enable: true, ASN: 65000, Source: "unsupported"}
@@ -283,7 +323,7 @@ func TestRun(t *testing.T) {
 		path := writeConfigFile(t, validConfig(t))
 		wantErr := errors.New("boom")
 		deps := runDeps{
-			newPCE: func(context.Context, *server.PCEOptions, *zap.Logger, chan []table.TEDElem) server.Error {
+			newPCE: func(context.Context, *server.PCEOptions, *logger.Logger, chan []table.TEDElem) server.Error {
 				return server.Error{Server: "pcep", Error: wantErr}
 			},
 		}
@@ -298,7 +338,7 @@ func TestRun(t *testing.T) {
 		path := writeConfigFile(t, validConfig(t))
 		called := make(chan struct{})
 		deps := runDeps{
-			newPCE: func(context.Context, *server.PCEOptions, *zap.Logger, chan []table.TEDElem) server.Error {
+			newPCE: func(context.Context, *server.PCEOptions, *logger.Logger, chan []table.TEDElem) server.Error {
 				close(called)
 				return server.Error{}
 			},
