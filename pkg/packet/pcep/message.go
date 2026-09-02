@@ -283,6 +283,8 @@ func (m *PCErrMessage) DecodeFromBytes(messageBody []uint8) error {
 				return err
 			}
 			m.Open = openObj
+		default:
+			// RFC 5440 §6.7: ignore unsupported object classes.
 		}
 		offset += int(commonObjectHeader.ObjectLength)
 	}

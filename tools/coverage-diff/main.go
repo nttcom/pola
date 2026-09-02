@@ -396,6 +396,7 @@ func (idx *sourceIndex) ensure(file string) {
 		if tok == token.EOF {
 			break
 		}
+		//nolint:exhaustive // only COMMENT, LBRACE, and RBRACE need special handling
 		switch tok {
 		case token.COMMENT:
 			if isLineDirective(lit) {
