@@ -43,6 +43,7 @@ LICENSES_OUTPUT   := licenses/THIRD_PARTY_LICENSES.md
 	build \
 	install \
 	test \
+	test-examples \
 	test-race \
 	test-coverage \
 	test-coverage-html \
@@ -136,6 +137,9 @@ install: ## Install Go binaries into GOPATH/bin
 test: ## Run Go unit tests
 	go test ./...
 
+test-examples: ## Run Go unit tests for the examples module
+	cd examples && go test ./...
+
 test-race: ## Run Go unit tests with race detector
 	go test -race ./...
 
@@ -192,7 +196,7 @@ test-scenario: test-deps ## Run containerlab scenario tests
 test-scenario-parallel: PYTEST_ARGS = -s -n 4 --dist loadgroup
 test-scenario-parallel: test-scenario ## Run containerlab scenario tests, one lab per worker
 
-ci: check-proto check-licenses lint build test test-coverage-diff ## Run the same checks as CI
+ci: check-proto check-licenses lint build test test-examples test-coverage-diff ## Run the same checks as CI
 
 release: ## Cut a release: make release VERSION=X.Y.Z
 	@if [ -z "$(VERSION)" ]; then echo "Usage: make release VERSION=X.Y.Z"; exit 1; fi

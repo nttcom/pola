@@ -43,6 +43,9 @@ jobs:
       - name: Run unit tests
         run: make test
 
+      - name: Run unit tests for the examples module
+        run: make test-examples
+
       - name: Run unit tests with race detector
         run: make test-race
 

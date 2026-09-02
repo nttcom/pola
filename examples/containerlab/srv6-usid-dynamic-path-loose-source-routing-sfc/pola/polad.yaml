@@ -7,7 +7,7 @@ global:
     port: 50052
   log:
     path: "/var/log/pola/"
-    debug: true
+    level: "debug"
     name: "polad.log"
   ted:
     enable: true
