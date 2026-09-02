@@ -530,21 +530,24 @@ func (ss *Session) negotiateOpen(neg *openNegotiation) error {
 			return err
 		}
 
-		after := neg.vars()
-		// Restart the initialization timer only when the negotiation state changes.
-		if after != before {
-			ss.restartInitializationTimer(neg)
-		}
-
-		// Keepalive starts once the peer's Open is accepted.
-		if !before.remoteOK && after.remoteOK && stopNegotiationKeepalive == nil {
-			stopNegotiationKeepalive = ss.startNegotiationKeepalive()
-		}
+		ss.applyNegotiationTransition(neg, before, &stopNegotiationKeepalive)
 	}
 }
 
-// restartInitializationTimer starts or restarts the initialization timer
-// for the current negotiation state.
+// applyNegotiationTransition restarts the initialization timer when the
+// negotiation state changed this round, and starts the negotiation Keepalive
+// once the peer's Open has just been accepted.
+func (ss *Session) applyNegotiationTransition(neg *openNegotiation, before negotiationVars, stopNegotiationKeepalive *func()) {
+	after := neg.vars()
+	if after != before {
+		ss.restartInitializationTimer(neg)
+	}
+
+	if !before.remoteOK && after.remoteOK && *stopNegotiationKeepalive == nil {
+		*stopNegotiationKeepalive = ss.startNegotiationKeepalive()
+	}
+}
+
 func (ss *Session) restartInitializationTimer(neg *openNegotiation) {
 	timer := ss.openWait
 	if neg.state() == sessionStateKeepWait {

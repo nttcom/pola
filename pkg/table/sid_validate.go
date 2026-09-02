@@ -113,21 +113,34 @@ func (idx *SIDIndex) addLinkSIDs(node *LsNode) {
 		if l == nil {
 			continue
 		}
-		if l.AdjSid != 0 {
-			idx.mplsSIDs[l.AdjSid] = struct{}{}
-			if l.RemoteNode != nil {
-				idx.mplsAdjSIDNextHop[adjKeyMPLS{node.RouterID, l.AdjSid}] = l.RemoteNode.RouterID
-			}
-		}
-		if l.Srv6EndXSID != nil {
-			idx.addSRv6(l.Srv6EndXSID.Sids, l.Srv6EndXSID.Srv6SIDStructure)
-			if l.RemoteNode != nil {
-				for _, s := range l.Srv6EndXSID.Sids {
-					if addr, err := netip.ParseAddr(s); err == nil {
-						idx.srv6AdjSIDNextHop[adjKeySRv6{node.RouterID, addr}] = l.RemoteNode.RouterID
-					}
-				}
-			}
+		idx.addAdjSID(node, l)
+		idx.addEndXSID(node, l)
+	}
+}
+
+// addAdjSID registers a link's SR-MPLS adjacency SID and its next hop.
+func (idx *SIDIndex) addAdjSID(node *LsNode, l *LsLink) {
+	if l.AdjSid == 0 {
+		return
+	}
+	idx.mplsSIDs[l.AdjSid] = struct{}{}
+	if l.RemoteNode != nil {
+		idx.mplsAdjSIDNextHop[adjKeyMPLS{node.RouterID, l.AdjSid}] = l.RemoteNode.RouterID
+	}
+}
+
+// addEndXSID registers a link's SRv6 End.X SIDs and their next hop.
+func (idx *SIDIndex) addEndXSID(node *LsNode, l *LsLink) {
+	if l.Srv6EndXSID == nil {
+		return
+	}
+	idx.addSRv6(l.Srv6EndXSID.Sids, l.Srv6EndXSID.Srv6SIDStructure)
+	if l.RemoteNode == nil {
+		return
+	}
+	for _, s := range l.Srv6EndXSID.Sids {
+		if addr, err := netip.ParseAddr(s); err == nil {
+			idx.srv6AdjSIDNextHop[adjKeySRv6{node.RouterID, addr}] = l.RemoteNode.RouterID
 		}
 	}
 }

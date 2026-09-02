@@ -59,12 +59,11 @@ func statusFromCSPFError(err error) error {
 	if err == nil {
 		return nil
 	}
-	var invalidInput *cspf.InvalidInputError
-	if errors.As(err, &invalidInput) {
+	if invalidInput, ok := errors.AsType[*cspf.InvalidInputError](err); ok {
+		_ = invalidInput
 		return newStatus(codes.InvalidArgument, ReasonInvalidRequest, "%s", err.Error())
 	}
-	var topoLimit *cspf.TopologyLimitationError
-	if errors.As(err, &topoLimit) {
+	if topoLimit, ok := errors.AsType[*cspf.TopologyLimitationError](err); ok {
 		return newStatus(codes.FailedPrecondition, topoLimit.Reason, "%s", err.Error())
 	}
 	// Unexpected CSPF errors indicate an internal invariant break; keep ErrorInfo
@@ -126,9 +125,8 @@ func validateCreateSRPolicy(req *pb.CreateSRPolicyRequest, disablePathCompute bo
 	return validate(req.GetSrPolicy(), req.GetAsn(), ValidationAdd)
 }
 
-// parseSidStructure parses a comma-separated SID structure string (e.g. "32,16,0,80")
-// into a []uint8 slice suitable for table.SegmentSRv6.Structure.
-// Returns nil for empty input.
+// parseSidStructure parses a comma-separated SID structure (e.g. "32,16,0,80").
+// It returns nil for empty input.
 func parseSidStructure(s string) ([]uint8, error) {
 	if s == "" {
 		return nil, nil
@@ -232,7 +230,6 @@ func newEnrichedSegment(segment *pb.Segment, usidMode bool) (table.Segment, erro
 	}
 }
 
-// resolvedPath contains the resolved SR Policy path.
 type resolvedPath struct {
 	SegmentList []table.Segment
 	SrcAddr     netip.Addr
@@ -240,78 +237,85 @@ type resolvedPath struct {
 	Metric      table.MetricType
 }
 
-// resolvePath resolves the SR Policy path using the TED or request values.
 func resolvePath(s *APIServer, input *pb.CreateSRPolicyRequest, disablePathCompute bool) (resolvedPath, error) {
-	var srcAddr, dstAddr netip.Addr
-	var segmentList []table.Segment
-	metricType := table.UnspecifiedMetric
-	var err error
+	if disablePathCompute {
+		return resolvePathFromRequest(s, input)
+	}
+	return resolvePathViaTED(s, input)
+}
 
+func resolvePathViaTED(s *APIServer, input *pb.CreateSRPolicyRequest) (resolvedPath, error) {
 	inputSRPolicy := input.GetSrPolicy()
 
-	if !disablePathCompute {
-		ted := s.pce.TED()
-		if ted == nil {
-			return resolvedPath{}, newStatus(codes.FailedPrecondition, ReasonTEDDisabled, "ted is disabled")
-		}
+	ted := s.pce.TED()
+	if ted == nil {
+		return resolvedPath{}, newStatus(codes.FailedPrecondition, ReasonTEDDisabled, "ted is disabled")
+	}
 
-		if len(ted.Nodes) == 0 {
-			return resolvedPath{}, newStatus(codes.FailedPrecondition, ReasonTEDNotSynced, "no node in TED")
-		}
+	if len(ted.Nodes) == 0 {
+		return resolvedPath{}, newStatus(codes.FailedPrecondition, ReasonTEDNotSynced, "no node in TED")
+	}
 
-		// All TED nodes are expected to share the same ASN.
-		for _, node := range ted.Nodes {
-			if node == nil {
-				continue
-			}
-			if node.ASN != input.GetAsn() {
-				return resolvedPath{}, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "request ASN %d does not match ted ASN %d", input.GetAsn(), node.ASN)
-			}
-			break
+	// All TED nodes are expected to share the same ASN.
+	for _, node := range ted.Nodes {
+		if node == nil {
+			continue
 		}
+		if node.ASN != input.GetAsn() {
+			return resolvedPath{}, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "request ASN %d does not match ted ASN %d", input.GetAsn(), node.ASN)
+		}
+		break
+	}
 
-		srcAddr, err = getLoopbackAddr(ted, inputSRPolicy.GetSrcRouterId())
-		if err != nil {
-			return resolvedPath{}, err
-		}
+	srcAddr, err := getLoopbackAddr(ted, inputSRPolicy.GetSrcRouterId())
+	if err != nil {
+		return resolvedPath{}, err
+	}
 
-		dstAddr, err = getLoopbackAddr(ted, inputSRPolicy.GetDstRouterId())
-		if err != nil {
-			return resolvedPath{}, err
-		}
+	dstAddr, err := getLoopbackAddr(ted, inputSRPolicy.GetDstRouterId())
+	if err != nil {
+		return resolvedPath{}, err
+	}
 
-		segmentList, metricType, err = getSegmentList(inputSRPolicy, ted, s.usidMode)
-		if err != nil {
-			return resolvedPath{}, err
-		}
-	} else {
-		var ok bool
-		srcAddr, ok = netip.AddrFromSlice(inputSRPolicy.GetSrcAddr())
-		if !ok {
-			return resolvedPath{}, newStatus(codes.InvalidArgument, ReasonInvalidRequest,
-				"invalid source address %v",
-				inputSRPolicy.GetSrcAddr(),
-			)
-		}
-
-		dstAddr, ok = netip.AddrFromSlice(inputSRPolicy.GetDstAddr())
-		if !ok {
-			return resolvedPath{}, newStatus(codes.InvalidArgument, ReasonInvalidRequest,
-				"invalid destination address %v",
-				inputSRPolicy.GetDstAddr(),
-			)
-		}
-
-		for _, segment := range inputSRPolicy.GetSegmentList() {
-			seg, err := newEnrichedSegment(segment, s.usidMode)
-			if err != nil {
-				return resolvedPath{}, err
-			}
-			segmentList = append(segmentList, seg)
-		}
+	segmentList, metricType, err := getSegmentList(inputSRPolicy, ted, s.usidMode)
+	if err != nil {
+		return resolvedPath{}, err
 	}
 
 	return resolvedPath{SegmentList: segmentList, SrcAddr: srcAddr, DstAddr: dstAddr, Metric: metricType}, nil
+}
+
+// resolvePathFromRequest takes the SR Policy path directly from the request,
+// without consulting the TED.
+func resolvePathFromRequest(s *APIServer, input *pb.CreateSRPolicyRequest) (resolvedPath, error) {
+	inputSRPolicy := input.GetSrPolicy()
+
+	srcAddr, ok := netip.AddrFromSlice(inputSRPolicy.GetSrcAddr())
+	if !ok {
+		return resolvedPath{}, newStatus(codes.InvalidArgument, ReasonInvalidRequest,
+			"invalid source address %v",
+			inputSRPolicy.GetSrcAddr(),
+		)
+	}
+
+	dstAddr, ok := netip.AddrFromSlice(inputSRPolicy.GetDstAddr())
+	if !ok {
+		return resolvedPath{}, newStatus(codes.InvalidArgument, ReasonInvalidRequest,
+			"invalid destination address %v",
+			inputSRPolicy.GetDstAddr(),
+		)
+	}
+
+	var segmentList []table.Segment
+	for _, segment := range inputSRPolicy.GetSegmentList() {
+		seg, err := newEnrichedSegment(segment, s.usidMode)
+		if err != nil {
+			return resolvedPath{}, err
+		}
+		segmentList = append(segmentList, seg)
+	}
+
+	return resolvedPath{SegmentList: segmentList, SrcAddr: srcAddr, DstAddr: dstAddr, Metric: table.UnspecifiedMetric}, nil
 }
 
 // resolveSRPolicyIntent resolves the candidate-path type and metric per RFC 9256 §2.4.2.

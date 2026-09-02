@@ -236,20 +236,36 @@ func (s *Server) syncTEDLoop(ctx context.Context, tedElemsChan <-chan []table.TE
 	}
 }
 
-// Serve starts the PCEP server on the specified address and port.
-func (s *Server) Serve(address string, port string) error {
+func parseListenAddrPort(address, port string) (netip.AddrPort, error) {
 	a, err := netip.ParseAddr(address)
 	if err != nil {
-		return fmt.Errorf("failed to parse address %s: %w", address, err)
+		return netip.AddrPort{}, fmt.Errorf("failed to parse address %s: %w", address, err)
 	}
 	p, err := strconv.Atoi(port)
 	if err != nil {
-		return fmt.Errorf("failed to convert port %s: %w", port, err)
+		return netip.AddrPort{}, fmt.Errorf("failed to convert port %s: %w", port, err)
 	}
 	if p < 0 || p > math.MaxUint16 {
-		return errors.New("invalid PCEP listen port")
+		return netip.AddrPort{}, errors.New("invalid PCEP listen port")
 	}
-	localAddr := netip.AddrPortFrom(a, uint16(p))
+	return netip.AddrPortFrom(a, uint16(p)), nil
+}
+
+func parseRemoteAddr(tcpConn *net.TCPConn) (netip.Addr, error) {
+	remoteAddrStr := tcpConn.RemoteAddr().String()
+	addrPort, err := netip.ParseAddrPort(remoteAddrStr)
+	if err != nil {
+		return netip.Addr{}, fmt.Errorf("failed to parse remote address %s: %w", remoteAddrStr, err)
+	}
+	return addrPort.Addr(), nil
+}
+
+// Serve starts the PCEP server on the specified address and port.
+func (s *Server) Serve(address string, port string) error {
+	localAddr, err := parseListenAddrPort(address, port)
+	if err != nil {
+		return err
+	}
 
 	s.logger.Info("start listening on PCEP port", logger.String("address", localAddr.String()))
 	l, err := net.ListenTCP("tcp", net.TCPAddrFromAddrPort(localAddr))
@@ -257,9 +273,15 @@ func (s *Server) Serve(address string, port string) error {
 		return fmt.Errorf("failed to listen on PCEP port %s: %w", localAddr.String(), err)
 	}
 
+	return s.serve(l)
+}
+
+// serve runs the accept loop and tracks the listener so Shutdown can close it.
+// Split from Serve to allow testing with a fake listener.
+func (s *Server) serve(l tcpListener) error {
 	s.listenerMu.Lock()
 	if s.closed {
-		// Shutdown ran before Serve started listening; don't accept anything.
+		// Shutdown ran before the listener was registered; don't accept connections.
 		s.listenerMu.Unlock()
 		return l.Close()
 	}
@@ -283,24 +305,32 @@ func (s *Server) Serve(address string, port string) error {
 			}
 			return fmt.Errorf("failed to accept TCP connection: %w", err)
 		}
-		peerAddrPort, err := netip.ParseAddrPort(tcpConn.RemoteAddr().String())
-		if err != nil {
-			return fmt.Errorf("failed to parse remote address %s: %w", tcpConn.RemoteAddr().String(), err)
+		if err := s.handleAccept(tcpConn); err != nil {
+			return err
 		}
-
-		ss := s.registerSession(tcpConn, peerAddrPort.Addr())
-		if ss == nil {
-			continue
-		}
-		ss.logger.Info("start PCEP session")
-		go func() {
-			if err := ss.Established(); err != nil {
-				s.recordSetupResult(ss.peerAddr, false)
-			}
-			s.closeSession(ss)
-			ss.logger.Info("close PCEP session")
-		}()
 	}
+}
+
+// handleAccept registers the connection and starts its PCEP session.
+func (s *Server) handleAccept(tcpConn *net.TCPConn) error {
+	peerAddr, err := parseRemoteAddr(tcpConn)
+	if err != nil {
+		return err
+	}
+
+	ss := s.registerSession(tcpConn, peerAddr)
+	if ss == nil {
+		return nil
+	}
+	ss.logger.Info("start PCEP session")
+	go func() {
+		if err := ss.Established(); err != nil {
+			s.recordSetupResult(ss.peerAddr, false)
+		}
+		s.closeSession(ss)
+		ss.logger.Info("close PCEP session")
+	}()
+	return nil
 }
 
 func (s *Server) registerSession(conn net.Conn, peerAddr netip.Addr) *Session {

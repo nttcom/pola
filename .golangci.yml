@@ -21,6 +21,7 @@ linters:
     - gocheckcompilerdirectives
     - gochecknoinits
     - gochecksumtype
+    - gocognit
     - goconst
     - gocritic
     - gocyclo
@@ -67,6 +68,8 @@ linters:
       default-signifies-exhaustive: true
     gochecksumtype:
       default-signifies-exhaustive: false
+    gocognit:
+      min-complexity: 20
     goconst:
       ignore-tests: true
       min-occurrences: 3

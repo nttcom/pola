@@ -2014,17 +2014,13 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 			},
 			&SRPolicyCandidatePathIdentifierJuniper{
 				// Juniper legacy CPATH-ID TLV uses a zero-filled IPv4 Originator Address.
-				SRPolicyCandidatePathIdentifier: SRPolicyCandidatePathIdentifier{
-					ProtocolOrigin: ProtocolOriginPCEP,
-					OriginatorASN:  opts.originatorASN,
-					OriginatorAddr: netip.IPv4Unspecified(),
-					Discriminator:  1,
-				},
+				ProtocolOrigin: ProtocolOriginPCEP,
+				OriginatorASN:  opts.originatorASN,
+				OriginatorAddr: netip.IPv4Unspecified(),
+				Discriminator:  1,
 			},
 			&SRPolicyCandidatePathPreferenceJuniper{
-				SRPolicyCandidatePathPreference: SRPolicyCandidatePathPreference{
-					Preference: preference,
-				},
+				Preference: preference,
 			},
 		}
 		o.TLVs = append(o.TLVs, associationObjectTLVs...)

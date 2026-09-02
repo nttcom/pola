@@ -217,6 +217,48 @@ func (d *Debouncer) Trigger(
 	go d.run(ctx, fetch, deliver, lg)
 }
 
+// waitCooldown returns false if ctx is cancelled before the cooldown elapses.
+func (d *Debouncer) waitCooldown(ctx context.Context) bool {
+	for {
+		d.mu.Lock()
+		remaining := d.cooldown - time.Since(d.last)
+		d.mu.Unlock()
+
+		if remaining <= 0 {
+			return true
+		}
+
+		timer := time.NewTimer(remaining)
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+			timer.Stop()
+			return false
+		}
+	}
+}
+
+func (d *Debouncer) finish(cycleStart time.Time, released *bool) (pending bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.last.After(cycleStart) {
+		return true
+	}
+	d.active = false
+	*released = true
+	return false
+}
+
+// release avoids clearing d.active after a new Trigger call.
+func (d *Debouncer) release(released bool) {
+	if released {
+		return
+	}
+	d.mu.Lock()
+	d.active = false
+	d.mu.Unlock()
+}
+
 func (d *Debouncer) run(
 	ctx context.Context,
 	fetch func() ([]table.TEDElem, error),
@@ -224,71 +266,37 @@ func (d *Debouncer) run(
 	lg *logger.Logger,
 ) {
 	released := false
-	defer func() {
-		if released {
-			return
-		}
-		d.mu.Lock()
-		d.active = false
-		d.mu.Unlock()
-	}()
+	defer func() { d.release(released) }()
 
-	// finish checks for a pending trigger and releases the worker atomically.
-	finish := func(cycleStart time.Time) (pending bool) {
-		d.mu.Lock()
-		defer d.mu.Unlock()
-		if d.last.After(cycleStart) {
-			return true
-		}
-		d.active = false
-		released = true
-		return false
-	}
-
-outer:
 	for {
-		for {
-			d.mu.Lock()
-			remaining := d.cooldown - time.Since(d.last)
-			d.mu.Unlock()
-
-			if remaining <= 0 {
-				break
+		if !d.waitCooldown(ctx) {
+			if d.finish(time.Now(), &released) {
+				continue
 			}
-
-			timer := time.NewTimer(remaining)
-			select {
-			case <-timer.C:
-			case <-ctx.Done():
-				timer.Stop()
-				if finish(time.Now()) {
-					continue outer
-				}
-				return
-			}
+			return
 		}
 
 		fetchStart := time.Now()
 		tedElems, err := fetch()
 		if err != nil {
 			lg.Error("failed to get TED info", logger.Error(err))
-			if finish(fetchStart) {
-				continue outer
+			if d.finish(fetchStart, &released) {
+				continue
 			}
 			return
 		}
 
 		if ctx.Err() != nil {
 			lg.Debug("deliver aborted due to context cancel")
-			if finish(fetchStart) {
-				continue outer
+			if d.finish(fetchStart, &released) {
+				continue
 			}
 			return
 		}
 		deliver(tedElems)
 
-		if finish(fetchStart) {
-			continue outer
+		if d.finish(fetchStart, &released) {
+			continue
 		}
 		return
 	}

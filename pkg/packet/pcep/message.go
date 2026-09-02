@@ -246,6 +246,35 @@ type PCErrMessage struct {
 	Open   *OpenObject
 }
 
+func (m *PCErrMessage) decodeObject(header *CommonObjectHeader, body []uint8) error {
+	switch header.ObjectClass {
+	case ObjectClassPCEPError:
+		errObj := &ErrorObject{}
+		if err := errObj.DecodeFromBytes(header.ObjectType, body); err != nil {
+			return err
+		}
+		m.Errors = append(m.Errors, errObj)
+	case ObjectClassSRP:
+		srp := &SrpObject{}
+		if err := srp.DecodeFromBytes(header.ObjectType, body); err != nil {
+			return err
+		}
+		m.SRPs = append(m.SRPs, srp)
+	case ObjectClassOpen:
+		if header.ObjectType != ObjectTypeOpenOpen {
+			return fmt.Errorf("PCErr: unsupported OPEN ObjectType: %d", header.ObjectType)
+		}
+		openObj := &OpenObject{}
+		if err := openObj.DecodeFromBytes(header.ObjectType, body); err != nil {
+			return err
+		}
+		m.Open = openObj
+	default:
+		// RFC 5440 §6.7: ignore unsupported object classes.
+	}
+	return nil
+}
+
 // DecodeFromBytes decodes the given bytes into the PCErrMessage.
 func (m *PCErrMessage) DecodeFromBytes(messageBody []uint8) error {
 	for offset := 0; offset < len(messageBody); {
@@ -261,30 +290,8 @@ func (m *PCErrMessage) DecodeFromBytes(messageBody []uint8) error {
 			return fmt.Errorf("PCErr: %w", err)
 		}
 
-		switch commonObjectHeader.ObjectClass {
-		case ObjectClassPCEPError:
-			errObj := &ErrorObject{}
-			if err := errObj.DecodeFromBytes(commonObjectHeader.ObjectType, body); err != nil {
-				return err
-			}
-			m.Errors = append(m.Errors, errObj)
-		case ObjectClassSRP:
-			srp := &SrpObject{}
-			if err := srp.DecodeFromBytes(commonObjectHeader.ObjectType, body); err != nil {
-				return err
-			}
-			m.SRPs = append(m.SRPs, srp)
-		case ObjectClassOpen:
-			if commonObjectHeader.ObjectType != ObjectTypeOpenOpen {
-				return fmt.Errorf("PCErr: unsupported OPEN ObjectType: %d", commonObjectHeader.ObjectType)
-			}
-			openObj := &OpenObject{}
-			if err := openObj.DecodeFromBytes(commonObjectHeader.ObjectType, body); err != nil {
-				return err
-			}
-			m.Open = openObj
-		default:
-			// RFC 5440 §6.7: ignore unsupported object classes.
+		if err := m.decodeObject(&commonObjectHeader, body); err != nil {
+			return err
 		}
 		offset += int(commonObjectHeader.ObjectLength)
 	}
@@ -497,6 +504,25 @@ var decodeFuncs = map[ObjectClass]func(*StateReport, ObjectType, []uint8) error{
 	ObjectClassVendorInformation: (*StateReport).decodeVendorInformationObject,
 }
 
+// beginsStateReport reports whether objectClass starts a state report.
+// Per RFC 8231, a state report begins with an SRP, or an LSP without an SRP.
+func beginsStateReport(previousObjectClass, objectClass ObjectClass) bool {
+	return objectClass == ObjectClassSRP || (objectClass == ObjectClassLSP && previousObjectClass != ObjectClassSRP)
+}
+
+// closeStateReport appends a completed state report.
+// A nil report is ignored.
+func (m *PCRptMessage) closeStateReport(sr *StateReport, lspDecoded bool) error {
+	if sr == nil {
+		return nil
+	}
+	if !lspDecoded {
+		return errors.New("PCRpt: state report missing LSP object")
+	}
+	m.StateReports = append(m.StateReports, sr)
+	return nil
+}
+
 // DecodeFromBytes decodes the given bytes into the PCRptMessage.
 func (m *PCRptMessage) DecodeFromBytes(messageBody []uint8) error {
 	var previousObjectClass ObjectClass
@@ -517,14 +543,10 @@ func (m *PCRptMessage) DecodeFromBytes(messageBody []uint8) error {
 			messageBody = messageBody[commonObjectHeader.ObjectLength:]
 			continue
 		}
-		if (previousObjectClass != ObjectClassSRP && commonObjectHeader.ObjectClass == ObjectClassLSP) || commonObjectHeader.ObjectClass == ObjectClassSRP {
-			if sr != nil {
-				if !lspDecoded {
-					return errors.New("PCRpt: state report missing LSP object")
-				}
-				m.StateReports = append(m.StateReports, sr)
+		if beginsStateReport(previousObjectClass, commonObjectHeader.ObjectClass) {
+			if err := m.closeStateReport(sr, lspDecoded); err != nil {
+				return err
 			}
-
 			sr = NewStateReport()
 			lspDecoded = false
 		}
@@ -543,12 +565,7 @@ func (m *PCRptMessage) DecodeFromBytes(messageBody []uint8) error {
 	if sr == nil {
 		return errors.New("PCRpt: no state report")
 	}
-	if !lspDecoded {
-		return errors.New("PCRpt: state report missing LSP object")
-	}
-	m.StateReports = append(m.StateReports, sr)
-
-	return nil
+	return m.closeStateReport(sr, lspDecoded)
 }
 
 // NewPCRptMessage creates a new PCRptMessage.

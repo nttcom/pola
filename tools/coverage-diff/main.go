@@ -260,6 +260,29 @@ type block struct {
 // supportedModes lists the coverage modes supported by go test.
 var supportedModes = []string{"set", "count", "atomic"}
 
+func validateModeLine(line string, sawMode bool) error {
+	if sawMode {
+		return fmt.Errorf("duplicate coverage mode header: %q", line)
+	}
+	mode := strings.TrimPrefix(line, "mode: ")
+	if !slices.Contains(supportedModes, mode) {
+		return fmt.Errorf("unsupported coverage mode: %q", mode)
+	}
+	return nil
+}
+
+func markBlockLines(seen, covered map[string]lineSet, src *sourceIndex, file string, b block, added lineSet) {
+	for ln := range added {
+		if ln < b.start || ln > b.end || !src.hasStatement(file, b, ln) {
+			continue
+		}
+		mark(seen, file, ln)
+		if b.count > 0 {
+			mark(covered, file, ln)
+		}
+	}
+}
+
 func parseProfile(r io.Reader, module string, changed changedLines) (*result, error) {
 	seen := map[string]lineSet{}
 	covered := map[string]lineSet{}
@@ -271,12 +294,8 @@ func parseProfile(r io.Reader, module string, changed changedLines) (*result, er
 	for sc.Scan() {
 		line := sc.Text()
 		if strings.HasPrefix(line, "mode: ") {
-			if sawMode {
-				return nil, fmt.Errorf("duplicate coverage mode header: %q", line)
-			}
-			mode := strings.TrimPrefix(line, "mode: ")
-			if !slices.Contains(supportedModes, mode) {
-				return nil, fmt.Errorf("unsupported coverage mode: %q", mode)
+			if err := validateModeLine(line, sawMode); err != nil {
+				return nil, err
 			}
 			sawMode = true
 			continue
@@ -293,15 +312,7 @@ func parseProfile(r io.Reader, module string, changed changedLines) (*result, er
 		if added == nil {
 			continue
 		}
-		for ln := range added {
-			if ln < b.start || ln > b.end || !src.hasStatement(file, b, ln) {
-				continue
-			}
-			mark(seen, file, ln)
-			if b.count > 0 {
-				mark(covered, file, ln)
-			}
-		}
+		markBlockLines(seen, covered, src, file, b, added)
 	}
 	if err := sc.Err(); err != nil {
 		return nil, err
@@ -360,8 +371,7 @@ func stripModule(name, module string) string {
 	return strings.TrimPrefix(name, module+"/")
 }
 
-// sourceIndex tokenizes source files to identify code positions within
-// coverage block ranges.
+// sourceIndex indexes source code positions for coverage blocks.
 type sourceIndex struct {
 	fset  *token.FileSet
 	files map[string]*token.File

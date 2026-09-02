@@ -765,6 +765,41 @@ func TestResolveLocalTimers(t *testing.T) {
 	}
 }
 
+func TestParseRemoteAddr(t *testing.T) {
+	tests := []struct {
+		name    string
+		setup   func() *net.TCPConn
+		wantErr bool
+	}{
+		{
+			name: "valid address",
+			setup: func() *net.TCPConn {
+				server, client := newTCPConnPair(t)
+				t.Cleanup(func() {
+					_ = client.Close()
+				})
+				return server
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tcpConn := tt.setup()
+			defer tcpConn.Close()
+
+			addr, err := parseRemoteAddr(tcpConn)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.True(t, addr.IsValid())
+			}
+		})
+	}
+}
+
 func TestResolveKeepaliveRange(t *testing.T) {
 	ptr := func(v uint8) *uint8 { return &v }
 
@@ -789,4 +824,79 @@ func TestResolveKeepaliveRange(t *testing.T) {
 			assert.Equal(t, tt.wantEnabled, enabled)
 		})
 	}
+}
+
+func TestServer_HandleAccept_WhenRegisterSessionReturnsNil(t *testing.T) {
+	server1, client1 := newTCPConnPair(t)
+	t.Cleanup(func() {
+		if err := client1.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			t.Logf("cleanup close: %v", err)
+		}
+	})
+
+	tcpAddr, ok := server1.RemoteAddr().(*net.TCPAddr)
+	require.True(t, ok)
+	peerAddr := netip.MustParseAddr(tcpAddr.IP.String())
+	lg, logs := logger.NewRecorder(logger.LevelWarn)
+	s := &Server{logger: lg}
+
+	ss1 := s.registerSession(server1, peerAddr)
+	require.NotNil(t, ss1)
+
+	server2, client2 := newTCPConnPair(t)
+	t.Cleanup(func() {
+		if err := client2.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			t.Logf("cleanup close: %v", err)
+		}
+	})
+
+	err := s.handleAccept(server2)
+
+	require.NoError(t, err, "handleAccept should return nil when registerSession rejects a duplicate peer")
+	assert.Len(t, s.Sessions(), 1, "expected only the first session to remain")
+	assert.Len(t, logs.FilterByMessage("rejecting second PCEP session attempt from peer"), 1,
+		"expected rejection log for duplicate peer")
+
+	s.closeSession(ss1)
+}
+
+// acceptOnceThenClosedListener makes the first AcceptTCP call report a closed listener.
+type acceptOnceThenClosedListener struct {
+	closeErr error
+}
+
+func (l *acceptOnceThenClosedListener) AcceptTCP() (*net.TCPConn, error) {
+	return nil, net.ErrClosed
+}
+
+func (l *acceptOnceThenClosedListener) Close() error { return l.closeErr }
+
+type acceptErrListener struct {
+	acceptErr error
+}
+
+func (l *acceptErrListener) AcceptTCP() (*net.TCPConn, error) { return nil, l.acceptErr }
+func (l *acceptErrListener) Close() error                     { return nil }
+
+func TestServer_Serve_AcceptErrorPropagated(t *testing.T) {
+	wantErr := errors.New("accept boom")
+	s := &Server{logger: logger.NewNop()}
+
+	err := s.serve(&acceptErrListener{acceptErr: wantErr})
+
+	require.ErrorIs(t, err, wantErr)
+	assert.ErrorContains(t, err, "failed to accept TCP connection")
+}
+
+func TestServer_Serve_ListenerCloseErrorLogged(t *testing.T) {
+	wantErr := errors.New("listener close failed")
+	lg, logs := logger.NewRecorder(logger.LevelWarn)
+	s := &Server{logger: lg}
+
+	err := s.serve(&acceptOnceThenClosedListener{closeErr: wantErr})
+
+	require.NoError(t, err, "serve should return nil once AcceptTCP reports the listener closed")
+	entries := logs.FilterByMessage("failed to close PCEP listener")
+	require.Len(t, entries, 1)
+	assert.Nil(t, s.listener, "listener must be cleared once serve returns")
 }

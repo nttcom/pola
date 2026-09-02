@@ -267,27 +267,32 @@ func TestParseProfile(t *testing.T) {
 			if err != nil {
 				t.Fatalf("parseProfile() error = %v", err)
 			}
-			if res.total != tt.wantTotal || res.covered != tt.wantCovered {
-				t.Errorf("total/covered = %d/%d, want %d/%d", res.total, res.covered, tt.wantTotal, tt.wantCovered)
-			}
-			for _, fr := range res.files {
-				want, ok := tt.wantUncovered[fr.file]
-				if !ok {
-					if len(fr.uncovered) > 0 {
-						t.Errorf("%s: unexpected uncovered %v", fr.file, fr.uncovered)
-					}
-					continue
-				}
-				if !equalInts(fr.uncovered, want) {
-					t.Errorf("%s: uncovered = %v, want %v", fr.file, fr.uncovered, want)
-				}
-			}
+			assertProfileResult(t, res, tt.wantTotal, tt.wantCovered, tt.wantUncovered)
 		})
 	}
 }
 
-// withSourceFile writes src to name in a temporary directory and changes
-// the working directory for the duration of the test.
+// assertProfileResult checks the expected coverage totals and uncovered lines.
+func assertProfileResult(t *testing.T, res *result, wantTotal, wantCovered int, wantUncovered map[string][]int) {
+	t.Helper()
+	if res.total != wantTotal || res.covered != wantCovered {
+		t.Errorf("total/covered = %d/%d, want %d/%d", res.total, res.covered, wantTotal, wantCovered)
+	}
+	for _, fr := range res.files {
+		want, ok := wantUncovered[fr.file]
+		if !ok {
+			if len(fr.uncovered) > 0 {
+				t.Errorf("%s: unexpected uncovered %v", fr.file, fr.uncovered)
+			}
+			continue
+		}
+		if !equalInts(fr.uncovered, want) {
+			t.Errorf("%s: uncovered = %v, want %v", fr.file, fr.uncovered, want)
+		}
+	}
+}
+
+// withSourceFile creates a temporary source file and changes the working directory.
 func withSourceFile(t *testing.T, name, src string) {
 	t.Helper()
 	dir := t.TempDir()

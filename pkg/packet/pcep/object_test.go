@@ -1482,8 +1482,8 @@ func TestAssociationObject_ColorPreferenceFromTLVs(t *testing.T) {
 		"JuniperTypedTLV": {
 			object: &AssociationObject{
 				TLVs: []TLVInterface{
-					&ExtendedAssociationIDIPv4Juniper{ExtendedAssociationID: ExtendedAssociationID{Color: 100, Endpoint: dstAddr}},
-					&SRPolicyCandidatePathPreferenceJuniper{SRPolicyCandidatePathPreference: SRPolicyCandidatePathPreference{Preference: 200}},
+					&ExtendedAssociationIDIPv4Juniper{Color: 100, Endpoint: dstAddr},
+					&SRPolicyCandidatePathPreferenceJuniper{Preference: 200},
 				},
 			},
 			wantColor: 100, wantPreference: 200,
@@ -2589,7 +2589,7 @@ func TestAssociationObject_Endpoint(t *testing.T) {
 		},
 		"JuniperTLV": {
 			&AssociationObject{TLVs: []TLVInterface{
-				&ExtendedAssociationIDIPv4Juniper{ExtendedAssociationID: ExtendedAssociationID{Endpoint: dstAddr}},
+				&ExtendedAssociationIDIPv4Juniper{Endpoint: dstAddr},
 			}},
 			dstAddr,
 		},
