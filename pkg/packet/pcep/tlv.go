@@ -1381,7 +1381,6 @@ func (tlv *ExtendedAssociationID) Len() int {
 		return int(TLVValueOffset + TLVExtendedAssociationIDIPv6ValueLength)
 	}
 	return 0
-
 }
 
 // NewExtendedAssociationID creates an EXTENDED-ASSOCIATION-ID TLV.
@@ -1516,8 +1515,7 @@ func (tlv *PathSetupTypeCapability) Serialize() ([]byte, error) {
 	value[PathSetupTypeCapabilityPSTCountOffset] = byte(pstCount)
 
 	for i := range pstCount {
-		value[PathSetupTypeCapabilityFixedPartLength+i] =
-			byte(tlv.PathSetupTypes[i])
+		value[PathSetupTypeCapabilityFixedPartLength+i] = byte(tlv.PathSetupTypes[i])
 	}
 
 	subTLVsBytes := []byte{}
@@ -1817,7 +1815,6 @@ func (tlv *SRPolicyCandidatePathIdentifier) Serialize() ([]byte, error) {
 }
 
 func (tlv *SRPolicyCandidatePathIdentifier) serialize(typ TLVType) []byte {
-
 	value := make([]byte, TLVSRPolicyCPathIDValueLength)
 
 	value[SRPolicyCPathIDProtocolOriginOffset] = tlv.ProtocolOrigin

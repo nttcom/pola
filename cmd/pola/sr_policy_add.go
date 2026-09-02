@@ -234,8 +234,7 @@ func addSRPolicyWithRouterID(input inputFormat, noSIDValidate bool) error {
 		return err
 	}
 
-	srPolicyType, metric, segmentList, waypoints, err :=
-		buildPolicyByType(input, sampleInputDynamic, sampleInputExplicit)
+	srPolicyType, metric, segmentList, waypoints, err := buildPolicyByType(input, sampleInputDynamic, sampleInputExplicit)
 	if err != nil {
 		return err
 	}

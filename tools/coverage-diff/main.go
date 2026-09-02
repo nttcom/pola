@@ -167,8 +167,10 @@ func goModule() (string, error) {
 	return strings.TrimSpace(string(b)), nil
 }
 
-type lineSet map[int]bool
-type changedLines map[string]lineSet
+type (
+	lineSet      map[int]bool
+	changedLines map[string]lineSet
+)
 
 var hunkRe = regexp.MustCompile(`^@@+ .*?\+(\d+)(?:,(\d+))? @@`)
 

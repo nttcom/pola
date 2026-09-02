@@ -143,16 +143,16 @@ func loadConfig(configFile string) (config.Config, error) {
 func openLogFile(c *config.Config) (*os.File, error) {
 	// Create the log directory if it does not exist. Logs can carry topology
 	// and peer details, so access is limited to the owner and group.
-	if err := os.MkdirAll(c.Global.Log.Path, 0750); err != nil {
+	if err := os.MkdirAll(c.Global.Log.Path, 0o750); err != nil {
 		return nil, fmt.Errorf("failed to create log directory: %w", err)
 	}
 
-	fp, err := os.OpenFile(c.Global.Log.Path+c.Global.Log.Name, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0600)
+	fp, err := os.OpenFile(c.Global.Log.Path+c.Global.Log.Name, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open log file: %w", err)
 	}
 	// OpenFile's mode does not apply to existing files.
-	if err := fp.Chmod(0600); err != nil {
+	if err := fp.Chmod(0o600); err != nil {
 		_ = fp.Close()
 		return nil, fmt.Errorf("failed to restrict log file permissions: %w", err)
 	}

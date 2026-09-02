@@ -1989,18 +1989,30 @@ func TestCreateSRPolicy_StatusCodes(t *testing.T) {
 		wantReason string
 		wantMsg    string
 	}{
-		{"ASN is zero", true, func() *pb.CreateSRPolicyRequest { r := explicitReq(); r.Asn = 0; return r },
-			codes.InvalidArgument, ReasonInvalidRequest, "ASN must not be zero"},
-		{"color is zero", true, func() *pb.CreateSRPolicyRequest { r := explicitReq(); r.SrPolicy.Color = 0; return r },
-			codes.InvalidArgument, ReasonInvalidRequest, wantErrColorZero},
-		{"PCEP session address is absent", true, func() *pb.CreateSRPolicyRequest { r := explicitReq(); r.SrPolicy.PeerAddr = nil; return r },
-			codes.InvalidArgument, ReasonInvalidRequest, "policy.PeerAddr must not be nil"},
-		{"request ASN does not match the TED", true, func() *pb.CreateSRPolicyRequest { r := explicitReq(); r.Asn = 65001; return r },
-			codes.InvalidArgument, ReasonInvalidRequest, "does not match ted ASN"},
-		{"source router ID is not in the TED", true, func() *pb.CreateSRPolicyRequest { r := dynamicReq(); r.SrPolicy.SrcRouterId = "r9"; return r },
-			codes.InvalidArgument, ReasonInvalidRequest, "no node with router ID r9"},
-		{"destination router ID is not in the TED", true, func() *pb.CreateSRPolicyRequest { r := dynamicReq(); r.SrPolicy.DstRouterId = "r9"; return r },
-			codes.InvalidArgument, ReasonInvalidRequest, "no node with router ID r9"},
+		{
+			"ASN is zero", true, func() *pb.CreateSRPolicyRequest { r := explicitReq(); r.Asn = 0; return r },
+			codes.InvalidArgument, ReasonInvalidRequest, "ASN must not be zero",
+		},
+		{
+			"color is zero", true, func() *pb.CreateSRPolicyRequest { r := explicitReq(); r.SrPolicy.Color = 0; return r },
+			codes.InvalidArgument, ReasonInvalidRequest, wantErrColorZero,
+		},
+		{
+			"PCEP session address is absent", true, func() *pb.CreateSRPolicyRequest { r := explicitReq(); r.SrPolicy.PeerAddr = nil; return r },
+			codes.InvalidArgument, ReasonInvalidRequest, "policy.PeerAddr must not be nil",
+		},
+		{
+			"request ASN does not match the TED", true, func() *pb.CreateSRPolicyRequest { r := explicitReq(); r.Asn = 65001; return r },
+			codes.InvalidArgument, ReasonInvalidRequest, "does not match ted ASN",
+		},
+		{
+			"source router ID is not in the TED", true, func() *pb.CreateSRPolicyRequest { r := dynamicReq(); r.SrPolicy.SrcRouterId = "r9"; return r },
+			codes.InvalidArgument, ReasonInvalidRequest, "no node with router ID r9",
+		},
+		{
+			"destination router ID is not in the TED", true, func() *pb.CreateSRPolicyRequest { r := dynamicReq(); r.SrPolicy.DstRouterId = "r9"; return r },
+			codes.InvalidArgument, ReasonInvalidRequest, "no node with router ID r9",
+		},
 		{"waypoint router ID is not in the TED", true, func() *pb.CreateSRPolicyRequest {
 			r := dynamicReq()
 			r.SrPolicy.Waypoints = []*pb.Waypoint{{RouterId: "r9"}}
@@ -2021,14 +2033,18 @@ func TestCreateSRPolicy_StatusCodes(t *testing.T) {
 			r.SrPolicy.Metric = pb.MetricType(99)
 			return r
 		}, codes.InvalidArgument, ReasonInvalidRequest, "unknown metric type"},
-		{"policy type is unset", true, func() *pb.CreateSRPolicyRequest {
-			r := explicitReq()
-			r.SrPolicy.Type = pb.SRPolicyType_SR_POLICY_TYPE_UNSPECIFIED
-			return r
+		{
+			"policy type is unset", true, func() *pb.CreateSRPolicyRequest {
+				r := explicitReq()
+				r.SrPolicy.Type = pb.SRPolicyType_SR_POLICY_TYPE_UNSPECIFIED
+				return r
+			},
+			codes.InvalidArgument, ReasonInvalidRequest, "undefined SR Policy type",
 		},
-			codes.InvalidArgument, ReasonInvalidRequest, "undefined SR Policy type"},
-		{"explicit policy with an empty segment list", true, func() *pb.CreateSRPolicyRequest { r := explicitReq(); r.SrPolicy.SegmentList = nil; return r },
-			codes.InvalidArgument, ReasonInvalidRequest, "no segments in SRPolicy input"},
+		{
+			"explicit policy with an empty segment list", true, func() *pb.CreateSRPolicyRequest { r := explicitReq(); r.SrPolicy.SegmentList = nil; return r },
+			codes.InvalidArgument, ReasonInvalidRequest, "no segments in SRPolicy input",
+		},
 		{"explicit policy with a malformed SID", true, func() *pb.CreateSRPolicyRequest {
 			r := explicitReq()
 			r.SrPolicy.SegmentList = []*pb.Segment{{Sid: invalidSidStr}}
@@ -2043,8 +2059,10 @@ func TestCreateSRPolicy_StatusCodes(t *testing.T) {
 
 		// FailedPrecondition: request is well formed, PCE/TED state cannot satisfy it.
 		{"TED is disabled", false, explicitReq, codes.FailedPrecondition, "TED_DISABLED", "ted is disabled"},
-		{"destination is unreachable", true, func() *pb.CreateSRPolicyRequest { r := dynamicReq(); r.SrPolicy.DstRouterId = "r3"; return r },
-			codes.FailedPrecondition, "DESTINATION_UNREACHABLE", "next node not found"},
+		{
+			"destination is unreachable", true, func() *pb.CreateSRPolicyRequest { r := dynamicReq(); r.SrPolicy.DstRouterId = "r3"; return r },
+			codes.FailedPrecondition, "DESTINATION_UNREACHABLE", "next node not found",
+		},
 		{"requested metric is not carried by a traversed link", true, func() *pb.CreateSRPolicyRequest {
 			r := dynamicReq()
 			r.SrPolicy.Metric = pb.MetricType_METRIC_TYPE_TE

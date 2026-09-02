@@ -443,7 +443,6 @@ func TestNewSREroSubobject_SidAbsentWithMPLSStackEntryAttrs(t *testing.T) {
 }
 
 func TestSREroSubobject_DecodeFromBytes_TruncatedAfterHeader(t *testing.T) {
-
 	t.Parallel()
 
 	cases := map[string][]uint8{

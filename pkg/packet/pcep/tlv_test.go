@@ -146,7 +146,8 @@ func runTLVDecodeTests(t *testing.T, cases map[string]TLVTestCase, constructor f
 func runTLVSerializeTests(t *testing.T, cases map[string]struct {
 	input    TLVInterface
 	expected []byte
-}) {
+},
+) {
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
 			actual, err := tt.input.Serialize()
@@ -159,7 +160,8 @@ func runTLVSerializeTests(t *testing.T, cases map[string]struct {
 func runTLVLenTests(t *testing.T, cases map[string]struct {
 	input    TLVInterface
 	expected uint16
-}) {
+},
+) {
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
 			actual := tt.input.Len()

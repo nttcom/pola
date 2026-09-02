@@ -170,7 +170,6 @@ const (
 func (h *CommonObjectHeader) DecodeFromBytes(objectHeader []uint8) error {
 	if len(objectHeader) < int(commonObjectHeaderLength) {
 		return fmt.Errorf("object header too short: got %d bytes, need at least %d", len(objectHeader), commonObjectHeaderLength)
-
 	}
 
 	h.ObjectClass = ObjectClass(objectHeader[0])
@@ -891,7 +890,6 @@ func (o *LSPObject) Color() uint32 {
 		if t, ok := tlv.(*Color); ok {
 			return t.Color
 		}
-
 	}
 	return 0
 }
@@ -987,7 +985,6 @@ func NewEroObject(segmentList []table.Segment) (*EroObject, error) {
 		EroSubobjects: []EroSubobject{},
 	}
 	err := o.AddEroSubobjects(segmentList)
-
 	if err != nil {
 		return o, err
 	}

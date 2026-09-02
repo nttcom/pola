@@ -81,12 +81,10 @@ linters:
         text: exitAfterDefer
         linters:
           - gocritic
-
 formatters:
   enable:
-    - gofmt
+    - gofumpt
     - goimports
-
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0

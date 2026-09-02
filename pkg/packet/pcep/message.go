@@ -223,8 +223,7 @@ func NewOpenMessage(sessionID uint8, keepalive uint8, deadTimer uint8, capabilit
 }
 
 // KeepaliveMessage is a PCEP Keepalive message.
-type KeepaliveMessage struct {
-}
+type KeepaliveMessage struct{}
 
 // Serialize encodes the KeepaliveMessage into bytes.
 func (m *KeepaliveMessage) Serialize() ([]uint8, error) {

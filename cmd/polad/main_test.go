@@ -68,7 +68,7 @@ func writeConfigFile(t *testing.T, c config.Config) string {
 	)
 
 	path := filepath.Join(t.TempDir(), "polad.yaml")
-	require.NoError(t, os.WriteFile(path, []byte(content), 0600))
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
 
 	return path
 }
@@ -82,7 +82,7 @@ func TestLoadConfig(t *testing.T) {
 
 	t.Run("returns an error when required fields are missing", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "polad.yaml")
-		require.NoError(t, os.WriteFile(path, []byte("global:\n  pcep:\n    address: \"127.0.0.1\"\n"), 0600))
+		require.NoError(t, os.WriteFile(path, []byte("global:\n  pcep:\n    address: \"127.0.0.1\"\n"), 0o600))
 
 		_, err := loadConfig(path)
 
@@ -114,7 +114,7 @@ func TestLoadConfig(t *testing.T) {
 func TestOpenLogFile(t *testing.T) {
 	t.Run("returns an error when the log directory cannot be created", func(t *testing.T) {
 		blocker := filepath.Join(t.TempDir(), "blocker")
-		require.NoError(t, os.WriteFile(blocker, []byte("x"), 0600))
+		require.NoError(t, os.WriteFile(blocker, []byte("x"), 0o600))
 
 		c := &config.Config{Global: config.Global{Log: config.Log{
 			Path: filepath.Join(blocker, "nested") + string(filepath.Separator),
@@ -132,8 +132,8 @@ func TestOpenLogFile(t *testing.T) {
 		}
 
 		dir := t.TempDir()
-		require.NoError(t, os.Chmod(dir, 0500))
-		t.Cleanup(func() { _ = os.Chmod(dir, 0700) })
+		require.NoError(t, os.Chmod(dir, 0o500))
+		t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
 
 		c := &config.Config{Global: config.Global{Log: config.Log{
 			Path: dir + string(filepath.Separator),
@@ -158,7 +158,7 @@ func TestOpenLogFile(t *testing.T) {
 
 		info, err := fp.Stat()
 		require.NoError(t, err)
-		require.Equal(t, os.FileMode(0600), info.Mode().Perm())
+		require.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 	})
 }
 
@@ -249,9 +249,9 @@ func TestRun(t *testing.T) {
 
 		c := validConfig(t)
 		blockedDir := filepath.Join(t.TempDir(), "blocked")
-		require.NoError(t, os.Mkdir(blockedDir, 0700))
-		require.NoError(t, os.Chmod(blockedDir, 0500))
-		t.Cleanup(func() { _ = os.Chmod(blockedDir, 0700) })
+		require.NoError(t, os.Mkdir(blockedDir, 0o700))
+		require.NoError(t, os.Chmod(blockedDir, 0o500))
+		t.Cleanup(func() { _ = os.Chmod(blockedDir, 0o700) })
 		c.Global.Log.Path = filepath.Join(blockedDir, "nested") + string(filepath.Separator)
 		path := writeConfigFile(t, c)
 
@@ -262,7 +262,7 @@ func TestRun(t *testing.T) {
 
 	t.Run("returns an error when the config is invalid", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "polad.yaml")
-		require.NoError(t, os.WriteFile(path, []byte("global:\n  pcep:\n    address: \"127.0.0.1\"\n"), 0600))
+		require.NoError(t, os.WriteFile(path, []byte("global:\n  pcep:\n    address: \"127.0.0.1\"\n"), 0o600))
 
 		err := run([]string{"-f", path}, defaultRunDeps())
 
