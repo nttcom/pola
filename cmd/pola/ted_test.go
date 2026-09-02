@@ -111,12 +111,14 @@ func TestShowTED(t *testing.T) {
 		links, ok := nodeMap["links"].([]any)
 		require.True(t, ok)
 		require.Len(t, links, 2)
-		linkMap := links[0].(map[string]any)
+		linkMap, ok := links[0].(map[string]any)
+		require.True(t, ok)
 		assert.Equal(t, testPeerAddr1, linkMap["localIp"])
 		_, hasRemoteIP := linkMap["remoteIp"]
 		assert.False(t, hasRemoteIP, "unset remoteIp must be omitted, not a \"None\" sentinel")
 
-		linkMap2 := links[1].(map[string]any)
+		linkMap2, ok := links[1].(map[string]any)
+		require.True(t, ok)
 		_, hasLocalIP := linkMap2["localIp"]
 		assert.False(t, hasLocalIP)
 		assert.Equal(t, testPeerAddr2, linkMap2["remoteIp"])
@@ -124,8 +126,10 @@ func TestShowTED(t *testing.T) {
 		prefixes, ok := nodeMap["prefixes"].([]any)
 		require.True(t, ok)
 		require.Len(t, prefixes, 2)
+		prefixMap, ok := prefixes[0].(map[string]any)
+		require.True(t, ok)
 		//nolint:testifylint // float-compare: JSON decodes numbers to float64, and this is an exact small integer.
-		assert.Equal(t, float64(1), prefixes[0].(map[string]any)["sidIndex"])
+		assert.Equal(t, float64(1), prefixMap["sidIndex"])
 		_, hasSidIndex := prefixes[1].(map[string]any)["sidIndex"]
 		assert.False(t, hasSidIndex)
 

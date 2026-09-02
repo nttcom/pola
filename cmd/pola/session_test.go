@@ -41,8 +41,10 @@ func TestNewSessionCmd_PassesParsedArgs(t *testing.T) {
 		require.NoError(t, cmd.RunE(cmd, []string{testPeerAddr1, sessionDetailArg}))
 	})
 
-	require.NotNil(t, client.(*fakePCEServiceClient).sessionListReq)
-	req := client.(*fakePCEServiceClient).sessionListReq
+	fakeClient, ok := client.(*fakePCEServiceClient)
+	require.True(t, ok)
+	require.NotNil(t, fakeClient.sessionListReq)
+	req := fakeClient.sessionListReq
 	assert.Equal(t, netip.MustParseAddr(testPeerAddr1).AsSlice(), req.GetPeerAddr())
 	assert.True(t, req.GetIncludeStats())
 }

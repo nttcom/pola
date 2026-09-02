@@ -17,6 +17,7 @@ linters:
     - errorlint
     - exhaustive
     - fatcontext
+    - forcetypeassert
     - gocheckcompilerdirectives
     - gochecknoinits
     - gochecksumtype

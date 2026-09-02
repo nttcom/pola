@@ -56,18 +56,26 @@ func newTCPConnPair(t *testing.T) (server, client *net.TCPConn) {
 			errCh <- err
 			return
 		}
-		serverCh <- conn.(*net.TCPConn)
+		tcpConn, ok := conn.(*net.TCPConn)
+		if !ok {
+			errCh <- fmt.Errorf("expected *net.TCPConn, got %T", conn)
+			return
+		}
+		serverCh <- tcpConn
 	}()
 
 	clientConn, err := net.Dial("tcp", ln.Addr().String())
 	require.NoError(t, err, "failed to dial")
 
+	clientTCPConn, ok := clientConn.(*net.TCPConn)
+	require.True(t, ok)
+
 	select {
 	case server := <-serverCh:
-		return server, clientConn.(*net.TCPConn)
+		return server, clientTCPConn
 	case err := <-errCh:
 		require.NoError(t, err, "failed to accept connection")
-		return nil, clientConn.(*net.TCPConn)
+		return nil, clientTCPConn
 	}
 }
 
@@ -491,8 +499,10 @@ func TestPeerOpenDoesNotOverwriteAdvertisedCapabilities(t *testing.T) {
 	color, _ := ss.resolveColorPreference(sr)
 	assert.Equal(t, uint32(100), color, "resolveColorPreference did not detect Color Capability from receivedPccCapabilities")
 
-	receivedCap := ss.receivedPccCapabilities[0].(*pcep.StatefulPCECapability)
-	polaCap := ss.advertisedCapabilities[0].(*pcep.StatefulPCECapability)
+	receivedCap, ok := ss.receivedPccCapabilities[0].(*pcep.StatefulPCECapability)
+	require.True(t, ok)
+	polaCap, ok := ss.advertisedCapabilities[0].(*pcep.StatefulPCECapability)
+	require.True(t, ok)
 	assert.NotSame(t, receivedCap, polaCap, "receivedPccCapabilities and advertisedCapabilities share the same StatefulPCECapability instance")
 	assert.NotEqual(t, receivedCap.LSPUpdateCapability, polaCap.LSPUpdateCapability,
 		"expected received and advertised StatefulPCECapability to diverge, got identical LSPUpdateCapability")
