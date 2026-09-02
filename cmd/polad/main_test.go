@@ -162,7 +162,11 @@ func TestOpenLogFile(t *testing.T) {
 
 		dir := t.TempDir()
 		require.NoError(t, os.Chmod(dir, 0o500))
-		t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+		t.Cleanup(func() {
+			if err := os.Chmod(dir, 0o700); err != nil {
+				t.Logf("cleanup chmod: %v", err)
+			}
+		})
 
 		c := &config.Config{Global: config.Global{Log: config.Log{
 			Path: dir + string(filepath.Separator),
@@ -183,7 +187,11 @@ func TestOpenLogFile(t *testing.T) {
 
 		fp, err := openLogFile(c)
 		require.NoError(t, err)
-		defer func() { _ = fp.Close() }()
+		t.Cleanup(func() {
+			if err := fp.Close(); err != nil {
+				t.Logf("cleanup close: %v", err)
+			}
+		})
 
 		info, err := fp.Stat()
 		require.NoError(t, err)
@@ -280,7 +288,11 @@ func TestRun(t *testing.T) {
 		blockedDir := filepath.Join(t.TempDir(), "blocked")
 		require.NoError(t, os.Mkdir(blockedDir, 0o700))
 		require.NoError(t, os.Chmod(blockedDir, 0o500))
-		t.Cleanup(func() { _ = os.Chmod(blockedDir, 0o700) })
+		t.Cleanup(func() {
+			if err := os.Chmod(blockedDir, 0o700); err != nil {
+				t.Logf("cleanup chmod: %v", err)
+			}
+		})
 		c.Global.Log.Path = filepath.Join(blockedDir, "nested") + string(filepath.Separator)
 		path := writeConfigFile(t, c)
 

@@ -84,7 +84,9 @@ func run(cfg config, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = f.Close() }()
+	defer func() {
+		_ = f.Close()
+	}()
 	res, err := parseProfile(f, module, changed)
 	if err != nil {
 		return fmt.Errorf("parsing %s: %w", cfg.profile, err)
@@ -129,7 +131,11 @@ func instrumentable(path string) bool {
 
 // rounded matches %.1f formatting used in the report.
 func rounded(pct float64) float64 {
-	v, _ := strconv.ParseFloat(strconv.FormatFloat(pct, 'f', 1, 64), 64)
+	formatted := strconv.FormatFloat(pct, 'f', 1, 64)
+	v, err := strconv.ParseFloat(formatted, 64)
+	if err != nil {
+		return pct
+	}
 	return v
 }
 

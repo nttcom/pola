@@ -400,16 +400,16 @@ func convertLsLinks(links []*table.LsLink, lg *logger.Logger) []*pb.LsLink {
 
 // buildLsLink converts a single table.LsLink to protobuf LsLink.
 func buildLsLink(link *table.LsLink) *pb.LsLink {
-	localIP, _ := link.LocalIP.MarshalText()
-	remoteIP, _ := link.RemoteIP.MarshalText()
+	localIP := link.LocalIP.String()
+	remoteIP := link.RemoteIP.String()
 
 	pbLink := &pb.LsLink{
 		LocalRouterId:  link.LocalNode.RouterID,
 		LocalAsn:       link.LocalNode.ASN,
-		LocalIp:        string(localIP),
+		LocalIp:        localIP,
 		RemoteRouterId: link.RemoteNode.RouterID,
 		RemoteAsn:      link.RemoteNode.ASN,
-		RemoteIp:       string(remoteIP),
+		RemoteIp:       remoteIP,
 		Metrics:        convertMetrics(link.Metrics),
 		AdjSid:         link.AdjSid,
 	}

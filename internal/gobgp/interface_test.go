@@ -1576,7 +1576,11 @@ func startTestGoBGPServer(t *testing.T, server *testGoBGPServer) (string, string
 
 	srv := grpc.NewServer()
 	api.RegisterGoBgpServiceServer(srv, server)
-	go func() { _ = srv.Serve(lis) }()
+	go func() {
+		if err := srv.Serve(lis); err != nil {
+			t.Errorf("server error: %v", err)
+		}
+	}()
 	t.Cleanup(srv.Stop)
 
 	host, port, err := net.SplitHostPort(lis.Addr().String())

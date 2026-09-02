@@ -1392,7 +1392,9 @@ func TestOpen_Established_ReturnsWhenOpenFails(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
 		close(done)
 	}()
 
@@ -1420,7 +1422,9 @@ func TestEstablished_StateMachineFollowsRFC5440(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
 		close(done)
 	}()
 
@@ -1459,7 +1463,9 @@ func TestEstablished_KeepWaitExpiryReportsErrorValue7(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
 		close(done)
 	}()
 
@@ -1489,7 +1495,9 @@ func TestEstablished_OpenWaitExpiryReportsErrorValue2(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
 		close(done)
 	}()
 
@@ -1519,7 +1527,9 @@ func TestEstablished_NonOpenFirstMessageReportsErrorValue1(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
 		close(done)
 	}()
 
@@ -1553,7 +1563,9 @@ func TestEstablished_InvalidZeroMSDIsToleratedWithWarning(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
 		close(done)
 	}()
 
@@ -1667,7 +1679,9 @@ func TestEstablished_PCErrDuringKeepWaitReportsErrorValue6(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
 		close(done)
 	}()
 
@@ -1701,7 +1715,9 @@ func TestEstablished_UnacceptableKeepaliveNonNegotiableReportsErrorValue3(t *tes
 
 	done := make(chan struct{})
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
 		close(done)
 	}()
 
@@ -1735,7 +1751,9 @@ func TestEstablished_NegotiatesAcceptableKeepaliveThenEstablishes(t *testing.T) 
 
 	done := make(chan struct{})
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
 		close(done)
 	}()
 
@@ -1780,7 +1798,9 @@ func TestEstablished_SecondOpenStillUnacceptableReportsErrorValue5(t *testing.T)
 
 	done := make(chan struct{})
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
 		close(done)
 	}()
 
@@ -1815,7 +1835,9 @@ func TestEstablished_SecondOpenAfterAcceptanceDoesNotChangeNegotiatedTimers(t *t
 
 	done := make(chan struct{})
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
 		close(done)
 	}()
 
@@ -1856,7 +1878,9 @@ func TestEstablished_ReturnsOnCloseMessage(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
 		close(done)
 	}()
 
@@ -1887,7 +1911,9 @@ func TestEstablished_ZeroKeepaliveDoesNotPanic(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
 		close(done)
 	}()
 
@@ -1917,7 +1943,9 @@ func TestEstablished_ReturnsWhenPeerDisconnectsAbruptly(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
 		close(done)
 	}()
 
@@ -1954,7 +1982,9 @@ func TestEstablished_ReturnsWhenPeriodicKeepaliveSendFails(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
 		close(done)
 	}()
 
@@ -1984,7 +2014,9 @@ func TestEstablished_ReturnsWhenInitialKeepaliveSendFails(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
 		close(done)
 	}()
 
@@ -3218,7 +3250,9 @@ func TestEstablished_DoesNotTimeOutAPccThatSendsNoKeepalives(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
 		close(done)
 	}()
 
@@ -3247,7 +3281,9 @@ func TestEstablished_SendsCloseWhenTheDeadTimerExpires(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
 		close(done)
 	}()
 
@@ -4246,7 +4282,9 @@ func TestEstablished_SetsEstablishedAtOnceUp(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
 		close(done)
 	}()
 
@@ -4447,7 +4485,11 @@ func TestServer_PeerSetupStats_RecordsOkAndFail(t *testing.T) {
 	require.NoError(t, ln.Close(), "failed to release the reserved port")
 
 	s := &Server{logger: logger.NewNop()}
-	go func() { _ = s.Serve(addr, port) }()
+	go func() {
+		if err := s.Serve(addr, port); err != nil {
+			t.Errorf("serve: %v", err)
+		}
+	}()
 	t.Cleanup(func() { assert.NoError(t, s.Shutdown()) })
 
 	var client net.Conn
@@ -4485,7 +4527,11 @@ func TestServer_PeerSetupStats_RecordsOkOnSuccessfulEstablishment(t *testing.T) 
 	require.NoError(t, ln.Close(), "failed to release the reserved port")
 
 	s := &Server{logger: logger.NewNop(), localKeepalive: defaultLocalKeepalive, localDeadTimer: pcep.DeadTimerFor(defaultLocalKeepalive)}
-	go func() { _ = s.Serve(addr, port) }()
+	go func() {
+		if err := s.Serve(addr, port); err != nil {
+			t.Errorf("serve: %v", err)
+		}
+	}()
 	t.Cleanup(func() { assert.NoError(t, s.Shutdown()) })
 
 	var client net.Conn

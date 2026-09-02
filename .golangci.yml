@@ -59,6 +59,8 @@ linters:
               desc: use internal/gobgp instead
     dupl:
       threshold: 150
+    errcheck:
+      check-blank: true
     gochecksumtype:
       default-signifies-exhaustive: false
     goconst:

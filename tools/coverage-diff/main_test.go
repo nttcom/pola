@@ -301,7 +301,11 @@ func withSourceFile(t *testing.T, name, src string) {
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = os.Chdir(cwd) })
+	t.Cleanup(func() {
+		if err := os.Chdir(cwd); err != nil {
+			t.Logf("cleanup chdir: %v", err)
+		}
+	})
 }
 
 func TestParseProfileSkipsDeclarationAndClosingBraceLines(t *testing.T) {

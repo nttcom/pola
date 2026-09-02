@@ -70,7 +70,11 @@ func TestServer_Serve_AcceptsConnectionAndUntracksOnClose(t *testing.T) {
 	require.NoError(t, ln.Close(), "failed to release the reserved port")
 
 	s := &Server{logger: logger.NewNop()}
-	go func() { _ = s.Serve(addr, port) }()
+	go func() {
+		if err := s.Serve(addr, port); err != nil {
+			t.Errorf("serve: %v", err)
+		}
+	}()
 	t.Cleanup(func() { assert.NoError(t, s.Shutdown()) })
 
 	var client net.Conn
@@ -83,7 +87,9 @@ func TestServer_Serve_AcceptsConnectionAndUntracksOnClose(t *testing.T) {
 		return true
 	}, 2*time.Second, 10*time.Millisecond, "expected to dial the PCEP listener once it starts")
 	t.Cleanup(func() {
-		_ = client.Close()
+		if err := client.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			t.Logf("cleanup close: %v", err)
+		}
 	})
 
 	require.Eventually(t, func() bool {
@@ -113,7 +119,9 @@ func TestServer_Shutdown_ClosesListenerAndStopsServe(t *testing.T) {
 		if dialErr != nil {
 			return false
 		}
-		_ = conn.Close()
+		if err := conn.Close(); err != nil {
+			t.Logf("close: %v", err)
+		}
 		return true
 	}, 2*time.Second, 10*time.Millisecond, "expected the PCEP listener to accept connections before shutdown")
 
@@ -166,7 +174,11 @@ func TestServer_Shutdown_ClosesActiveSessions(t *testing.T) {
 	require.NoError(t, ln.Close(), "failed to release the reserved port")
 
 	s := &Server{logger: logger.NewNop()}
-	go func() { _ = s.Serve(addr, port) }()
+	go func() {
+		if err := s.Serve(addr, port); err != nil {
+			t.Errorf("serve: %v", err)
+		}
+	}()
 
 	var client net.Conn
 	require.Eventually(t, func() bool {
@@ -177,7 +189,11 @@ func TestServer_Shutdown_ClosesActiveSessions(t *testing.T) {
 		client = c
 		return true
 	}, 2*time.Second, 10*time.Millisecond, "expected to dial the PCEP listener once it starts")
-	t.Cleanup(func() { _ = client.Close() })
+	t.Cleanup(func() {
+		if err := client.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			t.Logf("cleanup close: %v", err)
+		}
+	})
 
 	require.Eventually(t, func() bool {
 		return len(s.Sessions()) == 1
@@ -495,7 +511,11 @@ func TestServer_SyncTEDLoop_ExitsWhenChannelClosed(t *testing.T) {
 
 func TestServer_RegisterSession_ClosesConnWhenAlreadyShutdown(t *testing.T) {
 	server, client := newTCPConnPair(t)
-	t.Cleanup(func() { _ = client.Close() })
+	t.Cleanup(func() {
+		if err := client.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			t.Logf("cleanup close: %v", err)
+		}
+	})
 
 	s := &Server{logger: logger.NewNop(), closed: true}
 	ss := s.registerSession(server, netip.MustParseAddr("10.0.255.1"))
@@ -531,7 +551,11 @@ func TestServer_CloseRejectedConn_ErrClosedIsNotLogged(t *testing.T) {
 
 func TestServer_RegisterSession_AppendsWhenNotShutdown(t *testing.T) {
 	server, client := newTCPConnPair(t)
-	t.Cleanup(func() { assert.NoError(t, client.Close()) })
+	t.Cleanup(func() {
+		if err := client.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			t.Logf("cleanup close: %v", err)
+		}
+	})
 
 	s := &Server{logger: logger.NewNop()}
 	ss := s.registerSession(server, netip.MustParseAddr("10.0.255.1"))
@@ -548,12 +572,20 @@ func TestServer_RegisterSession_RejectsSecondSessionFromSamePeer(t *testing.T) {
 	s := &Server{logger: lg}
 
 	server1, client1 := newTCPConnPair(t)
-	t.Cleanup(func() { _ = client1.Close() })
+	t.Cleanup(func() {
+		if err := client1.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			t.Logf("cleanup close: %v", err)
+		}
+	})
 	ss1 := s.registerSession(server1, peerAddr)
 	require.NotNil(t, ss1)
 
 	server2, client2 := newTCPConnPair(t)
-	t.Cleanup(func() { _ = client2.Close() })
+	t.Cleanup(func() {
+		if err := client2.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			t.Logf("cleanup close: %v", err)
+		}
+	})
 	ss2 := s.registerSession(server2, peerAddr)
 
 	assert.Nil(t, ss2, "a second session with the same peer must not be accepted")
@@ -578,7 +610,11 @@ func TestServer_RegisterSession_RejectSecondSession_LogsWarnOnSendFailure(t *tes
 	s := &Server{logger: lg}
 
 	server1, client1 := newTCPConnPair(t)
-	t.Cleanup(func() { _ = client1.Close() })
+	t.Cleanup(func() {
+		if err := client1.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			t.Logf("cleanup close: %v", err)
+		}
+	})
 	ss1 := s.registerSession(server1, peerAddr)
 	require.NotNil(t, ss1)
 
@@ -595,13 +631,21 @@ func TestServer_RegisterSession_SessionIDSequenceIsPerPeer(t *testing.T) {
 	s := &Server{logger: logger.NewNop()}
 
 	server1, client1 := newTCPConnPair(t)
-	t.Cleanup(func() { _ = client1.Close() })
+	t.Cleanup(func() {
+		if err := client1.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			t.Logf("cleanup close: %v", err)
+		}
+	})
 	ss1 := s.registerSession(server1, netip.MustParseAddr("10.0.255.1"))
 	require.NotNil(t, ss1)
 	assert.Zero(t, ss1.localSessionID)
 
 	server2, client2 := newTCPConnPair(t)
-	t.Cleanup(func() { _ = client2.Close() })
+	t.Cleanup(func() {
+		if err := client2.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			t.Logf("cleanup close: %v", err)
+		}
+	})
 	ss2 := s.registerSession(server2, netip.MustParseAddr("10.0.255.2"))
 	require.NotNil(t, ss2)
 	assert.Zero(t, ss2.localSessionID, "each peer has its own SID sequence")
