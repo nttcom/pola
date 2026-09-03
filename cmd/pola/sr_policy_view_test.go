@@ -17,6 +17,8 @@ import (
 )
 
 func TestNewSRPolicySessionView(t *testing.T) {
+	t.Parallel()
+
 	ss := grpc.SRPolicySession{
 		PeerAddr:  netip.MustParseAddr(testPeerAddr1),
 		State:     "up",
@@ -34,6 +36,8 @@ func TestNewSRPolicySessionView(t *testing.T) {
 }
 
 func TestNewSRPolicySessionView_NilSRPoliciesBecomesEmptySlice(t *testing.T) {
+	t.Parallel()
+
 	ss := grpc.SRPolicySession{PeerAddr: netip.MustParseAddr(testPeerAddr1), State: "up", SyncState: "pending"}
 
 	v := newSRPolicySessionView(ss)

@@ -19,12 +19,13 @@ import (
 )
 
 func TestNewSessionCmd_RunE(t *testing.T) {
+	t.Parallel()
+
 	t.Run("success", func(t *testing.T) {
 		cmd := newSessionCmd(&cli{client: &fakePCEServiceClient{}})
 
-		captureStdout(t, func() {
-			require.NoError(t, cmd.RunE(cmd, []string{}))
-		})
+		cmd.SetOut(&bytes.Buffer{})
+		require.NoError(t, cmd.RunE(cmd, []string{}))
 	})
 
 	t.Run("gRPC error propagates", func(t *testing.T) {
@@ -38,13 +39,14 @@ func TestNewSessionCmd_RunE(t *testing.T) {
 }
 
 func TestNewSessionCmd_PassesParsedArgs(t *testing.T) {
+	t.Parallel()
+
 	c := &cli{}
 	cmd := newSessionCmd(c)
 	c.client = &fakePCEServiceClient{}
 
-	captureStdout(t, func() {
-		require.NoError(t, cmd.RunE(cmd, []string{testPeerAddr1, sessionDetailArg}))
-	})
+	cmd.SetOut(&bytes.Buffer{})
+	require.NoError(t, cmd.RunE(cmd, []string{testPeerAddr1, sessionDetailArg}))
 
 	fakeClient, ok := c.client.(*fakePCEServiceClient)
 	require.True(t, ok)
@@ -55,6 +57,8 @@ func TestNewSessionCmd_PassesParsedArgs(t *testing.T) {
 }
 
 func TestParseSessionArgs(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name       string
 		args       []string
@@ -129,6 +133,8 @@ func sessionFixture() *pb.Session {
 }
 
 func TestShowSession_Text(t *testing.T) {
+	t.Parallel()
+
 	client := &fakePCEServiceClient{sessionListResp: &pb.GetSessionListResponse{Sessions: []*pb.Session{sessionFixture()}}}
 
 	var buf bytes.Buffer
@@ -150,6 +156,8 @@ func TestShowSession_Text(t *testing.T) {
 }
 
 func TestShowSession_Text_CapabilityGrouping(t *testing.T) {
+	t.Parallel()
+
 	fixture := sessionFixture()
 	assocTypeList := &pb.Capability{
 		Type: pb.CapabilityType_CAPABILITY_TYPE_ASSOC_TYPE_LIST,
@@ -194,6 +202,8 @@ func TestShowSession_Text_CapabilityGrouping(t *testing.T) {
 }
 
 func TestShowSession_JSON(t *testing.T) {
+	t.Parallel()
+
 	client := &fakePCEServiceClient{sessionListResp: &pb.GetSessionListResponse{Sessions: []*pb.Session{sessionFixture()}}}
 
 	var buf bytes.Buffer
@@ -216,6 +226,8 @@ func TestShowSession_JSON(t *testing.T) {
 }
 
 func TestShowSession_JSONDetailAddsWithoutChangingSummaryKeys(t *testing.T) {
+	t.Parallel()
+
 	client := &fakePCEServiceClient{sessionListResp: &pb.GetSessionListResponse{Sessions: []*pb.Session{sessionFixture()}}}
 
 	var summaryBuf, detailBuf bytes.Buffer
@@ -238,6 +250,8 @@ func TestShowSession_JSONDetailAddsWithoutChangingSummaryKeys(t *testing.T) {
 }
 
 func TestShowSession_AdvertisedValuesUnsetBeforeOpenExchange(t *testing.T) {
+	t.Parallel()
+
 	client := &fakePCEServiceClient{sessionListResp: &pb.GetSessionListResponse{Sessions: []*pb.Session{{
 		PeerAddr: netip.MustParseAddr(testPeerAddr1).AsSlice(),
 		State:    pb.SessionState_SESSION_STATE_OPEN_WAIT,
@@ -253,6 +267,8 @@ func TestShowSession_AdvertisedValuesUnsetBeforeOpenExchange(t *testing.T) {
 }
 
 func TestShowSession_SessionIDZeroDistinguishedFromUnset(t *testing.T) {
+	t.Parallel()
+
 	client := &fakePCEServiceClient{sessionListResp: &pb.GetSessionListResponse{Sessions: []*pb.Session{{
 		PeerAddr:       netip.MustParseAddr(testPeerAddr1).AsSlice(),
 		State:          pb.SessionState_SESSION_STATE_UP,
@@ -266,6 +282,8 @@ func TestShowSession_SessionIDZeroDistinguishedFromUnset(t *testing.T) {
 }
 
 func TestShowSession_NoSessionsText(t *testing.T) {
+	t.Parallel()
+
 	client := &fakePCEServiceClient{sessionListResp: &pb.GetSessionListResponse{}}
 
 	var buf bytes.Buffer
@@ -274,6 +292,8 @@ func TestShowSession_NoSessionsText(t *testing.T) {
 }
 
 func TestShowSession_NoSessionForAddrText(t *testing.T) {
+	t.Parallel()
+
 	client := &fakePCEServiceClient{sessionListResp: &pb.GetSessionListResponse{}}
 	addr := netip.MustParseAddr("192.0.2.9")
 
@@ -283,6 +303,8 @@ func TestShowSession_NoSessionForAddrText(t *testing.T) {
 }
 
 func TestShowSession_NoSessionsJSON(t *testing.T) {
+	t.Parallel()
+
 	client := &fakePCEServiceClient{sessionListResp: &pb.GetSessionListResponse{}}
 
 	var buf bytes.Buffer
@@ -291,6 +313,8 @@ func TestShowSession_NoSessionsJSON(t *testing.T) {
 }
 
 func TestShowSession_GRPCErrorPropagates(t *testing.T) {
+	t.Parallel()
+
 	client := &fakePCEServiceClient{sessionListErr: assert.AnError}
 	var buf bytes.Buffer
 	err := showSession(&buf, netip.Addr{}, false, outputText, client)
@@ -298,6 +322,8 @@ func TestShowSession_GRPCErrorPropagates(t *testing.T) {
 }
 
 func TestShowSession_PassesAddrFilterAndDetailFlag(t *testing.T) {
+	t.Parallel()
+
 	fake := &fakePCEServiceClient{sessionListResp: &pb.GetSessionListResponse{}}
 	addr := netip.MustParseAddr(testPeerAddr1)
 

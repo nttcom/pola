@@ -13,6 +13,8 @@ import (
 )
 
 func TestFieldConstructors(t *testing.T) {
+	t.Parallel()
+
 	lg, rec := NewRecorder(LevelDebug)
 	lg.Info(
 		"msg",
@@ -39,6 +41,8 @@ func TestFieldConstructors(t *testing.T) {
 }
 
 func TestZapFieldsNil(t *testing.T) {
+	t.Parallel()
+
 	assert.Nil(t, zapFields(nil))
 	assert.Nil(t, zapFields([]Field{}))
 }

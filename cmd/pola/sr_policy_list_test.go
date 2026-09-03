@@ -6,6 +6,7 @@
 package main
 
 import (
+	"bytes"
 	"net/netip"
 	"testing"
 
@@ -22,6 +23,8 @@ func newTestSRPolicyListCmd(client pb.PCEServiceClient, jsonFmt bool) *cobra.Com
 }
 
 func TestPeerAddrFlag_Unset(t *testing.T) {
+	t.Parallel()
+
 	cmd := newTestSRPolicyListCmd(nil, false)
 
 	addr, err := peerAddrFlag(cmd)
@@ -30,6 +33,8 @@ func TestPeerAddrFlag_Unset(t *testing.T) {
 }
 
 func TestPeerAddrFlag_Valid(t *testing.T) {
+	t.Parallel()
+
 	cmd := newTestSRPolicyListCmd(nil, false)
 	require.NoError(t, cmd.Flags().Set("peer", "10.0.0.1"))
 
@@ -39,6 +44,8 @@ func TestPeerAddrFlag_Valid(t *testing.T) {
 }
 
 func TestPeerAddrFlag_Invalid(t *testing.T) {
+	t.Parallel()
+
 	cmd := newTestSRPolicyListCmd(nil, false)
 	require.NoError(t, cmd.Flags().Set("peer", "not-an-address"))
 
@@ -47,16 +54,22 @@ func TestPeerAddrFlag_Invalid(t *testing.T) {
 }
 
 func TestPeerAddrFlag_UnregisteredFlag(t *testing.T) {
+	t.Parallel()
+
 	_, err := peerAddrFlag(&cobra.Command{})
 	require.Error(t, err)
 }
 
 func TestShowSRPolicyList_UnregisteredFlag(t *testing.T) {
+	t.Parallel()
+
 	err := showSRPolicyList(&cobra.Command{}, []string{}, nil, false)
 	require.Error(t, err)
 }
 
 func TestSegmentDisplayString(t *testing.T) {
+	t.Parallel()
+
 	local := netip.MustParseAddr(testPeerAddr1)
 	remote := netip.MustParseAddr(testPeerAddr2)
 
@@ -95,6 +108,8 @@ func TestSegmentDisplayString(t *testing.T) {
 }
 
 func TestSegmentDisplayString_SRv6(t *testing.T) {
+	t.Parallel()
+
 	sid := netip.MustParseAddr("2001:db8:1005::")
 	local := netip.MustParseAddr("2001:db8::5")
 	remote := netip.MustParseAddr("2001:db8::6")
@@ -134,25 +149,31 @@ func TestSegmentDisplayString_SRv6(t *testing.T) {
 }
 
 func TestSrcDstDisplay(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, testPeerAddr1, srcDstDisplay(testPeerAddr1, ""))
 	assert.Equal(t, "192.0.2.1 (0000.0aff.0001)", srcDstDisplay(testPeerAddr1, testRouterID1))
 }
 
 func TestShowSRPolicyList(t *testing.T) {
+	t.Parallel()
+
 	t.Run("no policies found", func(t *testing.T) {
 		client := &fakePCEServiceClient{srPolicyListResp: &pb.GetSRPolicyListResponse{}}
-		out := captureStdout(t, func() {
-			require.NoError(t, showSRPolicyList(newTestSRPolicyListCmd(client, false), []string{}, client, false))
-		})
-		assert.Equal(t, "No PCEP sessions connected.\n", out)
+		cmd := newTestSRPolicyListCmd(client, false)
+		var out bytes.Buffer
+		cmd.SetOut(&out)
+		require.NoError(t, showSRPolicyList(cmd, []string{}, client, false))
+		assert.Equal(t, "No PCEP sessions connected.\n", out.String())
 	})
 
 	t.Run("no policies found, json output", func(t *testing.T) {
 		client := &fakePCEServiceClient{srPolicyListResp: &pb.GetSRPolicyListResponse{}}
-		out := captureStdout(t, func() {
-			require.NoError(t, showSRPolicyList(newTestSRPolicyListCmd(client, true), []string{}, client, true))
-		})
-		assert.Equal(t, "[]\n", out)
+		cmd := newTestSRPolicyListCmd(client, true)
+		var out bytes.Buffer
+		cmd.SetOut(&out)
+		require.NoError(t, showSRPolicyList(cmd, []string{}, client, true))
+		assert.Equal(t, "[]\n", out.String())
 	})
 
 	t.Run("plain text output", func(t *testing.T) {
@@ -186,9 +207,10 @@ func TestShowSRPolicyList(t *testing.T) {
 			}},
 		}}
 
-		out := captureStdout(t, func() {
-			require.NoError(t, showSRPolicyList(newTestSRPolicyListCmd(client, false), []string{}, client, false))
-		})
+		cmd := newTestSRPolicyListCmd(client, false)
+		var out bytes.Buffer
+		cmd.SetOut(&out)
+		require.NoError(t, showSRPolicyList(cmd, []string{}, client, false))
 
 		want := "Session: 192.0.2.1 (State: up, LSP-DB Sync: finished)\n" +
 			"  PolicyName: pol1\n" +
@@ -211,7 +233,7 @@ func TestShowSRPolicyList(t *testing.T) {
 			"    Color: 0\n" +
 			"    Preference: 0\n" +
 			"    SegmentList: None\n"
-		assert.Equal(t, want, out)
+		assert.Equal(t, want, out.String())
 	})
 
 	t.Run("synced session with no policies", func(t *testing.T) {
@@ -223,13 +245,14 @@ func TestShowSRPolicyList(t *testing.T) {
 			}},
 		}}
 
-		out := captureStdout(t, func() {
-			require.NoError(t, showSRPolicyList(newTestSRPolicyListCmd(client, false), []string{}, client, false))
-		})
+		cmd := newTestSRPolicyListCmd(client, false)
+		var out bytes.Buffer
+		cmd.SetOut(&out)
+		require.NoError(t, showSRPolicyList(cmd, []string{}, client, false))
 
 		want := "Session: 192.0.2.1 (State: up, LSP-DB Sync: finished)\n" +
 			"  No SR Policies.\n"
-		assert.Equal(t, want, out)
+		assert.Equal(t, want, out.String())
 	})
 
 	t.Run("unsynced session is shown with an explanatory note", func(t *testing.T) {
@@ -241,13 +264,14 @@ func TestShowSRPolicyList(t *testing.T) {
 			}},
 		}}
 
-		out := captureStdout(t, func() {
-			require.NoError(t, showSRPolicyList(newTestSRPolicyListCmd(client, false), []string{}, client, false))
-		})
+		cmd := newTestSRPolicyListCmd(client, false)
+		var out bytes.Buffer
+		cmd.SetOut(&out)
+		require.NoError(t, showSRPolicyList(cmd, []string{}, client, false))
 
 		want := "Session: 192.0.2.1 (State: up, LSP-DB Sync: pending)\n" +
 			"  No SR Policies: session is still synchronizing.\n"
-		assert.Equal(t, want, out)
+		assert.Equal(t, want, out.String())
 	})
 
 	t.Run("json output", func(t *testing.T) {
@@ -265,9 +289,9 @@ func TestShowSRPolicyList(t *testing.T) {
 		}}
 
 		cmd := newTestSRPolicyListCmd(client, true)
-		out := captureStdout(t, func() {
-			require.NoError(t, showSRPolicyList(cmd, []string{}, client, true))
-		})
+		var out bytes.Buffer
+		cmd.SetOut(&out)
+		require.NoError(t, showSRPolicyList(cmd, []string{}, client, true))
 		want := `[{
 			"peerAddress": "192.0.2.1",
 			"state": "up",
@@ -281,7 +305,7 @@ func TestShowSRPolicyList(t *testing.T) {
 				"preference": 0
 			}]
 		}]`
-		assert.JSONEq(t, want, out)
+		assert.JSONEq(t, want, out.String())
 	})
 
 	t.Run("invalid peer filter is rejected", func(t *testing.T) {
@@ -296,13 +320,13 @@ func TestShowSRPolicyList(t *testing.T) {
 		cmd := newTestSRPolicyListCmd(fake, false)
 		require.NoError(t, cmd.Flags().Set("peer", testPeerAddr1))
 
-		out := captureStdout(t, func() {
-			require.NoError(t, showSRPolicyList(cmd, []string{}, fake, false))
-		})
+		var out bytes.Buffer
+		cmd.SetOut(&out)
+		require.NoError(t, showSRPolicyList(cmd, []string{}, fake, false))
 
 		require.NotNil(t, fake.srPolicyListReq)
 		assert.Equal(t, netip.MustParseAddr(testPeerAddr1).AsSlice(), fake.srPolicyListReq.GetPeerAddr())
-		assert.Equal(t, "No PCEP session for 192.0.2.1.\n", out)
+		assert.Equal(t, "No PCEP session for 192.0.2.1.\n", out.String())
 	})
 
 	t.Run("grpc error propagates", func(t *testing.T) {
@@ -314,12 +338,14 @@ func TestShowSRPolicyList(t *testing.T) {
 }
 
 func TestNewSRPolicyListCmd_RunE(t *testing.T) {
+	t.Parallel()
+
 	cmd := newSRPolicyListCmd(&cli{client: &fakePCEServiceClient{
 		srPolicyListResp: &pb.GetSRPolicyListResponse{},
 	}})
 
-	out := captureStdout(t, func() {
-		require.NoError(t, cmd.RunE(cmd, []string{}))
-	})
-	assert.Equal(t, "No PCEP sessions connected.\n", out)
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	require.NoError(t, cmd.RunE(cmd, []string{}))
+	assert.Equal(t, "No PCEP sessions connected.\n", out.String())
 }

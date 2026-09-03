@@ -8,6 +8,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/netip"
 	"os"
 
@@ -44,7 +45,7 @@ func newSRPolicyAddCmd(c *cli) *cobra.Command {
 			}
 			defer func() {
 				if err := f.Close(); err != nil {
-					fmt.Fprintf(os.Stderr, "warning: failed to close file \"%s\": %v\n", filepath, err)
+					fmt.Fprintf(cmd.ErrOrStderr(), "warning: failed to close file \"%s\": %v\n", filepath, err)
 				}
 			}()
 
@@ -53,7 +54,7 @@ func newSRPolicyAddCmd(c *cli) *cobra.Command {
 				return fmt.Errorf("YAML syntax error in file \"%s\": %w", filepath, err)
 			}
 
-			if err := addSRPolicy(inputData, c.jsonFmt, noSIDValidateFlag, c.client); err != nil {
+			if err := addSRPolicy(cmd.OutOrStdout(), cmd.ErrOrStderr(), inputData, c.jsonFmt, noSIDValidateFlag, c.client); err != nil {
 				return fmt.Errorf("failed to add SR policy: %w", err)
 			}
 			return nil
@@ -109,9 +110,9 @@ const (
 	metricTypeHopcount = "hopcount"
 )
 
-func addSRPolicy(input inputFormat, jsonFlag, noSIDValidate bool, client pb.PCEServiceClient) error {
+func addSRPolicy(out, errOut io.Writer, input inputFormat, jsonFlag, noSIDValidate bool, client pb.PCEServiceClient) error {
 	if noSIDValidate {
-		fmt.Fprintln(os.Stderr, "warning: skipping SID validation (--no-sid-validate)")
+		fmt.Fprintln(errOut, "warning: skipping SID validation (--no-sid-validate)")
 	}
 
 	usesRouterID := input.SRPolicy.SrcRouterID != "" || input.SRPolicy.DstRouterID != ""
@@ -131,9 +132,9 @@ func addSRPolicy(input inputFormat, jsonFlag, noSIDValidate bool, client pb.PCES
 	}
 
 	if jsonFlag {
-		return writeJSON(os.Stdout, statusResult{Status: statusSuccess})
+		return writeJSON(out, statusResult{Status: statusSuccess})
 	}
-	fmt.Printf("success!\n")
+	fmt.Fprintln(out, "success!")
 
 	return nil
 }

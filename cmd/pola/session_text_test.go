@@ -49,6 +49,8 @@ func fullSessionViewFixture() sessionView {
 }
 
 func TestWriteSessionText_DetailWithNilStatsRendersWithoutError(t *testing.T) {
+	t.Parallel()
+
 	v := fullSessionViewFixture()
 	v.Stats = nil
 
@@ -73,6 +75,8 @@ func blankLineAfterFail(sub string) func(string) bool {
 }
 
 func TestWriteSessionText_PropagatesWriteErrors(t *testing.T) {
+	t.Parallel()
+
 	v := fullSessionViewFixture()
 	views := []sessionView{v}
 	twoViews := []sessionView{v, v}
@@ -107,6 +111,8 @@ func TestWriteSessionText_PropagatesWriteErrors(t *testing.T) {
 }
 
 func TestWriteGroupedLine_PropagatesWriteErrorOnNonFirstItem(t *testing.T) {
+	t.Parallel()
+
 	c := capabilitiesView{
 		LocalOnly: []capGroupView{{Capability: capGroupAssocTypeList, Items: []string{"SR Policy Association (0x0006) [RFC9862]"}}},
 	}
@@ -117,6 +123,8 @@ func TestWriteGroupedLine_PropagatesWriteErrorOnNonFirstItem(t *testing.T) {
 }
 
 func TestWriteCapabilityGroupSection_PropagatesGroupedLineWriteError(t *testing.T) {
+	t.Parallel()
+
 	c := capabilitiesView{
 		commonGroups: []capGroupView{{Capability: capGroupAssocTypeList, Items: []string{"SR Policy Association (0x0006) [RFC9862]"}}},
 	}
@@ -127,6 +135,8 @@ func TestWriteCapabilityGroupSection_PropagatesGroupedLineWriteError(t *testing.
 }
 
 func TestWriteGroupedLine_EmptyItemsRendersDash(t *testing.T) {
+	t.Parallel()
+
 	c := capabilitiesView{
 		LocalOnly: []capGroupView{{Capability: capGroupAssocTypeList, Items: []string{}}},
 	}
@@ -137,6 +147,8 @@ func TestWriteGroupedLine_EmptyItemsRendersDash(t *testing.T) {
 }
 
 func TestFormatTimerValue(t *testing.T) {
+	t.Parallel()
+
 	zero := uint32(0)
 	v := uint32(30)
 	assert.Equal(t, "-", formatTimerValue(nil))

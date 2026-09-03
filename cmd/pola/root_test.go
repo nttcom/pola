@@ -14,6 +14,8 @@ import (
 )
 
 func TestNewRootCmd_Structure(t *testing.T) {
+	t.Parallel()
+
 	cmd := newRootCmd()
 
 	var names []string
@@ -28,6 +30,8 @@ func TestNewRootCmd_Structure(t *testing.T) {
 }
 
 func TestPersistentPreRunE(t *testing.T) {
+	t.Parallel()
+
 	t.Run("success sets the client", func(t *testing.T) {
 		c := &cli{}
 		cmd := newRootCmd()
@@ -46,6 +50,8 @@ func TestPersistentPreRunE(t *testing.T) {
 }
 
 func TestRunRootCmd_PrintsHelp(t *testing.T) {
+	t.Parallel()
+
 	cmd := newRootCmd()
 	buf := &bytes.Buffer{}
 	cmd.SetOut(buf)

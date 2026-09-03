@@ -16,6 +16,8 @@ import (
 )
 
 func TestBuildCapabilitiesView_StatefulFlagDiffersFallsToOnlySets(t *testing.T) {
+	t.Parallel()
+
 	local := []grpc.Capability{
 		{Type: capGroupStateful, Detail: grpc.StatefulCapability{LSPUpdate: true, LSPInstantiation: true, Color: true}},
 	}
@@ -33,6 +35,8 @@ func TestBuildCapabilitiesView_StatefulFlagDiffersFallsToOnlySets(t *testing.T) 
 }
 
 func TestBuildCapabilitiesView_MismatchedMSDFallsToBothOnlySets(t *testing.T) {
+	t.Parallel()
+
 	local := []grpc.Capability{{Type: "SR", Detail: grpc.SRCapability{MSD: proto.Uint32(10)}}}
 	peer := []grpc.Capability{{Type: "SR", Detail: grpc.SRCapability{MSD: proto.Uint32(16)}}}
 
@@ -45,6 +49,8 @@ func TestBuildCapabilitiesView_MismatchedMSDFallsToBothOnlySets(t *testing.T) {
 }
 
 func TestBuildCapabilitiesView_MatchingMSDIsCommon(t *testing.T) {
+	t.Parallel()
+
 	local := []grpc.Capability{{Type: "SR", Detail: grpc.SRCapability{MSD: proto.Uint32(10)}}}
 	peer := []grpc.Capability{{Type: "SR", Detail: grpc.SRCapability{MSD: proto.Uint32(10)}}}
 
@@ -56,6 +62,8 @@ func TestBuildCapabilitiesView_MatchingMSDIsCommon(t *testing.T) {
 }
 
 func TestBuildCapabilitiesView_AssociationTypesAndUnrecognizedTLVs(t *testing.T) {
+	t.Parallel()
+
 	caps := []grpc.Capability{
 		{Type: capGroupAssocTypeList, Detail: grpc.AssocTypeListCapability{AssocTypes: []uint32{6, 9}}},
 		{Type: capGroupUnknown, Detail: grpc.UnknownCapability{TLVType: 73}},
@@ -68,6 +76,8 @@ func TestBuildCapabilitiesView_AssociationTypesAndUnrecognizedTLVs(t *testing.T)
 }
 
 func TestBuildCapabilitiesView_CapabilityAbsentFromOneSideIsWhollyOnOtherSide(t *testing.T) {
+	t.Parallel()
+
 	local := []grpc.Capability{
 		{Type: capGroupMultipath, Detail: grpc.MultipathCapability{MaxMultipaths: 4}},
 	}
@@ -82,6 +92,8 @@ func TestBuildCapabilitiesView_CapabilityAbsentFromOneSideIsWhollyOnOtherSide(t 
 }
 
 func TestBuildCapabilitiesView_PathSetupTypeSubCapabilitiesActAsOwnGroups(t *testing.T) {
+	t.Parallel()
+
 	local := []grpc.Capability{
 		{Type: capGroupPathSetupType, Detail: grpc.PathSetupTypeCapability{
 			PathSetupTypes: []uint32{1, 3},
@@ -114,6 +126,8 @@ func TestBuildCapabilitiesView_PathSetupTypeSubCapabilitiesActAsOwnGroups(t *tes
 }
 
 func TestBuildCapabilitiesView_EmptyBothSidesProducesEmptySlicesNotNil(t *testing.T) {
+	t.Parallel()
+
 	view := buildCapabilitiesView(nil, nil)
 
 	assert.NotNil(t, view.Common.PathSetupTypes)
@@ -125,6 +139,8 @@ func TestBuildCapabilitiesView_EmptyBothSidesProducesEmptySlicesNotNil(t *testin
 }
 
 func TestCapabilitiesFeatures_DeduplicatesByGroupAndToken(t *testing.T) {
+	t.Parallel()
+
 	caps := []grpc.Capability{
 		{Type: "SR", Detail: grpc.SRCapability{UnlimitedMSD: true}},
 	}
@@ -134,6 +150,8 @@ func TestCapabilitiesFeatures_DeduplicatesByGroupAndToken(t *testing.T) {
 }
 
 func TestBuildCapabilitiesView_PeerSRAdvertisedTopLevelAndNestedDedupesToOneCommonEntry(t *testing.T) {
+	t.Parallel()
+
 	peer := []grpc.Capability{
 		{Type: "SR", Detail: grpc.SRCapability{UnlimitedMSD: true}},
 		{Type: capGroupPathSetupType, Detail: grpc.PathSetupTypeCapability{
@@ -153,6 +171,8 @@ func TestBuildCapabilitiesView_PeerSRAdvertisedTopLevelAndNestedDedupesToOneComm
 }
 
 func TestUnrecognizedTLVItem(t *testing.T) {
+	t.Parallel()
+
 	tests := map[string]struct {
 		tlvType uint32
 		want    string
@@ -169,30 +189,42 @@ func TestUnrecognizedTLVItem(t *testing.T) {
 }
 
 func TestAssocTypeLabel(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, "SR Policy Association (0x0006) [RFC9862]", assocTypeLabel(6))
 	assert.Equal(t, "P2MP SR Policy Association (0x0009) [draft-ietf-pce-sr-p2mp-policy-11]", assocTypeLabel(9))
 	assert.Equal(t, "Unknown AssocType (0xffff)", assocTypeLabel(0xffff))
 }
 
 func TestAssocTypeLabel_OutOfRange(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, "65536 (out-of-range for AssocType)", assocTypeLabel(0x10000))
 }
 
 func TestUnrecognizedTLVItem_OutOfRange(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, "type=65536: out of TLV registry range, no RFC", unrecognizedTLVItem(0x10000))
 }
 
 func TestParseTokenUint32_NonNumericSuffixReturnsFalse(t *testing.T) {
+	t.Parallel()
+
 	_, ok := parseTokenUint32("MSD=notanumber", "MSD=")
 	assert.False(t, ok)
 }
 
 func TestParseTokenUint32_PrefixMismatchReturnsFalse(t *testing.T) {
+	t.Parallel()
+
 	_, ok := parseTokenUint32("AssocType:6", "MSD=")
 	assert.False(t, ok)
 }
 
 func TestBuildCapabilitiesView_CommonPathSetupTypesAreCollected(t *testing.T) {
+	t.Parallel()
+
 	caps := []grpc.Capability{
 		{Type: capGroupPathSetupType, Detail: grpc.PathSetupTypeCapability{PathSetupTypes: []uint32{1, 3}}},
 	}
@@ -202,10 +234,14 @@ func TestBuildCapabilitiesView_CommonPathSetupTypesAreCollected(t *testing.T) {
 }
 
 func TestCapGroupLabel_UnknownGroupReturnsGroupItself(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, "FOO", capGroupLabel("FOO"))
 }
 
 func TestCommonCapabilityLines_GroupsByTLVExceptAssocTypeAndUnknown(t *testing.T) {
+	t.Parallel()
+
 	common := []capFeature{
 		{group: capGroupStateful, token: "Stateful"},
 		{group: capGroupStateful, token: "Update"},
@@ -228,6 +264,8 @@ func TestCommonCapabilityLines_GroupsByTLVExceptAssocTypeAndUnknown(t *testing.T
 }
 
 func TestCommonCapabilityLines_OrdersByTLVTypeRegardlessOfInputOrder(t *testing.T) {
+	t.Parallel()
+
 	common := []capFeature{
 		{group: capGroupMultipath, token: "Multipath"},
 		{group: "SR", token: "SR"},
@@ -249,6 +287,8 @@ func TestCommonCapabilityLines_OrdersByTLVTypeRegardlessOfInputOrder(t *testing.
 }
 
 func TestCommonCapabilityLines_UnknownGroupSortsLast(t *testing.T) {
+	t.Parallel()
+
 	common := []capFeature{
 		{group: capGroupUnknown, token: "unknown_type_73"},
 		{group: capGroupMultipath, token: "Multipath"},
@@ -260,6 +300,8 @@ func TestCommonCapabilityLines_UnknownGroupSortsLast(t *testing.T) {
 }
 
 func TestBuildCapabilitiesView_UntypedCommonCapabilitiesLandInOther(t *testing.T) {
+	t.Parallel()
+
 	caps := []grpc.Capability{
 		{Type: capGroupVendorInformation, Detail: grpc.VendorInformationCapability{EnterpriseNumber: uint32(pcep.EnterpriseNumberJuniper)}},
 		{Type: capGroupMultipath, Detail: grpc.MultipathCapability{MaxMultipaths: 4, Weighted: true}},
@@ -286,6 +328,8 @@ func TestBuildCapabilitiesView_UntypedCommonCapabilitiesLandInOther(t *testing.T
 }
 
 func TestBuildCapabilitiesView_OtherPreservesOriginalTokenCasing(t *testing.T) {
+	t.Parallel()
+
 	caps := []grpc.Capability{
 		{Type: capGroupVendorInformation, Detail: grpc.VendorInformationCapability{EnterpriseNumber: uint32(pcep.EnterpriseNumberJuniper)}},
 	}
@@ -298,6 +342,8 @@ func TestBuildCapabilitiesView_OtherPreservesOriginalTokenCasing(t *testing.T) {
 }
 
 func TestBuildCapabilitiesView_OtherIsGroupedDeterministically(t *testing.T) {
+	t.Parallel()
+
 	caps := []grpc.Capability{
 		{Type: capGroupMultipath, Detail: grpc.MultipathCapability{MaxMultipaths: 4, Weighted: true, OppositeDir: true}},
 		{Type: capGroupStateful, Detail: grpc.StatefulCapability{TriggeredResync: true, Color: true}},
@@ -316,6 +362,8 @@ func TestBuildCapabilitiesView_OtherIsGroupedDeterministically(t *testing.T) {
 }
 
 func TestBuildCapabilitiesView_TypedFieldsDoNotDuplicateIntoOther(t *testing.T) {
+	t.Parallel()
+
 	caps := []grpc.Capability{
 		{Type: capGroupStateful, Detail: grpc.StatefulCapability{LSPUpdate: true, LSPInstantiation: true}},
 		{Type: "SR", Detail: grpc.SRCapability{MSD: proto.Uint32(10)}},
@@ -328,6 +376,8 @@ func TestBuildCapabilitiesView_TypedFieldsDoNotDuplicateIntoOther(t *testing.T) 
 }
 
 func TestCommonCapabilityLines_SingleAssocTypeStillUsesHeadingForm(t *testing.T) {
+	t.Parallel()
+
 	common := []capFeature{
 		{group: capGroupAssocTypeList, token: "AssocType:6"},
 	}
@@ -339,6 +389,8 @@ func TestCommonCapabilityLines_SingleAssocTypeStillUsesHeadingForm(t *testing.T)
 }
 
 func TestBuildCapabilitiesView_PeerOnlyUnrecognizedTLVUsesRegistryLabel(t *testing.T) {
+	t.Parallel()
+
 	peer := []grpc.Capability{
 		{Type: capGroupUnknown, Detail: grpc.UnknownCapability{TLVType: 73}},
 	}
@@ -352,6 +404,8 @@ func TestBuildCapabilitiesView_PeerOnlyUnrecognizedTLVUsesRegistryLabel(t *testi
 }
 
 func TestBuildCapabilitiesView_LocalOnlyAssocTypeUsesRegistryLabel(t *testing.T) {
+	t.Parallel()
+
 	local := []grpc.Capability{
 		{Type: capGroupAssocTypeList, Detail: grpc.AssocTypeListCapability{AssocTypes: []uint32{6}}},
 	}
@@ -365,6 +419,8 @@ func TestBuildCapabilitiesView_LocalOnlyAssocTypeUsesRegistryLabel(t *testing.T)
 }
 
 func TestBuildCapabilitiesView_VendorInformationTokenIsNotLowercased(t *testing.T) {
+	t.Parallel()
+
 	peer := []grpc.Capability{
 		{Type: capGroupVendorInformation, Detail: grpc.VendorInformationCapability{EnterpriseNumber: uint32(pcep.EnterpriseNumberJuniper)}},
 	}

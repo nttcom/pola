@@ -16,6 +16,8 @@ import (
 )
 
 func TestNewTEDNodeViews_SortedByRouterID(t *testing.T) {
+	t.Parallel()
+
 	nodes := map[string]*table.LsNode{
 		testRouterID2: {ASN: 65000, RouterID: testRouterID2},
 		testRouterID1: {ASN: 65000, RouterID: testRouterID1},
@@ -29,6 +31,8 @@ func TestNewTEDNodeViews_SortedByRouterID(t *testing.T) {
 }
 
 func TestNewTEDLinkView_OmitsUnsetIPs(t *testing.T) {
+	t.Parallel()
+
 	link := &table.LsLink{RemoteNode: &table.LsNode{RouterID: testRouterID2}}
 	v := newTEDLinkView(link)
 	assert.Empty(t, v.LocalIP)
@@ -37,6 +41,8 @@ func TestNewTEDLinkView_OmitsUnsetIPs(t *testing.T) {
 }
 
 func TestEndpointBehaviorViewFrom_IncludesFlagsAndAlgorithm(t *testing.T) {
+	t.Parallel()
+
 	v := endpointBehaviorViewFrom(table.EndpointBehavior{Behavior: table.BehaviorEND, Flags: 1, Algorithm: 2})
 	assert.Equal(t, table.BehaviorEND, v.Behavior)
 	require.NotNil(t, v.Flags)
@@ -46,6 +52,8 @@ func TestEndpointBehaviorViewFrom_IncludesFlagsAndAlgorithm(t *testing.T) {
 }
 
 func TestEndpointBehaviorViewFromBehavior_OmitsFlagsAndAlgorithm(t *testing.T) {
+	t.Parallel()
+
 	v := endpointBehaviorViewFromBehavior(table.BehaviorENDX)
 	assert.Equal(t, table.BehaviorENDX, v.Behavior)
 	assert.Nil(t, v.Flags)
@@ -53,6 +61,8 @@ func TestEndpointBehaviorViewFromBehavior_OmitsFlagsAndAlgorithm(t *testing.T) {
 }
 
 func TestNewTEDPrefixViews_SkipsNilEntries(t *testing.T) {
+	t.Parallel()
+
 	p := &table.LsPrefix{Prefix: netip.MustParsePrefix("10.0.0.0/24")}
 	views := newTEDPrefixViews([]*table.LsPrefix{nil, p})
 	require.Len(t, views, 1)
@@ -60,6 +70,8 @@ func TestNewTEDPrefixViews_SkipsNilEntries(t *testing.T) {
 }
 
 func TestNewTEDLinkViews_SkipsNilEntries(t *testing.T) {
+	t.Parallel()
+
 	l := &table.LsLink{RemoteNode: &table.LsNode{RouterID: testRouterID2}}
 	views := newTEDLinkViews([]*table.LsLink{nil, l})
 	require.Len(t, views, 1)
@@ -67,6 +79,8 @@ func TestNewTEDLinkViews_SkipsNilEntries(t *testing.T) {
 }
 
 func TestNewTEDLinkView_IncludesSrv6EndXSID(t *testing.T) {
+	t.Parallel()
+
 	link := &table.LsLink{
 		Srv6EndXSID: &table.Srv6EndXSID{
 			EndpointBehavior: table.BehaviorENDX,
@@ -83,6 +97,8 @@ func TestNewTEDLinkView_IncludesSrv6EndXSID(t *testing.T) {
 }
 
 func TestNewTEDMetricViews_SkipsNilEntries(t *testing.T) {
+	t.Parallel()
+
 	m := table.NewMetric(table.IGPMetric, 10)
 	views := newTEDMetricViews([]*table.Metric{nil, m})
 	require.Len(t, views, 1)
@@ -91,6 +107,8 @@ func TestNewTEDMetricViews_SkipsNilEntries(t *testing.T) {
 }
 
 func TestNewTEDSrv6SIDViews_SkipsNilEntries(t *testing.T) {
+	t.Parallel()
+
 	s := &table.LsSrv6SID{Sids: []string{"fc00:0:1::"}}
 	views := newTEDSrv6SIDViews([]*table.LsSrv6SID{nil, s})
 	require.Len(t, views, 1)

@@ -1972,6 +1972,8 @@ func TestEstablished_ReturnsWhenPeerDisconnectsAbruptly(t *testing.T) {
 }
 
 func TestEstablished_ReturnsWhenPeriodicKeepaliveSendFails(t *testing.T) {
+	t.Parallel()
+
 	// Use a 1-second Keepalive so the periodic send fails quickly.
 	openBytes, err := handshakeBytes(t, pcep.NewOpenMessage(1, 30, 120, nil))
 	require.NoError(t, err)
@@ -2517,6 +2519,8 @@ func TestStartNegotiationKeepalive_NoopWhenKeepaliveIsZero(_ *testing.T) {
 }
 
 func TestStartNegotiationKeepalive_HandlesKeepaliveSendFailure(t *testing.T) {
+	t.Parallel()
+
 	conn := &fakeConn{r: bytes.NewReader(nil), writeErr: errors.New("write: connection reset")}
 	lg, logs := logger.NewRecorder(logger.LevelDebug)
 	ss := NewSession(
@@ -2539,6 +2543,8 @@ func TestStartNegotiationKeepalive_HandlesKeepaliveSendFailure(t *testing.T) {
 }
 
 func TestNegotiateOpen_SendsKeepalivesWhileAwaitingAcknowledgmentOfItsOwnOpen(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() { assert.NoError(t, client.Close()) })
 
@@ -2569,6 +2575,8 @@ func TestNegotiateOpen_SendsKeepalivesWhileAwaitingAcknowledgmentOfItsOwnOpen(t 
 }
 
 func TestNegotiateOpen_NegotiationKeepaliveStopsWhenNegotiationFails(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() { assert.NoError(t, client.Close()) })
 
@@ -3189,6 +3197,8 @@ func TestReceivePCEPMessage_ProcessesMessagesThenReturnsOnClose(t *testing.T) {
 
 // A stalled peer must not block the session goroutine beyond the DeadTimer.
 func TestReadCommonHeader_TimesOutOnStalledPeer(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		assert.NoError(t, client.Close(), "failed to close client connection")
@@ -3248,8 +3258,9 @@ func TestReadDeadline_IgnoresLocalDeadTimer(t *testing.T) {
 }
 
 func TestEstablished_DoesNotTimeOutAPccThatSendsNoKeepalives(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
-	t.Cleanup(func() { assert.NoError(t, client.Close()) })
 
 	// RFC 5440 §6.3: a peer that advertises Keepalive=0 sends none, and the
 	// receiver MUST NOT declare the session inactive.
@@ -3258,13 +3269,8 @@ func TestEstablished_DoesNotTimeOutAPccThatSendsNoKeepalives(t *testing.T) {
 
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 
-	done := make(chan struct{})
-	go func() {
-		if err := ss.Established(); err != nil {
-			t.Logf("established: %v", err)
-		}
-		close(done)
-	}()
+	errCh := make(chan error, 1)
+	go func() { errCh <- ss.Established() }()
 
 	require.NoError(t, readPCEPMessage(client), "failed to read Open reply")
 	require.NoError(t, readPCEPMessage(client), "failed to read initial Keepalive")
@@ -3273,13 +3279,23 @@ func TestEstablished_DoesNotTimeOutAPccThatSendsNoKeepalives(t *testing.T) {
 	assert.Zero(t, ss.readDeadline(), "a PCC advertising Keepalive=0 must never be timed out")
 
 	select {
-	case <-done:
-		require.Fail(t, "Established must not return while the silent peer is still connected")
+	case err := <-errCh:
+		require.Fail(t, "Established must not return while the silent peer is still connected", "err: %v", err)
 	case <-time.After(500 * time.Millisecond):
+	}
+
+	// Disconnect and wait for Established to return so no goroutine outlives the test.
+	require.NoError(t, client.Close())
+	select {
+	case <-errCh:
+	case <-time.After(2 * time.Second):
+		require.Fail(t, "Established did not return after the client disconnected")
 	}
 }
 
 func TestEstablished_SendsCloseWhenTheDeadTimerExpires(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() { assert.NoError(t, client.Close()) })
 
@@ -4488,29 +4504,25 @@ func TestSessionStats_CorruptRcvdOnMalformedCommonHeader(t *testing.T) {
 }
 
 func TestServer_PeerSetupStats_RecordsOkAndFail(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err, "failed to reserve a port")
-	addr, port, err := net.SplitHostPort(ln.Addr().String())
-	require.NoError(t, err)
-	require.NoError(t, ln.Close(), "failed to release the reserved port")
+	t.Parallel()
+	ln, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err, "failed to open the PCEP listener")
 
 	s := &Server{logger: logger.NewNop()}
-	go func() {
-		if err := s.Serve(addr, port); err != nil {
-			t.Errorf("serve: %v", err)
+	serveErrCh := make(chan error, 1)
+	go func() { serveErrCh <- s.serve(ln) }()
+	t.Cleanup(func() {
+		assert.NoError(t, s.Shutdown())
+		select {
+		case err := <-serveErrCh:
+			assert.NoError(t, err)
+		case <-time.After(2 * time.Second):
+			t.Error("serve did not return after Shutdown")
 		}
-	}()
-	t.Cleanup(func() { assert.NoError(t, s.Shutdown()) })
+	})
 
-	var client net.Conn
-	require.Eventually(t, func() bool {
-		c, dialErr := net.DialTimeout("tcp", net.JoinHostPort(addr, port), 100*time.Millisecond)
-		if dialErr != nil {
-			return false
-		}
-		client = c
-		return true
-	}, 2*time.Second, 10*time.Millisecond, "expected to dial the PCEP listener once it starts")
+	client, err := net.Dial("tcp", ln.Addr().String())
+	require.NoError(t, err)
 
 	clientAddr, err := netip.ParseAddrPort(client.LocalAddr().String())
 	require.NoError(t, err)
@@ -4530,29 +4542,25 @@ func TestServer_PeerSetupStats_RecordsOkAndFail(t *testing.T) {
 }
 
 func TestServer_PeerSetupStats_RecordsOkOnSuccessfulEstablishment(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err, "failed to reserve a port")
-	addr, port, err := net.SplitHostPort(ln.Addr().String())
-	require.NoError(t, err)
-	require.NoError(t, ln.Close(), "failed to release the reserved port")
+	t.Parallel()
+	ln, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err, "failed to open the PCEP listener")
 
 	s := &Server{logger: logger.NewNop(), localKeepalive: defaultLocalKeepalive, localDeadTimer: pcep.DeadTimerFor(defaultLocalKeepalive)}
-	go func() {
-		if err := s.Serve(addr, port); err != nil {
-			t.Errorf("serve: %v", err)
+	serveErrCh := make(chan error, 1)
+	go func() { serveErrCh <- s.serve(ln) }()
+	t.Cleanup(func() {
+		assert.NoError(t, s.Shutdown())
+		select {
+		case err := <-serveErrCh:
+			assert.NoError(t, err)
+		case <-time.After(2 * time.Second):
+			t.Error("serve did not return after Shutdown")
 		}
-	}()
-	t.Cleanup(func() { assert.NoError(t, s.Shutdown()) })
+	})
 
-	var client net.Conn
-	require.Eventually(t, func() bool {
-		c, dialErr := net.DialTimeout("tcp", net.JoinHostPort(addr, port), 100*time.Millisecond)
-		if dialErr != nil {
-			return false
-		}
-		client = c
-		return true
-	}, 2*time.Second, 10*time.Millisecond, "expected to dial the PCEP listener once it starts")
+	client, err := net.Dial("tcp", ln.Addr().String())
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = client.Close() })
 
 	clientAddr, err := netip.ParseAddrPort(client.LocalAddr().String())

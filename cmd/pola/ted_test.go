@@ -17,6 +17,8 @@ import (
 )
 
 func TestNewTEDCmd_RunE(t *testing.T) {
+	t.Parallel()
+
 	c := &cli{}
 	cmd := newTEDCmd(c)
 
@@ -24,9 +26,9 @@ func TestNewTEDCmd_RunE(t *testing.T) {
 		Enabled: true,
 		Nodes:   []*pb.LsNode{{RouterId: testRouterID1}},
 	}}
-	captureStdout(t, func() {
-		require.NoError(t, cmd.RunE(cmd, []string{}))
-	})
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	require.NoError(t, cmd.RunE(cmd, []string{}))
 
 	c.client = &fakePCEServiceClient{tedErr: assert.AnError}
 	err := cmd.RunE(cmd, []string{})
@@ -34,6 +36,8 @@ func TestNewTEDCmd_RunE(t *testing.T) {
 }
 
 func TestShowTED(t *testing.T) {
+	t.Parallel()
+
 	t.Run("grpc error propagates", func(t *testing.T) {
 		client := &fakePCEServiceClient{tedErr: assert.AnError}
 		var buf bytes.Buffer

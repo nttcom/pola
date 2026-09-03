@@ -6,8 +6,8 @@
 package logger
 
 import (
+	"bytes"
 	"encoding/json"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,25 +18,9 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-// captureStdout captures output written to os.Stdout while f runs.
-func captureStdout(t *testing.T, f func()) string {
-	t.Helper()
-
-	r, w, err := os.Pipe()
-	require.NoError(t, err)
-	orig := os.Stdout
-	os.Stdout = w
-	defer func() { os.Stdout = orig }()
-
-	f()
-
-	require.NoError(t, w.Close())
-	out, err := io.ReadAll(r)
-	require.NoError(t, err)
-	return string(out)
-}
-
 func TestNew(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name            string
 		level           Level
@@ -59,6 +43,8 @@ func TestNew(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			logPath := filepath.Join(t.TempDir(), "pola.log")
 			fp, err := os.Create(logPath)
 			require.NoError(t, err)
@@ -66,11 +52,11 @@ func TestNew(t *testing.T) {
 				require.NoError(t, fp.Close())
 			}()
 
-			stdout := captureStdout(t, func() {
-				l := New(fp, tt.level)
-				l.Debug("debug message")
-				l.Info("info message")
-			})
+			var console bytes.Buffer
+			l := New(fp, &console, tt.level)
+			l.Debug("debug message")
+			l.Info("info message")
+			stdout := console.String()
 
 			fileContent, err := os.ReadFile(logPath)
 			require.NoError(t, err)
@@ -114,6 +100,8 @@ func TestNew(t *testing.T) {
 }
 
 func TestNewNop(t *testing.T) {
+	t.Parallel()
+
 	l := NewNop()
 	l.Debug("debug message")
 	l.Info("info message")
@@ -123,6 +111,8 @@ func TestNewNop(t *testing.T) {
 }
 
 func TestLevelZapLevel(t *testing.T) {
+	t.Parallel()
+
 	cases := map[Level]zapcore.Level{
 		LevelDebug: zapcore.DebugLevel,
 		LevelInfo:  zapcore.InfoLevel,

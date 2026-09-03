@@ -93,7 +93,7 @@ func run(args []string, deps runDeps) error {
 		return fmt.Errorf("invalid config file: %w", err)
 	}
 
-	lg := logger.New(fp, level)
+	lg := logger.New(fp, os.Stdout, level)
 	defer func() {
 		if err := lg.Sync(); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: failed to sync logger: %v\n", err)

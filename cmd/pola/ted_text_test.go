@@ -61,17 +61,23 @@ func fullTEDNodeViewFixture() tedNodeView {
 }
 
 func TestWriteTEDText_EmptyTED(t *testing.T) {
+	t.Parallel()
+
 	w := &condFailWriter{}
 	require.NoError(t, writeTEDText(w, nil))
 	require.Equal(t, "TED is empty\n", w.buf.String())
 }
 
 func TestWriteTEDText_FullRenderSucceeds(t *testing.T) {
+	t.Parallel()
+
 	w := &condFailWriter{}
 	require.NoError(t, writeTEDText(w, []tedNodeView{fullTEDNodeViewFixture()}))
 }
 
 func TestWriteTEDText_PropagatesWriteErrors(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		fail func(string) bool
@@ -106,12 +112,16 @@ func TestWriteTEDText_PropagatesWriteErrors(t *testing.T) {
 }
 
 func TestWriteTEDText_PropagatesSeparatorWriteError(t *testing.T) {
+	t.Parallel()
+
 	w := &condFailWriter{fail: exactFail("\n")}
 	err := writeTEDText(w, []tedNodeView{fullTEDNodeViewFixture(), fullTEDNodeViewFixture()})
 	require.Error(t, err)
 }
 
 func TestWriteTEDText_SeparatesMultipleNodesWithBlankLine(t *testing.T) {
+	t.Parallel()
+
 	w := &condFailWriter{}
 	require.NoError(t, writeTEDText(w, []tedNodeView{fullTEDNodeViewFixture(), fullTEDNodeViewFixture()}))
 	require.False(t, strings.HasSuffix(w.buf.String(), "\n\n"), "output must not end with a blank line")

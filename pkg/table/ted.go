@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"net/netip"
-	"os"
 )
 
 // LsTED represents a Traffic Engineering Database built from BGP-LS data.
@@ -69,44 +68,44 @@ func (ted *LsTED) FindRouterIDByLoopback(addr netip.Addr) (string, bool) {
 	return routerID, ok
 }
 
-// Print prints the TED, listing each node with its prefixes, links and SRv6 SIDs.
-func (ted *LsTED) Print() {
+// Print writes the TED to w, listing each node with its prefixes, links and SRv6 SIDs.
+func (ted *LsTED) Print(w io.Writer) {
 	if ted == nil || ted.Nodes == nil {
-		fmt.Println("TED is empty")
+		fmt.Fprintln(w, "TED is empty")
 		return
 	}
 
-	printNodes(ted.Nodes)
+	printNodes(w, ted.Nodes)
 }
 
 // printNodes iterates over each node in the map and prints its details.
-func printNodes(nodes map[string]*LsNode) {
+func printNodes(w io.Writer, nodes map[string]*LsNode) {
 	nodeCnt := 1
 	for nodeID, node := range nodes {
 		if node == nil {
 			continue
 		}
-		fmt.Printf("Node: %d\n", nodeCnt)
-		printNodeBasic(nodeID, node)
-		printNodePrefixes(node)
-		printNodeLinks(os.Stdout, node)
-		printNodeSRv6SIDs(node)
-		fmt.Println()
+		fmt.Fprintf(w, "Node: %d\n", nodeCnt)
+		printNodeBasic(w, nodeID, node)
+		printNodePrefixes(w, node)
+		printNodeLinks(w, node)
+		printNodeSRv6SIDs(w, node)
+		fmt.Fprintln(w)
 		nodeCnt++
 	}
 }
 
 // printNodeBasic prints the basic information of a node.
-func printNodeBasic(nodeID string, node *LsNode) {
-	fmt.Printf("  %s\n", nodeID)
-	fmt.Printf("  Hostname: %s\n", node.Hostname)
-	fmt.Printf("  ISIS Area ID: %s\n", node.IsisAreaID)
-	fmt.Printf("  SRGB: %d - %d\n", node.SrgbBegin, node.SrgbEnd)
+func printNodeBasic(w io.Writer, nodeID string, node *LsNode) {
+	fmt.Fprintf(w, "  %s\n", nodeID)
+	fmt.Fprintf(w, "  Hostname: %s\n", node.Hostname)
+	fmt.Fprintf(w, "  ISIS Area ID: %s\n", node.IsisAreaID)
+	fmt.Fprintf(w, "  SRGB: %d - %d\n", node.SrgbBegin, node.SrgbEnd)
 }
 
 // printNodePrefixes prints the prefixes associated with a node.
-func printNodePrefixes(node *LsNode) {
-	fmt.Println("  Prefixes:")
+func printNodePrefixes(w io.Writer, node *LsNode) {
+	fmt.Fprintln(w, "  Prefixes:")
 	if node.Prefixes == nil {
 		return
 	}
@@ -114,9 +113,9 @@ func printNodePrefixes(node *LsNode) {
 		if prefix == nil {
 			continue
 		}
-		fmt.Printf("    %s\n", prefix.Prefix.String())
+		fmt.Fprintf(w, "    %s\n", prefix.Prefix.String())
 		if prefix.HasPrefixSID() {
-			fmt.Printf("      index: %d\n", prefix.SidIndex)
+			fmt.Fprintf(w, "      index: %d\n", prefix.SidIndex)
 		}
 	}
 }
@@ -180,8 +179,8 @@ func printLink(w io.Writer, link *LsLink) {
 }
 
 // printNodeSRv6SIDs prints the SRv6 SIDs associated with a node.
-func printNodeSRv6SIDs(node *LsNode) {
-	fmt.Println("  SRv6 SIDs:")
+func printNodeSRv6SIDs(w io.Writer, node *LsNode) {
+	fmt.Fprintln(w, "  SRv6 SIDs:")
 	if node.SRv6SIDs == nil {
 		return
 	}
@@ -189,17 +188,17 @@ func printNodeSRv6SIDs(node *LsNode) {
 		if srv6SID == nil {
 			continue
 		}
-		fmt.Printf("    SIDs: %v\n", srv6SID.Sids)
-		fmt.Printf("    Block: %d, Node: %d, Func: %d, Arg: %d\n",
+		fmt.Fprintf(w, "    SIDs: %v\n", srv6SID.Sids)
+		fmt.Fprintf(w, "    Block: %d, Node: %d, Func: %d, Arg: %d\n",
 			srv6SID.SIDStructure.LocalBlock,
 			srv6SID.SIDStructure.LocalNode,
 			srv6SID.SIDStructure.LocalFunc,
 			srv6SID.SIDStructure.LocalArg)
-		fmt.Printf("    EndpointBehavior: %s, Flags: %d, Algorithm: %d\n",
+		fmt.Fprintf(w, "    EndpointBehavior: %s, Flags: %d, Algorithm: %d\n",
 			BehaviorToString(srv6SID.EndpointBehavior.Behavior),
 			srv6SID.EndpointBehavior.Flags,
 			srv6SID.EndpointBehavior.Algorithm)
-		fmt.Printf("    MultiTopoIDs: %v\n", srv6SID.MultiTopoIDs)
+		fmt.Fprintf(w, "    MultiTopoIDs: %v\n", srv6SID.MultiTopoIDs)
 	}
 }
 

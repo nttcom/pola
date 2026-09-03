@@ -7,13 +7,9 @@ package main
 
 import (
 	"bytes"
-	"io"
-	"os"
 	"strings"
-	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -27,42 +23,6 @@ const (
 
 	testSrv6EndXSID = "fc00:0:1:endx::"
 )
-
-func captureStdout(t *testing.T, f func()) string {
-	t.Helper()
-
-	r, w, err := os.Pipe()
-	require.NoError(t, err)
-	orig := os.Stdout
-	os.Stdout = w
-	defer func() { os.Stdout = orig }()
-
-	f()
-
-	require.NoError(t, w.Close())
-	var buf bytes.Buffer
-	_, err = io.Copy(&buf, r)
-	require.NoError(t, err)
-	return buf.String()
-}
-
-func captureStderr(t *testing.T, f func()) string {
-	t.Helper()
-
-	r, w, err := os.Pipe()
-	require.NoError(t, err)
-	orig := os.Stderr
-	os.Stderr = w
-	defer func() { os.Stderr = orig }()
-
-	f()
-
-	require.NoError(t, w.Close())
-	var buf bytes.Buffer
-	_, err = io.Copy(&buf, r)
-	require.NoError(t, err)
-	return buf.String()
-}
 
 // condFailWriter injects a write error when the content matches its predicate.
 type condFailWriter struct {

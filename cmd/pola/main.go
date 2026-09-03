@@ -7,23 +7,26 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/nttcom/pola/internal/version"
 )
 
 func main() {
-	os.Exit(mainRun(os.Args[1:]))
+	os.Exit(mainRun(os.Args[1:], os.Stdout, os.Stderr))
 }
 
-func mainRun(args []string) int {
+func mainRun(args []string, out, errOut io.Writer) int {
 	if len(args) > 0 && args[0] == "--version" {
-		fmt.Printf("pola %s\n", version.Version())
+		fmt.Fprintf(out, "pola %s\n", version.Version())
 		return 0
 	}
 
 	cmd := newRootCmd()
 	cmd.SetArgs(args)
+	cmd.SetOut(out)
+	cmd.SetErr(errOut)
 	if err := cmd.Execute(); err != nil {
 		return 1
 	}

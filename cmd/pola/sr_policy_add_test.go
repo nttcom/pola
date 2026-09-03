@@ -6,6 +6,7 @@
 package main
 
 import (
+	"bytes"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -31,6 +32,8 @@ const testErrorDomain = "pola"
 // TestReasonConstantsMatchServer ensures the duplicated Reason constants stay in sync.
 // cmd/pola duplicates these values to avoid depending on pkg/server.
 func TestReasonConstantsMatchServer(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, server.ReasonTEDDisabled, reasonTEDDisabled)
 	assert.Equal(t, server.ReasonTEDNotSynced, reasonTEDNotSynced)
 	assert.Equal(t, server.ReasonDestinationUnreachable, reasonDestinationUnreach)
@@ -41,6 +44,8 @@ func TestReasonConstantsMatchServer(t *testing.T) {
 }
 
 func TestTranslateCreateSRPolicyError(t *testing.T) {
+	t.Parallel()
+
 	newErr := func(code codes.Code, reason, msg string) error {
 		st := status.New(code, msg)
 		withDetails, err := st.WithDetails(&errdetails.ErrorInfo{Reason: reason, Domain: testErrorDomain})
@@ -78,6 +83,8 @@ func TestTranslateCreateSRPolicyError(t *testing.T) {
 }
 
 func TestTranslateCreateSRPolicyError_SkipsNonErrorInfoDetails(t *testing.T) {
+	t.Parallel()
+
 	st := status.New(codes.FailedPrecondition, "some failure")
 	withDetails, err := st.WithDetails(&errdetails.RetryInfo{})
 	require.NoError(t, err)
@@ -101,6 +108,8 @@ func validEndpointInput() inputFormat {
 }
 
 func TestNewSRPolicyAddCmd_RunE(t *testing.T) {
+	t.Parallel()
+
 	t.Run("no-sid-validate flag not registered", func(t *testing.T) {
 		cmd := newTestSRPolicyAddCmd(nil)
 		err := cmd.RunE(&cobra.Command{}, []string{})
@@ -156,9 +165,8 @@ func TestNewSRPolicyAddCmd_RunE(t *testing.T) {
 
 		cmd := newTestSRPolicyAddCmd(&fakePCEServiceClient{})
 		require.NoError(t, cmd.Flags().Set("file", path))
-		captureStdout(t, func() {
-			require.NoError(t, cmd.RunE(cmd, []string{}))
-		})
+		cmd.SetOut(&bytes.Buffer{})
+		require.NoError(t, cmd.RunE(cmd, []string{}))
 	})
 
 	t.Run("addSRPolicy error is wrapped", func(t *testing.T) {
@@ -173,38 +181,34 @@ func TestNewSRPolicyAddCmd_RunE(t *testing.T) {
 }
 
 func TestAddSRPolicy(t *testing.T) {
+	t.Parallel()
+
 	t.Run("srcRouterID/dstRouterID and srcAddr/dstAddr are mutually exclusive", func(t *testing.T) {
 		input := inputFormat{SRPolicy: srPolicy{
 			SrcRouterID: testRouterID1,
 			SrcAddr:     netip.MustParseAddr(testPeerAddr1),
 		}}
-		err := addSRPolicy(input, false, false, nil)
+		err := addSRPolicy(&bytes.Buffer{}, &bytes.Buffer{}, input, false, false, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "mutually exclusive")
 	})
 
 	t.Run("no-sid-validate prints a warning to stderr", func(t *testing.T) {
-		var stderr string
-		captureStdout(t, func() {
-			stderr = captureStderr(t, func() {
-				require.NoError(t, addSRPolicy(validEndpointInput(), false, true, &fakePCEServiceClient{}))
-			})
-		})
-		assert.Contains(t, stderr, "no-sid-validate")
+		var out, errOut bytes.Buffer
+		require.NoError(t, addSRPolicy(&out, &errOut, validEndpointInput(), false, true, &fakePCEServiceClient{}))
+		assert.Contains(t, errOut.String(), "no-sid-validate")
 	})
 
 	t.Run("json output on success", func(t *testing.T) {
-		out := captureStdout(t, func() {
-			require.NoError(t, addSRPolicy(validEndpointInput(), true, false, &fakePCEServiceClient{}))
-		})
-		assert.JSONEq(t, "{\"status\": \"success\"}\n", out)
+		var out bytes.Buffer
+		require.NoError(t, addSRPolicy(&out, &bytes.Buffer{}, validEndpointInput(), true, false, &fakePCEServiceClient{}))
+		assert.JSONEq(t, "{\"status\": \"success\"}\n", out.String())
 	})
 
 	t.Run("plain text output on success", func(t *testing.T) {
-		out := captureStdout(t, func() {
-			require.NoError(t, addSRPolicy(validEndpointInput(), false, false, &fakePCEServiceClient{}))
-		})
-		assert.Equal(t, "success!\n", out)
+		var out bytes.Buffer
+		require.NoError(t, addSRPolicy(&out, &bytes.Buffer{}, validEndpointInput(), false, false, &fakePCEServiceClient{}))
+		assert.Equal(t, "success!\n", out.String())
 	})
 
 	t.Run("router ID form is used when router IDs are set", func(t *testing.T) {
@@ -217,9 +221,7 @@ func TestAddSRPolicy(t *testing.T) {
 			Type:            srPolicyTypeExplicit,
 			SegmentList:     []segment{{SID: "16003"}},
 		}}
-		captureStdout(t, func() {
-			require.NoError(t, addSRPolicy(input, false, false, fake))
-		})
+		require.NoError(t, addSRPolicy(&bytes.Buffer{}, &bytes.Buffer{}, input, false, false, fake))
 		require.NotNil(t, fake.createSRPolicyReq)
 		assert.Equal(t, testRouterID1, fake.createSRPolicyReq.SrPolicy.SrcRouterId)
 	})
@@ -234,7 +236,7 @@ func TestAddSRPolicy(t *testing.T) {
 			Type:            srPolicyTypeExplicit,
 			SegmentList:     []segment{{SID: "16003"}},
 		}}
-		err := addSRPolicy(input, false, false, fake)
+		err := addSRPolicy(&bytes.Buffer{}, &bytes.Buffer{}, input, false, false, fake)
 		require.ErrorIs(t, err, assert.AnError)
 	})
 
@@ -244,13 +246,15 @@ func TestAddSRPolicy(t *testing.T) {
 		require.NoError(t, err)
 		fake := &fakePCEServiceClient{createSRPolicyErr: withDetails.Err()}
 
-		err = addSRPolicy(validEndpointInput(), false, false, fake)
+		err = addSRPolicy(&bytes.Buffer{}, &bytes.Buffer{}, validEndpointInput(), false, false, fake)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "--no-sid-validate")
 	})
 }
 
 func TestAddSRPolicyWithEndpointAddr(t *testing.T) {
+	t.Parallel()
+
 	base := func() srPolicy {
 		return srPolicy{
 			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
@@ -315,6 +319,8 @@ func TestAddSRPolicyWithEndpointAddr(t *testing.T) {
 }
 
 func TestAddSRPolicyWithRouterID(t *testing.T) {
+	t.Parallel()
+
 	t.Run("invalid common input", func(t *testing.T) {
 		err := addSRPolicyWithRouterID(inputFormat{}, false, nil)
 		require.Error(t, err)
@@ -396,12 +402,16 @@ func TestAddSRPolicyWithRouterID(t *testing.T) {
 }
 
 func TestSampleInputs(t *testing.T) {
+	t.Parallel()
+
 	dynamic, explicit := sampleInputs()
 	assert.Contains(t, dynamic, "type: dynamic")
 	assert.Contains(t, explicit, "type: explicit")
 }
 
 func TestValidateCommonInput(t *testing.T) {
+	t.Parallel()
+
 	valid := srPolicy{
 		PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
 		Color:           100,
@@ -434,6 +444,8 @@ func TestValidateCommonInput(t *testing.T) {
 }
 
 func TestBuildPolicyByType(t *testing.T) {
+	t.Parallel()
+
 	t.Run(srPolicyTypeExplicit, func(t *testing.T) {
 		input := inputFormat{SRPolicy: srPolicy{Type: srPolicyTypeExplicit, SegmentList: []segment{{SID: "16003"}}}}
 		typ, metric, segs, waypoints, err := buildPolicyByType(input, "d", "e")
@@ -478,6 +490,8 @@ func TestBuildPolicyByType(t *testing.T) {
 }
 
 func TestParseMetric(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		in   string

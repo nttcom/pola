@@ -629,6 +629,8 @@ func TestLsTEDFindRouterIDByLoopback(t *testing.T) {
 }
 
 func TestPrintNodes(t *testing.T) {
+	t.Parallel()
+
 	node := &LsNode{
 		RouterID: "R1",
 		Hostname: "router1",
@@ -638,31 +640,42 @@ func TestPrintNodes(t *testing.T) {
 	}
 	nodes := map[string]*LsNode{"R1": node}
 
-	require.NotNil(t, node)
-	printNodes(nodes)
+	var buf bytes.Buffer
+	printNodes(&buf, nodes)
+	assert.Contains(t, buf.String(), "R1")
+	assert.Contains(t, buf.String(), "router1")
 }
 
 func TestPrintNodes_WithNilNode(t *testing.T) {
+	t.Parallel()
+
 	nodes := map[string]*LsNode{"R1": nil}
-	require.NotNil(t, nodes)
-	printNodes(nodes)
+	var buf bytes.Buffer
+	printNodes(&buf, nodes)
+	assert.Empty(t, buf.String())
 }
 
 func TestLsTEDPrint(t *testing.T) {
+	t.Parallel()
+
 	t.Run("nil TED", func(t *testing.T) {
-		t.Helper()
+		t.Parallel()
 		var ted *LsTED
-		ted.Print()
+		var buf bytes.Buffer
+		ted.Print(&buf)
+		assert.Equal(t, "TED is empty\n", buf.String())
 	})
 
 	t.Run("empty TED", func(t *testing.T) {
-		t.Helper()
+		t.Parallel()
 		ted := &LsTED{Nodes: make(map[string]*LsNode)}
-		ted.Print()
+		var buf bytes.Buffer
+		ted.Print(&buf)
+		assert.Empty(t, buf.String())
 	})
 
 	t.Run("TED with nodes and links", func(t *testing.T) {
-		t.Helper()
+		t.Parallel()
 		ted := &LsTED{Nodes: map[string]*LsNode{
 			"R1": {
 				RouterID: "R1",
@@ -672,6 +685,9 @@ func TestLsTEDPrint(t *testing.T) {
 				},
 			},
 		}}
-		ted.Print()
+		var buf bytes.Buffer
+		ted.Print(&buf)
+		assert.Contains(t, buf.String(), "R1")
+		assert.Contains(t, buf.String(), "router1")
 	})
 }

@@ -8,8 +8,8 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/netip"
-	"os"
 
 	pb "github.com/nttcom/pola/api/pola/v1"
 	"github.com/nttcom/pola/cmd/pola/grpc"
@@ -21,7 +21,7 @@ func newSessionDeleteCmd(c *cli) *cobra.Command {
 		Use:          cmdNameDelete,
 		Aliases:      []string{"del"},
 		SilenceUsage: true,
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) < 1 {
 				return errors.New("requires session address\nUsage: pola session delete [session address]")
 			}
@@ -29,7 +29,7 @@ func newSessionDeleteCmd(c *cli) *cobra.Command {
 			if err != nil {
 				return errors.New("invalid input\nUsage: pola session delete [session address]")
 			}
-			if err := deleteSession(ssAddr, c.jsonFmt, c.client); err != nil {
+			if err := deleteSession(cmd.OutOrStdout(), ssAddr, c.jsonFmt, c.client); err != nil {
 				return err
 			}
 			return nil
@@ -38,7 +38,7 @@ func newSessionDeleteCmd(c *cli) *cobra.Command {
 	return cmd
 }
 
-func deleteSession(session netip.Addr, jsonFlag bool, client pb.PCEServiceClient) error {
+func deleteSession(out io.Writer, session netip.Addr, jsonFlag bool, client pb.PCEServiceClient) error {
 	request := &pb.DeleteSessionRequest{
 		PeerAddr: session.AsSlice(),
 	}
@@ -47,8 +47,8 @@ func deleteSession(session netip.Addr, jsonFlag bool, client pb.PCEServiceClient
 		return err
 	}
 	if jsonFlag {
-		return writeJSON(os.Stdout, statusResult{Status: statusSuccess})
+		return writeJSON(out, statusResult{Status: statusSuccess})
 	}
-	fmt.Printf("success!\n")
+	fmt.Fprintln(out, "success!")
 	return nil
 }

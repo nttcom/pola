@@ -32,8 +32,12 @@ type Info struct {
 
 // Get returns the current build Info.
 func Get() Info {
+	return getWith(version)
+}
+
+func getWith(v string) Info {
 	info := Info{
-		Version:   Version(),
+		Version:   v,
 		GoVersion: runtime.Version(),
 	}
 	if bi, ok := debug.ReadBuildInfo(); ok {

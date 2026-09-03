@@ -13,6 +13,8 @@ import (
 )
 
 func TestNewSRPolicyCmd(t *testing.T) {
+	t.Parallel()
+
 	cmd := newSRPolicyCmd(&cli{})
 
 	var names []string

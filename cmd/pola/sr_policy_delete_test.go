@@ -6,6 +6,7 @@
 package main
 
 import (
+	"bytes"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -25,6 +26,8 @@ func newTestSRPolicyDeleteCmd(client pb.PCEServiceClient) *cobra.Command {
 }
 
 func TestNewSRPolicyDeleteCmd_RunE(t *testing.T) {
+	t.Parallel()
+
 	t.Run("file flag not registered", func(t *testing.T) {
 		cmd := newTestSRPolicyDeleteCmd(nil)
 		err := cmd.RunE(&cobra.Command{}, []string{})
@@ -68,9 +71,8 @@ func TestNewSRPolicyDeleteCmd_RunE(t *testing.T) {
 
 		cmd := newTestSRPolicyDeleteCmd(&fakePCEServiceClient{})
 		require.NoError(t, cmd.Flags().Set("file", path))
-		captureStdout(t, func() {
-			require.NoError(t, cmd.RunE(cmd, []string{}))
-		})
+		cmd.SetOut(&bytes.Buffer{})
+		require.NoError(t, cmd.RunE(cmd, []string{}))
 	})
 
 	t.Run("deleteSRPolicy error is wrapped", func(t *testing.T) {
@@ -85,6 +87,8 @@ func TestNewSRPolicyDeleteCmd_RunE(t *testing.T) {
 }
 
 func TestDeleteSRPolicy(t *testing.T) {
+	t.Parallel()
+
 	validPolicy := func() srPolicy {
 		return srPolicy{
 			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
@@ -95,17 +99,16 @@ func TestDeleteSRPolicy(t *testing.T) {
 	}
 
 	t.Run("missing mandatory fields", func(t *testing.T) {
-		err := deleteSRPolicy(inputFormat{}, false, nil)
+		err := deleteSRPolicy(&bytes.Buffer{}, inputFormat{}, false, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid input")
 	})
 
 	t.Run("success builds the request", func(t *testing.T) {
 		fake := &fakePCEServiceClient{}
-		out := captureStdout(t, func() {
-			require.NoError(t, deleteSRPolicy(inputFormat{ASN: 65000, SRPolicy: validPolicy()}, false, fake))
-		})
-		assert.Equal(t, "success!\n", out)
+		var out bytes.Buffer
+		require.NoError(t, deleteSRPolicy(&out, inputFormat{ASN: 65000, SRPolicy: validPolicy()}, false, fake))
+		assert.Equal(t, "success!\n", out.String())
 
 		require.NotNil(t, fake.deleteSRPolicyReq)
 		assert.Equal(t, netip.MustParseAddr(testPeerAddr1).AsSlice(), fake.deleteSRPolicyReq.SrPolicy.PeerAddr)
@@ -116,22 +119,21 @@ func TestDeleteSRPolicy(t *testing.T) {
 	})
 
 	t.Run("json output on success", func(t *testing.T) {
-		out := captureStdout(t, func() {
-			require.NoError(t, deleteSRPolicy(inputFormat{ASN: 65000, SRPolicy: validPolicy()}, true, &fakePCEServiceClient{}))
-		})
-		assert.JSONEq(t, "{\"status\": \"success\"}\n", out)
+		var out bytes.Buffer
+		require.NoError(t, deleteSRPolicy(&out, inputFormat{ASN: 65000, SRPolicy: validPolicy()}, true, &fakePCEServiceClient{}))
+		assert.JSONEq(t, "{\"status\": \"success\"}\n", out.String())
 	})
 
 	t.Run("grpc status error is unwrapped to its message", func(t *testing.T) {
 		fake := &fakePCEServiceClient{deleteSRPolicyErr: status.Error(codes.NotFound, "SR policy not found")}
-		err := deleteSRPolicy(inputFormat{ASN: 65000, SRPolicy: validPolicy()}, false, fake)
+		err := deleteSRPolicy(&bytes.Buffer{}, inputFormat{ASN: 65000, SRPolicy: validPolicy()}, false, fake)
 		require.Error(t, err)
 		assert.Equal(t, "gRPC Server Error: SR policy not found", err.Error())
 	})
 
 	t.Run("plain grpc error falls back to Error()", func(t *testing.T) {
 		fake := &fakePCEServiceClient{deleteSRPolicyErr: assert.AnError}
-		err := deleteSRPolicy(inputFormat{ASN: 65000, SRPolicy: validPolicy()}, false, fake)
+		err := deleteSRPolicy(&bytes.Buffer{}, inputFormat{ASN: 65000, SRPolicy: validPolicy()}, false, fake)
 		require.Error(t, err)
 		assert.Equal(t, "gRPC Server Error: "+assert.AnError.Error(), err.Error())
 	})

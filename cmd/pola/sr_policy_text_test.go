@@ -15,6 +15,8 @@ import (
 )
 
 func TestWriteSRPolicyText_PropagatesWriteErrors(t *testing.T) {
+	t.Parallel()
+
 	views := []srPolicySessionView{
 		{
 			PeerAddress: testPeerAddr1,
@@ -43,6 +45,8 @@ func TestWriteSRPolicyText_PropagatesWriteErrors(t *testing.T) {
 }
 
 func TestWriteSRPolicySession_EmptyPolicies_PropagatesWriteError(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		v    srPolicySessionView
@@ -74,6 +78,8 @@ func TestWriteSRPolicySession_EmptyPolicies_PropagatesWriteError(t *testing.T) {
 }
 
 func TestWriteSRPolicyText_PropagatesSeparatorWriteError(t *testing.T) {
+	t.Parallel()
+
 	views := []srPolicySessionView{
 		{PeerAddress: testPeerAddr1, State: "up", LSPDBSync: "finished"},
 		{PeerAddress: testPeerAddr2, State: "up", LSPDBSync: "finished"},
@@ -84,6 +90,8 @@ func TestWriteSRPolicyText_PropagatesSeparatorWriteError(t *testing.T) {
 }
 
 func TestWriteSRPolicyText_SeparatesMultipleSessionsWithBlankLine(t *testing.T) {
+	t.Parallel()
+
 	views := []srPolicySessionView{
 		{PeerAddress: testPeerAddr1, State: "up", LSPDBSync: "finished"},
 		{PeerAddress: testPeerAddr2, State: "up", LSPDBSync: "finished"},

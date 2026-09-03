@@ -6,6 +6,7 @@
 package main
 
 import (
+	"bytes"
 	"net/netip"
 	"testing"
 
@@ -14,6 +15,8 @@ import (
 )
 
 func TestNewSessionDeleteCmd_DelAlias(t *testing.T) {
+	t.Parallel()
+
 	cmd := newSessionCmd(&cli{})
 	found, _, err := cmd.Find([]string{"del"})
 	require.NoError(t, err)
@@ -21,6 +24,8 @@ func TestNewSessionDeleteCmd_DelAlias(t *testing.T) {
 }
 
 func TestNewSessionDeleteCmd_ArgValidation(t *testing.T) {
+	t.Parallel()
+
 	t.Run("missing address argument", func(t *testing.T) {
 		cmd := newSessionDeleteCmd(&cli{})
 		err := cmd.RunE(cmd, []string{})
@@ -37,9 +42,8 @@ func TestNewSessionDeleteCmd_ArgValidation(t *testing.T) {
 
 	t.Run("valid address delegates to deleteSession", func(t *testing.T) {
 		cmd := newSessionDeleteCmd(&cli{client: &fakePCEServiceClient{}})
-		captureStdout(t, func() {
-			require.NoError(t, cmd.RunE(cmd, []string{testPeerAddr1}))
-		})
+		cmd.SetOut(&bytes.Buffer{})
+		require.NoError(t, cmd.RunE(cmd, []string{testPeerAddr1}))
 	})
 
 	t.Run("deleteSession error propagates", func(t *testing.T) {
@@ -50,6 +54,8 @@ func TestNewSessionDeleteCmd_ArgValidation(t *testing.T) {
 }
 
 func TestDeleteSession(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		jsonFlag bool
@@ -61,10 +67,9 @@ func TestDeleteSession(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fake := &fakePCEServiceClient{}
-			out := captureStdout(t, func() {
-				require.NoError(t, deleteSession(netip.MustParseAddr(testPeerAddr1), tt.jsonFlag, fake))
-			})
-			assert.Equal(t, tt.want, out)
+			var out bytes.Buffer
+			require.NoError(t, deleteSession(&out, netip.MustParseAddr(testPeerAddr1), tt.jsonFlag, fake))
+			assert.Equal(t, tt.want, out.String())
 			require.NotNil(t, fake.deleteSessionReq)
 			assert.Equal(t, netip.MustParseAddr(testPeerAddr1).AsSlice(), fake.deleteSessionReq.PeerAddr)
 		})
@@ -72,7 +77,7 @@ func TestDeleteSession(t *testing.T) {
 
 	t.Run("grpc error propagates", func(t *testing.T) {
 		fake := &fakePCEServiceClient{deleteSessionErr: assert.AnError}
-		err := deleteSession(netip.MustParseAddr(testPeerAddr1), false, fake)
+		err := deleteSession(&bytes.Buffer{}, netip.MustParseAddr(testPeerAddr1), false, fake)
 		require.ErrorIs(t, err, assert.AnError)
 	})
 }

@@ -8,6 +8,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 
 	pb "github.com/nttcom/pola/api/pola/v1"
@@ -37,7 +38,7 @@ func newSRPolicyDeleteCmd(c *cli) *cobra.Command {
 			}
 			defer func() {
 				if err := f.Close(); err != nil {
-					fmt.Fprintf(os.Stderr, "warning: failed to close file \"%s\": %v\n", filepath, err)
+					fmt.Fprintf(cmd.ErrOrStderr(), "warning: failed to close file \"%s\": %v\n", filepath, err)
 				}
 			}()
 
@@ -46,7 +47,7 @@ func newSRPolicyDeleteCmd(c *cli) *cobra.Command {
 				return fmt.Errorf("YAML syntax error in file \"%s\": %w", filepath, err)
 			}
 
-			if err := deleteSRPolicy(inputData, c.jsonFmt, c.client); err != nil {
+			if err := deleteSRPolicy(cmd.OutOrStdout(), inputData, c.jsonFmt, c.client); err != nil {
 				return fmt.Errorf("failed to delete SR policy: %w", err)
 			}
 			return nil
@@ -58,7 +59,7 @@ func newSRPolicyDeleteCmd(c *cli) *cobra.Command {
 	return srPolicyDeleteCmd
 }
 
-func deleteSRPolicy(input inputFormat, jsonFlag bool, client pb.PCEServiceClient) error {
+func deleteSRPolicy(out io.Writer, input inputFormat, jsonFlag bool, client pb.PCEServiceClient) error {
 	if !input.SRPolicy.PCEPSessionAddr.IsValid() || input.SRPolicy.Color == 0 || !input.SRPolicy.DstAddr.IsValid() || input.SRPolicy.Name == "" {
 		sampleInput := "srPolicy:\n" +
 			"  pcepSessionAddr: 192.0.2.1\n" +
@@ -89,9 +90,9 @@ func deleteSRPolicy(input inputFormat, jsonFlag bool, client pb.PCEServiceClient
 	}
 
 	if jsonFlag {
-		return writeJSON(os.Stdout, statusResult{Status: statusSuccess})
+		return writeJSON(out, statusResult{Status: statusSuccess})
 	}
-	fmt.Printf("success!\n")
+	fmt.Fprintln(out, "success!")
 
 	return nil
 }

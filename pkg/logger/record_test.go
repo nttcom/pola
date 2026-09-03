@@ -15,6 +15,8 @@ import (
 )
 
 func TestNewRecorderFiltersByLevel(t *testing.T) {
+	t.Parallel()
+
 	lg, rec := NewRecorder(LevelWarn)
 	lg.Debug("debug")
 	lg.Info("info")
@@ -27,6 +29,8 @@ func TestNewRecorderFiltersByLevel(t *testing.T) {
 }
 
 func TestNewRecorderLevels(t *testing.T) {
+	t.Parallel()
+
 	lg, rec := NewRecorder(LevelDebug)
 	lg.Debug("debug")
 	lg.Info("info")
@@ -41,6 +45,8 @@ func TestNewRecorderLevels(t *testing.T) {
 }
 
 func TestLoggerWithMergesFields(t *testing.T) {
+	t.Parallel()
+
 	lg, rec := NewRecorder(LevelDebug)
 	child := lg.With(String("server", "grpc"))
 	child.Info("started")
@@ -53,6 +59,8 @@ func TestLoggerWithMergesFields(t *testing.T) {
 }
 
 func TestRecorderFilterByMessage(t *testing.T) {
+	t.Parallel()
+
 	_, rec := NewRecorder(LevelDebug)
 	assert.Nil(t, rec.FilterByMessage("missing"))
 
@@ -67,6 +75,8 @@ func TestRecorderFilterByMessage(t *testing.T) {
 }
 
 func TestRecorderAllReturnsCopy(t *testing.T) {
+	t.Parallel()
+
 	lg, rec := NewRecorder(LevelDebug)
 	lg.Info("first")
 
@@ -77,6 +87,8 @@ func TestRecorderAllReturnsCopy(t *testing.T) {
 }
 
 func TestRecorderAllFieldsNotShared(t *testing.T) {
+	t.Parallel()
+
 	lg, rec := NewRecorder(LevelDebug)
 	lg.Info("first", String("key", "orig"))
 
@@ -89,6 +101,8 @@ func TestRecorderAllFieldsNotShared(t *testing.T) {
 }
 
 func TestRecorderFilterByMessageFieldsNotShared(t *testing.T) {
+	t.Parallel()
+
 	lg, rec := NewRecorder(LevelDebug)
 	lg.Info("hello", String("key", "orig"))
 
@@ -100,6 +114,8 @@ func TestRecorderFilterByMessageFieldsNotShared(t *testing.T) {
 }
 
 func TestRecorderConcurrentAccess(t *testing.T) {
+	t.Parallel()
+
 	lg, rec := NewRecorder(LevelDebug)
 
 	var wg sync.WaitGroup
@@ -116,11 +132,15 @@ func TestRecorderConcurrentAccess(t *testing.T) {
 }
 
 func TestRecorderSync(t *testing.T) {
+	t.Parallel()
+
 	lg, _ := NewRecorder(LevelDebug)
 	require.NoError(t, lg.Sync())
 }
 
 func TestRecordCore_Check_DisabledLevel(t *testing.T) {
+	t.Parallel()
+
 	_, rec := NewRecorder(LevelWarn)
 	core := &recordCore{min: LevelWarn.zapLevel(), rec: rec}
 

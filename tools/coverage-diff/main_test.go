@@ -299,18 +299,7 @@ func withSourceFile(t *testing.T, name, src string) {
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := os.Chdir(cwd); err != nil {
-			t.Logf("cleanup chdir: %v", err)
-		}
-	})
+	t.Chdir(dir)
 }
 
 func TestParseProfileSkipsDeclarationAndClosingBraceLines(t *testing.T) {

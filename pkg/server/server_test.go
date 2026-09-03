@@ -63,29 +63,24 @@ func TestServer_Serve_ListenFailure(t *testing.T) {
 }
 
 func TestServer_Serve_AcceptsConnectionAndUntracksOnClose(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err, "failed to reserve a port")
-	addr, port, err := net.SplitHostPort(ln.Addr().String())
-	require.NoError(t, err)
-	require.NoError(t, ln.Close(), "failed to release the reserved port")
+	ln, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err, "failed to open the PCEP listener")
 
 	s := &Server{logger: logger.NewNop()}
-	go func() {
-		if err := s.Serve(addr, port); err != nil {
-			t.Errorf("serve: %v", err)
+	serveErrCh := make(chan error, 1)
+	go func() { serveErrCh <- s.serve(ln) }()
+	t.Cleanup(func() {
+		assert.NoError(t, s.Shutdown())
+		select {
+		case err := <-serveErrCh:
+			assert.NoError(t, err)
+		case <-time.After(2 * time.Second):
+			t.Error("serve did not return after Shutdown")
 		}
-	}()
-	t.Cleanup(func() { assert.NoError(t, s.Shutdown()) })
+	})
 
-	var client net.Conn
-	require.Eventually(t, func() bool {
-		c, dialErr := net.DialTimeout("tcp", net.JoinHostPort(addr, port), 100*time.Millisecond)
-		if dialErr != nil {
-			return false
-		}
-		client = c
-		return true
-	}, 2*time.Second, 10*time.Millisecond, "expected to dial the PCEP listener once it starts")
+	client, err := net.Dial("tcp", ln.Addr().String())
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		if err := client.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
 			t.Logf("cleanup close: %v", err)
@@ -104,54 +99,43 @@ func TestServer_Serve_AcceptsConnectionAndUntracksOnClose(t *testing.T) {
 }
 
 func TestServer_Shutdown_ClosesListenerAndStopsServe(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err, "failed to reserve a port")
-	addr, port, err := net.SplitHostPort(ln.Addr().String())
-	require.NoError(t, err)
-	require.NoError(t, ln.Close(), "failed to release the reserved port")
+	ln, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err, "failed to open the PCEP listener")
+	addr := ln.Addr().String()
 
 	s := &Server{logger: logger.NewNop()}
 	serveErrCh := make(chan error, 1)
-	go func() { serveErrCh <- s.Serve(addr, port) }()
+	go func() { serveErrCh <- s.serve(ln) }()
 
-	require.Eventually(t, func() bool {
-		conn, dialErr := net.DialTimeout("tcp", net.JoinHostPort(addr, port), 100*time.Millisecond)
-		if dialErr != nil {
-			return false
-		}
-		if err := conn.Close(); err != nil {
-			t.Logf("close: %v", err)
-		}
-		return true
-	}, 2*time.Second, 10*time.Millisecond, "expected the PCEP listener to accept connections before shutdown")
+	conn, err := net.Dial("tcp", addr)
+	require.NoError(t, err, "expected the PCEP listener to accept connections before shutdown")
+	require.NoError(t, conn.Close())
 
 	require.NoError(t, s.Shutdown(), "Shutdown should close the listener without error")
 
 	select {
 	case err := <-serveErrCh:
-		require.NoError(t, err, "Serve should return cleanly once the listener is closed")
+		require.NoError(t, err, "serve should return cleanly once the listener is closed")
 	case <-time.After(2 * time.Second):
-		t.Fatal("timed out waiting for Serve to return after Shutdown closed the listener")
+		t.Fatal("timed out waiting for serve to return after Shutdown closed the listener")
 	}
 
-	_, dialErr := net.DialTimeout("tcp", net.JoinHostPort(addr, port), 100*time.Millisecond)
+	_, dialErr := net.DialTimeout("tcp", addr, 100*time.Millisecond)
 	assert.Error(t, dialErr, "expected the listener to no longer accept connections after Shutdown")
 }
 
 func TestServer_Shutdown_BeforeServeStillReturnsCleanly(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err, "failed to reserve a port")
-	addr, port, err := net.SplitHostPort(ln.Addr().String())
-	require.NoError(t, err)
-	require.NoError(t, ln.Close(), "failed to release the reserved port")
+	ln, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err, "failed to open the PCEP listener")
+	addr := ln.Addr().String()
 
 	s := &Server{logger: logger.NewNop()}
-	require.NoError(t, s.Shutdown(), "Shutdown before Serve starts should be a no-op that succeeds")
+	require.NoError(t, s.Shutdown(), "Shutdown before serve starts should be a no-op that succeeds")
 
-	require.NoError(t, s.Serve(addr, port), "Serve should return cleanly if Shutdown already ran")
+	require.NoError(t, s.serve(ln), "serve should return cleanly if Shutdown already ran")
 
-	_, dialErr := net.DialTimeout("tcp", net.JoinHostPort(addr, port), 100*time.Millisecond)
-	assert.Error(t, dialErr, "expected Serve not to accept connections after an earlier Shutdown")
+	_, dialErr := net.DialTimeout("tcp", addr, 100*time.Millisecond)
+	assert.Error(t, dialErr, "expected serve not to accept connections after an earlier Shutdown")
 }
 
 func TestServer_Shutdown_LogsWarnOnSendCloseFailure(t *testing.T) {
@@ -167,28 +151,23 @@ func TestServer_Shutdown_LogsWarnOnSendCloseFailure(t *testing.T) {
 }
 
 func TestServer_Shutdown_ClosesActiveSessions(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err, "failed to reserve a port")
-	addr, port, err := net.SplitHostPort(ln.Addr().String())
-	require.NoError(t, err)
-	require.NoError(t, ln.Close(), "failed to release the reserved port")
+	ln, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err, "failed to open the PCEP listener")
 
 	s := &Server{logger: logger.NewNop()}
-	go func() {
-		if err := s.Serve(addr, port); err != nil {
-			t.Errorf("serve: %v", err)
+	serveErrCh := make(chan error, 1)
+	go func() { serveErrCh <- s.serve(ln) }()
+	t.Cleanup(func() {
+		select {
+		case err := <-serveErrCh:
+			assert.NoError(t, err)
+		case <-time.After(2 * time.Second):
+			t.Error("serve did not return after Shutdown")
 		}
-	}()
+	})
 
-	var client net.Conn
-	require.Eventually(t, func() bool {
-		c, dialErr := net.DialTimeout("tcp", net.JoinHostPort(addr, port), 100*time.Millisecond)
-		if dialErr != nil {
-			return false
-		}
-		client = c
-		return true
-	}, 2*time.Second, 10*time.Millisecond, "expected to dial the PCEP listener once it starts")
+	client, err := net.Dial("tcp", ln.Addr().String())
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		if err := client.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
 			t.Logf("cleanup close: %v", err)

@@ -16,28 +16,22 @@ import (
 const testRevision = "abc123"
 
 func TestVersion_Default(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, devVersion, Version())
 }
 
-func TestVersion_Ldflags(t *testing.T) {
-	old := version
-	defer func() { version = old }()
-
-	version = "1.2.3"
-	assert.Equal(t, "1.2.3", Version())
-}
-
 func TestGet(t *testing.T) {
-	old := version
-	defer func() { version = old }()
+	t.Parallel()
 
-	version = "1.2.3"
-	info := Get()
+	info := getWith("1.2.3")
 	assert.Equal(t, "1.2.3", info.Version)
 	assert.Equal(t, runtime.Version(), info.GoVersion)
 }
 
 func TestVcsSettings(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name         string
 		settings     []debug.BuildSetting

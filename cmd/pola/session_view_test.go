@@ -16,6 +16,8 @@ import (
 )
 
 func TestSessionRole(t *testing.T) {
+	t.Parallel()
+
 	tests := map[string]struct {
 		caps []grpc.Capability
 		want string
@@ -38,6 +40,8 @@ func TestSessionRole(t *testing.T) {
 }
 
 func TestSessionRole_IgnoresPeerCapabilities(t *testing.T) {
+	t.Parallel()
+
 	localCaps := []grpc.Capability{{Type: capGroupStateful, Detail: grpc.StatefulCapability{LSPUpdate: true}}}
 	ss := grpc.Session{
 		PeerAddr:          netip.MustParseAddr(testPeerAddr1),
@@ -50,6 +54,8 @@ func TestSessionRole_IgnoresPeerCapabilities(t *testing.T) {
 }
 
 func TestFormatUpTime(t *testing.T) {
+	t.Parallel()
+
 	tests := map[string]struct {
 		d    time.Duration
 		want string
@@ -67,6 +73,8 @@ func TestFormatUpTime(t *testing.T) {
 }
 
 func TestNewSessionView_UpTimeOmittedUnlessEstablished(t *testing.T) {
+	t.Parallel()
+
 	notEstablished := grpc.Session{PeerAddr: netip.MustParseAddr(testPeerAddr1), State: "open-wait"}
 	assert.Empty(t, newSessionView(notEstablished, false).UpTime)
 
@@ -80,6 +88,8 @@ func TestNewSessionView_UpTimeOmittedUnlessEstablished(t *testing.T) {
 }
 
 func TestNewSessionView_DetailFieldsOnlyPopulatedWhenRequested(t *testing.T) {
+	t.Parallel()
+
 	ss := grpc.Session{
 		PeerAddr:  netip.MustParseAddr(testPeerAddr1),
 		State:     "up",
@@ -106,6 +116,8 @@ func TestNewSessionView_DetailFieldsOnlyPopulatedWhenRequested(t *testing.T) {
 }
 
 func TestTimersViewFrom_NilTimersYieldNilLocalAndPeer(t *testing.T) {
+	t.Parallel()
+
 	keepalive, deadTimer := uint32(30), uint32(120)
 	tv := timersViewFrom(nil, nil, grpc.EffectiveTimers{Keepalive: &keepalive, DeadTimer: &deadTimer})
 	assert.Nil(t, tv.Keepalive.Local)
@@ -119,6 +131,8 @@ func TestTimersViewFrom_NilTimersYieldNilLocalAndPeer(t *testing.T) {
 }
 
 func TestTimersViewFrom_PopulatedTimers(t *testing.T) {
+	t.Parallel()
+
 	local := &grpc.SessionTimers{Keepalive: 30, DeadTimer: 120}
 	peer := &grpc.SessionTimers{Keepalive: 10, DeadTimer: 40}
 	keepalive, deadTimer := uint32(10), uint32(40)
@@ -131,6 +145,8 @@ func TestTimersViewFrom_PopulatedTimers(t *testing.T) {
 }
 
 func TestTimersViewFrom_EffectiveNilBeforeUpDistinguishesFromKeepaliveZero(t *testing.T) {
+	t.Parallel()
+
 	tv := timersViewFrom(nil, nil, grpc.EffectiveTimers{})
 	assert.Nil(t, tv.Keepalive.Effective)
 	assert.Nil(t, tv.DeadTimer.Effective)

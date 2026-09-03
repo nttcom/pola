@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"net/netip"
-	"os"
 
 	pb "github.com/nttcom/pola/api/pola/v1"
 	"github.com/nttcom/pola/cmd/pola/grpc"
@@ -22,12 +21,12 @@ func newSessionCmd(c *cli) *cobra.Command {
 		Use:   "session [peer-address] [detail]",
 		Short: "Show PCEP sessions",
 		Args:  cobra.MaximumNArgs(2),
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			addr, detail, err := parseSessionArgs(args)
 			if err != nil {
 				return err
 			}
-			return showSession(os.Stdout, addr, detail, resolveOutputFormat(c.jsonFmt), c.client)
+			return showSession(cmd.OutOrStdout(), addr, detail, resolveOutputFormat(c.jsonFmt), c.client)
 		},
 	}
 

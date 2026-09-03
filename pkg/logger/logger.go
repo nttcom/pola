@@ -8,7 +8,6 @@ package logger
 
 import (
 	"io"
-	"os"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -59,8 +58,8 @@ type Logger struct {
 }
 
 // New returns a Logger that writes JSON entries to w and human-readable
-// entries to stdout. Entries below level are discarded.
-func New(w io.Writer, level Level) *Logger {
+// entries to console. Entries below level are discarded.
+func New(w, console io.Writer, level Level) *Logger {
 	ec := zap.NewProductionEncoderConfig()
 	ec.EncodeTime = zapcore.ISO8601TimeEncoder
 
@@ -70,7 +69,7 @@ func New(w io.Writer, level Level) *Logger {
 	zl := level.zapLevel()
 	core := zapcore.NewTee(
 		zapcore.NewCore(jsonEncoder, zapcore.AddSync(w), zl),
-		zapcore.NewCore(consoleEncoder, zapcore.AddSync(os.Stdout), zl),
+		zapcore.NewCore(consoleEncoder, zapcore.AddSync(console), zl),
 	)
 	return &Logger{z: zap.New(core)}
 }

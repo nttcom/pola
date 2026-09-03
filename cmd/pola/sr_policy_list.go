@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net/netip"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -33,7 +32,7 @@ func showSRPolicyList(cmd *cobra.Command, _ []string, client pb.PCEServiceClient
 	if err != nil {
 		return err
 	}
-	return writeSRPolicyList(os.Stdout, peerAddr, resolveOutputFormat(jsonFmt), client)
+	return writeSRPolicyList(cmd.OutOrStdout(), peerAddr, resolveOutputFormat(jsonFmt), client)
 }
 
 func writeSRPolicyList(w io.Writer, peerAddr netip.Addr, format outputFormat, client pb.PCEServiceClient) error {
