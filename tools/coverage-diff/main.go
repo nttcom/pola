@@ -159,7 +159,11 @@ func short(rev string) string {
 func gitDiff(ctx context.Context, mergeBase string, paths []string) ([]byte, error) {
 	// -U0 reports only added lines; the other flags make the parsed diff format
 	// independent of external diff, color, and prefix configuration.
-	args := []string{"diff", "-U0", "--no-ext-diff", "--no-color", "--src-prefix=a/", "--dst-prefix=b/", mergeBase, "--"}
+	args := make([]string, 0, 8+len(paths))
+	args = append(args,
+		"diff", "-U0", "--no-ext-diff", "--no-color",
+		"--src-prefix=a/", "--dst-prefix=b/", mergeBase, "--",
+	)
 	args = append(args, paths...)
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Stderr = os.Stderr

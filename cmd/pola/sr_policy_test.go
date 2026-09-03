@@ -17,7 +17,7 @@ func TestNewSRPolicyCmd(t *testing.T) {
 
 	cmd := newSRPolicyCmd(&cli{})
 
-	var names []string
+	names := make([]string, 0, len(cmd.Commands()))
 	for _, c := range cmd.Commands() {
 		names = append(names, c.Name())
 	}

@@ -467,7 +467,7 @@ func TestParseProfileSortsFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseProfile() error = %v", err)
 	}
-	var got []string
+	got := make([]string, 0, len(res.files))
 	for _, fr := range res.files {
 		got = append(got, fr.file)
 	}

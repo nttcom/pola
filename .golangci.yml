@@ -41,6 +41,7 @@ linters:
     - nolintlint
     - paralleltest
     - perfsprint
+    - prealloc
     - reassign
     - revive
     - spancheck
@@ -108,6 +109,8 @@ linters:
     nolintlint:
       require-explanation: true
       require-specific: true
+    prealloc:
+      simple: true
     revive:
       rules:
         - name: error-naming

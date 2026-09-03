@@ -275,7 +275,7 @@ func TestCommonCapabilityLines_OrdersByTLVTypeRegardlessOfInputOrder(t *testing.
 	}
 
 	lines := capabilityLines(capabilityGroups(common))
-	var headers []string
+	headers := make([]string, 0, len(lines))
 	for _, line := range lines {
 		headers = append(headers, line.Header)
 	}

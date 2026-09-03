@@ -1535,7 +1535,7 @@ func TestGetSRPolicyList_SortsBySameColorThenPlspIdThenName(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, resp.Sessions, 1)
 
-	var gotOrder []string
+	gotOrder := make([]string, 0, len(resp.Sessions[0].GetSrPolicies()))
 	for _, p := range resp.Sessions[0].GetSrPolicies() {
 		gotOrder = append(gotOrder, fmt.Sprintf("%d/%d/%s", p.GetColor(), p.GetPlspId(), p.GetPolicyName()))
 	}
