@@ -8,6 +8,8 @@ package v1
 import "testing"
 
 func TestEffectiveKeepalive(t *testing.T) {
+	t.Parallel()
+
 	effective := &EffectiveTimers{Keepalive: 30, DeadTimer: 120}
 
 	if v, ok := EffectiveKeepalive(SessionState_SESSION_STATE_UP, effective); v != 30 || !ok {
@@ -22,6 +24,8 @@ func TestEffectiveKeepalive(t *testing.T) {
 }
 
 func TestEffectiveDeadTimer(t *testing.T) {
+	t.Parallel()
+
 	effective := &EffectiveTimers{Keepalive: 30, DeadTimer: 120}
 
 	if v, ok := EffectiveDeadTimer(SessionState_SESSION_STATE_UP, effective); v != 120 || !ok {

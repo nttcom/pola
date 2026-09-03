@@ -34,6 +34,8 @@ func newTestTED(nodes ...*LsNode) *LsTED {
 }
 
 func TestSIDIndexHas_SRMPLS(t *testing.T) {
+	t.Parallel()
+
 	node := &LsNode{
 		RouterID:  testRouterID1,
 		SrgbBegin: 16000,
@@ -57,6 +59,7 @@ func TestSIDIndexHas_SRMPLS(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			idx := NewSIDIndex(ted)
 			assert.Equal(t, tt.want, idx.Has(tt.seg))
 		})
@@ -64,6 +67,8 @@ func TestSIDIndexHas_SRMPLS(t *testing.T) {
 }
 
 func TestSIDIndexHas_SRMPLS_SrgbBeginZero(t *testing.T) {
+	t.Parallel()
+
 	// Without an SRGB, a Prefix-SID index cannot be converted to a label.
 	node := &LsNode{
 		RouterID: testRouterID1,
@@ -76,6 +81,8 @@ func TestSIDIndexHas_SRMPLS_SrgbBeginZero(t *testing.T) {
 }
 
 func TestSIDIndexHas_SRMPLS_PrefixSIDIndexZero(t *testing.T) {
+	t.Parallel()
+
 	// Prefix-SID index 0 is a valid index: SRGB begin + 0 must be registered
 	// when the Prefix-SID TLV was actually advertised.
 	node := &LsNode{
@@ -90,6 +97,8 @@ func TestSIDIndexHas_SRMPLS_PrefixSIDIndexZero(t *testing.T) {
 }
 
 func TestSIDIndexHas_SRMPLS_NoPrefixSID(t *testing.T) {
+	t.Parallel()
+
 	// A prefix without a Prefix-SID TLV must not register the SRGB begin label.
 	node := &LsNode{
 		RouterID:  testRouterID1,
@@ -103,6 +112,8 @@ func TestSIDIndexHas_SRMPLS_NoPrefixSID(t *testing.T) {
 }
 
 func TestSIDIndexHas_SRMPLS_PrefixSIDRanges(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name  string
 		node  *LsNode
@@ -167,6 +178,7 @@ func TestSIDIndexHas_SRMPLS_PrefixSIDRanges(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			idx := NewSIDIndex(newTestTED(tt.node))
 			assert.Equal(t, tt.want, idx.Has(NewSegmentSRMPLS(tt.label)))
 		})
@@ -174,6 +186,8 @@ func TestSIDIndexHas_SRMPLS_PrefixSIDRanges(t *testing.T) {
 }
 
 func TestLsPrefixHasPrefixSID(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name   string
 		prefix *LsPrefix
@@ -186,12 +200,15 @@ func TestLsPrefixHasPrefixSID(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, tt.prefix.HasPrefixSID())
 		})
 	}
 }
 
 func TestSIDIndexHas_SRv6Exact(t *testing.T) {
+	t.Parallel()
+
 	node := &LsNode{
 		RouterID: testRouterID1,
 		SRv6SIDs: []*LsSrv6SID{
@@ -219,6 +236,7 @@ func TestSIDIndexHas_SRv6Exact(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			idx := NewSIDIndex(ted)
 			assert.Equal(t, tt.want, idx.Has(tt.seg))
 		})
@@ -226,6 +244,8 @@ func TestSIDIndexHas_SRv6Exact(t *testing.T) {
 }
 
 func TestSIDIndexHas_USID(t *testing.T) {
+	t.Parallel()
+
 	// TED advertises a locator of block=32, node=16 bits -> fcbb:bb00:0100::/48.
 	node := &LsNode{
 		RouterID: testRouterID1,
@@ -241,6 +261,7 @@ func TestSIDIndexHas_USID(t *testing.T) {
 	container := netip.MustParseAddr("fcbb:bb00:0100:0200:0300::")
 
 	t.Run("structure present, container within locator", func(t *testing.T) {
+		t.Parallel()
 		seg := NewSegmentSRv6(container)
 		seg.USid = true
 		seg.Structure = []uint8{32, 16, 16, 0}
@@ -248,12 +269,14 @@ func TestSIDIndexHas_USID(t *testing.T) {
 	})
 
 	t.Run("no structure, falls back to containment", func(t *testing.T) {
+		t.Parallel()
 		seg := NewSegmentSRv6(container)
 		seg.USid = true
 		assert.True(t, NewSIDIndex(ted).Has(seg), "expected uSID container without structure to be accepted via containment fallback")
 	})
 
 	t.Run("declared locator shorter than TED advertised", func(t *testing.T) {
+		t.Parallel()
 		seg := NewSegmentSRv6(container)
 		seg.USid = true
 		// Declares a /32 locator (block=24,node=8), which contradicts the /48
@@ -263,29 +286,37 @@ func TestSIDIndexHas_USID(t *testing.T) {
 	})
 
 	t.Run("outside any known locator", func(t *testing.T) {
+		t.Parallel()
 		seg := NewSegmentSRv6(netip.MustParseAddr("fcbb:bb00:ffff::"))
 		seg.USid = true
 		assert.False(t, NewSIDIndex(ted).Has(seg), "expected mismatch for a SID outside any known locator")
 	})
 
 	t.Run("non-uSID segment does not fall back to locator containment", func(t *testing.T) {
+		t.Parallel()
 		seg := NewSegmentSRv6(container)
 		assert.False(t, NewSIDIndex(ted).Has(seg), "expected non-uSID segment to require an exact SID match")
 	})
 }
 
 func TestMissingSegmentString(t *testing.T) {
+	t.Parallel()
+
 	m := MissingSegment{Hop: 2, SID: "16099"}
 	assert.Equal(t, "hop 2 (16099)", m.String())
 }
 
 func TestNewSIDIndex_SkipsNilNode(t *testing.T) {
+	t.Parallel()
+
 	ted := &LsTED{Nodes: map[string]*LsNode{testRouterID1: nil}}
 	idx := NewSIDIndex(ted)
 	assert.False(t, idx.Has(NewSegmentSRMPLS(16003)), "expected no panic and no match when a map entry is nil")
 }
 
 func TestSIDIndexAddLinkSIDs_SkipsNilLink(t *testing.T) {
+	t.Parallel()
+
 	node := &LsNode{
 		RouterID: testRouterID1,
 		Links:    []*LsLink{nil, {AdjSid: 24001}},
@@ -295,12 +326,17 @@ func TestSIDIndexAddLinkSIDs_SkipsNilLink(t *testing.T) {
 }
 
 func TestSIDIndexHas_UnknownSegmentType(t *testing.T) {
+	t.Parallel()
+
 	idx := NewSIDIndex(newTestTED())
 	assert.False(t, idx.Has(fakeUnknownSegment{}))
 }
 
 func TestSIDIndexAddSRv6_EdgeCases(t *testing.T) {
+	t.Parallel()
+
 	t.Run("non-IPv6 SID is not registered", func(t *testing.T) {
+		t.Parallel()
 		node := &LsNode{
 			RouterID: testRouterID1,
 			SRv6SIDs: []*LsSrv6SID{{Sids: []string{"10.0.0.1"}}},
@@ -310,6 +346,7 @@ func TestSIDIndexAddSRv6_EdgeCases(t *testing.T) {
 	})
 
 	t.Run("unparsable SID is not registered", func(t *testing.T) {
+		t.Parallel()
 		node := &LsNode{
 			RouterID: testRouterID1,
 			SRv6SIDs: []*LsSrv6SID{{Sids: []string{testInvalidAddr}}},
@@ -319,6 +356,7 @@ func TestSIDIndexAddSRv6_EdgeCases(t *testing.T) {
 	})
 
 	t.Run("zero locator length still registers the exact SID but skips the locator", func(t *testing.T) {
+		t.Parallel()
 		sid := netip.MustParseAddr("fc00:0:1::")
 		node := &LsNode{
 			RouterID: testRouterID1,
@@ -333,6 +371,7 @@ func TestSIDIndexAddSRv6_EdgeCases(t *testing.T) {
 	})
 
 	t.Run("locator length beyond 128 bits is not registered", func(t *testing.T) {
+		t.Parallel()
 		sid := netip.MustParseAddr("fc00:0:1::")
 		node := &LsNode{
 			RouterID: testRouterID1,
@@ -348,6 +387,8 @@ func TestSIDIndexAddSRv6_EdgeCases(t *testing.T) {
 }
 
 func TestSIDIndexHas_EmptyTED(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		ted  *LsTED
@@ -357,6 +398,7 @@ func TestSIDIndexHas_EmptyTED(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			idx := NewSIDIndex(tt.ted)
 			assert.False(t, idx.Has(NewSegmentSRMPLS(16003)), "expected no match against an empty TED")
 			assert.False(t, idx.Has(NewSegmentSRv6(netip.MustParseAddr(testSRv6ExactSID))), "expected no match against an empty TED")
@@ -365,6 +407,8 @@ func TestSIDIndexHas_EmptyTED(t *testing.T) {
 }
 
 func TestMissingSegments(t *testing.T) {
+	t.Parallel()
+
 	node := &LsNode{
 		RouterID:  testRouterID1,
 		SrgbBegin: 16000,
@@ -393,6 +437,8 @@ func (fakeUnknownSegment) SidString() string        { return "unknown" }
 func (fakeUnknownSegment) GetFamily() SegmentFamily { return SegmentUnknown }
 
 func TestHasUnknownSegmentType(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		segs []Segment
@@ -426,12 +472,15 @@ func TestHasUnknownSegmentType(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, HasUnknownSegmentType(tt.segs))
 		})
 	}
 }
 
 func TestOutOfRangeSRMPLSLabels(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		segs []Segment
@@ -469,12 +518,15 @@ func TestOutOfRangeSRMPLSLabels(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			require.Equal(t, tt.want, OutOfRangeSRMPLSLabels(tt.segs))
 		})
 	}
 }
 
 func TestHasMixedSegmentTypes(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		segs []Segment
@@ -540,12 +592,15 @@ func TestHasMixedSegmentTypes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, HasMixedSegmentTypes(tt.segs))
 		})
 	}
 }
 
 func TestValidateExplicitPath(t *testing.T) {
+	t.Parallel()
+
 	// Topology: A --adj24001--> B --adj24002--> C
 	// A has node SID 16001, B has node SID 16002, C has node SID 16003.
 	nodeA := &LsNode{
@@ -617,6 +672,7 @@ func TestValidateExplicitPath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := ValidateExplicitPath(ted, tt.src, tt.segs)
 			if tt.wantErr == "" {
 				if err != nil {
@@ -634,6 +690,8 @@ func TestValidateExplicitPath(t *testing.T) {
 }
 
 func TestValidateExplicitPathSRv6(t *testing.T) {
+	t.Parallel()
+
 	// Topology: A --End.X:fc00::a:b--> B --End.X:fc00::b:c--> C
 	// A has End SID fc00::a:1, B has End SID fc00::b:1, C has End SID fc00::c:1.
 	nodeA := &LsNode{
@@ -696,6 +754,7 @@ func TestValidateExplicitPathSRv6(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := ValidateExplicitPath(ted, tt.src, tt.segs)
 			if tt.wantErr == "" {
 				if err != nil {
@@ -713,6 +772,8 @@ func TestValidateExplicitPathSRv6(t *testing.T) {
 }
 
 func TestSIDIndexNextHop_OwnerUnknownBranches(t *testing.T) {
+	t.Parallel()
+
 	node := &LsNode{
 		RouterID: testRouterID1,
 		Links: []*LsLink{
@@ -725,24 +786,28 @@ func TestSIDIndexNextHop_OwnerUnknownBranches(t *testing.T) {
 	idx := NewSIDIndex(newTestTED(node))
 
 	t.Run("owner unknown with known SR-MPLS SID", func(t *testing.T) {
+		t.Parallel()
 		next, err := idx.NextHop(ownerUnknown, NewSegmentSRMPLS(24001))
 		require.NoError(t, err)
 		assert.Equal(t, ownerUnknown, next)
 	})
 
 	t.Run("owner unknown with unknown SR-MPLS SID", func(t *testing.T) {
+		t.Parallel()
 		_, err := idx.NextHop(ownerUnknown, NewSegmentSRMPLS(16099))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "not found in TED")
 	})
 
 	t.Run("owner unknown with known SRv6 adjacency SID", func(t *testing.T) {
+		t.Parallel()
 		next, err := idx.NextHop(ownerUnknown, NewSegmentSRv6(netip.MustParseAddr("2001:db8::a")))
 		require.NoError(t, err)
 		assert.Equal(t, ownerUnknown, next)
 	})
 
 	t.Run("owner unknown with unknown SRv6 SID", func(t *testing.T) {
+		t.Parallel()
 		_, err := idx.NextHop(ownerUnknown, NewSegmentSRv6(netip.MustParseAddr("2001:db8::99")))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "not found in TED")
@@ -750,6 +815,8 @@ func TestSIDIndexNextHop_OwnerUnknownBranches(t *testing.T) {
 }
 
 func TestSIDIndexNextHop_UnknownSegmentFamily(t *testing.T) {
+	t.Parallel()
+
 	idx := NewSIDIndex(newTestTED())
 	_, err := idx.NextHop(testRouterID1, fakeUnknownSegment{})
 	require.Error(t, err)
@@ -757,28 +824,34 @@ func TestSIDIndexNextHop_UnknownSegmentFamily(t *testing.T) {
 }
 
 func TestValidateExplicitPath_InputErrors(t *testing.T) {
+	t.Parallel()
+
 	node := &LsNode{RouterID: testRouterID1}
 	ted := newTestTED(node)
 
 	t.Run("nil TED", func(t *testing.T) {
+		t.Parallel()
 		err := ValidateExplicitPath(nil, node.RouterID, []Segment{NewSegmentSRMPLS(16003)})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "TED is nil")
 	})
 
 	t.Run("empty source router ID", func(t *testing.T) {
+		t.Parallel()
 		err := ValidateExplicitPath(ted, "", []Segment{NewSegmentSRMPLS(16003)})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "source router ID is empty")
 	})
 
 	t.Run("source router ID not found", func(t *testing.T) {
+		t.Parallel()
 		err := ValidateExplicitPath(ted, "missing", []Segment{NewSegmentSRMPLS(16003)})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "source router ID missing not found in TED")
 	})
 
 	t.Run("nil segment in list", func(t *testing.T) {
+		t.Parallel()
 		err := ValidateExplicitPath(ted, node.RouterID, []Segment{nil})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "hop 1: nil segment")

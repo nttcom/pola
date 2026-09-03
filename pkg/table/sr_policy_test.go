@@ -38,6 +38,8 @@ func newTestSegmentSRv6(sid, local, remote string) SegmentSRv6 {
 }
 
 func TestSegmentsEqual(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		a    Segment
@@ -134,6 +136,7 @@ func TestSegmentsEqual(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, SegmentsEqual(tt.a, tt.b))
 		})
 	}
@@ -144,6 +147,8 @@ type fakeUnknownSidSegment struct{}
 func (fakeUnknownSidSegment) SidString() string { return "unknown" }
 
 func TestSegmentsEqual_UnknownType(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		a    Segment
@@ -154,12 +159,15 @@ func TestSegmentsEqual_UnknownType(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.False(t, SegmentsEqual(tt.a, tt.b))
 		})
 	}
 }
 
 func TestNewSRPolicy(t *testing.T) {
+	t.Parallel()
+
 	segList := []Segment{NewSegmentSRMPLS(16001)}
 	srcAddr := netip.MustParseAddr("10.0.0.1")
 	dstAddr := netip.MustParseAddr("10.0.0.2")
@@ -181,6 +189,8 @@ func TestNewSRPolicy(t *testing.T) {
 }
 
 func TestSRPolicyUpdate(t *testing.T) {
+	t.Parallel()
+
 	name := "renamed"
 	color := uint32(300)
 	preference := uint32(400)
@@ -204,6 +214,7 @@ func TestSRPolicyUpdate(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			p := &SRPolicy{Name: "original", Color: 100, Preference: 200, SegmentList: []Segment{NewSegmentSRMPLS(16001)}}
 			p.Update(tt.diff)
 			assert.Equal(t, tt.want, *p)
@@ -212,6 +223,8 @@ func TestSRPolicyUpdate(t *testing.T) {
 }
 
 func TestNewSegment(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		sid     string
@@ -225,6 +238,7 @@ func TestNewSegment(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			seg, err := NewSegment(tt.sid)
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -237,6 +251,8 @@ func TestNewSegment(t *testing.T) {
 }
 
 func TestBehaviorToString(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		behavior uint16
@@ -251,12 +267,15 @@ func TestBehaviorToString(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, BehaviorToString(tt.behavior))
 		})
 	}
 }
 
 func TestSIDStructureBytesMarshalJSON(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		s    SIDStructureBytes
@@ -268,6 +287,7 @@ func TestSIDStructureBytesMarshalJSON(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			b, err := tt.s.MarshalJSON()
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, string(b))
@@ -276,6 +296,8 @@ func TestSIDStructureBytesMarshalJSON(t *testing.T) {
 }
 
 func TestSegmentSRv6_Behavior(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		seg  SegmentSRv6
@@ -317,12 +339,15 @@ func TestSegmentSRv6_Behavior(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, tt.seg.Behavior())
 		})
 	}
 }
 
 func TestIsUSidBehavior(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		behavior uint16
@@ -341,12 +366,15 @@ func TestIsUSidBehavior(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, IsUSidBehavior(tt.behavior))
 		})
 	}
 }
 
 func TestSIDStructureBytes_Validate(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		s       SIDStructureBytes
@@ -359,6 +387,7 @@ func TestSIDStructureBytes_Validate(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := tt.s.Validate()
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -370,6 +399,8 @@ func TestSIDStructureBytes_Validate(t *testing.T) {
 }
 
 func TestNewSegmentSRv6WithNodeInfo(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		node    *LsNode
@@ -441,6 +472,7 @@ func TestNewSegmentSRv6WithNodeInfo(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := NewSegmentSRv6WithNodeInfo(netip.MustParseAddr("2001:db8::1"), tt.node)
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -453,6 +485,8 @@ func TestNewSegmentSRv6WithNodeInfo(t *testing.T) {
 }
 
 func TestSegmentSRMPLSHasMPLSStackEntryAttrs(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		seg  SegmentSRMPLS
@@ -465,6 +499,7 @@ func TestSegmentSRMPLSHasMPLSStackEntryAttrs(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, tt.seg.HasMPLSStackEntryAttrs())
 		})
 	}

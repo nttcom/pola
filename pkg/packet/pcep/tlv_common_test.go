@@ -13,6 +13,8 @@ import (
 )
 
 func TestDecodeTLVLength(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name         string
 		data         []byte
@@ -75,6 +77,7 @@ func TestDecodeTLVLength(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			gotLen, err := decodeTLVLength(tt.data, tt.allowPadding)
 
 			if tt.wantError {
@@ -88,6 +91,8 @@ func TestDecodeTLVLength(t *testing.T) {
 }
 
 func TestPaddedLength(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		n        int
@@ -128,12 +133,15 @@ func TestPaddedLength(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.expected, paddedLength(tt.n, tt.align))
 		})
 	}
 }
 
 func TestIsIPv4Bytes(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		b    []byte
@@ -173,6 +181,7 @@ func TestIsIPv4Bytes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, isIPv4Bytes(tt.b))
 		})
 	}

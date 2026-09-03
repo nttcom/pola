@@ -72,6 +72,7 @@ func TestTranslateCreateSRPolicyError(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := translateCreateSRPolicyError(tt.err)
 			if tt.wantHint == "" {
 				assert.NotContains(t, got.Error(), "hint:")
@@ -111,6 +112,7 @@ func TestNewSRPolicyAddCmd_RunE(t *testing.T) {
 	t.Parallel()
 
 	t.Run("no-sid-validate flag not registered", func(t *testing.T) {
+		t.Parallel()
 		cmd := newTestSRPolicyAddCmd(nil)
 		err := cmd.RunE(&cobra.Command{}, []string{})
 		require.Error(t, err)
@@ -118,6 +120,7 @@ func TestNewSRPolicyAddCmd_RunE(t *testing.T) {
 	})
 
 	t.Run("file flag not registered", func(t *testing.T) {
+		t.Parallel()
 		cmd := newTestSRPolicyAddCmd(nil)
 		bare := &cobra.Command{}
 		bare.Flags().Bool("no-sid-validate", false, "")
@@ -127,6 +130,7 @@ func TestNewSRPolicyAddCmd_RunE(t *testing.T) {
 	})
 
 	t.Run("missing file flag", func(t *testing.T) {
+		t.Parallel()
 		cmd := newTestSRPolicyAddCmd(nil)
 		err := cmd.RunE(cmd, []string{})
 		require.Error(t, err)
@@ -134,6 +138,7 @@ func TestNewSRPolicyAddCmd_RunE(t *testing.T) {
 	})
 
 	t.Run("file does not exist", func(t *testing.T) {
+		t.Parallel()
 		cmd := newTestSRPolicyAddCmd(nil)
 		require.NoError(t, cmd.Flags().Set("file", filepath.Join(t.TempDir(), "missing.yaml")))
 		err := cmd.RunE(cmd, []string{})
@@ -142,6 +147,7 @@ func TestNewSRPolicyAddCmd_RunE(t *testing.T) {
 	})
 
 	t.Run("invalid YAML syntax", func(t *testing.T) {
+		t.Parallel()
 		path := filepath.Join(t.TempDir(), "policy.yaml")
 		require.NoError(t, os.WriteFile(path, []byte("not: [valid"), 0o600))
 		cmd := newTestSRPolicyAddCmd(nil)
@@ -152,6 +158,7 @@ func TestNewSRPolicyAddCmd_RunE(t *testing.T) {
 	})
 
 	t.Run("success delegates to addSRPolicy", func(t *testing.T) {
+		t.Parallel()
 		path := filepath.Join(t.TempDir(), "policy.yaml")
 		yamlContent := "srPolicy:\n" +
 			"  pcepSessionAddr: 192.0.2.1\n" +
@@ -170,6 +177,7 @@ func TestNewSRPolicyAddCmd_RunE(t *testing.T) {
 	})
 
 	t.Run("addSRPolicy error is wrapped", func(t *testing.T) {
+		t.Parallel()
 		path := filepath.Join(t.TempDir(), "policy.yaml")
 		require.NoError(t, os.WriteFile(path, []byte("srPolicy:\n  name: incomplete\n"), 0o600))
 		cmd := newTestSRPolicyAddCmd(nil)
@@ -184,6 +192,7 @@ func TestAddSRPolicy(t *testing.T) {
 	t.Parallel()
 
 	t.Run("srcRouterID/dstRouterID and srcAddr/dstAddr are mutually exclusive", func(t *testing.T) {
+		t.Parallel()
 		input := inputFormat{SRPolicy: srPolicy{
 			SrcRouterID: testRouterID1,
 			SrcAddr:     netip.MustParseAddr(testPeerAddr1),
@@ -194,24 +203,28 @@ func TestAddSRPolicy(t *testing.T) {
 	})
 
 	t.Run("no-sid-validate prints a warning to stderr", func(t *testing.T) {
+		t.Parallel()
 		var out, errOut bytes.Buffer
 		require.NoError(t, addSRPolicy(&out, &errOut, validEndpointInput(), false, true, &fakePCEServiceClient{}))
 		assert.Contains(t, errOut.String(), "no-sid-validate")
 	})
 
 	t.Run("json output on success", func(t *testing.T) {
+		t.Parallel()
 		var out bytes.Buffer
 		require.NoError(t, addSRPolicy(&out, &bytes.Buffer{}, validEndpointInput(), true, false, &fakePCEServiceClient{}))
 		assert.JSONEq(t, "{\"status\": \"success\"}\n", out.String())
 	})
 
 	t.Run("plain text output on success", func(t *testing.T) {
+		t.Parallel()
 		var out bytes.Buffer
 		require.NoError(t, addSRPolicy(&out, &bytes.Buffer{}, validEndpointInput(), false, false, &fakePCEServiceClient{}))
 		assert.Equal(t, "success!\n", out.String())
 	})
 
 	t.Run("router ID form is used when router IDs are set", func(t *testing.T) {
+		t.Parallel()
 		fake := &fakePCEServiceClient{}
 		input := inputFormat{ASN: 65000, SRPolicy: srPolicy{
 			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
@@ -227,6 +240,7 @@ func TestAddSRPolicy(t *testing.T) {
 	})
 
 	t.Run("router ID form grpc error is translated too", func(t *testing.T) {
+		t.Parallel()
 		fake := &fakePCEServiceClient{createSRPolicyErr: assert.AnError}
 		input := inputFormat{ASN: 65000, SRPolicy: srPolicy{
 			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
@@ -241,6 +255,7 @@ func TestAddSRPolicy(t *testing.T) {
 	})
 
 	t.Run("grpc error is translated with its hint", func(t *testing.T) {
+		t.Parallel()
 		st := status.New(codes.FailedPrecondition, "SID validation failed")
 		withDetails, err := st.WithDetails(&errdetails.ErrorInfo{Reason: "SID_VALIDATION_FAILED", Domain: testErrorDomain})
 		require.NoError(t, err)
@@ -266,6 +281,7 @@ func TestAddSRPolicyWithEndpointAddr(t *testing.T) {
 	}
 
 	t.Run("type must be explicit (or empty)", func(t *testing.T) {
+		t.Parallel()
 		p := base()
 		p.Type = srPolicyTypeDynamic
 		err := addSRPolicyWithEndpointAddr(inputFormat{SRPolicy: p}, false, nil)
@@ -274,6 +290,7 @@ func TestAddSRPolicyWithEndpointAddr(t *testing.T) {
 	})
 
 	t.Run("metric and waypoints require a dynamic path", func(t *testing.T) {
+		t.Parallel()
 		p := base()
 		p.Metric = metricTypeIGP
 		err := addSRPolicyWithEndpointAddr(inputFormat{SRPolicy: p}, false, nil)
@@ -282,12 +299,14 @@ func TestAddSRPolicyWithEndpointAddr(t *testing.T) {
 	})
 
 	t.Run("missing mandatory fields", func(t *testing.T) {
+		t.Parallel()
 		err := addSRPolicyWithEndpointAddr(inputFormat{}, false, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid input")
 	})
 
 	t.Run("success builds the explicit request", func(t *testing.T) {
+		t.Parallel()
 		fake := &fakePCEServiceClient{}
 		p := base()
 		p.Name = testPolicyName
@@ -312,6 +331,7 @@ func TestAddSRPolicyWithEndpointAddr(t *testing.T) {
 	})
 
 	t.Run("grpc error propagates", func(t *testing.T) {
+		t.Parallel()
 		fake := &fakePCEServiceClient{createSRPolicyErr: assert.AnError}
 		err := addSRPolicyWithEndpointAddr(inputFormat{SRPolicy: base()}, false, fake)
 		require.ErrorIs(t, err, assert.AnError)
@@ -322,11 +342,13 @@ func TestAddSRPolicyWithRouterID(t *testing.T) {
 	t.Parallel()
 
 	t.Run("invalid common input", func(t *testing.T) {
+		t.Parallel()
 		err := addSRPolicyWithRouterID(inputFormat{}, false, nil)
 		require.Error(t, err)
 	})
 
 	t.Run("dynamic path builds the request", func(t *testing.T) {
+		t.Parallel()
 		fake := &fakePCEServiceClient{}
 		input := inputFormat{ASN: 65000, SRPolicy: srPolicy{
 			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
@@ -358,6 +380,7 @@ func TestAddSRPolicyWithRouterID(t *testing.T) {
 	})
 
 	t.Run("explicit path builds the request", func(t *testing.T) {
+		t.Parallel()
 		fake := &fakePCEServiceClient{}
 		input := inputFormat{ASN: 65000, SRPolicy: srPolicy{
 			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
@@ -375,6 +398,7 @@ func TestAddSRPolicyWithRouterID(t *testing.T) {
 	})
 
 	t.Run("invalid type is rejected", func(t *testing.T) {
+		t.Parallel()
 		input := inputFormat{ASN: 65000, SRPolicy: srPolicy{
 			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
 			SrcRouterID:     testRouterID1,
@@ -387,6 +411,7 @@ func TestAddSRPolicyWithRouterID(t *testing.T) {
 	})
 
 	t.Run("grpc error propagates", func(t *testing.T) {
+		t.Parallel()
 		fake := &fakePCEServiceClient{createSRPolicyErr: assert.AnError}
 		input := inputFormat{ASN: 65000, SRPolicy: srPolicy{
 			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
@@ -420,6 +445,7 @@ func TestValidateCommonInput(t *testing.T) {
 	}
 
 	t.Run("all mandatory fields present", func(t *testing.T) {
+		t.Parallel()
 		require.NoError(t, validateCommonInput(inputFormat{ASN: 65000, SRPolicy: valid}, "dynamic-sample", "explicit-sample"))
 	})
 
@@ -435,6 +461,7 @@ func TestValidateCommonInput(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := validateCommonInput(tt.input, "dynamic-sample", "explicit-sample")
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "dynamic-sample")
@@ -447,6 +474,7 @@ func TestBuildPolicyByType(t *testing.T) {
 	t.Parallel()
 
 	t.Run(srPolicyTypeExplicit, func(t *testing.T) {
+		t.Parallel()
 		input := inputFormat{SRPolicy: srPolicy{Type: srPolicyTypeExplicit, SegmentList: []segment{{SID: "16003"}}}}
 		typ, metric, segs, waypoints, err := buildPolicyByType(input, "d", "e")
 		require.NoError(t, err)
@@ -457,6 +485,7 @@ func TestBuildPolicyByType(t *testing.T) {
 	})
 
 	t.Run(srPolicyTypeDynamic, func(t *testing.T) {
+		t.Parallel()
 		input := inputFormat{SRPolicy: srPolicy{Type: srPolicyTypeDynamic, Metric: metricTypeIGP, Waypoints: []waypoint{{RouterID: "r1"}}}}
 		typ, metric, segs, waypoints, err := buildPolicyByType(input, "d", "e")
 		require.NoError(t, err)
@@ -467,23 +496,27 @@ func TestBuildPolicyByType(t *testing.T) {
 	})
 
 	t.Run("unrecognized type is rejected", func(t *testing.T) {
+		t.Parallel()
 		_, _, _, _, err := buildPolicyByType(inputFormat{SRPolicy: srPolicy{Type: "unknown"}}, "d", "e")
 		require.Error(t, err)
 	})
 
 	t.Run("explicit with no segments", func(t *testing.T) {
+		t.Parallel()
 		_, _, _, _, err := buildPolicyByType(inputFormat{SRPolicy: srPolicy{Type: srPolicyTypeExplicit}}, "d", "sample-explicit")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "sample-explicit")
 	})
 
 	t.Run("dynamic with no metric", func(t *testing.T) {
+		t.Parallel()
 		_, _, _, _, err := buildPolicyByType(inputFormat{SRPolicy: srPolicy{Type: srPolicyTypeDynamic}}, "sample-dynamic", "e")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "sample-dynamic")
 	})
 
 	t.Run("dynamic with invalid metric", func(t *testing.T) {
+		t.Parallel()
 		_, _, _, _, err := buildPolicyByType(inputFormat{SRPolicy: srPolicy{Type: srPolicyTypeDynamic, Metric: "bandwidth"}}, "d", "e")
 		require.Error(t, err)
 	})
@@ -504,6 +537,7 @@ func TestParseMetric(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := parseMetric(tt.in)
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, got)
@@ -511,6 +545,7 @@ func TestParseMetric(t *testing.T) {
 	}
 
 	t.Run("unrecognized metric name is rejected", func(t *testing.T) {
+		t.Parallel()
 		_, err := parseMetric("bandwidth")
 		require.Error(t, err)
 	})

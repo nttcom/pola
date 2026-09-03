@@ -17,6 +17,8 @@ import (
 )
 
 func TestToPBSessionState(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		in   sessionState
@@ -30,12 +32,15 @@ func TestToPBSessionState(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, toPBSessionState(tt.in))
 		})
 	}
 }
 
 func TestToPBPccType(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		in   pcep.PccType
@@ -48,12 +53,15 @@ func TestToPBPccType(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, toPBPccType(tt.in))
 		})
 	}
 }
 
 func TestToPBInitiator(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		in   sessionInitiator
@@ -65,12 +73,15 @@ func TestToPBInitiator(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, toPBInitiator(tt.in))
 		})
 	}
 }
 
 func TestToPBSyncState(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		in   lspDBSyncState
@@ -83,12 +94,15 @@ func TestToPBSyncState(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, toPBSyncState(tt.in))
 		})
 	}
 }
 
 func TestToPBSessionStats_AlwaysZeroCountersForRolesPolaNeverPlays(t *testing.T) {
+	t.Parallel()
+
 	stats := sessionStatsSnapshot{
 		OpenSent: 20, OpenRcvd: 21,
 		KeepaliveSent: 1, KeepaliveRcvd: 2,
@@ -129,6 +143,8 @@ func TestToPBSessionStats_AlwaysZeroCountersForRolesPolaNeverPlays(t *testing.T)
 }
 
 func TestBuildPBSession_StatsOmittedUnlessRequested(t *testing.T) {
+	t.Parallel()
+
 	server := &Server{logger: logger.NewNop()}
 	apiServer := &APIServer{pce: server, logger: logger.NewNop()}
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
@@ -141,6 +157,8 @@ func TestBuildPBSession_StatsOmittedUnlessRequested(t *testing.T) {
 }
 
 func TestBuildPBSession_TimestampsAndInitiatorAndSyncState(t *testing.T) {
+	t.Parallel()
+
 	apiServer := &APIServer{pce: &Server{logger: logger.NewNop()}, logger: logger.NewNop()}
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 
@@ -156,6 +174,8 @@ func TestBuildPBSession_TimestampsAndInitiatorAndSyncState(t *testing.T) {
 }
 
 func TestSessionListFilter(t *testing.T) {
+	t.Parallel()
+
 	addr := netip.MustParseAddr("10.0.255.1")
 
 	got, err := sessionListFilter(&pb.GetSessionListRequest{})

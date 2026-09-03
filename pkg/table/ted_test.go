@@ -16,6 +16,8 @@ import (
 )
 
 func TestLsNodeNodeSegment(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		node *LsNode
@@ -59,6 +61,7 @@ func TestLsNodeNodeSegment(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			seg, err := tt.node.NodeSegment()
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, seg.SidString())
@@ -67,6 +70,8 @@ func TestLsNodeNodeSegment(t *testing.T) {
 }
 
 func TestLsNodeNodeSegment_Errors(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		node *LsNode
@@ -122,6 +127,7 @@ func TestLsNodeNodeSegment_Errors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := tt.node.NodeSegment()
 			assert.Error(t, err, "expected an error for a node without a Node SID")
 		})
@@ -129,6 +135,8 @@ func TestLsNodeNodeSegment_Errors(t *testing.T) {
 }
 
 func TestNodeSegment_PrefixSIDOutsideSRGB(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		node *LsNode
@@ -153,6 +161,7 @@ func TestNodeSegment_PrefixSIDOutsideSRGB(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := tt.node.NodeSegment()
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "out of range for SRGB")
@@ -161,6 +170,8 @@ func TestNodeSegment_PrefixSIDOutsideSRGB(t *testing.T) {
 }
 
 func TestLsNodeLoopbackAddr(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		node    *LsNode
@@ -195,6 +206,7 @@ func TestLsNodeLoopbackAddr(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := tt.node.LoopbackAddr()
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -207,10 +219,14 @@ func TestLsNodeLoopbackAddr(t *testing.T) {
 }
 
 func TestNewLsNode(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, &LsNode{ASN: 1, RouterID: testRouterID1}, NewLsNode(1, testRouterID1))
 }
 
 func TestLsNodeUpdateTED_ASNMismatch(t *testing.T) {
+	t.Parallel()
+
 	ted := newTestTED()
 	node := &LsNode{ASN: 2, RouterID: "R1", Hostname: "h1"}
 	node.UpdateTED(ted, 1)
@@ -218,6 +234,8 @@ func TestLsNodeUpdateTED_ASNMismatch(t *testing.T) {
 }
 
 func TestLsNodeUpdateTED_NewNode(t *testing.T) {
+	t.Parallel()
+
 	ted := newTestTED()
 	node := &LsNode{ASN: 1, RouterID: "R1", Hostname: "h1"}
 	node.UpdateTED(ted, 1)
@@ -225,6 +243,8 @@ func TestLsNodeUpdateTED_NewNode(t *testing.T) {
 }
 
 func TestLsNodeUpdateTED_ExistingNode(t *testing.T) {
+	t.Parallel()
+
 	existing := &LsNode{ASN: 1, RouterID: "R1", Hostname: "old", Links: []*LsLink{{}}}
 	ted := newTestTED(existing)
 
@@ -243,6 +263,8 @@ func TestLsNodeUpdateTED_ExistingNode(t *testing.T) {
 }
 
 func TestLsNodeAddLink(t *testing.T) {
+	t.Parallel()
+
 	node := &LsNode{RouterID: "R1"}
 	link := &LsLink{}
 	node.AddLink(link)
@@ -250,26 +272,33 @@ func TestLsNodeAddLink(t *testing.T) {
 }
 
 func TestNewLsLink(t *testing.T) {
+	t.Parallel()
+
 	local := &LsNode{RouterID: "R1"}
 	remote := &LsNode{RouterID: "R2"}
 	assert.Equal(t, &LsLink{LocalNode: local, RemoteNode: remote}, NewLsLink(local, remote))
 }
 
 func TestLsLinkMetric(t *testing.T) {
+	t.Parallel()
+
 	link := &LsLink{Metrics: []*Metric{{Type: IGPMetric, Value: 10}}}
 
 	t.Run("metric is defined", func(t *testing.T) {
+		t.Parallel()
 		got, err := link.Metric(IGPMetric)
 		require.NoError(t, err)
 		assert.Equal(t, uint32(10), got)
 	})
 
 	t.Run("metric is not defined", func(t *testing.T) {
+		t.Parallel()
 		_, err := link.Metric(TEMetric)
 		assert.EqualError(t, err, "metric METRIC_TYPE_TE not defined")
 	})
 
 	t.Run("hopcount is always 1 regardless of Metrics", func(t *testing.T) {
+		t.Parallel()
 		got, err := link.Metric(HopcountMetric)
 		require.NoError(t, err)
 		assert.Equal(t, uint32(1), got)
@@ -277,7 +306,10 @@ func TestLsLinkMetric(t *testing.T) {
 }
 
 func TestPrintLink(t *testing.T) {
+	t.Parallel()
+
 	t.Run("missing IPs and RemoteNode fall back to None", func(t *testing.T) {
+		t.Parallel()
 		var buf bytes.Buffer
 		printLink(&buf, &LsLink{})
 
@@ -286,6 +318,7 @@ func TestPrintLink(t *testing.T) {
 	})
 
 	t.Run("populated IPs and RemoteNode are printed", func(t *testing.T) {
+		t.Parallel()
 		link := &LsLink{
 			LocalIP:    netip.MustParseAddr("192.0.2.1"),
 			RemoteIP:   netip.MustParseAddr("192.0.2.2"),
@@ -300,6 +333,7 @@ func TestPrintLink(t *testing.T) {
 	})
 
 	t.Run("metrics are printed", func(t *testing.T) {
+		t.Parallel()
 		link := &LsLink{Metrics: []*Metric{nil, {Type: IGPMetric, Value: 10}}}
 
 		var buf bytes.Buffer
@@ -309,6 +343,7 @@ func TestPrintLink(t *testing.T) {
 	})
 
 	t.Run("SRv6 End.X SID is printed", func(t *testing.T) {
+		t.Parallel()
 		link := &LsLink{
 			Srv6EndXSID: &Srv6EndXSID{
 				EndpointBehavior: 5,
@@ -328,15 +363,113 @@ func TestPrintLink(t *testing.T) {
 }
 
 func TestPrintNodeLinks(t *testing.T) {
-	node := &LsNode{Links: []*LsLink{nil, {RemoteNode: &LsNode{RouterID: "R2"}}}}
+	t.Parallel()
 
-	var buf bytes.Buffer
-	printNodeLinks(&buf, node)
+	t.Run("node with links", func(t *testing.T) {
+		t.Parallel()
+		node := &LsNode{Links: []*LsLink{nil, {RemoteNode: &LsNode{RouterID: "R2"}}}}
 
-	assert.Contains(t, buf.String(), "RemoteNode: R2")
+		var buf bytes.Buffer
+		printNodeLinks(&buf, node)
+
+		assert.Contains(t, buf.String(), "RemoteNode: R2")
+	})
+
+	t.Run("node with no links", func(t *testing.T) {
+		t.Parallel()
+		node := &LsNode{}
+
+		var buf bytes.Buffer
+		printNodeLinks(&buf, node)
+
+		assert.Contains(t, buf.String(), "Links:")
+	})
+}
+
+func TestPrintNodePrefixes(t *testing.T) {
+	t.Parallel()
+
+	t.Run("no prefixes", func(t *testing.T) {
+		t.Parallel()
+		var buf bytes.Buffer
+		printNodePrefixes(&buf, &LsNode{})
+		assert.Contains(t, buf.String(), "Prefixes:")
+	})
+
+	t.Run("prefix without SID", func(t *testing.T) {
+		t.Parallel()
+		node := &LsNode{Prefixes: []*LsPrefix{{Prefix: netip.MustParsePrefix("10.0.0.1/32")}}}
+		var buf bytes.Buffer
+		printNodePrefixes(&buf, node)
+		assert.Contains(t, buf.String(), "10.0.0.1/32")
+	})
+
+	t.Run("prefix with SID", func(t *testing.T) {
+		t.Parallel()
+		node := &LsNode{Prefixes: []*LsPrefix{{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 10, HasSidIndex: true}}}
+		var buf bytes.Buffer
+		printNodePrefixes(&buf, node)
+		assert.Contains(t, buf.String(), "10.0.0.1/32")
+		assert.Contains(t, buf.String(), "index: 10")
+	})
+
+	t.Run("nil prefixes are skipped", func(t *testing.T) {
+		t.Parallel()
+		node := &LsNode{Prefixes: []*LsPrefix{nil, {Prefix: netip.MustParsePrefix("10.0.0.1/32")}}}
+		var buf bytes.Buffer
+		printNodePrefixes(&buf, node)
+		assert.Contains(t, buf.String(), "10.0.0.1/32")
+	})
+}
+
+func TestPrintNodeSRv6SIDs(t *testing.T) {
+	t.Parallel()
+
+	t.Run("no SRv6 SIDs", func(t *testing.T) {
+		t.Parallel()
+		var buf bytes.Buffer
+		printNodeSRv6SIDs(&buf, &LsNode{})
+		assert.Contains(t, buf.String(), "SRv6 SIDs:")
+	})
+
+	t.Run("SRv6 SID with structure and endpoint behavior", func(t *testing.T) {
+		t.Parallel()
+		node := &LsNode{
+			SRv6SIDs: []*LsSrv6SID{
+				{
+					Sids:             []string{testSRv6SID1},
+					SIDStructure:     SIDStructure{LocalBlock: 1, LocalNode: 2, LocalFunc: 3, LocalArg: 4},
+					EndpointBehavior: EndpointBehavior{Behavior: 5, Flags: 6, Algorithm: 7},
+					MultiTopoIDs:     []uint32{0, 1},
+				},
+			},
+		}
+		var buf bytes.Buffer
+		printNodeSRv6SIDs(&buf, node)
+		assert.Contains(t, buf.String(), fmt.Sprintf("SIDs: [%s]", testSRv6SID1))
+		assert.Contains(t, buf.String(), "Block: 1, Node: 2, Func: 3, Arg: 4")
+		assert.Contains(t, buf.String(), "EndpointBehavior: "+BehaviorToString(5))
+		assert.Contains(t, buf.String(), "Flags: 6, Algorithm: 7")
+		assert.Contains(t, buf.String(), "MultiTopoIDs: [0 1]")
+	})
+
+	t.Run("nil SRv6 SIDs are skipped", func(t *testing.T) {
+		t.Parallel()
+		node := &LsNode{
+			SRv6SIDs: []*LsSrv6SID{
+				nil,
+				{Sids: []string{testSRv6SID1}},
+			},
+		}
+		var buf bytes.Buffer
+		printNodeSRv6SIDs(&buf, node)
+		assert.Contains(t, buf.String(), fmt.Sprintf("SIDs: [%s]", testSRv6SID1))
+	})
 }
 
 func TestLsLinkUpdateTED_ASNMismatch(t *testing.T) {
+	t.Parallel()
+
 	ted := newTestTED()
 	local := &LsNode{ASN: 1, RouterID: "R1"}
 	remote := &LsNode{ASN: 2, RouterID: "R2"}
@@ -349,6 +482,8 @@ func TestLsLinkUpdateTED_ASNMismatch(t *testing.T) {
 }
 
 func TestLsLinkUpdateTED_CreatesNodesAndAddsLink(t *testing.T) {
+	t.Parallel()
+
 	ted := newTestTED()
 	local := &LsNode{ASN: 1, RouterID: "R1"}
 	remote := &LsNode{ASN: 1, RouterID: "R2"}
@@ -364,6 +499,8 @@ func TestLsLinkUpdateTED_CreatesNodesAndAddsLink(t *testing.T) {
 }
 
 func TestLsLinkUpdateTED_ReusesExistingNodes(t *testing.T) {
+	t.Parallel()
+
 	existingLocal := &LsNode{ASN: 1, RouterID: "R1", Hostname: "local-host"}
 	existingRemote := &LsNode{ASN: 1, RouterID: "R2", Hostname: "remote-host"}
 	preexistingLink := &LsLink{}
@@ -379,11 +516,15 @@ func TestLsLinkUpdateTED_ReusesExistingNodes(t *testing.T) {
 }
 
 func TestNewLsPrefix(t *testing.T) {
+	t.Parallel()
+
 	node := &LsNode{RouterID: "R1"}
 	assert.Equal(t, &LsPrefix{LocalNode: node}, NewLsPrefix(node))
 }
 
 func TestLsPrefixUpdateTED_ASNMismatch(t *testing.T) {
+	t.Parallel()
+
 	ted := newTestTED()
 	prefix := &LsPrefix{LocalNode: &LsNode{ASN: 2, RouterID: "R1"}, Prefix: netip.MustParsePrefix("10.0.0.1/32")}
 
@@ -393,6 +534,8 @@ func TestLsPrefixUpdateTED_ASNMismatch(t *testing.T) {
 }
 
 func TestLsPrefixUpdateTED_CreatesNodeAndAddsPrefix(t *testing.T) {
+	t.Parallel()
+
 	ted := newTestTED()
 	prefix := &LsPrefix{LocalNode: &LsNode{ASN: 1, RouterID: "R1"}, Prefix: netip.MustParsePrefix("10.0.0.1/32")}
 
@@ -403,6 +546,8 @@ func TestLsPrefixUpdateTED_CreatesNodeAndAddsPrefix(t *testing.T) {
 }
 
 func TestLsPrefixUpdateTED_DuplicatePrefixIsIgnored(t *testing.T) {
+	t.Parallel()
+
 	node := &LsNode{ASN: 1, RouterID: "R1"}
 	ted := newTestTED(node)
 
@@ -416,11 +561,15 @@ func TestLsPrefixUpdateTED_DuplicatePrefixIsIgnored(t *testing.T) {
 }
 
 func TestNewLsSrv6SID(t *testing.T) {
+	t.Parallel()
+
 	node := &LsNode{RouterID: "R1"}
 	assert.Equal(t, &LsSrv6SID{LocalNode: node}, NewLsSrv6SID(node))
 }
 
 func TestLsSrv6SIDUpdateTED_ASNMismatch(t *testing.T) {
+	t.Parallel()
+
 	ted := newTestTED()
 	sid := &LsSrv6SID{LocalNode: &LsNode{ASN: 2, RouterID: "R1"}}
 
@@ -430,6 +579,8 @@ func TestLsSrv6SIDUpdateTED_ASNMismatch(t *testing.T) {
 }
 
 func TestLsSrv6SIDUpdateTED_CreatesNodeAndAddsSID(t *testing.T) {
+	t.Parallel()
+
 	ted := newTestTED()
 	sid := &LsSrv6SID{LocalNode: &LsNode{ASN: 1, RouterID: "R1"}, Sids: []string{testSRv6SID1}}
 
@@ -441,6 +592,8 @@ func TestLsSrv6SIDUpdateTED_CreatesNodeAndAddsSID(t *testing.T) {
 }
 
 func TestLsSrv6SIDUpdateTED_ReusesExistingNode(t *testing.T) {
+	t.Parallel()
+
 	existing := &LsNode{ASN: 1, RouterID: "R1"}
 	ted := newTestTED(existing)
 
@@ -454,10 +607,14 @@ func TestLsSrv6SIDUpdateTED_ReusesExistingNode(t *testing.T) {
 }
 
 func TestNewMetric(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, &Metric{Type: IGPMetric, Value: 10}, NewMetric(IGPMetric, 10))
 }
 
 func TestMetricTypeIsValid(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		m    MetricType
@@ -473,12 +630,15 @@ func TestMetricTypeIsValid(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, tt.m.IsValid())
 		})
 	}
 }
 
 func TestMetricTypeString(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		m    MetricType
@@ -493,12 +653,15 @@ func TestMetricTypeString(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, tt.m.String())
 		})
 	}
 }
 
 func TestMetricTypeDisplayString(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		m    MetricType
@@ -513,12 +676,15 @@ func TestMetricTypeDisplayString(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, tt.m.DisplayString())
 		})
 	}
 }
 
 func TestMetricTypeMarshalJSON(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		m    MetricType
@@ -529,6 +695,7 @@ func TestMetricTypeMarshalJSON(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			b, err := tt.m.MarshalJSON()
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, string(b))
@@ -537,6 +704,8 @@ func TestMetricTypeMarshalJSON(t *testing.T) {
 }
 
 func TestLsTEDUpdate(t *testing.T) {
+	t.Parallel()
+
 	ted := newTestTED()
 	node := &LsNode{ASN: 1, RouterID: "R1"}
 	link := NewLsLink(&LsNode{ASN: 1, RouterID: "R1"}, &LsNode{ASN: 1, RouterID: "R2"})
@@ -548,6 +717,8 @@ func TestLsTEDUpdate(t *testing.T) {
 }
 
 func TestLsTEDRouterIDIndex(t *testing.T) {
+	t.Parallel()
+
 	ted := &LsTED{Nodes: map[string]*LsNode{}}
 
 	v4Node := NewLsNode(65000, "router-v4")
@@ -580,6 +751,8 @@ func TestLsTEDRouterIDIndex(t *testing.T) {
 }
 
 func TestLsTEDAddressRouterIDIndex(t *testing.T) {
+	t.Parallel()
+
 	ted := &LsTED{Nodes: map[string]*LsNode{}}
 
 	v4Node := NewLsNode(65000, "router-v4")
@@ -612,6 +785,8 @@ func TestLsTEDAddressRouterIDIndex(t *testing.T) {
 }
 
 func TestLsTEDFindRouterIDByLoopback(t *testing.T) {
+	t.Parallel()
+
 	ted := &LsTED{Nodes: map[string]*LsNode{}}
 
 	node := NewLsNode(65000, "router-v4")

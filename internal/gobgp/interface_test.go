@@ -55,6 +55,8 @@ func testLsAddrPrefixV4(t *testing.T, prefix string) *api.LsAddrPrefix {
 }
 
 func TestGetLsPrefix_SidIndex(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name            string
 		attr            *api.LsAttributePrefix
@@ -131,6 +133,7 @@ func TestGetLsPrefix_SidIndex(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			lsPrefix, err := getLsPrefix(testLsAddrPrefixV4(t, "10.0.0.1/32"), tt.attr)
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantSidIndex, lsPrefix.SidIndex)
@@ -140,9 +143,12 @@ func TestGetLsPrefix_SidIndex(t *testing.T) {
 }
 
 func TestGetLsPrefix_NLRITypesAndErrors(t *testing.T) {
+	t.Parallel()
+
 	localNodeDesc := &api.LsNodeDescriptor{Asn: 65000, IgpRouterId: testRouterID1}
 
 	t.Run("PrefixV6 NLRI", func(t *testing.T) {
+		t.Parallel()
 		nlri := &api.LsAddrPrefix{
 			Nlri: &api.LsAddrPrefix_LsNLRI{
 				Nlri: &api.LsAddrPrefix_LsNLRI_PrefixV6{
@@ -164,6 +170,7 @@ func TestGetLsPrefix_NLRITypesAndErrors(t *testing.T) {
 	})
 
 	t.Run("unsupported NLRI type", func(t *testing.T) {
+		t.Parallel()
 		nlri := &api.LsAddrPrefix{
 			Nlri: &api.LsAddrPrefix_LsNLRI{
 				Nlri: &api.LsAddrPrefix_LsNLRI_Node{Node: &api.LsNodeNLRI{}},
@@ -175,11 +182,13 @@ func TestGetLsPrefix_NLRITypesAndErrors(t *testing.T) {
 	})
 
 	t.Run("nil NLRI", func(t *testing.T) {
+		t.Parallel()
 		_, err := getLsPrefix(nil, &api.LsAttributePrefix{})
 		require.EqualError(t, err, "LS Prefix NLRI is nil")
 	})
 
 	t.Run("nil NLRI field", func(t *testing.T) {
+		t.Parallel()
 		_, err := getLsPrefix(&api.LsAddrPrefix{}, &api.LsAttributePrefix{})
 		require.EqualError(t, err, "LS Prefix NLRI is nil")
 	})
@@ -195,6 +204,7 @@ func TestGetLsPrefix_NLRITypesAndErrors(t *testing.T) {
 	}
 	for _, tt := range reachTests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			nlri := &api.LsAddrPrefix{
 				Nlri: &api.LsAddrPrefix_LsNLRI{
 					Nlri: &api.LsAddrPrefix_LsNLRI_PrefixV4{
@@ -214,9 +224,12 @@ func TestGetLsPrefix_NLRITypesAndErrors(t *testing.T) {
 }
 
 func TestGetLsPrefixList(t *testing.T) {
+	t.Parallel()
+
 	attr := &api.LsAttributePrefix{SrPrefixSid: 100}
 
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
 		nlris := []*api.NLRI{
 			{Nlri: &api.NLRI_LsAddrPrefix{LsAddrPrefix: testLsAddrPrefixV4(t, "10.0.0.1/32")}},
 			{Nlri: &api.NLRI_LsAddrPrefix{LsAddrPrefix: testLsAddrPrefixV4(t, "10.0.0.2/32")}},
@@ -228,6 +241,7 @@ func TestGetLsPrefixList(t *testing.T) {
 	})
 
 	t.Run("propagates a per-prefix error", func(t *testing.T) {
+		t.Parallel()
 		nlris := []*api.NLRI{
 			{Nlri: &api.NLRI_LsAddrPrefix{LsAddrPrefix: testLsAddrPrefixV4(t, "not-a-prefix")}},
 		}
@@ -238,6 +252,7 @@ func TestGetLsPrefixList(t *testing.T) {
 	})
 
 	t.Run("no NLRIs", func(t *testing.T) {
+		t.Parallel()
 		got, err := getLsPrefixList(nil, attr)
 		require.NoError(t, err)
 		assert.Nil(t, got)
@@ -245,6 +260,8 @@ func TestGetLsPrefixList(t *testing.T) {
 }
 
 func TestFormatIsisAreaID(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		area []byte
@@ -260,12 +277,15 @@ func TestFormatIsisAreaID(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, formatIsisAreaID(tt.area))
 		})
 	}
 }
 
 func TestGetLsNode(t *testing.T) {
+	t.Parallel()
+
 	nlri := &api.LsAddrPrefix{
 		Nlri: &api.LsAddrPrefix_LsNLRI{
 			Nlri: &api.LsAddrPrefix_LsNLRI_Node{
@@ -277,6 +297,7 @@ func TestGetLsNode(t *testing.T) {
 	}
 
 	t.Run("no SR Capabilities TLV", func(t *testing.T) {
+		t.Parallel()
 		attr := &api.LsAttributeNode{Name: "r1", IsisArea: []byte{0x49, 0x00}}
 
 		got, err := getLsNode(nlri, attr)
@@ -289,6 +310,7 @@ func TestGetLsNode(t *testing.T) {
 	})
 
 	t.Run("one SR Capability Range TLV", func(t *testing.T) {
+		t.Parallel()
 		attr := &api.LsAttributeNode{
 			Name:           "r1",
 			SrCapabilities: &api.LsSrCapabilities{Ranges: []*api.LsSrRange{{Begin: 16000, End: 23999}}},
@@ -304,6 +326,7 @@ func TestGetLsNode(t *testing.T) {
 	})
 
 	t.Run("SR Capabilities present with no Range TLV", func(t *testing.T) {
+		t.Parallel()
 		attr := &api.LsAttributeNode{SrCapabilities: &api.LsSrCapabilities{}}
 
 		_, err := getLsNode(nlri, attr)
@@ -312,6 +335,7 @@ func TestGetLsNode(t *testing.T) {
 	})
 
 	t.Run("SR Capabilities with more than one Range TLV", func(t *testing.T) {
+		t.Parallel()
 		attr := &api.LsAttributeNode{
 			SrCapabilities: &api.LsSrCapabilities{Ranges: []*api.LsSrRange{
 				{Begin: 16000, End: 23999},
@@ -326,6 +350,8 @@ func TestGetLsNode(t *testing.T) {
 }
 
 func TestGetLsLink(t *testing.T) {
+	t.Parallel()
+
 	localDesc := &api.LsNodeDescriptor{Asn: 65000, IgpRouterId: testRouterID1}
 	remoteDesc := &api.LsNodeDescriptor{Asn: 65000, IgpRouterId: testRouterID2}
 	expectedLocal := table.NewLsNode(65000, testRouterID1)
@@ -346,6 +372,7 @@ func TestGetLsLink(t *testing.T) {
 	}
 
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
 		tests := []struct {
 			name string
 			desc *api.LsLinkDescriptor
@@ -414,6 +441,7 @@ func TestGetLsLink(t *testing.T) {
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
 				got, err := getLsLink(newNLRI(tt.desc), tt.attr)
 				require.NoError(t, err)
 				assert.Equal(t, tt.want, got)
@@ -422,6 +450,7 @@ func TestGetLsLink(t *testing.T) {
 	})
 
 	t.Run("address parse errors", func(t *testing.T) {
+		t.Parallel()
 		tests := []struct {
 			name    string
 			desc    *api.LsLinkDescriptor
@@ -435,6 +464,7 @@ func TestGetLsLink(t *testing.T) {
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
 				_, err := getLsLink(newNLRI(tt.desc), &api.LsAttributeLink{})
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.wantErr)
@@ -443,6 +473,7 @@ func TestGetLsLink(t *testing.T) {
 	})
 
 	t.Run("invalid NLRI", func(t *testing.T) {
+		t.Parallel()
 		// Node NLRI where a Link NLRI is expected.
 		wrongNLRI := &api.LsAddrPrefix{
 			Nlri: &api.LsAddrPrefix_LsNLRI{
@@ -462,6 +493,7 @@ func TestGetLsLink(t *testing.T) {
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
 				_, err := getLsLink(tt.nlri, &api.LsAttributeLink{})
 				require.Error(t, err)
 			})
@@ -469,6 +501,7 @@ func TestGetLsLink(t *testing.T) {
 	})
 
 	t.Run("SRv6 End.X SID conversion error propagates", func(t *testing.T) {
+		t.Parallel()
 		_, err := getLsLink(newNLRI(&api.LsLinkDescriptor{}), &api.LsAttributeLink{
 			Srv6EndXSid: &api.LsSrv6EndXSID{EndpointBehavior: math.MaxUint16 + 1},
 		})
@@ -477,9 +510,12 @@ func TestGetLsLink(t *testing.T) {
 }
 
 func TestSrv6EndXSIDFromAPI(t *testing.T) {
+	t.Parallel()
+
 	validStructure := &api.LsSrv6SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0}
 
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
 		got, err := srv6EndXSIDFromAPI(&api.LsSrv6EndXSID{
 			EndpointBehavior: uint32(table.BehaviorENDX),
 			Sids:             []string{testSrv6EndXSID},
@@ -494,6 +530,7 @@ func TestSrv6EndXSIDFromAPI(t *testing.T) {
 	})
 
 	t.Run("endpoint behavior overflow", func(t *testing.T) {
+		t.Parallel()
 		_, err := srv6EndXSIDFromAPI(&api.LsSrv6EndXSID{
 			EndpointBehavior: math.MaxUint16 + 1,
 			Srv6SidStructure: validStructure,
@@ -502,6 +539,7 @@ func TestSrv6EndXSIDFromAPI(t *testing.T) {
 	})
 
 	t.Run("SID structure overflow propagates", func(t *testing.T) {
+		t.Parallel()
 		_, err := srv6EndXSIDFromAPI(&api.LsSrv6EndXSID{
 			EndpointBehavior: uint32(table.BehaviorENDX),
 			Srv6SidStructure: &api.LsSrv6SIDStructure{LocalBlock: math.MaxUint8 + 1},
@@ -511,6 +549,8 @@ func TestSrv6EndXSIDFromAPI(t *testing.T) {
 }
 
 func TestSrv6SIDStructureFromAPI(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		s    *api.LsSrv6SIDStructure
@@ -523,6 +563,7 @@ func TestSrv6SIDStructureFromAPI(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := srv6SIDStructureFromAPI(tt.s)
 			require.Error(t, err)
 		})
@@ -530,12 +571,15 @@ func TestSrv6SIDStructureFromAPI(t *testing.T) {
 }
 
 func TestGetLsSrv6SID(t *testing.T) {
+	t.Parallel()
+
 	attr := &api.LsAttributeSrv6SID{
 		Srv6EndpointBehavior: &api.LsSrv6EndpointBehavior{EndpointBehavior: uint32(table.BehaviorEND)},
 		Srv6SidStructure:     &api.LsSrv6SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
 	}
 
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
 		nlri := &api.LsAddrPrefix{
 			Nlri: &api.LsAddrPrefix_LsNLRI{
 				Nlri: &api.LsAddrPrefix_LsNLRI_Srv6Sid{
@@ -560,6 +604,7 @@ func TestGetLsSrv6SID(t *testing.T) {
 	})
 
 	t.Run("invalid NLRI", func(t *testing.T) {
+		t.Parallel()
 		wrongNLRI := &api.LsAddrPrefix{
 			Nlri: &api.LsAddrPrefix_LsNLRI{
 				Nlri: &api.LsAddrPrefix_LsNLRI_Node{
@@ -578,6 +623,7 @@ func TestGetLsSrv6SID(t *testing.T) {
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
 				_, err := getLsSrv6SID(tt.nlri, attr)
 				require.Error(t, err)
 			})
@@ -585,6 +631,7 @@ func TestGetLsSrv6SID(t *testing.T) {
 	})
 
 	t.Run("attribute conversion errors", func(t *testing.T) {
+		t.Parallel()
 		nlri := &api.LsAddrPrefix{
 			Nlri: &api.LsAddrPrefix_LsNLRI{
 				Nlri: &api.LsAddrPrefix_LsNLRI_Srv6Sid{
@@ -633,6 +680,7 @@ func TestGetLsSrv6SID(t *testing.T) {
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
 				_, err := getLsSrv6SID(nlri, tt.attr)
 				require.Error(t, err)
 			})
@@ -641,6 +689,8 @@ func TestGetLsSrv6SID(t *testing.T) {
 }
 
 func TestGetLsSrv6SIDList(t *testing.T) {
+	t.Parallel()
+
 	newNLRI := func(routerID string) *api.NLRI {
 		return &api.NLRI{Nlri: &api.NLRI_LsAddrPrefix{LsAddrPrefix: &api.LsAddrPrefix{
 			Nlri: &api.LsAddrPrefix_LsNLRI{
@@ -660,18 +710,21 @@ func TestGetLsSrv6SIDList(t *testing.T) {
 	}
 
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
 		got, err := getLsSrv6SIDList([]*api.NLRI{newNLRI(testRouterID1), newNLRI(testRouterID2)}, attr)
 		require.NoError(t, err)
 		require.Len(t, got, 2)
 	})
 
 	t.Run("no NLRIs", func(t *testing.T) {
+		t.Parallel()
 		got, err := getLsSrv6SIDList(nil, attr)
 		require.NoError(t, err)
 		assert.Nil(t, got)
 	})
 
 	t.Run("non-LsAddrPrefix NLRI", func(t *testing.T) {
+		t.Parallel()
 		nlris := []*api.NLRI{{Nlri: &api.NLRI_Prefix{Prefix: &api.IPAddressPrefix{}}}}
 		_, err := getLsSrv6SIDList(nlris, attr)
 		require.Error(t, err)
@@ -679,6 +732,8 @@ func TestGetLsSrv6SIDList(t *testing.T) {
 }
 
 func TestMpReachNlris_MissingMpReach(t *testing.T) {
+	t.Parallel()
+
 	lsAttr := &api.Attribute_Ls{Ls: &api.LsAttribute{Srv6Sid: &api.LsAttributeSrv6SID{}}}
 	path := &api.Path{Pattrs: []*api.Attribute{{Attr: lsAttr}}}
 
@@ -687,6 +742,8 @@ func TestMpReachNlris_MissingMpReach(t *testing.T) {
 }
 
 func TestConvertSrv6SID_InvalidNLRIInMpReach(t *testing.T) {
+	t.Parallel()
+
 	lsAttr := &api.Attribute_Ls{Ls: &api.LsAttribute{Srv6Sid: &api.LsAttributeSrv6SID{}}}
 	nlris := []*api.NLRI{{Nlri: &api.NLRI_Prefix{Prefix: &api.IPAddressPrefix{}}}}
 
@@ -695,7 +752,10 @@ func TestConvertSrv6SID_InvalidNLRIInMpReach(t *testing.T) {
 }
 
 func TestFindLsAttribute(t *testing.T) {
+	t.Parallel()
+
 	t.Run("found among other attributes", func(t *testing.T) {
+		t.Parallel()
 		lsAttr := &api.Attribute_Ls{Ls: &api.LsAttribute{}}
 		path := &api.Path{Pattrs: []*api.Attribute{
 			{Attr: &api.Attribute_Origin{}},
@@ -706,13 +766,17 @@ func TestFindLsAttribute(t *testing.T) {
 	})
 
 	t.Run("not present", func(t *testing.T) {
+		t.Parallel()
 		path := &api.Path{Pattrs: []*api.Attribute{{Attr: &api.Attribute_Origin{}}}}
 		assert.Nil(t, findLsAttribute(path))
 	})
 }
 
 func TestFindMpReach(t *testing.T) {
+	t.Parallel()
+
 	t.Run("found among other attributes", func(t *testing.T) {
+		t.Parallel()
 		mpReach := &api.MpReachNLRIAttribute{}
 		path := &api.Path{Pattrs: []*api.Attribute{
 			{Attr: &api.Attribute_Origin{}},
@@ -723,12 +787,15 @@ func TestFindMpReach(t *testing.T) {
 	})
 
 	t.Run("not present", func(t *testing.T) {
+		t.Parallel()
 		path := &api.Path{Pattrs: []*api.Attribute{{Attr: &api.Attribute_Origin{}}}}
 		assert.Nil(t, findMpReach(path))
 	})
 }
 
 func TestConvertToTEDElem(t *testing.T) {
+	t.Parallel()
+
 	nodeNLRI := &api.LsAddrPrefix{
 		Type: api.LsNLRIType_LS_NLRI_TYPE_NODE,
 		Nlri: &api.LsAddrPrefix_LsNLRI{Nlri: &api.LsAddrPrefix_LsNLRI_Node{
@@ -934,6 +1001,7 @@ func TestConvertToTEDElem(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := ConvertToTEDElem(tt.dst)
 			if tt.wantErrSubstr != "" {
 				require.Error(t, err)
@@ -948,6 +1016,8 @@ func TestConvertToTEDElem(t *testing.T) {
 }
 
 func TestNewWatchRequest(t *testing.T) {
+	t.Parallel()
+
 	want := &api.WatchEventRequest{
 		Table: &api.WatchEventRequest_Table{
 			Filters: []*api.WatchEventRequest_Table_Filter{
@@ -960,7 +1030,10 @@ func TestNewWatchRequest(t *testing.T) {
 }
 
 func TestNewGoBGPClient(t *testing.T) {
+	t.Parallel()
+
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
 		cc, client, err := newGoBGPClient("127.0.0.1", "50051")
 		require.NoError(t, err)
 		require.NotNil(t, cc)
@@ -969,6 +1042,7 @@ func TestNewGoBGPClient(t *testing.T) {
 	})
 
 	t.Run("unparsable target", func(t *testing.T) {
+		t.Parallel()
 		cc, client, err := newGoBGPClient("\x00", "50051")
 		require.Error(t, err)
 		assert.Nil(t, cc)
@@ -1041,7 +1115,10 @@ func testNodeDestination(t *testing.T, asn uint32, routerID, hostname string) *a
 }
 
 func TestGetBGPlsNLRIs(t *testing.T) {
+	t.Parallel()
+
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
 		client := &fakeGoBGPClient{listPathResp: []*api.ListPathResponse{
 			{Destination: testNodeDestination(t, 65000, testRouterID1, "r1")},
 			{Destination: testNodeDestination(t, 65000, testRouterID2, "r2")},
@@ -1062,12 +1139,14 @@ func TestGetBGPlsNLRIs(t *testing.T) {
 	})
 
 	t.Run("no destinations", func(t *testing.T) {
+		t.Parallel()
 		got, err := GetBGPlsNLRIs(context.Background(), &fakeGoBGPClient{})
 		require.NoError(t, err)
 		assert.Nil(t, got)
 	})
 
 	t.Run("ListPath call fails", func(t *testing.T) {
+		t.Parallel()
 		client := &fakeGoBGPClient{listPathErr: errors.New("connection refused")}
 
 		_, err := GetBGPlsNLRIs(context.Background(), client)
@@ -1076,6 +1155,7 @@ func TestGetBGPlsNLRIs(t *testing.T) {
 	})
 
 	t.Run("stream receive fails", func(t *testing.T) {
+		t.Parallel()
 		client := &fakeGoBGPClient{recvErr: errors.New("stream broken")}
 
 		_, err := GetBGPlsNLRIs(context.Background(), client)
@@ -1084,6 +1164,7 @@ func TestGetBGPlsNLRIs(t *testing.T) {
 	})
 
 	t.Run("conversion error propagates", func(t *testing.T) {
+		t.Parallel()
 		client := &fakeGoBGPClient{listPathResp: []*api.ListPathResponse{
 			{Destination: &api.Destination{Paths: nil}},
 		}}
@@ -1095,11 +1176,15 @@ func TestGetBGPlsNLRIs(t *testing.T) {
 }
 
 func TestWaitForRetry(t *testing.T) {
+	t.Parallel()
+
 	t.Run("waits for the interval and reports true", func(t *testing.T) {
+		t.Parallel()
 		assert.True(t, waitForRetry(context.Background(), time.Millisecond))
 	})
 
 	t.Run("reports false without waiting for the interval when the context is done", func(t *testing.T) {
+		t.Parallel()
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
@@ -1116,6 +1201,8 @@ func TestWaitForRetry(t *testing.T) {
 }
 
 func TestEstablishWatchStream_RetriesThenGivesUpOnContextCancel(t *testing.T) {
+	t.Parallel()
+
 	client := &fakeGoBGPClient{watchEventErr: errors.New("watch unavailable")}
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -1145,7 +1232,10 @@ func TestEstablishWatchStream_RetriesThenGivesUpOnContextCancel(t *testing.T) {
 }
 
 func TestInitialSync(t *testing.T) {
+	t.Parallel()
+
 	t.Run("success delivers the initial TED", func(t *testing.T) {
+		t.Parallel()
 		client := &fakeGoBGPClient{listPathResp: []*api.ListPathResponse{
 			{Destination: testNodeDestination(t, 65000, testRouterID1, "r1")},
 		}}
@@ -1158,6 +1248,7 @@ func TestInitialSync(t *testing.T) {
 	})
 
 	t.Run("logs and skips delivery on failure", func(t *testing.T) {
+		t.Parallel()
 		client := &fakeGoBGPClient{listPathErr: errors.New("connection refused")}
 		lg, logs := logger.NewRecorder(logger.LevelError)
 		tedChan := make(chan []table.TEDElem, 1)
@@ -1170,6 +1261,7 @@ func TestInitialSync(t *testing.T) {
 	})
 
 	t.Run("returns without blocking when the context ends before delivery", func(t *testing.T) {
+		t.Parallel()
 		client := &fakeGoBGPClient{listPathResp: []*api.ListPathResponse{
 			{Destination: testNodeDestination(t, 65000, testRouterID1, "r1")},
 		}}
@@ -1192,6 +1284,8 @@ func TestInitialSync(t *testing.T) {
 }
 
 func TestReconnectWatchStream_GivesUpOnContextCancel(t *testing.T) {
+	t.Parallel()
+
 	client := &fakeGoBGPClient{watchEventErr: errors.New("watch unavailable")}
 	ctx, cancel := context.WithCancel(context.Background())
 	d := NewDebouncer(time.Hour)
@@ -1224,6 +1318,8 @@ func TestReconnectWatchStream_GivesUpOnContextCancel(t *testing.T) {
 }
 
 func TestDebouncerTrigger(t *testing.T) {
+	t.Parallel()
+
 	t.Run("fetches once after the cooldown and delivers", testDebouncerTriggerFetchesOnceAfterCooldown)
 	t.Run("collapses triggers within the cooldown window into one fetch", testDebouncerTriggerCollapsesTriggersWithinCooldown)
 	t.Run("stops without fetching when the context is canceled first", testDebouncerTriggerStopsWithoutFetchingOnCancelFirst)
@@ -1238,6 +1334,8 @@ func TestDebouncerTrigger(t *testing.T) {
 }
 
 func testDebouncerTriggerFetchesOnceAfterCooldown(t *testing.T) {
+	t.Parallel()
+
 	d := NewDebouncer(20 * time.Millisecond)
 
 	want := []table.TEDElem{table.NewLsNode(1, "r1")}
@@ -1260,6 +1358,8 @@ func testDebouncerTriggerFetchesOnceAfterCooldown(t *testing.T) {
 }
 
 func testDebouncerTriggerCollapsesTriggersWithinCooldown(t *testing.T) {
+	t.Parallel()
+
 	d := NewDebouncer(50 * time.Millisecond)
 	ctx := t.Context()
 
@@ -1285,6 +1385,8 @@ func testDebouncerTriggerCollapsesTriggersWithinCooldown(t *testing.T) {
 }
 
 func testDebouncerTriggerStopsWithoutFetchingOnCancelFirst(t *testing.T) {
+	t.Parallel()
+
 	d := NewDebouncer(time.Hour)
 	ctx, cancel := context.WithCancel(t.Context())
 
@@ -1307,6 +1409,8 @@ func testDebouncerTriggerStopsWithoutFetchingOnCancelFirst(t *testing.T) {
 }
 
 func testDebouncerTriggerLogsAndSkipsOnFetchFailure(t *testing.T) {
+	t.Parallel()
+
 	d := NewDebouncer(10 * time.Millisecond)
 
 	lg, logs := logger.NewRecorder(logger.LevelError)
@@ -1320,6 +1424,8 @@ func testDebouncerTriggerLogsAndSkipsOnFetchFailure(t *testing.T) {
 }
 
 func testDebouncerTriggerSkipsDeliveryOnContextEndDuringFetch(t *testing.T) {
+	t.Parallel()
+
 	d := NewDebouncer(10 * time.Millisecond)
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -1337,6 +1443,8 @@ func testDebouncerTriggerSkipsDeliveryOnContextEndDuringFetch(t *testing.T) {
 }
 
 func testDebouncerTriggerHandlesTriggerDuringDelivery(t *testing.T) {
+	t.Parallel()
+
 	d := NewDebouncer(5 * time.Millisecond)
 	ctx := t.Context()
 
@@ -1383,6 +1491,8 @@ func testDebouncerTriggerHandlesTriggerDuringDelivery(t *testing.T) {
 }
 
 func testDebouncerTriggerRetriesAfterFetchFailure(t *testing.T) {
+	t.Parallel()
+
 	d := NewDebouncer(5 * time.Millisecond)
 	ctx := t.Context()
 
@@ -1417,6 +1527,8 @@ func testDebouncerTriggerRetriesAfterFetchFailure(t *testing.T) {
 }
 
 func testDebouncerTriggerKeepsLoopingOnContextEndDuringSuccessfulFetch(t *testing.T) {
+	t.Parallel()
+
 	d := NewDebouncer(5 * time.Millisecond)
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -1441,6 +1553,8 @@ func testDebouncerTriggerKeepsLoopingOnContextEndDuringSuccessfulFetch(t *testin
 }
 
 func testDebouncerTriggerKeepsLoopingOnContextEndDuringCooldownWait(t *testing.T) {
+	t.Parallel()
+
 	d := NewDebouncer(time.Hour)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -1471,6 +1585,8 @@ func testDebouncerTriggerKeepsLoopingOnContextEndDuringCooldownWait(t *testing.T
 }
 
 func testDebouncerTriggerDoesNotLoseLastTrigger(t *testing.T) {
+	t.Parallel()
+
 	d := NewDebouncer(time.Millisecond)
 	ctx := t.Context()
 
@@ -1496,6 +1612,8 @@ func testDebouncerTriggerDoesNotLoseLastTrigger(t *testing.T) {
 }
 
 func testDebouncerRunReleasesLockOnPanic(t *testing.T) {
+	t.Parallel()
+
 	d := NewDebouncer(time.Millisecond)
 	d.active = true
 
@@ -1589,6 +1707,8 @@ func startTestGoBGPServer(t *testing.T, server *testGoBGPServer) (host, port str
 }
 
 func TestMonitorBGPLsEvents(t *testing.T) {
+	t.Parallel()
+
 	t.Run("returns immediately when the gRPC client cannot be created", testMonitorBGPLsEventsUnusableAddress)
 	t.Run("reconnects and keeps monitoring after the watch stream ends", testMonitorBGPLsEventsReconnectsAfterStreamEnd)
 	t.Run("returns when the caller's context is canceled", testMonitorBGPLsEventsContextCanceled)
@@ -1599,6 +1719,8 @@ func TestMonitorBGPLsEvents(t *testing.T) {
 }
 
 func testMonitorBGPLsEventsAlreadyCanceledContext(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -1618,6 +1740,8 @@ func testMonitorBGPLsEventsAlreadyCanceledContext(t *testing.T) {
 }
 
 func testMonitorBGPLsEventsUnusableAddress(t *testing.T) {
+	t.Parallel()
+
 	lg, logs := logger.NewRecorder(logger.LevelError)
 	tedChan := make(chan []table.TEDElem, 1)
 	done := make(chan struct{})
@@ -1637,6 +1761,8 @@ func testMonitorBGPLsEventsUnusableAddress(t *testing.T) {
 }
 
 func testMonitorBGPLsEventsReconnectsAfterStreamEnd(t *testing.T) {
+	t.Parallel()
+
 	respInitial := []*api.ListPathResponse{
 		{Destination: testNodeDestination(t, 65000, testRouterID1, "r0")},
 	}
@@ -1715,6 +1841,8 @@ func testMonitorBGPLsEventsReconnectsAfterStreamEnd(t *testing.T) {
 }
 
 func testMonitorBGPLsEventsContextCanceled(t *testing.T) {
+	t.Parallel()
+
 	host, port := startTestGoBGPServer(t, &testGoBGPServer{
 		listPathResp: []*api.ListPathResponse{
 			{Destination: testNodeDestination(t, 65000, testRouterID1, "r1")},
@@ -1747,6 +1875,8 @@ func testMonitorBGPLsEventsContextCanceled(t *testing.T) {
 }
 
 func testMonitorBGPLsEventsDebouncedFetch(t *testing.T) {
+	t.Parallel()
+
 	server := &testGoBGPServer{
 		listPathResp: []*api.ListPathResponse{
 			{Destination: testNodeDestination(t, 65000, testRouterID1, "r1")},
@@ -1794,6 +1924,8 @@ func testMonitorBGPLsEventsDebouncedFetch(t *testing.T) {
 }
 
 func testMonitorBGPLsEventsReestablishesStream(t *testing.T) {
+	t.Parallel()
+
 	server := &testGoBGPServer{
 		listPathResp: []*api.ListPathResponse{
 			{Destination: testNodeDestination(t, 65000, testRouterID1, "r1")},
@@ -1845,6 +1977,8 @@ func testMonitorBGPLsEventsReestablishesStream(t *testing.T) {
 }
 
 func testMonitorBGPLsEventsResyncsAfterReconnect(t *testing.T) {
+	t.Parallel()
+
 	respInitial := []*api.ListPathResponse{
 		{Destination: testNodeDestination(t, 65000, testRouterID1, "r0")},
 	}

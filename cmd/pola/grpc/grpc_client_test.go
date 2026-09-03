@@ -85,6 +85,8 @@ func (f *fakeClient) GetTED(_ context.Context, _ *pb.GetTEDRequest, _ ...grpc.Ca
 
 // sid_index presence must distinguish index 0 from an absent Prefix-SID.
 func TestCreateLsPrefix_SidIndexPresence(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name            string
 		prefix          *pb.LsPrefix
@@ -113,6 +115,7 @@ func TestCreateLsPrefix_SidIndexPresence(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			lsPrefix, err := createLsPrefix(table.NewLsNode(65000, "0000.0000.0001"), tt.prefix)
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantSidIndex, lsPrefix.SidIndex)
@@ -123,11 +126,15 @@ func TestCreateLsPrefix_SidIndexPresence(t *testing.T) {
 }
 
 func TestCreateLsPrefix_InvalidPrefix(t *testing.T) {
+	t.Parallel()
+
 	_, err := createLsPrefix(table.NewLsNode(65000, "0000.0000.0001"), &pb.LsPrefix{Prefix: "not-a-prefix"})
 	require.Error(t, err)
 }
 
 func TestSegmentFromPB_SRMPLS(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name       string
 		localAddr  string
@@ -140,6 +147,7 @@ func TestSegmentFromPB_SRMPLS(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			seg, err := segmentFromPB(&pb.Segment{
 				Sid:        "16003",
 				LocalAddr:  tt.localAddr,
@@ -165,6 +173,8 @@ func TestSegmentFromPB_SRMPLS(t *testing.T) {
 }
 
 func TestSegmentFromPB_SRMPLS_SidAbsent(t *testing.T) {
+	t.Parallel()
+
 	seg, err := segmentFromPB(&pb.Segment{
 		Sid:       "0",
 		LocalAddr: testIPv4Addr1,
@@ -179,6 +189,8 @@ func TestSegmentFromPB_SRMPLS_SidAbsent(t *testing.T) {
 }
 
 func TestSegmentFromPB_SRv6(t *testing.T) {
+	t.Parallel()
+
 	seg, err := segmentFromPB(&pb.Segment{
 		Sid:          "2001:db8:1005::",
 		LocalAddr:    "2001:db8::5",
@@ -196,11 +208,15 @@ func TestSegmentFromPB_SRv6(t *testing.T) {
 }
 
 func TestSegmentFromPB_InvalidSID(t *testing.T) {
+	t.Parallel()
+
 	_, err := segmentFromPB(&pb.Segment{Sid: "not-a-sid"})
 	require.Error(t, err)
 }
 
 func TestSegmentFromPB_InvalidAddr(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		segment *pb.Segment
@@ -225,6 +241,7 @@ func TestSegmentFromPB_InvalidAddr(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := segmentFromPB(tt.segment)
 			require.Error(t, err)
 		})
@@ -232,6 +249,8 @@ func TestSegmentFromPB_InvalidAddr(t *testing.T) {
 }
 
 func TestParseSidStructure(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		in      string
@@ -248,6 +267,7 @@ func TestParseSidStructure(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := parseSidStructure(tt.in)
 			if tt.wantErr {
 				require.Error(t, err)
@@ -260,6 +280,8 @@ func TestParseSidStructure(t *testing.T) {
 }
 
 func TestSegmentFromPB_InvalidSidStructure(t *testing.T) {
+	t.Parallel()
+
 	_, err := segmentFromPB(&pb.Segment{
 		Sid:          "2001:db8:1005::",
 		SidStructure: "32,16,0",
@@ -268,6 +290,8 @@ func TestSegmentFromPB_InvalidSidStructure(t *testing.T) {
 }
 
 func TestGetSessions_NoCapabilitiesIsEmptySlice(t *testing.T) {
+	t.Parallel()
+
 	client := &fakeClient{sessionListResp: &pb.GetSessionListResponse{
 		Sessions: []*pb.Session{
 			{
@@ -292,6 +316,8 @@ func TestGetSessions_NoCapabilitiesIsEmptySlice(t *testing.T) {
 }
 
 func TestGetSessions_WithCapabilities(t *testing.T) {
+	t.Parallel()
+
 	client := &fakeClient{sessionListResp: &pb.GetSessionListResponse{
 		Sessions: []*pb.Session{
 			{
@@ -311,6 +337,8 @@ func TestGetSessions_WithCapabilities(t *testing.T) {
 }
 
 func TestGetSessions_WithPccCapabilities(t *testing.T) {
+	t.Parallel()
+
 	client := &fakeClient{sessionListResp: &pb.GetSessionListResponse{
 		Sessions: []*pb.Session{
 			{
@@ -330,6 +358,8 @@ func TestGetSessions_WithPccCapabilities(t *testing.T) {
 }
 
 func TestGetSessions_WithSessionIDsAndTimers(t *testing.T) {
+	t.Parallel()
+
 	client := &fakeClient{sessionListResp: &pb.GetSessionListResponse{
 		Sessions: []*pb.Session{
 			{
@@ -358,6 +388,8 @@ func TestGetSessions_WithSessionIDsAndTimers(t *testing.T) {
 }
 
 func TestGetSessions_EffectiveTimersIgnoredBeforeUp(t *testing.T) {
+	t.Parallel()
+
 	client := &fakeClient{sessionListResp: &pb.GetSessionListResponse{
 		Sessions: []*pb.Session{
 			{
@@ -377,6 +409,8 @@ func TestGetSessions_EffectiveTimersIgnoredBeforeUp(t *testing.T) {
 }
 
 func TestGetSessions_EffectiveTimersPopulatedWhenUp(t *testing.T) {
+	t.Parallel()
+
 	client := &fakeClient{sessionListResp: &pb.GetSessionListResponse{
 		Sessions: []*pb.Session{
 			{
@@ -398,6 +432,8 @@ func TestGetSessions_EffectiveTimersPopulatedWhenUp(t *testing.T) {
 }
 
 func TestGetSessions_TimestampsInitiatorSyncStateAndStats(t *testing.T) {
+	t.Parallel()
+
 	client := &fakeClient{sessionListResp: &pb.GetSessionListResponse{
 		Sessions: []*pb.Session{
 			{
@@ -447,6 +483,8 @@ func TestGetSessions_TimestampsInitiatorSyncStateAndStats(t *testing.T) {
 }
 
 func TestInitiatorFromPB(t *testing.T) {
+	t.Parallel()
+
 	tests := map[string]struct {
 		in   pb.SessionInitiator
 		want string
@@ -457,12 +495,15 @@ func TestInitiatorFromPB(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, initiatorFromPB(tt.in))
 		})
 	}
 }
 
 func TestSyncStateFromPB(t *testing.T) {
+	t.Parallel()
+
 	tests := map[string]struct {
 		in   pb.LspDbSyncState
 		want string
@@ -474,12 +515,15 @@ func TestSyncStateFromPB(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, syncStateFromPB(tt.in))
 		})
 	}
 }
 
 func TestSessionStateFromPB(t *testing.T) {
+	t.Parallel()
+
 	tests := map[string]struct {
 		in   pb.SessionState
 		want string
@@ -492,12 +536,15 @@ func TestSessionStateFromPB(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, sessionStateFromPB(tt.in))
 		})
 	}
 }
 
 func TestGetSessions_ZeroTimestampsAndUnsetEnumsStayZero(t *testing.T) {
+	t.Parallel()
+
 	client := &fakeClient{sessionListResp: &pb.GetSessionListResponse{
 		Sessions: []*pb.Session{
 			{PeerAddr: netip.MustParseAddr(testIPv4Addr1).AsSlice(), State: pb.SessionState_SESSION_STATE_OPEN_WAIT},
@@ -517,6 +564,8 @@ func TestGetSessions_ZeroTimestampsAndUnsetEnumsStayZero(t *testing.T) {
 }
 
 func TestGetSessions_PassesFilterAddrAndIncludeStats(t *testing.T) {
+	t.Parallel()
+
 	client := &fakeClient{sessionListResp: &pb.GetSessionListResponse{}}
 	addr := netip.MustParseAddr(testIPv4Addr1)
 
@@ -529,6 +578,8 @@ func TestGetSessions_PassesFilterAddrAndIncludeStats(t *testing.T) {
 }
 
 func TestGetSessions_NoFilterAddrLeavesSessionAddrEmpty(t *testing.T) {
+	t.Parallel()
+
 	client := &fakeClient{sessionListResp: &pb.GetSessionListResponse{}}
 
 	_, err := GetSessions(client, netip.Addr{}, false)
@@ -540,13 +591,17 @@ func TestGetSessions_NoFilterAddrLeavesSessionAddrEmpty(t *testing.T) {
 }
 
 func TestGetSessions_Errors(t *testing.T) {
+	t.Parallel()
+
 	t.Run("client error propagates", func(t *testing.T) {
+		t.Parallel()
 		client := &fakeClient{sessionListErr: assert.AnError}
 		_, err := GetSessions(client, netip.Addr{}, false)
 		require.ErrorIs(t, err, assert.AnError)
 	})
 
 	t.Run("malformed session address", func(t *testing.T) {
+		t.Parallel()
 		client := &fakeClient{sessionListResp: &pb.GetSessionListResponse{
 			Sessions: []*pb.Session{{PeerAddr: []byte{1, 2, 3}}},
 		}}
@@ -557,13 +612,17 @@ func TestGetSessions_Errors(t *testing.T) {
 }
 
 func TestDeleteSession(t *testing.T) {
+	t.Parallel()
+
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
 		client := &fakeClient{}
 		err := DeleteSession(client, &pb.DeleteSessionRequest{PeerAddr: netip.MustParseAddr(testIPv4Addr1).AsSlice()})
 		require.NoError(t, err)
 	})
 
 	t.Run("error propagates", func(t *testing.T) {
+		t.Parallel()
 		client := &fakeClient{deleteSessionErr: assert.AnError}
 		err := DeleteSession(client, &pb.DeleteSessionRequest{})
 		require.ErrorIs(t, err, assert.AnError)
@@ -571,6 +630,8 @@ func TestDeleteSession(t *testing.T) {
 }
 
 func TestCapabilityDetail_Strings(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name   string
 		detail capabilityDetail
@@ -607,24 +668,31 @@ func TestCapabilityDetail_Strings(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, tt.detail.Strings())
 		})
 	}
 }
 
 func TestCapability_Strings(t *testing.T) {
+	t.Parallel()
+
 	t.Run("nil Detail falls back to type token", func(t *testing.T) {
+		t.Parallel()
 		capability := Capability{Type: "VENDOR_INFORMATION"}
 		assert.Equal(t, []string{"VENDOR_INFORMATION"}, capability.Strings())
 	})
 
 	t.Run("typed Detail is unaffected", func(t *testing.T) {
+		t.Parallel()
 		capability := Capability{Type: "SR", Detail: SRCapability{MSD: proto.Uint32(10)}}
 		assert.Equal(t, []string{"SR", "MSD=10"}, capability.Strings())
 	})
 }
 
 func TestCapabilityFromPB(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name  string
 		pbCap *pb.Capability
@@ -700,12 +768,15 @@ func TestCapabilityFromPB(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, capabilityFromPB(tt.pbCap))
 		})
 	}
 }
 
 func TestPolicyStateFromPB(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		in   pb.SRPolicyState
@@ -719,12 +790,15 @@ func TestPolicyStateFromPB(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, policyStateFromPB(tt.in))
 		})
 	}
 }
 
 func TestPolicyTypeFromPB(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		in   pb.SRPolicyType
@@ -736,12 +810,15 @@ func TestPolicyTypeFromPB(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, policyTypeFromPB(tt.in))
 		})
 	}
 }
 
 func TestMetricTypeFromPB(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		in   pb.MetricType
@@ -755,13 +832,17 @@ func TestMetricTypeFromPB(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, metricTypeFromPB(tt.in))
 		})
 	}
 }
 
 func TestConvertSRPolicy(t *testing.T) {
+	t.Parallel()
+
 	t.Run("full mapping", func(t *testing.T) {
+		t.Parallel()
 		p := &pb.SRPolicy{
 			PlspId:      7,
 			PolicyName:  testPolicyName,
@@ -798,16 +879,19 @@ func TestConvertSRPolicy(t *testing.T) {
 	})
 
 	t.Run("invalid source address", func(t *testing.T) {
+		t.Parallel()
 		_, err := convertSRPolicy(&pb.SRPolicy{SrcAddr: []byte{1, 2, 3}, DstAddr: netip.MustParseAddr(testIPv4Addr2).AsSlice()})
 		require.Error(t, err)
 	})
 
 	t.Run("invalid destination address", func(t *testing.T) {
+		t.Parallel()
 		_, err := convertSRPolicy(&pb.SRPolicy{SrcAddr: netip.MustParseAddr(testIPv4Addr1).AsSlice(), DstAddr: []byte{1, 2, 3}})
 		require.Error(t, err)
 	})
 
 	t.Run("invalid segment propagates the error", func(t *testing.T) {
+		t.Parallel()
 		_, err := convertSRPolicy(&pb.SRPolicy{
 			SrcAddr:     netip.MustParseAddr(testIPv4Addr1).AsSlice(),
 			DstAddr:     netip.MustParseAddr(testIPv4Addr2).AsSlice(),
@@ -817,6 +901,7 @@ func TestConvertSRPolicy(t *testing.T) {
 	})
 
 	t.Run("LSP-ID overflow", func(t *testing.T) {
+		t.Parallel()
 		_, err := convertSRPolicy(&pb.SRPolicy{
 			SrcAddr: netip.MustParseAddr(testIPv4Addr1).AsSlice(),
 			DstAddr: netip.MustParseAddr(testIPv4Addr2).AsSlice(),
@@ -827,6 +912,8 @@ func TestConvertSRPolicy(t *testing.T) {
 }
 
 func TestSidStructureFromPB(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		s    *pb.SidStructure
@@ -839,6 +926,7 @@ func TestSidStructureFromPB(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := sidStructureFromPB(tt.s)
 			require.Error(t, err)
 		})
@@ -846,7 +934,10 @@ func TestSidStructureFromPB(t *testing.T) {
 }
 
 func TestGetSRPolicyList(t *testing.T) {
+	t.Parallel()
+
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
 		client := &fakeClient{srPolicyListResp: &pb.GetSRPolicyListResponse{
 			Sessions: []*pb.SRPolicySession{{
 				PeerAddr: netip.MustParseAddr(testIPv4Addr1).AsSlice(),
@@ -868,12 +959,14 @@ func TestGetSRPolicyList(t *testing.T) {
 	})
 
 	t.Run("client error propagates", func(t *testing.T) {
+		t.Parallel()
 		client := &fakeClient{srPolicyListErr: assert.AnError}
 		_, err := GetSRPolicyList(client, netip.Addr{})
 		require.ErrorIs(t, err, assert.AnError)
 	})
 
 	t.Run("invalid session address", func(t *testing.T) {
+		t.Parallel()
 		client := &fakeClient{srPolicyListResp: &pb.GetSRPolicyListResponse{
 			Sessions: []*pb.SRPolicySession{{PeerAddr: []byte{1, 2, 3}}},
 		}}
@@ -882,6 +975,7 @@ func TestGetSRPolicyList(t *testing.T) {
 	})
 
 	t.Run("policy conversion error propagates", func(t *testing.T) {
+		t.Parallel()
 		client := &fakeClient{srPolicyListResp: &pb.GetSRPolicyListResponse{
 			Sessions: []*pb.SRPolicySession{{
 				PeerAddr:   netip.MustParseAddr(testIPv4Addr1).AsSlice(),
@@ -894,39 +988,53 @@ func TestGetSRPolicyList(t *testing.T) {
 }
 
 func TestCreateSRPolicy(t *testing.T) {
+	t.Parallel()
+
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
 		require.NoError(t, CreateSRPolicy(&fakeClient{}, &pb.CreateSRPolicyRequest{}))
 	})
 
 	t.Run("error propagates", func(t *testing.T) {
+		t.Parallel()
 		err := CreateSRPolicy(&fakeClient{createSRPolicyErr: assert.AnError}, &pb.CreateSRPolicyRequest{})
 		require.ErrorIs(t, err, assert.AnError)
 	})
 }
 
 func TestDeleteSRPolicy(t *testing.T) {
+	t.Parallel()
+
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
 		require.NoError(t, DeleteSRPolicy(&fakeClient{}, &pb.DeleteSRPolicyRequest{}))
 	})
 
 	t.Run("error propagates", func(t *testing.T) {
+		t.Parallel()
 		err := DeleteSRPolicy(&fakeClient{deleteSRPolicyErr: assert.AnError}, &pb.DeleteSRPolicyRequest{})
 		require.ErrorIs(t, err, assert.AnError)
 	})
 }
 
 func TestGetTED_Disabled(t *testing.T) {
+	t.Parallel()
+
 	ted, err := GetTED(&fakeClient{tedResp: &pb.GetTEDResponse{Enabled: false}})
 	require.NoError(t, err)
 	assert.Nil(t, ted)
 }
 
 func TestGetTED_ClientError(t *testing.T) {
+	t.Parallel()
+
 	_, err := GetTED(&fakeClient{tedErr: assert.AnError})
 	require.ErrorIs(t, err, assert.AnError)
 }
 
 func TestGetTED_Success(t *testing.T) {
+	t.Parallel()
+
 	nodeA := &pb.LsNode{
 		Asn:        65000,
 		RouterId:   testRouterID1,
@@ -1020,7 +1128,10 @@ func TestGetTED_Success(t *testing.T) {
 }
 
 func TestGetTED_PropagatesConversionErrors(t *testing.T) {
+	t.Parallel()
+
 	t.Run("invalid link IP", func(t *testing.T) {
+		t.Parallel()
 		node := &pb.LsNode{RouterId: testRouterID1, Links: []*pb.LsLink{
 			{LocalRouterId: testRouterID1, RemoteRouterId: testRouterID1, LocalIp: "not-an-ip"},
 		}}
@@ -1029,6 +1140,7 @@ func TestGetTED_PropagatesConversionErrors(t *testing.T) {
 	})
 
 	t.Run("invalid prefix", func(t *testing.T) {
+		t.Parallel()
 		node := &pb.LsNode{RouterId: testRouterID1, Prefixes: []*pb.LsPrefix{{Prefix: "not-a-prefix"}}}
 		_, err := GetTED(&fakeClient{tedResp: &pb.GetTEDResponse{Enabled: true, Nodes: []*pb.LsNode{node}}})
 		require.Error(t, err)
@@ -1036,20 +1148,25 @@ func TestGetTED_PropagatesConversionErrors(t *testing.T) {
 }
 
 func TestCreateLsLink(t *testing.T) {
+	t.Parallel()
+
 	localNode := table.NewLsNode(65000, "0000.0000.0001")
 	remoteNode := table.NewLsNode(65000, "0000.0000.0002")
 
 	t.Run("invalid localIp", func(t *testing.T) {
+		t.Parallel()
 		_, err := createLsLink(localNode, remoteNode, &pb.LsLink{LocalIp: "not-an-ip"})
 		require.Error(t, err)
 	})
 
 	t.Run("invalid remoteIp", func(t *testing.T) {
+		t.Parallel()
 		_, err := createLsLink(localNode, remoteNode, &pb.LsLink{RemoteIp: "not-an-ip"})
 		require.Error(t, err)
 	})
 
 	t.Run("metric conversion error propagates", func(t *testing.T) {
+		t.Parallel()
 		_, err := createLsLink(localNode, remoteNode, &pb.LsLink{
 			Metrics: []*pb.Metric{{Type: pb.MetricType_METRIC_TYPE_UNSPECIFIED, Value: 1}},
 		})
@@ -1057,6 +1174,7 @@ func TestCreateLsLink(t *testing.T) {
 	})
 
 	t.Run("SRv6 End.X SID conversion error propagates", func(t *testing.T) {
+		t.Parallel()
 		_, err := createLsLink(localNode, remoteNode, &pb.LsLink{
 			Srv6EndXSid: &pb.Srv6EndXSID{EndpointBehavior: math.MaxUint16 + 1},
 		})
@@ -1065,6 +1183,8 @@ func TestCreateLsLink(t *testing.T) {
 }
 
 func TestCreateLsLink_InvalidMetric(t *testing.T) {
+	t.Parallel()
+
 	localNode := table.NewLsNode(65000, "0000.0000.0001")
 	remoteNode := table.NewLsNode(65000, "0000.0000.0002")
 
@@ -1078,6 +1198,8 @@ func TestCreateLsLink_InvalidMetric(t *testing.T) {
 }
 
 func TestAddLsNode_InvalidSrv6SID(t *testing.T) {
+	t.Parallel()
+
 	ted := &table.LsTED{Nodes: map[string]*table.LsNode{
 		testRouterID1: table.NewLsNode(65000, testRouterID1),
 	}}
@@ -1091,6 +1213,8 @@ func TestAddLsNode_InvalidSrv6SID(t *testing.T) {
 }
 
 func TestAddLsNode_Srv6SIDConversionErrorPropagates(t *testing.T) {
+	t.Parallel()
+
 	ted := &table.LsTED{Nodes: map[string]*table.LsNode{
 		testRouterID1: table.NewLsNode(65000, testRouterID1),
 	}}
@@ -1106,7 +1230,10 @@ func TestAddLsNode_Srv6SIDConversionErrorPropagates(t *testing.T) {
 }
 
 func TestCreateSrv6EndXSID(t *testing.T) {
+	t.Parallel()
+
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
 		got, err := createSrv6EndXSID(&pb.Srv6EndXSID{
 			EndpointBehavior: uint32(table.BehaviorENDX),
 			Sids:             []*pb.SID{{Sid: "2001:db8::1:0"}},
@@ -1121,11 +1248,13 @@ func TestCreateSrv6EndXSID(t *testing.T) {
 	})
 
 	t.Run("endpoint behavior overflow", func(t *testing.T) {
+		t.Parallel()
 		_, err := createSrv6EndXSID(&pb.Srv6EndXSID{EndpointBehavior: math.MaxUint16 + 1})
 		require.Error(t, err)
 	})
 
 	t.Run("SID structure overflow propagates", func(t *testing.T) {
+		t.Parallel()
 		_, err := createSrv6EndXSID(&pb.Srv6EndXSID{
 			SidStructure: &pb.SidStructure{LocalBlock: math.MaxUint8 + 1},
 		})
@@ -1134,9 +1263,12 @@ func TestCreateSrv6EndXSID(t *testing.T) {
 }
 
 func TestCreateSrv6SID(t *testing.T) {
+	t.Parallel()
+
 	lsNode := table.NewLsNode(65000, testRouterID1)
 
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
 		got, err := createSrv6SID(lsNode, &pb.LsSrv6SID{
 			Sids:             []*pb.SID{{Sid: "2001:db8:1::"}},
 			MultiTopoIds:     []*pb.MultiTopoID{{MultiTopoId: 0}},
@@ -1154,6 +1286,7 @@ func TestCreateSrv6SID(t *testing.T) {
 	})
 
 	t.Run("behavior overflow", func(t *testing.T) {
+		t.Parallel()
 		_, err := createSrv6SID(lsNode, &pb.LsSrv6SID{
 			EndpointBehavior: &pb.EndpointBehavior{Behavior: math.MaxUint16 + 1},
 		})
@@ -1161,6 +1294,7 @@ func TestCreateSrv6SID(t *testing.T) {
 	})
 
 	t.Run("flags overflow", func(t *testing.T) {
+		t.Parallel()
 		_, err := createSrv6SID(lsNode, &pb.LsSrv6SID{
 			EndpointBehavior: &pb.EndpointBehavior{Flags: math.MaxUint8 + 1},
 		})
@@ -1168,6 +1302,7 @@ func TestCreateSrv6SID(t *testing.T) {
 	})
 
 	t.Run("algorithm overflow", func(t *testing.T) {
+		t.Parallel()
 		_, err := createSrv6SID(lsNode, &pb.LsSrv6SID{
 			EndpointBehavior: &pb.EndpointBehavior{Algorithm: math.MaxUint8 + 1},
 		})
@@ -1175,6 +1310,7 @@ func TestCreateSrv6SID(t *testing.T) {
 	})
 
 	t.Run("SID structure overflow propagates", func(t *testing.T) {
+		t.Parallel()
 		_, err := createSrv6SID(lsNode, &pb.LsSrv6SID{
 			SidStructure: &pb.SidStructure{LocalBlock: math.MaxUint8 + 1},
 		})
@@ -1183,6 +1319,8 @@ func TestCreateSrv6SID(t *testing.T) {
 }
 
 func TestCreateMetric(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		in   *pb.Metric
@@ -1195,6 +1333,7 @@ func TestCreateMetric(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := createMetric(tt.in)
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, got)
@@ -1202,6 +1341,7 @@ func TestCreateMetric(t *testing.T) {
 	}
 
 	t.Run("unspecified metric type is an error", func(t *testing.T) {
+		t.Parallel()
 		_, err := createMetric(&pb.Metric{Type: pb.MetricType_METRIC_TYPE_UNSPECIFIED})
 		require.Error(t, err)
 	})

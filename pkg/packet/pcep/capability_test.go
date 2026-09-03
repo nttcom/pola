@@ -13,6 +13,8 @@ import (
 )
 
 func TestDefaultCapabilities(t *testing.T) {
+	t.Parallel()
+
 	caps := DefaultCapabilities()
 	require.Len(t, caps, 4)
 
@@ -90,6 +92,8 @@ func TestFlattenCapabilities(t *testing.T) {
 }
 
 func TestDefaultCapabilities_WireRoundTrip(t *testing.T) {
+	t.Parallel()
+
 	for _, cap := range DefaultCapabilities() {
 		b, err := cap.Serialize()
 		require.NoError(t, err, "%T must serialize", cap)

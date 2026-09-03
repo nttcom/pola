@@ -30,6 +30,8 @@ const (
 )
 
 func TestServer_Serve_InvalidInputRejected(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		address string
@@ -42,6 +44,7 @@ func TestServer_Serve_InvalidInputRejected(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			s := &Server{logger: logger.NewNop()}
 			assert.Error(t, s.Serve(tt.address, tt.port))
 		})
@@ -49,6 +52,8 @@ func TestServer_Serve_InvalidInputRejected(t *testing.T) {
 }
 
 func TestServer_Serve_ListenFailure(t *testing.T) {
+	t.Parallel()
+
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err, "failed to reserve a port")
 	t.Cleanup(func() {
@@ -63,6 +68,8 @@ func TestServer_Serve_ListenFailure(t *testing.T) {
 }
 
 func TestServer_Serve_AcceptsConnectionAndUntracksOnClose(t *testing.T) {
+	t.Parallel()
+
 	ln, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	require.NoError(t, err, "failed to open the PCEP listener")
 
@@ -99,6 +106,8 @@ func TestServer_Serve_AcceptsConnectionAndUntracksOnClose(t *testing.T) {
 }
 
 func TestServer_Shutdown_ClosesListenerAndStopsServe(t *testing.T) {
+	t.Parallel()
+
 	ln, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	require.NoError(t, err, "failed to open the PCEP listener")
 	addr := ln.Addr().String()
@@ -125,6 +134,8 @@ func TestServer_Shutdown_ClosesListenerAndStopsServe(t *testing.T) {
 }
 
 func TestServer_Shutdown_BeforeServeStillReturnsCleanly(t *testing.T) {
+	t.Parallel()
+
 	ln, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	require.NoError(t, err, "failed to open the PCEP listener")
 	addr := ln.Addr().String()
@@ -139,6 +150,8 @@ func TestServer_Shutdown_BeforeServeStillReturnsCleanly(t *testing.T) {
 }
 
 func TestServer_Shutdown_LogsWarnOnSendCloseFailure(t *testing.T) {
+	t.Parallel()
+
 	conn := &fakeConn{r: bytes.NewReader(nil), writeErr: errors.New("write: broken pipe")}
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 	lg, logs := logger.NewRecorder(logger.LevelWarn)
@@ -151,6 +164,8 @@ func TestServer_Shutdown_LogsWarnOnSendCloseFailure(t *testing.T) {
 }
 
 func TestServer_Shutdown_ClosesActiveSessions(t *testing.T) {
+	t.Parallel()
+
 	ln, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	require.NoError(t, err, "failed to open the PCEP listener")
 
@@ -184,6 +199,8 @@ func TestServer_Shutdown_ClosesActiveSessions(t *testing.T) {
 }
 
 func TestServer_CloseSession_SuppressesWarnOnAlreadyClosedConnection(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		assert.NoError(t, client.Close(), "failed to close client connection")
@@ -202,6 +219,8 @@ func TestServer_CloseSession_SuppressesWarnOnAlreadyClosedConnection(t *testing.
 }
 
 func TestServer_CloseSession_LogsWarnOnOtherCloseFailure(t *testing.T) {
+	t.Parallel()
+
 	conn := &fakeConn{r: bytes.NewReader(nil), closeErr: errors.New("boom")}
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 	lg, logs := logger.NewRecorder(logger.LevelWarn)
@@ -214,6 +233,8 @@ func TestServer_CloseSession_LogsWarnOnOtherCloseFailure(t *testing.T) {
 }
 
 func TestValidatePCEOptions(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		o       *PCEOptions
@@ -232,6 +253,7 @@ func TestValidatePCEOptions(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := validatePCEOptions(tt.o)
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -243,12 +265,16 @@ func TestValidatePCEOptions(t *testing.T) {
 }
 
 func TestNewPCE_NilOptionsReturnsConfigErrorWithoutPanicking(t *testing.T) {
+	t.Parallel()
+
 	err := NewPCE(context.Background(), nil, logger.NewNop(), make(chan []table.TEDElem))
 	assert.Equal(t, "config", err.Server)
 	require.Error(t, err.Error)
 }
 
 func TestNewPCE_InvalidTimerConfigRejectedBeforeListening(t *testing.T) {
+	t.Parallel()
+
 	// A direct NewPCE caller (bypassing internal/config's own validation)
 	// must not be able to start a PCE with an invalid timer configuration.
 	o := &PCEOptions{
@@ -266,6 +292,8 @@ func TestNewPCE_InvalidTimerConfigRejectedBeforeListening(t *testing.T) {
 }
 
 func TestNewPCE_ReturnsTaggedError(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name       string
 		o          *PCEOptions
@@ -294,6 +322,7 @@ func TestNewPCE_ReturnsTaggedError(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			errCh := make(chan Error, 1)
 			go func() { errCh <- NewPCE(context.Background(), tt.o, logger.NewNop(), make(chan []table.TEDElem)) }()
 
@@ -309,6 +338,8 @@ func TestNewPCE_ReturnsTaggedError(t *testing.T) {
 }
 
 func TestNewPCE_TEDEnabledUpdatesTEDOnElemsReceived(t *testing.T) {
+	t.Parallel()
+
 	lg, logs := logger.NewRecorder(logger.LevelDebug)
 	tedElemsChan := make(chan []table.TEDElem, 1)
 	o := &PCEOptions{
@@ -343,6 +374,8 @@ func TestNewPCE_TEDEnabledUpdatesTEDOnElemsReceived(t *testing.T) {
 
 // TestNewPCE_WaitsForBothServersBeforeReturning ensures NewPCE waits for both servers to stop before returning.
 func TestNewPCE_WaitsForBothServersBeforeReturning(t *testing.T) {
+	t.Parallel()
+
 	grpcLn, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err, "failed to reserve a port")
 	grpcAddr, grpcPort, err := net.SplitHostPort(grpcLn.Addr().String())
@@ -373,6 +406,8 @@ func TestNewPCE_WaitsForBothServersBeforeReturning(t *testing.T) {
 }
 
 func TestNewPCE_ContextCancelShutsDownCleanly(t *testing.T) {
+	t.Parallel()
+
 	o := &PCEOptions{
 		PCEPAddr: testLoopbackAddr,
 		PCEPPort: "0",
@@ -406,12 +441,16 @@ func (l *fakeListener) AcceptTCP() (*net.TCPConn, error) { <-make(chan struct{})
 func (l *fakeListener) Close() error                     { return l.closeErr }
 
 func TestServer_Shutdown_TreatsRepeatCloseAsNoError(t *testing.T) {
+	t.Parallel()
+
 	s := &Server{logger: logger.NewNop(), listener: &fakeListener{closeErr: net.ErrClosed}}
 
 	assert.NoError(t, s.Shutdown(), "a listener already closed elsewhere should not fail Shutdown")
 }
 
 func TestServer_Shutdown_PropagatesOtherListenerCloseError(t *testing.T) {
+	t.Parallel()
+
 	wantErr := errors.New("boom")
 	s := &Server{logger: logger.NewNop(), listener: &fakeListener{closeErr: wantErr}}
 
@@ -419,6 +458,8 @@ func TestServer_Shutdown_PropagatesOtherListenerCloseError(t *testing.T) {
 }
 
 func TestServer_AwaitShutdown_LogsWarnOnShutdownError(t *testing.T) {
+	t.Parallel()
+
 	wantErr := errors.New("boom")
 	lg, logs := logger.NewRecorder(logger.LevelWarn)
 	s := &Server{logger: lg, listener: &fakeListener{closeErr: wantErr}}
@@ -444,6 +485,8 @@ func TestServer_AwaitShutdown_LogsWarnOnShutdownError(t *testing.T) {
 }
 
 func TestServer_SyncTEDLoop_AppliesReceivedElems(t *testing.T) {
+	t.Parallel()
+
 	s := &Server{logger: logger.NewNop()}
 	tedElemsChan := make(chan []table.TEDElem, 1)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -470,6 +513,8 @@ func TestServer_SyncTEDLoop_AppliesReceivedElems(t *testing.T) {
 }
 
 func TestServer_SyncTEDLoop_ExitsWhenChannelClosed(t *testing.T) {
+	t.Parallel()
+
 	s := &Server{logger: logger.NewNop()}
 	tedElemsChan := make(chan []table.TEDElem)
 
@@ -489,6 +534,8 @@ func TestServer_SyncTEDLoop_ExitsWhenChannelClosed(t *testing.T) {
 }
 
 func TestServer_RegisterSession_ClosesConnWhenAlreadyShutdown(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		if err := client.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
@@ -508,6 +555,8 @@ func TestServer_RegisterSession_ClosesConnWhenAlreadyShutdown(t *testing.T) {
 }
 
 func TestServer_CloseRejectedConn_LogsNonClosedError(t *testing.T) {
+	t.Parallel()
+
 	wantErr := errors.New("boom")
 	lg, logs := logger.NewRecorder(logger.LevelWarn)
 	s := &Server{logger: lg}
@@ -520,6 +569,8 @@ func TestServer_CloseRejectedConn_LogsNonClosedError(t *testing.T) {
 }
 
 func TestServer_CloseRejectedConn_ErrClosedIsNotLogged(t *testing.T) {
+	t.Parallel()
+
 	lg, logs := logger.NewRecorder(logger.LevelWarn)
 	s := &Server{logger: lg}
 
@@ -529,6 +580,8 @@ func TestServer_CloseRejectedConn_ErrClosedIsNotLogged(t *testing.T) {
 }
 
 func TestServer_RegisterSession_AppendsWhenNotShutdown(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		if err := client.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
@@ -546,6 +599,8 @@ func TestServer_RegisterSession_AppendsWhenNotShutdown(t *testing.T) {
 }
 
 func TestServer_RegisterSession_RejectsSecondSessionFromSamePeer(t *testing.T) {
+	t.Parallel()
+
 	peerAddr := netip.MustParseAddr("10.0.255.1")
 	lg, logs := logger.NewRecorder(logger.LevelWarn)
 	s := &Server{logger: lg}
@@ -584,6 +639,8 @@ func TestServer_RegisterSession_RejectsSecondSessionFromSamePeer(t *testing.T) {
 }
 
 func TestServer_RegisterSession_RejectSecondSession_LogsWarnOnSendFailure(t *testing.T) {
+	t.Parallel()
+
 	peerAddr := netip.MustParseAddr("10.0.255.1")
 	lg, logs := logger.NewRecorder(logger.LevelWarn)
 	s := &Server{logger: lg}
@@ -607,6 +664,8 @@ func TestServer_RegisterSession_RejectSecondSession_LogsWarnOnSendFailure(t *tes
 }
 
 func TestServer_RegisterSession_SessionIDSequenceIsPerPeer(t *testing.T) {
+	t.Parallel()
+
 	s := &Server{logger: logger.NewNop()}
 
 	server1, client1 := newTCPConnPair(t)
@@ -634,6 +693,8 @@ func TestServer_RegisterSession_SessionIDSequenceIsPerPeer(t *testing.T) {
 }
 
 func TestServer_CloseSession_MatchesByIdentityNotIDValue(t *testing.T) {
+	t.Parallel()
+
 	connA := &fakeConn{r: bytes.NewReader(nil)}
 	connB := &fakeConn{r: bytes.NewReader(nil)}
 	ssA := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), connA, logger.NewNop(), nil, 0)
@@ -646,6 +707,8 @@ func TestServer_CloseSession_MatchesByIdentityNotIDValue(t *testing.T) {
 }
 
 func TestSessionIDAllocator_IncrementsByOneAndWraps(t *testing.T) {
+	t.Parallel()
+
 	peerAddr := netip.MustParseAddr("10.0.255.1")
 	var a sessionIDAllocator
 
@@ -657,6 +720,8 @@ func TestSessionIDAllocator_IncrementsByOneAndWraps(t *testing.T) {
 }
 
 func TestSessionIDAllocator_SequenceIsIndependentPerPeer(t *testing.T) {
+	t.Parallel()
+
 	peerA := netip.MustParseAddr("10.0.255.1")
 	peerB := netip.MustParseAddr("10.0.255.2")
 	var a sessionIDAllocator
@@ -694,6 +759,8 @@ func (c *blockingWriteConn) SetReadDeadline(time.Time) error  { return nil }
 func (c *blockingWriteConn) SetWriteDeadline(time.Time) error { return nil }
 
 func TestServer_Shutdown_BoundsBlockedSendClose(t *testing.T) {
+	t.Parallel()
+
 	conn := &blockingWriteConn{r: bytes.NewReader(nil), unblock: make(chan struct{})}
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 	lg, logs := logger.NewRecorder(logger.LevelWarn)
@@ -720,6 +787,8 @@ func TestServer_Shutdown_BoundsBlockedSendClose(t *testing.T) {
 }
 
 func TestResolveLocalTimers(t *testing.T) {
+	t.Parallel()
+
 	ptr := func(v uint8) *uint8 { return &v }
 
 	tests := []struct {
@@ -737,6 +806,7 @@ func TestResolveLocalTimers(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			keepalive, deadTimer := resolveLocalTimers(tt.keepalive, tt.deadTimer)
 			assert.Equal(t, tt.wantKeepalive, keepalive)
 			assert.Equal(t, tt.wantDeadTimer, deadTimer)
@@ -745,6 +815,8 @@ func TestResolveLocalTimers(t *testing.T) {
 }
 
 func TestParseRemoteAddr(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		setup   func() *net.TCPConn
@@ -765,6 +837,7 @@ func TestParseRemoteAddr(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			tcpConn := tt.setup()
 			defer tcpConn.Close()
 
@@ -780,6 +853,8 @@ func TestParseRemoteAddr(t *testing.T) {
 }
 
 func TestResolveKeepaliveRange(t *testing.T) {
+	t.Parallel()
+
 	ptr := func(v uint8) *uint8 { return &v }
 
 	tests := []struct {
@@ -797,6 +872,7 @@ func TestResolveKeepaliveRange(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			lo, hi, enabled := resolveKeepaliveRange(tt.min, tt.max)
 			assert.Equal(t, tt.wantLo, lo)
 			assert.Equal(t, tt.wantHi, hi)
@@ -806,6 +882,8 @@ func TestResolveKeepaliveRange(t *testing.T) {
 }
 
 func TestServer_HandleAccept_WhenRegisterSessionReturnsNil(t *testing.T) {
+	t.Parallel()
+
 	server1, client1 := newTCPConnPair(t)
 	t.Cleanup(func() {
 		if err := client1.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
@@ -858,6 +936,8 @@ func (l *acceptErrListener) AcceptTCP() (*net.TCPConn, error) { return nil, l.ac
 func (l *acceptErrListener) Close() error                     { return nil }
 
 func TestServer_Serve_AcceptErrorPropagated(t *testing.T) {
+	t.Parallel()
+
 	wantErr := errors.New("accept boom")
 	s := &Server{logger: logger.NewNop()}
 
@@ -868,6 +948,8 @@ func TestServer_Serve_AcceptErrorPropagated(t *testing.T) {
 }
 
 func TestServer_Serve_ListenerCloseErrorLogged(t *testing.T) {
+	t.Parallel()
+
 	wantErr := errors.New("listener close failed")
 	lg, logs := logger.NewRecorder(logger.LevelWarn)
 	s := &Server{logger: lg}

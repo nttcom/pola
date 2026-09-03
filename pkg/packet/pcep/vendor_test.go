@@ -14,6 +14,8 @@ import (
 const enterpriseJuniperString = "Juniper (2636)"
 
 func TestEnterpriseNumber_String(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		enterpriseNumber EnterpriseNumber
 		expected         string
@@ -28,6 +30,7 @@ func TestEnterpriseNumber_String(t *testing.T) {
 
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			actual := tt.enterpriseNumber.String()
 			assert.Equal(t, tt.expected, actual, "unexpected EnterpriseNumber.String() result")
 		})
@@ -35,6 +38,8 @@ func TestEnterpriseNumber_String(t *testing.T) {
 }
 
 func TestEnterpriseNumber_DisplayLabel(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		enterpriseNumber EnterpriseNumber
 		expected         string
@@ -47,6 +52,7 @@ func TestEnterpriseNumber_DisplayLabel(t *testing.T) {
 
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.expected, tt.enterpriseNumber.DisplayLabel())
 		})
 	}

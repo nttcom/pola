@@ -24,6 +24,14 @@ func TestVersion_Default(t *testing.T) {
 func TestGet(t *testing.T) {
 	t.Parallel()
 
+	info := Get()
+	assert.Equal(t, devVersion, info.Version)
+	assert.Equal(t, runtime.Version(), info.GoVersion)
+}
+
+func TestGetWith(t *testing.T) {
+	t.Parallel()
+
 	info := getWith("1.2.3")
 	assert.Equal(t, "1.2.3", info.Version)
 	assert.Equal(t, runtime.Version(), info.GoVersion)
@@ -77,6 +85,7 @@ func TestVcsSettings(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			revision, ts, modified := vcsSettings(tt.settings)
 			assert.Equal(t, tt.wantRevision, revision)
 			assert.Equal(t, tt.wantTime, ts)

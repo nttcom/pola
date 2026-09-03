@@ -34,6 +34,7 @@ func TestSessionRole(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, sessionRole(tt.caps))
 		})
 	}
@@ -67,6 +68,7 @@ func TestFormatUpTime(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, formatUpTime(tt.d))
 		})
 	}

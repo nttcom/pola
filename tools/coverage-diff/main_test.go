@@ -19,6 +19,8 @@ const module = "github.com/nttcom/pola"
 func keepAll(string) bool { return true }
 
 func TestInstrumentable(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		path string
 		want bool
@@ -37,6 +39,8 @@ func TestInstrumentable(t *testing.T) {
 }
 
 func TestParseHunks(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		diff string
@@ -92,6 +96,7 @@ func TestParseHunks(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := parseHunks(strings.NewReader(tt.diff), keepAll)
 			if err != nil {
 				t.Fatalf("parseHunks() error = %v", err)
@@ -102,6 +107,8 @@ func TestParseHunks(t *testing.T) {
 }
 
 func TestParseHunksAppliesKeep(t *testing.T) {
+	t.Parallel()
+
 	diff := "diff --git a/a.go b/a.go\n--- a/a.go\n+++ b/a.go\n@@ -1,0 +2,1 @@\n+a\n" +
 		"diff --git a/a_test.go b/a_test.go\n--- a/a_test.go\n+++ b/a_test.go\n@@ -1,0 +2,1 @@\n+a\n"
 	got, err := parseHunks(strings.NewReader(diff), instrumentable)
@@ -139,6 +146,8 @@ func keys(c changedLines) []string {
 }
 
 func TestParseProfileLine(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		line string
@@ -180,6 +189,7 @@ func TestParseProfileLine(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, ok := parseProfileLine(tt.line)
 			if ok != tt.ok {
 				t.Fatalf("ok = %v, want %v", ok, tt.ok)
@@ -192,6 +202,8 @@ func TestParseProfileLine(t *testing.T) {
 }
 
 func TestParseProfile(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name          string
 		profile       string
@@ -263,6 +275,7 @@ func TestParseProfile(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			res, err := parseProfile(strings.NewReader(tt.profile), module, tt.changed)
 			if err != nil {
 				t.Fatalf("parseProfile() error = %v", err)
@@ -302,6 +315,7 @@ func withSourceFile(t *testing.T, name, src string) {
 	t.Chdir(dir)
 }
 
+//nolint:paralleltest // withSourceFile calls t.Chdir, which cannot be combined with t.Parallel.
 func TestParseProfileSkipsDeclarationAndClosingBraceLines(t *testing.T) {
 	src := "package p\n\nfunc Foo(x int) int {\n\tif x < 0 {\n\t\treturn 0\n\t}\n\treturn x\n}\n"
 	withSourceFile(t, "a.go", src)
@@ -326,6 +340,7 @@ func TestParseProfileSkipsDeclarationAndClosingBraceLines(t *testing.T) {
 	}
 }
 
+//nolint:paralleltest // withSourceFile calls t.Chdir, which cannot be combined with t.Parallel.
 func TestParseProfileSkipsCommentOnlyInteriorLines(t *testing.T) {
 	src := "package p\n\nfunc Foo(x int) int {\n\t// entry comment\n\tif x < 0 {\n\t\treturn 0\n\t}\n\treturn x\n}\n"
 	withSourceFile(t, "a.go", src)
@@ -350,6 +365,7 @@ func TestParseProfileSkipsCommentOnlyInteriorLines(t *testing.T) {
 	}
 }
 
+//nolint:paralleltest // withSourceFile calls t.Chdir, which cannot be combined with t.Parallel.
 func TestParseProfileHandlesMultilineRawString(t *testing.T) {
 	src := "package p\n\nfunc Foo() string {\n\ts := `\na\n`\n\treturn s\n}\n"
 	withSourceFile(t, "a.go", src)
@@ -366,6 +382,7 @@ func TestParseProfileHandlesMultilineRawString(t *testing.T) {
 	}
 }
 
+//nolint:paralleltest // withSourceFile calls t.Chdir, which cannot be combined with t.Parallel.
 func TestParseProfileHandlesMultilineRawStringCRLF(t *testing.T) {
 	src := "package p\r\n\r\nfunc Foo() string {\r\n\ts := `\r\na\r\n`\r\n\treturn s\r\n}\r\n"
 	withSourceFile(t, "a.go", src)
@@ -383,6 +400,8 @@ func TestParseProfileHandlesMultilineRawStringCRLF(t *testing.T) {
 }
 
 func TestParseProfileFallsBackWhenSourceIsUnavailable(t *testing.T) {
+	t.Parallel()
+
 	profile := "mode: set\n" + module + "/missing.go:1.1,3.2 1 1\n"
 	changed := changedLines{"missing.go": {1: true, 2: true, 3: true}}
 
@@ -395,6 +414,7 @@ func TestParseProfileFallsBackWhenSourceIsUnavailable(t *testing.T) {
 	}
 }
 
+//nolint:paralleltest // withSourceFile calls t.Chdir, which cannot be combined with t.Parallel.
 func TestParseProfileFallsBackOnLineDirective(t *testing.T) {
 	src := "package p\n\n//line a.go:3\nfunc Foo(x int) int {\n\t// comment only\n\treturn x\n}\n"
 	withSourceFile(t, "a.go", src)
@@ -412,12 +432,16 @@ func TestParseProfileFallsBackOnLineDirective(t *testing.T) {
 }
 
 func TestParseProfileRejectsEmptyProfile(t *testing.T) {
+	t.Parallel()
+
 	if _, err := parseProfile(strings.NewReader(""), module, changedLines{}); err == nil {
 		t.Fatal("parseProfile() error = nil, want error for profile without mode header")
 	}
 }
 
 func TestParseProfileHandlesHugeBlockRange(t *testing.T) {
+	t.Parallel()
+
 	profile := "mode: set\n" + module + "/missing.go:1.1,9223372036854775807.1 1 1\n"
 	changed := changedLines{"missing.go": {2: true}}
 
@@ -431,6 +455,8 @@ func TestParseProfileHandlesHugeBlockRange(t *testing.T) {
 }
 
 func TestParseProfileSortsFiles(t *testing.T) {
+	t.Parallel()
+
 	profile := "mode: set\n" +
 		module + "/z.go:1.1,1.2 1 0\n" +
 		module + "/a.go:1.1,1.2 1 0\n" +
@@ -451,6 +477,8 @@ func TestParseProfileSortsFiles(t *testing.T) {
 }
 
 func TestStripModule(t *testing.T) {
+	t.Parallel()
+
 	if got := stripModule(module+"/pkg/a.go", module); got != "pkg/a.go" {
 		t.Errorf("stripModule() = %q, want %q", got, "pkg/a.go")
 	}
@@ -463,6 +491,8 @@ func TestStripModule(t *testing.T) {
 }
 
 func TestFormatRanges(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		lines []int
 		want  string
@@ -482,6 +512,8 @@ func TestFormatRanges(t *testing.T) {
 }
 
 func TestResultPercent(t *testing.T) {
+	t.Parallel()
+
 	if got := (&result{}).percent(); got != 100 {
 		t.Errorf("percent() on empty = %v, want 100", got)
 	}
@@ -491,6 +523,8 @@ func TestResultPercent(t *testing.T) {
 }
 
 func TestReport(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name        string
 		res         *result
@@ -544,6 +578,7 @@ func TestReport(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			var buf bytes.Buffer
 			err := report(tt.res, tt.min, "0123456789abcdef", &buf)
 			if tt.wantErr && !errors.Is(err, errBelowThreshold) {
@@ -562,6 +597,8 @@ func TestReport(t *testing.T) {
 }
 
 func TestShort(t *testing.T) {
+	t.Parallel()
+
 	if got := short("0123456789abcdef"); got != "0123456789ab" {
 		t.Errorf("short() = %q", got)
 	}

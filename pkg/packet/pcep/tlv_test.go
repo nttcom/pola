@@ -21,6 +21,8 @@ import (
 const pstDescriptionSRTE = "Traffic engineering path is set up using Segment Routing (0x01) [RFC8664]"
 
 func TestTLVType_String(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		tlvType  TLVType
 		expected string
@@ -32,6 +34,7 @@ func TestTLVType_String(t *testing.T) {
 
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			actual := tt.tlvType.String()
 			assert.Equal(t, tt.expected, actual, "unexpected TLVType.String() result")
 		})
@@ -39,6 +42,8 @@ func TestTLVType_String(t *testing.T) {
 }
 
 func TestTLVType_StringWithReference(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		tlvType  TLVType
 		expected string
@@ -51,12 +56,15 @@ func TestTLVType_StringWithReference(t *testing.T) {
 
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.expected, tt.tlvType.StringWithReference(), "unexpected TLVType.StringWithReference() result")
 		})
 	}
 }
 
 func TestTLVType_NameAndReference(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		tlvType      TLVType
 		expectedName string
@@ -70,6 +78,7 @@ func TestTLVType_NameAndReference(t *testing.T) {
 
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.expectedName, tt.tlvType.Name(), "unexpected TLVType.Name() result")
 			assert.Equal(t, tt.expectedRef, tt.tlvType.Reference(), "unexpected TLVType.Reference() result")
 		})
@@ -77,6 +86,8 @@ func TestTLVType_NameAndReference(t *testing.T) {
 }
 
 func TestTLVMap(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		tlvType  TLVType
 		expected TLVInterface
@@ -105,6 +116,7 @@ func TestTLVMap(t *testing.T) {
 
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			constructor, ok := tlvMap[tt.tlvType]
 			require.True(t, ok, "constructor not found for TLVType '%s'", name)
 			actual := constructor()
@@ -122,6 +134,7 @@ type TLVTestCase struct {
 func runTLVDecodeTests(t *testing.T, cases map[string]TLVTestCase, constructor func() TLVInterface) {
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			tlv := constructor()
 			err := tlv.DecodeFromBytes(tt.input)
 			if tt.wantErr {
@@ -141,6 +154,7 @@ func runTLVSerializeTests(t *testing.T, cases map[string]struct {
 ) {
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			actual, err := tt.input.Serialize()
 			require.NoError(t, err, "unexpected error for '%s'", name)
 			assert.Equal(t, tt.expected, actual, "serialized value mismatch for '%s'", name)
@@ -155,6 +169,7 @@ func runTLVLenTests(t *testing.T, cases map[string]struct {
 ) {
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			actual := tt.input.Len()
 			assert.Equal(t, int(tt.expected), actual, "length mismatch for '%s'", name)
 		})
@@ -194,6 +209,8 @@ var (
 )
 
 func TestVendorInformation_DecodeFromBytes(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]TLVTestCase{
 		"EnterpriseNumberOnly": {testVendorInformationJuniperBytes, testVendorInformationJuniper, false},
 		"WithEnterpriseSpecificInformation": {
@@ -210,6 +227,8 @@ func TestVendorInformation_DecodeFromBytes(t *testing.T) {
 }
 
 func TestVendorInformation_Serialize(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    TLVInterface
 		expected []byte
@@ -222,6 +241,8 @@ func TestVendorInformation_Serialize(t *testing.T) {
 }
 
 func TestVendorInformation_Len(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    TLVInterface
 		expected uint16
@@ -302,6 +323,8 @@ var (
 )
 
 func TestStatefulPCECapability_DecodeFromBytes(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]TLVTestCase{
 		"SingleCapability":   {testStatefulLSPUpdateBytes, testStatefulLSPUpdate, false},
 		"AllCapabilities":    {testStatefulAllBytes, testStatefulAll, false},
@@ -313,6 +336,8 @@ func TestStatefulPCECapability_DecodeFromBytes(t *testing.T) {
 }
 
 func TestStatefulPCECapability_Serialize(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    TLVInterface
 		expected []byte
@@ -325,6 +350,8 @@ func TestStatefulPCECapability_Serialize(t *testing.T) {
 }
 
 func TestStatefulPCECapability_Len(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    TLVInterface
 		expected uint16
@@ -349,6 +376,8 @@ var (
 )
 
 func TestSymbolicPathName_DecodeFromBytes(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]TLVTestCase{
 		"Valid":           {testSymbolicPathNameBytes, testSymbolicPathName, false},
 		"Empty":           {testSymbolicPathNameEmptyBytes, testSymbolicPathNameEmptyString, false},
@@ -361,6 +390,8 @@ func TestSymbolicPathName_DecodeFromBytes(t *testing.T) {
 }
 
 func TestSymbolicPathName_Serialize(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    TLVInterface
 		expected []byte
@@ -372,6 +403,8 @@ func TestSymbolicPathName_Serialize(t *testing.T) {
 }
 
 func TestSymbolicPathName_Len(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    TLVInterface
 		expected uint16
@@ -439,6 +472,8 @@ var (
 )
 
 func TestIPv4LSPIdentifiers_DecodeFromBytes(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]TLVTestCase{
 		"ValidIPv4LSPIdentifiers":        {testIPv4LSPIdentifiersBytes, testIPv4LSPIdentifiers, false},
 		"TruncatedIPv4LSPIdentifiers":    {testIPv4LSPIdentifiersTruncated, nil, true},
@@ -450,6 +485,8 @@ func TestIPv4LSPIdentifiers_DecodeFromBytes(t *testing.T) {
 }
 
 func TestIPv4LSPIdentifiers_Serialize(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    TLVInterface
 		expected []byte
@@ -460,6 +497,8 @@ func TestIPv4LSPIdentifiers_Serialize(t *testing.T) {
 }
 
 func TestIPv4LSPIdentifiers_Len(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    TLVInterface
 		expected uint16
@@ -506,6 +545,8 @@ var (
 )
 
 func TestIPv6LSPIdentifiers_DecodeFromBytes(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]TLVTestCase{
 		"ValidIPv6LSPIdentifiers":        {testIPv6LSPIdentifiersBytes, testIPv6LSPIdentifiers, false},
 		"InvalidValueLength":             {testIPv6LSPIdentifiersInvalidLength, nil, true},
@@ -516,6 +557,8 @@ func TestIPv6LSPIdentifiers_DecodeFromBytes(t *testing.T) {
 }
 
 func TestIPv6LSPIdentifiers_Serialize(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    TLVInterface
 		expected []byte
@@ -526,6 +569,8 @@ func TestIPv6LSPIdentifiers_Serialize(t *testing.T) {
 }
 
 func TestIPv6LSPIdentifiers_Len(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    TLVInterface
 		expected uint16
@@ -545,6 +590,8 @@ var (
 )
 
 func TestLSPDBVersion_DecodeFromBytes(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]TLVTestCase{
 		"ValidLSPDBVersion":         {testLSPDBVersionBytes, testLSPDBVersion, false},
 		"TruncatedLSPDBVersion":     {testLSPDBVersionTruncated, nil, true},
@@ -555,6 +602,8 @@ func TestLSPDBVersion_DecodeFromBytes(t *testing.T) {
 }
 
 func TestLSPDBVersion_Serialize(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    TLVInterface
 		expected []byte
@@ -565,6 +614,8 @@ func TestLSPDBVersion_Serialize(t *testing.T) {
 }
 
 func TestLSPDBVersion_Len(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    TLVInterface
 		expected uint16
@@ -587,6 +638,8 @@ var (
 )
 
 func TestSRPCECapability_DecodeFromBytes(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]TLVTestCase{
 		"ValidSRPCECapability":         {testSRPCECapabilityBytes, testSRPCECapability, false},
 		"TruncatedSRPCECapability":     {testSRPCECapabilityTruncated, nil, true},
@@ -598,6 +651,8 @@ func TestSRPCECapability_DecodeFromBytes(t *testing.T) {
 }
 
 func TestSRPCECapability_Serialize(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    TLVInterface
 		expected []byte
@@ -608,6 +663,8 @@ func TestSRPCECapability_Serialize(t *testing.T) {
 }
 
 func TestSRPCECapability_Serialize_WireFormat(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input         *SRPCECapability
 		expectedFlags uint8
@@ -622,6 +679,7 @@ func TestSRPCECapability_Serialize_WireFormat(t *testing.T) {
 
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			got, err := tt.input.Serialize()
 			require.NoError(t, err, "Serialize failed for '%s'", name)
 			require.Len(t, got, int(TLVValueOffset+TLVSRPCECapabilityValueLength))
@@ -635,6 +693,8 @@ func TestSRPCECapability_Serialize_WireFormat(t *testing.T) {
 }
 
 func TestSRPCECapability_DecodeFromBytes_WireFormat(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		value    []uint8
 		expected *SRPCECapability
@@ -659,6 +719,7 @@ func TestSRPCECapability_DecodeFromBytes_WireFormat(t *testing.T) {
 
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			var tlv SRPCECapability
 			err := tlv.DecodeFromBytes(append(tlvHeader(TLVSRPCECapability, 4), tt.value...))
 			require.NoError(t, err, "DecodeFromBytes failed for '%s'", name)
@@ -668,6 +729,8 @@ func TestSRPCECapability_DecodeFromBytes_WireFormat(t *testing.T) {
 }
 
 func TestSRPCECapability_RoundTrip(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]*SRPCECapability{
 		"Empty":        {},
 		"MSD5":         {MaximumSidDepth: 5},
@@ -679,6 +742,7 @@ func TestSRPCECapability_RoundTrip(t *testing.T) {
 
 	for name, want := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			raw, err := want.Serialize()
 			require.NoError(t, err, "Serialize failed for '%s'", name)
 
@@ -690,6 +754,8 @@ func TestSRPCECapability_RoundTrip(t *testing.T) {
 }
 
 func TestSRPCECapability_Len(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    TLVInterface
 		expected uint16
@@ -700,6 +766,8 @@ func TestSRPCECapability_Len(t *testing.T) {
 }
 
 func TestSRPCECapability_DecodeSerializeRoundTrip(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]*SRPCECapability{
 		"MSDNonZero":       {MaximumSidDepth: 200},
 		"MSDMax":           {MaximumSidDepth: math.MaxUint8},
@@ -712,6 +780,7 @@ func TestSRPCECapability_DecodeSerializeRoundTrip(t *testing.T) {
 
 	for name, original := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			b, err := original.Serialize()
 			require.NoError(t, err)
 
@@ -731,6 +800,8 @@ func TestSRPCECapability_DecodeSerializeRoundTrip(t *testing.T) {
 }
 
 func TestSRPCECapability_HasInvalidZeroMSD(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    *SRPCECapability
 		expected bool
@@ -742,12 +813,15 @@ func TestSRPCECapability_HasInvalidZeroMSD(t *testing.T) {
 	}
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.expected, tt.input.HasInvalidZeroMSD())
 		})
 	}
 }
 
 func TestPst_String(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    Pst
 		expected string
@@ -757,6 +831,7 @@ func TestPst_String(t *testing.T) {
 	}
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			actual := tt.input.String()
 			assert.Equal(t, tt.expected, actual, "unexpected Pst.String() result for '%s'", name)
 		})
@@ -764,6 +839,8 @@ func TestPst_String(t *testing.T) {
 }
 
 func TestPst_StringWithReference(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    Pst
 		expected string
@@ -773,12 +850,15 @@ func TestPst_StringWithReference(t *testing.T) {
 	}
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.expected, tt.input.StringWithReference(), "unexpected Pst.StringWithReference() result for '%s'", name)
 		})
 	}
 }
 
 func TestPsts_MarshalJSON(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    Psts
 		expected string
@@ -791,6 +871,7 @@ func TestPsts_MarshalJSON(t *testing.T) {
 
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			actual, err := tt.input.MarshalJSON()
 			require.NoError(t, err, "unexpected error for '%s'", name)
 			assert.Equal(t, tt.expected, string(actual), "MarshalJSON output mismatch for '%s'", name)
@@ -832,6 +913,8 @@ var (
 )
 
 func TestPathSetupType_DecodeFromBytes(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]TLVTestCase{
 		"Valid SRv6TE":       {testPathSetupTypeSRv6TEBytes, testPathSetupTypeSRv6TE, false},
 		"TooShort":           {testPathSetupTypeTooShort, nil, true},
@@ -842,6 +925,8 @@ func TestPathSetupType_DecodeFromBytes(t *testing.T) {
 }
 
 func TestPathSetupType_Serialize(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    TLVInterface
 		expected []byte
@@ -854,6 +939,8 @@ func TestPathSetupType_Serialize(t *testing.T) {
 }
 
 func TestPathSetupType_Len(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    TLVInterface
 		expected uint16
@@ -920,6 +1007,8 @@ var (
 )
 
 func TestPathSetupTypeCapability_pstCount(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		numPST   int
 		expected int
@@ -931,6 +1020,7 @@ func TestPathSetupTypeCapability_pstCount(t *testing.T) {
 
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			tlv := &PathSetupTypeCapability{
 				PathSetupTypes: make(Psts, tt.numPST),
 			}
@@ -940,6 +1030,8 @@ func TestPathSetupTypeCapability_pstCount(t *testing.T) {
 }
 
 func TestPathSetupTypeCapability_DecodeFromBytes(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]TLVTestCase{
 		"ValidBasic":               {testPathSetupTypeCapabilityBasicBytes, testPathSetupTypeCapabilityBasic, false},
 		"ValidWithSubTLV":          {testPathSetupTypeCapabilityWithSubTLVBytes, testPathSetupTypeCapabilityWithSubTLV, false},
@@ -956,6 +1048,8 @@ func TestPathSetupTypeCapability_DecodeFromBytes(t *testing.T) {
 
 // TestPathSetupTypeCapability_Serialize tests PathSetupTypeCapability.Serialize.
 func TestPathSetupTypeCapability_Serialize(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    TLVInterface
 		expected []byte
@@ -967,6 +1061,8 @@ func TestPathSetupTypeCapability_Serialize(t *testing.T) {
 }
 
 func TestPathSetupTypeCapability_Len(t *testing.T) {
+	t.Parallel()
+
 	var subTLVLen int
 	for _, s := range testPathSetupTypeCapabilityWithSubTLV.SubTLVs {
 		subTLVLen += s.Len()
@@ -1078,6 +1174,8 @@ func TestPathSetupTypeCapability_HasPathSetupType(t *testing.T) {
 }
 
 func TestAssocType_String(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    AssocType
 		expected string
@@ -1098,6 +1196,7 @@ func TestAssocType_String(t *testing.T) {
 
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			actual := tt.input.String()
 			assert.Equal(t, tt.expected, actual, "unexpected AssocType.String() result for '%s'", name)
 		})
@@ -1106,6 +1205,8 @@ func TestAssocType_String(t *testing.T) {
 
 // Reference determines whether a type is draft-only or unassigned.
 func TestAssocType_StringWithReference(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    AssocType
 		expected string
@@ -1119,6 +1220,7 @@ func TestAssocType_StringWithReference(t *testing.T) {
 
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.expected, tt.input.StringWithReference(), "unexpected AssocType.StringWithReference() result for '%s'", name)
 		})
 	}
@@ -1160,6 +1262,8 @@ var (
 )
 
 func TestExtendedAssociationID_DecodeFromBytes(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]TLVTestCase{
 		"IPv4":                  {testIPv4ExtendedAssociationIDBytes, testIPv4ExtendedAssociationID, false},
 		"IPv6":                  {testIPv6ExtendedAssociationIDBytes, testIPv6ExtendedAssociationID, false},
@@ -1172,6 +1276,8 @@ func TestExtendedAssociationID_DecodeFromBytes(t *testing.T) {
 }
 
 func TestExtendedAssociationID_Serialize(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    TLVInterface
 		expected []byte
@@ -1183,6 +1289,7 @@ func TestExtendedAssociationID_Serialize(t *testing.T) {
 
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			actual, err := tt.input.Serialize()
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected, actual)
@@ -1191,6 +1298,8 @@ func TestExtendedAssociationID_Serialize(t *testing.T) {
 }
 
 func TestExtendedAssociationID_Len(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    TLVInterface
 		expected uint16
@@ -1210,6 +1319,8 @@ func TestExtendedAssociationIDIPv4Juniper_Type(t *testing.T) {
 }
 
 func TestExtendedAssociationIDIPv4Juniper_Serialize(t *testing.T) {
+	t.Parallel()
+
 	expectedIPv4 := append([]byte(nil), testIPv4ExtendedAssociationIDBytes...)
 	expectedIPv4[0], expectedIPv4[1] = 0xff, 0xe3 // type=0xffe3, value layout unchanged
 
@@ -1230,6 +1341,8 @@ func TestExtendedAssociationIDIPv4Juniper_Serialize(t *testing.T) {
 }
 
 func TestExtendedAssociationIDIPv4Juniper_Len(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    TLVInterface
 		expected uint16
@@ -1328,6 +1441,8 @@ var (
 )
 
 func TestAssocTypeList_DecodeFromBytes(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]TLVTestCase{
 		"ValidTwoEntries":  {testAssocTypeListBytes, testAssocTypeList, false},
 		"ValidSingleEntry": {testAssocTypeListSingleBytesWithoutPadding, testAssocTypeListSingle, false},
@@ -1338,6 +1453,8 @@ func TestAssocTypeList_DecodeFromBytes(t *testing.T) {
 }
 
 func TestAssocTypeList_Serialize(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    TLVInterface
 		expected []byte
@@ -1349,6 +1466,8 @@ func TestAssocTypeList_Serialize(t *testing.T) {
 }
 
 func TestAssocTypeList_Len(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    TLVInterface
 		expected uint16
@@ -1452,6 +1571,8 @@ var (
 )
 
 func TestSRPolicyCandidatePathIdentifier_DecodeFromBytes(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]TLVTestCase{
 		"ValidIPv4":             {testSRPolicyCPathIDIPv4Bytes, testSRPolicyCPathIDIPv4, false},
 		"ValidIPv6":             {testSRPolicyCPathIDIPv6Bytes, testSRPolicyCPathIDIPv6, false},
@@ -1463,6 +1584,8 @@ func TestSRPolicyCandidatePathIdentifier_DecodeFromBytes(t *testing.T) {
 }
 
 func TestSRPolicyCandidatePathIdentifier_Serialize(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    TLVInterface
 		expected []byte
@@ -1475,6 +1598,8 @@ func TestSRPolicyCandidatePathIdentifier_Serialize(t *testing.T) {
 }
 
 func TestSRPolicyCandidatePathIdentifier_Serialize_Invalid(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    TLVInterface
 		expected []byte
@@ -1485,6 +1610,8 @@ func TestSRPolicyCandidatePathIdentifier_Serialize_Invalid(t *testing.T) {
 }
 
 func TestSRPolicyCandidatePathIdentifier_Len(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    TLVInterface
 		expected uint16
@@ -1524,6 +1651,8 @@ func TestSRPolicyCandidatePathIdentifierJuniper_Type(t *testing.T) {
 }
 
 func TestSRPolicyCandidatePathIdentifierJuniper_Serialize(t *testing.T) {
+	t.Parallel()
+
 	tlv := &SRPolicyCandidatePathIdentifierJuniper{
 		ProtocolOrigin: testSRPolicyCPathIDIPv4.ProtocolOrigin,
 		OriginatorASN:  testSRPolicyCPathIDIPv4.OriginatorASN,
@@ -1540,6 +1669,8 @@ func TestSRPolicyCandidatePathIdentifierJuniper_Serialize(t *testing.T) {
 }
 
 func TestSRPolicyCandidatePathIdentifierJuniper_Len(t *testing.T) {
+	t.Parallel()
+
 	tlv := &SRPolicyCandidatePathIdentifierJuniper{
 		ProtocolOrigin: testSRPolicyCPathIDIPv4.ProtocolOrigin,
 		OriginatorASN:  testSRPolicyCPathIDIPv4.OriginatorASN,
@@ -1570,6 +1701,8 @@ var (
 )
 
 func TestSRPolicyCandidatePathPreference_DecodeFromBytes(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]TLVTestCase{
 		"ValidPreference": {testSRPolicyCPathPreferenceBytes, testSRPolicyCPathPreference, false},
 		"InvalidLength":   {testSRPolicyCPathPreferenceTruncated, nil, true},
@@ -1579,6 +1712,8 @@ func TestSRPolicyCandidatePathPreference_DecodeFromBytes(t *testing.T) {
 }
 
 func TestSRPolicyCandidatePathPreference_Serialize(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    TLVInterface
 		expected []byte
@@ -1589,6 +1724,8 @@ func TestSRPolicyCandidatePathPreference_Serialize(t *testing.T) {
 }
 
 func TestSRPolicyCandidatePathPreference_Len(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    TLVInterface
 		expected uint16
@@ -1606,6 +1743,8 @@ func TestSRPolicyCandidatePathPreferenceJuniper_Type(t *testing.T) {
 }
 
 func TestSRPolicyCandidatePathPreferenceJuniper_Serialize(t *testing.T) {
+	t.Parallel()
+
 	tlv := &SRPolicyCandidatePathPreferenceJuniper{
 		Preference: testSRPolicyCPathPreference.Preference,
 	}
@@ -1619,6 +1758,8 @@ func TestSRPolicyCandidatePathPreferenceJuniper_Serialize(t *testing.T) {
 }
 
 func TestSRPolicyCandidatePathPreferenceJuniper_Len(t *testing.T) {
+	t.Parallel()
+
 	tlv := &SRPolicyCandidatePathPreferenceJuniper{
 		Preference: testSRPolicyCPathPreference.Preference,
 	}
@@ -1663,6 +1804,8 @@ var (
 )
 
 func TestColor_DecodeFromBytes(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]TLVTestCase{
 		"ValidColor":      {testColorBytes, testColor, false},
 		"InvalidLength":   {testColorTruncated, nil, true},
@@ -1672,6 +1815,8 @@ func TestColor_DecodeFromBytes(t *testing.T) {
 }
 
 func TestColor_Serialize(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    TLVInterface
 		expected []byte
@@ -1682,6 +1827,8 @@ func TestColor_Serialize(t *testing.T) {
 }
 
 func TestColor_Len(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    TLVInterface
 		expected uint16
@@ -1712,6 +1859,8 @@ var (
 )
 
 func TestUnknownTLV_DecodeFromBytes(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]TLVTestCase{
 		"ValidUnknownTLV": {testUnknownTLVBytes, testUnknownTLV, false},
 		"TruncatedHeader": {testUnknownTLVTruncatedHeader, nil, true},
@@ -1721,6 +1870,8 @@ func TestUnknownTLV_DecodeFromBytes(t *testing.T) {
 }
 
 func TestUnknownTLV_Serialize(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    TLVInterface
 		expected []byte
@@ -1753,6 +1904,8 @@ func TestUnknownTLV_Serialize_LengthBoundary(t *testing.T) {
 }
 
 func TestUnknownTLV_Len(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    TLVInterface
 		expected uint16
@@ -1764,6 +1917,8 @@ func TestUnknownTLV_Len(t *testing.T) {
 }
 
 func TestUnknownTLV_Len_DerivedFromValue(t *testing.T) {
+	t.Parallel()
+
 	tlv := &UnknownTLV{Value: []byte{0x01, 0x02, 0x03}}
 	assert.Equal(t, TLVValueOffset+4, tlv.Len(), "Len() must reflect len(Value) plus padding")
 }
@@ -1784,6 +1939,8 @@ var (
 )
 
 func TestDecodeTLV(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input   []byte
 		wantErr bool
@@ -1798,6 +1955,7 @@ func TestDecodeTLV(t *testing.T) {
 
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			tlv, err := DecodeTLV(tt.input)
 			if tt.wantErr {
 				assert.Error(t, err, "expected error for '%s'", name)
@@ -1810,6 +1968,8 @@ func TestDecodeTLV(t *testing.T) {
 }
 
 func TestDecodeTLVs(t *testing.T) {
+	t.Parallel()
+
 	invalidPaddingBytes := func() []byte {
 		valueLen := 5
 		header := tlvHeader(0xFFFF, uint16(valueLen))
@@ -1840,6 +2000,7 @@ func TestDecodeTLVs(t *testing.T) {
 
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			tlvs, err := DecodeTLVs(tt.input)
 			if tt.wantErr {
 				require.Error(t, err, "expected error for '%s'", name)
@@ -1856,6 +2017,8 @@ func TestDecodeTLVs(t *testing.T) {
 }
 
 func TestDecodeTLVs_SubTLV(t *testing.T) {
+	t.Parallel()
+
 	fixedPart := make([]byte, PathSetupTypeCapabilityFixedPartLength)
 	fixedPart[PathSetupTypeCapabilityPSTCountOffset] = 0x01 // Set PST count in fixed part
 	pathSetupType := []byte{0x00}
@@ -1873,6 +2036,7 @@ func TestDecodeTLVs_SubTLV(t *testing.T) {
 
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			_, err := DecodeTLVs(tt.input)
 			if tt.wantErr {
 				assert.Error(t, err, "expected error for '%s'", name)
@@ -1895,6 +2059,8 @@ var (
 )
 
 func TestSRv6PCECapability_DecodeFromBytes(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]TLVTestCase{
 		"ValidSRv6PCECapability":          {testSRv6PCECapabilityBytes, testSRv6PCECapability, false},
 		"ValidSRv6PCECapabilityNoNAI":     {testSRv6PCECapabilityNoNAIBytes, testSRv6PCECapabilityNoNAI, false},
@@ -1906,6 +2072,8 @@ func TestSRv6PCECapability_DecodeFromBytes(t *testing.T) {
 }
 
 func TestSRv6PCECapability_Serialize(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    TLVInterface
 		expected []byte
@@ -1917,6 +2085,8 @@ func TestSRv6PCECapability_Serialize(t *testing.T) {
 }
 
 func TestSRv6PCECapability_Len(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    TLVInterface
 		expected uint16
@@ -1969,6 +2139,8 @@ var (
 )
 
 func TestMultipathCapability_DecodeFromBytes(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]TLVTestCase{
 		"ValidMultipathCapabilityAllFlags": {testMultipathCapabilityBytes, testMultipathCapability, false},
 		"ValidMultipathCapabilityNoFlags":  {testMultipathCapabilityNoFlagsBytes, testMultipathCapabilityNoFlags, false},
@@ -1979,6 +2151,8 @@ func TestMultipathCapability_DecodeFromBytes(t *testing.T) {
 }
 
 func TestMultipathCapability_Serialize(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    TLVInterface
 		expected []byte
@@ -1990,6 +2164,8 @@ func TestMultipathCapability_Serialize(t *testing.T) {
 }
 
 func TestMultipathCapability_Len(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		input    TLVInterface
 		expected uint16

@@ -39,6 +39,7 @@ func TestShowTED(t *testing.T) {
 	t.Parallel()
 
 	t.Run("grpc error propagates", func(t *testing.T) {
+		t.Parallel()
 		client := &fakePCEServiceClient{tedErr: assert.AnError}
 		var buf bytes.Buffer
 		err := showTED(&buf, outputText, client)
@@ -46,6 +47,7 @@ func TestShowTED(t *testing.T) {
 	})
 
 	t.Run("disabled TED returns an error", func(t *testing.T) {
+		t.Parallel()
 		client := &fakePCEServiceClient{tedResp: &pb.GetTEDResponse{Enabled: false}}
 		var buf bytes.Buffer
 		err := showTED(&buf, outputText, client)
@@ -53,6 +55,7 @@ func TestShowTED(t *testing.T) {
 	})
 
 	t.Run("disabled TED returns an error even in JSON mode", func(t *testing.T) {
+		t.Parallel()
 		client := &fakePCEServiceClient{tedResp: &pb.GetTEDResponse{Enabled: false}}
 		var buf bytes.Buffer
 		err := showTED(&buf, outputJSON, client)
@@ -60,6 +63,7 @@ func TestShowTED(t *testing.T) {
 	})
 
 	t.Run("plain text output", func(t *testing.T) {
+		t.Parallel()
 		client := &fakePCEServiceClient{tedResp: &pb.GetTEDResponse{
 			Enabled: true,
 			Nodes:   []*pb.LsNode{{RouterId: testRouterID1}},
@@ -70,6 +74,7 @@ func TestShowTED(t *testing.T) {
 	})
 
 	t.Run("json output", func(t *testing.T) {
+		t.Parallel()
 		node := &pb.LsNode{
 			Asn:      65000,
 			RouterId: testRouterID1,

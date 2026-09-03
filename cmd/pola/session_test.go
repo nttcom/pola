@@ -22,6 +22,7 @@ func TestNewSessionCmd_RunE(t *testing.T) {
 	t.Parallel()
 
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
 		cmd := newSessionCmd(&cli{client: &fakePCEServiceClient{}})
 
 		cmd.SetOut(&bytes.Buffer{})
@@ -29,6 +30,7 @@ func TestNewSessionCmd_RunE(t *testing.T) {
 	})
 
 	t.Run("gRPC error propagates", func(t *testing.T) {
+		t.Parallel()
 		cmd := newSessionCmd(&cli{client: &fakePCEServiceClient{
 			sessionListErr: assert.AnError,
 		}})
@@ -78,6 +80,7 @@ func TestParseSessionArgs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			addr, detail, err := parseSessionArgs(tt.args)
 			if tt.wantErr {
 				require.Error(t, err)

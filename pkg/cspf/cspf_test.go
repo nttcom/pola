@@ -81,6 +81,8 @@ func buildTED(nodes ...*table.LsNode) *table.LsTED {
 }
 
 func TestCSPF_PathSelection(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		buildTED func() *table.LsTED
@@ -178,6 +180,7 @@ func TestCSPF_PathSelection(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			ted := tt.buildTED()
 			got, err := CSPF(tt.src, tt.dst, tt.metric, ted)
 			require.NoError(t, err)
@@ -187,6 +190,8 @@ func TestCSPF_PathSelection(t *testing.T) {
 }
 
 func TestCSPF_Errors(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		buildTED func() *table.LsTED
@@ -291,6 +296,7 @@ func TestCSPF_Errors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			ted := tt.buildTED()
 			got, err := CSPF(tt.src, tt.dst, tt.metric, ted)
 			assert.Nil(t, got)
@@ -300,6 +306,8 @@ func TestCSPF_Errors(t *testing.T) {
 }
 
 func TestCSPF_MetricValidation(t *testing.T) {
+	t.Parallel()
+
 	linked := func() *table.LsTED {
 		a, b := srMPLSNode("A", 0), srMPLSNode("B", 1)
 		connect(a, b, 1)
@@ -307,33 +315,40 @@ func TestCSPF_MetricValidation(t *testing.T) {
 	}
 
 	t.Run("an unrecognized metric type is rejected", func(t *testing.T) {
+		t.Parallel()
 		_, err := CSPF("A", "B", table.MetricType(99), linked())
 		assert.EqualError(t, err, "unsupported metric type 99")
 	})
 
 	t.Run("the unspecified metric is rejected", func(t *testing.T) {
+		t.Parallel()
 		_, err := CSPF("A", "B", table.UnspecifiedMetric, linked())
 		assert.EqualError(t, err, "metric type must be specified for path computation")
 	})
 
 	t.Run("an unrecognized metric is rejected even when source equals destination", func(t *testing.T) {
+		t.Parallel()
 		_, err := CSPF("A", "A", table.MetricType(99), linked())
 		assert.EqualError(t, err, "unsupported metric type 99")
 	})
 
 	t.Run("loose source routing rejects the metric before checking waypoints", func(t *testing.T) {
+		t.Parallel()
 		waypoints := []table.Waypoint{{RouterID: testGhostRouterID}}
 		_, err := WithLooseSourceRouting("A", "B", waypoints, table.MetricType(99), linked())
 		assert.EqualError(t, err, "unsupported metric type 99")
 	})
 
 	t.Run("a nil TED is reported before the metric", func(t *testing.T) {
+		t.Parallel()
 		_, err := CSPF("A", "B", table.MetricType(99), nil)
 		assert.EqualError(t, err, "ted is nil")
 	})
 }
 
 func TestCSPF_InvalidInputClassification(t *testing.T) {
+	t.Parallel()
+
 	linear := func() *table.LsTED {
 		a, b := srMPLSNode("A", 0), srMPLSNode("B", 1)
 		connect(a, b, 1)
@@ -372,6 +387,7 @@ func TestCSPF_InvalidInputClassification(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := tt.run()
 			require.Error(t, err)
 			var invalidInput *InvalidInputError
@@ -381,6 +397,8 @@ func TestCSPF_InvalidInputClassification(t *testing.T) {
 }
 
 func TestCSPF_TopologyLimitationClassification(t *testing.T) {
+	t.Parallel()
+
 	linear := func() *table.LsTED {
 		a, b := srMPLSNode("A", 0), srMPLSNode("B", 1)
 		connect(a, b, 1)
@@ -407,6 +425,7 @@ func TestCSPF_TopologyLimitationClassification(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := tt.run()
 			require.Error(t, err)
 			var topoLimit *TopologyLimitationError
@@ -417,6 +436,8 @@ func TestCSPF_TopologyLimitationClassification(t *testing.T) {
 }
 
 func TestCSPF_NilTED(t *testing.T) {
+	t.Parallel()
+
 	_, err := CSPF("A", "B", table.IGPMetric, nil)
 	require.EqualError(t, err, "ted is nil")
 
@@ -425,6 +446,8 @@ func TestCSPF_NilTED(t *testing.T) {
 }
 
 func TestInvalidInputError_Unwrap(t *testing.T) {
+	t.Parallel()
+
 	sentinel := errors.New("sentinel")
 	err := &InvalidInputError{Err: sentinel}
 
@@ -433,6 +456,8 @@ func TestInvalidInputError_Unwrap(t *testing.T) {
 }
 
 func TestTopologyLimitationError_Unwrap(t *testing.T) {
+	t.Parallel()
+
 	sentinel := errors.New("sentinel")
 	err := &TopologyLimitationError{Err: sentinel}
 
@@ -441,11 +466,15 @@ func TestTopologyLimitationError_Unwrap(t *testing.T) {
 }
 
 func TestUpdateNeighborCosts_UnknownCalcNode(t *testing.T) {
+	t.Parallel()
+
 	err := updateNeighborCosts("Z", map[string]*node{}, map[string]*table.LsNode{}, table.IGPMetric)
 	assert.EqualError(t, err, "router Z not found in TED")
 }
 
 func TestBuildWaypointSegment(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name           string
 		node           *table.LsNode
@@ -533,6 +562,7 @@ func TestBuildWaypointSegment(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := buildWaypointSegment(tt.node, tt.explicitSID)
 			if tt.wantErr != "" {
 				require.Error(t, err)
@@ -554,6 +584,8 @@ func TestBuildWaypointSegment(t *testing.T) {
 }
 
 func TestRemoveDuplicateFirst(t *testing.T) {
+	t.Parallel()
+
 	segX := table.NewSegmentSRMPLS(100)
 	segY := table.NewSegmentSRMPLS(200)
 
@@ -591,12 +623,15 @@ func TestRemoveDuplicateFirst(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, removeDuplicateFirst(tt.fullList, tt.section))
 		})
 	}
 }
 
 func TestAppendIfNotDuplicate(t *testing.T) {
+	t.Parallel()
+
 	segX := table.NewSegmentSRMPLS(100)
 	segY := table.NewSegmentSRMPLS(200)
 
@@ -628,12 +663,15 @@ func TestAppendIfNotDuplicate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, appendIfNotDuplicate(tt.list, tt.seg))
 		})
 	}
 }
 
 func TestWithLooseSourceRouting(t *testing.T) {
+	t.Parallel()
+
 	linearChain := func() *table.LsTED {
 		s, w1, m, w2, d := srMPLSNode("S", 0), srMPLSNode("W1", 1), srMPLSNode("M", 2), srMPLSNode("W2", 3), srMPLSNode("D", 4)
 		connect(s, w1, 1)
@@ -645,12 +683,14 @@ func TestWithLooseSourceRouting(t *testing.T) {
 	fullChainSegs := []table.Segment{mplsSeg(1), mplsSeg(2), mplsSeg(3), mplsSeg(4)}
 
 	t.Run("no waypoints behaves like a direct CSPF call", func(t *testing.T) {
+		t.Parallel()
 		got, err := WithLooseSourceRouting("S", "D", nil, table.IGPMetric, linearChain())
 		require.NoError(t, err)
 		assert.Equal(t, fullChainSegs, got)
 	})
 
 	t.Run("a waypoint already on the shortest path does not duplicate its segment", func(t *testing.T) {
+		t.Parallel()
 		waypoints := []table.Waypoint{{RouterID: "W1"}}
 		got, err := WithLooseSourceRouting("S", "D", waypoints, table.IGPMetric, linearChain())
 		require.NoError(t, err)
@@ -658,6 +698,7 @@ func TestWithLooseSourceRouting(t *testing.T) {
 	})
 
 	t.Run("multiple ordered waypoints route through each waypoint in sequence", func(t *testing.T) {
+		t.Parallel()
 		waypoints := []table.Waypoint{{RouterID: "W1"}, {RouterID: "W2"}}
 		got, err := WithLooseSourceRouting("S", "D", waypoints, table.IGPMetric, linearChain())
 		require.NoError(t, err)
@@ -665,6 +706,7 @@ func TestWithLooseSourceRouting(t *testing.T) {
 	})
 
 	t.Run("an explicit waypoint SID that differs from the node's default is kept as a separate segment", func(t *testing.T) {
+		t.Parallel()
 		s2, w, d2 := srv6Node("S2", "2001:db8::1"), srv6Node("W", "2001:db8::2"), srv6Node("D2", "2001:db8::3")
 		connect(s2, w, 1)
 		connect(w, d2, 1)
@@ -687,6 +729,7 @@ func TestWithLooseSourceRouting(t *testing.T) {
 	})
 
 	t.Run("a leg computation failure is wrapped with the router pair", func(t *testing.T) {
+		t.Parallel()
 		ted := buildTED(srMPLSNode("S3", 0))
 		got, err := WithLooseSourceRouting("S3", "D3", nil, table.IGPMetric, ted)
 		assert.Nil(t, got)
@@ -695,6 +738,7 @@ func TestWithLooseSourceRouting(t *testing.T) {
 	})
 
 	t.Run("a waypoint absent from the TED node map is rejected before any section is computed", func(t *testing.T) {
+		t.Parallel()
 		// Intentionally leaves GHOST out of ted.Nodes while keeping it on the link.
 		s4 := srMPLSNode("S4", 0)
 		ghost := srMPLSNode(testGhostRouterID, 1)
@@ -709,6 +753,7 @@ func TestWithLooseSourceRouting(t *testing.T) {
 	})
 
 	t.Run("an unknown waypoint is rejected even when the destination is reachable", func(t *testing.T) {
+		t.Parallel()
 		waypoints := []table.Waypoint{{RouterID: testGhostRouterID}}
 		got, err := WithLooseSourceRouting("S", "D", waypoints, table.IGPMetric, linearChain())
 		assert.Nil(t, got)
@@ -717,6 +762,7 @@ func TestWithLooseSourceRouting(t *testing.T) {
 	})
 
 	t.Run("an invalid explicit waypoint SID is wrapped with the router", func(t *testing.T) {
+		t.Parallel()
 		waypoints := []table.Waypoint{{RouterID: "W1", SID: testInvalidSID}}
 		got, err := WithLooseSourceRouting("S", "D", waypoints, table.IGPMetric, linearChain())
 		assert.Nil(t, got)

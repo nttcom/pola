@@ -183,6 +183,7 @@ func TestUnrecognizedTLVItem(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, unrecognizedTLVItem(tt.tlvType))
 		})
 	}

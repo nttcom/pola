@@ -39,6 +39,7 @@ linters:
     - nilnesserr
     - noctx
     - nolintlint
+    - paralleltest
     - perfsprint
     - reassign
     - revive

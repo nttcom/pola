@@ -75,6 +75,8 @@ func writeConfigFile(t *testing.T, c config.Config) string {
 }
 
 func TestParseLogLevel(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		level   string
 		want    logger.Level
@@ -90,6 +92,7 @@ func TestParseLogLevel(t *testing.T) {
 
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			got, err := parseLogLevel(tt.level)
 
 			if tt.wantErr {
@@ -103,13 +106,17 @@ func TestParseLogLevel(t *testing.T) {
 }
 
 func TestLoadConfig(t *testing.T) {
+	t.Parallel()
+
 	t.Run("returns an error when the config file does not exist", func(t *testing.T) {
+		t.Parallel()
 		_, err := loadConfig(filepath.Join(t.TempDir(), "missing.yaml"))
 
 		require.ErrorContains(t, err, "failed to read config file")
 	})
 
 	t.Run("returns an error when required fields are missing", func(t *testing.T) {
+		t.Parallel()
 		path := filepath.Join(t.TempDir(), "polad.yaml")
 		require.NoError(t, os.WriteFile(path, []byte("global:\n  pcep:\n    address: \"127.0.0.1\"\n"), 0o600))
 
@@ -119,6 +126,7 @@ func TestLoadConfig(t *testing.T) {
 	})
 
 	t.Run("returns an error when TED is enabled without a source", func(t *testing.T) {
+		t.Parallel()
 		c := validConfig(t)
 		c.Global.TED = &config.TED{Enable: true, ASN: 65000}
 		path := writeConfigFile(t, c)
@@ -130,6 +138,7 @@ func TestLoadConfig(t *testing.T) {
 	})
 
 	t.Run("succeeds for a valid config", func(t *testing.T) {
+		t.Parallel()
 		c := validConfig(t)
 		path := writeConfigFile(t, c)
 
@@ -141,7 +150,10 @@ func TestLoadConfig(t *testing.T) {
 }
 
 func TestOpenLogFile(t *testing.T) {
+	t.Parallel()
+
 	t.Run("returns an error when the log directory cannot be created", func(t *testing.T) {
+		t.Parallel()
 		blocker := filepath.Join(t.TempDir(), "blocker")
 		require.NoError(t, os.WriteFile(blocker, []byte("x"), 0o600))
 
@@ -156,6 +168,7 @@ func TestOpenLogFile(t *testing.T) {
 	})
 
 	t.Run("returns an error when the log file cannot be opened", func(t *testing.T) {
+		t.Parallel()
 		if os.Geteuid() == 0 {
 			t.Skip("running as root; directory permissions are not enforced")
 		}
@@ -179,6 +192,7 @@ func TestOpenLogFile(t *testing.T) {
 	})
 
 	t.Run("succeeds and restricts the file permissions", func(t *testing.T) {
+		t.Parallel()
 		dir := t.TempDir()
 		c := &config.Config{Global: config.Global{Log: config.Log{
 			Path: dir + string(filepath.Separator),
@@ -200,7 +214,10 @@ func TestOpenLogFile(t *testing.T) {
 }
 
 func TestNewTEDElemsChan(t *testing.T) {
+	t.Parallel()
+
 	t.Run("returns nil when TED is not configured", func(t *testing.T) {
+		t.Parallel()
 		c := &config.Config{Global: config.Global{}}
 
 		ch, err := newTEDElemsChan(context.Background(), c, logger.NewNop(), nil)
@@ -210,6 +227,7 @@ func TestNewTEDElemsChan(t *testing.T) {
 	})
 
 	t.Run("returns nil when TED is disabled", func(t *testing.T) {
+		t.Parallel()
 		c := &config.Config{Global: config.Global{TED: &config.TED{Enable: false}}}
 
 		ch, err := newTEDElemsChan(context.Background(), c, logger.NewNop(), nil)
@@ -219,6 +237,7 @@ func TestNewTEDElemsChan(t *testing.T) {
 	})
 
 	t.Run("returns an error when ASN is missing", func(t *testing.T) {
+		t.Parallel()
 		c := &config.Config{Global: config.Global{TED: &config.TED{Enable: true, Source: tedSourceGoBGP}}}
 
 		ch, err := newTEDElemsChan(context.Background(), c, logger.NewNop(), nil)
@@ -228,6 +247,7 @@ func TestNewTEDElemsChan(t *testing.T) {
 	})
 
 	t.Run("returns an error when the source is not supported", func(t *testing.T) {
+		t.Parallel()
 		c := &config.Config{Global: config.Global{TED: &config.TED{Enable: true, ASN: 65000, Source: "unknown"}}}
 
 		ch, err := newTEDElemsChan(context.Background(), c, logger.NewNop(), nil)
@@ -237,6 +257,7 @@ func TestNewTEDElemsChan(t *testing.T) {
 	})
 
 	t.Run("starts the configured monitor and returns a channel", func(t *testing.T) {
+		t.Parallel()
 		c := &config.Config{
 			Global: config.Global{
 				TED: &config.TED{Enable: true, ASN: 65000, Source: tedSourceGoBGP},
@@ -261,25 +282,31 @@ func TestNewTEDElemsChan(t *testing.T) {
 }
 
 func TestRun(t *testing.T) {
+	t.Parallel()
+
 	t.Run("prints the version and exits without touching config", func(t *testing.T) {
+		t.Parallel()
 		err := run([]string{versionFlag}, runDeps{})
 
 		require.NoError(t, err)
 	})
 
 	t.Run("returns an error for an unrecognized flag", func(t *testing.T) {
+		t.Parallel()
 		err := run([]string{"-nonexistent-flag"}, defaultRunDeps())
 
 		require.Error(t, err)
 	})
 
 	t.Run("returns an error when the config file cannot be loaded", func(t *testing.T) {
+		t.Parallel()
 		err := run([]string{"-f", filepath.Join(t.TempDir(), "missing.yaml")}, defaultRunDeps())
 
 		require.ErrorContains(t, err, "failed to read config file")
 	})
 
 	t.Run("returns an error when the log file cannot be opened", func(t *testing.T) {
+		t.Parallel()
 		if os.Geteuid() == 0 {
 			t.Skip("running as root; directory permissions are not enforced")
 		}
@@ -302,6 +329,7 @@ func TestRun(t *testing.T) {
 	})
 
 	t.Run("returns an error when the config is invalid", func(t *testing.T) {
+		t.Parallel()
 		path := filepath.Join(t.TempDir(), "polad.yaml")
 		require.NoError(t, os.WriteFile(path, []byte("global:\n  pcep:\n    address: \"127.0.0.1\"\n"), 0o600))
 
@@ -311,6 +339,7 @@ func TestRun(t *testing.T) {
 	})
 
 	t.Run("returns an error when the log level is invalid", func(t *testing.T) {
+		t.Parallel()
 		c := validConfig(t)
 		c.Global.Log.Level = "trace"
 		path := writeConfigFile(t, c)
@@ -322,6 +351,7 @@ func TestRun(t *testing.T) {
 	})
 
 	t.Run("returns an error when TED is misconfigured", func(t *testing.T) {
+		t.Parallel()
 		c := validConfig(t)
 		c.Global.TED = &config.TED{Enable: true, ASN: 65000, Source: "unsupported"}
 		path := writeConfigFile(t, c)
@@ -332,6 +362,7 @@ func TestRun(t *testing.T) {
 	})
 
 	t.Run("propagates the server error", func(t *testing.T) {
+		t.Parallel()
 		path := writeConfigFile(t, validConfig(t))
 		wantErr := errors.New("boom")
 		deps := runDeps{
@@ -347,6 +378,7 @@ func TestRun(t *testing.T) {
 	})
 
 	t.Run("starts the server for a valid config", func(t *testing.T) {
+		t.Parallel()
 		path := writeConfigFile(t, validConfig(t))
 		called := make(chan struct{})
 		deps := runDeps{
@@ -368,11 +400,15 @@ func TestRun(t *testing.T) {
 }
 
 func TestMainRun(t *testing.T) {
+	t.Parallel()
+
 	t.Run("returns 0 on success", func(t *testing.T) {
+		t.Parallel()
 		require.Equal(t, 0, mainRun([]string{versionFlag}))
 	})
 
 	t.Run("returns 1 when run fails", func(t *testing.T) {
+		t.Parallel()
 		require.Equal(t, 1, mainRun([]string{"-f", filepath.Join(t.TempDir(), "missing.yaml")}))
 	})
 }

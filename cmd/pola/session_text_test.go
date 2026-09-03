@@ -103,6 +103,7 @@ func TestWriteSessionText_PropagatesWriteErrors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			w := &condFailWriter{fail: tt.fail}
 			err := writeSessionText(w, tt.views)
 			require.Error(t, err)

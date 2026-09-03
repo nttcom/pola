@@ -44,6 +44,8 @@ global:
 `
 
 func TestReadConfigFile_Valid(t *testing.T) {
+	t.Parallel()
+
 	path := writeConfig(t, validConfig)
 
 	c, err := ReadConfigFile(path)
@@ -57,6 +59,8 @@ func TestReadConfigFile_Valid(t *testing.T) {
 // grpc-client), which were renamed to camelCase. These must now fail loudly
 // instead of silently decoding to empty values.
 func TestReadConfigFile_LegacyKebabCaseKeysRejected(t *testing.T) {
+	t.Parallel()
+
 	legacyConfig := `
 global:
   pcep:
@@ -78,12 +82,16 @@ global:
 }
 
 func TestReadConfigFile_FileNotFound(t *testing.T) {
+	t.Parallel()
+
 	_, err := ReadConfigFile(filepath.Join(t.TempDir(), "does-not-exist.yaml"))
 	require.Error(t, err)
 	assert.True(t, os.IsNotExist(err))
 }
 
 func TestConfig_Validate(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name        string
 		config      string
@@ -295,6 +303,7 @@ global:
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			path := writeConfig(t, tt.config)
 			c, err := ReadConfigFile(path)
 			require.NoError(t, err)
@@ -315,6 +324,8 @@ global:
 // yaml.v3 decodes an unquoted integer scalar into a string field without
 // error; pin this behavior since Port is typed as string.
 func TestReadConfigFile_UnquotedIntegerPort(t *testing.T) {
+	t.Parallel()
+
 	path := writeConfig(t, validConfig)
 
 	c, err := ReadConfigFile(path)
@@ -323,6 +334,8 @@ func TestReadConfigFile_UnquotedIntegerPort(t *testing.T) {
 }
 
 func TestPCEPTimers_AreOptionalAndDistinguishZeroFromUnset(t *testing.T) {
+	t.Parallel()
+
 	path := writeConfig(t, `
 global:
   pcep:
@@ -350,6 +363,8 @@ global:
 }
 
 func TestPCEPTimers_UnsetLeavesTimersNil(t *testing.T) {
+	t.Parallel()
+
 	path := writeConfig(t, validConfig)
 
 	c, err := ReadConfigFile(path)
@@ -360,6 +375,8 @@ func TestPCEPTimers_UnsetLeavesTimersNil(t *testing.T) {
 }
 
 func TestValidate_RejectsNonZeroDeadTimerWithZeroKeepalive(t *testing.T) {
+	t.Parallel()
+
 	path := writeConfig(t, `
 global:
   pcep:
@@ -383,6 +400,8 @@ global:
 }
 
 func TestValidate_RejectsDeadTimerLessThanKeepalive(t *testing.T) {
+	t.Parallel()
+
 	path := writeConfig(t, `
 global:
   pcep:
@@ -406,6 +425,8 @@ global:
 }
 
 func TestValidate_RejectsDeadTimerLessThanDefaultKeepaliveWhenKeepaliveUnset(t *testing.T) {
+	t.Parallel()
+
 	path := writeConfig(t, `
 global:
   pcep:
@@ -428,6 +449,8 @@ global:
 }
 
 func TestValidate_RejectsDeadTimerEqualToKeepalive(t *testing.T) {
+	t.Parallel()
+
 	path := writeConfig(t, `
 global:
   pcep:
@@ -451,6 +474,8 @@ global:
 }
 
 func TestValidate_RejectsKeepalive255WithDefaultedDeadTimer(t *testing.T) {
+	t.Parallel()
+
 	path := writeConfig(t, `
 global:
   pcep:
@@ -473,6 +498,8 @@ global:
 }
 
 func TestPCEPKeepaliveRange_ReadsConfiguredValues(t *testing.T) {
+	t.Parallel()
+
 	path := writeConfig(t, `
 global:
   pcep:
@@ -504,6 +531,8 @@ global:
 }
 
 func TestPCEPKeepaliveRange_UnsetLeavesFieldsNil(t *testing.T) {
+	t.Parallel()
+
 	path := writeConfig(t, validConfig)
 
 	c, err := ReadConfigFile(path)
@@ -515,6 +544,8 @@ func TestPCEPKeepaliveRange_UnsetLeavesFieldsNil(t *testing.T) {
 }
 
 func TestValidate_RejectsMinKeepaliveGreaterThanMaxKeepalive(t *testing.T) {
+	t.Parallel()
+
 	path := writeConfig(t, `
 global:
   pcep:
