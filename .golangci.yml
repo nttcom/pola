@@ -42,6 +42,7 @@ linters:
     - paralleltest
     - perfsprint
     - prealloc
+    - predeclared
     - reassign
     - revive
     - spancheck
