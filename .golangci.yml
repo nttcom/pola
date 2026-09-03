@@ -43,6 +43,7 @@ linters:
     - perfsprint
     - prealloc
     - predeclared
+    - protogetter
     - reassign
     - revive
     - spancheck

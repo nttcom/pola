@@ -635,13 +635,13 @@ var validator = map[ValidationKind]func(policy *pb.SRPolicy, asn uint32) error{
 		if policy.PeerAddr == nil {
 			return errors.New("policy.PeerAddr must not be nil")
 		}
-		if policy.Color == 0 {
+		if policy.GetColor() == 0 {
 			return errors.New("policy.Color must not be zero")
 		}
-		if policy.SrcRouterId == "" {
+		if policy.GetSrcRouterId() == "" {
 			return errors.New("policy.SrcRouterId must not be empty")
 		}
-		if policy.DstRouterId == "" {
+		if policy.GetDstRouterId() == "" {
 			return errors.New("policy.DstRouterId must not be empty")
 		}
 		return nil
@@ -651,16 +651,16 @@ var validator = map[ValidationKind]func(policy *pb.SRPolicy, asn uint32) error{
 		if policy.PeerAddr == nil {
 			return errors.New("policy.PeerAddr must not be nil")
 		}
-		if policy.Color == 0 {
+		if policy.GetColor() == 0 {
 			return errors.New("policy.Color must not be zero")
 		}
-		if len(policy.SrcAddr) == 0 {
+		if len(policy.GetSrcAddr()) == 0 {
 			return errors.New("policy.SrcAddr must not be empty")
 		}
-		if len(policy.DstAddr) == 0 {
+		if len(policy.GetDstAddr()) == 0 {
 			return errors.New("policy.DstAddr must not be empty")
 		}
-		if len(policy.SegmentList) == 0 {
+		if len(policy.GetSegmentList()) == 0 {
 			return errors.New("policy.SegmentList must not be empty")
 		}
 		return nil
@@ -670,13 +670,13 @@ var validator = map[ValidationKind]func(policy *pb.SRPolicy, asn uint32) error{
 		if policy.PeerAddr == nil {
 			return errors.New("policy.PeerAddr must not be nil")
 		}
-		if policy.Color == 0 {
+		if policy.GetColor() == 0 {
 			return errors.New("policy.Color must not be zero")
 		}
-		if len(policy.DstAddr) == 0 {
+		if len(policy.GetDstAddr()) == 0 {
 			return errors.New("policy.DstAddr must not be empty")
 		}
-		if policy.PolicyName == "" {
+		if policy.GetPolicyName() == "" {
 			return errors.New("policy.PolicyName must not be empty")
 		}
 		return nil

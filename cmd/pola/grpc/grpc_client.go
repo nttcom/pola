@@ -766,8 +766,8 @@ func initializeLsNodes(ted *table.LsTED, nodes []*pb.LsNode) {
 
 func addLsNode(ted *table.LsTED, node *pb.LsNode) error {
 	for _, link := range node.GetLinks() {
-		localNode := ted.Nodes[link.LocalRouterId]
-		remoteNode := ted.Nodes[link.RemoteRouterId]
+		localNode := ted.Nodes[link.GetLocalRouterId()]
+		remoteNode := ted.Nodes[link.GetRemoteRouterId()]
 		lsLink, err := createLsLink(localNode, remoteNode, link)
 		if err != nil {
 			return err
@@ -857,7 +857,7 @@ func createMetric(metricInfo *pb.Metric) (*table.Metric, error) {
 }
 
 func createSrv6EndXSID(srv6EndXSID *pb.Srv6EndXSID) (*table.Srv6EndXSID, error) {
-	endpointBehavior, err := safecast.Uint16(srv6EndXSID.EndpointBehavior, "SRv6 End.X SID endpoint behavior")
+	endpointBehavior, err := safecast.Uint16(srv6EndXSID.GetEndpointBehavior(), "SRv6 End.X SID endpoint behavior")
 	if err != nil {
 		return nil, err
 	}

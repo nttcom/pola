@@ -55,7 +55,7 @@ func TestStatusFromCSPFError(t *testing.T) {
 		var reason string
 		for _, d := range st.Details() {
 			if info, ok := d.(*errdetails.ErrorInfo); ok {
-				reason = info.Reason
+				reason = info.GetReason()
 			}
 		}
 		return st.Code(), reason
@@ -624,14 +624,14 @@ func TestGetSessionList_DeduplicatesNonAdjacentCapabilities(t *testing.T) {
 
 	resp, err := s.GetSessionList(context.Background(), &pb.GetSessionListRequest{})
 	require.NoError(t, err)
-	require.Len(t, resp.Sessions, 1)
-	require.Len(t, resp.Sessions[0].LocalCapabilities, 2)
+	require.Len(t, resp.GetSessions(), 1)
+	require.Len(t, resp.GetSessions()[0].GetLocalCapabilities(), 2)
 
-	sr := resp.Sessions[0].LocalCapabilities[0]
+	sr := resp.GetSessions()[0].GetLocalCapabilities()[0]
 	assert.Equal(t, pb.CapabilityType_CAPABILITY_TYPE_SR, sr.GetType())
 	assert.True(t, sr.GetSr().GetNaiSupported())
 
-	srv6 := resp.Sessions[0].LocalCapabilities[1]
+	srv6 := resp.GetSessions()[0].GetLocalCapabilities()[1]
 	assert.Equal(t, pb.CapabilityType_CAPABILITY_TYPE_SRV6, srv6.GetType())
 	assert.True(t, srv6.GetSrv6().GetNaiSupported())
 }
@@ -654,15 +654,15 @@ func TestGetSessionList_BuildsStructuredCapabilities(t *testing.T) {
 
 	resp, err := s.GetSessionList(context.Background(), &pb.GetSessionListRequest{})
 	require.NoError(t, err)
-	require.Len(t, resp.Sessions, 1)
-	require.Len(t, resp.Sessions[0].LocalCapabilities, 2)
+	require.Len(t, resp.GetSessions(), 1)
+	require.Len(t, resp.GetSessions()[0].GetLocalCapabilities(), 2)
 
-	sr := resp.Sessions[0].LocalCapabilities[0]
+	sr := resp.GetSessions()[0].GetLocalCapabilities()[0]
 	assert.Equal(t, pb.CapabilityType_CAPABILITY_TYPE_SR, sr.GetType())
 	assert.Equal(t, uint32(10), sr.GetSr().GetMsd())
 	assert.True(t, sr.GetSr().GetNaiSupported())
 
-	dbVersion := resp.Sessions[0].LocalCapabilities[1]
+	dbVersion := resp.GetSessions()[0].GetLocalCapabilities()[1]
 	assert.Equal(t, pb.CapabilityType_CAPABILITY_TYPE_LSP_DB_VERSION, dbVersion.GetType())
 	assert.Equal(t, uint64(42), dbVersion.GetLspDbVersion().GetVersionNumber())
 }
@@ -694,10 +694,10 @@ func TestGetSessionList_SkipsCapabilityOnSerializeError(t *testing.T) {
 
 	resp, err := s.GetSessionList(context.Background(), &pb.GetSessionListRequest{})
 	require.NoError(t, err)
-	require.Len(t, resp.Sessions, 1)
-	require.Len(t, resp.Sessions[0].LocalCapabilities, 1, "the failing capability must be skipped")
+	require.Len(t, resp.GetSessions(), 1)
+	require.Len(t, resp.GetSessions()[0].GetLocalCapabilities(), 1, "the failing capability must be skipped")
 
-	srv6 := resp.Sessions[0].LocalCapabilities[0]
+	srv6 := resp.GetSessions()[0].GetLocalCapabilities()[0]
 	assert.Equal(t, pb.CapabilityType_CAPABILITY_TYPE_SRV6, srv6.GetType())
 	assert.Len(t, logs.FilterByMessage("failed to serialize advertised capability"), 1)
 }
@@ -719,10 +719,10 @@ func TestGetSessionList_MultipathCapabilityDoesNotSetMsd(t *testing.T) {
 
 	resp, err := s.GetSessionList(context.Background(), &pb.GetSessionListRequest{})
 	require.NoError(t, err)
-	require.Len(t, resp.Sessions, 1)
-	require.Len(t, resp.Sessions[0].LocalCapabilities, 1)
+	require.Len(t, resp.GetSessions(), 1)
+	require.Len(t, resp.GetSessions()[0].GetLocalCapabilities(), 1)
 
-	multipath := resp.Sessions[0].LocalCapabilities[0]
+	multipath := resp.GetSessions()[0].GetLocalCapabilities()[0]
 	assert.Equal(t, pb.CapabilityType_CAPABILITY_TYPE_MULTIPATH, multipath.GetType())
 	assert.Nil(t, multipath.GetSr(), "MaxMultipaths must not be reported via the SR capability's Msd (Maximum SID Depth)")
 	assert.Equal(t, uint32(8), multipath.GetMultipath().GetMaxMultipaths())
@@ -745,9 +745,9 @@ func TestGetSessionList_ReportsLocalAndPccTimersAndSessionID(t *testing.T) {
 
 	resp, err := s.GetSessionList(context.Background(), &pb.GetSessionListRequest{})
 	require.NoError(t, err)
-	require.Len(t, resp.Sessions, 1)
+	require.Len(t, resp.GetSessions(), 1)
 
-	got := resp.Sessions[0]
+	got := resp.GetSessions()[0]
 	assert.Equal(t, pb.SessionState_SESSION_STATE_UP, got.GetState())
 	assert.Equal(t, uint32(3), got.GetLocalSessionId())
 	assert.Equal(t, uint32(7), got.GetPeerSessionId())
@@ -771,9 +771,9 @@ func TestGetSessionList_LeavesAdvertisedValuesUnsetBeforeTheOpenExchange(t *test
 
 	resp, err := s.GetSessionList(context.Background(), &pb.GetSessionListRequest{})
 	require.NoError(t, err)
-	require.Len(t, resp.Sessions, 1)
+	require.Len(t, resp.GetSessions(), 1)
 
-	got := resp.Sessions[0]
+	got := resp.GetSessions()[0]
 	assert.Equal(t, pb.SessionState_SESSION_STATE_OPEN_WAIT, got.GetState())
 	assert.Nil(t, got.LocalSessionId, "a SID of 0 must be distinguishable from an unsent Open message")
 	assert.Nil(t, got.PeerSessionId, "a SID of 0 must be distinguishable from an unreceived Open message")
@@ -796,9 +796,9 @@ func TestGetSessionList_ReportsZeroPccSessionIDAsAdvertised(t *testing.T) {
 
 	resp, err := s.GetSessionList(context.Background(), &pb.GetSessionListRequest{})
 	require.NoError(t, err)
-	require.Len(t, resp.Sessions, 1)
+	require.Len(t, resp.GetSessions(), 1)
 
-	got := resp.Sessions[0]
+	got := resp.GetSessions()[0]
 	require.NotNil(t, got.LocalSessionId, "SID 0 is valid on the wire and must be reported")
 	assert.Zero(t, got.GetLocalSessionId())
 	require.NotNil(t, got.PeerSessionId)
@@ -819,10 +819,10 @@ func TestGetSessionList_SortsSessionsByAddr(t *testing.T) {
 
 	resp, err := s.GetSessionList(context.Background(), &pb.GetSessionListRequest{})
 	require.NoError(t, err)
-	require.Len(t, resp.Sessions, 2)
+	require.Len(t, resp.GetSessions(), 2)
 
-	addr0, _ := netip.AddrFromSlice(resp.Sessions[0].GetPeerAddr())
-	addr1, _ := netip.AddrFromSlice(resp.Sessions[1].GetPeerAddr())
+	addr0, _ := netip.AddrFromSlice(resp.GetSessions()[0].GetPeerAddr())
+	addr1, _ := netip.AddrFromSlice(resp.GetSessions()[1].GetPeerAddr())
 	assert.Equal(t, "10.0.0.1", addr0.String())
 	assert.Equal(t, "10.0.0.2", addr1.String())
 }
@@ -840,8 +840,8 @@ func TestGetSessionList_FiltersBySessionAddr(t *testing.T) {
 
 	resp, err := s.GetSessionList(context.Background(), &pb.GetSessionListRequest{PeerAddr: netip.MustParseAddr("10.0.0.2").AsSlice()})
 	require.NoError(t, err)
-	require.Len(t, resp.Sessions, 1)
-	addr, _ := netip.AddrFromSlice(resp.Sessions[0].GetPeerAddr())
+	require.Len(t, resp.GetSessions(), 1)
+	addr, _ := netip.AddrFromSlice(resp.GetSessions()[0].GetPeerAddr())
 	assert.Equal(t, "10.0.0.2", addr.String())
 }
 
@@ -870,13 +870,13 @@ func TestGetSessionList_IncludeStatsControlsStatsPresence(t *testing.T) {
 
 	resp, err := s.GetSessionList(context.Background(), &pb.GetSessionListRequest{})
 	require.NoError(t, err)
-	require.Len(t, resp.Sessions, 1)
-	assert.Nil(t, resp.Sessions[0].GetStats(), "Stats must be nil unless include_stats is set")
+	require.Len(t, resp.GetSessions(), 1)
+	assert.Nil(t, resp.GetSessions()[0].GetStats(), "Stats must be nil unless include_stats is set")
 
 	resp, err = s.GetSessionList(context.Background(), &pb.GetSessionListRequest{IncludeStats: true})
 	require.NoError(t, err)
-	require.Len(t, resp.Sessions, 1)
-	assert.NotNil(t, resp.Sessions[0].GetStats(), "Stats must be populated when include_stats is set")
+	require.Len(t, resp.GetSessions(), 1)
+	assert.NotNil(t, resp.GetSessions()[0].GetStats(), "Stats must be populated when include_stats is set")
 }
 
 func TestGetSRPolicyList_FillsMissingFieldsAndOrdersDeterministically(t *testing.T) {
@@ -918,14 +918,14 @@ func TestGetSRPolicyList_FillsMissingFieldsAndOrdersDeterministically(t *testing
 
 	resp, err := s.GetSRPolicyList(context.Background(), &pb.GetSRPolicyListRequest{})
 	require.NoError(t, err)
-	require.Len(t, resp.Sessions, 2)
+	require.Len(t, resp.GetSessions(), 2)
 
 	// Verify ordering is independent of insertion order.
-	addr0, _ := netip.AddrFromSlice(resp.Sessions[0].GetPeerAddr())
+	addr0, _ := netip.AddrFromSlice(resp.GetSessions()[0].GetPeerAddr())
 	assert.Equal(t, "10.0.0.1", addr0.String())
-	require.Len(t, resp.Sessions[0].GetSrPolicies(), 1)
+	require.Len(t, resp.GetSessions()[0].GetSrPolicies(), 1)
 
-	policy := resp.Sessions[0].GetSrPolicies()[0]
+	policy := resp.GetSessions()[0].GetSrPolicies()[0]
 	assert.Equal(t, uint32(2), policy.GetPlspId())
 	assert.Equal(t, uint32(7), policy.GetLspId())
 	assert.Equal(t, pb.SRPolicyState_SR_POLICY_STATE_ACTIVE, policy.GetState())
@@ -945,9 +945,9 @@ func TestGetSRPolicyList_IncludesUnsyncedSessions(t *testing.T) {
 
 	resp, err := s.GetSRPolicyList(context.Background(), &pb.GetSRPolicyListRequest{})
 	require.NoError(t, err)
-	require.Len(t, resp.Sessions, 1, "unsynced sessions must still be reported so callers can see why policies are missing")
-	assert.Equal(t, pb.LspDbSyncState_LSP_DB_SYNC_STATE_PENDING, resp.Sessions[0].GetSyncState())
-	assert.Empty(t, resp.Sessions[0].GetSrPolicies())
+	require.Len(t, resp.GetSessions(), 1, "unsynced sessions must still be reported so callers can see why policies are missing")
+	assert.Equal(t, pb.LspDbSyncState_LSP_DB_SYNC_STATE_PENDING, resp.GetSessions()[0].GetSyncState())
+	assert.Empty(t, resp.GetSessions()[0].GetSrPolicies())
 }
 
 func TestGetSRPolicyList_FiltersBySessionAddr(t *testing.T) {
@@ -978,8 +978,8 @@ func TestGetSRPolicyList_FiltersBySessionAddr(t *testing.T) {
 
 	resp, err := s.GetSRPolicyList(context.Background(), &pb.GetSRPolicyListRequest{PeerAddr: netip.MustParseAddr("10.0.0.2").AsSlice()})
 	require.NoError(t, err)
-	require.Len(t, resp.Sessions, 1)
-	addr, _ := netip.AddrFromSlice(resp.Sessions[0].GetPeerAddr())
+	require.Len(t, resp.GetSessions(), 1)
+	addr, _ := netip.AddrFromSlice(resp.GetSessions()[0].GetPeerAddr())
 	assert.Equal(t, "10.0.0.2", addr.String())
 }
 
@@ -1077,11 +1077,11 @@ func TestGetSRPolicyList_RoundTripsTypeAndMetric(t *testing.T) {
 
 	resp, err := s.GetSRPolicyList(context.Background(), &pb.GetSRPolicyListRequest{})
 	require.NoError(t, err)
-	require.Len(t, resp.Sessions, 1)
-	require.Len(t, resp.Sessions[0].GetSrPolicies(), 2)
+	require.Len(t, resp.GetSessions(), 1)
+	require.Len(t, resp.GetSessions()[0].GetSrPolicies(), 2)
 
 	byColor := map[uint32]*pb.SRPolicy{}
-	for _, p := range resp.Sessions[0].GetSrPolicies() {
+	for _, p := range resp.GetSessions()[0].GetSrPolicies() {
 		byColor[p.GetColor()] = p
 	}
 
@@ -1431,7 +1431,7 @@ func TestGetMetricType(t *testing.T) {
 				var gotReason string
 				for _, d := range st.Details() {
 					if info, ok := d.(*errdetails.ErrorInfo); ok {
-						gotReason = info.Reason
+						gotReason = info.GetReason()
 					}
 				}
 				assert.Equal(t, ReasonInvalidRequest, gotReason)
@@ -1533,10 +1533,10 @@ func TestGetSRPolicyList_SortsBySameColorThenPlspIdThenName(t *testing.T) {
 
 	resp, err := s.GetSRPolicyList(context.Background(), &pb.GetSRPolicyListRequest{})
 	require.NoError(t, err)
-	require.Len(t, resp.Sessions, 1)
+	require.Len(t, resp.GetSessions(), 1)
 
-	gotOrder := make([]string, 0, len(resp.Sessions[0].GetSrPolicies()))
-	for _, p := range resp.Sessions[0].GetSrPolicies() {
+	gotOrder := make([]string, 0, len(resp.GetSessions()[0].GetSrPolicies()))
+	for _, p := range resp.GetSessions()[0].GetSrPolicies() {
 		gotOrder = append(gotOrder, fmt.Sprintf("%d/%d/%s", p.GetColor(), p.GetPlspId(), p.GetPolicyName()))
 	}
 	assert.Equal(t, []string{"100/1/y", "100/1/z", "100/2/a", "100/2/b", "200/1/z"}, gotOrder)
@@ -2276,7 +2276,7 @@ func TestCreateSRPolicy_StatusCodes(t *testing.T) {
 			var gotReason string
 			for _, d := range st.Details() {
 				if info, ok := d.(*errdetails.ErrorInfo); ok {
-					gotReason = info.Reason
+					gotReason = info.GetReason()
 				}
 			}
 			assert.Equal(t, tt.wantReason, gotReason, "unexpected ErrorInfo.Reason for %q", err)
@@ -2359,7 +2359,7 @@ func TestDeleteSRPolicy(t *testing.T) {
 		var gotReason string
 		for _, d := range st.Details() {
 			if info, ok := d.(*errdetails.ErrorInfo); ok {
-				gotReason = info.Reason
+				gotReason = info.GetReason()
 			}
 		}
 		assert.Equal(t, ReasonSRPolicyNotFound, gotReason)

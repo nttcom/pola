@@ -173,13 +173,13 @@ func TestShowSession_Text_CapabilityGrouping(t *testing.T) {
 		Detail: &pb.Capability_Unknown{Unknown: &pb.UnknownCapability{TlvType: 73}},
 	}
 	fixture.LocalCapabilities = []*pb.Capability{
-		fixture.LocalCapabilities[0], // STATEFUL
+		fixture.GetLocalCapabilities()[0], // STATEFUL
 		{Type: pb.CapabilityType_CAPABILITY_TYPE_SR, Detail: &pb.Capability_Sr{Sr: &pb.SrCapability{Msd: proto.Uint32(10)}}},
 		assocTypeList,
 		unknownTLV,
 	}
 	fixture.PeerCapabilities = []*pb.Capability{
-		fixture.PeerCapabilities[0], // STATEFUL
+		fixture.GetPeerCapabilities()[0], // STATEFUL
 		{Type: pb.CapabilityType_CAPABILITY_TYPE_SR, Detail: &pb.Capability_Sr{Sr: &pb.SrCapability{Msd: proto.Uint32(10)}}},
 		assocTypeList,
 		unknownTLV,

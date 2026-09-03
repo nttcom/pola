@@ -76,7 +76,7 @@ func TestDeleteSession(t *testing.T) {
 			require.NoError(t, deleteSession(&out, netip.MustParseAddr(testPeerAddr1), tt.jsonFlag, fake))
 			assert.Equal(t, tt.want, out.String())
 			require.NotNil(t, fake.deleteSessionReq)
-			assert.Equal(t, netip.MustParseAddr(testPeerAddr1).AsSlice(), fake.deleteSessionReq.PeerAddr)
+			assert.Equal(t, netip.MustParseAddr(testPeerAddr1).AsSlice(), fake.deleteSessionReq.GetPeerAddr())
 		})
 	}
 

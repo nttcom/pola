@@ -236,7 +236,7 @@ func TestAddSRPolicy(t *testing.T) {
 		}}
 		require.NoError(t, addSRPolicy(&bytes.Buffer{}, &bytes.Buffer{}, input, false, false, fake))
 		require.NotNil(t, fake.createSRPolicyReq)
-		assert.Equal(t, testRouterID1, fake.createSRPolicyReq.SrPolicy.SrcRouterId)
+		assert.Equal(t, testRouterID1, fake.createSRPolicyReq.GetSrPolicy().GetSrcRouterId())
 	})
 
 	t.Run("router ID form grpc error is translated too", func(t *testing.T) {
@@ -324,10 +324,10 @@ func TestAddSRPolicyWithEndpointAddr(t *testing.T) {
 			PolicyName:  testPolicyName,
 			Type:        pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT,
 		}
-		assert.Equal(t, want, fake.createSRPolicyReq.SrPolicy)
-		assert.Equal(t, uint32(65000), fake.createSRPolicyReq.Asn)
-		assert.True(t, fake.createSRPolicyReq.DisablePathCompute)
-		assert.True(t, fake.createSRPolicyReq.NoSidValidate)
+		assert.Equal(t, want, fake.createSRPolicyReq.GetSrPolicy())
+		assert.Equal(t, uint32(65000), fake.createSRPolicyReq.GetAsn())
+		assert.True(t, fake.createSRPolicyReq.GetDisablePathCompute())
+		assert.True(t, fake.createSRPolicyReq.GetNoSidValidate())
 	})
 
 	t.Run("grpc error propagates", func(t *testing.T) {
@@ -373,10 +373,10 @@ func TestAddSRPolicyWithRouterID(t *testing.T) {
 			Metric:      pb.MetricType_METRIC_TYPE_DELAY,
 			Waypoints:   []*pb.Waypoint{{RouterId: "0000.0aff.0003"}},
 		}
-		assert.Equal(t, want, fake.createSRPolicyReq.SrPolicy)
-		assert.Equal(t, uint32(65000), fake.createSRPolicyReq.Asn)
-		assert.True(t, fake.createSRPolicyReq.NoSidValidate)
-		assert.False(t, fake.createSRPolicyReq.DisablePathCompute)
+		assert.Equal(t, want, fake.createSRPolicyReq.GetSrPolicy())
+		assert.Equal(t, uint32(65000), fake.createSRPolicyReq.GetAsn())
+		assert.True(t, fake.createSRPolicyReq.GetNoSidValidate())
+		assert.False(t, fake.createSRPolicyReq.GetDisablePathCompute())
 	})
 
 	t.Run("explicit path builds the request", func(t *testing.T) {
@@ -393,8 +393,8 @@ func TestAddSRPolicyWithRouterID(t *testing.T) {
 		require.NoError(t, addSRPolicyWithRouterID(input, false, fake))
 
 		require.NotNil(t, fake.createSRPolicyReq)
-		assert.Equal(t, pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT, fake.createSRPolicyReq.SrPolicy.Type)
-		assert.Equal(t, []*pb.Segment{{Sid: "16003"}}, fake.createSRPolicyReq.SrPolicy.SegmentList)
+		assert.Equal(t, pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT, fake.createSRPolicyReq.GetSrPolicy().GetType())
+		assert.Equal(t, []*pb.Segment{{Sid: "16003"}}, fake.createSRPolicyReq.GetSrPolicy().GetSegmentList())
 	})
 
 	t.Run("invalid type is rejected", func(t *testing.T) {

@@ -152,7 +152,7 @@ func translateCreateSRPolicyError(err error) error {
 		if !ok {
 			continue
 		}
-		switch info.Reason {
+		switch info.GetReason() {
 		case reasonSIDValidationFailed:
 			return fmt.Errorf("%s\n  hint: use --no-sid-validate to provision without validation", msg)
 		case reasonTEDDisabled:

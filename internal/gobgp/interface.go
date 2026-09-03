@@ -342,9 +342,9 @@ func GetBGPlsNLRIs(ctx context.Context, client api.GoBgpServiceClient) ([]table.
 			return nil, fmt.Errorf("error receiving stream data: %w", err)
 		}
 
-		convertedElems, err := ConvertToTEDElem(r.Destination)
+		convertedElems, err := ConvertToTEDElem(r.GetDestination())
 		if err != nil {
-			return nil, fmt.Errorf("failed to convert path to TED element (destination: %v): %w", r.Destination, err)
+			return nil, fmt.Errorf("failed to convert path to TED element (destination: %v): %w", r.GetDestination(), err)
 		}
 
 		tedElems = append(tedElems, convertedElems...)
@@ -380,7 +380,7 @@ func ConvertToTEDElem(dst *api.Destination) ([]table.TEDElem, error) {
 
 func findLsAttribute(path *api.Path) *api.Attribute_Ls {
 	for _, pathAttr := range path.GetPattrs() {
-		if lsAttr, ok := pathAttr.Attr.(*api.Attribute_Ls); ok {
+		if lsAttr, ok := pathAttr.GetAttr().(*api.Attribute_Ls); ok {
 			return lsAttr
 		}
 	}
@@ -492,7 +492,7 @@ func formatIsisAreaID(isisArea []byte) string {
 }
 
 func getLsNode(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrNode *api.LsAttributeNode) (*table.LsNode, error) {
-	localNode := typedLinkStateNLRI.Nlri.GetNode().GetLocalNode()
+	localNode := typedLinkStateNLRI.GetNlri().GetNode().GetLocalNode()
 	lsNode := table.NewLsNode(localNode.GetAsn(), localNode.GetIgpRouterId())
 
 	lsNode.IsisAreaID = formatIsisAreaID(lsAttrNode.GetIsisArea())
@@ -513,7 +513,7 @@ func getLsLink(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrLink *api.LsAttribute
 	if typedLinkStateNLRI == nil {
 		return nil, errors.New("LS Link NLRI is nil")
 	}
-	lsLinkNLRI := typedLinkStateNLRI.Nlri.GetLink()
+	lsLinkNLRI := typedLinkStateNLRI.GetNlri().GetLink()
 	if lsLinkNLRI == nil {
 		return nil, errors.New("LS Link NLRI is not a link type")
 	}
@@ -585,7 +585,7 @@ func getLsLink(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrLink *api.LsAttribute
 }
 
 func srv6EndXSIDFromAPI(srv6EndXSID *api.LsSrv6EndXSID) (*table.Srv6EndXSID, error) {
-	endpointBehavior, err := safecast.Uint16(srv6EndXSID.EndpointBehavior, "SRv6 End.X SID endpoint behavior")
+	endpointBehavior, err := safecast.Uint16(srv6EndXSID.GetEndpointBehavior(), "SRv6 End.X SID endpoint behavior")
 	if err != nil {
 		return nil, err
 	}
@@ -595,7 +595,7 @@ func srv6EndXSIDFromAPI(srv6EndXSID *api.LsSrv6EndXSID) (*table.Srv6EndXSID, err
 	}
 	return &table.Srv6EndXSID{
 		EndpointBehavior: endpointBehavior,
-		Sids:             srv6EndXSID.Sids,
+		Sids:             srv6EndXSID.GetSids(),
 		Srv6SIDStructure: structure,
 	}, nil
 }
@@ -662,13 +662,13 @@ func getLsPrefix(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrPrefix *api.LsAttri
 	var localNodeAsn uint32
 	var prefix []string
 
-	if typedLinkStateNLRI == nil || typedLinkStateNLRI.Nlri == nil {
+	if typedLinkStateNLRI == nil || typedLinkStateNLRI.GetNlri() == nil {
 		return nil, errors.New("LS Prefix NLRI is nil")
 	}
 
 	sidIndex, hasSidIndex := algo0PrefixSID(lsAttrPrefix)
 
-	switch prefNLRI := typedLinkStateNLRI.Nlri.Nlri.(type) {
+	switch prefNLRI := typedLinkStateNLRI.GetNlri().GetNlri().(type) {
 	case *api.LsAddrPrefix_LsNLRI_PrefixV4:
 		localNodeID = prefNLRI.PrefixV4.GetLocalNode().GetIgpRouterId()
 		localNodeAsn = prefNLRI.PrefixV4.GetLocalNode().GetAsn()
@@ -722,7 +722,7 @@ func getLsSrv6SID(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrSrv6SID *api.LsAtt
 
 	srv6SIDStructure := lsAttrSrv6SID.GetSrv6SidStructure()
 	endpointBehavior := lsAttrSrv6SID.GetSrv6EndpointBehavior()
-	srv6SIDNLRI := typedLinkStateNLRI.Nlri.GetSrv6Sid()
+	srv6SIDNLRI := typedLinkStateNLRI.GetNlri().GetSrv6Sid()
 	if srv6SIDNLRI == nil {
 		return nil, errors.New("LS SRv6 SID NLRI is not an SRv6 SID type")
 	}

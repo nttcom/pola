@@ -119,11 +119,11 @@ func TestDeleteSRPolicy(t *testing.T) {
 		assert.Equal(t, "success!\n", out.String())
 
 		require.NotNil(t, fake.deleteSRPolicyReq)
-		assert.Equal(t, netip.MustParseAddr(testPeerAddr1).AsSlice(), fake.deleteSRPolicyReq.SrPolicy.PeerAddr)
-		assert.Equal(t, netip.MustParseAddr(testPeerAddr2).AsSlice(), fake.deleteSRPolicyReq.SrPolicy.DstAddr)
-		assert.Equal(t, uint32(100), fake.deleteSRPolicyReq.SrPolicy.Color)
-		assert.Equal(t, testPolicyName, fake.deleteSRPolicyReq.SrPolicy.PolicyName)
-		assert.Equal(t, uint32(65000), fake.deleteSRPolicyReq.Asn)
+		assert.Equal(t, netip.MustParseAddr(testPeerAddr1).AsSlice(), fake.deleteSRPolicyReq.GetSrPolicy().GetPeerAddr())
+		assert.Equal(t, netip.MustParseAddr(testPeerAddr2).AsSlice(), fake.deleteSRPolicyReq.GetSrPolicy().GetDstAddr())
+		assert.Equal(t, uint32(100), fake.deleteSRPolicyReq.GetSrPolicy().GetColor())
+		assert.Equal(t, testPolicyName, fake.deleteSRPolicyReq.GetSrPolicy().GetPolicyName())
+		assert.Equal(t, uint32(65000), fake.deleteSRPolicyReq.GetAsn())
 	})
 
 	t.Run("json output on success", func(t *testing.T) {
