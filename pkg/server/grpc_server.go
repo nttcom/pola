@@ -29,12 +29,10 @@ import (
 )
 
 // wrapStatusError adds context while preserving gRPC status details.
-func wrapStatusError(err error, format string, a ...any) error {
+func wrapStatusError(err error, prefix string) error {
 	if err == nil {
 		return nil
 	}
-
-	prefix := fmt.Sprintf(format, a...)
 
 	st, ok := status.FromError(err)
 	if !ok {

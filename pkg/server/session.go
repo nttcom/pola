@@ -541,7 +541,7 @@ func (ss *Session) negotiateOpen(neg *openNegotiation) error {
 			err = ss.handlePeerOpen(body, neg)
 		case pcep.MessageTypeKeepalive:
 			if !neg.peerOpened() {
-				ss.sendPCErrBestEffort(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
+				ss.sendPCErrBestEffort(pcepErrorValueInvalidOpenMessage)
 				return errors.New("received a Keepalive before the peer's Open message")
 			}
 
@@ -550,13 +550,13 @@ func (ss *Session) negotiateOpen(neg *openNegotiation) error {
 			neg.localOK = true
 		case pcep.MessageTypeError:
 			if !neg.peerOpened() {
-				ss.sendPCErrBestEffort(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
+				ss.sendPCErrBestEffort(pcepErrorValueInvalidOpenMessage)
 				return errors.New("received a PCErr before the peer's Open message")
 			}
 
 			err = ss.handleNegotiationPCErr(body, neg)
 		default:
-			ss.sendPCErrBestEffort(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
+			ss.sendPCErrBestEffort(pcepErrorValueInvalidOpenMessage)
 			return fmt.Errorf("received %s while establishing the PCEP session", messageType)
 		}
 
@@ -644,7 +644,7 @@ func (ss *Session) readNegotiationMessage(neg *openNegotiation) (pcep.MessageTyp
 	var commonHeader pcep.CommonHeader
 	if err := commonHeader.DecodeFromBytes(headerBytes); err != nil {
 		ss.stats.inc(&ss.stats.corruptRcvd)
-		ss.sendPCErrBestEffort(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
+		ss.sendPCErrBestEffort(pcepErrorValueInvalidOpenMessage)
 
 		return 0, nil, err
 	}
@@ -671,7 +671,7 @@ func (ss *Session) negotiationTimerExpired(neg *openNegotiation, detail string) 
 		timer, errorValue = "KeepWait", pcepErrorValueKeepWaitTimerExpired
 	}
 
-	ss.sendPCErrBestEffort(pcepErrorTypeSessionEstablishmentFailure, errorValue)
+	ss.sendPCErrBestEffort(errorValue)
 
 	return fmt.Errorf("%s timer expired %s", timer, detail)
 }
@@ -682,13 +682,13 @@ func (ss *Session) handlePeerOpen(body []uint8, neg *openNegotiation) error {
 	openMessage := &pcep.OpenMessage{}
 	if err := openMessage.DecodeFromBytes(body); err != nil {
 		ss.stats.inc(&ss.stats.corruptRcvd)
-		ss.sendPCErrBestEffort(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
+		ss.sendPCErrBestEffort(pcepErrorValueInvalidOpenMessage)
 
 		return err
 	}
 
 	if neg.remoteOK {
-		ss.sendPCErrBestEffort(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
+		ss.sendPCErrBestEffort(pcepErrorValueInvalidOpenMessage)
 
 		return fmt.Errorf("received a further Open (Keepalive=%d, DeadTimer=%d) after the peer's Open was already accepted",
 			openMessage.OpenObject.Keepalive, openMessage.OpenObject.Deadtime)
@@ -709,14 +709,14 @@ func (ss *Session) handlePeerOpen(body []uint8, neg *openNegotiation) error {
 	}
 
 	if neg.peerOpensRejected > 0 {
-		ss.sendPCErrBestEffort(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueSecondOpenStillUnacceptable)
+		ss.sendPCErrBestEffort(pcepErrorValueSecondOpenStillUnacceptable)
 
 		return fmt.Errorf("peer's second Open still advertises unacceptable session characteristics (Keepalive=%d, DeadTimer=%d)",
 			peerOpen.Keepalive, peerOpen.DeadTimer)
 	}
 
 	if !ss.allowNegotiation {
-		ss.sendPCErrBestEffort(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableNonNegotiable)
+		ss.sendPCErrBestEffort(pcepErrorValueUnacceptableNonNegotiable)
 
 		return fmt.Errorf("peer's session characteristics (Keepalive=%d, DeadTimer=%d) are unacceptable and non-negotiable",
 			peerOpen.Keepalive, peerOpen.DeadTimer)
@@ -769,7 +769,7 @@ func (ss *Session) handleNegotiationPCErr(body []uint8, neg *openNegotiation) er
 	pcerrMessage := &pcep.PCErrMessage{}
 	if err := pcerrMessage.DecodeFromBytes(body); err != nil {
 		ss.stats.inc(&ss.stats.corruptRcvd)
-		ss.sendPCErrBestEffort(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
+		ss.sendPCErrBestEffort(pcepErrorValueInvalidOpenMessage)
 
 		return fmt.Errorf("received malformed PCErr while establishing the PCEP session: %w", err)
 	}
@@ -802,7 +802,7 @@ func formatPCErrErrors(errObjs []*pcep.ErrorObject) string {
 // characteristics, then re-sends Pola's Open.
 func (ss *Session) adoptProposedOpen(proposedOpen *pcep.OpenObject, neg *openNegotiation) error {
 	if proposedOpen == nil {
-		ss.sendPCErrBestEffort(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableProposal)
+		ss.sendPCErrBestEffort(pcepErrorValueUnacceptableProposal)
 		return errors.New("peer rejected Pola's session characteristics without proposing acceptable ones")
 	}
 
@@ -813,14 +813,14 @@ func (ss *Session) adoptProposedOpen(proposedOpen *pcep.OpenObject, neg *openNeg
 	}
 
 	if neg.localOpenRetries >= maxLocalOpenRetries {
-		ss.sendPCErrBestEffort(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableProposal)
+		ss.sendPCErrBestEffort(pcepErrorValueUnacceptableProposal)
 
 		return fmt.Errorf("peer rejected Pola's re-sent Open with a further proposal (Keepalive=%d, DeadTimer=%d)",
 			proposed.Keepalive, proposed.DeadTimer)
 	}
 
 	if !ss.acceptableOpen(proposed) {
-		ss.sendPCErrBestEffort(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableProposal)
+		ss.sendPCErrBestEffort(pcepErrorValueUnacceptableProposal)
 
 		return fmt.Errorf("peer proposed unacceptable session characteristics (Keepalive=%d, DeadTimer=%d)",
 			proposed.Keepalive, proposed.DeadTimer)
@@ -858,8 +858,8 @@ func isDeadlineExceeded(err error) bool {
 	return errors.Is(err, os.ErrDeadlineExceeded)
 }
 
-func (ss *Session) sendPCErrBestEffort(errorType, errorValue uint8) {
-	if err := ss.SendPCErr(errorType, errorValue); err != nil {
+func (ss *Session) sendPCErrBestEffort(errorValue uint8) {
+	if err := ss.SendPCErr(pcepErrorTypeSessionEstablishmentFailure, errorValue); err != nil {
 		ss.logger.Debug("ERROR! Send PCErr Message", logger.Error(err))
 	}
 }
@@ -1167,7 +1167,7 @@ func (ss *Session) handleUnexpectedOpen(messageLength uint16, deadline time.Time
 	}
 
 	ss.logger.Debug("Received Open message while session is already Up")
-	ss.sendPCErrBestEffort(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
+	ss.sendPCErrBestEffort(pcepErrorValueInvalidOpenMessage)
 
 	return nil
 }

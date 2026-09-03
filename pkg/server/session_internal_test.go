@@ -1287,7 +1287,7 @@ func TestHandlePeerOpen_RejectedOpenDoesNotOverwriteNegotiatedTimers(t *testing.
 	var header pcep.CommonHeader
 	require.NoError(t, header.DecodeFromBytes(writes[0]))
 	assert.Equal(t, pcep.MessageTypeKeepalive, header.MessageType)
-	assertPCErr(t, writes[1], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
+	assertPCErr(t, writes[1], pcepErrorValueInvalidOpenMessage)
 }
 
 func TestHandlePeerOpen_RejectedOpenIsNotPublishedAsSessionState(t *testing.T) {
@@ -2285,6 +2285,7 @@ func TestOpen_MalformedOrUnexpectedPeerMessageIsRejected(t *testing.T) {
 			name: "PCEP version mismatch",
 			setup: func(t *testing.T, client *net.TCPConn) bool {
 				t.Helper()
+
 				header := &pcep.CommonHeader{Version: 2, MessageType: pcep.MessageTypeOpen, MessageLength: pcep.CommonHeaderLength}
 				_, err := client.Write(header.Serialize())
 				require.NoError(t, err, "failed to write header")
@@ -2298,6 +2299,7 @@ func TestOpen_MalformedOrUnexpectedPeerMessageIsRejected(t *testing.T) {
 			setup: func(t *testing.T, client *net.TCPConn) bool {
 				t.Helper()
 				writeMessage(t, client, pcep.NewKeepaliveMessage())
+
 				return false
 			},
 		},
@@ -2307,6 +2309,7 @@ func TestOpen_MalformedOrUnexpectedPeerMessageIsRejected(t *testing.T) {
 			setup: func(t *testing.T, client *net.TCPConn) bool {
 				t.Helper()
 				writeMessage(t, client, pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided))
+
 				return false
 			},
 		},
@@ -2314,6 +2317,7 @@ func TestOpen_MalformedOrUnexpectedPeerMessageIsRejected(t *testing.T) {
 			name: "MessageLength below CommonHeaderLength",
 			setup: func(t *testing.T, client *net.TCPConn) bool {
 				t.Helper()
+
 				header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeOpen, MessageLength: pcep.CommonHeaderLength - 1}
 				_, err := client.Write(header.Serialize())
 				require.NoError(t, err, "failed to write header")
@@ -2325,6 +2329,7 @@ func TestOpen_MalformedOrUnexpectedPeerMessageIsRejected(t *testing.T) {
 			name: "connection closed before the Open object body is read",
 			setup: func(t *testing.T, client *net.TCPConn) bool {
 				t.Helper()
+
 				header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeOpen, MessageLength: pcep.CommonHeaderLength + 10}
 				_, err := client.Write(header.Serialize())
 				require.NoError(t, err, "failed to write header")
@@ -2337,6 +2342,7 @@ func TestOpen_MalformedOrUnexpectedPeerMessageIsRejected(t *testing.T) {
 			name: "Open object has the wrong ObjectClass",
 			setup: func(t *testing.T, client *net.TCPConn) bool {
 				t.Helper()
+
 				body := pcep.NewCommonObjectHeader(pcep.ObjectClassClose, pcep.ObjectTypeOpenOpen, pcep.CommonHeaderLength).Serialize()
 				header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeOpen, MessageLength: pcep.CommonHeaderLength + uint16(len(body))}
 				_, err := client.Write(append(header.Serialize(), body...))
@@ -2434,8 +2440,8 @@ func negotiatingSessionWithLogger(t *testing.T, conn net.Conn, lg *logger.Logger
 	return ss
 }
 
-// assertPCErr decodes write and asserts it is a PCErr carrying errorType/errorValue.
-func assertPCErr(t *testing.T, write []byte, errorType, errorValue uint8) {
+// assertPCErr decodes write and asserts it is a session-establishment-failure PCErr carrying errorValue.
+func assertPCErr(t *testing.T, write []byte, errorValue uint8) {
 	t.Helper()
 
 	var header pcep.CommonHeader
@@ -2445,7 +2451,7 @@ func assertPCErr(t *testing.T, write []byte, errorType, errorValue uint8) {
 	pcerrMessage := &pcep.PCErrMessage{}
 	require.NoError(t, pcerrMessage.DecodeFromBytes(write[pcep.CommonHeaderLength:]))
 	require.Len(t, pcerrMessage.Errors, 1)
-	assert.Equal(t, errorType, pcerrMessage.Errors[0].ErrorType)
+	assert.Equal(t, pcepErrorTypeSessionEstablishmentFailure, pcerrMessage.Errors[0].ErrorType)
 	assert.Equal(t, errorValue, pcerrMessage.Errors[0].ErrorValue)
 }
 
@@ -2683,7 +2689,7 @@ func TestNegotiateOpen_TimerExpiryFollowsTheDerivedState(t *testing.T) {
 
 			writes := conn.writes()
 			require.Len(t, writes, 1)
-			assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, tc.wantErrorValue)
+			assertPCErr(t, writes[0], tc.wantErrorValue)
 		})
 	}
 }
@@ -2706,7 +2712,7 @@ func TestNegotiateOpen_KeepWaitExpiryAfterOwnProposalReportsErrorValue7(t *testi
 
 	writes := conn.writes()
 	require.Len(t, writes, 3, "expected the acknowledging Keepalive, the re-sent Open, and the KeepWait PCErr")
-	assertPCErr(t, writes[2], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueKeepWaitTimerExpired)
+	assertPCErr(t, writes[2], pcepErrorValueKeepWaitTimerExpired)
 }
 
 func TestNegotiateOpen_PCErr14SelectsTheKeepWaitTimer(t *testing.T) {
@@ -2929,7 +2935,7 @@ func TestNegotiateOpen_MalformedCommonHeaderIsRejectedWithErrorValue1(t *testing
 
 	writes := conn.writes()
 	require.Len(t, writes, 1)
-	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
+	assertPCErr(t, writes[0], pcepErrorValueInvalidOpenMessage)
 }
 
 func TestNegotiateOpen_PeerOpenDecodeErrorIsRejectedWithErrorValue1(t *testing.T) {
@@ -2946,7 +2952,7 @@ func TestNegotiateOpen_PeerOpenDecodeErrorIsRejectedWithErrorValue1(t *testing.T
 
 	writes := conn.writes()
 	require.Len(t, writes, 1)
-	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
+	assertPCErr(t, writes[0], pcepErrorValueInvalidOpenMessage)
 }
 
 func TestNegotiateOpen_ProposeAcceptableOpenSendFailure(t *testing.T) {
@@ -2989,7 +2995,7 @@ func TestNegotiateOpen_SecondOpenAfterAnAcceptableOpenIsRejected(t *testing.T) {
 	var header pcep.CommonHeader
 	require.NoError(t, header.DecodeFromBytes(writes[0]))
 	assert.Equal(t, pcep.MessageTypeKeepalive, header.MessageType)
-	assertPCErr(t, writes[1], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
+	assertPCErr(t, writes[1], pcepErrorValueInvalidOpenMessage)
 }
 
 func TestNegotiateOpen_SecondPeerOpenStillUnacceptableReportsErrorValue5(t *testing.T) {
@@ -3010,8 +3016,8 @@ func TestNegotiateOpen_SecondPeerOpenStillUnacceptableReportsErrorValue5(t *test
 
 	writes := conn.writes()
 	require.Len(t, writes, 2)
-	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableNegotiable)
-	assertPCErr(t, writes[1], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueSecondOpenStillUnacceptable)
+	assertPCErr(t, writes[0], pcepErrorValueUnacceptableNegotiable)
+	assertPCErr(t, writes[1], pcepErrorValueSecondOpenStillUnacceptable)
 }
 
 func TestNegotiateOpen_ZeroKeepaliveWithNonzeroDeadTimerIsAccepted(t *testing.T) {
@@ -3050,7 +3056,7 @@ func TestNegotiateOpen_UnacceptableOpenIsRejectedWithErrorValue3WhenNegotiationI
 
 	writes := conn.writes()
 	require.Len(t, writes, 1)
-	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableNonNegotiable)
+	assertPCErr(t, writes[0], pcepErrorValueUnacceptableNonNegotiable)
 }
 
 func TestNegotiateOpen_PCErrBeforeThePeersOpenIsRejected(t *testing.T) {
@@ -3072,7 +3078,7 @@ func TestNegotiateOpen_PCErrBeforeThePeersOpenIsRejected(t *testing.T) {
 
 	writes := conn.writes()
 	require.Len(t, writes, 1)
-	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
+	assertPCErr(t, writes[0], pcepErrorValueInvalidOpenMessage)
 }
 
 func TestNegotiateOpen_KeepWaitRenegotiationSpendsTheLocalOpenRetryBudget(t *testing.T) {
@@ -3128,8 +3134,8 @@ func TestNegotiateOpen_OpenWaitAndKeepWaitShareOneLocalOpenRetryBudget(t *testin
 
 	writes := conn.writes()
 	require.Len(t, writes, 4)
-	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableNegotiable)
-	assertPCErr(t, writes[3], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableProposal)
+	assertPCErr(t, writes[0], pcepErrorValueUnacceptableNegotiable)
+	assertPCErr(t, writes[3], pcepErrorValueUnacceptableProposal)
 }
 
 func TestNegotiateOpen_SimultaneousRejectionInterleavesPCErrBeforeRevisedOpen(t *testing.T) {
@@ -3201,7 +3207,7 @@ func TestNegotiateOpen_RevisedOpenMayArriveBeforeTheAcknowledgmentOfPolasOpen(t 
 
 	writes := conn.writes()
 	require.Len(t, writes, 2)
-	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableNegotiable)
+	assertPCErr(t, writes[0], pcepErrorValueUnacceptableNegotiable)
 
 	var header pcep.CommonHeader
 	require.NoError(t, header.DecodeFromBytes(writes[1]))
@@ -3247,7 +3253,7 @@ func TestHandleNegotiationPCErr_MalformedPCErrIsRejectedWithErrorValue1(t *testi
 
 	writes := conn.writes()
 	require.Len(t, writes, 1)
-	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
+	assertPCErr(t, writes[0], pcepErrorValueInvalidOpenMessage)
 }
 
 func TestHandleNegotiationPCErr_NonNegotiableRejectionIsReportedAsIs(t *testing.T) {
@@ -3319,7 +3325,7 @@ func TestAdoptProposedOpen_MissingOpenObjectIsRejected(t *testing.T) {
 
 	writes := conn.writes()
 	require.Len(t, writes, 1)
-	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableProposal)
+	assertPCErr(t, writes[0], pcepErrorValueUnacceptableProposal)
 }
 
 func TestAdoptProposedOpen_UnacceptableProposalIsRejected(t *testing.T) {
@@ -3335,7 +3341,7 @@ func TestAdoptProposedOpen_UnacceptableProposalIsRejected(t *testing.T) {
 
 	writes := conn.writes()
 	require.Len(t, writes, 1)
-	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableProposal)
+	assertPCErr(t, writes[0], pcepErrorValueUnacceptableProposal)
 }
 
 func TestAdoptProposedOpen_ProposalOutsideTheConfiguredKeepaliveRangeIsRejectedWithErrorValue6(t *testing.T) {
@@ -3352,7 +3358,7 @@ func TestAdoptProposedOpen_ProposalOutsideTheConfiguredKeepaliveRangeIsRejectedW
 
 	writes := conn.writes()
 	require.Len(t, writes, 1)
-	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableProposal)
+	assertPCErr(t, writes[0], pcepErrorValueUnacceptableProposal)
 }
 
 func TestAdoptProposedOpen_AcceptsProposalWithinTheConfiguredKeepaliveRange(t *testing.T) {
@@ -3380,7 +3386,7 @@ func TestAdoptProposedOpen_ExhaustedBudgetIsRejectedWithErrorValue6(t *testing.T
 
 	writes := conn.writes()
 	require.Len(t, writes, 1)
-	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableProposal)
+	assertPCErr(t, writes[0], pcepErrorValueUnacceptableProposal)
 }
 
 func TestAdoptProposedOpen_SendOpenFailureDoesNotSpendTheBudget(t *testing.T) {
@@ -3761,6 +3767,7 @@ func TestReceivePCEPMessage_Errors(t *testing.T) {
 			setup: func(t *testing.T, client *net.TCPConn) bool {
 				t.Helper()
 				require.NoError(t, client.Close(), "failed to close client connection")
+
 				return true
 			},
 		},
@@ -3768,6 +3775,7 @@ func TestReceivePCEPMessage_Errors(t *testing.T) {
 			name: "PCRpt with a malformed StateReport object",
 			setup: func(t *testing.T, client *net.TCPConn) bool {
 				t.Helper()
+
 				body := pcep.NewCommonObjectHeader(pcep.ObjectClassLSP, pcep.ObjectTypeLSPLSP, pcep.CommonHeaderLength).Serialize()
 				writeRawPCEPMessage(t, client, pcep.MessageTypeReport, body)
 
@@ -3778,6 +3786,7 @@ func TestReceivePCEPMessage_Errors(t *testing.T) {
 			name: "connection closed before a PCRpt body is read",
 			setup: func(t *testing.T, client *net.TCPConn) bool {
 				t.Helper()
+
 				header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeReport, MessageLength: pcep.CommonHeaderLength + 8}
 				_, err := client.Write(header.Serialize())
 				require.NoError(t, err, "failed to write header")
@@ -3791,6 +3800,7 @@ func TestReceivePCEPMessage_Errors(t *testing.T) {
 			setup: func(t *testing.T, client *net.TCPConn) bool {
 				t.Helper()
 				writeRawPCEPMessage(t, client, pcep.MessageTypeError, nil)
+
 				return false
 			},
 		},
@@ -3798,6 +3808,7 @@ func TestReceivePCEPMessage_Errors(t *testing.T) {
 			name: "connection closed before a PCErr body is read",
 			setup: func(t *testing.T, client *net.TCPConn) bool {
 				t.Helper()
+
 				header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeError, MessageLength: pcep.CommonHeaderLength + 8}
 				_, err := client.Write(header.Serialize())
 				require.NoError(t, err, "failed to write header")
@@ -3811,6 +3822,7 @@ func TestReceivePCEPMessage_Errors(t *testing.T) {
 			setup: func(t *testing.T, client *net.TCPConn) bool {
 				t.Helper()
 				writeRawPCEPMessage(t, client, pcep.MessageTypeClose, nil)
+
 				return false
 			},
 		},
@@ -3818,6 +3830,7 @@ func TestReceivePCEPMessage_Errors(t *testing.T) {
 			name: "connection closed before a Close body is read",
 			setup: func(t *testing.T, client *net.TCPConn) bool {
 				t.Helper()
+
 				header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeClose, MessageLength: pcep.CommonHeaderLength + 8}
 				_, err := client.Write(header.Serialize())
 				require.NoError(t, err, "failed to write header")

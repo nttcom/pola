@@ -1141,13 +1141,15 @@ func (f *fakeGoBGPClient) WatchEvent(_ context.Context, _ *api.WatchEventRequest
 	return nil, f.watchEventErr
 }
 
-func testNodeDestination(t *testing.T, asn uint32, routerID, hostname string) *api.Destination {
+func testNodeDestination(t *testing.T, routerID, hostname string) *api.Destination {
 	t.Helper()
+
+	const testASN = 65000
 
 	nlri := &api.LsAddrPrefix{
 		Type: api.LsNLRIType_LS_NLRI_TYPE_NODE,
 		Nlri: &api.LsAddrPrefix_LsNLRI{Nlri: &api.LsAddrPrefix_LsNLRI_Node{
-			Node: &api.LsNodeNLRI{LocalNode: &api.LsNodeDescriptor{Asn: asn, IgpRouterId: routerID}},
+			Node: &api.LsNodeNLRI{LocalNode: &api.LsNodeDescriptor{Asn: testASN, IgpRouterId: routerID}},
 		}},
 	}
 
@@ -1165,8 +1167,8 @@ func TestGetBGPlsNLRIs(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 		client := &fakeGoBGPClient{listPathResp: []*api.ListPathResponse{
-			{Destination: testNodeDestination(t, 65000, testRouterID1, "r1")},
-			{Destination: testNodeDestination(t, 65000, testRouterID2, "r2")},
+			{Destination: testNodeDestination(t, testRouterID1, "r1")},
+			{Destination: testNodeDestination(t, testRouterID2, "r2")},
 		}}
 		ctx := context.Background()
 
@@ -1289,7 +1291,7 @@ func TestInitialSync(t *testing.T) {
 	t.Run("success delivers the initial TED", func(t *testing.T) {
 		t.Parallel()
 		client := &fakeGoBGPClient{listPathResp: []*api.ListPathResponse{
-			{Destination: testNodeDestination(t, 65000, testRouterID1, "r1")},
+			{Destination: testNodeDestination(t, testRouterID1, "r1")},
 		}}
 		tedChan := make(chan []table.TEDElem, 1)
 
@@ -1316,7 +1318,7 @@ func TestInitialSync(t *testing.T) {
 	t.Run("returns without blocking when the context ends before delivery", func(t *testing.T) {
 		t.Parallel()
 		client := &fakeGoBGPClient{listPathResp: []*api.ListPathResponse{
-			{Destination: testNodeDestination(t, 65000, testRouterID1, "r1")},
+			{Destination: testNodeDestination(t, testRouterID1, "r1")},
 		}}
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
@@ -1859,16 +1861,16 @@ func testMonitorBGPLsEventsReconnectsAfterStreamEnd(t *testing.T) {
 	t.Parallel()
 
 	respInitial := []*api.ListPathResponse{
-		{Destination: testNodeDestination(t, 65000, testRouterID1, "r0")},
+		{Destination: testNodeDestination(t, testRouterID1, "r0")},
 	}
 	respStream1 := []*api.ListPathResponse{
-		{Destination: testNodeDestination(t, 65000, testRouterID1, "r1")},
-		{Destination: testNodeDestination(t, 65000, testRouterID2, "r2")},
+		{Destination: testNodeDestination(t, testRouterID1, "r1")},
+		{Destination: testNodeDestination(t, testRouterID2, "r2")},
 	}
 	respStream2 := []*api.ListPathResponse{
-		{Destination: testNodeDestination(t, 65000, testRouterID1, "r1")},
-		{Destination: testNodeDestination(t, 65000, testRouterID2, "r2")},
-		{Destination: testNodeDestination(t, 65000, "0000.0000.0003", "r3")},
+		{Destination: testNodeDestination(t, testRouterID1, "r1")},
+		{Destination: testNodeDestination(t, testRouterID2, "r2")},
+		{Destination: testNodeDestination(t, "0000.0000.0003", "r3")},
 	}
 	tableEvent := &api.WatchEventResponse{Event: &api.WatchEventResponse_Table{Table: &api.WatchEventResponse_TableEvent{}}}
 
@@ -1949,7 +1951,7 @@ func testMonitorBGPLsEventsContextCanceled(t *testing.T) {
 
 	host, port := startTestGoBGPServer(t, &testGoBGPServer{
 		listPathResp: []*api.ListPathResponse{
-			{Destination: testNodeDestination(t, 65000, testRouterID1, "r1")},
+			{Destination: testNodeDestination(t, testRouterID1, "r1")},
 		},
 		watchEventHold: 5 * time.Second, // keep the stream open until cancellation
 	})
@@ -1983,7 +1985,7 @@ func testMonitorBGPLsEventsDebouncedFetch(t *testing.T) {
 
 	server := &testGoBGPServer{
 		listPathResp: []*api.ListPathResponse{
-			{Destination: testNodeDestination(t, 65000, testRouterID1, "r1")},
+			{Destination: testNodeDestination(t, testRouterID1, "r1")},
 		},
 		watchEvents: []*api.WatchEventResponse{
 			{Event: &api.WatchEventResponse_Table{Table: &api.WatchEventResponse_TableEvent{}}},
@@ -2034,7 +2036,7 @@ func testMonitorBGPLsEventsReestablishesStream(t *testing.T) {
 
 	server := &testGoBGPServer{
 		listPathResp: []*api.ListPathResponse{
-			{Destination: testNodeDestination(t, 65000, testRouterID1, "r1")},
+			{Destination: testNodeDestination(t, testRouterID1, "r1")},
 		},
 		watchEvents: []*api.WatchEventResponse{
 			{Event: &api.WatchEventResponse_Table{Table: &api.WatchEventResponse_TableEvent{}}},
@@ -2088,16 +2090,16 @@ func testMonitorBGPLsEventsResyncsAfterReconnect(t *testing.T) {
 	t.Parallel()
 
 	respInitial := []*api.ListPathResponse{
-		{Destination: testNodeDestination(t, 65000, testRouterID1, "r0")},
+		{Destination: testNodeDestination(t, testRouterID1, "r0")},
 	}
 	respStream1 := []*api.ListPathResponse{
-		{Destination: testNodeDestination(t, 65000, testRouterID1, "r1")},
-		{Destination: testNodeDestination(t, 65000, testRouterID2, "r2")},
+		{Destination: testNodeDestination(t, testRouterID1, "r1")},
+		{Destination: testNodeDestination(t, testRouterID2, "r2")},
 	}
 	respResync := []*api.ListPathResponse{
-		{Destination: testNodeDestination(t, 65000, testRouterID1, "r1")},
-		{Destination: testNodeDestination(t, 65000, testRouterID2, "r2")},
-		{Destination: testNodeDestination(t, 65000, "0000.0000.0003", "r3")},
+		{Destination: testNodeDestination(t, testRouterID1, "r1")},
+		{Destination: testNodeDestination(t, testRouterID2, "r2")},
+		{Destination: testNodeDestination(t, "0000.0000.0003", "r3")},
 	}
 	tableEvent := &api.WatchEventResponse{Event: &api.WatchEventResponse_Table{Table: &api.WatchEventResponse_TableEvent{}}}
 

@@ -35,12 +35,12 @@ func cspfInternalTestMPLSSeg(sidIndex uint32) table.Segment {
 	return table.NewSegmentSRMPLS(16000 + sidIndex)
 }
 
-func cspfInternalTestSRv6Node(routerID, sid string) *table.LsNode {
+func cspfInternalTestSRv6Node() *table.LsNode {
 	return &table.LsNode{
-		RouterID: routerID,
+		RouterID: "A",
 		SRv6SIDs: []*table.LsSrv6SID{
 			{
-				Sids:             []string{sid},
+				Sids:             []string{"2001:db8::a"},
 				EndpointBehavior: table.EndpointBehavior{Behavior: table.BehaviorEND},
 				SIDStructure:     table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
 			},
@@ -62,11 +62,11 @@ func cspfInternalTestNodeWithoutSID(routerID string) *table.LsNode {
 	return &table.LsNode{RouterID: routerID}
 }
 
-func cspfInternalTestConnect(local, remote *table.LsNode, igpCost uint32) {
+func cspfInternalTestConnect(local, remote *table.LsNode) {
 	local.Links = append(local.Links, &table.LsLink{
 		LocalNode:  local,
 		RemoteNode: remote,
-		Metrics:    []*table.Metric{table.NewMetric(table.IGPMetric, igpCost)},
+		Metrics:    []*table.Metric{table.NewMetric(table.IGPMetric, 1)},
 	})
 }
 
@@ -93,7 +93,7 @@ func TestCSPF_Errors(t *testing.T) {
 			name: "requested metric is not defined on a traversed link",
 			buildTED: func() *table.LsTED {
 				a, b := cspfInternalTestSRMPLSNode("A", 0), cspfInternalTestSRMPLSNode("B", 1)
-				cspfInternalTestConnect(a, b, 1)
+				cspfInternalTestConnect(a, b)
 
 				return cspfInternalTestBuildTED(a, b)
 			},
@@ -104,7 +104,7 @@ func TestCSPF_Errors(t *testing.T) {
 			name: "source node has no Node SID",
 			buildTED: func() *table.LsTED {
 				a, b := cspfInternalTestNodeWithoutSID("A"), cspfInternalTestSRMPLSNode("B", 0)
-				cspfInternalTestConnect(a, b, 1)
+				cspfInternalTestConnect(a, b)
 
 				return cspfInternalTestBuildTED(a, b)
 			},
@@ -115,7 +115,7 @@ func TestCSPF_Errors(t *testing.T) {
 			name: "a newly discovered neighbor has no Node SID",
 			buildTED: func() *table.LsTED {
 				a, b := cspfInternalTestSRMPLSNode("A", 0), cspfInternalTestNodeWithoutSID("B")
-				cspfInternalTestConnect(a, b, 1)
+				cspfInternalTestConnect(a, b)
 
 				return cspfInternalTestBuildTED(a, b)
 			},
@@ -168,8 +168,8 @@ func TestCSPF_Errors(t *testing.T) {
 				// GHOST is deliberately left out of ted.Nodes while remaining on the links,
 				// simulating a TED inconsistency.
 				a, ghost, d := cspfInternalTestSRMPLSNode("A", 0), cspfInternalTestSRMPLSNode(cspfInternalTestGhostRouterID, 1), cspfInternalTestSRMPLSNode("D", 3)
-				cspfInternalTestConnect(a, ghost, 1)
-				cspfInternalTestConnect(ghost, d, 1)
+				cspfInternalTestConnect(a, ghost)
+				cspfInternalTestConnect(ghost, d)
 
 				return cspfInternalTestBuildTED(a, d)
 			},
@@ -206,7 +206,7 @@ func TestCSPF_TopologyLimitationClassification(t *testing.T) {
 
 	linear := func() *table.LsTED {
 		a, b := cspfInternalTestSRMPLSNode("A", 0), cspfInternalTestSRMPLSNode("B", 1)
-		cspfInternalTestConnect(a, b, 1)
+		cspfInternalTestConnect(a, b)
 
 		return cspfInternalTestBuildTED(a, b)
 	}
@@ -223,7 +223,7 @@ func TestCSPF_TopologyLimitationClassification(t *testing.T) {
 		{"a metric absent from a traversed link", func() error { _, err := CSPF("A", "B", table.TEMetric, linear()); return err }, reasonMetricNotCarried},
 		{"a node without a Node SID", func() error {
 			a, b := cspfInternalTestNodeWithoutSID("A"), cspfInternalTestSRMPLSNode("B", 0)
-			cspfInternalTestConnect(a, b, 1)
+			cspfInternalTestConnect(a, b)
 			_, err := CSPF("A", "B", table.IGPMetric, cspfInternalTestBuildTED(a, b))
 
 			return err
@@ -270,7 +270,7 @@ func TestBuildWaypointSegment(t *testing.T) {
 		},
 		{
 			name:        "empty SID falls back to the node's default SRv6 segment",
-			node:        cspfInternalTestSRv6Node("A", "2001:db8::a"),
+			node:        cspfInternalTestSRv6Node(),
 			explicitSID: "",
 			want:        cspfInternalTestSRv6DefaultSeg("2001:db8::a"),
 		},
@@ -283,7 +283,7 @@ func TestBuildWaypointSegment(t *testing.T) {
 		},
 		{
 			name:        "explicit SID overrides the SID but keeps the node's SID structure",
-			node:        cspfInternalTestSRv6Node("A", "2001:db8::a"),
+			node:        cspfInternalTestSRv6Node(),
 			explicitSID: cspfInternalTestOverrideSID,
 			want: table.SegmentSRv6{
 				Sid:       netip.MustParseAddr(cspfInternalTestOverrideSID),
@@ -327,13 +327,13 @@ func TestBuildWaypointSegment(t *testing.T) {
 		},
 		{
 			name:        "IPv4 explicit SID is rejected",
-			node:        cspfInternalTestSRv6Node("A", "2001:db8::a"),
+			node:        cspfInternalTestSRv6Node(),
 			explicitSID: "10.0.0.1",
 			wantErr:     `explicit SID "10.0.0.1" must be an IPv6 SRv6 SID`,
 		},
 		{
 			name:        "IPv4-mapped explicit SID is rejected",
-			node:        cspfInternalTestSRv6Node("A", "2001:db8::a"),
+			node:        cspfInternalTestSRv6Node(),
 			explicitSID: "::ffff:10.0.0.1",
 			wantErr:     `explicit SID "::ffff:10.0.0.1" must be an IPv6 SRv6 SID`,
 		},

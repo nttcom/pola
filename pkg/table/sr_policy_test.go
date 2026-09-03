@@ -30,8 +30,8 @@ func newTestSegmentSRMPLS(sid uint32, local, remote string) table.SegmentSRMPLS 
 	return seg
 }
 
-func newTestSegmentSRv6(sid, local, remote string) table.SegmentSRv6 {
-	seg := table.NewSegmentSRv6(netip.MustParseAddr(sid))
+func newTestSegmentSRv6(local, remote string) table.SegmentSRv6 {
+	seg := table.NewSegmentSRv6(netip.MustParseAddr(testSRv6Addr))
 	if local != "" {
 		seg.LocalAddr = netip.MustParseAddr(local)
 	}
@@ -102,32 +102,32 @@ func TestSegmentsEqual(t *testing.T) {
 		},
 		{
 			name: "SRv6 same SID and NAI",
-			a:    newTestSegmentSRv6("fc00:0:1::", "2001:db8::1", ""),
-			b:    newTestSegmentSRv6("fc00:0:1::", "2001:db8::1", ""),
+			a:    newTestSegmentSRv6("2001:db8::1", ""),
+			b:    newTestSegmentSRv6("2001:db8::1", ""),
 			want: true,
 		},
 		{
 			name: "SRv6 same SID with different NAI",
-			a:    newTestSegmentSRv6("fc00:0:1::", "2001:db8::1", ""),
-			b:    newTestSegmentSRv6("fc00:0:1::", "2001:db8::2", ""),
+			a:    newTestSegmentSRv6("2001:db8::1", ""),
+			b:    newTestSegmentSRv6("2001:db8::2", ""),
 			want: false,
 		},
 		{
 			name: "SRv6 same SID with different USid",
-			a:    func() table.SegmentSRv6 { s := newTestSegmentSRv6("fc00:0:1::", "", ""); s.USid = false; return s }(),
-			b:    func() table.SegmentSRv6 { s := newTestSegmentSRv6("fc00:0:1::", "", ""); s.USid = true; return s }(),
+			a:    func() table.SegmentSRv6 { s := newTestSegmentSRv6("", ""); s.USid = false; return s }(),
+			b:    func() table.SegmentSRv6 { s := newTestSegmentSRv6("", ""); s.USid = true; return s }(),
 			want: false,
 		},
 		{
 			name: "SRv6 same SID with different Structure",
 			a: func() table.SegmentSRv6 {
-				s := newTestSegmentSRv6("fc00:0:1::", "", "")
+				s := newTestSegmentSRv6("", "")
 				s.Structure = table.SIDStructureBytes{1, 2, 3, 4}
 
 				return s
 			}(),
 			b: func() table.SegmentSRv6 {
-				s := newTestSegmentSRv6("fc00:0:1::", "", "")
+				s := newTestSegmentSRv6("", "")
 				s.Structure = table.SIDStructureBytes{5, 6, 7, 8}
 
 				return s
@@ -137,7 +137,7 @@ func TestSegmentsEqual(t *testing.T) {
 		{
 			name: "different segment types",
 			a:    newTestSegmentSRMPLS(16001, "", ""),
-			b:    newTestSegmentSRv6("fc00:0:1::", "2001:db8::1", ""),
+			b:    newTestSegmentSRv6("2001:db8::1", ""),
 			want: false,
 		},
 	}
@@ -162,7 +162,7 @@ func TestSegmentsEqual_UnknownType(t *testing.T) {
 		a    table.Segment
 		b    table.Segment
 	}{
-		{"SRv6 vs SR-MPLS", newTestSegmentSRv6("fc00:0:1::", "", ""), newTestSegmentSRMPLS(16001, "", "")},
+		{"SRv6 vs SR-MPLS", newTestSegmentSRv6("", ""), newTestSegmentSRMPLS(16001, "", "")},
 		{"both unknown", fakeUnknownSidSegment{}, fakeUnknownSidSegment{}},
 	}
 	for _, tt := range tests {
@@ -317,13 +317,13 @@ func TestSegmentSRv6_Behavior(t *testing.T) {
 	}{
 		{
 			name: "no LocalAddr",
-			seg:  newTestSegmentSRv6("fc00:0:1::", "", ""),
+			seg:  newTestSegmentSRv6("", ""),
 			want: table.BehaviorOpaque,
 		},
 		{
 			name: "uSID with remote address is uA",
 			seg: func() table.SegmentSRv6 {
-				s := newTestSegmentSRv6("fc00:0:1::", "2001:db8::1", "2001:db8::2")
+				s := newTestSegmentSRv6("2001:db8::1", "2001:db8::2")
 				s.USid = true
 
 				return s
@@ -333,7 +333,7 @@ func TestSegmentSRv6_Behavior(t *testing.T) {
 		{
 			name: "uSID without remote address is uN",
 			seg: func() table.SegmentSRv6 {
-				s := newTestSegmentSRv6("fc00:0:1::", "2001:db8::1", "")
+				s := newTestSegmentSRv6("2001:db8::1", "")
 				s.USid = true
 
 				return s
@@ -342,12 +342,12 @@ func TestSegmentSRv6_Behavior(t *testing.T) {
 		},
 		{
 			name: "non-uSID with remote address is End.X",
-			seg:  newTestSegmentSRv6("fc00:0:1::", "2001:db8::1", "2001:db8::2"),
+			seg:  newTestSegmentSRv6("2001:db8::1", "2001:db8::2"),
 			want: table.BehaviorENDX,
 		},
 		{
 			name: "non-uSID without remote address is End",
-			seg:  newTestSegmentSRv6("fc00:0:1::", "2001:db8::1", ""),
+			seg:  newTestSegmentSRv6("2001:db8::1", ""),
 			want: table.BehaviorEND,
 		},
 	}

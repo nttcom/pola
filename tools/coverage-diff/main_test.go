@@ -322,11 +322,11 @@ func assertProfileResult(t *testing.T, res *result, wantTotal, wantCovered int, 
 }
 
 // withSourceFile creates a temporary source file and changes the working directory.
-func withSourceFile(t *testing.T, name, src string) {
+func withSourceFile(t *testing.T, src string) {
 	t.Helper()
 
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(src), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -336,7 +336,7 @@ func withSourceFile(t *testing.T, name, src string) {
 //nolint:paralleltest // withSourceFile calls t.Chdir, which cannot be combined with t.Parallel.
 func TestParseProfileSkipsDeclarationAndClosingBraceLines(t *testing.T) {
 	src := "package p\n\nfunc Foo(x int) int {\n\tif x < 0 {\n\t\treturn 0\n\t}\n\treturn x\n}\n"
-	withSourceFile(t, "a.go", src)
+	withSourceFile(t, src)
 
 	profile := "mode: set\n" +
 		module + "/a.go:3.21,4.11 1 1\n" +
@@ -363,7 +363,7 @@ func TestParseProfileSkipsDeclarationAndClosingBraceLines(t *testing.T) {
 //nolint:paralleltest // withSourceFile calls t.Chdir, which cannot be combined with t.Parallel.
 func TestParseProfileSkipsCommentOnlyInteriorLines(t *testing.T) {
 	src := "package p\n\nfunc Foo(x int) int {\n\t// entry comment\n\tif x < 0 {\n\t\treturn 0\n\t}\n\treturn x\n}\n"
-	withSourceFile(t, "a.go", src)
+	withSourceFile(t, src)
 
 	profile := "mode: set\n" +
 		module + "/a.go:3.21,5.11 1 0\n" +
@@ -390,7 +390,7 @@ func TestParseProfileSkipsCommentOnlyInteriorLines(t *testing.T) {
 //nolint:paralleltest // withSourceFile calls t.Chdir, which cannot be combined with t.Parallel.
 func TestParseProfileHandlesMultilineRawString(t *testing.T) {
 	src := "package p\n\nfunc Foo() string {\n\ts := `\na\n`\n\treturn s\n}\n"
-	withSourceFile(t, "a.go", src)
+	withSourceFile(t, src)
 
 	profile := "mode: set\n" + module + "/a.go:4.2,6.2 1 1\n"
 	changed := changedLines{"a.go": {4: true, 5: true, 6: true}}
@@ -408,7 +408,7 @@ func TestParseProfileHandlesMultilineRawString(t *testing.T) {
 //nolint:paralleltest // withSourceFile calls t.Chdir, which cannot be combined with t.Parallel.
 func TestParseProfileHandlesMultilineRawStringCRLF(t *testing.T) {
 	src := "package p\r\n\r\nfunc Foo() string {\r\n\ts := `\r\na\r\n`\r\n\treturn s\r\n}\r\n"
-	withSourceFile(t, "a.go", src)
+	withSourceFile(t, src)
 
 	profile := "mode: set\n" + module + "/a.go:4.2,6.2 1 1\n"
 	changed := changedLines{"a.go": {4: true, 5: true, 6: true}}
@@ -442,7 +442,7 @@ func TestParseProfileFallsBackWhenSourceIsUnavailable(t *testing.T) {
 //nolint:paralleltest // withSourceFile calls t.Chdir, which cannot be combined with t.Parallel.
 func TestParseProfileFallsBackOnLineDirective(t *testing.T) {
 	src := "package p\n\n//line a.go:3\nfunc Foo(x int) int {\n\t// comment only\n\treturn x\n}\n"
-	withSourceFile(t, "a.go", src)
+	withSourceFile(t, src)
 
 	profile := "mode: set\n" + module + "/a.go:3.21,5.10 1 1\n"
 	changed := changedLines{"a.go": {4: true, 5: true}}

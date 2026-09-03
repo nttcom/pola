@@ -53,6 +53,7 @@ linters:
     - thelper
     - tparallel
     - unconvert
+    - unparam
     - usestdlibvars
     - wastedassign
     - wrapcheck
