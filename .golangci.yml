@@ -50,6 +50,7 @@ linters:
     - spancheck
     - testifylint
     - testpackage
+    - tparallel
     - unconvert
     - usestdlibvars
     - wastedassign
