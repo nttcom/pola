@@ -831,7 +831,7 @@ func sendConcurrentPCEPMessages(t *testing.T, ss *Session, goroutines int) {
 func readPCEPMessage(r io.Reader) error {
 	headerBytes := make([]byte, pcep.CommonHeaderLength)
 	if _, err := io.ReadFull(r, headerBytes); err != nil {
-		return err
+		return fmt.Errorf("failed to read a PCEP common header; sends may have interleaved: %w", err)
 	}
 
 	var header pcep.CommonHeader
@@ -843,8 +843,10 @@ func readPCEPMessage(r io.Reader) error {
 	if bodyLen == 0 {
 		return nil
 	}
-	_, err := io.ReadFull(r, make([]byte, bodyLen))
-	return err
+	if _, err := io.ReadFull(r, make([]byte, bodyLen)); err != nil {
+		return fmt.Errorf("failed to read a PCEP message body; sends may have interleaved: %w", err)
+	}
+	return nil
 }
 
 // startPCEPFramingValidator validates PCEP message framing in the background.
@@ -1467,11 +1469,11 @@ func handshakeBytes(t *testing.T, openMessage *pcep.OpenMessage) ([]byte, error)
 
 	openBytes, err := openMessage.Serialize()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("serialize Open message: %w", err)
 	}
 	keepaliveBytes, err := pcep.NewKeepaliveMessage().Serialize()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("serialize Keepalive message: %w", err)
 	}
 	return append(openBytes, keepaliveBytes...), nil
 }

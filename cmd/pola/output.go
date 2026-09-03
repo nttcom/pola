@@ -38,7 +38,7 @@ const (
 func writeJSON(w io.Writer, v any) error {
 	out, err := json.Marshal(v)
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal output as JSON: %w", err)
 	}
 	_, err = fmt.Fprintln(w, string(out))
 	return err

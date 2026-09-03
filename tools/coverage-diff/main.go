@@ -92,7 +92,7 @@ func run(ctx context.Context, cfg config, out io.Writer) error {
 
 	f, err := os.Open(cfg.profile)
 	if err != nil {
-		return err
+		return fmt.Errorf("open coverage profile %q: %w", cfg.profile, err)
 	}
 	defer func() {
 		_ = f.Close()
@@ -107,7 +107,7 @@ func run(ctx context.Context, cfg config, out io.Writer) error {
 
 func report(res *result, minPercent float64, mergeBase string, out io.Writer) error {
 	if _, err := io.WriteString(out, formatReport(res, mergeBase)); err != nil {
-		return err
+		return fmt.Errorf("write coverage report: %w", err)
 	}
 	if res.total == 0 {
 		return nil
@@ -167,7 +167,11 @@ func gitDiff(ctx context.Context, mergeBase string, paths []string) ([]byte, err
 	args = append(args, paths...)
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Stderr = os.Stderr
-	return cmd.Output()
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("git diff since %s: %w", mergeBase, err)
+	}
+	return out, nil
 }
 
 func git(ctx context.Context, args ...string) (string, error) {
@@ -217,7 +221,10 @@ func parseHunks(r io.Reader, keep func(string) bool) (changedLines, error) {
 			addHunk(out, cur, line)
 		}
 	}
-	return out, sc.Err()
+	if err := sc.Err(); err != nil {
+		return nil, fmt.Errorf("reading diff output: %w", err)
+	}
+	return out, nil
 }
 
 func newPath(header string, keep func(string) bool) string {
@@ -329,7 +336,7 @@ func parseProfile(r io.Reader, module string, changed changedLines) (*result, er
 		markBlockLines(seen, covered, src, file, b, added)
 	}
 	if err := sc.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("reading coverage profile: %w", err)
 	}
 	if !sawMode {
 		return nil, errors.New("coverage profile missing mode header")

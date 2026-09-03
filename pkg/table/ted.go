@@ -248,7 +248,7 @@ func (n *LsNode) NodeSegment() (Segment, error) {
 		if len(srv6SID.Sids) > FirstSIDIndex {
 			addr, err := netip.ParseAddr(srv6SID.Sids[FirstSIDIndex])
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("SRv6 SID %q is invalid: %w", srv6SID.Sids[FirstSIDIndex], err)
 			}
 			if !addr.Is6() || addr.Is4In6() {
 				return nil, fmt.Errorf("SRv6 SID %q is not a valid IPv6 address", srv6SID.Sids[FirstSIDIndex])

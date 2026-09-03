@@ -52,6 +52,7 @@ linters:
     - unconvert
     - usestdlibvars
     - wastedassign
+    - wrapcheck
   settings:
     depguard:
       rules:
@@ -147,6 +148,34 @@ linters:
           disabled: true
         - name: unused-receiver
           disabled: true
+    wrapcheck:
+      extra-ignore-sigs:
+        # Writer errors already provide the relevant context.
+        - fmt.Fprintf(
+        - fmt.Fprintln(
+        - (*text/tabwriter.Writer).Flush(
+        # io.Reader / io.Writer implementations must preserve underlying errors.
+        - (io.Reader).Read(
+        - (*bytes.Buffer).Write(
+        # encoding/json provides sufficient context for MarshalJSON implementations.
+        - encoding/json.Marshal(
+        # Constructs a gRPC status error; wrapping changes the status message.
+        - status.Status).Err(
+        # Transport expects the handler error unchanged.
+        - .ServerStreamingServer[
+        # Caller already provides the operation context.
+        - (*go.uber.org/zap.Logger).Sync(
+        # Errors already identify the offending value.
+        - safecast.Uint8(
+        - safecast.Uint16(
+        - pcep.ValidateTimers(
+      ignore-sig-regexps:
+        # PCEP decoders add the message type to their own errors.
+        - \(\*github\.com/nttcom/pola/pkg/packet/pcep\.(CommonHeader|\w+Message)\)\.DecodeFromBytes\(
+      ignore-package-globs:
+        # Must preserve *status.Status errors for CLI rendering/details.
+        - github.com/nttcom/pola/api/pola/v1
+        - github.com/nttcom/pola/cmd/pola/grpc
   exclusions:
     generated: lax
     presets:
@@ -162,9 +191,6 @@ linters:
         linters:
           - gochecknoinits
           - protogetter
-          - revive
-      - path: \.zap\.go$
-        linters:
           - revive
       - path: ^tools/coverage-diff/
         linters:

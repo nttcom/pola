@@ -277,7 +277,7 @@ func (o *OpenObject) Serialize() ([]uint8, error) {
 	for _, cap := range o.Caps {
 		b, err := cap.Serialize()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("serialize capability %s: %w", cap.Type(), err)
 		}
 		byteTLVs = append(byteTLVs, b...)
 	}
@@ -519,7 +519,7 @@ func (o *ErrorObject) Serialize() ([]uint8, error) {
 	for _, tlv := range o.Tlvs {
 		b, err := tlv.Serialize()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("serialize TLV %s: %w", tlv.Type(), err)
 		}
 		byteTlvs = append(byteTlvs, b...)
 	}
@@ -695,7 +695,7 @@ func (o *SrpObject) Serialize() ([]uint8, error) {
 	for _, tlv := range o.TLVs {
 		b, err := tlv.Serialize()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("serialize TLV %s: %w", tlv.Type(), err)
 		}
 		byteTLVs = append(byteTLVs, b...)
 	}
@@ -826,7 +826,7 @@ func (o *LSPObject) Serialize() ([]uint8, error) {
 	for _, tlv := range o.TLVs {
 		b, err := tlv.Serialize()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("serialize TLV %s: %w", tlv.Type(), err)
 		}
 		byteTLVs = AppendByteSlices(byteTLVs, b)
 	}
@@ -911,6 +911,7 @@ func (o *EroObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
 	if len(objectBody) == 0 {
 		return nil
 	}
+	index := 0
 	for {
 		var eroSubobj EroSubobject
 		switch SubobjectType(objectBody[0] & 0x7f) {
@@ -924,18 +925,19 @@ func (o *EroObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
 			return errors.New("invalid Subobject type")
 		}
 		if err := eroSubobj.DecodeFromBytes(objectBody); err != nil {
-			return err
+			return fmt.Errorf("decode ERO subobject %d (%T): %w", index, eroSubobj, err)
 		}
 		o.EroSubobjects = append(o.EroSubobjects, eroSubobj)
 		// DecodeFromBytes validates the subobject length before advancing objectBody.
 		objByteLength, err := eroSubobj.Len()
 		if err != nil {
-			return err
+			return fmt.Errorf("get length of ERO subobject %d (%T): %w", index, eroSubobj, err)
 		}
 		if int(objByteLength) == len(objectBody) {
 			break
 		}
 		objectBody = objectBody[objByteLength:]
+		index++
 	}
 	return nil
 }
@@ -943,10 +945,10 @@ func (o *EroObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
 // Serialize encodes the EroObject into bytes.
 func (o *EroObject) Serialize() ([]uint8, error) {
 	byteEroSubobjects := []uint8{}
-	for _, eroSubobject := range o.EroSubobjects {
+	for i, eroSubobject := range o.EroSubobjects {
 		// Len() also validates flag/NAI-type combinations that Serialize() does not check itself.
 		if _, err := eroSubobject.Len(); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("get length of ERO subobject %d (%T): %w", i, eroSubobject, err)
 		}
 		buf, err := eroSubobject.Serialize()
 		if err != nil {
@@ -967,10 +969,10 @@ func (o *EroObject) Serialize() ([]uint8, error) {
 // Len returns the wire length of the EroObject.
 func (o *EroObject) Len() (int, error) {
 	eroSubobjByteLength := 0
-	for _, eroSubObj := range o.EroSubobjects {
+	for i, eroSubObj := range o.EroSubobjects {
 		objByteLength, err := eroSubObj.Len()
 		if err != nil {
-			return 0, err
+			return 0, fmt.Errorf("get length of ERO subobject %d (%T): %w", i, eroSubObj, err)
 		}
 		eroSubobjByteLength += int(objByteLength)
 	}
@@ -1480,7 +1482,7 @@ func (o *SRv6EroSubobject) DecodeFromBytes(subobject []uint8) error {
 			subobject[off+3],
 		}
 		if err := o.Segment.Structure.Validate(); err != nil {
-			return err
+			return fmt.Errorf("SRv6EroSubobject: invalid SID structure: %w", err)
 		}
 		off += 8
 	}
@@ -1941,7 +1943,7 @@ func (o *AssociationObject) Serialize() ([]uint8, error) {
 	for _, tlv := range o.TLVs {
 		b, err := tlv.Serialize()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("serialize TLV %s: %w", tlv.Type(), err)
 		}
 		byteTLVs = append(byteTLVs, b...)
 	}
@@ -2139,7 +2141,7 @@ func (o *VendorInformationObject) Serialize() ([]uint8, error) {
 	for _, tlv := range o.TLVs {
 		b, err := tlv.Serialize()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("serialize TLV %s: %w", tlv.Type(), err)
 		}
 		byteTLVs = append(byteTLVs, b...)
 	}

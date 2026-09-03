@@ -73,8 +73,9 @@ func TestWriteSRPolicySession_EmptyPolicies_PropagatesWriteError(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			w := &condFailWriter{fail: tt.fail}
-			err := writeSRPolicySession(w, tt.v)
-			require.Error(t, err)
+			ew := &errWriter{w: w}
+			writeSRPolicySessionText(ew, tt.v)
+			require.Error(t, ew.err)
 		})
 	}
 }

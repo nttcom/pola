@@ -166,7 +166,7 @@ func newGoBGPClient(serverAddress, serverPort string) (*grpc.ClientConn, api.GoB
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("connect to GoBGP at %s: %w", gobgpAddress, err)
 	}
 
 	client := api.NewGoBgpServiceClient(cc)

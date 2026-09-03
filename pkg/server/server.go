@@ -281,7 +281,10 @@ func (s *Server) acceptLoop(l tcpListener) error {
 	if s.closed {
 		// Shutdown ran before the listener was registered; don't accept connections.
 		s.listenerMu.Unlock()
-		return l.Close()
+		if err := l.Close(); err != nil {
+			return fmt.Errorf("close PCEP listener during shutdown race: %w", err)
+		}
+		return nil
 	}
 	s.listener = l
 	s.listenerMu.Unlock()

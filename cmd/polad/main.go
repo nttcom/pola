@@ -71,7 +71,7 @@ func run(args []string, deps runDeps) error {
 	f := &flags{}
 	fs.StringVar(&f.configFile, "f", "polad.yaml", "Specify a configuration file")
 	if err := fs.Parse(args); err != nil {
-		return err
+		return fmt.Errorf("parse arguments: %w", err)
 	}
 
 	c, err := loadConfig(f.configFile)

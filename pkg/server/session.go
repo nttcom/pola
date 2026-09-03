@@ -422,14 +422,16 @@ func (ss *Session) Established() error {
 func (ss *Session) sendPCEPMessage(message pcep.Message) error {
 	byteMessage, err := message.Serialize()
 	if err != nil {
-		return err
+		return fmt.Errorf("serialize PCEP message: %w", err)
 	}
 
 	ss.sendMu.Lock()
 	defer ss.sendMu.Unlock()
 
-	_, err = ss.tcpConn.Write(byteMessage)
-	return err
+	if _, err := ss.tcpConn.Write(byteMessage); err != nil {
+		return fmt.Errorf("write PCEP message: %w", err)
+	}
+	return nil
 }
 
 // maxLocalOpenRetries limits resends of Pola's Open after adopting a peer's
@@ -834,10 +836,12 @@ func (ss *Session) validateCapabilities(caps []pcep.CapabilityInterface) {
 
 func (ss *Session) readFullWithDeadline(buf []uint8, deadline time.Time) error {
 	if err := ss.tcpConn.SetReadDeadline(deadline); err != nil {
-		return err
+		return fmt.Errorf("set read deadline: %w", err)
 	}
-	_, err := io.ReadFull(ss.tcpConn, buf)
-	return err
+	if _, err := io.ReadFull(ss.tcpConn, buf); err != nil {
+		return fmt.Errorf("read PCEP message: %w", err)
+	}
+	return nil
 }
 
 func (ss *Session) messageDeadline() time.Time {
@@ -1655,7 +1659,7 @@ func (ss *Session) SendPCInitiate(srPolicy table.SRPolicy, lspDelete bool) error
 	}
 	if err != nil {
 		ss.forgetSRPolicyIntent(srpID)
-		return err
+		return fmt.Errorf("build PC-Initiate message for SR policy %q: %w", srPolicy.Name, err)
 	}
 	ss.logger.Debug("Send PCInitiate Message")
 	if err := ss.sendPCEPMessage(pcinitiateMessage); err != nil {
@@ -1676,7 +1680,7 @@ func (ss *Session) SendPCUpdate(srPolicy table.SRPolicy) error {
 	pcupdateMessage, err := pcep.NewPCUpdMessage(srpID, srPolicy)
 	if err != nil {
 		ss.forgetSRPolicyIntent(srpID)
-		return err
+		return fmt.Errorf("build PC-Update message for SR policy %q: %w", srPolicy.Name, err)
 	}
 	ss.logger.Debug("Send Update Message")
 	if err := ss.sendPCEPMessage(pcupdateMessage); err != nil {

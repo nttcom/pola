@@ -564,6 +564,34 @@ func TestServe_ListensAndLogsActualAddr(t *testing.T) {
 	assert.False(t, strings.HasSuffix(listenInfo, ":0"), "expected the actual bound port, got %s", listenInfo)
 }
 
+type fakeAcceptErrListener struct {
+	acceptErr error
+}
+
+func (l *fakeAcceptErrListener) Accept() (net.Conn, error) { return nil, l.acceptErr }
+func (l *fakeAcceptErrListener) Close() error              { return nil }
+func (l *fakeAcceptErrListener) Addr() net.Addr            { return &net.TCPAddr{} }
+
+func TestServeGRPC_WrapsNonStoppedServeError(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("accept boom")
+	err := serveGRPC(grpc.NewServer(), &fakeAcceptErrListener{acceptErr: wantErr})
+
+	require.ErrorIs(t, err, wantErr)
+	assert.ErrorContains(t, err, "failed to serve gRPC")
+}
+
+func TestServeGRPC_ErrServerStoppedIsNotReported(t *testing.T) {
+	t.Parallel()
+
+	grpcServer := grpc.NewServer()
+	grpcServer.GracefulStop()
+
+	err := serveGRPC(grpcServer, &fakeAcceptErrListener{acceptErr: errors.New("unused")})
+	assert.NoError(t, err, "grpc.ErrServerStopped from Serve called after Stop must not be reported as a failure")
+}
+
 func TestConvertLsPrefixes_SidIndexPresence(t *testing.T) {
 	t.Parallel()
 

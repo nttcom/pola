@@ -917,7 +917,7 @@ func TestServer_HandleAccept_WhenRegisterSessionReturnsNil(t *testing.T) {
 	s.closeSession(ss1)
 }
 
-// acceptOnceThenClosedListener makes the first AcceptTCP call report a closed listener.
+// acceptOnceThenClosedListener makes AcceptTCP report a closed listener.
 type acceptOnceThenClosedListener struct {
 	closeErr error
 }
@@ -935,7 +935,7 @@ type acceptErrListener struct {
 func (l *acceptErrListener) AcceptTCP() (*net.TCPConn, error) { return nil, l.acceptErr }
 func (l *acceptErrListener) Close() error                     { return nil }
 
-func TestServer_Serve_AcceptErrorPropagated(t *testing.T) {
+func TestServer_AcceptLoop_AcceptErrorPropagated(t *testing.T) {
 	t.Parallel()
 
 	wantErr := errors.New("accept boom")
@@ -947,7 +947,19 @@ func TestServer_Serve_AcceptErrorPropagated(t *testing.T) {
 	assert.ErrorContains(t, err, "failed to accept TCP connection")
 }
 
-func TestServer_Serve_ListenerCloseErrorLogged(t *testing.T) {
+func TestServer_AcceptLoop_ShutdownRacePropagatesListenerCloseError(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("boom")
+	s := &Server{logger: logger.NewNop(), closed: true}
+
+	err := s.acceptLoop(&fakeListener{closeErr: wantErr})
+
+	require.ErrorIs(t, err, wantErr)
+	assert.ErrorContains(t, err, "close PCEP listener during shutdown race")
+}
+
+func TestServer_AcceptLoop_ListenerCloseErrorLogged(t *testing.T) {
 	t.Parallel()
 
 	wantErr := errors.New("listener close failed")

@@ -6,80 +6,51 @@
 package main
 
 import (
-	"fmt"
 	"io"
 )
 
 // writeTEDText expects nodes to be sorted by router ID for deterministic output.
 func writeTEDText(w io.Writer, nodes []tedNodeView) error {
+	ew := &errWriter{w: w}
 	if len(nodes) == 0 {
-		_, err := fmt.Fprintln(w, "TED is empty")
-		return err
+		ew.println("TED is empty")
+		return ew.err
 	}
 
 	for i, node := range nodes {
 		if i > 0 {
-			if _, err := fmt.Fprintln(w); err != nil {
-				return err
-			}
+			ew.println()
 		}
-		if _, err := fmt.Fprintf(w, "Node #%d: %s\n", i, node.RouterID); err != nil {
-			return err
-		}
-		if err := writeTEDNodeBasic(w, node); err != nil {
-			return err
-		}
-		if err := writeTEDNodePrefixes(w, node); err != nil {
-			return err
-		}
-		if err := writeTEDNodeLinks(w, node); err != nil {
-			return err
-		}
-		if err := writeTEDNodeSrv6SIDs(w, node); err != nil {
-			return err
-		}
+		ew.printf("Node #%d: %s\n", i, node.RouterID)
+		writeTEDNodeBasicText(ew, node)
+		writeTEDNodePrefixesText(ew, node)
+		writeTEDNodeLinksText(ew, node)
+		writeTEDNodeSrv6SIDsText(ew, node)
 	}
-	return nil
+	return ew.err
 }
 
-func writeTEDNodeBasic(w io.Writer, node tedNodeView) error {
-	if _, err := fmt.Fprintf(w, "  Hostname: %s\n", node.Hostname); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "  ISIS Area ID: %s\n", node.IsisAreaID); err != nil {
-		return err
-	}
-	_, err := fmt.Fprintf(w, "  SRGB: %d - %d\n", node.Srgb.Begin, node.Srgb.End)
-	return err
+func writeTEDNodeBasicText(ew *errWriter, node tedNodeView) {
+	ew.printf("  Hostname: %s\n", node.Hostname)
+	ew.printf("  ISIS Area ID: %s\n", node.IsisAreaID)
+	ew.printf("  SRGB: %d - %d\n", node.Srgb.Begin, node.Srgb.End)
 }
 
-func writeTEDNodePrefixes(w io.Writer, node tedNodeView) error {
-	if _, err := fmt.Fprintln(w, "  Prefixes:"); err != nil {
-		return err
-	}
+func writeTEDNodePrefixesText(ew *errWriter, node tedNodeView) {
+	ew.println("  Prefixes:")
 	for _, p := range node.Prefixes {
-		if _, err := fmt.Fprintf(w, "    %s\n", p.Prefix); err != nil {
-			return err
-		}
+		ew.printf("    %s\n", p.Prefix)
 		if p.SidIndex != nil {
-			if _, err := fmt.Fprintf(w, "      index: %d\n", *p.SidIndex); err != nil {
-				return err
-			}
+			ew.printf("      index: %d\n", *p.SidIndex)
 		}
 	}
-	return nil
 }
 
-func writeTEDNodeLinks(w io.Writer, node tedNodeView) error {
-	if _, err := fmt.Fprintln(w, "  Links:"); err != nil {
-		return err
-	}
+func writeTEDNodeLinksText(ew *errWriter, node tedNodeView) {
+	ew.println("  Links:")
 	for _, link := range node.Links {
-		if err := writeTEDLink(w, link); err != nil {
-			return err
-		}
+		writeTEDLinkText(ew, link)
 	}
-	return nil
 }
 
 func orNone(s string) string {
@@ -89,70 +60,41 @@ func orNone(s string) string {
 	return s
 }
 
-func writeTEDLink(w io.Writer, link tedLinkView) error {
-	if _, err := fmt.Fprintf(w, "    Local: %s Remote: %s\n", orNone(link.LocalIP), orNone(link.RemoteIP)); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "      RemoteRouterID: %s\n", orNone(link.RemoteRouterID)); err != nil {
-		return err
-	}
+func writeTEDLinkText(ew *errWriter, link tedLinkView) {
+	ew.printf("    Local: %s Remote: %s\n", orNone(link.LocalIP), orNone(link.RemoteIP))
+	ew.printf("      RemoteRouterID: %s\n", orNone(link.RemoteRouterID))
 
-	if _, err := fmt.Fprintln(w, "      Metrics:"); err != nil {
-		return err
-	}
+	ew.println("      Metrics:")
 	for _, m := range link.Metrics {
-		if _, err := fmt.Fprintf(w, "        %s: %d\n", m.Type, m.Value); err != nil {
-			return err
-		}
+		ew.printf("        %s: %d\n", m.Type, m.Value)
 	}
 
-	if _, err := fmt.Fprintf(w, "      Adj-SID: %d\n", link.AdjSid); err != nil {
-		return err
-	}
+	ew.printf("      Adj-SID: %d\n", link.AdjSid)
 
 	if link.Srv6EndXSID != nil {
-		if err := writeTEDSrv6EndXSID(w, *link.Srv6EndXSID); err != nil {
-			return err
-		}
+		writeTEDSrv6EndXSIDText(ew, *link.Srv6EndXSID)
 	}
-	return nil
 }
 
-func writeTEDSrv6EndXSID(w io.Writer, sid tedSrv6EndXSIDView) error {
-	if _, err := fmt.Fprintln(w, "      SRv6 End.X SID:"); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "        EndpointBehavior: %s\n", sid.EndpointBehavior.Name); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "        SIDs: %v\n", sid.Sids); err != nil {
-		return err
-	}
-	_, err := fmt.Fprintf(w, "        SID Structure: Block: %d, Node: %d, Func: %d, Arg: %d\n",
+func writeTEDSrv6EndXSIDText(ew *errWriter, sid tedSrv6EndXSIDView) {
+	ew.println("      SRv6 End.X SID:")
+	ew.printf("        EndpointBehavior: %s\n", sid.EndpointBehavior.Name)
+	ew.printf("        SIDs: %v\n", sid.Sids)
+	ew.printf("        SID Structure: Block: %d, Node: %d, Func: %d, Arg: %d\n",
 		sid.SidStructure.LocalBlock, sid.SidStructure.LocalNode, sid.SidStructure.LocalFunc, sid.SidStructure.LocalArg)
-	return err
 }
 
-func writeTEDNodeSrv6SIDs(w io.Writer, node tedNodeView) error {
-	if _, err := fmt.Fprintln(w, "  SRv6 SIDs:"); err != nil {
-		return err
-	}
+func writeTEDNodeSrv6SIDsText(ew *errWriter, node tedNodeView) {
+	ew.println("  SRv6 SIDs:")
 	for _, sid := range node.SRv6SIDs {
-		if err := writeTEDSrv6SID(w, sid); err != nil {
-			return err
-		}
+		writeTEDSrv6SIDText(ew, sid)
 	}
-	return nil
 }
 
-func writeTEDSrv6SID(w io.Writer, sid tedSrv6SIDView) error {
-	if _, err := fmt.Fprintf(w, "    SIDs: %v\n", sid.Sids); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "    Block: %d, Node: %d, Func: %d, Arg: %d\n",
-		sid.SidStructure.LocalBlock, sid.SidStructure.LocalNode, sid.SidStructure.LocalFunc, sid.SidStructure.LocalArg); err != nil {
-		return err
-	}
+func writeTEDSrv6SIDText(ew *errWriter, sid tedSrv6SIDView) {
+	ew.printf("    SIDs: %v\n", sid.Sids)
+	ew.printf("    Block: %d, Node: %d, Func: %d, Arg: %d\n",
+		sid.SidStructure.LocalBlock, sid.SidStructure.LocalNode, sid.SidStructure.LocalFunc, sid.SidStructure.LocalArg)
 	var flags, algorithm uint8
 	if sid.EndpointBehavior.Flags != nil {
 		flags = *sid.EndpointBehavior.Flags
@@ -160,10 +102,7 @@ func writeTEDSrv6SID(w io.Writer, sid tedSrv6SIDView) error {
 	if sid.EndpointBehavior.Algorithm != nil {
 		algorithm = *sid.EndpointBehavior.Algorithm
 	}
-	if _, err := fmt.Fprintf(w, "    EndpointBehavior: %s, Flags: %d, Algorithm: %d\n",
-		sid.EndpointBehavior.Name, flags, algorithm); err != nil {
-		return err
-	}
-	_, err := fmt.Fprintf(w, "    MultiTopoIDs: %v\n", sid.MultiTopoIDs)
-	return err
+	ew.printf("    EndpointBehavior: %s, Flags: %d, Algorithm: %d\n",
+		sid.EndpointBehavior.Name, flags, algorithm)
+	ew.printf("    MultiTopoIDs: %v\n", sid.MultiTopoIDs)
 }

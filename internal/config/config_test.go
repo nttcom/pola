@@ -6,6 +6,7 @@
 package config
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
@@ -86,7 +87,7 @@ func TestReadConfigFile_FileNotFound(t *testing.T) {
 
 	_, err := ReadConfigFile(filepath.Join(t.TempDir(), "does-not-exist.yaml"))
 	require.Error(t, err)
-	assert.True(t, os.IsNotExist(err))
+	assert.ErrorIs(t, err, fs.ErrNotExist)
 }
 
 func TestConfig_Validate(t *testing.T) {

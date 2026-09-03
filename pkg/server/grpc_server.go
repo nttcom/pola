@@ -121,8 +121,13 @@ func (s *APIServer) Serve(ctx context.Context, address, port string) error {
 		return fmt.Errorf("failed to listen on gRPC port %s: %w", localAddr.String(), err)
 	}
 	s.logger.Info("Start listening on gRPC port", logger.String("listenInfo", grpcListener.Addr().String()))
-	if err := s.grpcServer.Serve(grpcListener); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
-		return err
+	return serveGRPC(s.grpcServer, grpcListener)
+}
+
+// serveGRPC serves gRPC and treats ErrServerStopped as a normal shutdown.
+func serveGRPC(grpcServer *grpc.Server, lis net.Listener) error {
+	if err := grpcServer.Serve(lis); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+		return fmt.Errorf("failed to serve gRPC: %w", err)
 	}
 	return nil
 }

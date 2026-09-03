@@ -638,34 +638,34 @@ func metricTypeFromPB(metricType pb.MetricType) table.MetricType {
 func segmentFromPB(s *pb.Segment) (table.Segment, error) {
 	seg, err := table.NewSegment(s.GetSid())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse segment SID %q: %w", s.GetSid(), err)
 	}
 	switch v := seg.(type) {
 	case table.SegmentSRv6:
-		v.LocalAddr, err = parseOptionalAddr(s.GetLocalAddr())
+		v.LocalAddr, err = parseOptionalAddr("SRv6 local address", s.GetLocalAddr())
 		if err != nil {
-			return nil, fmt.Errorf("invalid SRv6 local address %q: %w", s.GetLocalAddr(), err)
+			return nil, err
 		}
-		v.RemoteAddr, err = parseOptionalAddr(s.GetRemoteAddr())
+		v.RemoteAddr, err = parseOptionalAddr("SRv6 remote address", s.GetRemoteAddr())
 		if err != nil {
-			return nil, fmt.Errorf("invalid SRv6 remote address %q: %w", s.GetRemoteAddr(), err)
+			return nil, err
 		}
 		structure, err := parseSidStructure(s.GetSidStructure())
 		if err != nil {
-			return nil, fmt.Errorf("invalid SID structure %q: %w", s.GetSidStructure(), err)
+			return nil, err
 		}
 		if structure != nil {
 			v.Structure = table.SIDStructureBytes(structure)
 		}
 		return v, nil
 	case table.SegmentSRMPLS:
-		v.LocalAddr, err = parseOptionalAddr(s.GetLocalAddr())
+		v.LocalAddr, err = parseOptionalAddr("SR-MPLS local address", s.GetLocalAddr())
 		if err != nil {
-			return nil, fmt.Errorf("invalid SR-MPLS local address %q: %w", s.GetLocalAddr(), err)
+			return nil, err
 		}
-		v.RemoteAddr, err = parseOptionalAddr(s.GetRemoteAddr())
+		v.RemoteAddr, err = parseOptionalAddr("SR-MPLS remote address", s.GetRemoteAddr())
 		if err != nil {
-			return nil, fmt.Errorf("invalid SR-MPLS remote address %q: %w", s.GetRemoteAddr(), err)
+			return nil, err
 		}
 		v.SidAbsent = s.GetSidAbsent()
 		return v, nil
@@ -675,11 +675,15 @@ func segmentFromPB(s *pb.Segment) (table.Segment, error) {
 }
 
 // parseOptionalAddr parses an IP address, treating an empty string as unset.
-func parseOptionalAddr(s string) (netip.Addr, error) {
+func parseOptionalAddr(field, s string) (netip.Addr, error) {
 	if s == "" {
 		return netip.Addr{}, nil
 	}
-	return netip.ParseAddr(s)
+	addr, err := netip.ParseAddr(s)
+	if err != nil {
+		return netip.Addr{}, fmt.Errorf("invalid %s %q: %w", field, s, err)
+	}
+	return addr, nil
 }
 
 // parseSidStructure parses a comma-separated SID structure string and treats an empty string as unset.
@@ -700,7 +704,7 @@ func parseSidStructure(s string) ([]uint8, error) {
 		result[i] = uint8(v)
 	}
 	if err := table.SIDStructureBytes(result).Validate(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid SID structure %q: %w", s, err)
 	}
 	return result, nil
 }
@@ -800,7 +804,7 @@ func createLsPrefix(lsNode *table.LsNode, prefix *pb.LsPrefix) (*table.LsPrefix,
 	var err error
 	lsPrefix.Prefix, err = netip.ParsePrefix(prefix.GetPrefix())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse prefix %q: %w", prefix.GetPrefix(), err)
 	}
 	if prefix.SidIndex != nil {
 		lsPrefix.SidIndex = prefix.GetSidIndex()
@@ -819,11 +823,11 @@ func createLsLink(localNode, remoteNode *table.LsNode, link *pb.LsLink) (*table.
 	var err error
 	err = lsLink.LocalIP.UnmarshalText([]byte(link.GetLocalIp()))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid link local IP %q: %w", link.GetLocalIp(), err)
 	}
 	err = lsLink.RemoteIP.UnmarshalText([]byte(link.GetRemoteIp()))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid link remote IP %q: %w", link.GetRemoteIp(), err)
 	}
 	for _, metricInfo := range link.GetMetrics() {
 		metric, err := createMetric(metricInfo)

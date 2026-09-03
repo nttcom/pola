@@ -280,7 +280,7 @@ func NewSegmentSRv6WithNodeInfo(sid netip.Addr, n *LsNode) (SegmentSRv6, error) 
 
 		addr, err := netip.ParseAddr(srv6SID.Sids[FirstSIDIndex])
 		if err != nil {
-			return seg, err
+			return seg, fmt.Errorf("SRv6 SID %q is invalid: %w", srv6SID.Sids[FirstSIDIndex], err)
 		}
 		seg.LocalAddr = addr
 		seg.Structure = SIDStructureBytes{

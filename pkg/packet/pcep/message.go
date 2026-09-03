@@ -162,6 +162,29 @@ func objectBody(messageBody []uint8, h *CommonObjectHeader) ([]uint8, error) {
 	return messageBody[commonObjectHeaderLength:h.ObjectLength], nil
 }
 
+// soleObjectBody decodes a message body containing exactly one object.
+// Errors are prefixed with label to provide message-specific context.
+func soleObjectBody(messageBody []uint8, label string, class ObjectClass, typ ObjectType) ([]uint8, error) {
+	var h CommonObjectHeader
+	if err := h.DecodeFromBytes(messageBody); err != nil {
+		return nil, fmt.Errorf("%s: %w", label, err)
+	}
+	if h.ObjectClass != class {
+		return nil, fmt.Errorf("%s: unsupported ObjectClass: %d", label, h.ObjectClass)
+	}
+	if h.ObjectType != typ {
+		return nil, fmt.Errorf("%s: unsupported ObjectType: %d", label, h.ObjectType)
+	}
+	body, err := objectBody(messageBody, &h)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", label, err)
+	}
+	if int(h.ObjectLength) != len(messageBody) {
+		return nil, fmt.Errorf("%s: %d trailing bytes after %s object", label, len(messageBody)-int(h.ObjectLength), class.Name())
+	}
+	return body, nil
+}
+
 // OpenMessage is a PCEP Open message.
 type OpenMessage struct {
 	OpenObject *OpenObject
@@ -169,29 +192,14 @@ type OpenMessage struct {
 
 // DecodeFromBytes decodes the given bytes into the OpenMessage.
 func (m *OpenMessage) DecodeFromBytes(messageBody []uint8) error {
-	var commonObjectHeader CommonObjectHeader
-	if err := commonObjectHeader.DecodeFromBytes(messageBody); err != nil {
-		return fmt.Errorf("failed to decode common object header: %w", err)
-	}
-
-	if commonObjectHeader.ObjectClass != ObjectClassOpen {
-		return fmt.Errorf("unsupported ObjectClass: %d", commonObjectHeader.ObjectClass)
-	}
-	if commonObjectHeader.ObjectType != ObjectTypeOpenOpen {
-		return fmt.Errorf("unsupported ObjectType: %d", commonObjectHeader.ObjectType)
-	}
-
-	body, err := objectBody(messageBody, &commonObjectHeader)
+	body, err := soleObjectBody(messageBody, "open", ObjectClassOpen, ObjectTypeOpenOpen)
 	if err != nil {
-		return fmt.Errorf("open: %w", err)
-	}
-	if int(commonObjectHeader.ObjectLength) != len(messageBody) {
-		return fmt.Errorf("open: %d trailing bytes after OPEN object", len(messageBody)-int(commonObjectHeader.ObjectLength))
+		return err
 	}
 
 	openObject := &OpenObject{}
-	if err := openObject.DecodeFromBytes(commonObjectHeader.ObjectType, body); err != nil {
-		return fmt.Errorf("failed to decode OpenObject: %w", err)
+	if err := openObject.DecodeFromBytes(ObjectTypeOpenOpen, body); err != nil {
+		return fmt.Errorf("open: %w", err)
 	}
 	m.OpenObject = openObject
 
@@ -277,12 +285,9 @@ func (m *PCErrMessage) decodeObject(header *CommonObjectHeader, body []uint8) er
 // DecodeFromBytes decodes the given bytes into the PCErrMessage.
 func (m *PCErrMessage) DecodeFromBytes(messageBody []uint8) error {
 	for offset := 0; offset < len(messageBody); {
-		if len(messageBody)-offset < int(commonObjectHeaderLength) {
-			return fmt.Errorf("PCErr: truncated object header at offset %d", offset)
-		}
 		var commonObjectHeader CommonObjectHeader
-		if err := commonObjectHeader.DecodeFromBytes(messageBody[offset : offset+int(commonObjectHeaderLength)]); err != nil {
-			return err
+		if err := commonObjectHeader.DecodeFromBytes(messageBody[offset:]); err != nil {
+			return fmt.Errorf("PCErr: %w", err)
 		}
 		body, err := objectBody(messageBody[offset:], &commonObjectHeader)
 		if err != nil {
@@ -290,7 +295,7 @@ func (m *PCErrMessage) DecodeFromBytes(messageBody []uint8) error {
 		}
 
 		if err := m.decodeObject(&commonObjectHeader, body); err != nil {
-			return err
+			return fmt.Errorf("PCErr: %w", err)
 		}
 		offset += int(commonObjectHeader.ObjectLength)
 	}
@@ -369,26 +374,14 @@ type CloseMessage struct {
 
 // DecodeFromBytes decodes the given bytes into the CloseMessage.
 func (m *CloseMessage) DecodeFromBytes(messageBody []uint8) error {
-	var commonObjectHeader CommonObjectHeader
-	if err := commonObjectHeader.DecodeFromBytes(messageBody); err != nil {
-		return err
-	}
-	if commonObjectHeader.ObjectClass != ObjectClassClose {
-		return fmt.Errorf("unsupported ObjectClass: %d", commonObjectHeader.ObjectClass)
-	}
-	if commonObjectHeader.ObjectType != ObjectTypeCloseClose {
-		return fmt.Errorf("unsupported ObjectType: %d", commonObjectHeader.ObjectType)
-	}
-	body, err := objectBody(messageBody, &commonObjectHeader)
+	body, err := soleObjectBody(messageBody, "close", ObjectClassClose, ObjectTypeCloseClose)
 	if err != nil {
-		return fmt.Errorf("close: %w", err)
-	}
-	if int(commonObjectHeader.ObjectLength) != len(messageBody) {
-		return fmt.Errorf("close: %d trailing bytes after CLOSE object", len(messageBody)-int(commonObjectHeader.ObjectLength))
-	}
-	closeObject := &CloseObject{}
-	if err := closeObject.DecodeFromBytes(commonObjectHeader.ObjectType, body); err != nil {
 		return err
+	}
+
+	closeObject := &CloseObject{}
+	if err := closeObject.DecodeFromBytes(ObjectTypeCloseClose, body); err != nil {
+		return fmt.Errorf("close: %w", err)
 	}
 	m.CloseObject = closeObject
 	return nil
@@ -530,7 +523,7 @@ func (m *PCRptMessage) DecodeFromBytes(messageBody []uint8) error {
 	for len(messageBody) > 0 {
 		var commonObjectHeader CommonObjectHeader
 		if err := commonObjectHeader.DecodeFromBytes(messageBody); err != nil {
-			return err
+			return fmt.Errorf("PCRpt: %w", err)
 		}
 		body, err := objectBody(messageBody, &commonObjectHeader)
 		if err != nil {
@@ -553,7 +546,7 @@ func (m *PCRptMessage) DecodeFromBytes(messageBody []uint8) error {
 			return fmt.Errorf("PCRpt: object class %d received before SRP/LSP object", commonObjectHeader.ObjectClass)
 		}
 		if err := decodeFunc(sr, commonObjectHeader.ObjectType, body); err != nil {
-			return err
+			return fmt.Errorf("PCRpt: %w", err)
 		}
 		if commonObjectHeader.ObjectClass == ObjectClassLSP {
 			lspDecoded = true

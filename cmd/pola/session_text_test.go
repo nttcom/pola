@@ -119,8 +119,9 @@ func TestWriteGroupedLine_PropagatesWriteErrorOnNonFirstItem(t *testing.T) {
 	}
 
 	w := &condFailWriter{fail: containsFail("SR Policy Association")}
-	err := writeCapabilitySections(w, c)
-	require.Error(t, err)
+	ew := &errWriter{w: w}
+	writeCapabilitySectionsText(ew, c)
+	require.Error(t, ew.err)
 }
 
 func TestWriteCapabilityGroupSection_PropagatesGroupedLineWriteError(t *testing.T) {
@@ -131,8 +132,9 @@ func TestWriteCapabilityGroupSection_PropagatesGroupedLineWriteError(t *testing.
 	}
 
 	w := &condFailWriter{fail: containsFail("ASSOC-TYPE-LIST")}
-	err := writeCapabilityGroupSection(w, "Common", c.commonLines())
-	require.Error(t, err)
+	ew := &errWriter{w: w}
+	writeCapabilityGroupSectionText(ew, "Common", c.commonLines())
+	require.Error(t, ew.err)
 }
 
 func TestWriteGroupedLine_EmptyItemsRendersDash(t *testing.T) {
@@ -143,7 +145,9 @@ func TestWriteGroupedLine_EmptyItemsRendersDash(t *testing.T) {
 	}
 
 	var buf strings.Builder
-	require.NoError(t, writeCapabilitySections(&buf, c))
+	ew := &errWriter{w: &buf}
+	writeCapabilitySectionsText(ew, c)
+	require.NoError(t, ew.err)
 	assert.Contains(t, buf.String(), "      ASSOC-TYPE-LIST [RFC8697]:\n        -\n")
 }
 
