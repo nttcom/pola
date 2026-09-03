@@ -54,6 +54,7 @@ linters:
     - tparallel
     - unconvert
     - unparam
+    - usetesting
     - usestdlibvars
     - wastedassign
     - wrapcheck
