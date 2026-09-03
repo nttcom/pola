@@ -34,6 +34,7 @@ func newSRPolicyAddCmd(c *cli) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("failed to retrieve 'file' flag: %w", err)
 			}
+
 			if filepath == "" {
 				return errors.New("file path option \"-f filepath\" is mandatory")
 			}
@@ -57,6 +58,7 @@ func newSRPolicyAddCmd(c *cli) *cobra.Command {
 			if err := addSRPolicy(cmd.OutOrStdout(), cmd.ErrOrStderr(), inputData, c.jsonFmt, noSIDValidateFlag, c.client); err != nil {
 				return fmt.Errorf("failed to add SR policy: %w", err)
 			}
+
 			return nil
 		},
 	}
@@ -116,6 +118,7 @@ func addSRPolicy(out, errOut io.Writer, input inputFormat, jsonFlag, noSIDValida
 	}
 
 	usesRouterID := input.SRPolicy.SrcRouterID != "" || input.SRPolicy.DstRouterID != ""
+
 	usesEndpointAddr := input.SRPolicy.SrcAddr.IsValid() || input.SRPolicy.DstAddr.IsValid()
 	if usesRouterID && usesEndpointAddr {
 		return errors.New("srcRouterID / dstRouterID and srcAddr / dstAddr are mutually exclusive, use one form only")
@@ -134,6 +137,7 @@ func addSRPolicy(out, errOut io.Writer, input inputFormat, jsonFlag, noSIDValida
 	if jsonFlag {
 		return writeJSON(out, statusResult{Status: statusSuccess})
 	}
+
 	fmt.Fprintln(out, "success!")
 
 	return nil
@@ -152,6 +156,7 @@ func translateCreateSRPolicyError(err error) error {
 		if !ok {
 			continue
 		}
+
 		switch info.GetReason() {
 		case reasonSIDValidationFailed:
 			return fmt.Errorf("%s\n  hint: use --no-sid-validate to provision without validation", msg)
@@ -169,6 +174,7 @@ func translateCreateSRPolicyError(err error) error {
 			return fmt.Errorf("%s\n  hint: the requested metric type is not advertised on this topology", msg)
 		}
 	}
+
 	return errors.New(msg)
 }
 
@@ -176,6 +182,7 @@ func addSRPolicyWithEndpointAddr(input inputFormat, noSIDValidate bool, client p
 	if input.SRPolicy.Type != "" && input.SRPolicy.Type != srPolicyTypeExplicit {
 		return fmt.Errorf("the srcAddr / dstAddr form supports `type: explicit` only, got %q", input.SRPolicy.Type)
 	}
+
 	if input.SRPolicy.Metric != "" || len(input.SRPolicy.Waypoints) > 0 {
 		return errors.New("`metric` and `waypoints` require a dynamic path, which the srcAddr / dstAddr form does not support")
 	}
@@ -196,10 +203,12 @@ func addSRPolicyWithEndpointAddr(input inputFormat, noSIDValidate bool, client p
 			sampleInput +
 			"or, to resolve endpoints from the TED by router ID instead,\n" +
 			"use the srcRouterID / dstRouterID form\n"
+
 		return errors.New(errMsg)
 	}
 
 	segmentList := []*pb.Segment{}
+
 	for _, segment := range input.SRPolicy.SegmentList {
 		pbSeg := &pb.Segment{
 			Sid:          segment.SID,
@@ -209,6 +218,7 @@ func addSRPolicyWithEndpointAddr(input inputFormat, noSIDValidate bool, client p
 		}
 		segmentList = append(segmentList, pbSeg)
 	}
+
 	srPolicy := &pb.SRPolicy{
 		PeerAddr:    input.SRPolicy.PCEPSessionAddr.AsSlice(),
 		SrcAddr:     input.SRPolicy.SrcAddr.AsSlice(),
@@ -225,6 +235,7 @@ func addSRPolicyWithEndpointAddr(input inputFormat, noSIDValidate bool, client p
 		DisablePathCompute: true,
 		NoSidValidate:      noSIDValidate,
 	}
+
 	return grpc.CreateSRPolicy(client, request)
 }
 
@@ -304,6 +315,7 @@ func validateCommonInput(input inputFormat, sampleDynamic, sampleExplicit string
 				"use the srcAddr / dstAddr form\n",
 		)
 	}
+
 	return nil
 }
 

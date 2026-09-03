@@ -23,6 +23,7 @@ func resolveOutputFormat(jsonFlag bool) outputFormat {
 	if jsonFlag {
 		return outputJSON
 	}
+
 	return outputText
 }
 
@@ -40,6 +41,8 @@ func writeJSON(w io.Writer, v any) error {
 	if err != nil {
 		return fmt.Errorf("marshal output as JSON: %w", err)
 	}
+
 	_, err = fmt.Fprintln(w, string(out))
+
 	return err
 }

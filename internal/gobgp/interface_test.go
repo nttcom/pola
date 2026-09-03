@@ -37,6 +37,7 @@ const (
 
 func testLsAddrPrefixV4(t *testing.T, prefix string) *api.LsAddrPrefix {
 	t.Helper()
+
 	return &api.LsAddrPrefix{
 		Nlri: &api.LsAddrPrefix_LsNLRI{
 			Nlri: &api.LsAddrPrefix_LsNLRI_PrefixV4{
@@ -149,6 +150,7 @@ func TestGetLsPrefix_NLRITypesAndErrors(t *testing.T) {
 
 	t.Run("PrefixV6 NLRI", func(t *testing.T) {
 		t.Parallel()
+
 		nlri := &api.LsAddrPrefix{
 			Nlri: &api.LsAddrPrefix_LsNLRI{
 				Nlri: &api.LsAddrPrefix_LsNLRI_PrefixV6{
@@ -171,6 +173,7 @@ func TestGetLsPrefix_NLRITypesAndErrors(t *testing.T) {
 
 	t.Run("unsupported NLRI type", func(t *testing.T) {
 		t.Parallel()
+
 		nlri := &api.LsAddrPrefix{
 			Nlri: &api.LsAddrPrefix_LsNLRI{
 				Nlri: &api.LsAddrPrefix_LsNLRI_Node{Node: &api.LsNodeNLRI{}},
@@ -183,12 +186,14 @@ func TestGetLsPrefix_NLRITypesAndErrors(t *testing.T) {
 
 	t.Run("nil NLRI", func(t *testing.T) {
 		t.Parallel()
+
 		_, err := getLsPrefix(nil, &api.LsAttributePrefix{})
 		require.EqualError(t, err, "LS Prefix NLRI is nil")
 	})
 
 	t.Run("nil NLRI field", func(t *testing.T) {
 		t.Parallel()
+
 		_, err := getLsPrefix(&api.LsAddrPrefix{}, &api.LsAttributePrefix{})
 		require.EqualError(t, err, "LS Prefix NLRI is nil")
 	})
@@ -205,6 +210,7 @@ func TestGetLsPrefix_NLRITypesAndErrors(t *testing.T) {
 	for _, tt := range reachTests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			nlri := &api.LsAddrPrefix{
 				Nlri: &api.LsAddrPrefix_LsNLRI{
 					Nlri: &api.LsAddrPrefix_LsNLRI_PrefixV4{
@@ -253,6 +259,7 @@ func TestGetLsPrefixList(t *testing.T) {
 
 	t.Run("no NLRIs", func(t *testing.T) {
 		t.Parallel()
+
 		got, err := getLsPrefixList(nil, attr)
 		require.NoError(t, err)
 		assert.Nil(t, got)
@@ -298,6 +305,7 @@ func TestGetLsNode(t *testing.T) {
 
 	t.Run("no SR Capabilities TLV", func(t *testing.T) {
 		t.Parallel()
+
 		attr := &api.LsAttributeNode{Name: "r1", IsisArea: []byte{0x49, 0x00}}
 
 		got, err := getLsNode(nlri, attr)
@@ -311,6 +319,7 @@ func TestGetLsNode(t *testing.T) {
 
 	t.Run("one SR Capability Range TLV", func(t *testing.T) {
 		t.Parallel()
+
 		attr := &api.LsAttributeNode{
 			Name:           "r1",
 			SrCapabilities: &api.LsSrCapabilities{Ranges: []*api.LsSrRange{{Begin: 16000, End: 23999}}},
@@ -327,6 +336,7 @@ func TestGetLsNode(t *testing.T) {
 
 	t.Run("SR Capabilities present with no Range TLV", func(t *testing.T) {
 		t.Parallel()
+
 		attr := &api.LsAttributeNode{SrCapabilities: &api.LsSrCapabilities{}}
 
 		_, err := getLsNode(nlri, attr)
@@ -336,6 +346,7 @@ func TestGetLsNode(t *testing.T) {
 
 	t.Run("SR Capabilities with more than one Range TLV", func(t *testing.T) {
 		t.Parallel()
+
 		attr := &api.LsAttributeNode{
 			SrCapabilities: &api.LsSrCapabilities{Ranges: []*api.LsSrRange{
 				{Begin: 16000, End: 23999},
@@ -373,6 +384,7 @@ func TestGetLsLink(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
+
 		tests := []struct {
 			name string
 			desc *api.LsLinkDescriptor
@@ -442,6 +454,7 @@ func TestGetLsLink(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
+
 				got, err := getLsLink(newNLRI(tt.desc), tt.attr)
 				require.NoError(t, err)
 				assert.Equal(t, tt.want, got)
@@ -451,6 +464,7 @@ func TestGetLsLink(t *testing.T) {
 
 	t.Run("address parse errors", func(t *testing.T) {
 		t.Parallel()
+
 		tests := []struct {
 			name    string
 			desc    *api.LsLinkDescriptor
@@ -465,6 +479,7 @@ func TestGetLsLink(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
+
 				_, err := getLsLink(newNLRI(tt.desc), &api.LsAttributeLink{})
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.wantErr)
@@ -494,6 +509,7 @@ func TestGetLsLink(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
+
 				_, err := getLsLink(tt.nlri, &api.LsAttributeLink{})
 				require.Error(t, err)
 			})
@@ -502,6 +518,7 @@ func TestGetLsLink(t *testing.T) {
 
 	t.Run("SRv6 End.X SID conversion error propagates", func(t *testing.T) {
 		t.Parallel()
+
 		_, err := getLsLink(newNLRI(&api.LsLinkDescriptor{}), &api.LsAttributeLink{
 			Srv6EndXSid: &api.LsSrv6EndXSID{EndpointBehavior: math.MaxUint16 + 1},
 		})
@@ -516,6 +533,7 @@ func TestSrv6EndXSIDFromAPI(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
+
 		got, err := srv6EndXSIDFromAPI(&api.LsSrv6EndXSID{
 			EndpointBehavior: uint32(table.BehaviorENDX),
 			Sids:             []string{testSrv6EndXSID},
@@ -531,6 +549,7 @@ func TestSrv6EndXSIDFromAPI(t *testing.T) {
 
 	t.Run("endpoint behavior overflow", func(t *testing.T) {
 		t.Parallel()
+
 		_, err := srv6EndXSIDFromAPI(&api.LsSrv6EndXSID{
 			EndpointBehavior: math.MaxUint16 + 1,
 			Srv6SidStructure: validStructure,
@@ -540,6 +559,7 @@ func TestSrv6EndXSIDFromAPI(t *testing.T) {
 
 	t.Run("SID structure overflow propagates", func(t *testing.T) {
 		t.Parallel()
+
 		_, err := srv6EndXSIDFromAPI(&api.LsSrv6EndXSID{
 			EndpointBehavior: uint32(table.BehaviorENDX),
 			Srv6SidStructure: &api.LsSrv6SIDStructure{LocalBlock: math.MaxUint8 + 1},
@@ -564,6 +584,7 @@ func TestSrv6SIDStructureFromAPI(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			_, err := srv6SIDStructureFromAPI(tt.s)
 			require.Error(t, err)
 		})
@@ -580,6 +601,7 @@ func TestGetLsSrv6SID(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
+
 		nlri := &api.LsAddrPrefix{
 			Nlri: &api.LsAddrPrefix_LsNLRI{
 				Nlri: &api.LsAddrPrefix_LsNLRI_Srv6Sid{
@@ -605,6 +627,7 @@ func TestGetLsSrv6SID(t *testing.T) {
 
 	t.Run("invalid NLRI", func(t *testing.T) {
 		t.Parallel()
+
 		wrongNLRI := &api.LsAddrPrefix{
 			Nlri: &api.LsAddrPrefix_LsNLRI{
 				Nlri: &api.LsAddrPrefix_LsNLRI_Node{
@@ -624,6 +647,7 @@ func TestGetLsSrv6SID(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
+
 				_, err := getLsSrv6SID(tt.nlri, attr)
 				require.Error(t, err)
 			})
@@ -632,6 +656,7 @@ func TestGetLsSrv6SID(t *testing.T) {
 
 	t.Run("attribute conversion errors", func(t *testing.T) {
 		t.Parallel()
+
 		nlri := &api.LsAddrPrefix{
 			Nlri: &api.LsAddrPrefix_LsNLRI{
 				Nlri: &api.LsAddrPrefix_LsNLRI_Srv6Sid{
@@ -681,6 +706,7 @@ func TestGetLsSrv6SID(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
+
 				_, err := getLsSrv6SID(nlri, tt.attr)
 				require.Error(t, err)
 			})
@@ -711,6 +737,7 @@ func TestGetLsSrv6SIDList(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
+
 		got, err := getLsSrv6SIDList([]*api.NLRI{newNLRI(testRouterID1), newNLRI(testRouterID2)}, attr)
 		require.NoError(t, err)
 		require.Len(t, got, 2)
@@ -718,6 +745,7 @@ func TestGetLsSrv6SIDList(t *testing.T) {
 
 	t.Run("no NLRIs", func(t *testing.T) {
 		t.Parallel()
+
 		got, err := getLsSrv6SIDList(nil, attr)
 		require.NoError(t, err)
 		assert.Nil(t, got)
@@ -725,6 +753,7 @@ func TestGetLsSrv6SIDList(t *testing.T) {
 
 	t.Run("non-LsAddrPrefix NLRI", func(t *testing.T) {
 		t.Parallel()
+
 		nlris := []*api.NLRI{{Nlri: &api.NLRI_Prefix{Prefix: &api.IPAddressPrefix{}}}}
 		_, err := getLsSrv6SIDList(nlris, attr)
 		require.Error(t, err)
@@ -756,6 +785,7 @@ func TestFindLsAttribute(t *testing.T) {
 
 	t.Run("found among other attributes", func(t *testing.T) {
 		t.Parallel()
+
 		lsAttr := &api.Attribute_Ls{Ls: &api.LsAttribute{}}
 		path := &api.Path{Pattrs: []*api.Attribute{
 			{Attr: &api.Attribute_Origin{}},
@@ -767,6 +797,7 @@ func TestFindLsAttribute(t *testing.T) {
 
 	t.Run("not present", func(t *testing.T) {
 		t.Parallel()
+
 		path := &api.Path{Pattrs: []*api.Attribute{{Attr: &api.Attribute_Origin{}}}}
 		assert.Nil(t, findLsAttribute(path))
 	})
@@ -777,6 +808,7 @@ func TestFindMpReach(t *testing.T) {
 
 	t.Run("found among other attributes", func(t *testing.T) {
 		t.Parallel()
+
 		mpReach := &api.MpReachNLRIAttribute{}
 		path := &api.Path{Pattrs: []*api.Attribute{
 			{Attr: &api.Attribute_Origin{}},
@@ -788,6 +820,7 @@ func TestFindMpReach(t *testing.T) {
 
 	t.Run("not present", func(t *testing.T) {
 		t.Parallel()
+
 		path := &api.Path{Pattrs: []*api.Attribute{{Attr: &api.Attribute_Origin{}}}}
 		assert.Nil(t, findMpReach(path))
 	})
@@ -1002,13 +1035,16 @@ func TestConvertToTEDElem(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			got, err := ConvertToTEDElem(tt.dst)
 			if tt.wantErrSubstr != "" {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.wantErrSubstr)
 				assert.Nil(t, got)
+
 				return
 			}
+
 			require.NoError(t, err)
 			assert.Len(t, got, tt.wantLen)
 		})
@@ -1034,6 +1070,7 @@ func TestNewGoBGPClient(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
+
 		cc, client, err := newGoBGPClient("127.0.0.1", "50051")
 		require.NoError(t, err)
 		require.NotNil(t, cc)
@@ -1043,6 +1080,7 @@ func TestNewGoBGPClient(t *testing.T) {
 
 	t.Run("unparsable target", func(t *testing.T) {
 		t.Parallel()
+
 		cc, client, err := newGoBGPClient("\x00", "50051")
 		require.Error(t, err)
 		assert.Nil(t, cc)
@@ -1063,11 +1101,14 @@ func (s *fakeListPathStream) Recv() (*api.ListPathResponse, error) {
 	if s.idx < len(s.responses) {
 		r := s.responses[s.idx]
 		s.idx++
+
 		return r, nil
 	}
+
 	if s.err != nil {
 		return nil, s.err
 	}
+
 	return nil, io.EOF
 }
 
@@ -1086,10 +1127,12 @@ type fakeGoBGPClient struct {
 
 func (f *fakeGoBGPClient) ListPath(ctx context.Context, in *api.ListPathRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[api.ListPathResponse], error) {
 	f.lastCtx = ctx
+
 	f.lastListPathReq = in
 	if f.listPathErr != nil {
 		return nil, f.listPathErr
 	}
+
 	return &fakeListPathStream{responses: f.listPathResp, err: f.recvErr}, nil
 }
 
@@ -1100,12 +1143,14 @@ func (f *fakeGoBGPClient) WatchEvent(_ context.Context, _ *api.WatchEventRequest
 
 func testNodeDestination(t *testing.T, asn uint32, routerID, hostname string) *api.Destination {
 	t.Helper()
+
 	nlri := &api.LsAddrPrefix{
 		Type: api.LsNLRIType_LS_NLRI_TYPE_NODE,
 		Nlri: &api.LsAddrPrefix_LsNLRI{Nlri: &api.LsAddrPrefix_LsNLRI_Node{
 			Node: &api.LsNodeNLRI{LocalNode: &api.LsNodeDescriptor{Asn: asn, IgpRouterId: routerID}},
 		}},
 	}
+
 	return &api.Destination{
 		Paths: []*api.Path{{
 			Nlri:   &api.NLRI{Nlri: &api.NLRI_LsAddrPrefix{LsAddrPrefix: nlri}},
@@ -1140,6 +1185,7 @@ func TestGetBGPlsNLRIs(t *testing.T) {
 
 	t.Run("no destinations", func(t *testing.T) {
 		t.Parallel()
+
 		got, err := GetBGPlsNLRIs(context.Background(), &fakeGoBGPClient{})
 		require.NoError(t, err)
 		assert.Nil(t, got)
@@ -1147,6 +1193,7 @@ func TestGetBGPlsNLRIs(t *testing.T) {
 
 	t.Run("ListPath call fails", func(t *testing.T) {
 		t.Parallel()
+
 		client := &fakeGoBGPClient{listPathErr: errors.New("connection refused")}
 
 		_, err := GetBGPlsNLRIs(context.Background(), client)
@@ -1156,6 +1203,7 @@ func TestGetBGPlsNLRIs(t *testing.T) {
 
 	t.Run("stream receive fails", func(t *testing.T) {
 		t.Parallel()
+
 		client := &fakeGoBGPClient{recvErr: errors.New("stream broken")}
 
 		_, err := GetBGPlsNLRIs(context.Background(), client)
@@ -1165,6 +1213,7 @@ func TestGetBGPlsNLRIs(t *testing.T) {
 
 	t.Run("conversion error propagates", func(t *testing.T) {
 		t.Parallel()
+
 		client := &fakeGoBGPClient{listPathResp: []*api.ListPathResponse{
 			{Destination: &api.Destination{Paths: nil}},
 		}}
@@ -1185,6 +1234,7 @@ func TestWaitForRetry(t *testing.T) {
 
 	t.Run("reports false without waiting for the interval when the context is done", func(t *testing.T) {
 		t.Parallel()
+
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
@@ -1210,7 +1260,9 @@ func TestEstablishWatchStream_RetriesThenGivesUpOnContextCancel(t *testing.T) {
 		stream grpc.ServerStreamingClient[api.WatchEventResponse]
 		ok     bool
 	}
+
 	done := make(chan result, 1)
+
 	go func() {
 		stream, ok := establishWatchStream(ctx, client, newWatchRequest(), 5*time.Millisecond, logger.NewNop())
 		done <- result{stream, ok}
@@ -1249,6 +1301,7 @@ func TestInitialSync(t *testing.T) {
 
 	t.Run("logs and skips delivery on failure", func(t *testing.T) {
 		t.Parallel()
+
 		client := &fakeGoBGPClient{listPathErr: errors.New("connection refused")}
 		lg, logs := logger.NewRecorder(logger.LevelError)
 		tedChan := make(chan []table.TEDElem, 1)
@@ -1267,9 +1320,11 @@ func TestInitialSync(t *testing.T) {
 		}}
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
+
 		tedChan := make(chan []table.TEDElem) // unbuffered with no receiver
 
 		done := make(chan struct{})
+
 		go func() {
 			initialSync(ctx, client, tedChan, logger.NewNop())
 			close(done)
@@ -1296,7 +1351,9 @@ func TestReconnectWatchStream_GivesUpOnContextCancel(t *testing.T) {
 		stream grpc.ServerStreamingClient[api.WatchEventResponse]
 		ok     bool
 	}
+
 	done := make(chan result, 1)
+
 	go func() {
 		stream, ok := reconnectWatchStream(ctx, client, newWatchRequest(), 5*time.Millisecond, logger.NewNop(), d, fetch, deliver)
 		done <- result{stream, ok}
@@ -1339,7 +1396,9 @@ func testDebouncerTriggerFetchesOnceAfterCooldown(t *testing.T) {
 	d := NewDebouncer(20 * time.Millisecond)
 
 	want := []table.TEDElem{table.NewLsNode(1, "r1")}
+
 	var fetchCount atomic.Int32
+
 	fetch := func() ([]table.TEDElem, error) {
 		fetchCount.Add(1)
 		return want, nil
@@ -1354,6 +1413,7 @@ func testDebouncerTriggerFetchesOnceAfterCooldown(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for delivery")
 	}
+
 	assert.EqualValues(t, 1, fetchCount.Load())
 }
 
@@ -1364,6 +1424,7 @@ func testDebouncerTriggerCollapsesTriggersWithinCooldown(t *testing.T) {
 	ctx := t.Context()
 
 	var fetchCount atomic.Int32
+
 	fetch := func() ([]table.TEDElem, error) {
 		fetchCount.Add(1)
 		return nil, nil
@@ -1381,6 +1442,7 @@ func testDebouncerTriggerCollapsesTriggersWithinCooldown(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for delivery")
 	}
+
 	assert.EqualValues(t, 1, fetchCount.Load())
 }
 
@@ -1391,6 +1453,7 @@ func testDebouncerTriggerStopsWithoutFetchingOnCancelFirst(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 
 	var fetchCalled atomic.Int32
+
 	fetch := func() ([]table.TEDElem, error) {
 		fetchCalled.Store(1)
 		return nil, nil
@@ -1403,6 +1466,7 @@ func testDebouncerTriggerStopsWithoutFetchingOnCancelFirst(t *testing.T) {
 	require.Eventually(t, func() bool {
 		d.mu.Lock()
 		defer d.mu.Unlock()
+
 		return !d.active
 	}, time.Second, time.Millisecond)
 	assert.EqualValues(t, 0, fetchCalled.Load())
@@ -1449,6 +1513,7 @@ func testDebouncerTriggerHandlesTriggerDuringDelivery(t *testing.T) {
 	ctx := t.Context()
 
 	var fetchCount atomic.Int32
+
 	fetch := func() ([]table.TEDElem, error) {
 		fetchCount.Add(1)
 		return nil, nil
@@ -1456,6 +1521,7 @@ func testDebouncerTriggerHandlesTriggerDuringDelivery(t *testing.T) {
 
 	var firstDeliver atomic.Bool
 	firstDeliver.Store(true)
+
 	deliverStarted := make(chan struct{})
 	releaseDeliver := make(chan struct{})
 	delivered := make(chan struct{}, 2)
@@ -1464,6 +1530,7 @@ func testDebouncerTriggerHandlesTriggerDuringDelivery(t *testing.T) {
 			close(deliverStarted)
 			<-releaseDeliver
 		}
+
 		delivered <- struct{}{}
 	}
 	lg := logger.NewNop()
@@ -1485,6 +1552,7 @@ func testDebouncerTriggerHandlesTriggerDuringDelivery(t *testing.T) {
 	require.Eventually(t, func() bool {
 		d.mu.Lock()
 		defer d.mu.Unlock()
+
 		return !d.active
 	}, time.Second, time.Millisecond)
 	assert.EqualValues(t, 2, fetchCount.Load())
@@ -1498,13 +1566,17 @@ func testDebouncerTriggerRetriesAfterFetchFailure(t *testing.T) {
 
 	fetchStarted := make(chan struct{})
 	releaseFetch := make(chan struct{})
+
 	var fetchCount atomic.Int32
+
 	fetch := func() ([]table.TEDElem, error) {
 		if fetchCount.Add(1) == 1 {
 			close(fetchStarted)
 			<-releaseFetch
+
 			return nil, errors.New("boom")
 		}
+
 		return []table.TEDElem{table.NewLsNode(1, "r1")}, nil
 	}
 	delivered := make(chan []table.TEDElem, 1)
@@ -1522,6 +1594,7 @@ func testDebouncerTriggerRetriesAfterFetchFailure(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for the retried fetch to deliver")
 	}
+
 	require.Eventually(t, func() bool { return logs.Len() > 0 }, time.Second, time.Millisecond)
 	assert.Equal(t, "failed to get TED info", logs.All()[0].Message)
 }
@@ -1533,11 +1606,13 @@ func testDebouncerTriggerKeepsLoopingOnContextEndDuringSuccessfulFetch(t *testin
 	ctx, cancel := context.WithCancel(context.Background())
 
 	var fetchCount atomic.Int32
+
 	fetch := func() ([]table.TEDElem, error) {
 		if fetchCount.Add(1) == 1 {
 			cancel()
 			d.Trigger(ctx, nil, nil, nil) // arrives before the context-cancel check runs
 		}
+
 		return []table.TEDElem{table.NewLsNode(1, "r1")}, nil
 	}
 	deliver := func([]table.TEDElem) { t.Fatal("deliver should not be called") }
@@ -1547,6 +1622,7 @@ func testDebouncerTriggerKeepsLoopingOnContextEndDuringSuccessfulFetch(t *testin
 	require.Eventually(t, func() bool {
 		d.mu.Lock()
 		defer d.mu.Unlock()
+
 		return !d.active
 	}, time.Second, time.Millisecond)
 	assert.EqualValues(t, 1, fetchCount.Load())
@@ -1560,6 +1636,7 @@ func testDebouncerTriggerKeepsLoopingOnContextEndDuringCooldownWait(t *testing.T
 	cancel()
 
 	var fetchCalled atomic.Bool
+
 	fetch := func() ([]table.TEDElem, error) {
 		fetchCalled.Store(true)
 		return nil, nil
@@ -1578,6 +1655,7 @@ func testDebouncerTriggerKeepsLoopingOnContextEndDuringCooldownWait(t *testing.T
 	require.Eventually(t, func() bool {
 		d.mu.Lock()
 		defer d.mu.Unlock()
+
 		return !d.active
 	}, time.Second, time.Millisecond)
 
@@ -1590,8 +1668,11 @@ func testDebouncerTriggerDoesNotLoseLastTrigger(t *testing.T) {
 	d := NewDebouncer(time.Millisecond)
 	ctx := t.Context()
 
-	var generation atomic.Int64
-	var observedGen atomic.Int64
+	var (
+		generation  atomic.Int64
+		observedGen atomic.Int64
+	)
+
 	fetch := func() ([]table.TEDElem, error) {
 		observedGen.Store(generation.Load())
 		return nil, nil
@@ -1623,8 +1704,10 @@ func testDebouncerRunReleasesLockOnPanic(t *testing.T) {
 				recovered = true
 			}
 		}()
+
 		fetch := func() ([]table.TEDElem, error) { panic("boom") }
 		d.run(context.Background(), fetch, func([]table.TEDElem) {}, logger.NewNop())
+
 		return false
 	}()
 	require.True(t, panicked, "expected run to panic")
@@ -1651,15 +1734,18 @@ type testGoBGPServer struct {
 
 func (s *testGoBGPServer) ListPath(_ *api.ListPathRequest, stream grpc.ServerStreamingServer[api.ListPathResponse]) error {
 	call := int(s.listPathCalls.Add(1)) - 1
+
 	resp := s.listPathResp
 	if s.listPathResps != nil {
 		resp = s.listPathResps[min(call, len(s.listPathResps)-1)]
 	}
+
 	for _, r := range resp {
 		if err := stream.Send(r); err != nil {
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -1668,20 +1754,25 @@ func (s *testGoBGPServer) WatchEvent(_ *api.WatchEventRequest, stream grpc.Serve
 	if call < len(s.watchEventErrs) && s.watchEventErrs[call] != nil {
 		return s.watchEventErrs[call]
 	}
+
 	events := s.watchEvents
 	if s.watchEventsPerCall != nil {
 		events = s.watchEventsPerCall[min(call, len(s.watchEventsPerCall)-1)]
 	}
+
 	for _, e := range events {
 		if err := stream.Send(e); err != nil {
 			return err
 		}
 	}
+
 	hold := s.watchEventHold
 	if s.watchEventHolds != nil {
 		hold = s.watchEventHolds[min(call, len(s.watchEventHolds)-1)]
 	}
+
 	time.Sleep(hold)
+
 	return nil
 }
 
@@ -1693,16 +1784,19 @@ func startTestGoBGPServer(t *testing.T, server *testGoBGPServer) (host, port str
 	require.NoError(t, err)
 
 	srv := grpc.NewServer()
+
 	api.RegisterGoBgpServiceServer(srv, server)
 	go func() {
 		if err := srv.Serve(lis); err != nil {
 			t.Errorf("server error: %v", err)
 		}
 	}()
+
 	t.Cleanup(srv.Stop)
 
 	host, port, err = net.SplitHostPort(lis.Addr().String())
 	require.NoError(t, err)
+
 	return host, port
 }
 
@@ -1756,6 +1850,7 @@ func testMonitorBGPLsEventsUnusableAddress(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("MonitorBGPLsEvents did not return for an unusable server address")
 	}
+
 	require.Equal(t, 1, logs.Len())
 	assert.Equal(t, "failed to create gRPC client", logs.All()[0].Message)
 }
@@ -1791,27 +1886,35 @@ func testMonitorBGPLsEventsReconnectsAfterStreamEnd(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	tedChan := make(chan []table.TEDElem, 32)
 
-	var mu sync.Mutex
-	var deliveries [][]table.TEDElem
+	var (
+		mu         sync.Mutex
+		deliveries [][]table.TEDElem
+	)
+
 	go func() {
 		for elems := range tedChan {
 			mu.Lock()
+
 			deliveries = append(deliveries, elems)
 			mu.Unlock()
 		}
 	}()
+
 	hasDelivery := func(length int) bool {
 		mu.Lock()
 		defer mu.Unlock()
+
 		for _, d := range deliveries {
 			if len(d) == length {
 				return true
 			}
 		}
+
 		return false
 	}
 
 	done := make(chan struct{})
+
 	go func() {
 		monitorLoop(ctx, host, port, tedChan, logger.NewNop(), monitorOptions{
 			debounceCooldown: 10 * time.Millisecond,
@@ -1833,6 +1936,7 @@ func testMonitorBGPLsEventsReconnectsAfterStreamEnd(t *testing.T) {
 		5*time.Second, time.Millisecond, "stream #2's table event was not processed")
 
 	cancel()
+
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
@@ -1913,9 +2017,11 @@ func testMonitorBGPLsEventsDebouncedFetch(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for the debounced fetch to deliver")
 	}
+
 	assert.GreaterOrEqual(t, server.listPathCalls.Load(), int32(2))
 
 	cancel()
+
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
@@ -1964,11 +2070,13 @@ func testMonitorBGPLsEventsReestablishesStream(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for the re-established stream to deliver")
 	}
+
 	assert.GreaterOrEqual(t, server.watchEventCalls.Load(), int32(2))
 	require.GreaterOrEqual(t, logs.Len(), 1)
 	assert.Equal(t, "error receiving BGP-LS event", logs.All()[0].Message)
 
 	cancel()
+
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
@@ -2007,27 +2115,35 @@ func testMonitorBGPLsEventsResyncsAfterReconnect(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	tedChan := make(chan []table.TEDElem, 16)
 
-	var mu sync.Mutex
-	var deliveries [][]table.TEDElem
+	var (
+		mu         sync.Mutex
+		deliveries [][]table.TEDElem
+	)
+
 	go func() {
 		for elems := range tedChan {
 			mu.Lock()
+
 			deliveries = append(deliveries, elems)
 			mu.Unlock()
 		}
 	}()
+
 	hasDelivery := func(length int) bool {
 		mu.Lock()
 		defer mu.Unlock()
+
 		for _, d := range deliveries {
 			if len(d) == length {
 				return true
 			}
 		}
+
 		return false
 	}
 
 	done := make(chan struct{})
+
 	go func() {
 		monitorLoop(ctx, host, port, tedChan, logger.NewNop(), monitorOptions{
 			debounceCooldown: 10 * time.Millisecond,
@@ -2050,6 +2166,7 @@ func testMonitorBGPLsEventsResyncsAfterReconnect(t *testing.T) {
 		"reconnecting did not trigger a forced resync although stream #2 sent no table event")
 
 	cancel()
+
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):

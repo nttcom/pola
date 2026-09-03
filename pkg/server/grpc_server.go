@@ -33,13 +33,16 @@ func wrapStatusError(err error, format string, a ...any) error {
 	if err == nil {
 		return nil
 	}
+
 	prefix := fmt.Sprintf(format, a...)
+
 	st, ok := status.FromError(err)
 	if !ok {
 		return fmt.Errorf("%s: %w", prefix, err)
 	}
 
 	wrapped := status.New(st.Code(), prefix+": "+st.Message())
+
 	details := st.Details()
 	if len(details) == 0 {
 		return wrapped.Err()
@@ -51,6 +54,7 @@ func wrapStatusError(err error, format string, a ...any) error {
 			protoDetails = append(protoDetails, protoadapt.MessageV1Of(m))
 		}
 	}
+
 	if len(protoDetails) == 0 {
 		return wrapped.Err()
 	}
@@ -59,6 +63,7 @@ func wrapStatusError(err error, format string, a ...any) error {
 	if derr != nil {
 		return wrapped.Err()
 	}
+
 	return withDetails.Err()
 }
 
@@ -67,10 +72,12 @@ func statusFromCSPFError(err error) error {
 	if err == nil {
 		return nil
 	}
+
 	if invalidInput, ok := errors.AsType[*cspf.InvalidInputError](err); ok {
 		_ = invalidInput
 		return newStatus(codes.InvalidArgument, ReasonInvalidRequest, "%s", err.Error())
 	}
+
 	if topoLimit, ok := errors.AsType[*cspf.TopologyLimitationError](err); ok {
 		return newStatus(codes.FailedPrecondition, topoLimit.Reason, "%s", err.Error())
 	}
@@ -97,6 +104,7 @@ func NewAPIServer(pce *Server, grpcServer *grpc.Server, usidMode bool, lg *logge
 		logger:     lg.With(logger.String("server", "grpc")),
 	}
 	pb.RegisterPCEServiceServer(grpcServer, s)
+
 	return s
 }
 
@@ -106,21 +114,27 @@ func (s *APIServer) Serve(ctx context.Context, address, port string) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse gRPC address %q: %w", address, err)
 	}
+
 	p, err := strconv.Atoi(port)
 	if err != nil {
 		return fmt.Errorf("failed to convert gRPC port %q: %w", port, err)
 	}
+
 	if p < 0 || p > math.MaxUint16 {
 		return errors.New("invalid gRPC listen port")
 	}
+
 	localAddr := netip.AddrPortFrom(a, uint16(p))
 
 	var lc net.ListenConfig
+
 	grpcListener, err := lc.Listen(ctx, "tcp", localAddr.String())
 	if err != nil {
 		return fmt.Errorf("failed to listen on gRPC port %s: %w", localAddr.String(), err)
 	}
+
 	s.logger.Info("Start listening on gRPC port", logger.String("listenInfo", grpcListener.Addr().String()))
+
 	return serveGRPC(s.grpcServer, grpcListener)
 }
 
@@ -129,6 +143,7 @@ func serveGRPC(grpcServer *grpc.Server, lis net.Listener) error {
 	if err := grpcServer.Serve(lis); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
 		return fmt.Errorf("failed to serve gRPC: %w", err)
 	}
+
 	return nil
 }
 
@@ -136,6 +151,7 @@ func validateCreateSRPolicy(req *pb.CreateSRPolicyRequest, disablePathCompute bo
 	if disablePathCompute {
 		return validate(req.GetSrPolicy(), req.GetAsn(), ValidationAddDisablePathCompute)
 	}
+
 	return validate(req.GetSrPolicy(), req.GetAsn(), ValidationAdd)
 }
 
@@ -152,11 +168,13 @@ func parseSidStructure(s string) ([]uint8, error) {
 	}
 
 	result := make([]uint8, 4)
+
 	for i, p := range parts {
 		v, err := strconv.ParseUint(strings.TrimSpace(p), 10, 8)
 		if err != nil {
 			return nil, fmt.Errorf("invalid SID structure %q: %w", s, err)
 		}
+
 		result[i] = uint8(v)
 	}
 
@@ -172,25 +190,31 @@ func enrichSRv6Segment(srv6Seg table.SegmentSRv6, segment *pb.Segment, usidMode 
 	if usidMode {
 		srv6Seg.USid = true
 	}
+
 	if structure, err := parseSidStructure(segment.GetSidStructure()); err != nil {
 		return srv6Seg, err
 	} else if structure != nil {
 		srv6Seg.Structure = table.SIDStructureBytes(structure)
 	}
+
 	if s := segment.GetLocalAddr(); s != "" {
 		la, err := netip.ParseAddr(s)
 		if err != nil {
 			return srv6Seg, fmt.Errorf("invalid localAddr %q for SID %s: %w", s, segment.GetSid(), err)
 		}
+
 		srv6Seg.LocalAddr = la
 	}
+
 	if s := segment.GetRemoteAddr(); s != "" {
 		ra, err := netip.ParseAddr(s)
 		if err != nil {
 			return srv6Seg, fmt.Errorf("invalid remoteAddr %q for SID %s: %w", s, segment.GetSid(), err)
 		}
+
 		srv6Seg.RemoteAddr = ra
 	}
+
 	return srv6Seg, nil
 }
 
@@ -201,16 +225,21 @@ func enrichSRMPLSSegment(mplsSeg table.SegmentSRMPLS, segment *pb.Segment) (tabl
 		if err != nil {
 			return mplsSeg, fmt.Errorf("invalid localAddr %q for SID %s: %w", s, segment.GetSid(), err)
 		}
+
 		mplsSeg.LocalAddr = la
 	}
+
 	if s := segment.GetRemoteAddr(); s != "" {
 		ra, err := netip.ParseAddr(s)
 		if err != nil {
 			return mplsSeg, fmt.Errorf("invalid remoteAddr %q for SID %s: %w", s, segment.GetSid(), err)
 		}
+
 		mplsSeg.RemoteAddr = ra
 	}
+
 	mplsSeg.SidAbsent = segment.GetSidAbsent()
+
 	return mplsSeg, nil
 }
 
@@ -220,24 +249,29 @@ func newEnrichedSegment(segment *pb.Segment, usidMode bool) (table.Segment, erro
 	if err != nil {
 		return nil, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "invalid SID %q: %v", segment.GetSid(), err)
 	}
+
 	switch v := seg.(type) {
 	case table.SegmentSRv6:
 		enriched, err := enrichSRv6Segment(v, segment, usidMode)
 		if err != nil {
 			return nil, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "%s", err.Error())
 		}
+
 		if _, err := pcep.NewSRv6EroSubobject(enriched); err != nil {
 			return nil, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "%s", err.Error())
 		}
+
 		return enriched, nil
 	case table.SegmentSRMPLS:
 		enriched, err := enrichSRMPLSSegment(v, segment)
 		if err != nil {
 			return nil, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "%s", err.Error())
 		}
+
 		if _, err := pcep.NewSREroSubobject(enriched); err != nil {
 			return nil, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "%s", err.Error())
 		}
+
 		return enriched, nil
 	default:
 		return nil, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "unsupported segment type for SID %q", segment.GetSid())
@@ -255,6 +289,7 @@ func resolvePath(s *APIServer, input *pb.CreateSRPolicyRequest, disablePathCompu
 	if disablePathCompute {
 		return resolvePathFromRequest(s, input)
 	}
+
 	return resolvePathViaTED(s, input)
 }
 
@@ -275,9 +310,11 @@ func resolvePathViaTED(s *APIServer, input *pb.CreateSRPolicyRequest) (resolvedP
 		if node == nil {
 			continue
 		}
+
 		if node.ASN != input.GetAsn() {
 			return resolvedPath{}, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "request ASN %d does not match ted ASN %d", input.GetAsn(), node.ASN)
 		}
+
 		break
 	}
 
@@ -321,11 +358,13 @@ func resolvePathFromRequest(s *APIServer, input *pb.CreateSRPolicyRequest) (reso
 	}
 
 	var segmentList []table.Segment
+
 	for _, segment := range inputSRPolicy.GetSegmentList() {
 		seg, err := newEnrichedSegment(segment, s.usidMode)
 		if err != nil {
 			return resolvedPath{}, err
 		}
+
 		segmentList = append(segmentList, seg)
 	}
 
@@ -375,12 +414,14 @@ func sendSRPolicyRequest(s *APIServer, input *pb.CreateSRPolicyRequest, path res
 
 	if id, exists := pcepSession.SearchPlspID(inputSRPolicy.GetColor(), path.DstAddr); exists {
 		s.logger.Debug("Request to update SR Policy", logger.Uint32("plspID", id))
+
 		srPolicy.PlspID = id
 		if err := pcepSession.SendPCUpdate(srPolicy); err != nil {
 			return newStatus(codes.Internal, ReasonPCEPRequestFailed, "failed to send PC update: %v", err)
 		}
 	} else {
 		s.logger.Debug("Request to create SR Policy")
+
 		if err := pcepSession.RequestSRPolicyCreated(srPolicy); err != nil {
 			return newStatus(codes.Internal, ReasonPCEPRequestFailed, "failed to request SR policy creation: %v", err)
 		}
@@ -421,6 +462,7 @@ func (s *APIServer) validateSIDs(req *pb.CreateSRPolicyRequest, segmentList []ta
 		for _, s := range invalid {
 			descriptions = append(descriptions, s.String())
 		}
+
 		return newStatus(codes.InvalidArgument, ReasonInvalidRequest,
 			"segment list contains SR-MPLS labels outside the valid range 0-%d: %s",
 			table.MPLSLabelMax, strings.Join(descriptions, ", "))
@@ -444,6 +486,7 @@ func (s *APIServer) validateSIDs(req *pb.CreateSRPolicyRequest, segmentList []ta
 			logger.String("policyName", policy.GetPolicyName()),
 			logger.Uint32("color", policy.GetColor()),
 		)
+
 		return nil
 	}
 
@@ -452,6 +495,7 @@ func (s *APIServer) validateSIDs(req *pb.CreateSRPolicyRequest, segmentList []ta
 		return newStatus(codes.FailedPrecondition, ReasonTEDDisabled,
 			"TED is not enabled, SID validation cannot be performed")
 	}
+
 	if len(ted.Nodes) == 0 {
 		return newStatus(codes.FailedPrecondition, ReasonTEDNotSynced,
 			"TED is enabled but empty (not yet synchronized), SID validation cannot be performed")
@@ -459,11 +503,13 @@ func (s *APIServer) validateSIDs(req *pb.CreateSRPolicyRequest, segmentList []ta
 
 	// Resolve source router ID for path traversal.
 	var srcRouterID string
+
 	if req.GetDisablePathCompute() {
 		srcAddr, ok := netip.AddrFromSlice(req.GetSrPolicy().GetSrcAddr())
 		if !ok {
 			return newStatus(codes.InvalidArgument, ReasonInvalidRequest, "invalid source address in request")
 		}
+
 		srcRouterID, ok = ted.FindRouterIDByLoopback(srcAddr)
 		if !ok {
 			return newStatus(codes.InvalidArgument, ReasonInvalidRequest,
@@ -476,6 +522,7 @@ func (s *APIServer) validateSIDs(req *pb.CreateSRPolicyRequest, segmentList []ta
 	if err := table.ValidateExplicitPath(ted, srcRouterID, segmentList); err != nil {
 		return newStatus(codes.FailedPrecondition, ReasonSIDValidationFailed, "SID validation failed: %s", err)
 	}
+
 	return nil
 }
 
@@ -487,11 +534,15 @@ func (s *APIServer) DeleteSRPolicy(_ context.Context, input *pb.DeleteSRPolicyRe
 	}
 
 	inputSRPolicy := input.GetSrPolicy()
-	var srcAddr, dstAddr netip.Addr
-	var segmentList []table.Segment
+
+	var (
+		srcAddr, dstAddr netip.Addr
+		segmentList      []table.Segment
+	)
 
 	if len(inputSRPolicy.GetSrcAddr()) > 0 {
 		var ok bool
+
 		srcAddr, ok = netip.AddrFromSlice(inputSRPolicy.GetSrcAddr())
 		if !ok {
 			return nil, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "invalid source address")
@@ -508,6 +559,7 @@ func (s *APIServer) DeleteSRPolicy(_ context.Context, input *pb.DeleteSRPolicyRe
 		if err != nil {
 			return nil, err
 		}
+
 		segmentList = append(segmentList, seg)
 	}
 
@@ -534,6 +586,7 @@ func (s *APIServer) DeleteSRPolicy(_ context.Context, input *pb.DeleteSRPolicyRe
 	}
 
 	s.logger.Debug("Request to delete SR Policy", logger.Uint32("plspID", id))
+
 	srPolicy.PlspID = id
 	if err := pcepSession.RequestSRPolicyDeleted(srPolicy); err != nil {
 		return nil, newStatus(codes.Internal, ReasonPCEPRequestFailed, "failed to send PC delete: %v", err)
@@ -545,13 +598,16 @@ func (s *APIServer) DeleteSRPolicy(_ context.Context, input *pb.DeleteSRPolicyRe
 // srPolicyListFilter validates and parses the session filter.
 func srPolicyListFilter(req *pb.GetSRPolicyListRequest) (netip.Addr, error) {
 	var filterAddr netip.Addr
+
 	if raw := req.GetPeerAddr(); len(raw) > 0 {
 		var ok bool
+
 		filterAddr, ok = netip.AddrFromSlice(raw)
 		if !ok {
 			return netip.Addr{}, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "invalid session filter address %v", raw)
 		}
 	}
+
 	return filterAddr, nil
 }
 
@@ -576,23 +632,29 @@ func (s *APIServer) GetSRPolicyList(_ context.Context, req *pb.GetSRPolicyListRe
 		}
 
 		policies := pcepSession.SRPolicies()
+
 		pbPolicies := make([]*pb.SRPolicy, 0, len(policies))
 		for _, policy := range policies {
 			pbPolicies = append(pbPolicies, s.buildPBSRPolicy(pcepSession, policy, routerIDIndex))
 		}
+
 		slices.SortFunc(pbPolicies, func(a, b *pb.SRPolicy) int {
 			if a.GetColor() < b.GetColor() {
 				return -1
 			}
+
 			if a.GetColor() > b.GetColor() {
 				return 1
 			}
+
 			if a.GetPlspId() < b.GetPlspId() {
 				return -1
 			}
+
 			if a.GetPlspId() > b.GetPlspId() {
 				return 1
 			}
+
 			return strings.Compare(a.GetPolicyName(), b.GetPolicyName())
 		})
 
@@ -600,6 +662,7 @@ func (s *APIServer) GetSRPolicyList(_ context.Context, req *pb.GetSRPolicyListRe
 	}
 
 	s.logger.Debug("Send SRPolicyList API reply")
+
 	return &pb.GetSRPolicyListResponse{
 		Sessions: sessions,
 	}, nil
@@ -609,13 +672,16 @@ func validate(inputSRPolicy *pb.SRPolicy, asn uint32, validationKind ValidationK
 	if inputSRPolicy == nil {
 		return newStatus(codes.InvalidArgument, ReasonInvalidRequest, "validate error, input is nil")
 	}
+
 	if validationKind == ValidationAdd && asn == 0 {
 		return newStatus(codes.InvalidArgument, ReasonInvalidRequest, "validate error, ASN must not be zero")
 	}
+
 	validateFunc, ok := validator[validationKind]
 	if !ok {
 		return newStatus(codes.InvalidArgument, ReasonInvalidRequest, "validate error: unknown validation kind %q", validationKind)
 	}
+
 	if err := validateFunc(inputSRPolicy, asn); err != nil {
 		return newStatus(codes.InvalidArgument, ReasonInvalidRequest, "validate error: %s", err.Error())
 	}
@@ -640,15 +706,19 @@ var validator = map[ValidationKind]func(policy *pb.SRPolicy, asn uint32) error{
 		if policy.PeerAddr == nil {
 			return errors.New("policy.PeerAddr must not be nil")
 		}
+
 		if policy.GetColor() == 0 {
 			return errors.New("policy.Color must not be zero")
 		}
+
 		if policy.GetSrcRouterId() == "" {
 			return errors.New("policy.SrcRouterId must not be empty")
 		}
+
 		if policy.GetDstRouterId() == "" {
 			return errors.New("policy.DstRouterId must not be empty")
 		}
+
 		return nil
 	},
 
@@ -656,18 +726,23 @@ var validator = map[ValidationKind]func(policy *pb.SRPolicy, asn uint32) error{
 		if policy.PeerAddr == nil {
 			return errors.New("policy.PeerAddr must not be nil")
 		}
+
 		if policy.GetColor() == 0 {
 			return errors.New("policy.Color must not be zero")
 		}
+
 		if len(policy.GetSrcAddr()) == 0 {
 			return errors.New("policy.SrcAddr must not be empty")
 		}
+
 		if len(policy.GetDstAddr()) == 0 {
 			return errors.New("policy.DstAddr must not be empty")
 		}
+
 		if len(policy.GetSegmentList()) == 0 {
 			return errors.New("policy.SegmentList must not be empty")
 		}
+
 		return nil
 	},
 
@@ -675,15 +750,19 @@ var validator = map[ValidationKind]func(policy *pb.SRPolicy, asn uint32) error{
 		if policy.PeerAddr == nil {
 			return errors.New("policy.PeerAddr must not be nil")
 		}
+
 		if policy.GetColor() == 0 {
 			return errors.New("policy.Color must not be zero")
 		}
+
 		if len(policy.GetDstAddr()) == 0 {
 			return errors.New("policy.DstAddr must not be empty")
 		}
+
 		if policy.GetPolicyName() == "" {
 			return errors.New("policy.PolicyName must not be empty")
 		}
+
 		return nil
 	},
 }
@@ -708,10 +787,12 @@ func resolveSession(pce *Server, addr []byte, requireSynced bool) (*Session, err
 		return nil, newStatus(codes.NotFound, ReasonPCEPSessionNotFound,
 			"no session with address %s found", peerAddr)
 	}
+
 	if requireSynced && !pcepSession.IsSynced() {
 		return nil, newStatus(codes.FailedPrecondition, ReasonPCEPSessionNotSynced,
 			"no synced session with %s", peerAddr)
 	}
+
 	return pcepSession, nil
 }
 
@@ -725,10 +806,12 @@ func tedNode(ted *table.LsTED, routerID string) (*table.LsNode, bool) {
 	if ted == nil {
 		return nil, false
 	}
+
 	node, ok := ted.Nodes[routerID]
 	if !ok || node == nil {
 		return nil, false
 	}
+
 	return node, true
 }
 
@@ -737,10 +820,12 @@ func getLoopbackAddr(ted *table.LsTED, routerID string) (netip.Addr, error) {
 	if !ok {
 		return netip.Addr{}, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "no node with router ID %s", routerID)
 	}
+
 	addr, err := node.LoopbackAddr()
 	if err != nil {
 		return netip.Addr{}, newStatus(codes.FailedPrecondition, ReasonTEDDataIncomplete, "%s", err.Error())
 	}
+
 	return addr, nil
 }
 
@@ -753,11 +838,13 @@ func getSegmentList(inputSRPolicy *pb.SRPolicy, ted *table.LsTED, usidMode bool)
 		if len(inputSRPolicy.GetSegmentList()) == 0 {
 			return nil, table.UnspecifiedMetric, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "no segments in SRPolicy input")
 		}
+
 		for _, segment := range inputSRPolicy.GetSegmentList() {
 			sid, err := newEnrichedSegment(segment, usidMode)
 			if err != nil {
 				return nil, table.UnspecifiedMetric, err
 			}
+
 			segmentList = append(segmentList, sid)
 		}
 	case pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC:
@@ -765,6 +852,7 @@ func getSegmentList(inputSRPolicy *pb.SRPolicy, ted *table.LsTED, usidMode bool)
 		if err != nil {
 			return nil, table.UnspecifiedMetric, err
 		}
+
 		pbWPs := inputSRPolicy.GetWaypoints()
 		if len(pbWPs) > 0 {
 			// Convert to table.Waypoint
@@ -786,6 +874,7 @@ func getSegmentList(inputSRPolicy *pb.SRPolicy, ted *table.LsTED, usidMode bool)
 			if err != nil {
 				return nil, table.UnspecifiedMetric, statusFromCSPFError(err)
 			}
+
 			return segs, metricType, nil
 		}
 
@@ -798,6 +887,7 @@ func getSegmentList(inputSRPolicy *pb.SRPolicy, ted *table.LsTED, usidMode bool)
 		if err != nil {
 			return nil, table.UnspecifiedMetric, statusFromCSPFError(err)
 		}
+
 		return segs, metricType, nil
 	default:
 		return nil, table.UnspecifiedMetric, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "undefined SR Policy type")
@@ -824,13 +914,16 @@ func getMetricType(metricType pb.MetricType) (table.MetricType, error) {
 // sessionListFilter validates and parses the peer address filter.
 func sessionListFilter(req *pb.GetSessionListRequest) (netip.Addr, error) {
 	var filterAddr netip.Addr
+
 	if raw := req.GetPeerAddr(); len(raw) > 0 {
 		var ok bool
+
 		filterAddr, ok = netip.AddrFromSlice(raw)
 		if !ok {
 			return netip.Addr{}, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "invalid session filter address %v", raw)
 		}
 	}
+
 	return filterAddr, nil
 }
 
@@ -851,10 +944,12 @@ func (s *APIServer) GetSessionList(_ context.Context, req *pb.GetSessionListRequ
 		if filterAddr.IsValid() && pcepSession.peerAddr != filterAddr {
 			continue
 		}
+
 		sessions = append(sessions, s.buildPBSession(pcepSession, req.GetIncludeStats()))
 	}
 
 	s.logger.Debug("Send GetSessionList API reply")
+
 	return &pb.GetSessionListResponse{
 		Sessions: sessions,
 	}, nil
@@ -889,6 +984,7 @@ func (s *APIServer) GetTED(_ context.Context, _ *pb.GetTEDRequest) (*pb.GetTEDRe
 		ret.Enabled = false
 		return ret, nil
 	}
+
 	ted := s.pce.TED()
 	if ted == nil {
 		ret.Enabled = false
@@ -902,5 +998,6 @@ func (s *APIServer) GetTED(_ context.Context, _ *pb.GetTEDRequest) (*pb.GetTEDRe
 	}
 
 	s.logger.Debug("Send GetTED API reply")
+
 	return ret, nil
 }

@@ -17,6 +17,7 @@ func Uint16(v uint32, field string) (uint16, error) {
 	if v > math.MaxUint16 {
 		return 0, fmt.Errorf("%s %d exceeds %d", field, v, math.MaxUint16)
 	}
+
 	return uint16(v), nil
 }
 
@@ -25,5 +26,6 @@ func Uint8(v uint32, field string) (uint8, error) {
 	if v > math.MaxUint8 {
 		return 0, fmt.Errorf("%s %d exceeds %d", field, v, math.MaxUint8)
 	}
+
 	return uint8(v), nil
 }

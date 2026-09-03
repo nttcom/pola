@@ -68,9 +68,11 @@ func validateMetricType(metric table.MetricType) error {
 	if !metric.IsValid() {
 		return invalidInputf("unsupported metric type %d", int(metric))
 	}
+
 	if metric == table.UnspecifiedMetric {
 		return invalidInputf("metric type must be specified for path computation")
 	}
+
 	return nil
 }
 
@@ -79,6 +81,7 @@ func CSPF(srcRouterID, dstRouterID string, metric table.MetricType, ted *table.L
 	if ted == nil {
 		return nil, errors.New("ted is nil")
 	}
+
 	if err := validateMetricType(metric); err != nil {
 		return nil, err
 	}
@@ -101,6 +104,7 @@ func WithLooseSourceRouting(
 	if ted == nil {
 		return nil, errors.New("ted is nil")
 	}
+
 	if err := validateMetricType(metric); err != nil {
 		return nil, err
 	}
@@ -123,6 +127,7 @@ func WithLooseSourceRouting(
 		if err != nil {
 			return nil, err
 		}
+
 		fullList = append(fullList, sectionSegs...)
 		fullList = appendIfNotDuplicate(fullList, seg)
 		prev = wp.RouterID
@@ -169,16 +174,20 @@ func buildWaypointSegment(node *table.LsNode, explicitSID string) (table.Segment
 		if !addr.Is6() {
 			return nil, invalidInputf("explicit SID %q must be an IPv6 SRv6 SID", explicitSID)
 		}
+
 		seg, err := table.NewSegmentSRv6WithNodeInfo(addr, node)
 		if err != nil {
 			return nil, topologyLimitationf(reasonTEDDataIncomplete, "%w", err)
 		}
+
 		return seg, nil
 	}
+
 	seg, err := node.NodeSegment()
 	if err != nil {
 		return nil, topologyLimitationf(reasonTEDDataIncomplete, "%w", err)
 	}
+
 	return seg, nil
 }
 
@@ -187,6 +196,7 @@ func removeDuplicateFirst(fullList, section []table.Segment) []table.Segment {
 	if len(fullList) > 0 && len(section) > 0 && table.SegmentsEqual(fullList[len(fullList)-1], section[0]) {
 		return section[1:]
 	}
+
 	return section
 }
 
@@ -195,6 +205,7 @@ func appendIfNotDuplicate(list []table.Segment, seg table.Segment) []table.Segme
 	if len(list) == 0 || !table.SegmentsEqual(list[len(list)-1], seg) {
 		list = append(list, seg)
 	}
+
 	return list
 }
 
@@ -214,6 +225,7 @@ func spf(srcRouterID, dstRouterID string, metricType table.MetricType, network m
 		if err != nil {
 			return nil, err
 		}
+
 		if calcNodeID == dstRouterID {
 			break
 		}
@@ -234,6 +246,7 @@ func nodeInTED(network map[string]*table.LsNode, routerID string) (*table.LsNode
 	if !ok || node == nil {
 		return nil, false
 	}
+
 	return node, true
 }
 
@@ -243,12 +256,15 @@ func initNodeMap(srcRouterID string, network map[string]*table.LsNode) (map[stri
 	if !ok {
 		return nil, invalidInputf("source router %s not found in TED", srcRouterID)
 	}
+
 	startNodeSeg, err := srcNode.NodeSegment()
 	if err != nil {
 		return nil, topologyLimitationf(reasonTEDDataIncomplete, "%w", err)
 	}
+
 	startNode := newNode(srcRouterID, 0, startNodeSeg)
 	startNode.calculated = false
+
 	return map[string]*node{srcRouterID: startNode}, nil
 }
 
@@ -263,6 +279,7 @@ func updateNeighborCosts(calcNodeID string, calculatingNodes map[string]*node, n
 		if link == nil || link.RemoteNode == nil {
 			continue
 		}
+
 		if _, ok := nodeInTED(network, link.RemoteNode.RouterID); !ok {
 			continue
 		}
@@ -282,11 +299,13 @@ func updateNeighborCosts(calcNodeID string, calculatingNodes map[string]*node, n
 			if err != nil {
 				return topologyLimitationf(reasonTEDDataIncomplete, "%w", err)
 			}
+
 			remoteNode := newNode(link.RemoteNode.RouterID, calculatingNodes[calcNodeID].cost+metric, remoteNodeSeg)
 			remoteNode.prevNode = calcNodeID
 			calculatingNodes[link.RemoteNode.RouterID] = remoteNode
 		}
 	}
+
 	return nil
 }
 
@@ -308,16 +327,20 @@ func buildSegmentListFromPath(srcRouterID, dstRouterID string, calculatingNodes 
 // nextNode returns the ID of the next node to calculate.
 func nextNode(calculatingNodes map[string]*node) (string, error) {
 	nextNodeID := ""
+
 	for nodeID, node := range calculatingNodes {
 		if node.calculated {
 			continue
 		}
+
 		if nextNodeID == "" || calculatingNodes[nextNodeID].cost > node.cost {
 			nextNodeID = nodeID
 		}
 	}
+
 	if nextNodeID == "" {
 		return "", topologyLimitationf(reasonDestinationUnreachable, errNextNodeNotFound)
 	}
+
 	return nextNodeID, nil
 }

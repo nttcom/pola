@@ -36,12 +36,14 @@ func (ted *LsTED) RouterIDIndex() map[netip.Addr]string {
 		if node == nil {
 			continue
 		}
+
 		for _, prefix := range node.Prefixes {
 			if prefix.Prefix.Bits() == prefix.Prefix.Addr().BitLen() {
 				index[prefix.Prefix.Addr()] = node.RouterID
 			}
 		}
 	}
+
 	return index
 }
 
@@ -50,15 +52,19 @@ func (ted *LsTED) AddressRouterIDIndex() map[netip.Addr]string {
 	if ted == nil {
 		return nil
 	}
+
 	index := make(map[netip.Addr]string)
+
 	for routerID, node := range ted.Nodes {
 		if node == nil {
 			continue
 		}
+
 		for _, prefix := range node.Prefixes {
 			index[prefix.Prefix.Addr()] = routerID
 		}
 	}
+
 	return index
 }
 
@@ -81,16 +87,19 @@ func (ted *LsTED) Print(w io.Writer) {
 // printNodes iterates over each node in the map and prints its details.
 func printNodes(w io.Writer, nodes map[string]*LsNode) {
 	nodeCnt := 1
+
 	for nodeID, node := range nodes {
 		if node == nil {
 			continue
 		}
+
 		fmt.Fprintf(w, "Node: %d\n", nodeCnt)
 		printNodeBasic(w, nodeID, node)
 		printNodePrefixes(w, node)
 		printNodeLinks(w, node)
 		printNodeSRv6SIDs(w, node)
 		fmt.Fprintln(w)
+
 		nodeCnt++
 	}
 }
@@ -106,14 +115,18 @@ func printNodeBasic(w io.Writer, nodeID string, node *LsNode) {
 // printNodePrefixes prints the prefixes associated with a node.
 func printNodePrefixes(w io.Writer, node *LsNode) {
 	fmt.Fprintln(w, "  Prefixes:")
+
 	if node.Prefixes == nil {
 		return
 	}
+
 	for _, prefix := range node.Prefixes {
 		if prefix == nil {
 			continue
 		}
+
 		fmt.Fprintf(w, "    %s\n", prefix.Prefix.String())
+
 		if prefix.HasPrefixSID() {
 			fmt.Fprintf(w, "      index: %d\n", prefix.SidIndex)
 		}
@@ -123,13 +136,16 @@ func printNodePrefixes(w io.Writer, node *LsNode) {
 // printNodeLinks prints the links associated with a node.
 func printNodeLinks(w io.Writer, node *LsNode) {
 	fmt.Fprintln(w, "  Links:")
+
 	if node.Links == nil {
 		return
 	}
+
 	for _, link := range node.Links {
 		if link == nil {
 			continue
 		}
+
 		printLink(w, link)
 	}
 }
@@ -140,26 +156,32 @@ const displayNone = "None"
 func printLink(w io.Writer, link *LsLink) {
 	localIP := displayNone
 	remoteIP := displayNone
+
 	if link.LocalIP.IsValid() {
 		localIP = link.LocalIP.String()
 	}
+
 	if link.RemoteIP.IsValid() {
 		remoteIP = link.RemoteIP.String()
 	}
+
 	fmt.Fprintf(w, "    Local: %s Remote: %s\n", localIP, remoteIP)
 
 	remoteNodeID := displayNone
 	if link.RemoteNode != nil {
 		remoteNodeID = link.RemoteNode.RouterID
 	}
+
 	fmt.Fprintf(w, "      RemoteNode: %s\n", remoteNodeID)
 
 	fmt.Fprintln(w, "      Metrics:")
+
 	if link.Metrics != nil {
 		for _, metric := range link.Metrics {
 			if metric == nil {
 				continue
 			}
+
 			fmt.Fprintf(w, "        %s: %d\n", metric.Type.DisplayString(), metric.Value)
 		}
 	}
@@ -181,13 +203,16 @@ func printLink(w io.Writer, link *LsLink) {
 // printNodeSRv6SIDs prints the SRv6 SIDs associated with a node.
 func printNodeSRv6SIDs(w io.Writer, node *LsNode) {
 	fmt.Fprintln(w, "  SRv6 SIDs:")
+
 	if node.SRv6SIDs == nil {
 		return
 	}
+
 	for _, srv6SID := range node.SRv6SIDs {
 		if srv6SID == nil {
 			continue
 		}
+
 		fmt.Fprintf(w, "    SIDs: %v\n", srv6SID.Sids)
 		fmt.Fprintf(w, "    Block: %d, Node: %d, Func: %d, Arg: %d\n",
 			srv6SID.SIDStructure.LocalBlock,
@@ -236,10 +261,12 @@ func (n *LsNode) NodeSegment() (Segment, error) {
 			if n.SrgbBegin == 0 {
 				return nil, fmt.Errorf("cannot resolve prefix-SID index %d without an SRGB", prefix.SidIndex)
 			}
+
 			label, ok := srgbLabel(n, prefix.SidIndex)
 			if !ok {
 				return nil, fmt.Errorf("prefix-SID index %d is out of range for SRGB [%d, %d)", prefix.SidIndex, n.SrgbBegin, n.SrgbEnd)
 			}
+
 			return NewSegmentSRMPLS(label), nil
 		}
 	}
@@ -250,9 +277,11 @@ func (n *LsNode) NodeSegment() (Segment, error) {
 			if err != nil {
 				return nil, fmt.Errorf("SRv6 SID %q is invalid: %w", srv6SID.Sids[FirstSIDIndex], err)
 			}
+
 			if !addr.Is6() || addr.Is4In6() {
 				return nil, fmt.Errorf("SRv6 SID %q is not a valid IPv6 address", srv6SID.Sids[FirstSIDIndex])
 			}
+
 			return NewSegmentSRv6WithNodeInfo(addr, n)
 		}
 	}

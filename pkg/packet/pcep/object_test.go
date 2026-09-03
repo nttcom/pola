@@ -35,14 +35,17 @@ func TestSREroSubobject_RoundTrip(t *testing.T) {
 	mkSRMPLS := func(sid uint32, tc uint8, s bool, ttl uint8) table.SegmentSRMPLS {
 		seg := table.NewSegmentSRMPLS(sid)
 		seg.TC, seg.S, seg.TTL = tc, s, ttl
+
 		return seg
 	}
 	mkSRMPLSWithNAI := func(sid uint32, local, remote string) table.SegmentSRMPLS {
 		seg := table.NewSegmentSRMPLS(sid)
+
 		seg.LocalAddr = netip.MustParseAddr(local)
 		if remote != "" {
 			seg.RemoteAddr = netip.MustParseAddr(remote)
 		}
+
 		return seg
 	}
 
@@ -97,6 +100,7 @@ func TestSREroSubobject_RoundTrip(t *testing.T) {
 			Segment: func() table.SegmentSRMPLS {
 				seg := mkSRMPLSWithNAI(16003, "10.0.0.3", "")
 				seg.TC, seg.S, seg.TTL = 3, true, 10
+
 				return seg
 			}(),
 		},
@@ -108,6 +112,7 @@ func TestSREroSubobject_RoundTrip(t *testing.T) {
 
 			l, err := want.Len()
 			require.NoError(t, err, "Len failed")
+
 			want.Length = uint8(l)
 
 			raw, err := want.Serialize()
@@ -133,9 +138,11 @@ func TestNewSREroSubobject_NAIFromSegment(t *testing.T) {
 		if local != "" {
 			seg.LocalAddr = netip.MustParseAddr(local)
 		}
+
 		if remote != "" {
 			seg.RemoteAddr = netip.MustParseAddr(remote)
 		}
+
 		return seg
 	}
 
@@ -184,6 +191,7 @@ func TestNewSREroSubobject_NAIFromSegment(t *testing.T) {
 				assert.Error(t, err)
 				return
 			}
+
 			require.NoError(t, err)
 			assert.Equal(t, tc.wantNAIType, subo.NAIType, "NAI type")
 			assert.Equal(t, tc.wantFFlag, subo.FFlag, "F flag")
@@ -246,9 +254,11 @@ func TestSREroSubobject_SerializeRejectsNAIMismatch(t *testing.T) {
 		if local != "" {
 			seg.LocalAddr = netip.MustParseAddr(local)
 		}
+
 		if remote != "" {
 			seg.RemoteAddr = netip.MustParseAddr(remote)
 		}
+
 		return &SREroSubobject{
 			SubobjectType: SubobjectTypeEROSR,
 			NAIType:       naiType,
@@ -308,6 +318,7 @@ func TestNAITypeSR_naiLength(t *testing.T) {
 				assert.Error(t, err)
 				return
 			}
+
 			require.NoError(t, err)
 			assert.Equal(t, tc.want, got)
 		})
@@ -322,9 +333,11 @@ func TestSREroSubobject_DecodeFromBytes_SIDAbsent(t *testing.T) {
 		if local != "" {
 			seg.LocalAddr = netip.MustParseAddr(local)
 		}
+
 		if remote != "" {
 			seg.RemoteAddr = netip.MustParseAddr(remote)
 		}
+
 		return seg
 	}
 
@@ -353,6 +366,7 @@ func TestSREroSubobject_DecodeFromBytes_SIDAbsent(t *testing.T) {
 			if !tc.sFlag {
 				seg.Sid = 16001
 			}
+
 			subo := &SREroSubobject{
 				SubobjectType: SubobjectTypeEROSR,
 				NAIType:       tc.naiType,
@@ -363,10 +377,12 @@ func TestSREroSubobject_DecodeFromBytes_SIDAbsent(t *testing.T) {
 
 			l, err := subo.Len()
 			require.NoError(t, err)
+
 			wantLen := uint16(4) + tc.naiLength
 			if !tc.sFlag {
 				wantLen += 4
 			}
+
 			require.Equal(t, wantLen, l, "Len()")
 			subo.Length = uint8(l)
 
@@ -379,6 +395,7 @@ func TestSREroSubobject_DecodeFromBytes_SIDAbsent(t *testing.T) {
 			assert.Equal(t, tc.sFlag, got.SFlag)
 			assert.Equal(t, seg.LocalAddr, got.Segment.LocalAddr, "NAI read position after SID")
 			assert.Equal(t, seg.RemoteAddr, got.Segment.RemoteAddr, "NAI read position after SID")
+
 			if tc.sFlag {
 				assert.Zero(t, got.Segment.Sid, "SID must not be decoded when S=1")
 			} else {
@@ -401,6 +418,7 @@ func TestSREroSubobject_TableRoundTrip_SIDAbsent(t *testing.T) {
 	}
 	l, err := subo.Len()
 	require.NoError(t, err)
+
 	subo.Length = uint8(l)
 	raw, err := subo.Serialize()
 	require.NoError(t, err)
@@ -461,6 +479,7 @@ func TestSREroSubobject_DecodeFromBytes_TruncatedAfterHeader(t *testing.T) {
 		t.Parallel()
 
 		raw := []uint8{0x24, 0x0a, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+
 		var subo SREroSubobject
 		assert.ErrorContains(t, subo.DecodeFromBytes(raw), "truncated NAI")
 	})
@@ -469,6 +488,7 @@ func TestSREroSubobject_DecodeFromBytes_TruncatedAfterHeader(t *testing.T) {
 		t.Parallel()
 
 		raw := []uint8{0x24, 0x09, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00}
+
 		var subo SREroSubobject
 		assert.EqualError(t, subo.DecodeFromBytes(raw), "SREroSubobject: declared length does not match S/F flags")
 	})
@@ -522,6 +542,7 @@ func TestSRv6EroSubobject_RoundTrip(t *testing.T) {
 
 			l, err := want.Len()
 			require.NoError(t, err, "Len failed")
+
 			want.Length = uint8(l)
 
 			raw, err := want.Serialize()
@@ -567,6 +588,7 @@ func TestRSVPIPv4PrefixEroSubobject_RoundTrip(t *testing.T) {
 
 			l, err := want.Len()
 			require.NoError(t, err, "Len failed")
+
 			want.Length = uint8(l)
 
 			raw, err := want.Serialize()
@@ -1115,6 +1137,7 @@ func TestEroObject_RoundTrip(t *testing.T) {
 	mkSREro := func(sid uint32) *SREroSubobject {
 		subo, err := NewSREroSubobject(table.NewSegmentSRMPLS(sid))
 		require.NoError(t, err)
+
 		return subo
 	}
 	mkSRv6Ero := func(sidStr, localStr string) *SRv6EroSubobject {
@@ -1122,11 +1145,13 @@ func TestEroObject_RoundTrip(t *testing.T) {
 		seg.LocalAddr = netip.MustParseAddr(localStr)
 		subo, err := NewSRv6EroSubobject(seg)
 		require.NoError(t, err)
+
 		return subo
 	}
 	mkRSVPIPv4PrefixEro := func(addrStr string, prefixLen uint8) *RSVPIPv4PrefixEroSubobject {
 		subo, err := NewRSVPIPv4PrefixEroSubobject(netip.MustParseAddr(addrStr), prefixLen)
 		require.NoError(t, err)
+
 		return subo
 	}
 
@@ -1179,6 +1204,7 @@ func TestEroObject_RoundTrip(t *testing.T) {
 				got.DecodeFromBytes(ObjectTypeEROExplicitRoute, raw[commonObjectHeaderLength:]),
 				"DecodeFromBytes failed",
 			)
+
 			if len(want.EroSubobjects) == 0 {
 				assert.Empty(t, got.EroSubobjects, "decoded subobjects must be empty")
 			} else {
@@ -1433,6 +1459,7 @@ func TestAssociationObject_JuniperLegacyRoundTrip(t *testing.T) {
 	require.NoError(t, err, "Serialize failed")
 
 	var got AssociationObject
+
 	err = got.DecodeFromBytes(ObjectTypeAssociationIPv4, raw[commonObjectHeaderLength:])
 	require.NoError(t, err, "DecodeFromBytes failed")
 
@@ -1594,11 +1621,13 @@ func TestVendorInformationObject_DecodeFromBytes(t *testing.T) {
 			t.Parallel()
 
 			got := &VendorInformationObject{}
+
 			err := got.DecodeFromBytes(ObjectTypeVendorSpecificConstraints, tt.objectBody)
 			if tt.wantErr {
 				assert.Error(t, err, "expected error for '%s'", name)
 				return
 			}
+
 			require.NoError(t, err, "unexpected error for '%s'", name)
 			assert.Equal(t, tt.expected, got, "decoded value mismatch for '%s'", name)
 		})
@@ -1909,6 +1938,7 @@ func TestMetricObject_DecodeFromBytes(t *testing.T) {
 	t.Parallel()
 
 	body := AppendByteSlices([]uint8{0x00, 0x00, 0x02, 0x02}, Uint32ToByteSlice(math.Float32bits(200)))
+
 	var o MetricObject
 	require.NoError(t, o.DecodeFromBytes(ObjectType(1), body))
 	assert.Equal(t, MetricObject{ObjectType: ObjectType(1), CFlag: true, MetricType: 2, MetricValue: 200}, o)
@@ -2066,6 +2096,7 @@ func TestNewSrpObject(t *testing.T) {
 				assert.Error(t, err)
 				return
 			}
+
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, got)
 		})
@@ -2168,6 +2199,7 @@ func TestEroObject_Serialize_ObjectLengthBoundary(t *testing.T) {
 				Segment:       table.NewSegmentSRMPLS(16001),
 			}
 		}
+
 		return subobjects
 	}
 
@@ -2428,6 +2460,7 @@ func TestNewEndpointsObject(t *testing.T) {
 				assert.Error(t, err)
 				return
 			}
+
 			require.NoError(t, err)
 			assert.Equal(t, &EndpointsObject{ObjectType: tt.wantType, DstAddr: tt.dst, SrcAddr: tt.src}, o)
 
@@ -2638,6 +2671,7 @@ func TestLSPObject_Serialize_MasksPlspIDAndOFlag(t *testing.T) {
 
 	raw, err := o.Serialize()
 	require.NoError(t, err)
+
 	body := raw[commonObjectHeaderLength:]
 	require.Len(t, body, 4)
 	assert.Zero(t, body[3]&0x80, "PLSP-ID/OFlag overflow must not set the C flag")
@@ -2770,6 +2804,7 @@ func TestSRv6EroSubobject_DecodeFromBytes_TruncatedAfterHeader(t *testing.T) {
 		t.Parallel()
 
 		raw := []uint8{0x28, 10, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+
 		var o SRv6EroSubobject
 		assert.EqualError(t, o.DecodeFromBytes(raw), "SRv6EroSubobject: truncated SID")
 	})
@@ -2778,6 +2813,7 @@ func TestSRv6EroSubobject_DecodeFromBytes_TruncatedAfterHeader(t *testing.T) {
 		t.Parallel()
 
 		raw := []uint8{0x28, 10, uint8(NAITypeSRv6IPv6Node) << 4, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+
 		var o SRv6EroSubobject
 		assert.EqualError(t, o.DecodeFromBytes(raw), "SRv6EroSubobject: truncated NAI (Node)")
 	})
@@ -2786,6 +2822,7 @@ func TestSRv6EroSubobject_DecodeFromBytes_TruncatedAfterHeader(t *testing.T) {
 		t.Parallel()
 
 		raw := []uint8{0x28, 10, uint8(NAITypeSRv6IPv6AdjacencyGlobal) << 4, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+
 		var o SRv6EroSubobject
 		assert.EqualError(t, o.DecodeFromBytes(raw), "SRv6EroSubobject: truncated NAI (AdjGlobal)")
 	})
@@ -2794,6 +2831,7 @@ func TestSRv6EroSubobject_DecodeFromBytes_TruncatedAfterHeader(t *testing.T) {
 		t.Parallel()
 
 		raw := []uint8{0x28, 10, uint8(NAITypeSRv6IPv6AdjacencyLinkLocal) << 4, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+
 		var o SRv6EroSubobject
 		assert.EqualError(t, o.DecodeFromBytes(raw), "SRv6EroSubobject: truncated NAI (AdjLinkLocal)")
 	})
@@ -2807,6 +2845,7 @@ func TestSRv6EroSubobject_DecodeFromBytes_TruncatedAfterHeader(t *testing.T) {
 			netip.MustParseAddr("fc00:0:1::").AsSlice(),
 			make([]uint8, 2),
 		)
+
 		var o SRv6EroSubobject
 		assert.EqualError(t, o.DecodeFromBytes(raw), "SRv6EroSubobject: truncated SID-Structure")
 	})
@@ -2822,6 +2861,7 @@ func TestSRv6EroSubobject_DecodeFromBytes_TruncatedAfterHeader(t *testing.T) {
 			[]uint8{200, 200, 200, 200},
 			make([]uint8, 4),
 		)
+
 		var o SRv6EroSubobject
 		assert.ErrorContains(t, o.DecodeFromBytes(raw), "exceeds")
 	})
@@ -2835,6 +2875,7 @@ func TestSRv6EroSubobject_DecodeFromBytes_TruncatedAfterHeader(t *testing.T) {
 			netip.MustParseAddr(testIPv6Addr1).AsSlice(),
 			make([]uint8, 1),
 		)
+
 		var o SRv6EroSubobject
 		assert.EqualError(t, o.DecodeFromBytes(raw), "SRv6EroSubobject: declared length does not match V/T/F/S flags")
 	})

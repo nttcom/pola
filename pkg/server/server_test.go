@@ -45,6 +45,7 @@ func TestServer_Serve_InvalidInputRejected(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			s := &Server{logger: logger.NewNop()}
 			assert.Error(t, s.Serve(tt.address, tt.port))
 		})
@@ -74,10 +75,13 @@ func TestServer_Serve_AcceptsConnectionAndUntracksOnClose(t *testing.T) {
 	require.NoError(t, err, "failed to open the PCEP listener")
 
 	s := &Server{logger: logger.NewNop()}
+
 	serveErrCh := make(chan error, 1)
 	go func() { serveErrCh <- s.acceptLoop(ln) }()
+
 	t.Cleanup(func() {
 		assert.NoError(t, s.Shutdown())
+
 		select {
 		case err := <-serveErrCh:
 			assert.NoError(t, err)
@@ -110,9 +114,11 @@ func TestServer_Shutdown_ClosesListenerAndStopsServe(t *testing.T) {
 
 	ln, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	require.NoError(t, err, "failed to open the PCEP listener")
+
 	addr := ln.Addr().String()
 
 	s := &Server{logger: logger.NewNop()}
+
 	serveErrCh := make(chan error, 1)
 	go func() { serveErrCh <- s.acceptLoop(ln) }()
 
@@ -138,6 +144,7 @@ func TestServer_Shutdown_BeforeServeStillReturnsCleanly(t *testing.T) {
 
 	ln, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	require.NoError(t, err, "failed to open the PCEP listener")
+
 	addr := ln.Addr().String()
 
 	s := &Server{logger: logger.NewNop()}
@@ -170,8 +177,10 @@ func TestServer_Shutdown_ClosesActiveSessions(t *testing.T) {
 	require.NoError(t, err, "failed to open the PCEP listener")
 
 	s := &Server{logger: logger.NewNop()}
+
 	serveErrCh := make(chan error, 1)
 	go func() { serveErrCh <- s.acceptLoop(ln) }()
+
 	t.Cleanup(func() {
 		select {
 		case err := <-serveErrCh:
@@ -254,6 +263,7 @@ func TestValidatePCEOptions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			err := validatePCEOptions(tt.o)
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -323,6 +333,7 @@ func TestNewPCE_ReturnsTaggedError(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			errCh := make(chan Error, 1)
 			go func() { errCh <- NewPCE(context.Background(), tt.o, logger.NewNop(), make(chan []table.TEDElem)) }()
 
@@ -469,6 +480,7 @@ func TestServer_AwaitShutdown_LogsWarnOnShutdownError(t *testing.T) {
 
 	stopped := false
 	done := make(chan struct{})
+
 	go func() {
 		s.awaitShutdown(ctx, func() { stopped = true })
 		close(done)
@@ -489,10 +501,12 @@ func TestServer_SyncTEDLoop_AppliesReceivedElems(t *testing.T) {
 
 	s := &Server{logger: logger.NewNop()}
 	tedElemsChan := make(chan []table.TEDElem, 1)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	done := make(chan struct{})
+
 	go func() {
 		s.syncTEDLoop(ctx, tedElemsChan, 65000)
 		close(done)
@@ -505,6 +519,7 @@ func TestServer_SyncTEDLoop_AppliesReceivedElems(t *testing.T) {
 	}, 2*time.Second, 10*time.Millisecond, "expected the received TED elements to be applied")
 
 	cancel()
+
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
@@ -519,6 +534,7 @@ func TestServer_SyncTEDLoop_ExitsWhenChannelClosed(t *testing.T) {
 	tedElemsChan := make(chan []table.TEDElem)
 
 	done := make(chan struct{})
+
 	go func() {
 		s.syncTEDLoop(context.Background(), tedElemsChan, 65000)
 		close(done)
@@ -611,6 +627,7 @@ func TestServer_RegisterSession_RejectsSecondSessionFromSamePeer(t *testing.T) {
 			t.Logf("cleanup close: %v", err)
 		}
 	})
+
 	ss1 := s.registerSession(server1, peerAddr)
 	require.NotNil(t, ss1)
 
@@ -620,6 +637,7 @@ func TestServer_RegisterSession_RejectsSecondSessionFromSamePeer(t *testing.T) {
 			t.Logf("cleanup close: %v", err)
 		}
 	})
+
 	ss2 := s.registerSession(server2, peerAddr)
 
 	assert.Nil(t, ss2, "a second session with the same peer must not be accepted")
@@ -651,6 +669,7 @@ func TestServer_RegisterSession_RejectSecondSession_LogsWarnOnSendFailure(t *tes
 			t.Logf("cleanup close: %v", err)
 		}
 	})
+
 	ss1 := s.registerSession(server1, peerAddr)
 	require.NotNil(t, ss1)
 
@@ -674,6 +693,7 @@ func TestServer_RegisterSession_SessionIDSequenceIsPerPeer(t *testing.T) {
 			t.Logf("cleanup close: %v", err)
 		}
 	})
+
 	ss1 := s.registerSession(server1, netip.MustParseAddr("10.0.255.1"))
 	require.NotNil(t, ss1)
 	assert.Zero(t, ss1.localSessionID)
@@ -684,6 +704,7 @@ func TestServer_RegisterSession_SessionIDSequenceIsPerPeer(t *testing.T) {
 			t.Logf("cleanup close: %v", err)
 		}
 	})
+
 	ss2 := s.registerSession(server2, netip.MustParseAddr("10.0.255.2"))
 	require.NotNil(t, ss2)
 	assert.Zero(t, ss2.localSessionID, "each peer has its own SID sequence")
@@ -710,6 +731,7 @@ func TestSessionIDAllocator_IncrementsByOneAndWraps(t *testing.T) {
 	t.Parallel()
 
 	peerAddr := netip.MustParseAddr("10.0.255.1")
+
 	var a sessionIDAllocator
 
 	for want := range math.MaxUint8 + 1 {
@@ -724,6 +746,7 @@ func TestSessionIDAllocator_SequenceIsIndependentPerPeer(t *testing.T) {
 
 	peerA := netip.MustParseAddr("10.0.255.1")
 	peerB := netip.MustParseAddr("10.0.255.2")
+
 	var a sessionIDAllocator
 
 	for want := range uint8(3) {
@@ -773,6 +796,7 @@ func TestServer_Shutdown_BoundsBlockedSendClose(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
+
 		assert.NoError(t, s.Shutdown())
 	}()
 
@@ -807,6 +831,7 @@ func TestResolveLocalTimers(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			keepalive, deadTimer := resolveLocalTimers(tt.keepalive, tt.deadTimer)
 			assert.Equal(t, tt.wantKeepalive, keepalive)
 			assert.Equal(t, tt.wantDeadTimer, deadTimer)
@@ -829,6 +854,7 @@ func TestParseRemoteAddr(t *testing.T) {
 				t.Cleanup(func() {
 					_ = client.Close()
 				})
+
 				return server
 			},
 			wantErr: false,
@@ -838,6 +864,7 @@ func TestParseRemoteAddr(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			tcpConn := tt.setup()
 			defer tcpConn.Close()
 
@@ -873,6 +900,7 @@ func TestResolveKeepaliveRange(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			lo, hi, enabled := resolveKeepaliveRange(tt.min, tt.max)
 			assert.Equal(t, tt.wantLo, lo)
 			assert.Equal(t, tt.wantHi, hi)
@@ -893,6 +921,7 @@ func TestServer_HandleAccept_WhenRegisterSessionReturnsNil(t *testing.T) {
 
 	tcpAddr, ok := server1.RemoteAddr().(*net.TCPAddr)
 	require.True(t, ok)
+
 	peerAddr := netip.MustParseAddr(tcpAddr.IP.String())
 	lg, logs := logger.NewRecorder(logger.LevelWarn)
 	s := &Server{logger: lg}
@@ -969,6 +998,7 @@ func TestServer_AcceptLoop_ListenerCloseErrorLogged(t *testing.T) {
 	err := s.acceptLoop(&acceptOnceThenClosedListener{closeErr: wantErr})
 
 	require.NoError(t, err, "serve should return nil once AcceptTCP reports the listener closed")
+
 	entries := logs.FilterByMessage("failed to close PCEP listener")
 	require.Len(t, entries, 1)
 	assert.Nil(t, s.listener, "listener must be cleared once serve returns")

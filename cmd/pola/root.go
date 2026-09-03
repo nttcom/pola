@@ -48,6 +48,7 @@ func persistentPreRunE(c *cli) func(cmd *cobra.Command, args []string) error {
 		}
 
 		c.client = pb.NewPCEServiceClient(conn)
+
 		return nil
 	}
 }

@@ -34,6 +34,7 @@ func (w *condFailWriter) Write(p []byte) (int, error) {
 	if w.fail != nil && w.fail(string(p)) {
 		return 0, assert.AnError
 	}
+
 	return w.buf.Write(p)
 }
 

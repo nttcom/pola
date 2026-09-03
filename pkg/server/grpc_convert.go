@@ -19,20 +19,26 @@ import (
 
 func dedupCapabilities(lg *logger.Logger, kind string, caps []pcep.CapabilityInterface) []*pb.Capability {
 	var pbCaps []*pb.Capability
+
 	seen := make(map[string]struct{})
+
 	for _, cap := range caps {
 		b, err := cap.Serialize()
 		if err != nil {
 			lg.Warn(fmt.Sprintf("failed to serialize %s capability", kind), logger.Error(err))
 			continue
 		}
+
 		key := fmt.Sprintf("%d:%s", cap.Type(), b)
 		if _, ok := seen[key]; ok {
 			continue
 		}
+
 		seen[key] = struct{}{}
+
 		pbCaps = append(pbCaps, buildCapability(cap))
 	}
+
 	return pbCaps
 }
 
@@ -130,6 +136,7 @@ func buildCapability(capability pcep.CapabilityInterface) *pb.Capability {
 		if !tlv.HasUnlimitedMaxSIDDepth {
 			sr.Msd = new(uint32(tlv.MaximumSidDepth))
 		}
+
 		c.Detail = &pb.Capability_Sr{Sr: sr}
 	case *pcep.SRv6PCECapability:
 		c.Detail = &pb.Capability_Srv6{Srv6: &pb.Srv6Capability{
@@ -140,16 +147,19 @@ func buildCapability(capability pcep.CapabilityInterface) *pb.Capability {
 		for i, pst := range tlv.PathSetupTypes {
 			psts[i] = uint32(pst)
 		}
+
 		pstCap := &pb.PathSetupTypeCapability{PathSetupTypes: psts}
 		for _, subCap := range tlv.SubCapabilities() {
 			pstCap.SubCapabilities = append(pstCap.SubCapabilities, buildCapability(subCap))
 		}
+
 		c.Detail = &pb.Capability_PathSetupType{PathSetupType: pstCap}
 	case *pcep.AssocTypeList:
 		assocTypes := make([]uint32, len(tlv.AssocTypes))
 		for i, at := range tlv.AssocTypes {
 			assocTypes[i] = uint32(at)
 		}
+
 		c.Detail = &pb.Capability_AssocTypeList{AssocTypeList: &pb.AssocTypeListCapability{
 			AssocTypes: assocTypes,
 		}}
@@ -174,6 +184,7 @@ func buildCapability(capability pcep.CapabilityInterface) *pb.Capability {
 			TlvType: uint32(tlv.Typ),
 		}}
 	}
+
 	return c
 }
 
@@ -227,6 +238,7 @@ func (s *APIServer) buildPBSession(pcepSession *Session, includeStats bool) *pb.
 			DeadTimer: uint32(snap.localOpen.DeadTimer),
 		}
 	}
+
 	if snap.pccOpen != nil {
 		pbSession.PeerSessionId = new(uint32(snap.pccOpen.SessionID))
 		pbSession.PeerTimers = &pb.SessionTimers{
@@ -234,23 +246,28 @@ func (s *APIServer) buildPBSession(pcepSession *Session, includeStats bool) *pb.
 			DeadTimer: uint32(snap.pccOpen.DeadTimer),
 		}
 	}
+
 	if snap.state == SessionStateUp {
 		deadTimer := snap.readDeadline() / time.Second
 		if deadTimer > math.MaxUint32 {
 			deadTimer = 0
 		}
+
 		pbSession.EffectiveTimers = &pb.EffectiveTimers{
 			Keepalive: uint32(snap.keepaliveInterval()),
 			DeadTimer: uint32(deadTimer),
 		}
 	}
+
 	if !snap.createdAt.IsZero() {
 		pbSession.CreatedAtUnixNano = snap.createdAt.UnixNano()
 	}
+
 	if !snap.establishedAt.IsZero() {
 		pbSession.EstablishedAtUnixNano = snap.establishedAt.UnixNano()
 		pbSession.UptimeNanos = time.Since(snap.establishedAt).Nanoseconds()
 	}
+
 	if includeStats {
 		setupOK, setupFail := s.pce.PeerSetupStats(pcepSession.peerAddr)
 		pbSession.Stats = toPBSessionStats(pcepSession.Stats(), setupOK, setupFail)
@@ -289,6 +306,7 @@ func (s *APIServer) buildPBSRPolicy(pcepSession *Session, policy *table.SRPolicy
 // lightweight SRPolicySession representation returned by GetSRPolicyList.
 func buildPBSRPolicySession(pcepSession *Session, policies []*pb.SRPolicy) *pb.SRPolicySession {
 	snap := pcepSession.snapshot()
+
 	return &pb.SRPolicySession{
 		PeerAddr:   pcepSession.peerAddr.AsSlice(),
 		State:      toPBSessionState(snap.state),
@@ -345,9 +363,11 @@ func convertSegment(seg table.Segment) *pb.Segment {
 		if v.LocalAddr.IsValid() {
 			pbSeg.LocalAddr = v.LocalAddr.String()
 		}
+
 		if v.RemoteAddr.IsValid() {
 			pbSeg.RemoteAddr = v.RemoteAddr.String()
 		}
+
 		if len(v.Structure) == 4 {
 			pbSeg.SidStructure = fmt.Sprintf("%d,%d,%d,%d", v.Structure[0], v.Structure[1], v.Structure[2], v.Structure[3])
 		}
@@ -355,11 +375,14 @@ func convertSegment(seg table.Segment) *pb.Segment {
 		if v.LocalAddr.IsValid() {
 			pbSeg.LocalAddr = v.LocalAddr.String()
 		}
+
 		if v.RemoteAddr.IsValid() {
 			pbSeg.RemoteAddr = v.RemoteAddr.String()
 		}
+
 		pbSeg.SidAbsent = v.SidAbsent
 	}
+
 	return pbSeg
 }
 
@@ -387,14 +410,17 @@ func convertLsLinks(links []*table.LsLink, lg *logger.Logger) []*pb.LsLink {
 	if links == nil {
 		return nil
 	}
+
 	result := make([]*pb.LsLink, 0, len(links))
 	for _, link := range links {
 		if link == nil || link.LocalNode == nil || link.RemoteNode == nil {
 			lg.Debug("skip link with nil node", logger.Any("link", link))
 			continue
 		}
+
 		result = append(result, buildLsLink(link))
 	}
+
 	return result
 }
 
@@ -417,6 +443,7 @@ func buildLsLink(link *table.LsLink) *pb.LsLink {
 	if link.Srv6EndXSID != nil {
 		pbLink.Srv6EndXSid = convertSrv6EndXSID(link.Srv6EndXSID)
 	}
+
 	return pbLink
 }
 
@@ -425,6 +452,7 @@ func convertMetrics(metrics []*table.Metric) []*pb.Metric {
 	if metrics == nil {
 		return nil
 	}
+
 	result := make([]*pb.Metric, 0, len(metrics))
 	for _, m := range metrics {
 		if m != nil {
@@ -433,6 +461,7 @@ func convertMetrics(metrics []*table.Metric) []*pb.Metric {
 			}
 		}
 	}
+
 	return result
 }
 
@@ -441,6 +470,7 @@ func convertLsPrefixes(prefixes []*table.LsPrefix) []*pb.LsPrefix {
 	if prefixes == nil {
 		return nil
 	}
+
 	result := make([]*pb.LsPrefix, 0, len(prefixes))
 	for _, p := range prefixes {
 		if p != nil {
@@ -449,9 +479,11 @@ func convertLsPrefixes(prefixes []*table.LsPrefix) []*pb.LsPrefix {
 			if p.HasPrefixSID() {
 				pbPrefix.SidIndex = new(p.SidIndex)
 			}
+
 			result = append(result, pbPrefix)
 		}
 	}
+
 	return result
 }
 
@@ -460,12 +492,14 @@ func convertLsSrv6SIDs(sids []*table.LsSrv6SID) []*pb.LsSrv6SID {
 	if sids == nil {
 		return nil
 	}
+
 	result := make([]*pb.LsSrv6SID, 0, len(sids))
 	for _, s := range sids {
 		if s != nil {
 			result = append(result, buildLsSrv6SID(s))
 		}
 	}
+
 	return result
 }
 

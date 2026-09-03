@@ -23,6 +23,7 @@ func TestNewSessionCmd_RunE(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
+
 		cmd := newSessionCmd(&cli{client: &fakePCEServiceClient{}})
 
 		cmd.SetOut(&bytes.Buffer{})
@@ -31,6 +32,7 @@ func TestNewSessionCmd_RunE(t *testing.T) {
 
 	t.Run("gRPC error propagates", func(t *testing.T) {
 		t.Parallel()
+
 		cmd := newSessionCmd(&cli{client: &fakePCEServiceClient{
 			sessionListErr: assert.AnError,
 		}})
@@ -81,17 +83,21 @@ func TestParseSessionArgs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			addr, detail, err := parseSessionArgs(tt.args)
 			if tt.wantErr {
 				require.Error(t, err)
 				return
 			}
+
 			require.NoError(t, err)
+
 			if tt.wantAddr == "" {
 				assert.False(t, addr.IsValid())
 			} else {
 				assert.Equal(t, netip.MustParseAddr(tt.wantAddr), addr)
 			}
+
 			assert.Equal(t, tt.wantDetail, detail)
 		})
 	}
@@ -246,6 +252,7 @@ func TestShowSession_JSONDetailAddsWithoutChangingSummaryKeys(t *testing.T) {
 	for k, v := range summary[0] {
 		assert.Equal(t, v, detail[0][k], "detail must not change summary key %q", k)
 	}
+
 	assert.Contains(t, detail[0], "sessionCreation")
 	assert.Contains(t, detail[0], "initiator")
 	assert.Contains(t, detail[0], "lspDbSync")
@@ -319,7 +326,9 @@ func TestShowSession_GRPCErrorPropagates(t *testing.T) {
 	t.Parallel()
 
 	client := &fakePCEServiceClient{sessionListErr: assert.AnError}
+
 	var buf bytes.Buffer
+
 	err := showSession(&buf, netip.Addr{}, false, outputText, client)
 	require.ErrorIs(t, err, assert.AnError)
 }

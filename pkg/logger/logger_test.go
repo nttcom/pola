@@ -47,15 +47,18 @@ func TestNew(t *testing.T) {
 
 			logPath := filepath.Join(t.TempDir(), "pola.log")
 			fp, err := os.Create(logPath)
+
 			require.NoError(t, err)
 			defer func() {
 				require.NoError(t, fp.Close())
 			}()
 
 			var console bytes.Buffer
+
 			l := New(fp, &console, tt.level)
 			l.Debug("debug message")
 			l.Info("info message")
+
 			stdout := console.String()
 
 			fileContent, err := os.ReadFile(logPath)

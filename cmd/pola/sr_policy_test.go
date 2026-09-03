@@ -21,6 +21,7 @@ func TestNewSRPolicyCmd(t *testing.T) {
 	for _, c := range cmd.Commands() {
 		names = append(names, c.Name())
 	}
+
 	assert.ElementsMatch(t, []string{"list", "add", cmdNameDelete}, names)
 
 	buf := &bytes.Buffer{}

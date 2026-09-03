@@ -17,6 +17,7 @@ func fullSessionViewFixture() sessionView {
 	local, peer := uint32(1), uint32(7)
 	lk, pk, ld, pd := uint32(30), uint32(10), uint32(120), uint32(40)
 	ek, ed := uint32(10), uint32(40)
+
 	return sessionView{
 		PeerAddress: testPeerAddr1,
 		State:       "up",
@@ -63,13 +64,16 @@ func TestWriteSessionText_DetailWithNilStatsRendersWithoutError(t *testing.T) {
 // sub. This avoids matching newlines emitted internally by tabwriter.Flush.
 func blankLineAfterFail(sub string) func(string) bool {
 	armed := false
+
 	return func(s string) bool {
 		if armed && s == "\n" {
 			return true
 		}
+
 		if strings.Contains(s, sub) {
 			armed = true
 		}
+
 		return false
 	}
 }
@@ -104,6 +108,7 @@ func TestWriteSessionText_PropagatesWriteErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			w := &condFailWriter{fail: tt.fail}
 			err := writeSessionText(w, tt.views)
 			require.Error(t, err)
@@ -145,6 +150,7 @@ func TestWriteGroupedLine_EmptyItemsRendersDash(t *testing.T) {
 	}
 
 	var buf strings.Builder
+
 	ew := &errWriter{w: &buf}
 	writeCapabilitySectionsText(ew, c)
 	require.NoError(t, ew.err)
@@ -156,6 +162,7 @@ func TestFormatTimerValue(t *testing.T) {
 
 	zero := uint32(0)
 	v := uint32(30)
+
 	assert.Equal(t, "-", formatTimerValue(nil))
 	assert.Equal(t, "disabled", formatTimerValue(&zero))
 	assert.Equal(t, "30", formatTimerValue(&v))

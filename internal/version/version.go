@@ -43,6 +43,7 @@ func getWith(v string) Info {
 	if bi, ok := debug.ReadBuildInfo(); ok {
 		info.Revision, info.Time, info.Modified = vcsSettings(bi.Settings)
 	}
+
 	return info
 }
 
@@ -57,5 +58,6 @@ func vcsSettings(settings []debug.BuildSetting) (revision, t string, modified bo
 			modified = s.Value == "true"
 		}
 	}
+
 	return revision, t, modified
 }

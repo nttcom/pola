@@ -52,6 +52,7 @@ func paddedLength(n, align int) int {
 	if n%align == 0 {
 		return n
 	}
+
 	return n + (align - (n % align))
 }
 
@@ -59,6 +60,7 @@ func tlvValueLength(n int) (uint16, error) {
 	if n < 0 || n > math.MaxUint16 {
 		return 0, fmt.Errorf("PCEP TLV value length %d exceeds %d", n, math.MaxUint16)
 	}
+
 	return uint16(n), nil
 }
 
@@ -72,10 +74,12 @@ func isIPv4Bytes(b []byte) bool {
 	if len(b) != IPv6AddrLen {
 		return false
 	}
+
 	for i := range IPv4InIPv6Offset {
 		if b[i] != 0 {
 			return false
 		}
 	}
+
 	return true
 }

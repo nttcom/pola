@@ -15,15 +15,19 @@ import (
 
 func writeSessionText(w io.Writer, views []sessionView) error {
 	ew := &errWriter{w: w}
+
 	for i, v := range views {
 		if i > 0 {
 			ew.println()
 		}
+
 		writeSessionSummaryText(ew, i, v)
+
 		if v.isDetail() {
 			writeSessionDetailText(ew, v)
 		}
 	}
+
 	return ew.err
 }
 
@@ -38,6 +42,7 @@ func writeSessionSummaryText(ew *errWriter, index int, v sessionView) {
 	if v.UpTime != "" {
 		fields = append(fields, struct{ label, value string }{"Up Time", v.UpTime})
 	}
+
 	fields = append(fields,
 		struct{ label, value string }{"Session ID", formatSessionID(v.SessionID)},
 		struct{ label, value string }{"Transport", v.Transport.Protocol + ", auth=" + v.Transport.Auth},
@@ -54,9 +59,11 @@ func writeSessionDetailText(ew *errWriter, v sessionView) {
 	if v.SessionCreation != "" {
 		writeLabeledLineText(ew, 2, "Session Creation", v.SessionCreation)
 	}
+
 	if v.Initiator != "" {
 		writeLabeledLineText(ew, 2, "Initiator", v.Initiator)
 	}
+
 	if v.Stats != nil {
 		writeStatsTableText(ew, *v.Stats)
 	}
@@ -74,6 +81,7 @@ func formatOptionalUint32(v *uint32) string {
 	if v == nil {
 		return "-"
 	}
+
 	return strconv.FormatUint(uint64(*v), 10)
 }
 
@@ -83,9 +91,11 @@ func formatTimerValue(v *uint32) string {
 	if v == nil {
 		return "-"
 	}
+
 	if *v == 0 {
 		return "disabled"
 	}
+
 	return strconv.FormatUint(uint64(*v), 10)
 }
 
@@ -100,6 +110,7 @@ func writeTimerTableText(ew *errWriter, timers timersView) {
 	ew.printf("    DeadTimer\t%s\t%s\t%s\n",
 		formatTimerValue(timers.DeadTimer.Local), formatTimerValue(timers.DeadTimer.Peer),
 		formatTimerValue(timers.DeadTimer.Effective))
+
 	if ew.err == nil {
 		ew.err = tw.Flush()
 	}
@@ -117,21 +128,26 @@ func writeCapabilityGroupSectionText(ew *errWriter, label string, lines []capDis
 		writeLabeledLineText(ew, 4, label, "-")
 		return
 	}
+
 	ew.printf("    %s:\n", label)
+
 	for _, line := range lines {
 		if line.Items == nil {
 			ew.printf("      %s\n", line.Header)
 			continue
 		}
+
 		writeGroupedLineText(ew, 6, line.Header, line.Items)
 	}
 }
 
 func writeGroupedLineText(ew *errWriter, indent int, header string, items []string) {
 	ew.printf("%s%s:\n", strings.Repeat(" ", indent), header)
+
 	if len(items) == 0 {
 		items = []string{"-"}
 	}
+
 	itemIndent := strings.Repeat(" ", indent+2)
 	for _, item := range items {
 		ew.printf("%s%s\n", itemIndent, item)
@@ -143,6 +159,7 @@ func writeStatsTableText(ew *errWriter, s statsView) {
 
 	tw := tabwriter.NewWriter(ew.w, 0, 0, 2, ' ', 0)
 	ew.printf("    \tSent\tRcvd\n")
+
 	counters := []struct {
 		name string
 		c    counterView
@@ -161,6 +178,7 @@ func writeStatsTableText(ew *errWriter, s statsView) {
 	for _, c := range counters {
 		ew.printf("    %s\t%d\t%d\n", c.name, c.c.Sent, c.c.Rcvd)
 	}
+
 	if ew.err == nil {
 		ew.err = tw.Flush()
 	}

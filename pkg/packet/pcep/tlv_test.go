@@ -35,6 +35,7 @@ func TestTLVType_String(t *testing.T) {
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
+
 			actual := tt.tlvType.String()
 			assert.Equal(t, tt.expected, actual, "unexpected TLVType.String() result")
 		})
@@ -117,8 +118,10 @@ func TestTLVMap(t *testing.T) {
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
+
 			constructor, ok := tlvMap[tt.tlvType]
 			require.True(t, ok, "constructor not found for TLVType '%s'", name)
+
 			actual := constructor()
 			assert.IsType(t, tt.expected, actual, "unexpected type for TLV '%s'", name)
 		})
@@ -135,7 +138,9 @@ func runTLVDecodeTests(t *testing.T, cases map[string]TLVTestCase, constructor f
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
+
 			tlv := constructor()
+
 			err := tlv.DecodeFromBytes(tt.input)
 			if tt.wantErr {
 				assert.Error(t, err, "expected error for '%s' but got none", name)
@@ -155,6 +160,7 @@ func runTLVSerializeTests(t *testing.T, cases map[string]struct {
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
+
 			actual, err := tt.input.Serialize()
 			require.NoError(t, err, "unexpected error for '%s'", name)
 			assert.Equal(t, tt.expected, actual, "serialized value mismatch for '%s'", name)
@@ -170,6 +176,7 @@ func runTLVLenTests(t *testing.T, cases map[string]struct {
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
+
 			actual := tt.input.Len()
 			assert.Equal(t, int(tt.expected), actual, "length mismatch for '%s'", name)
 		})
@@ -182,6 +189,7 @@ func mustSerializeTLV(tlv TLVInterface) []byte {
 	if err != nil {
 		panic(err)
 	}
+
 	return b
 }
 
@@ -680,6 +688,7 @@ func TestSRPCECapability_Serialize_WireFormat(t *testing.T) {
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
+
 			got, err := tt.input.Serialize()
 			require.NoError(t, err, "Serialize failed for '%s'", name)
 			require.Len(t, got, int(TLVValueOffset+TLVSRPCECapabilityValueLength))
@@ -720,7 +729,9 @@ func TestSRPCECapability_DecodeFromBytes_WireFormat(t *testing.T) {
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
+
 			var tlv SRPCECapability
+
 			err := tlv.DecodeFromBytes(append(tlvHeader(TLVSRPCECapability, 4), tt.value...))
 			require.NoError(t, err, "DecodeFromBytes failed for '%s'", name)
 			assert.Equal(t, tt.expected, &tlv, "unexpected decode result for '%s'", name)
@@ -743,6 +754,7 @@ func TestSRPCECapability_RoundTrip(t *testing.T) {
 	for name, want := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
+
 			raw, err := want.Serialize()
 			require.NoError(t, err, "Serialize failed for '%s'", name)
 
@@ -781,6 +793,7 @@ func TestSRPCECapability_DecodeSerializeRoundTrip(t *testing.T) {
 	for name, original := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
+
 			b, err := original.Serialize()
 			require.NoError(t, err)
 
@@ -832,6 +845,7 @@ func TestPst_String(t *testing.T) {
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
+
 			actual := tt.input.String()
 			assert.Equal(t, tt.expected, actual, "unexpected Pst.String() result for '%s'", name)
 		})
@@ -872,6 +886,7 @@ func TestPsts_MarshalJSON(t *testing.T) {
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
+
 			actual, err := tt.input.MarshalJSON()
 			require.NoError(t, err, "unexpected error for '%s'", name)
 			assert.Equal(t, tt.expected, string(actual), "MarshalJSON output mismatch for '%s'", name)
@@ -1021,6 +1036,7 @@ func TestPathSetupTypeCapability_pstCount(t *testing.T) {
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
+
 			tlv := &PathSetupTypeCapability{
 				PathSetupTypes: make(Psts, tt.numPST),
 			}
@@ -1086,6 +1102,7 @@ func TestPathSetupTypeCapability_Serialize_SubTLVLengthBoundary(t *testing.T) {
 		for i := range subTLVs {
 			subTLVs[i] = &SRPCECapability{}
 		}
+
 		return subTLVs
 	}
 
@@ -1197,6 +1214,7 @@ func TestAssocType_String(t *testing.T) {
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
+
 			actual := tt.input.String()
 			assert.Equal(t, tt.expected, actual, "unexpected AssocType.String() result for '%s'", name)
 		})
@@ -1290,6 +1308,7 @@ func TestExtendedAssociationID_Serialize(t *testing.T) {
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
+
 			actual, err := tt.input.Serialize()
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected, actual)
@@ -1363,6 +1382,7 @@ func TestExtendedAssociationIDIPv4Juniper_Len(t *testing.T) {
 var testExtendedAssociationIDIPv4JuniperIPv6Bytes = func() []byte {
 	b := append([]byte(nil), testIPv6ExtendedAssociationIDBytes...)
 	b[0], b[1] = 0xff, 0xe3 // type=0xffe3, IPv6 value layout (length 20)
+
 	return b
 }()
 
@@ -1956,6 +1976,7 @@ func TestDecodeTLV(t *testing.T) {
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
+
 			tlv, err := DecodeTLV(tt.input)
 			if tt.wantErr {
 				assert.Error(t, err, "expected error for '%s'", name)
@@ -1976,6 +1997,7 @@ func TestDecodeTLVs(t *testing.T) {
 		body := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
 		tlv := slices.Concat(header, body)
 		tlv = append(tlv, 0xFF, 0x00, 0x00) // invalid padding (should be 0x00)
+
 		return tlv
 	}()
 
@@ -2001,12 +2023,15 @@ func TestDecodeTLVs(t *testing.T) {
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
+
 			tlvs, err := DecodeTLVs(tt.input)
 			if tt.wantErr {
 				require.Error(t, err, "expected error for '%s'", name)
+
 				if tt.errMsg != "" {
 					assert.Contains(t, err.Error(), tt.errMsg, "error message mismatch for '%s'", name)
 				}
+
 				assert.Nil(t, tlvs)
 			} else {
 				require.NoError(t, err, "unexpected error for '%s'", name)
@@ -2022,6 +2047,7 @@ func TestDecodeTLVs_SubTLV(t *testing.T) {
 	fixedPart := make([]byte, PathSetupTypeCapabilityFixedPartLength)
 	fixedPart[PathSetupTypeCapabilityPSTCountOffset] = 0x01 // Set PST count in fixed part
 	pathSetupType := []byte{0x00}
+
 	subTLV := append(tlvHeader(TLVStatefulPCECapability, 4), 0x01, 0x02)
 	value := slices.Concat(fixedPart, pathSetupType, subTLV)
 	header := tlvHeader(TLVPathSetupTypeCapability, uint16(len(value)))
@@ -2037,6 +2063,7 @@ func TestDecodeTLVs_SubTLV(t *testing.T) {
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
+
 			_, err := DecodeTLVs(tt.input)
 			if tt.wantErr {
 				assert.Error(t, err, "expected error for '%s'", name)

@@ -16,6 +16,7 @@ import (
 func fullTEDNodeViewFixture() tedNodeView {
 	sidIdx := uint32(7)
 	flags, algorithm := uint8(1), uint8(2)
+
 	return tedNodeView{
 		RouterID:   testRouterID1,
 		Hostname:   "router1",
@@ -105,6 +106,7 @@ func TestWriteTEDText_PropagatesWriteErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			w := &condFailWriter{fail: tt.fail}
 			err := writeTEDText(w, []tedNodeView{fullTEDNodeViewFixture()})
 			require.Error(t, err)

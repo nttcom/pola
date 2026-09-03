@@ -42,6 +42,7 @@ const (
 
 func newStatus(code codes.Code, reason, format string, a ...any) error {
 	st := status.Newf(code, format, a...)
+
 	withDetails, err := st.WithDetails(&errdetails.ErrorInfo{
 		Reason: reason,
 		Domain: errorInfoDomain,
@@ -50,5 +51,6 @@ func newStatus(code codes.Code, reason, format string, a ...any) error {
 		// WithDetails only fails for codes.OK, whose status.Errorf would return nil.
 		return st.Err()
 	}
+
 	return withDetails.Err()
 }

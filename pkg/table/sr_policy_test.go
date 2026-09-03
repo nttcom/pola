@@ -20,9 +20,11 @@ func newTestSegmentSRMPLS(sid uint32, local, remote string) SegmentSRMPLS {
 	if local != "" {
 		seg.LocalAddr = netip.MustParseAddr(local)
 	}
+
 	if remote != "" {
 		seg.RemoteAddr = netip.MustParseAddr(remote)
 	}
+
 	return seg
 }
 
@@ -31,9 +33,11 @@ func newTestSegmentSRv6(sid, local, remote string) SegmentSRv6 {
 	if local != "" {
 		seg.LocalAddr = netip.MustParseAddr(local)
 	}
+
 	if remote != "" {
 		seg.RemoteAddr = netip.MustParseAddr(remote)
 	}
+
 	return seg
 }
 
@@ -117,11 +121,13 @@ func TestSegmentsEqual(t *testing.T) {
 			a: func() SegmentSRv6 {
 				s := newTestSegmentSRv6("fc00:0:1::", "", "")
 				s.Structure = SIDStructureBytes{1, 2, 3, 4}
+
 				return s
 			}(),
 			b: func() SegmentSRv6 {
 				s := newTestSegmentSRv6("fc00:0:1::", "", "")
 				s.Structure = SIDStructureBytes{5, 6, 7, 8}
+
 				return s
 			}(),
 			want: false,
@@ -215,6 +221,7 @@ func TestSRPolicyUpdate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			p := &SRPolicy{Name: "original", Color: 100, Preference: 200, SegmentList: []Segment{NewSegmentSRMPLS(16001)}}
 			p.Update(tt.diff)
 			assert.Equal(t, tt.want, *p)
@@ -239,11 +246,13 @@ func TestNewSegment(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			seg, err := NewSegment(tt.sid)
 			if tt.wantErr {
 				assert.Error(t, err)
 				return
 			}
+
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, seg)
 		})
@@ -288,6 +297,7 @@ func TestSIDStructureBytesMarshalJSON(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			b, err := tt.s.MarshalJSON()
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, string(b))
@@ -313,6 +323,7 @@ func TestSegmentSRv6_Behavior(t *testing.T) {
 			seg: func() SegmentSRv6 {
 				s := newTestSegmentSRv6("fc00:0:1::", "2001:db8::1", "2001:db8::2")
 				s.USid = true
+
 				return s
 			}(),
 			want: BehaviorUA,
@@ -322,6 +333,7 @@ func TestSegmentSRv6_Behavior(t *testing.T) {
 			seg: func() SegmentSRv6 {
 				s := newTestSegmentSRv6("fc00:0:1::", "2001:db8::1", "")
 				s.USid = true
+
 				return s
 			}(),
 			want: BehaviorUN,
@@ -388,11 +400,13 @@ func TestSIDStructureBytes_Validate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			err := tt.s.Validate()
 			if tt.wantErr {
 				assert.Error(t, err)
 				return
 			}
+
 			assert.NoError(t, err)
 		})
 	}
@@ -473,11 +487,13 @@ func TestNewSegmentSRv6WithNodeInfo(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			got, err := NewSegmentSRv6WithNodeInfo(netip.MustParseAddr("2001:db8::1"), tt.node)
 			if tt.wantErr {
 				assert.Error(t, err)
 				return
 			}
+
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, got)
 		})

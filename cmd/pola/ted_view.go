@@ -81,6 +81,7 @@ func newTEDNodeViews(nodes map[string]*table.LsNode) []tedNodeView {
 	for routerID := range nodes {
 		routerIDs = append(routerIDs, routerID)
 	}
+
 	slices.Sort(routerIDs)
 
 	views := make([]tedNodeView, 0, len(routerIDs))
@@ -89,6 +90,7 @@ func newTEDNodeViews(nodes map[string]*table.LsNode) []tedNodeView {
 			views = append(views, newTEDNodeView(node))
 		}
 	}
+
 	return views
 }
 
@@ -111,13 +113,16 @@ func newTEDPrefixViews(prefixes []*table.LsPrefix) []tedPrefixView {
 		if p == nil {
 			continue
 		}
+
 		v := tedPrefixView{Prefix: p.Prefix.String()}
 		if p.HasPrefixSID() {
 			sidIndex := p.SidIndex
 			v.SidIndex = &sidIndex
 		}
+
 		views = append(views, v)
 	}
+
 	return views
 }
 
@@ -127,8 +132,10 @@ func newTEDLinkViews(links []*table.LsLink) []tedLinkView {
 		if l == nil {
 			continue
 		}
+
 		views = append(views, newTEDLinkView(l))
 	}
+
 	return views
 }
 
@@ -140,16 +147,20 @@ func newTEDLinkView(l *table.LsLink) tedLinkView {
 	if l.LocalIP.IsValid() {
 		v.LocalIP = l.LocalIP.String()
 	}
+
 	if l.RemoteIP.IsValid() {
 		v.RemoteIP = l.RemoteIP.String()
 	}
+
 	if l.RemoteNode != nil {
 		v.RemoteRouterID = l.RemoteNode.RouterID
 	}
+
 	if l.Srv6EndXSID != nil {
 		sid := newTEDSrv6EndXSIDView(l.Srv6EndXSID)
 		v.Srv6EndXSID = &sid
 	}
+
 	return v
 }
 
@@ -159,8 +170,10 @@ func newTEDMetricViews(metrics []*table.Metric) []tedMetricView {
 		if m == nil {
 			continue
 		}
+
 		views = append(views, tedMetricView{Type: m.Type.DisplayString(), Value: m.Value})
 	}
+
 	return views
 }
 
@@ -170,6 +183,7 @@ func newTEDSrv6SIDViews(sids []*table.LsSrv6SID) []tedSrv6SIDView {
 		if s == nil {
 			continue
 		}
+
 		views = append(views, tedSrv6SIDView{
 			Sids:             s.Sids,
 			EndpointBehavior: endpointBehaviorViewFrom(s.EndpointBehavior),
@@ -177,6 +191,7 @@ func newTEDSrv6SIDViews(sids []*table.LsSrv6SID) []tedSrv6SIDView {
 			MultiTopoIDs:     s.MultiTopoIDs,
 		})
 	}
+
 	return views
 }
 
@@ -191,6 +206,7 @@ func newTEDSrv6EndXSIDView(s *table.Srv6EndXSID) tedSrv6EndXSIDView {
 func endpointBehaviorViewFrom(eb table.EndpointBehavior) endpointBehaviorView {
 	flags := eb.Flags
 	algorithm := eb.Algorithm
+
 	return endpointBehaviorView{
 		Behavior:  eb.Behavior,
 		Name:      table.BehaviorToString(eb.Behavior),

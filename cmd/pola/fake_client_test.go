@@ -46,6 +46,7 @@ func (f *fakePCEServiceClient) DeleteSession(_ context.Context, in *pb.DeleteSes
 	if f.deleteSessionErr != nil {
 		return nil, f.deleteSessionErr
 	}
+
 	return &pb.DeleteSessionResponse{}, nil
 }
 
@@ -59,6 +60,7 @@ func (f *fakePCEServiceClient) CreateSRPolicy(_ context.Context, in *pb.CreateSR
 	if f.createSRPolicyErr != nil {
 		return nil, f.createSRPolicyErr
 	}
+
 	return &pb.CreateSRPolicyResponse{}, nil
 }
 
@@ -67,6 +69,7 @@ func (f *fakePCEServiceClient) DeleteSRPolicy(_ context.Context, in *pb.DeleteSR
 	if f.deleteSRPolicyErr != nil {
 		return nil, f.deleteSRPolicyErr
 	}
+
 	return &pb.DeleteSRPolicyResponse{}, nil
 }
 

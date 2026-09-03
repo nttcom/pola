@@ -66,6 +66,7 @@ func (t MessageType) String() string {
 	if name := t.Name(); name != "" {
 		return fmt.Sprintf("%s (0x%02x)", name, uint8(t))
 	}
+
 	return fmt.Sprintf("Unknown MessageType (0x%02x)", uint8(t))
 }
 
@@ -87,6 +88,7 @@ func (h *CommonHeader) DecodeFromBytes(header []uint8) error {
 	if len(header) < int(CommonHeaderLength) {
 		return fmt.Errorf("PCEP common header too short: got %d bytes, need %d", len(header), CommonHeaderLength)
 	}
+
 	h.Version = header[0] >> 5
 	h.Flag = header[0] & 0x1f
 	h.MessageType = MessageType(header[1])
@@ -99,9 +101,11 @@ func (h *CommonHeader) DecodeFromBytes(header []uint8) error {
 	if h.MessageLength < CommonHeaderLength {
 		return fmt.Errorf("invalid PCEP message length %d", h.MessageLength)
 	}
+
 	if h.MessageType == MessageTypeKeepalive && h.MessageLength != CommonHeaderLength {
 		return fmt.Errorf("invalid Keepalive message length %d, must be %d", h.MessageLength, CommonHeaderLength)
 	}
+
 	return nil
 }
 
@@ -111,6 +115,7 @@ func (h *CommonHeader) Serialize() []uint8 {
 	verFlag := h.Version<<5 | h.Flag
 	buf = append(buf, verFlag, uint8(h.MessageType))
 	buf = append(buf, Uint16ToByteSlice(h.MessageLength)...)
+
 	return buf
 }
 
@@ -122,6 +127,7 @@ func NewCommonHeader(messageType MessageType, messageLength uint16) *CommonHeade
 		MessageType:   messageType,
 		MessageLength: messageLength,
 	}
+
 	return h
 }
 
@@ -132,9 +138,11 @@ func messageLength(objects ...[]uint8) (uint16, error) {
 	for _, o := range objects {
 		total += len(o)
 	}
+
 	if total > math.MaxUint16 {
 		return 0, fmt.Errorf("PCEP message length %d exceeds %d", total, math.MaxUint16)
 	}
+
 	return uint16(total), nil
 }
 
@@ -156,9 +164,11 @@ func objectBody(messageBody []uint8, h *CommonObjectHeader) ([]uint8, error) {
 	if h.ObjectLength < commonObjectHeaderLength || h.ObjectLength%4 != 0 {
 		return nil, fmt.Errorf("invalid object length %d", h.ObjectLength)
 	}
+
 	if int(h.ObjectLength) > len(messageBody) {
 		return nil, fmt.Errorf("object body extends past message (len=%d, total=%d)", h.ObjectLength, len(messageBody))
 	}
+
 	return messageBody[commonObjectHeaderLength:h.ObjectLength], nil
 }
 
@@ -169,19 +179,24 @@ func soleObjectBody(messageBody []uint8, label string, class ObjectClass, typ Ob
 	if err := h.DecodeFromBytes(messageBody); err != nil {
 		return nil, fmt.Errorf("%s: %w", label, err)
 	}
+
 	if h.ObjectClass != class {
 		return nil, fmt.Errorf("%s: unsupported ObjectClass: %d", label, h.ObjectClass)
 	}
+
 	if h.ObjectType != typ {
 		return nil, fmt.Errorf("%s: unsupported ObjectType: %d", label, h.ObjectType)
 	}
+
 	body, err := objectBody(messageBody, &h)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", label, err)
 	}
+
 	if int(h.ObjectLength) != len(messageBody) {
 		return nil, fmt.Errorf("%s: %d trailing bytes after %s object", label, len(messageBody)-int(h.ObjectLength), class.Name())
 	}
+
 	return body, nil
 }
 
@@ -201,6 +216,7 @@ func (m *OpenMessage) DecodeFromBytes(messageBody []uint8) error {
 	if err := openObject.DecodeFromBytes(ObjectTypeOpenOpen, body); err != nil {
 		return fmt.Errorf("open: %w", err)
 	}
+
 	m.OpenObject = openObject
 
 	return nil
@@ -212,13 +228,16 @@ func (m *OpenMessage) Serialize() ([]uint8, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	openMessageLength, err := messageLength(byteOpenObject)
 	if err != nil {
 		return nil, err
 	}
+
 	openHeader := NewCommonHeader(MessageTypeOpen, openMessageLength)
 	byteOpenHeader := openHeader.Serialize()
 	byteOpenMessage := AppendByteSlices(byteOpenHeader, byteOpenObject)
+
 	return byteOpenMessage, nil
 }
 
@@ -238,6 +257,7 @@ func (m *KeepaliveMessage) Serialize() ([]uint8, error) {
 	keepaliveHeader := NewCommonHeader(MessageTypeKeepalive, keepaliveMessageLength)
 	byteKeepaliveHeader := keepaliveHeader.Serialize()
 	byteKeepaliveMessage := byteKeepaliveHeader
+
 	return byteKeepaliveMessage, nil
 }
 
@@ -260,25 +280,30 @@ func (m *PCErrMessage) decodeObject(header *CommonObjectHeader, body []uint8) er
 		if err := errObj.DecodeFromBytes(header.ObjectType, body); err != nil {
 			return err
 		}
+
 		m.Errors = append(m.Errors, errObj)
 	case ObjectClassSRP:
 		srp := &SrpObject{}
 		if err := srp.DecodeFromBytes(header.ObjectType, body); err != nil {
 			return err
 		}
+
 		m.SRPs = append(m.SRPs, srp)
 	case ObjectClassOpen:
 		if header.ObjectType != ObjectTypeOpenOpen {
 			return fmt.Errorf("PCErr: unsupported OPEN ObjectType: %d", header.ObjectType)
 		}
+
 		openObj := &OpenObject{}
 		if err := openObj.DecodeFromBytes(header.ObjectType, body); err != nil {
 			return err
 		}
+
 		m.Open = openObj
 	default:
 		// RFC 5440 §6.7: ignore unsupported object classes.
 	}
+
 	return nil
 }
 
@@ -289,6 +314,7 @@ func (m *PCErrMessage) DecodeFromBytes(messageBody []uint8) error {
 		if err := commonObjectHeader.DecodeFromBytes(messageBody[offset:]); err != nil {
 			return fmt.Errorf("PCErr: %w", err)
 		}
+
 		body, err := objectBody(messageBody[offset:], &commonObjectHeader)
 		if err != nil {
 			return fmt.Errorf("PCErr: %w", err)
@@ -297,12 +323,14 @@ func (m *PCErrMessage) DecodeFromBytes(messageBody []uint8) error {
 		if err := m.decodeObject(&commonObjectHeader, body); err != nil {
 			return fmt.Errorf("PCErr: %w", err)
 		}
+
 		offset += int(commonObjectHeader.ObjectLength)
 	}
 	// RFC 5440 §6.7 requires at least one PCEP-ERROR object per PCErr message.
 	if len(m.Errors) == 0 {
 		return errors.New("PCErr: message carries no PCEP-ERROR object")
 	}
+
 	return nil
 }
 
@@ -314,29 +342,37 @@ func (m *PCErrMessage) Serialize() ([]uint8, error) {
 		if err != nil {
 			return nil, err
 		}
+
 		objects = append(objects, b)
 	}
+
 	for _, errObj := range m.Errors {
 		b, err := errObj.Serialize()
 		if err != nil {
 			return nil, err
 		}
+
 		objects = append(objects, b)
 	}
+
 	if m.Open != nil {
 		b, err := m.Open.Serialize()
 		if err != nil {
 			return nil, err
 		}
+
 		objects = append(objects, b)
 	}
+
 	length, err := messageLength(objects...)
 	if err != nil {
 		return nil, err
 	}
+
 	parts := make([][]uint8, 0, len(objects)+1)
 	parts = append(parts, NewCommonHeader(MessageTypeError, length).Serialize())
 	parts = append(parts, objects...)
+
 	return AppendByteSlices(parts...), nil
 }
 
@@ -345,10 +381,12 @@ func (m *PCErrMessage) SRPIDs() []uint32 {
 	if len(m.SRPs) == 0 {
 		return nil
 	}
+
 	ids := make([]uint32, 0, len(m.SRPs))
 	for _, srp := range m.SRPs {
 		ids = append(ids, srp.SrpID)
 	}
+
 	return ids
 }
 
@@ -383,20 +421,25 @@ func (m *CloseMessage) DecodeFromBytes(messageBody []uint8) error {
 	if err := closeObject.DecodeFromBytes(ObjectTypeCloseClose, body); err != nil {
 		return fmt.Errorf("close: %w", err)
 	}
+
 	m.CloseObject = closeObject
+
 	return nil
 }
 
 // Serialize encodes the CloseMessage into bytes.
 func (m *CloseMessage) Serialize() ([]uint8, error) {
 	byteCloseObject := m.CloseObject.Serialize()
+
 	closeMessageLength, err := messageLength(byteCloseObject)
 	if err != nil {
 		return nil, err
 	}
+
 	closeHeader := NewCommonHeader(MessageTypeClose, closeMessageLength)
 	byteCloseHeader := closeHeader.Serialize()
 	byteCloseMessage := AppendByteSlices(byteCloseHeader, byteCloseObject)
+
 	return byteCloseMessage, nil
 }
 
@@ -438,7 +481,9 @@ func (r *StateReport) decodeBandwidthObject(objectType ObjectType, objectBody []
 	if err := bandwidthObject.DecodeFromBytes(objectType, objectBody); err != nil {
 		return err
 	}
+
 	r.BandwidthObjects = append(r.BandwidthObjects, bandwidthObject)
+
 	return nil
 }
 
@@ -447,7 +492,9 @@ func (r *StateReport) decodeMetricObject(objectType ObjectType, objectBody []uin
 	if err := metricObject.DecodeFromBytes(objectType, objectBody); err != nil {
 		return err
 	}
+
 	r.MetricObjects = append(r.MetricObjects, metricObject)
+
 	return nil
 }
 
@@ -468,7 +515,9 @@ func (r *StateReport) decodeSrpObject(objectType ObjectType, objectBody []uint8)
 	if err := srpObject.DecodeFromBytes(objectType, objectBody); err != nil {
 		return err
 	}
+
 	r.SrpObject = srpObject
+
 	return nil
 }
 
@@ -508,23 +557,30 @@ func (m *PCRptMessage) closeStateReport(sr *StateReport, lspDecoded bool) error 
 	if sr == nil {
 		return nil
 	}
+
 	if !lspDecoded {
 		return errors.New("PCRpt: state report missing LSP object")
 	}
+
 	m.StateReports = append(m.StateReports, sr)
+
 	return nil
 }
 
 // DecodeFromBytes decodes the given bytes into the PCRptMessage.
 func (m *PCRptMessage) DecodeFromBytes(messageBody []uint8) error {
-	var previousObjectClass ObjectClass
-	var sr *StateReport
-	var lspDecoded bool
+	var (
+		previousObjectClass ObjectClass
+		sr                  *StateReport
+		lspDecoded          bool
+	)
+
 	for len(messageBody) > 0 {
 		var commonObjectHeader CommonObjectHeader
 		if err := commonObjectHeader.DecodeFromBytes(messageBody); err != nil {
 			return fmt.Errorf("PCRpt: %w", err)
 		}
+
 		body, err := objectBody(messageBody, &commonObjectHeader)
 		if err != nil {
 			return fmt.Errorf("PCRpt: %w", err)
@@ -535,28 +591,36 @@ func (m *PCRptMessage) DecodeFromBytes(messageBody []uint8) error {
 			messageBody = messageBody[commonObjectHeader.ObjectLength:]
 			continue
 		}
+
 		if beginsStateReport(previousObjectClass, commonObjectHeader.ObjectClass) {
 			if err := m.closeStateReport(sr, lspDecoded); err != nil {
 				return err
 			}
+
 			sr = NewStateReport()
 			lspDecoded = false
 		}
+
 		if sr == nil {
 			return fmt.Errorf("PCRpt: object class %d received before SRP/LSP object", commonObjectHeader.ObjectClass)
 		}
+
 		if err := decodeFunc(sr, commonObjectHeader.ObjectType, body); err != nil {
 			return fmt.Errorf("PCRpt: %w", err)
 		}
+
 		if commonObjectHeader.ObjectClass == ObjectClassLSP {
 			lspDecoded = true
 		}
+
 		previousObjectClass = commonObjectHeader.ObjectClass
 		messageBody = messageBody[commonObjectHeader.ObjectLength:]
 	}
+
 	if sr == nil {
 		return errors.New("PCRpt: no state report")
 	}
+
 	return m.closeStateReport(sr, lspDecoded)
 }
 
@@ -583,6 +647,7 @@ func (m *PCInitiateMessage) Serialize() ([]uint8, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	byteLSPObject, err := m.LSPObject.Serialize()
 	if err != nil {
 		return nil, err
@@ -594,6 +659,7 @@ func (m *PCInitiateMessage) Serialize() ([]uint8, error) {
 			return nil, err
 		}
 	}
+
 	var byteEroObject []uint8
 	if m.EroObject != nil {
 		if byteEroObject, err = m.EroObject.Serialize(); err != nil {
@@ -607,6 +673,7 @@ func (m *PCInitiateMessage) Serialize() ([]uint8, error) {
 			return nil, err
 		}
 	}
+
 	var byteVendorInformationObject []uint8
 	if m.VendorInformationObject != nil {
 		if byteVendorInformationObject, err = m.VendorInformationObject.Serialize(); err != nil {
@@ -626,6 +693,7 @@ func (m *PCInitiateMessage) Serialize() ([]uint8, error) {
 	bytePCInitiateMessage := AppendByteSlices(
 		bytePCInitiateHeader, byteSrpObject, byteLSPObject, byteEndpointsObject, byteEroObject, byteAssociationObject, byteVendorInformationObject,
 	)
+
 	return bytePCInitiateMessage, nil
 }
 
@@ -641,6 +709,7 @@ func NewPCInitiateMessage(srpID uint32, srPolicy table.SRPolicy, opt ...Opt) (*P
 	}
 
 	m := &PCInitiateMessage{}
+
 	var err error
 
 	if m.SrpObject, err = NewSrpObject(srPolicy.SegmentList, srpID, false); err != nil {
@@ -652,6 +721,7 @@ func NewPCInitiateMessage(srpID uint32, srPolicy table.SRPolicy, opt ...Opt) (*P
 	if m.EndpointsObject, err = NewEndpointsObject(srPolicy.DstAddr, srPolicy.SrcAddr); err != nil {
 		return nil, err
 	}
+
 	if m.EroObject, err = NewEroObject(srPolicy.SegmentList); err != nil {
 		return nil, err
 	}
@@ -669,6 +739,7 @@ func NewPCInitiateMessage(srpID uint32, srPolicy table.SRPolicy, opt ...Opt) (*P
 		if m.AssociationObject, err = NewAssociationObject(srPolicy.SrcAddr, srPolicy.DstAddr, srPolicy.Color, srPolicy.Preference, OriginatorASN(opts.originatorASN)); err != nil {
 			return nil, err
 		}
+
 		if m.VendorInformationObject, err = NewVendorInformationObject(CiscoLegacy, srPolicy.Color, srPolicy.Preference); err != nil {
 			return nil, err
 		}
@@ -709,10 +780,12 @@ func (m *PCUpdMessage) Serialize() ([]uint8, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	byteLSPObject, err := m.LSPObject.Serialize()
 	if err != nil {
 		return nil, err
 	}
+
 	byteEroObject, err := m.EroObject.Serialize()
 	if err != nil {
 		return nil, err
@@ -722,9 +795,11 @@ func (m *PCUpdMessage) Serialize() ([]uint8, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	pcupdHeader := NewCommonHeader(MessageTypeUpdate, pcupdMessageLength)
 	bytePCUpdHeader := pcupdHeader.Serialize()
 	bytePCUpdMessage := AppendByteSlices(bytePCUpdHeader, byteSrpObject, byteLSPObject, byteEroObject)
+
 	return bytePCUpdMessage, nil
 }
 
@@ -732,6 +807,7 @@ func (m *PCUpdMessage) Serialize() ([]uint8, error) {
 // srPolicy.PlspID with srPolicy's segment list.
 func NewPCUpdMessage(srpID uint32, srPolicy table.SRPolicy) (*PCUpdMessage, error) {
 	m := &PCUpdMessage{}
+
 	var err error
 
 	if m.SrpObject, err = NewSrpObject(srPolicy.SegmentList, srpID, false); err != nil {
@@ -742,5 +818,6 @@ func NewPCUpdMessage(srpID uint32, srPolicy table.SRPolicy) (*PCUpdMessage, erro
 	if m.EroObject, err = NewEroObject(srPolicy.SegmentList); err != nil {
 		return nil, err
 	}
+
 	return m, nil
 }

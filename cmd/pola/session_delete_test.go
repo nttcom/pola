@@ -28,6 +28,7 @@ func TestNewSessionDeleteCmd_ArgValidation(t *testing.T) {
 
 	t.Run("missing address argument", func(t *testing.T) {
 		t.Parallel()
+
 		cmd := newSessionDeleteCmd(&cli{})
 		err := cmd.RunE(cmd, []string{})
 		require.Error(t, err)
@@ -36,6 +37,7 @@ func TestNewSessionDeleteCmd_ArgValidation(t *testing.T) {
 
 	t.Run("invalid address", func(t *testing.T) {
 		t.Parallel()
+
 		cmd := newSessionDeleteCmd(&cli{})
 		err := cmd.RunE(cmd, []string{"not-an-address"})
 		require.Error(t, err)
@@ -44,6 +46,7 @@ func TestNewSessionDeleteCmd_ArgValidation(t *testing.T) {
 
 	t.Run("valid address delegates to deleteSession", func(t *testing.T) {
 		t.Parallel()
+
 		cmd := newSessionDeleteCmd(&cli{client: &fakePCEServiceClient{}})
 		cmd.SetOut(&bytes.Buffer{})
 		require.NoError(t, cmd.RunE(cmd, []string{testPeerAddr1}))
@@ -51,6 +54,7 @@ func TestNewSessionDeleteCmd_ArgValidation(t *testing.T) {
 
 	t.Run("deleteSession error propagates", func(t *testing.T) {
 		t.Parallel()
+
 		cmd := newSessionDeleteCmd(&cli{client: &fakePCEServiceClient{deleteSessionErr: assert.AnError}})
 		err := cmd.RunE(cmd, []string{testPeerAddr1})
 		require.ErrorIs(t, err, assert.AnError)
@@ -71,7 +75,9 @@ func TestDeleteSession(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			fake := &fakePCEServiceClient{}
+
 			var out bytes.Buffer
 			require.NoError(t, deleteSession(&out, netip.MustParseAddr(testPeerAddr1), tt.jsonFlag, fake))
 			assert.Equal(t, tt.want, out.String())
@@ -82,6 +88,7 @@ func TestDeleteSession(t *testing.T) {
 
 	t.Run("grpc error propagates", func(t *testing.T) {
 		t.Parallel()
+
 		fake := &fakePCEServiceClient{deleteSessionErr: assert.AnError}
 		err := deleteSession(&bytes.Buffer{}, netip.MustParseAddr(testPeerAddr1), false, fake)
 		require.ErrorIs(t, err, assert.AnError)

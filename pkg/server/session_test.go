@@ -57,11 +57,13 @@ func newTCPConnPair(t *testing.T) (server, client *net.TCPConn) {
 			errCh <- err
 			return
 		}
+
 		tcpConn, ok := conn.(*net.TCPConn)
 		if !ok {
 			errCh <- fmt.Errorf("expected *net.TCPConn, got %T", conn)
 			return
 		}
+
 		serverCh <- tcpConn
 	}()
 
@@ -98,11 +100,14 @@ func (c *fakeConn) Read(p []byte) (int, error) { return c.r.Read(p) }
 func (c *fakeConn) Write(p []byte) (int, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	c.writeCount++
+
 	c.written = append(c.written, append([]byte{}, p...))
 	if c.writeErr != nil && c.writeCount > c.failAfter {
 		return 0, c.writeErr
 	}
+
 	return len(p), nil
 }
 
@@ -110,6 +115,7 @@ func (c *fakeConn) Write(p []byte) (int, error) {
 func (c *fakeConn) writes() [][]byte {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	return append([][]byte{}, c.written...)
 }
 
@@ -136,6 +142,7 @@ func newTestStateReport(t *testing.T, plspID, srpID uint32) *pcep.StateReport {
 	for _, sid := range []uint32{16002, 16003} {
 		subobj, err := pcep.NewSREroSubobject(table.NewSegmentSRMPLS(sid))
 		require.NoError(t, err, "failed to create SR ERO subobject")
+
 		sr.EroObject.EroSubobjects = append(sr.EroObject.EroSubobjects, subobj)
 	}
 
@@ -192,10 +199,12 @@ func TestSRPolicies_SnapshotSRv6StructureIsIndependent(t *testing.T) {
 
 	snapshotSeg, ok := policies[0].SegmentList[0].(table.SegmentSRv6)
 	require.Truef(t, ok, "segment type: got %T, want table.SegmentSRv6", policies[0].SegmentList[0])
+
 	snapshotSeg.Structure[0] = 99
 
 	got, found := ss.SearchSRPolicy(1)
 	require.True(t, found, "SR Policy was not registered")
+
 	gotSeg, ok := got.SegmentList[0].(table.SegmentSRv6)
 	require.Truef(t, ok, "segment type: got %T, want table.SegmentSRv6", got.SegmentList[0])
 	assert.Equal(t, table.SIDStructureBytes{32, 16, 0, 80}, gotSeg.Structure,
@@ -224,6 +233,7 @@ func TestSRPolicyIntent_AttachedOnUpdateBySRPID(t *testing.T) {
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 
 	ss.rememberSRPolicyIntent(1, table.PolicyTypeExplicit, table.UnspecifiedMetric)
+
 	sr := newTestStateReport(t, 1, 1)
 	require.NoError(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
 
@@ -234,6 +244,7 @@ func TestSRPolicyIntent_AttachedOnUpdateBySRPID(t *testing.T) {
 
 	// A PCRpt for the same PLSP-ID takes the update path and must pick up the new intent.
 	ss.rememberSRPolicyIntent(2, table.PolicyTypeDynamic, table.TEMetric)
+
 	sr2 := newTestStateReport(t, 1, 2)
 	require.NoError(t, ss.handleStateReport(sr2, pcep.NewPCRptMessage()))
 
@@ -415,6 +426,7 @@ func TestConcurrentSRPolicyRequestsAllocateUniqueSRPIDs(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
+
 		buf := make([]byte, 4096)
 		for {
 			if _, err := client.Read(buf); err != nil {
@@ -422,6 +434,7 @@ func TestConcurrentSRPolicyRequestsAllocateUniqueSRPIDs(t *testing.T) {
 			}
 		}
 	}()
+
 	t.Cleanup(func() {
 		assert.NoError(t, client.Close(), "failed to close client connection")
 		<-done
@@ -430,7 +443,9 @@ func TestConcurrentSRPolicyRequestsAllocateUniqueSRPIDs(t *testing.T) {
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 
 	const goroutines = 20
+
 	var wg sync.WaitGroup
+
 	errCh := make(chan error, goroutines)
 	for i := range goroutines {
 		wg.Go(func() {
@@ -442,15 +457,18 @@ func TestConcurrentSRPolicyRequestsAllocateUniqueSRPIDs(t *testing.T) {
 				Type:    table.PolicyTypeDynamic,
 				Metric:  table.TEMetric,
 			}
+
 			var err error
 			if i%2 == 0 {
 				err = ss.SendPCUpdate(srPolicy)
 			} else {
 				err = ss.RequestSRPolicyCreated(srPolicy)
 			}
+
 			errCh <- err
 		})
 	}
+
 	wg.Wait()
 	close(errCh)
 
@@ -618,6 +636,7 @@ func TestStartIntentSweep_Idempotent(t *testing.T) {
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	ss.startIntentSweep()
 	firstStop := ss.sweepStop
+
 	ss.startIntentSweep()
 	defer ss.stopIntentSweep()
 
@@ -638,6 +657,7 @@ func TestIntentSweep_StopsCleanly(t *testing.T) {
 	ss.startIntentSweep()
 
 	done := make(chan struct{})
+
 	go func() {
 		ss.stopIntentSweep()
 		close(done)
@@ -656,6 +676,7 @@ func TestIntentSweep_ConcurrentWithIntentConsumption(t *testing.T) {
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	ss.srPolicyIntentTTL = 5 * time.Millisecond
 	ss.sweepInterval = 2 * time.Millisecond
+
 	ss.startIntentSweep()
 	defer ss.stopIntentSweep()
 
@@ -667,6 +688,7 @@ func TestIntentSweep_ConcurrentWithIntentConsumption(t *testing.T) {
 			ss.takeSRPolicyIntent(i)
 		})
 	}
+
 	wg.Wait()
 }
 
@@ -810,6 +832,7 @@ func sendConcurrentPCEPMessages(t *testing.T, ss *Session, goroutines int) {
 	t.Helper()
 
 	var wg sync.WaitGroup
+
 	errCh := make(chan error, goroutines)
 
 	for i := range goroutines {
@@ -843,9 +866,11 @@ func readPCEPMessage(r io.Reader) error {
 	if bodyLen == 0 {
 		return nil
 	}
+
 	if _, err := io.ReadFull(r, make([]byte, bodyLen)); err != nil {
 		return fmt.Errorf("failed to read a PCEP message body; sends may have interleaved: %w", err)
 	}
+
 	return nil
 }
 
@@ -860,6 +885,7 @@ func startPCEPFramingValidator(r io.Reader, wantCount int) <-chan error {
 				return
 			}
 		}
+
 		result <- nil
 	}()
 
@@ -997,11 +1023,13 @@ func TestFindRouterIDFromAddress(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+
 			got, err := ss.findRouterIDFromAddress(addrIndex, tc.addr)
 			if tc.wantErr {
 				require.Errorf(t, err, "expected error, got routerID %q", got)
 				return
 			}
+
 			require.NoError(t, err)
 			assert.Equal(t, tc.want, got)
 		})
@@ -1072,6 +1100,7 @@ func TestExtractSrcDstRouterIDs_DestinationNotFound(t *testing.T) {
 
 func writeMessage(t *testing.T, w io.Writer, message pcep.Message) {
 	t.Helper()
+
 	b, err := message.Serialize()
 	require.NoError(t, err, "failed to serialize message")
 	_, err = w.Write(b)
@@ -1095,6 +1124,7 @@ func readOpenMessage(t *testing.T, r io.Reader) *pcep.OpenMessage {
 
 	openMessage := &pcep.OpenMessage{}
 	require.NoError(t, openMessage.DecodeFromBytes(body))
+
 	return openMessage
 }
 
@@ -1176,6 +1206,7 @@ func openMessageBody(t *testing.T, sessionID, keepalive, deadTimer uint8) []uint
 
 	full, err := pcep.NewOpenMessage(sessionID, keepalive, deadTimer, nil).Serialize()
 	require.NoError(t, err, "failed to serialize Open message")
+
 	return full[pcep.CommonHeaderLength:]
 }
 
@@ -1202,6 +1233,7 @@ func TestHandlePeerOpen_AcknowledgesAndStoresPeerOpenParams(t *testing.T) {
 
 	writes := conn.writes()
 	require.Len(t, writes, 1, "Appendix A acknowledges an acceptable Open with a Keepalive")
+
 	var header pcep.CommonHeader
 	require.NoError(t, header.DecodeFromBytes(writes[0]))
 	assert.Equal(t, pcep.MessageTypeKeepalive, header.MessageType)
@@ -1251,6 +1283,7 @@ func TestHandlePeerOpen_RejectedOpenDoesNotOverwriteNegotiatedTimers(t *testing.
 
 	writes := conn.writes()
 	require.Len(t, writes, 2, "the Keepalive acknowledging the first Open, then the PCErr rejecting the second")
+
 	var header pcep.CommonHeader
 	require.NoError(t, header.DecodeFromBytes(writes[0]))
 	assert.Equal(t, pcep.MessageTypeKeepalive, header.MessageType)
@@ -1399,6 +1432,7 @@ func TestProposedTimers(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			keepalive, deadTimer := tt.session.proposedTimers(tt.pccOpen)
 			assert.Equal(t, tt.wantKeepalive, keepalive)
 			assert.Equal(t, tt.wantDeadTimer, deadTimer)
@@ -1471,16 +1505,19 @@ func handshakeBytes(t *testing.T, openMessage *pcep.OpenMessage) ([]byte, error)
 	if err != nil {
 		return nil, fmt.Errorf("serialize Open message: %w", err)
 	}
+
 	keepaliveBytes, err := pcep.NewKeepaliveMessage().Serialize()
 	if err != nil {
 		return nil, fmt.Errorf("serialize Keepalive message: %w", err)
 	}
+
 	return append(openBytes, keepaliveBytes...), nil
 }
 
 // writeStateReportMessage writes sr as an unsolicited PCRpt.
 func writeStateReportMessage(t *testing.T, w io.Writer, sr *pcep.StateReport) {
 	t.Helper()
+
 	sr.LSPObject.TLVs = append(
 		sr.LSPObject.TLVs,
 		&pcep.SymbolicPathName{Name: sr.LSPObject.Name},
@@ -1492,12 +1529,14 @@ func writeStateReportMessage(t *testing.T, w io.Writer, sr *pcep.StateReport) {
 	require.NoError(t, err, "failed to serialize LSPObject")
 	byteEro, err := sr.EroObject.Serialize()
 	require.NoError(t, err, "failed to serialize EroObject")
+
 	body := append(append(byteSrp, byteLsp...), byteEro...)
 	writeRawPCEPMessage(t, w, pcep.MessageTypeReport, body)
 }
 
 func writeRawPCEPMessage(t *testing.T, w io.Writer, msgType pcep.MessageType, body []byte) {
 	t.Helper()
+
 	header := &pcep.CommonHeader{Version: 1, MessageType: msgType, MessageLength: pcep.CommonHeaderLength + uint16(len(body))}
 	_, err := w.Write(append(header.Serialize(), body...))
 	require.NoError(t, err, "failed to write PCEP message")
@@ -1516,10 +1555,12 @@ func TestOpen_Established_ReturnsWhenOpenFails(t *testing.T) {
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 
 	done := make(chan struct{})
+
 	go func() {
 		if err := ss.Established(); err != nil {
 			t.Logf("established: %v", err)
 		}
+
 		close(done)
 	}()
 
@@ -1548,10 +1589,12 @@ func TestEstablished_StateMachineFollowsRFC5440(t *testing.T) {
 	writeMessage(t, client, pcep.NewOpenMessage(1, 30, 120, nil))
 
 	done := make(chan struct{})
+
 	go func() {
 		if err := ss.Established(); err != nil {
 			t.Logf("established: %v", err)
 		}
+
 		close(done)
 	}()
 
@@ -1572,6 +1615,7 @@ func TestEstablished_StateMachineFollowsRFC5440(t *testing.T) {
 	assert.Equal(t, pb.SessionState_SESSION_STATE_UP, toPBSessionState(ss.State()))
 
 	writeMessage(t, client, pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided))
+
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
@@ -1591,10 +1635,12 @@ func TestEstablished_KeepWaitExpiryReportsErrorValue7(t *testing.T) {
 	writeMessage(t, client, pcep.NewOpenMessage(1, 30, 120, nil))
 
 	done := make(chan struct{})
+
 	go func() {
 		if err := ss.Established(); err != nil {
 			t.Logf("established: %v", err)
 		}
+
 		close(done)
 	}()
 
@@ -1612,6 +1658,7 @@ func TestEstablished_KeepWaitExpiryReportsErrorValue7(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		require.Fail(t, "Established did not return after KeepWait expired")
 	}
+
 	assert.False(t, ss.Up())
 }
 
@@ -1625,10 +1672,12 @@ func TestEstablished_OpenWaitExpiryReportsErrorValue2(t *testing.T) {
 	ss.openWait = 50 * time.Millisecond
 
 	done := make(chan struct{})
+
 	go func() {
 		if err := ss.Established(); err != nil {
 			t.Logf("established: %v", err)
 		}
+
 		close(done)
 	}()
 
@@ -1659,10 +1708,12 @@ func TestEstablished_NonOpenFirstMessageReportsErrorValue1(t *testing.T) {
 	writeMessage(t, client, pcep.NewKeepaliveMessage())
 
 	done := make(chan struct{})
+
 	go func() {
 		if err := ss.Established(); err != nil {
 			t.Logf("established: %v", err)
 		}
+
 		close(done)
 	}()
 
@@ -1697,10 +1748,12 @@ func TestEstablished_InvalidZeroMSDIsToleratedWithWarning(t *testing.T) {
 	writeMessage(t, client, openMessage)
 
 	done := make(chan struct{})
+
 	go func() {
 		if err := ss.Established(); err != nil {
 			t.Logf("established: %v", err)
 		}
+
 		close(done)
 	}()
 
@@ -1717,6 +1770,7 @@ func TestEstablished_InvalidZeroMSDIsToleratedWithWarning(t *testing.T) {
 	), 1)
 
 	writeMessage(t, client, pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided))
+
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
@@ -1825,10 +1879,12 @@ func TestEstablished_PCErrDuringKeepWaitReportsErrorValue6(t *testing.T) {
 	writeMessage(t, client, pcep.NewPCErrMessage(1, 4, nil))
 
 	done := make(chan struct{})
+
 	go func() {
 		if err := ss.Established(); err != nil {
 			t.Logf("established: %v", err)
 		}
+
 		close(done)
 	}()
 
@@ -1845,6 +1901,7 @@ func TestEstablished_PCErrDuringKeepWaitReportsErrorValue6(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		require.Fail(t, "Established did not return after receiving a PCErr in KeepWait")
 	}
+
 	assert.False(t, ss.Up())
 }
 
@@ -1863,10 +1920,12 @@ func TestEstablished_UnacceptableKeepaliveNonNegotiableReportsErrorValue3(t *tes
 	writeMessage(t, client, pcep.NewOpenMessage(1, 5, 20, nil))
 
 	done := make(chan struct{})
+
 	go func() {
 		if err := ss.Established(); err != nil {
 			t.Logf("established: %v", err)
 		}
+
 		close(done)
 	}()
 
@@ -1884,6 +1943,7 @@ func TestEstablished_UnacceptableKeepaliveNonNegotiableReportsErrorValue3(t *tes
 	case <-time.After(2 * time.Second):
 		require.Fail(t, "Established did not return after an unacceptable, non-negotiable Open")
 	}
+
 	assert.False(t, ss.Up())
 }
 
@@ -1901,10 +1961,12 @@ func TestEstablished_NegotiatesAcceptableKeepaliveThenEstablishes(t *testing.T) 
 	writeMessage(t, client, pcep.NewOpenMessage(1, 5, 20, nil))
 
 	done := make(chan struct{})
+
 	go func() {
 		if err := ss.Established(); err != nil {
 			t.Logf("established: %v", err)
 		}
+
 		close(done)
 	}()
 
@@ -1929,6 +1991,7 @@ func TestEstablished_NegotiatesAcceptableKeepaliveThenEstablishes(t *testing.T) 
 		"the session must come up once the peer proposes acceptable session characteristics")
 
 	writeMessage(t, client, pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided))
+
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
@@ -1950,10 +2013,12 @@ func TestEstablished_SecondOpenStillUnacceptableReportsErrorValue5(t *testing.T)
 	writeMessage(t, client, pcep.NewOpenMessage(1, 5, 20, nil))
 
 	done := make(chan struct{})
+
 	go func() {
 		if err := ss.Established(); err != nil {
 			t.Logf("established: %v", err)
 		}
+
 		close(done)
 	}()
 
@@ -1975,6 +2040,7 @@ func TestEstablished_SecondOpenStillUnacceptableReportsErrorValue5(t *testing.T)
 	case <-time.After(2 * time.Second):
 		require.Fail(t, "Established did not return after a second unacceptable Open")
 	}
+
 	assert.False(t, ss.Up())
 }
 
@@ -1989,10 +2055,12 @@ func TestEstablished_SecondOpenAfterAcceptanceDoesNotChangeNegotiatedTimers(t *t
 	writeMessage(t, client, pcep.NewOpenMessage(1, 30, 120, nil))
 
 	done := make(chan struct{})
+
 	go func() {
 		if err := ss.Established(); err != nil {
 			t.Logf("established: %v", err)
 		}
+
 		close(done)
 	}()
 
@@ -2012,6 +2080,7 @@ func TestEstablished_SecondOpenAfterAcceptanceDoesNotChangeNegotiatedTimers(t *t
 	case <-time.After(2 * time.Second):
 		require.Fail(t, "Established did not return after a further Open arrived post-acceptance")
 	}
+
 	assert.False(t, ss.Up())
 
 	pccOpen, ok := ss.PccOpen()
@@ -2034,10 +2103,12 @@ func TestEstablished_ReturnsOnCloseMessage(t *testing.T) {
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 
 	done := make(chan struct{})
+
 	go func() {
 		if err := ss.Established(); err != nil {
 			t.Logf("established: %v", err)
 		}
+
 		close(done)
 	}()
 
@@ -2069,10 +2140,12 @@ func TestEstablished_ZeroKeepaliveDoesNotPanic(t *testing.T) {
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 
 	done := make(chan struct{})
+
 	go func() {
 		if err := ss.Established(); err != nil {
 			t.Logf("established: %v", err)
 		}
+
 		close(done)
 	}()
 
@@ -2103,10 +2176,12 @@ func TestEstablished_ReturnsWhenPeerDisconnectsAbruptly(t *testing.T) {
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 
 	done := make(chan struct{})
+
 	go func() {
 		if err := ss.Established(); err != nil {
 			t.Logf("established: %v", err)
 		}
+
 		close(done)
 	}()
 
@@ -2131,6 +2206,7 @@ func TestEstablished_ReturnsWhenPeriodicKeepaliveSendFails(t *testing.T) {
 
 	// Block the receive loop so the test observes the periodic send failure.
 	pr, pw := io.Pipe()
+
 	t.Cleanup(func() {
 		assert.NoError(t, pw.Close(), "failed to close pipe writer")
 	})
@@ -2144,10 +2220,12 @@ func TestEstablished_ReturnsWhenPeriodicKeepaliveSendFails(t *testing.T) {
 	ss := NewSession(OpenParams{SessionID: 1, Keepalive: 1, DeadTimer: 4}, netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
 	done := make(chan struct{})
+
 	go func() {
 		if err := ss.Established(); err != nil {
 			t.Logf("established: %v", err)
 		}
+
 		close(done)
 	}()
 
@@ -2165,6 +2243,7 @@ func TestEstablished_ReturnsWhenInitialKeepaliveSendFails(t *testing.T) {
 	require.NoError(t, err)
 
 	pr, pw := io.Pipe()
+
 	t.Cleanup(func() {
 		assert.NoError(t, pw.Close(), "failed to close pipe writer")
 	})
@@ -2178,10 +2257,12 @@ func TestEstablished_ReturnsWhenInitialKeepaliveSendFails(t *testing.T) {
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
 	done := make(chan struct{})
+
 	go func() {
 		if err := ss.Established(); err != nil {
 			t.Logf("established: %v", err)
 		}
+
 		close(done)
 	}()
 
@@ -2206,6 +2287,7 @@ func TestOpen_MalformedOrUnexpectedPeerMessageIsRejected(t *testing.T) {
 				header := &pcep.CommonHeader{Version: 2, MessageType: pcep.MessageTypeOpen, MessageLength: pcep.CommonHeaderLength}
 				_, err := client.Write(header.Serialize())
 				require.NoError(t, err, "failed to write header")
+
 				return false
 			},
 		},
@@ -2231,6 +2313,7 @@ func TestOpen_MalformedOrUnexpectedPeerMessageIsRejected(t *testing.T) {
 				header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeOpen, MessageLength: pcep.CommonHeaderLength - 1}
 				_, err := client.Write(header.Serialize())
 				require.NoError(t, err, "failed to write header")
+
 				return false
 			},
 		},
@@ -2241,6 +2324,7 @@ func TestOpen_MalformedOrUnexpectedPeerMessageIsRejected(t *testing.T) {
 				_, err := client.Write(header.Serialize())
 				require.NoError(t, err, "failed to write header")
 				require.NoError(t, client.Close(), "failed to close client connection")
+
 				return true
 			},
 		},
@@ -2251,6 +2335,7 @@ func TestOpen_MalformedOrUnexpectedPeerMessageIsRejected(t *testing.T) {
 				header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeOpen, MessageLength: pcep.CommonHeaderLength + uint16(len(body))}
 				_, err := client.Write(append(header.Serialize(), body...))
 				require.NoError(t, err, "failed to write message")
+
 				return false
 			},
 		},
@@ -2274,9 +2359,11 @@ func TestOpen_MalformedOrUnexpectedPeerMessageIsRejected(t *testing.T) {
 			ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 			err := ss.Open()
 			require.Error(t, err)
+
 			if tc.wantErr != "" {
 				require.ErrorContains(t, err, tc.wantErr)
 			}
+
 			assert.False(t, ss.Up())
 		})
 	}
@@ -2293,8 +2380,10 @@ func (r *errAfterReader) Read(p []byte) (int, error) {
 	if len(r.prefix) > 0 {
 		n := copy(p, r.prefix)
 		r.prefix = r.prefix[n:]
+
 		return n, nil
 	}
+
 	return 0, r.err
 }
 
@@ -2304,11 +2393,14 @@ func concatMessages(t *testing.T, messages ...pcep.Message) []byte {
 	t.Helper()
 
 	var stream []byte
+
 	for _, message := range messages {
 		b, err := message.Serialize()
 		require.NoError(t, err, "failed to serialize message")
+
 		stream = append(stream, b...)
 	}
+
 	return stream
 }
 
@@ -2332,6 +2424,7 @@ func negotiatingSessionWithLogger(t *testing.T, conn net.Conn, lg *logger.Logger
 	ss.keepaliveRangeEnabled = true
 	ss.minKeepalive, ss.maxKeepalive = 10, 60
 	ss.allowNegotiation = true
+
 	return ss
 }
 
@@ -2503,6 +2596,7 @@ func TestNegotiateOpen_PreOpenPCErrIsCounted(t *testing.T) {
 
 	full, err := pcep.NewPCErrMessage(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueSecondOpenStillUnacceptable, nil).Serialize()
 	require.NoError(t, err)
+
 	conn := &fakeConn{r: bytes.NewReader(full)}
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
@@ -2574,6 +2668,7 @@ func TestNegotiateOpen_TimerExpiryFollowsTheDerivedState(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+
 			conn := &fakeConn{r: &errAfterReader{prefix: tc.prefix, err: os.ErrDeadlineExceeded}}
 			ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
@@ -2662,6 +2757,7 @@ func TestNegotiateOpen_DuplicateKeepalivesDoNotExtendTheInitializationTimer(t *t
 
 	neg := &openNegotiation{}
 	start := time.Now()
+
 	errCh := make(chan error, 1)
 	go func() { errCh <- ss.negotiateOpen(neg) }()
 
@@ -2669,9 +2765,11 @@ func TestNegotiateOpen_DuplicateKeepalivesDoNotExtendTheInitializationTimer(t *t
 
 	done := make(chan struct{})
 	defer close(done)
+
 	go func() {
 		ticker := time.NewTicker(20 * time.Millisecond)
 		defer ticker.Stop()
+
 		for {
 			select {
 			case <-done:
@@ -2681,6 +2779,7 @@ func TestNegotiateOpen_DuplicateKeepalivesDoNotExtendTheInitializationTimer(t *t
 				if err != nil {
 					return
 				}
+
 				if _, err := client.Write(b); err != nil {
 					return
 				}
@@ -2759,6 +2858,7 @@ func TestNegotiateOpen_SendsKeepalivesWhileAwaitingAcknowledgmentOfItsOwnOpen(t 
 	case <-time.After(2 * time.Second):
 		require.Fail(t, "Open did not return once both sides acknowledged")
 	}
+
 	assert.True(t, ss.Up())
 }
 
@@ -2793,6 +2893,7 @@ func TestNegotiateOpen_NegotiationKeepaliveStopsWhenNegotiationFails(t *testing.
 
 	require.NoError(t, client.SetReadDeadline(time.Now().Add(1200*time.Millisecond)))
 	_, err := client.Read(make([]byte, 1))
+
 	runtime.KeepAlive(ss) // ss.tcpConn (== server) must survive until the read above completes.
 	assert.ErrorIs(t, err, os.ErrDeadlineExceeded,
 		"the negotiation Keepalive goroutine must stop before Open returns, not fire once more a second later")
@@ -2878,6 +2979,7 @@ func TestNegotiateOpen_SecondOpenAfterAnAcceptableOpenIsRejected(t *testing.T) {
 
 	writes := conn.writes()
 	require.Len(t, writes, 2)
+
 	var header pcep.CommonHeader
 	require.NoError(t, header.DecodeFromBytes(writes[0]))
 	assert.Equal(t, pcep.MessageTypeKeepalive, header.MessageType)
@@ -2923,6 +3025,7 @@ func TestNegotiateOpen_ZeroKeepaliveWithNonzeroDeadTimerIsAccepted(t *testing.T)
 
 	writes := conn.writes()
 	require.Len(t, writes, 1, "only the acknowledging Keepalive; a Keepalive=0 Open must not draw a PCErr")
+
 	var header pcep.CommonHeader
 	require.NoError(t, header.DecodeFromBytes(writes[0]))
 	assert.Equal(t, pcep.MessageTypeKeepalive, header.MessageType)
@@ -2960,6 +3063,7 @@ func TestNegotiateOpen_PCErrBeforeThePeersOpenIsRejected(t *testing.T) {
 	require.ErrorContains(t, ss.negotiateOpen(neg), "received a PCErr before the peer's Open message")
 
 	assert.Zero(t, neg.localOpenRetries, "the proposal must not be adopted")
+
 	writes := conn.writes()
 	require.Len(t, writes, 1)
 	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
@@ -2985,6 +3089,7 @@ func TestNegotiateOpen_KeepWaitRenegotiationSpendsTheLocalOpenRetryBudget(t *tes
 
 	writes := conn.writes()
 	require.Len(t, writes, 2, "expected the Keepalive acknowledging the peer's Open and the re-sent Open")
+
 	var header pcep.CommonHeader
 	require.NoError(t, header.DecodeFromBytes(writes[0]))
 	assert.Equal(t, pcep.MessageTypeKeepalive, header.MessageType)
@@ -3091,6 +3196,7 @@ func TestNegotiateOpen_RevisedOpenMayArriveBeforeTheAcknowledgmentOfPolasOpen(t 
 	writes := conn.writes()
 	require.Len(t, writes, 2)
 	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableNegotiable)
+
 	var header pcep.CommonHeader
 	require.NoError(t, header.DecodeFromBytes(writes[1]))
 	assert.Equal(t, pcep.MessageTypeKeepalive, header.MessageType, "the revised Open must be acknowledged")
@@ -3288,6 +3394,7 @@ func TestAdoptProposedOpen_ClearsTheAcknowledgmentOfThePreviousOpen(t *testing.T
 	for _, initialLocalOK := range []bool{true, false} {
 		t.Run(fmt.Sprintf("localOK=%v", initialLocalOK), func(t *testing.T) {
 			t.Parallel()
+
 			conn := &fakeConn{r: bytes.NewReader(nil)}
 			ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
@@ -3393,6 +3500,7 @@ func TestOpen_RejectsSecondProposalWithErrorValue6(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		require.Fail(t, "Open did not return after rejecting the second proposal")
 	}
+
 	assert.False(t, ss.Up())
 }
 
@@ -3495,6 +3603,7 @@ func TestReadDeadline_UsesPccAdvertisedDeadTimer(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			ss := &Session{pccOpen: tt.pccOpen}
 			assert.Equal(t, tt.want, ss.readDeadline())
 		})
@@ -3542,10 +3651,12 @@ func TestEstablished_DoesNotTimeOutAPccThatSendsNoKeepalives(t *testing.T) {
 		require.Fail(t, "Established must not return while the silent peer is still connected", "err: %v", err)
 	case <-time.After(500 * time.Millisecond):
 	}
+
 	runtime.KeepAlive(ss) // ss.tcpConn (== server) must survive the wait above.
 
 	// Disconnect and wait for Established to return so no goroutine outlives the test.
 	require.NoError(t, client.Close())
+
 	select {
 	case <-errCh:
 	case <-time.After(2 * time.Second):
@@ -3566,10 +3677,12 @@ func TestEstablished_SendsCloseWhenTheDeadTimerExpires(t *testing.T) {
 	ss := NewSession(OpenParams{SessionID: 1, Keepalive: 0, DeadTimer: 0}, netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 
 	done := make(chan struct{})
+
 	go func() {
 		if err := ss.Established(); err != nil {
 			t.Logf("established: %v", err)
 		}
+
 		close(done)
 	}()
 
@@ -3617,6 +3730,7 @@ func TestReceivePCEPMessage_StateReportHandlingErrorIsLoggedNotFatal(t *testing.
 	require.NoError(t, err, "failed to serialize SrpObject")
 	byteLsp, err := sr.LSPObject.Serialize()
 	require.NoError(t, err, "failed to serialize LSPObject")
+
 	body := slices.Concat(byteSrp, byteLsp) // no ERO object
 	writeRawPCEPMessage(t, client, pcep.MessageTypeReport, body)
 
@@ -3648,6 +3762,7 @@ func TestReceivePCEPMessage_Errors(t *testing.T) {
 			setup: func(t *testing.T, client *net.TCPConn) bool {
 				body := pcep.NewCommonObjectHeader(pcep.ObjectClassLSP, pcep.ObjectTypeLSPLSP, pcep.CommonHeaderLength).Serialize()
 				writeRawPCEPMessage(t, client, pcep.MessageTypeReport, body)
+
 				return false
 			},
 		},
@@ -3658,6 +3773,7 @@ func TestReceivePCEPMessage_Errors(t *testing.T) {
 				_, err := client.Write(header.Serialize())
 				require.NoError(t, err, "failed to write header")
 				require.NoError(t, client.Close(), "failed to close client connection")
+
 				return true
 			},
 		},
@@ -3675,6 +3791,7 @@ func TestReceivePCEPMessage_Errors(t *testing.T) {
 				_, err := client.Write(header.Serialize())
 				require.NoError(t, err, "failed to write header")
 				require.NoError(t, client.Close(), "failed to close client connection")
+
 				return true
 			},
 		},
@@ -3692,6 +3809,7 @@ func TestReceivePCEPMessage_Errors(t *testing.T) {
 				_, err := client.Write(header.Serialize())
 				require.NoError(t, err, "failed to write header")
 				require.NoError(t, client.Close(), "failed to close client connection")
+
 				return true
 			},
 		},
@@ -4015,6 +4133,7 @@ func TestReceivePCEPMessage_FewUnknownMessagesToleratedWithinWindow(t *testing.T
 	for range ss.maxUnknownMsgs {
 		writeRawPCEPMessage(t, client, pcep.MessageType(0x63), nil)
 	}
+
 	writeMessage(t, client, pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided))
 
 	require.NoError(t, ss.ReceivePCEPMessage(), "unrecognized messages within the threshold must not close the session")
@@ -4041,6 +4160,7 @@ func readPCErrMessage(t *testing.T, r io.Reader) *pcep.PCErrMessage {
 
 	pcerrMessage := &pcep.PCErrMessage{}
 	require.NoError(t, pcerrMessage.DecodeFromBytes(body), "failed to decode PCErr message")
+
 	return pcerrMessage
 }
 
@@ -4061,6 +4181,7 @@ func readCloseMessage(t *testing.T, r io.Reader) *pcep.CloseMessage {
 
 	closeMessage := &pcep.CloseMessage{}
 	require.NoError(t, closeMessage.DecodeFromBytes(body), "failed to decode close message")
+
 	return closeMessage
 }
 
@@ -4072,6 +4193,7 @@ func TestIsSynced_ConcurrentAccess(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
+
 		for range 100 {
 			ss.setSynced()
 		}
@@ -4080,6 +4202,7 @@ func TestIsSynced_ConcurrentAccess(t *testing.T) {
 	for range 100 {
 		ss.IsSynced()
 	}
+
 	<-done
 }
 
@@ -4358,12 +4481,15 @@ func TestSelectMetricType(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+
 			ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 			ss.pccType = tc.pccType
+
 			sr := newTestStateReport(t, 1, 0)
 			if tc.hasMetric {
 				sr.MetricObjects = []*pcep.MetricObject{{MetricType: tc.metricObjType}}
 			}
+
 			assert.Equal(t, tc.want, ss.selectMetricType(sr))
 		})
 	}
@@ -4378,6 +4504,7 @@ func TestResolveColorPreference_CiscoLegacy(t *testing.T) {
 	sr := newTestStateReport(t, 1, 0)
 	vio, err := pcep.NewVendorInformationObject(pcep.CiscoLegacy, 42, 7)
 	require.NoError(t, err)
+
 	sr.VendorInformationObject = vio
 
 	color, preference := ss.resolveColorPreference(sr)
@@ -4636,6 +4763,7 @@ func TestSelectMetricType_AlwaysUsableForCSPF(t *testing.T) {
 		assert.Truef(t, got.IsValid() && got != table.UnspecifiedMetric,
 			"PCEP metric type %d mapped to a metric CSPF rejects: %v", metricType, got)
 	}
+
 	for _, pccType := range []pcep.PccType{pcep.CiscoLegacy, pcep.JuniperLegacy, pcep.RFCCompliant} {
 		ss := &Session{logger: logger.NewNop(), pccType: pccType}
 		got := ss.selectMetricType(&pcep.StateReport{})
@@ -4675,10 +4803,12 @@ func TestEstablished_SetsEstablishedAtOnceUp(t *testing.T) {
 	writeMessage(t, client, pcep.NewOpenMessage(1, 30, 120, nil))
 
 	done := make(chan struct{})
+
 	go func() {
 		if err := ss.Established(); err != nil {
 			t.Logf("established: %v", err)
 		}
+
 		close(done)
 	}()
 
@@ -4690,6 +4820,7 @@ func TestEstablished_SetsEstablishedAtOnceUp(t *testing.T) {
 	assert.False(t, ss.EstablishedAt().IsZero(), "EstablishedAt must be set once the session is up")
 
 	writeMessage(t, client, pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided))
+
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
@@ -4807,6 +4938,7 @@ func TestCountReceived_IncrementsExpectedCounter(t *testing.T) {
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
+
 			ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 			ss.countReceived(tt.messageType)
 			assert.Equal(t, uint64(1), tt.get(ss.Stats()), "unexpected counter value for message type %s", name)
@@ -4892,14 +5024,18 @@ func TestSessionStats_CorruptRcvdOnMalformedCommonHeader(t *testing.T) {
 
 func TestServer_PeerSetupStats_RecordsOkAndFail(t *testing.T) {
 	t.Parallel()
+
 	ln, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	require.NoError(t, err, "failed to open the PCEP listener")
 
 	s := &Server{logger: logger.NewNop()}
+
 	serveErrCh := make(chan error, 1)
 	go func() { serveErrCh <- s.acceptLoop(ln) }()
+
 	t.Cleanup(func() {
 		assert.NoError(t, s.Shutdown())
+
 		select {
 		case err := <-serveErrCh:
 			assert.NoError(t, err)
@@ -4913,6 +5049,7 @@ func TestServer_PeerSetupStats_RecordsOkAndFail(t *testing.T) {
 
 	clientAddr, err := netip.ParseAddrPort(client.LocalAddr().String())
 	require.NoError(t, err)
+
 	peerAddr := clientAddr.Addr()
 
 	// Establishment fails: the client disconnects before completing the Open handshake.
@@ -4930,14 +5067,18 @@ func TestServer_PeerSetupStats_RecordsOkAndFail(t *testing.T) {
 
 func TestServer_PeerSetupStats_RecordsOkOnSuccessfulEstablishment(t *testing.T) {
 	t.Parallel()
+
 	ln, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	require.NoError(t, err, "failed to open the PCEP listener")
 
 	s := &Server{logger: logger.NewNop(), localKeepalive: defaultLocalKeepalive, localDeadTimer: pcep.DeadTimerFor(defaultLocalKeepalive)}
+
 	serveErrCh := make(chan error, 1)
 	go func() { serveErrCh <- s.acceptLoop(ln) }()
+
 	t.Cleanup(func() {
 		assert.NoError(t, s.Shutdown())
+
 		select {
 		case err := <-serveErrCh:
 			assert.NoError(t, err)
@@ -4952,6 +5093,7 @@ func TestServer_PeerSetupStats_RecordsOkOnSuccessfulEstablishment(t *testing.T) 
 
 	clientAddr, err := netip.ParseAddrPort(client.LocalAddr().String())
 	require.NoError(t, err)
+
 	peerAddr := clientAddr.Addr()
 
 	writeMessage(t, client, pcep.NewOpenMessage(1, 30, 120, nil))

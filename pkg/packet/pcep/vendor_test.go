@@ -31,6 +31,7 @@ func TestEnterpriseNumber_String(t *testing.T) {
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
+
 			actual := tt.enterpriseNumber.String()
 			assert.Equal(t, tt.expected, actual, "unexpected EnterpriseNumber.String() result")
 		})

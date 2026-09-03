@@ -90,9 +90,11 @@ func ReadConfigFile(configFile string) (Config, error) {
 
 	dec := yaml.NewDecoder(f)
 	dec.KnownFields(true)
+
 	if err := dec.Decode(c); err != nil {
 		return *c, fmt.Errorf("failed to parse config file %q: %w", configFile, err)
 	}
+
 	return *c, nil
 }
 
@@ -105,16 +107,20 @@ func (p PCEP) validate() []error {
 	if p.Address == "" {
 		errs = append(errs, errors.New("global.pcep.address is required"))
 	}
+
 	if p.Port == "" {
 		errs = append(errs, errors.New("global.pcep.port is required"))
 	}
+
 	keepalive := defaultKeepalive
 	if p.Keepalive != nil {
 		keepalive = *p.Keepalive
 	}
+
 	if err := pcep.ValidateTimers(keepalive, p.DeadTimer); err != nil {
 		errs = append(errs, fmt.Errorf("global.pcep.%w", err))
 	}
+
 	if p.MinKeepalive != nil && p.MaxKeepalive != nil && *p.MinKeepalive > *p.MaxKeepalive {
 		errs = append(errs, errors.New("global.pcep.minKeepalive must be <= global.pcep.maxKeepalive"))
 	}
@@ -128,6 +134,7 @@ func (g Global) validateTED() []error {
 	if g.TED == nil {
 		return []error{errors.New("global.ted is required")}
 	}
+
 	if !g.TED.Enable {
 		return nil
 	}
@@ -136,14 +143,17 @@ func (g Global) validateTED() []error {
 	if g.TED.Source == "" {
 		errs = append(errs, errors.New("global.ted.source is required when global.ted.enable is true"))
 	}
+
 	if g.TED.ASN == 0 {
 		errs = append(errs, errors.New("global.ted.asn is required when global.ted.enable is true"))
 	}
+
 	switch g.TED.Source {
 	case "gobgp":
 		if g.GoBGP.GRPCClient.Address == "" {
 			errs = append(errs, errors.New("global.gobgp.grpcClient.address is required when global.ted.source is gobgp"))
 		}
+
 		if g.GoBGP.GRPCClient.Port == "" {
 			errs = append(errs, errors.New("global.gobgp.grpcClient.port is required when global.ted.source is gobgp"))
 		}
@@ -163,15 +173,19 @@ func (c *Config) Validate() error {
 	if c.Global.GRPCServer.Address == "" {
 		errs = append(errs, errors.New("global.grpcServer.address is required"))
 	}
+
 	if c.Global.GRPCServer.Port == "" {
 		errs = append(errs, errors.New("global.grpcServer.port is required"))
 	}
+
 	if c.Global.Log.Path == "" {
 		errs = append(errs, errors.New("global.log.path is required"))
 	}
+
 	if c.Global.Log.Name == "" {
 		errs = append(errs, errors.New("global.log.name is required"))
 	}
+
 	errs = append(errs, c.Global.validateTED()...)
 
 	return errors.Join(errs...)

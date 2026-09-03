@@ -58,6 +58,7 @@ func (f *fakeClient) DeleteSession(_ context.Context, _ *pb.DeleteSessionRequest
 	if f.deleteSessionErr != nil {
 		return nil, f.deleteSessionErr
 	}
+
 	return &pb.DeleteSessionResponse{}, nil
 }
 
@@ -69,6 +70,7 @@ func (f *fakeClient) CreateSRPolicy(_ context.Context, _ *pb.CreateSRPolicyReque
 	if f.createSRPolicyErr != nil {
 		return nil, f.createSRPolicyErr
 	}
+
 	return &pb.CreateSRPolicyResponse{}, nil
 }
 
@@ -76,6 +78,7 @@ func (f *fakeClient) DeleteSRPolicy(_ context.Context, _ *pb.DeleteSRPolicyReque
 	if f.deleteSRPolicyErr != nil {
 		return nil, f.deleteSRPolicyErr
 	}
+
 	return &pb.DeleteSRPolicyResponse{}, nil
 }
 
@@ -116,6 +119,7 @@ func TestCreateLsPrefix_SidIndexPresence(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			lsPrefix, err := createLsPrefix(table.NewLsNode(65000, "0000.0000.0001"), tt.prefix)
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantSidIndex, lsPrefix.SidIndex)
@@ -148,6 +152,7 @@ func TestSegmentFromPB_SRMPLS(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			seg, err := segmentFromPB(&pb.Segment{
 				Sid:        "16003",
 				LocalAddr:  tt.localAddr,
@@ -158,11 +163,13 @@ func TestSegmentFromPB_SRMPLS(t *testing.T) {
 			mplsSeg, ok := seg.(table.SegmentSRMPLS)
 			require.Truef(t, ok, "segment type: got %T, want table.SegmentSRMPLS", seg)
 			assert.Equal(t, "16003", mplsSeg.SidString())
+
 			if tt.localAddr == "" {
 				assert.False(t, mplsSeg.LocalAddr.IsValid())
 			} else {
 				assert.Equal(t, tt.localAddr, mplsSeg.LocalAddr.String())
 			}
+
 			if tt.remoteAddr == "" {
 				assert.False(t, mplsSeg.RemoteAddr.IsValid())
 			} else {
@@ -242,6 +249,7 @@ func TestSegmentFromPB_InvalidAddr(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			_, err := segmentFromPB(tt.segment)
 			require.Error(t, err)
 		})
@@ -268,11 +276,13 @@ func TestParseSidStructure(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			got, err := parseSidStructure(tt.in)
 			if tt.wantErr {
 				require.Error(t, err)
 				return
 			}
+
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, got)
 		})
@@ -595,6 +605,7 @@ func TestGetSessions_Errors(t *testing.T) {
 
 	t.Run("client error propagates", func(t *testing.T) {
 		t.Parallel()
+
 		client := &fakeClient{sessionListErr: assert.AnError}
 		_, err := GetSessions(client, netip.Addr{}, false)
 		require.ErrorIs(t, err, assert.AnError)
@@ -602,6 +613,7 @@ func TestGetSessions_Errors(t *testing.T) {
 
 	t.Run("malformed session address", func(t *testing.T) {
 		t.Parallel()
+
 		client := &fakeClient{sessionListResp: &pb.GetSessionListResponse{
 			Sessions: []*pb.Session{{PeerAddr: []byte{1, 2, 3}}},
 		}}
@@ -616,6 +628,7 @@ func TestDeleteSession(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
+
 		client := &fakeClient{}
 		err := DeleteSession(client, &pb.DeleteSessionRequest{PeerAddr: netip.MustParseAddr(testIPv4Addr1).AsSlice()})
 		require.NoError(t, err)
@@ -623,6 +636,7 @@ func TestDeleteSession(t *testing.T) {
 
 	t.Run("error propagates", func(t *testing.T) {
 		t.Parallel()
+
 		client := &fakeClient{deleteSessionErr: assert.AnError}
 		err := DeleteSession(client, &pb.DeleteSessionRequest{})
 		require.ErrorIs(t, err, assert.AnError)
@@ -679,12 +693,14 @@ func TestCapability_Strings(t *testing.T) {
 
 	t.Run("nil Detail falls back to type token", func(t *testing.T) {
 		t.Parallel()
+
 		capability := Capability{Type: "VENDOR_INFORMATION"}
 		assert.Equal(t, []string{"VENDOR_INFORMATION"}, capability.Strings())
 	})
 
 	t.Run("typed Detail is unaffected", func(t *testing.T) {
 		t.Parallel()
+
 		capability := Capability{Type: "SR", Detail: SRCapability{MSD: proto.Uint32(10)}}
 		assert.Equal(t, []string{"SR", "MSD=10"}, capability.Strings())
 	})
@@ -843,6 +859,7 @@ func TestConvertSRPolicy(t *testing.T) {
 
 	t.Run("full mapping", func(t *testing.T) {
 		t.Parallel()
+
 		p := &pb.SRPolicy{
 			PlspId:      7,
 			PolicyName:  testPolicyName,
@@ -860,6 +877,7 @@ func TestConvertSRPolicy(t *testing.T) {
 		}
 		got, err := convertSRPolicy(p)
 		require.NoError(t, err)
+
 		want := table.SRPolicy{
 			PlspID:      7,
 			Name:        testPolicyName,
@@ -880,18 +898,21 @@ func TestConvertSRPolicy(t *testing.T) {
 
 	t.Run("invalid source address", func(t *testing.T) {
 		t.Parallel()
+
 		_, err := convertSRPolicy(&pb.SRPolicy{SrcAddr: []byte{1, 2, 3}, DstAddr: netip.MustParseAddr(testIPv4Addr2).AsSlice()})
 		require.Error(t, err)
 	})
 
 	t.Run("invalid destination address", func(t *testing.T) {
 		t.Parallel()
+
 		_, err := convertSRPolicy(&pb.SRPolicy{SrcAddr: netip.MustParseAddr(testIPv4Addr1).AsSlice(), DstAddr: []byte{1, 2, 3}})
 		require.Error(t, err)
 	})
 
 	t.Run("invalid segment propagates the error", func(t *testing.T) {
 		t.Parallel()
+
 		_, err := convertSRPolicy(&pb.SRPolicy{
 			SrcAddr:     netip.MustParseAddr(testIPv4Addr1).AsSlice(),
 			DstAddr:     netip.MustParseAddr(testIPv4Addr2).AsSlice(),
@@ -902,6 +923,7 @@ func TestConvertSRPolicy(t *testing.T) {
 
 	t.Run("LSP-ID overflow", func(t *testing.T) {
 		t.Parallel()
+
 		_, err := convertSRPolicy(&pb.SRPolicy{
 			SrcAddr: netip.MustParseAddr(testIPv4Addr1).AsSlice(),
 			DstAddr: netip.MustParseAddr(testIPv4Addr2).AsSlice(),
@@ -927,6 +949,7 @@ func TestSidStructureFromPB(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			_, err := sidStructureFromPB(tt.s)
 			require.Error(t, err)
 		})
@@ -938,6 +961,7 @@ func TestGetSRPolicyList(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
+
 		client := &fakeClient{srPolicyListResp: &pb.GetSRPolicyListResponse{
 			Sessions: []*pb.SRPolicySession{{
 				PeerAddr: netip.MustParseAddr(testIPv4Addr1).AsSlice(),
@@ -960,6 +984,7 @@ func TestGetSRPolicyList(t *testing.T) {
 
 	t.Run("client error propagates", func(t *testing.T) {
 		t.Parallel()
+
 		client := &fakeClient{srPolicyListErr: assert.AnError}
 		_, err := GetSRPolicyList(client, netip.Addr{})
 		require.ErrorIs(t, err, assert.AnError)
@@ -967,6 +992,7 @@ func TestGetSRPolicyList(t *testing.T) {
 
 	t.Run("invalid session address", func(t *testing.T) {
 		t.Parallel()
+
 		client := &fakeClient{srPolicyListResp: &pb.GetSRPolicyListResponse{
 			Sessions: []*pb.SRPolicySession{{PeerAddr: []byte{1, 2, 3}}},
 		}}
@@ -976,6 +1002,7 @@ func TestGetSRPolicyList(t *testing.T) {
 
 	t.Run("policy conversion error propagates", func(t *testing.T) {
 		t.Parallel()
+
 		client := &fakeClient{srPolicyListResp: &pb.GetSRPolicyListResponse{
 			Sessions: []*pb.SRPolicySession{{
 				PeerAddr:   netip.MustParseAddr(testIPv4Addr1).AsSlice(),
@@ -997,6 +1024,7 @@ func TestCreateSRPolicy(t *testing.T) {
 
 	t.Run("error propagates", func(t *testing.T) {
 		t.Parallel()
+
 		err := CreateSRPolicy(&fakeClient{createSRPolicyErr: assert.AnError}, &pb.CreateSRPolicyRequest{})
 		require.ErrorIs(t, err, assert.AnError)
 	})
@@ -1012,6 +1040,7 @@ func TestDeleteSRPolicy(t *testing.T) {
 
 	t.Run("error propagates", func(t *testing.T) {
 		t.Parallel()
+
 		err := DeleteSRPolicy(&fakeClient{deleteSRPolicyErr: assert.AnError}, &pb.DeleteSRPolicyRequest{})
 		require.ErrorIs(t, err, assert.AnError)
 	})
@@ -1132,6 +1161,7 @@ func TestGetTED_PropagatesConversionErrors(t *testing.T) {
 
 	t.Run("invalid link IP", func(t *testing.T) {
 		t.Parallel()
+
 		node := &pb.LsNode{RouterId: testRouterID1, Links: []*pb.LsLink{
 			{LocalRouterId: testRouterID1, RemoteRouterId: testRouterID1, LocalIp: "not-an-ip"},
 		}}
@@ -1141,6 +1171,7 @@ func TestGetTED_PropagatesConversionErrors(t *testing.T) {
 
 	t.Run("invalid prefix", func(t *testing.T) {
 		t.Parallel()
+
 		node := &pb.LsNode{RouterId: testRouterID1, Prefixes: []*pb.LsPrefix{{Prefix: "not-a-prefix"}}}
 		_, err := GetTED(&fakeClient{tedResp: &pb.GetTEDResponse{Enabled: true, Nodes: []*pb.LsNode{node}}})
 		require.Error(t, err)
@@ -1155,18 +1186,21 @@ func TestCreateLsLink(t *testing.T) {
 
 	t.Run("invalid localIp", func(t *testing.T) {
 		t.Parallel()
+
 		_, err := createLsLink(localNode, remoteNode, &pb.LsLink{LocalIp: "not-an-ip"})
 		require.Error(t, err)
 	})
 
 	t.Run("invalid remoteIp", func(t *testing.T) {
 		t.Parallel()
+
 		_, err := createLsLink(localNode, remoteNode, &pb.LsLink{RemoteIp: "not-an-ip"})
 		require.Error(t, err)
 	})
 
 	t.Run("metric conversion error propagates", func(t *testing.T) {
 		t.Parallel()
+
 		_, err := createLsLink(localNode, remoteNode, &pb.LsLink{
 			Metrics: []*pb.Metric{{Type: pb.MetricType_METRIC_TYPE_UNSPECIFIED, Value: 1}},
 		})
@@ -1175,6 +1209,7 @@ func TestCreateLsLink(t *testing.T) {
 
 	t.Run("SRv6 End.X SID conversion error propagates", func(t *testing.T) {
 		t.Parallel()
+
 		_, err := createLsLink(localNode, remoteNode, &pb.LsLink{
 			Srv6EndXSid: &pb.Srv6EndXSID{EndpointBehavior: math.MaxUint16 + 1},
 		})
@@ -1234,6 +1269,7 @@ func TestCreateSrv6EndXSID(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
+
 		got, err := createSrv6EndXSID(&pb.Srv6EndXSID{
 			EndpointBehavior: uint32(table.BehaviorENDX),
 			Sids:             []*pb.SID{{Sid: "2001:db8::1:0"}},
@@ -1249,12 +1285,14 @@ func TestCreateSrv6EndXSID(t *testing.T) {
 
 	t.Run("endpoint behavior overflow", func(t *testing.T) {
 		t.Parallel()
+
 		_, err := createSrv6EndXSID(&pb.Srv6EndXSID{EndpointBehavior: math.MaxUint16 + 1})
 		require.Error(t, err)
 	})
 
 	t.Run("SID structure overflow propagates", func(t *testing.T) {
 		t.Parallel()
+
 		_, err := createSrv6EndXSID(&pb.Srv6EndXSID{
 			SidStructure: &pb.SidStructure{LocalBlock: math.MaxUint8 + 1},
 		})
@@ -1269,6 +1307,7 @@ func TestCreateSrv6SID(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
+
 		got, err := createSrv6SID(lsNode, &pb.LsSrv6SID{
 			Sids:             []*pb.SID{{Sid: "2001:db8:1::"}},
 			MultiTopoIds:     []*pb.MultiTopoID{{MultiTopoId: 0}},
@@ -1287,6 +1326,7 @@ func TestCreateSrv6SID(t *testing.T) {
 
 	t.Run("behavior overflow", func(t *testing.T) {
 		t.Parallel()
+
 		_, err := createSrv6SID(lsNode, &pb.LsSrv6SID{
 			EndpointBehavior: &pb.EndpointBehavior{Behavior: math.MaxUint16 + 1},
 		})
@@ -1295,6 +1335,7 @@ func TestCreateSrv6SID(t *testing.T) {
 
 	t.Run("flags overflow", func(t *testing.T) {
 		t.Parallel()
+
 		_, err := createSrv6SID(lsNode, &pb.LsSrv6SID{
 			EndpointBehavior: &pb.EndpointBehavior{Flags: math.MaxUint8 + 1},
 		})
@@ -1303,6 +1344,7 @@ func TestCreateSrv6SID(t *testing.T) {
 
 	t.Run("algorithm overflow", func(t *testing.T) {
 		t.Parallel()
+
 		_, err := createSrv6SID(lsNode, &pb.LsSrv6SID{
 			EndpointBehavior: &pb.EndpointBehavior{Algorithm: math.MaxUint8 + 1},
 		})
@@ -1311,6 +1353,7 @@ func TestCreateSrv6SID(t *testing.T) {
 
 	t.Run("SID structure overflow propagates", func(t *testing.T) {
 		t.Parallel()
+
 		_, err := createSrv6SID(lsNode, &pb.LsSrv6SID{
 			SidStructure: &pb.SidStructure{LocalBlock: math.MaxUint8 + 1},
 		})
@@ -1334,6 +1377,7 @@ func TestCreateMetric(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			got, err := createMetric(tt.in)
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, got)
@@ -1342,6 +1386,7 @@ func TestCreateMetric(t *testing.T) {
 
 	t.Run("unspecified metric type is an error", func(t *testing.T) {
 		t.Parallel()
+
 		_, err := createMetric(&pb.Metric{Type: pb.MetricType_METRIC_TYPE_UNSPECIFIED})
 		require.Error(t, err)
 	})

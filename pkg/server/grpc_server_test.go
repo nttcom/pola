@@ -50,14 +50,18 @@ func TestStatusFromCSPFError(t *testing.T) {
 
 	reasonOf := func(t *testing.T, err error) (codes.Code, string) {
 		t.Helper()
+
 		st, ok := status.FromError(err)
 		require.True(t, ok)
+
 		var reason string
+
 		for _, d := range st.Details() {
 			if info, ok := d.(*errdetails.ErrorInfo); ok {
 				reason = info.GetReason()
 			}
 		}
+
 		return st.Code(), reason
 	}
 
@@ -68,6 +72,7 @@ func TestStatusFromCSPFError(t *testing.T) {
 
 	t.Run("InvalidInputError maps to InvalidArgument", func(t *testing.T) {
 		t.Parallel()
+
 		err := statusFromCSPFError(&cspf.InvalidInputError{Err: errors.New("bad router ID")})
 		code, reason := reasonOf(t, err)
 		assert.Equal(t, codes.InvalidArgument, code)
@@ -77,6 +82,7 @@ func TestStatusFromCSPFError(t *testing.T) {
 
 	t.Run("TopologyLimitationError maps to FailedPrecondition with its own Reason", func(t *testing.T) {
 		t.Parallel()
+
 		err := statusFromCSPFError(&cspf.TopologyLimitationError{Err: errors.New("no path"), Reason: "DESTINATION_UNREACHABLE"})
 		code, reason := reasonOf(t, err)
 		assert.Equal(t, codes.FailedPrecondition, code)
@@ -86,6 +92,7 @@ func TestStatusFromCSPFError(t *testing.T) {
 
 	t.Run("an unclassified error maps to Internal with ErrorInfo", func(t *testing.T) {
 		t.Parallel()
+
 		got := statusFromCSPFError(errors.New("ted is nil"))
 		code, reason := reasonOf(t, got)
 		assert.Equal(t, codes.Internal, code)
@@ -134,11 +141,13 @@ func TestNewEnrichedSegmentSRMPLS(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			seg, err := newEnrichedSegment(tt.segment, false)
 			if tt.wantErr {
 				require.Error(t, err)
 				return
 			}
+
 			require.NoError(t, err)
 
 			mplsSeg, ok := seg.(table.SegmentSRMPLS)
@@ -184,6 +193,7 @@ func addrString(addr netip.Addr) string {
 	if !addr.IsValid() {
 		return ""
 	}
+
 	return addr.String()
 }
 
@@ -623,9 +633,11 @@ func TestConvertLsPrefixes_SidIndexPresence(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			got := convertLsPrefixes([]*table.LsPrefix{tt.prefix})
 			require.Len(t, got, 1)
 			require.Equal(t, tt.wantSet, got[0].SidIndex != nil, "sid_index set")
+
 			if tt.wantSet {
 				assert.Equal(t, tt.wantSidIndex, got[0].GetSidIndex())
 			}
@@ -851,6 +863,7 @@ func TestGetSessionList_SortsSessionsByAddr(t *testing.T) {
 
 	addr0, _ := netip.AddrFromSlice(resp.GetSessions()[0].GetPeerAddr())
 	addr1, _ := netip.AddrFromSlice(resp.GetSessions()[1].GetPeerAddr())
+
 	assert.Equal(t, "10.0.0.1", addr0.String())
 	assert.Equal(t, "10.0.0.2", addr1.String())
 }
@@ -1068,11 +1081,13 @@ func TestResolveSRPolicyIntent(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			gotType, gotMetric, err := resolveSRPolicyIntent(tt.policy, tt.disablePathCompute, tt.metricType)
 			if tt.wantErr {
 				require.Error(t, err)
 				return
 			}
+
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantType, gotType)
 			assert.Equal(t, tt.wantMetric, gotMetric)
@@ -1162,15 +1177,18 @@ func TestConvertSegment_SRMPLS(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			seg := table.SegmentSRMPLS{Sid: 16003, LocalAddr: tt.localAddr, RemoteAddr: tt.remoteAddr}
 
 			pbSeg := convertSegment(seg)
 			assert.Equal(t, "16003", pbSeg.GetSid())
+
 			if tt.localAddr.IsValid() {
 				assert.Equal(t, tt.localAddr.String(), pbSeg.GetLocalAddr())
 			} else {
 				assert.Empty(t, pbSeg.GetLocalAddr())
 			}
+
 			if tt.remoteAddr.IsValid() {
 				assert.Equal(t, tt.remoteAddr.String(), pbSeg.GetRemoteAddr())
 			} else {
@@ -1190,6 +1208,7 @@ func TestConvertSegment_SRMPLS_SidAbsent(t *testing.T) {
 
 	enriched, err := newEnrichedSegment(pbSeg, false)
 	require.NoError(t, err)
+
 	mplsSeg, ok := enriched.(table.SegmentSRMPLS)
 	require.True(t, ok)
 	assert.True(t, mplsSeg.SidAbsent)
@@ -1204,6 +1223,7 @@ func TestTED_ConcurrentUpdate(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
+
 		for range 100 {
 			node := table.NewLsNode(1, "router")
 			prefix := table.NewLsPrefix(node)
@@ -1216,6 +1236,7 @@ func TestTED_ConcurrentUpdate(t *testing.T) {
 	for range 100 {
 		_ = s.TED().RouterIDIndex()
 	}
+
 	<-done
 }
 
@@ -1228,6 +1249,7 @@ func TestSessionList_ConcurrentAccess(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
+
 		for i := range 100 {
 			ss := &Session{localSessionID: uint8(i), peerAddr: addr, syncState: SyncStateFinished}
 
@@ -1240,6 +1262,7 @@ func TestSessionList_ConcurrentAccess(t *testing.T) {
 				if v.localSessionID == ss.localSessionID {
 					s.sessionList[j] = s.sessionList[len(s.sessionList)-1]
 					s.sessionList = s.sessionList[:len(s.sessionList)-1]
+
 					break
 				}
 			}
@@ -1249,10 +1272,12 @@ func TestSessionList_ConcurrentAccess(t *testing.T) {
 
 	for range 100 {
 		s.SearchSession(addr)
+
 		for _, ss := range s.Sessions() {
 			ss.SRPolicies()
 		}
 	}
+
 	<-done
 }
 
@@ -1404,11 +1429,13 @@ func TestGetSegmentList_Explicit(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			got, metricType, err := getSegmentList(tt.policy, &table.LsTED{}, false)
 			if tt.wantErr {
 				assert.Error(t, err)
 				return
 			}
+
 			require.NoError(t, err)
 			assert.Equal(t, table.UnspecifiedMetric, metricType)
 			assert.Len(t, got, tt.wantLen)
@@ -1451,20 +1478,26 @@ func TestGetMetricType(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			got, err := getMetricType(tt.in)
 			if tt.wantErr {
 				st, ok := status.FromError(err)
 				require.True(t, ok)
 				assert.Equal(t, codes.InvalidArgument, st.Code())
+
 				var gotReason string
+
 				for _, d := range st.Details() {
 					if info, ok := d.(*errdetails.ErrorInfo); ok {
 						gotReason = info.GetReason()
 					}
 				}
+
 				assert.Equal(t, ReasonInvalidRequest, gotReason)
+
 				return
 			}
+
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, got)
 		})
@@ -1567,6 +1600,7 @@ func TestGetSRPolicyList_SortsBySameColorThenPlspIdThenName(t *testing.T) {
 	for _, p := range resp.GetSessions()[0].GetSrPolicies() {
 		gotOrder = append(gotOrder, fmt.Sprintf("%d/%d/%s", p.GetColor(), p.GetPlspId(), p.GetPolicyName()))
 	}
+
 	assert.Equal(t, []string{"100/1/y", "100/1/z", "100/2/a", "100/2/b", "200/1/z"}, gotOrder)
 }
 
@@ -1649,11 +1683,13 @@ func TestValidateCreateSRPolicy(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			err := validateCreateSRPolicy(tt.req, tt.disablePathCompute)
 			if tt.wantErr {
 				assert.Error(t, err)
 				return
 			}
+
 			assert.NoError(t, err)
 		})
 	}
@@ -1714,6 +1750,7 @@ func TestResolveSession(t *testing.T) {
 
 	t.Run("the peer address identifies the session", func(t *testing.T) {
 		t.Parallel()
+
 		ss := &Session{peerAddr: peerAddr, syncState: SyncStateFinished}
 		pce := &Server{sessionList: []*Session{ss}}
 
@@ -1724,6 +1761,7 @@ func TestResolveSession(t *testing.T) {
 
 	t.Run("no session is NotFound", func(t *testing.T) {
 		t.Parallel()
+
 		pce := &Server{}
 
 		_, err := resolveSession(pce, peerAddr.AsSlice(), true)
@@ -1734,6 +1772,7 @@ func TestResolveSession(t *testing.T) {
 
 	t.Run("an unsynced session reports not synced", func(t *testing.T) {
 		t.Parallel()
+
 		ss := &Session{peerAddr: peerAddr, syncState: SyncStatePending}
 		pce := &Server{sessionList: []*Session{ss}}
 
@@ -1745,6 +1784,7 @@ func TestResolveSession(t *testing.T) {
 
 	t.Run("requireSynced false accepts an unsynced session", func(t *testing.T) {
 		t.Parallel()
+
 		ss := &Session{peerAddr: peerAddr, syncState: SyncStatePending}
 		pce := &Server{sessionList: []*Session{ss}}
 
@@ -1774,11 +1814,13 @@ func TestParseSidStructure(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			got, err := parseSidStructure(tt.in)
 			if tt.wantErr {
 				assert.Error(t, err)
 				return
 			}
+
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, got)
 		})
@@ -1801,6 +1843,7 @@ func TestParseSidStructure_SumExceeds128(t *testing.T) {
 			return
 		}
 	}
+
 	t.Fatal("status has no ErrorInfo details")
 }
 
@@ -1819,6 +1862,7 @@ func TestNewEnrichedSegmentSRv6_Errors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			_, err := newEnrichedSegment(tt.segment, false)
 			assert.Error(t, err)
 		})
@@ -1839,6 +1883,7 @@ func TestNewEnrichedSegmentSRv6_SubobjectValidationErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			_, err := newEnrichedSegment(tt.segment, false)
 			assert.Error(t, err)
 		})
@@ -1859,6 +1904,7 @@ func TestNewEnrichedSegmentSRMPLS_SubobjectValidationErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			_, err := newEnrichedSegment(tt.segment, false)
 			assert.Error(t, err)
 		})
@@ -1886,6 +1932,7 @@ func TestResolvePath_PathCompute(t *testing.T) {
 
 	t.Run("success resolves loopbacks and segments", func(t *testing.T) {
 		t.Parallel()
+
 		s := newTestAPIServer(ted)
 		path, err := resolvePath(s, explicitReq(), false)
 		require.NoError(t, err)
@@ -1896,6 +1943,7 @@ func TestResolvePath_PathCompute(t *testing.T) {
 
 	t.Run("TED disabled", func(t *testing.T) {
 		t.Parallel()
+
 		s := newTestAPIServer(nil)
 		_, err := resolvePath(s, explicitReq(), false)
 		assert.ErrorContains(t, err, "ted is disabled")
@@ -1903,6 +1951,7 @@ func TestResolvePath_PathCompute(t *testing.T) {
 
 	t.Run("TED not yet synchronized", func(t *testing.T) {
 		t.Parallel()
+
 		s := newTestAPIServer(&table.LsTED{Nodes: map[string]*table.LsNode{}})
 		_, err := resolvePath(s, explicitReq(), false)
 		assert.ErrorContains(t, err, "no node in TED")
@@ -1910,6 +1959,7 @@ func TestResolvePath_PathCompute(t *testing.T) {
 
 	t.Run("ASN mismatch", func(t *testing.T) {
 		t.Parallel()
+
 		s := newTestAPIServer(ted)
 		req := explicitReq()
 		req.Asn = 1
@@ -1919,6 +1969,7 @@ func TestResolvePath_PathCompute(t *testing.T) {
 
 	t.Run("nil TED entry is skipped by the ASN check", func(t *testing.T) {
 		t.Parallel()
+
 		nodes := map[string]*table.LsNode{srcNode.RouterID: srcNode, dstNode.RouterID: dstNode, "r0": nil}
 		s := newTestAPIServer(&table.LsTED{Nodes: nodes})
 		_, err := resolvePath(s, explicitReq(), false)
@@ -1927,6 +1978,7 @@ func TestResolvePath_PathCompute(t *testing.T) {
 
 	t.Run("TED holding only nil entries", func(t *testing.T) {
 		t.Parallel()
+
 		s := newTestAPIServer(&table.LsTED{Nodes: map[string]*table.LsNode{"r0": nil}})
 		_, err := resolvePath(s, explicitReq(), false)
 		assert.ErrorContains(t, err, "no node with router ID r1")
@@ -1934,6 +1986,7 @@ func TestResolvePath_PathCompute(t *testing.T) {
 
 	t.Run("unknown source router ID", func(t *testing.T) {
 		t.Parallel()
+
 		s := newTestAPIServer(ted)
 		req := explicitReq()
 		req.SrPolicy.SrcRouterId = "missing"
@@ -1943,6 +1996,7 @@ func TestResolvePath_PathCompute(t *testing.T) {
 
 	t.Run("unknown destination router ID", func(t *testing.T) {
 		t.Parallel()
+
 		s := newTestAPIServer(ted)
 		req := explicitReq()
 		req.SrPolicy.DstRouterId = "missing"
@@ -1952,6 +2006,7 @@ func TestResolvePath_PathCompute(t *testing.T) {
 
 	t.Run("segment list resolution error propagates", func(t *testing.T) {
 		t.Parallel()
+
 		s := newTestAPIServer(ted)
 		req := explicitReq()
 		req.SrPolicy.SegmentList = nil
@@ -1976,6 +2031,7 @@ func TestResolvePath_DisablePathCompute(t *testing.T) {
 
 	t.Run("success uses the request addresses and segments verbatim", func(t *testing.T) {
 		t.Parallel()
+
 		s := newTestAPIServer(nil)
 		path, err := resolvePath(s, disabledReq(), true)
 		require.NoError(t, err)
@@ -1986,6 +2042,7 @@ func TestResolvePath_DisablePathCompute(t *testing.T) {
 
 	t.Run("malformed source address", func(t *testing.T) {
 		t.Parallel()
+
 		s := newTestAPIServer(nil)
 		req := disabledReq()
 		req.SrPolicy.SrcAddr = []byte{1, 2, 3}
@@ -1995,6 +2052,7 @@ func TestResolvePath_DisablePathCompute(t *testing.T) {
 
 	t.Run("malformed destination address", func(t *testing.T) {
 		t.Parallel()
+
 		s := newTestAPIServer(nil)
 		req := disabledReq()
 		req.SrPolicy.DstAddr = []byte{1, 2, 3}
@@ -2004,6 +2062,7 @@ func TestResolvePath_DisablePathCompute(t *testing.T) {
 
 	t.Run("malformed segment SID", func(t *testing.T) {
 		t.Parallel()
+
 		s := newTestAPIServer(nil)
 		req := disabledReq()
 		req.SrPolicy.SegmentList = []*pb.Segment{{Sid: invalidSidStr}}
@@ -2040,6 +2099,7 @@ func TestCreateSRPolicy(t *testing.T) {
 
 	t.Run("validation error", func(t *testing.T) {
 		t.Parallel()
+
 		s := newTestAPIServer(ted)
 		req := baseReq()
 		req.Asn = 0
@@ -2049,6 +2109,7 @@ func TestCreateSRPolicy(t *testing.T) {
 
 	t.Run("resolve path error", func(t *testing.T) {
 		t.Parallel()
+
 		s := newTestAPIServer(nil)
 		_, err := s.CreateSRPolicy(context.Background(), baseReq())
 		assert.ErrorContains(t, err, "failed to resolve SR policy path")
@@ -2056,6 +2117,7 @@ func TestCreateSRPolicy(t *testing.T) {
 
 	t.Run("SID validation error", func(t *testing.T) {
 		t.Parallel()
+
 		s := newTestAPIServer(ted)
 		req := baseReq()
 		req.NoSidValidate = false
@@ -2068,6 +2130,7 @@ func TestCreateSRPolicy(t *testing.T) {
 
 	t.Run("send request error", func(t *testing.T) {
 		t.Parallel()
+
 		s := newTestAPIServer(ted)
 		_, err := s.CreateSRPolicy(context.Background(), baseReq())
 		assert.ErrorContains(t, err, "failed to send SR policy request")
@@ -2107,17 +2170,22 @@ func readEROBehavior(t *testing.T, r io.Reader) uint16 {
 	require.NoError(t, err)
 
 	const objectHeaderLength = 4
+
 	for len(body) > 0 {
 		var objHeader pcep.CommonObjectHeader
 		require.NoError(t, objHeader.DecodeFromBytes(body))
+
 		objBody := body[objectHeaderLength:objHeader.ObjectLength]
 		if objHeader.ObjectClass == pcep.ObjectClassERO {
 			require.GreaterOrEqual(t, len(objBody), 8)
 			return binary.BigEndian.Uint16(objBody[6:8])
 		}
+
 		body = body[objHeader.ObjectLength:]
 	}
+
 	t.Fatal("ERO object not found in PCEP message")
+
 	return 0
 }
 
@@ -2173,6 +2241,7 @@ func TestCreateSRPolicy_StatusCodes(t *testing.T) {
 		reverseLink := table.NewLsLink(r2, r1)
 		reverseLink.Metrics = []*table.Metric{table.NewMetric(table.IGPMetric, 10)}
 		r2.Links = append(r2.Links, reverseLink)
+
 		return &table.LsTED{Nodes: map[string]*table.LsNode{"r1": r1, "r2": r2, "r3": r3}}
 	}
 
@@ -2193,6 +2262,7 @@ func TestCreateSRPolicy_StatusCodes(t *testing.T) {
 		req.SrPolicy.Type = pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC
 		req.SrPolicy.Metric = pb.MetricType_METRIC_TYPE_IGP
 		req.SrPolicy.SegmentList = nil
+
 		return req
 	}
 
@@ -2231,27 +2301,32 @@ func TestCreateSRPolicy_StatusCodes(t *testing.T) {
 		{"waypoint router ID is not in the TED", true, func() *pb.CreateSRPolicyRequest {
 			r := dynamicReq()
 			r.SrPolicy.Waypoints = []*pb.Waypoint{{RouterId: "r9"}}
+
 			return r
 		}, codes.InvalidArgument, ReasonInvalidRequest, "waypoint router r9 not found in TED"},
 		{"waypoint SID is malformed", true, func() *pb.CreateSRPolicyRequest {
 			r := dynamicReq()
 			r.SrPolicy.Waypoints = []*pb.Waypoint{{RouterId: "r2", Sid: "not-an-address"}}
+
 			return r
 		}, codes.InvalidArgument, ReasonInvalidRequest, "failed to build segment for waypoint r2"},
 		{"dynamic policy without a metric", true, func() *pb.CreateSRPolicyRequest {
 			r := dynamicReq()
 			r.SrPolicy.Metric = pb.MetricType_METRIC_TYPE_UNSPECIFIED
+
 			return r
 		}, codes.InvalidArgument, ReasonInvalidRequest, "unknown metric type"},
 		{"dynamic policy with a metric outside the enum", true, func() *pb.CreateSRPolicyRequest {
 			r := dynamicReq()
 			r.SrPolicy.Metric = pb.MetricType(99)
+
 			return r
 		}, codes.InvalidArgument, ReasonInvalidRequest, "unknown metric type"},
 		{
 			"policy type is unset", true, func() *pb.CreateSRPolicyRequest {
 				r := explicitReq()
 				r.SrPolicy.Type = pb.SRPolicyType_SR_POLICY_TYPE_UNSPECIFIED
+
 				return r
 			},
 			codes.InvalidArgument, ReasonInvalidRequest, "undefined SR Policy type",
@@ -2263,12 +2338,14 @@ func TestCreateSRPolicy_StatusCodes(t *testing.T) {
 		{"explicit policy with a malformed SID", true, func() *pb.CreateSRPolicyRequest {
 			r := explicitReq()
 			r.SrPolicy.SegmentList = []*pb.Segment{{Sid: invalidSidStr}}
+
 			return r
 		}, codes.InvalidArgument, ReasonInvalidRequest, "invalid SID"},
 		{"SID is not present in the TED", true, func() *pb.CreateSRPolicyRequest {
 			r := explicitReq()
 			r.NoSidValidate = false
 			r.SrPolicy.SegmentList = []*pb.Segment{{Sid: "16099"}}
+
 			return r
 		}, codes.FailedPrecondition, "SID_VALIDATION_FAILED", "SID validation failed"},
 
@@ -2281,6 +2358,7 @@ func TestCreateSRPolicy_StatusCodes(t *testing.T) {
 		{"requested metric is not carried by a traversed link", true, func() *pb.CreateSRPolicyRequest {
 			r := dynamicReq()
 			r.SrPolicy.Metric = pb.MetricType_METRIC_TYPE_TE
+
 			return r
 		}, codes.FailedPrecondition, "METRIC_NOT_CARRIED", "metric METRIC_TYPE_TE not defined"},
 		{"no PCEP session", true, explicitReq, codes.NotFound, "PCEP_SESSION_NOT_FOUND", "no session with address"},
@@ -2289,10 +2367,12 @@ func TestCreateSRPolicy_StatusCodes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			var ted *table.LsTED
 			if tt.useTED {
 				ted = newTED()
 			}
+
 			s := newTestAPIServer(ted)
 
 			_, err := s.CreateSRPolicy(context.Background(), tt.req())
@@ -2302,11 +2382,13 @@ func TestCreateSRPolicy_StatusCodes(t *testing.T) {
 			assert.Contains(t, st.Message(), tt.wantMsg)
 
 			var gotReason string
+
 			for _, d := range st.Details() {
 				if info, ok := d.(*errdetails.ErrorInfo); ok {
 					gotReason = info.GetReason()
 				}
 			}
+
 			assert.Equal(t, tt.wantReason, gotReason, "unexpected ErrorInfo.Reason for %q", err)
 		})
 	}
@@ -2329,6 +2411,7 @@ func TestDeleteSRPolicy(t *testing.T) {
 
 	t.Run("validation error", func(t *testing.T) {
 		t.Parallel()
+
 		s := &APIServer{logger: logger.NewNop()}
 		resp, err := s.DeleteSRPolicy(context.Background(), &pb.DeleteSRPolicyRequest{SrPolicy: &pb.SRPolicy{}})
 		require.Error(t, err)
@@ -2337,6 +2420,7 @@ func TestDeleteSRPolicy(t *testing.T) {
 
 	t.Run("malformed source address", func(t *testing.T) {
 		t.Parallel()
+
 		s := &APIServer{logger: logger.NewNop()}
 		policy := validPolicy()
 		policy.SrcAddr = []byte{1, 2, 3}
@@ -2347,6 +2431,7 @@ func TestDeleteSRPolicy(t *testing.T) {
 
 	t.Run("malformed destination address", func(t *testing.T) {
 		t.Parallel()
+
 		s := &APIServer{logger: logger.NewNop()}
 		policy := validPolicy()
 		policy.DstAddr = []byte{1, 2, 3}
@@ -2357,6 +2442,7 @@ func TestDeleteSRPolicy(t *testing.T) {
 
 	t.Run("malformed segment SID", func(t *testing.T) {
 		t.Parallel()
+
 		s := &APIServer{logger: logger.NewNop()}
 		policy := validPolicy()
 		policy.SegmentList = []*pb.Segment{{Sid: invalidSidStr}}
@@ -2367,6 +2453,7 @@ func TestDeleteSRPolicy(t *testing.T) {
 
 	t.Run("no synced session", func(t *testing.T) {
 		t.Parallel()
+
 		s := &APIServer{pce: &Server{}, logger: logger.NewNop()}
 		resp, err := s.DeleteSRPolicy(context.Background(), &pb.DeleteSRPolicyRequest{SrPolicy: validPolicy()})
 		require.Error(t, err)
@@ -2375,6 +2462,7 @@ func TestDeleteSRPolicy(t *testing.T) {
 
 	t.Run("SR Policy not found", func(t *testing.T) {
 		t.Parallel()
+
 		ss := &Session{peerAddr: peerAddr, syncState: SyncStateFinished}
 		s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: logger.NewNop()}
 		resp, err := s.DeleteSRPolicy(context.Background(), &pb.DeleteSRPolicyRequest{SrPolicy: validPolicy()})
@@ -2384,12 +2472,15 @@ func TestDeleteSRPolicy(t *testing.T) {
 		st, ok := status.FromError(err)
 		require.True(t, ok)
 		assert.Equal(t, codes.NotFound, st.Code())
+
 		var gotReason string
+
 		for _, d := range st.Details() {
 			if info, ok := d.(*errdetails.ErrorInfo); ok {
 				gotReason = info.GetReason()
 			}
 		}
+
 		assert.Equal(t, ReasonSRPolicyNotFound, gotReason)
 	})
 
@@ -2403,6 +2494,7 @@ func TestDeleteSRPolicy(t *testing.T) {
 		ss := NewSession(testLocalOpen(1), peerAddr, server, logger.NewNop(), nil, 0)
 		ss.syncState = SyncStateFinished
 		ss.srPolicies = []*table.SRPolicy{{PlspID: 1, Name: testSRPolicyName, DstAddr: dstAddr, Color: 100, Preference: 100}}
+
 		require.NoError(t, server.Close(), "failed to close server connection")
 
 		s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: logger.NewNop()}
@@ -2473,15 +2565,18 @@ func TestValidate_Add(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			policy := full()
 			if tt.mutate != nil {
 				tt.mutate(policy)
 			}
+
 			err := validate(policy, 65000, ValidationAdd)
 			if tt.wantErr == "" {
 				assert.NoError(t, err)
 				return
 			}
+
 			assert.ErrorContains(t, err, tt.wantErr)
 		})
 	}
@@ -2516,15 +2611,18 @@ func TestValidate_AddDisablePathCompute(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			policy := full()
 			if tt.mutate != nil {
 				tt.mutate(policy)
 			}
+
 			err := validate(policy, 65000, ValidationAddDisablePathCompute)
 			if tt.wantErr == "" {
 				assert.NoError(t, err)
 				return
 			}
+
 			assert.ErrorContains(t, err, tt.wantErr)
 		})
 	}
@@ -2557,15 +2655,18 @@ func TestValidate_Delete(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			policy := full()
 			if tt.mutate != nil {
 				tt.mutate(policy)
 			}
+
 			err := validate(policy, 0, ValidationDelete)
 			if tt.wantErr == "" {
 				assert.NoError(t, err)
 				return
 			}
+
 			assert.ErrorContains(t, err, tt.wantErr)
 		})
 	}
@@ -2649,6 +2750,7 @@ func TestSendSRPolicyRequest_UpdateSendFailure(t *testing.T) {
 	ss := NewSession(testLocalOpen(1), peerAddr, server, logger.NewNop(), nil, 0)
 	ss.syncState = SyncStateFinished
 	ss.srPolicies = []*table.SRPolicy{{PlspID: 7, Color: 100, DstAddr: dstAddr}}
+
 	require.NoError(t, server.Close(), "failed to close server connection")
 
 	s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: logger.NewNop()}
@@ -2672,6 +2774,7 @@ func TestSendSRPolicyRequest_CreateSendFailure(t *testing.T) {
 	dstAddr := netip.MustParseAddr("10.255.0.2")
 	ss := NewSession(testLocalOpen(1), peerAddr, server, logger.NewNop(), nil, 0)
 	ss.syncState = SyncStateFinished
+
 	require.NoError(t, server.Close(), "failed to close server connection")
 
 	s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: logger.NewNop()}
@@ -2695,14 +2798,18 @@ func TestGetSRPolicyList_InvalidFilterAddrReason(t *testing.T) {
 
 func errInfoReason(t *testing.T, err error) string {
 	t.Helper()
+
 	st, ok := status.FromError(err)
 	require.True(t, ok, "expected a gRPC status error")
+
 	for _, d := range st.Details() {
 		if info, ok := d.(*errdetails.ErrorInfo); ok {
 			return info.GetReason()
 		}
 	}
+
 	t.Fatal("status has no ErrorInfo details")
+
 	return ""
 }
 
@@ -2745,12 +2852,14 @@ func TestWrapStatusError(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			got := wrapStatusError(tt.err, "context")
 
 			if tt.wantNil {
 				assert.NoError(t, got)
 				return
 			}
+
 			require.Error(t, got)
 
 			if st, ok := status.FromError(got); ok && tt.wantCode != codes.OK {
@@ -2759,6 +2868,7 @@ func TestWrapStatusError(t *testing.T) {
 			} else {
 				assert.EqualError(t, got, tt.wantMsg)
 			}
+
 			if tt.wantReason != "" {
 				assert.Equal(t, tt.wantReason, errInfoReason(t, got))
 			}
@@ -2885,6 +2995,7 @@ func TestGetTED_Disabled(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			resp, err := tt.s.GetTED(context.Background(), &pb.GetTEDRequest{})
 			require.NoError(t, err)
 			assert.False(t, resp.GetEnabled())
@@ -3023,6 +3134,7 @@ func TestDeleteSession(t *testing.T) {
 
 	t.Run("malformed address", func(t *testing.T) {
 		t.Parallel()
+
 		s := &APIServer{pce: &Server{}, logger: logger.NewNop()}
 		_, err := s.DeleteSession(context.Background(), &pb.DeleteSessionRequest{PeerAddr: []byte{1, 2, 3}})
 		require.ErrorContains(t, err, "invalid PCEP session address")
@@ -3031,6 +3143,7 @@ func TestDeleteSession(t *testing.T) {
 
 	t.Run("no such session", func(t *testing.T) {
 		t.Parallel()
+
 		s := &APIServer{pce: &Server{}, logger: logger.NewNop()}
 		_, err := s.DeleteSession(context.Background(), &pb.DeleteSessionRequest{PeerAddr: netip.MustParseAddr("10.0.255.1").AsSlice()})
 		require.ErrorContains(t, err, "no session with address")

@@ -93,6 +93,7 @@ func (r Reference) RFCNumber() (uint16, bool) {
 	if r.kind != RefKindRFC {
 		return 0, false
 	}
+
 	return r.num, true
 }
 
@@ -101,6 +102,7 @@ func (r Reference) Draft() (base string, rev uint16, ok bool) {
 	if r.kind != RefKindDraft {
 		return "", 0, false
 	}
+
 	return r.base, r.num, true
 }
 
@@ -122,6 +124,7 @@ func (r Reference) String() string {
 	if r.name != "" {
 		return r.name
 	}
+
 	switch r.kind {
 	case RefKindVendor:
 		return "vendor-specific"
@@ -150,6 +153,7 @@ func withReference(s string, r Reference) string {
 	if r.kind == RefKindUnknown {
 		return s
 	}
+
 	return s + " [" + r.String() + "]"
 }
 

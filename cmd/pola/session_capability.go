@@ -42,10 +42,12 @@ type capFeature struct {
 // (group, token) features, preserving first-seen order.
 func capabilitiesFeatures(caps []grpc.Capability) []capFeature {
 	seen := make(map[capFeature]struct{})
+
 	features := make([]capFeature, 0, len(caps))
 	for _, c := range caps {
 		features = appendCapabilityFeatures(features, seen, c)
 	}
+
 	return features
 }
 
@@ -57,14 +59,17 @@ func appendCapabilityFeatures(features []capFeature, seen map[capFeature]struct{
 		if _, ok := seen[f]; ok {
 			continue
 		}
+
 		seen[f] = struct{}{}
 		features = append(features, f)
 	}
+
 	if pst, ok := c.Detail.(grpc.PathSetupTypeCapability); ok {
 		for _, sub := range pst.SubCapabilities {
 			features = appendCapabilityFeatures(features, seen, sub)
 		}
 	}
+
 	return features
 }
 
@@ -82,12 +87,14 @@ func splitCapabilities(localCaps, peerCaps []grpc.Capability) capabilitySets {
 	for _, f := range peer {
 		peerSet[f] = struct{}{}
 	}
+
 	localSet := make(map[capFeature]struct{}, len(local))
 	for _, f := range local {
 		localSet[f] = struct{}{}
 	}
 
 	var sets capabilitySets
+
 	for _, f := range local {
 		if _, ok := peerSet[f]; ok {
 			sets.common = append(sets.common, f)
@@ -95,11 +102,13 @@ func splitCapabilities(localCaps, peerCaps []grpc.Capability) capabilitySets {
 			sets.localOnly = append(sets.localOnly, f)
 		}
 	}
+
 	for _, f := range peer {
 		if _, ok := localSet[f]; !ok {
 			sets.peerOnly = append(sets.peerOnly, f)
 		}
 	}
+
 	return sets
 }
 
@@ -148,11 +157,13 @@ func buildCapabilitiesView(localCaps, peerCaps []grpc.Capability) capabilitiesVi
 	}
 
 	var otherFeatures []capFeature
+
 	for _, f := range sets.common {
 		if !applyCommonFeature(&view.Common, f) {
 			otherFeatures = append(otherFeatures, f)
 		}
 	}
+
 	view.Common.Other = capabilityGroups(otherFeatures)
 
 	slices.Sort(view.Common.PathSetupTypes)
@@ -166,10 +177,12 @@ func parseTokenUint32(token, prefix string) (uint32, bool) {
 	if !strings.HasPrefix(token, prefix) {
 		return 0, false
 	}
+
 	n, err := strconv.ParseUint(strings.TrimPrefix(token, prefix), 10, 32)
 	if err != nil {
 		return 0, false
 	}
+
 	return uint32(n), true
 }
 
@@ -184,6 +197,7 @@ func applyStatefulFeature(common *commonCapView, token string) bool {
 	default:
 		return false
 	}
+
 	return true
 }
 
@@ -206,6 +220,7 @@ func applyCommonFeature(common *commonCapView, f capFeature) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -213,13 +228,16 @@ func applyCommonFeature(common *commonCapView, f capFeature) bool {
 // according to the capability type.
 func capabilityGroups(features []capFeature) []capGroupView {
 	order := make([]string, 0)
+
 	tokensByGroup := make(map[string][]string)
 	for _, f := range features {
 		if _, ok := tokensByGroup[f.group]; !ok {
 			order = append(order, f.group)
 		}
+
 		tokensByGroup[f.group] = append(tokensByGroup[f.group], f.token)
 	}
+
 	slices.SortFunc(order, func(a, b string) int {
 		return cmp.Compare(capGroupOrderKey(a), capGroupOrderKey(b))
 	})
@@ -228,6 +246,7 @@ func capabilityGroups(features []capFeature) []capGroupView {
 	for _, group := range order {
 		groups = append(groups, capGroupView{Capability: group, Items: groupItems(group, tokensByGroup[group])})
 	}
+
 	return groups
 }
 
@@ -250,12 +269,14 @@ func sortedUint32Labels(tokens []string, prefix string, label func(uint32) strin
 			ns = append(ns, n)
 		}
 	}
+
 	slices.Sort(ns)
 
 	items := make([]string, len(ns))
 	for i, n := range ns {
 		items[i] = label(n)
 	}
+
 	return items
 }
 
@@ -276,6 +297,7 @@ func capGroupLabel(group string) string {
 	if label, ok := capGroupLabels[group]; ok {
 		return label
 	}
+
 	return group
 }
 
@@ -294,6 +316,7 @@ func capGroupOrderKey(group string) int {
 	if key, ok := capGroupOrder[group]; ok {
 		return key
 	}
+
 	return math.MaxInt
 }
 
@@ -301,6 +324,7 @@ func assocTypeLabel(n uint32) string {
 	if n > math.MaxUint16 {
 		return fmt.Sprintf("%d (out-of-range for AssocType)", n)
 	}
+
 	return pcep.AssocType(n).StringWithReference()
 }
 
@@ -310,6 +334,7 @@ func unrecognizedTLVItem(tlvType uint32) string {
 	if tlvType > math.MaxUint16 {
 		return fmt.Sprintf("type=%d: out of TLV registry range, no RFC", tlvType)
 	}
+
 	t := pcep.TLVType(tlvType)
 	name := t.Name()
 	ref := t.Reference()
@@ -343,5 +368,6 @@ func capabilityLines(groups []capGroupView) []capDisplayLine {
 			lines = append(lines, capDisplayLine{Header: capGroupLabel(group.Capability) + ": " + strings.Join(group.Items, ", ")})
 		}
 	}
+
 	return lines
 }

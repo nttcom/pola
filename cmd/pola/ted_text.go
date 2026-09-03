@@ -21,12 +21,14 @@ func writeTEDText(w io.Writer, nodes []tedNodeView) error {
 		if i > 0 {
 			ew.println()
 		}
+
 		ew.printf("Node #%d: %s\n", i, node.RouterID)
 		writeTEDNodeBasicText(ew, node)
 		writeTEDNodePrefixesText(ew, node)
 		writeTEDNodeLinksText(ew, node)
 		writeTEDNodeSrv6SIDsText(ew, node)
 	}
+
 	return ew.err
 }
 
@@ -38,8 +40,10 @@ func writeTEDNodeBasicText(ew *errWriter, node tedNodeView) {
 
 func writeTEDNodePrefixesText(ew *errWriter, node tedNodeView) {
 	ew.println("  Prefixes:")
+
 	for _, p := range node.Prefixes {
 		ew.printf("    %s\n", p.Prefix)
+
 		if p.SidIndex != nil {
 			ew.printf("      index: %d\n", *p.SidIndex)
 		}
@@ -48,6 +52,7 @@ func writeTEDNodePrefixesText(ew *errWriter, node tedNodeView) {
 
 func writeTEDNodeLinksText(ew *errWriter, node tedNodeView) {
 	ew.println("  Links:")
+
 	for _, link := range node.Links {
 		writeTEDLinkText(ew, link)
 	}
@@ -57,6 +62,7 @@ func orNone(s string) string {
 	if s == "" {
 		return "None"
 	}
+
 	return s
 }
 
@@ -65,6 +71,7 @@ func writeTEDLinkText(ew *errWriter, link tedLinkView) {
 	ew.printf("      RemoteRouterID: %s\n", orNone(link.RemoteRouterID))
 
 	ew.println("      Metrics:")
+
 	for _, m := range link.Metrics {
 		ew.printf("        %s: %d\n", m.Type, m.Value)
 	}
@@ -86,6 +93,7 @@ func writeTEDSrv6EndXSIDText(ew *errWriter, sid tedSrv6EndXSIDView) {
 
 func writeTEDNodeSrv6SIDsText(ew *errWriter, node tedNodeView) {
 	ew.println("  SRv6 SIDs:")
+
 	for _, sid := range node.SRv6SIDs {
 		writeTEDSrv6SIDText(ew, sid)
 	}
@@ -95,13 +103,16 @@ func writeTEDSrv6SIDText(ew *errWriter, sid tedSrv6SIDView) {
 	ew.printf("    SIDs: %v\n", sid.Sids)
 	ew.printf("    Block: %d, Node: %d, Func: %d, Arg: %d\n",
 		sid.SidStructure.LocalBlock, sid.SidStructure.LocalNode, sid.SidStructure.LocalFunc, sid.SidStructure.LocalArg)
+
 	var flags, algorithm uint8
 	if sid.EndpointBehavior.Flags != nil {
 		flags = *sid.EndpointBehavior.Flags
 	}
+
 	if sid.EndpointBehavior.Algorithm != nil {
 		algorithm = *sid.EndpointBehavior.Algorithm
 	}
+
 	ew.printf("    EndpointBehavior: %s, Flags: %d, Algorithm: %d\n",
 		sid.EndpointBehavior.Name, flags, algorithm)
 	ew.printf("    MultiTopoIDs: %v\n", sid.MultiTopoIDs)

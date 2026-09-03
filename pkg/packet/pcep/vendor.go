@@ -38,6 +38,7 @@ func (en EnterpriseNumber) String() string {
 	if name, ok := enterpriseNumberNames[en]; ok {
 		return fmt.Sprintf("%s (%d)", name, uint32(en))
 	}
+
 	return fmt.Sprintf("Unknown Enterprise (%d)", uint32(en))
 }
 
@@ -53,5 +54,6 @@ func (en EnterpriseNumber) DisplayLabel() string {
 	if !ok {
 		name = "Unknown"
 	}
+
 	return fmt.Sprintf("%d (%s)", uint32(en), name)
 }

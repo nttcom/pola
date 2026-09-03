@@ -38,6 +38,7 @@ func TestWriteSRPolicyText_PropagatesWriteErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			w := &condFailWriter{fail: tt.fail}
 			err := writeSRPolicyText(w, views)
 			require.Error(t, err)
@@ -72,6 +73,7 @@ func TestWriteSRPolicySession_EmptyPolicies_PropagatesWriteError(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			w := &condFailWriter{fail: tt.fail}
 			ew := &errWriter{w: w}
 			writeSRPolicySessionText(ew, tt.v)

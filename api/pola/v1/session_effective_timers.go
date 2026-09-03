@@ -12,6 +12,7 @@ func EffectiveKeepalive(state SessionState, effective *EffectiveTimers) (value u
 	if state != SessionState_SESSION_STATE_UP || effective == nil {
 		return 0, false
 	}
+
 	return effective.GetKeepalive(), true
 }
 
@@ -21,5 +22,6 @@ func EffectiveDeadTimer(state SessionState, effective *EffectiveTimers) (value u
 	if state != SessionState_SESSION_STATE_UP || effective == nil {
 		return 0, false
 	}
+
 	return effective.GetDeadTimer(), true
 }

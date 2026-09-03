@@ -24,6 +24,7 @@ func newSRPolicyListCmd(c *cli) *cobra.Command {
 		},
 	}
 	cmd.Flags().String("peer", "", "filter by PCEP peer address")
+
 	return cmd
 }
 
@@ -32,6 +33,7 @@ func showSRPolicyList(cmd *cobra.Command, _ []string, client pb.PCEServiceClient
 	if err != nil {
 		return err
 	}
+
 	return writeSRPolicyList(cmd.OutOrStdout(), peerAddr, resolveOutputFormat(jsonFmt), client)
 }
 
@@ -53,6 +55,7 @@ func writeSRPolicyList(w io.Writer, peerAddr netip.Addr, format outputFormat, cl
 	if format == outputJSON {
 		return writeJSON(w, views)
 	}
+
 	return writeSRPolicyText(w, views)
 }
 
@@ -61,12 +64,15 @@ func peerAddrFlag(cmd *cobra.Command) (netip.Addr, error) {
 	if err != nil {
 		return netip.Addr{}, fmt.Errorf("failed to retrieve 'peer' flag: %w", err)
 	}
+
 	if flag == "" {
 		return netip.Addr{}, nil
 	}
+
 	addr, err := netip.ParseAddr(flag)
 	if err != nil {
 		return netip.Addr{}, fmt.Errorf("invalid --peer address %q: %w", flag, err)
 	}
+
 	return addr, nil
 }

@@ -74,6 +74,7 @@ func (a *sessionIDAllocator) allocate(peerAddr netip.Addr) uint8 {
 
 	id := a.next[peerAddr]
 	a.next[peerAddr] = id + 1
+
 	return id
 }
 
@@ -86,12 +87,14 @@ type tcpListener interface {
 func (s *Server) TED() *table.LsTED {
 	s.tedMu.RLock()
 	defer s.tedMu.RUnlock()
+
 	return s.ted
 }
 
 func (s *Server) setTED(ted *table.LsTED) {
 	s.tedMu.Lock()
 	defer s.tedMu.Unlock()
+
 	s.ted = ted
 }
 
@@ -115,13 +118,17 @@ func resolveKeepaliveRange(minKeepalive, maxKeepalive *uint8) (lo, hi uint8, ena
 	if minKeepalive == nil && maxKeepalive == nil {
 		return 0, 0, false
 	}
+
 	hi = math.MaxUint8
+
 	if minKeepalive != nil {
 		lo = *minKeepalive
 	}
+
 	if maxKeepalive != nil {
 		hi = *maxKeepalive
 	}
+
 	return lo, hi, true
 }
 
@@ -130,16 +137,20 @@ func validatePCEOptions(o *PCEOptions) error {
 	if o == nil {
 		return errors.New("PCEOptions must not be nil")
 	}
+
 	keepalive := defaultLocalKeepalive
 	if o.Keepalive != nil {
 		keepalive = *o.Keepalive
 	}
+
 	if err := pcep.ValidateTimers(keepalive, o.DeadTimer); err != nil {
 		return err
 	}
+
 	if o.MinKeepalive != nil && o.MaxKeepalive != nil && *o.MinKeepalive > *o.MaxKeepalive {
 		return errors.New("MinKeepalive must be <= MaxKeepalive")
 	}
+
 	return nil
 }
 
@@ -148,9 +159,11 @@ func resolveLocalTimers(keepalive, deadTimer *uint8) (localKeepalive, localDeadT
 	if keepalive != nil {
 		localKeepalive = *keepalive
 	}
+
 	if deadTimer != nil {
 		return localKeepalive, *deadTimer
 	}
+
 	return localKeepalive, pcep.DeadTimerFor(localKeepalive)
 }
 
@@ -166,6 +179,7 @@ func NewPCE(ctx context.Context, o *PCEOptions, lg *logger.Logger, tedElemsChan 
 	localKeepalive, localDeadTimer := resolveLocalTimers(o.Keepalive, o.DeadTimer)
 	minKeepalive, maxKeepalive, keepaliveRangeEnabled := resolveKeepaliveRange(o.MinKeepalive, o.MaxKeepalive)
 	allowNegotiation := o.AllowNegotiation == nil || *o.AllowNegotiation
+
 	s := &Server{
 		logger:                lg,
 		asn:                   o.ASN,
@@ -190,6 +204,7 @@ func NewPCE(ctx context.Context, o *PCEOptions, lg *logger.Logger, tedElemsChan 
 		server string
 		err    error
 	}
+
 	resultChan := make(chan result, 2)
 
 	go func() {
@@ -203,17 +218,22 @@ func NewPCE(ctx context.Context, o *PCEOptions, lg *logger.Logger, tedElemsChan 
 	go s.awaitShutdown(ctx, grpcServer.GracefulStop)
 
 	var firstErr Error
+
 	for range 2 {
 		r := <-resultChan
 		if r.err == nil {
 			continue
 		}
+
 		lg.Error("Server encountered an error", logger.String("server", r.server), logger.Error(r.err))
+
 		if firstErr.Error == nil {
 			firstErr = Error{Server: r.server, Error: r.err}
+
 			cancel()
 		}
 	}
+
 	return firstErr
 }
 
@@ -226,6 +246,7 @@ func (s *Server) syncTEDLoop(ctx context.Context, tedElemsChan <-chan []table.TE
 			if !ok {
 				return
 			}
+
 			ted := &table.LsTED{
 				Nodes: map[string]*table.LsNode{},
 			}
@@ -241,22 +262,27 @@ func parseListenAddrPort(address, port string) (netip.AddrPort, error) {
 	if err != nil {
 		return netip.AddrPort{}, fmt.Errorf("failed to parse address %s: %w", address, err)
 	}
+
 	p, err := strconv.Atoi(port)
 	if err != nil {
 		return netip.AddrPort{}, fmt.Errorf("failed to convert port %s: %w", port, err)
 	}
+
 	if p < 0 || p > math.MaxUint16 {
 		return netip.AddrPort{}, errors.New("invalid PCEP listen port")
 	}
+
 	return netip.AddrPortFrom(a, uint16(p)), nil
 }
 
 func parseRemoteAddr(tcpConn *net.TCPConn) (netip.Addr, error) {
 	remoteAddrStr := tcpConn.RemoteAddr().String()
+
 	addrPort, err := netip.ParseAddrPort(remoteAddrStr)
 	if err != nil {
 		return netip.Addr{}, fmt.Errorf("failed to parse remote address %s: %w", remoteAddrStr, err)
 	}
+
 	return addrPort.Addr(), nil
 }
 
@@ -268,6 +294,7 @@ func (s *Server) Serve(address, port string) error {
 	}
 
 	s.logger.Info("start listening on PCEP port", logger.String("address", localAddr.String()))
+
 	l, err := net.ListenTCP("tcp", net.TCPAddrFromAddrPort(localAddr))
 	if err != nil {
 		return fmt.Errorf("failed to listen on PCEP port %s: %w", localAddr.String(), err)
@@ -281,11 +308,14 @@ func (s *Server) acceptLoop(l tcpListener) error {
 	if s.closed {
 		// Shutdown ran before the listener was registered; don't accept connections.
 		s.listenerMu.Unlock()
+
 		if err := l.Close(); err != nil {
 			return fmt.Errorf("close PCEP listener during shutdown race: %w", err)
 		}
+
 		return nil
 	}
+
 	s.listener = l
 	s.listenerMu.Unlock()
 
@@ -293,6 +323,7 @@ func (s *Server) acceptLoop(l tcpListener) error {
 		s.listenerMu.Lock()
 		s.listener = nil
 		s.listenerMu.Unlock()
+
 		if err := l.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
 			s.logger.Warn("failed to close PCEP listener", logger.Error(err))
 		}
@@ -304,8 +335,10 @@ func (s *Server) acceptLoop(l tcpListener) error {
 			if errors.Is(err, net.ErrClosed) {
 				return nil
 			}
+
 			return fmt.Errorf("failed to accept TCP connection: %w", err)
 		}
+
 		if err := s.handleAccept(tcpConn); err != nil {
 			return err
 		}
@@ -323,14 +356,17 @@ func (s *Server) handleAccept(tcpConn *net.TCPConn) error {
 	if ss == nil {
 		return nil
 	}
+
 	ss.logger.Info("start PCEP session")
 	go func() {
 		if err := ss.Established(); err != nil {
 			s.recordSetupResult(ss.peerAddr, false)
 		}
+
 		s.closeSession(ss)
 		ss.logger.Info("close PCEP session")
 	}()
+
 	return nil
 }
 
@@ -350,8 +386,10 @@ func (s *Server) registerSession(conn net.Conn, peerAddr netip.Addr) *Session {
 		s.sessionMu.Unlock()
 		s.recordSetupResult(peerAddr, false)
 		s.rejectSecondSession(conn, peerAddr)
+
 		return nil
 	}
+
 	sessionID := s.sessionIDs.allocate(peerAddr)
 	localOpen := OpenParams{SessionID: sessionID, Keepalive: s.localKeepalive, DeadTimer: s.localDeadTimer}
 	ss := NewSession(localOpen, peerAddr, conn, s.logger, ted, s.asn)
@@ -362,6 +400,7 @@ func (s *Server) registerSession(conn net.Conn, peerAddr netip.Addr) *Session {
 	ss.onEstablished = func() { s.recordSetupResult(peerAddr, true) }
 	s.sessionList = append(s.sessionList, ss)
 	s.sessionMu.Unlock()
+
 	return ss
 }
 
@@ -388,9 +427,11 @@ func (s *Server) closeRejectedConn(conn net.Conn, why string) {
 func (s *Server) awaitShutdown(ctx context.Context, stopGRPC func()) {
 	<-ctx.Done()
 	s.logger.Info("shutdown requested, stopping PCE server")
+
 	if err := s.Shutdown(); err != nil {
 		s.logger.Warn("failed to shut down PCEP server", logger.Error(err))
 	}
+
 	stopGRPC()
 }
 
@@ -417,6 +458,7 @@ func (s *Server) Shutdown() error {
 			s.gracefulCloseSession(ss)
 		})
 	}
+
 	wg.Wait()
 
 	return err
@@ -427,6 +469,7 @@ func (s *Server) gracefulCloseSession(ss *Session) {
 	sendDone := make(chan struct{})
 	go func() {
 		defer close(sendDone)
+
 		if sendErr := ss.SendClose(pcep.CloseReasonNoExplanationProvided); sendErr != nil {
 			s.logger.Warn("failed to send PCEP close message during shutdown", logger.Error(sendErr))
 		}
@@ -436,6 +479,7 @@ func (s *Server) gracefulCloseSession(ss *Session) {
 	if timeout <= 0 {
 		timeout = defaultShutdownSendCloseTimeout
 	}
+
 	select {
 	case <-sendDone:
 	case <-time.After(timeout):
@@ -449,6 +493,7 @@ func (s *Server) closeSession(session *Session) {
 	if err := session.tcpConn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
 		s.logger.Warn("failed to close TCP connection", logger.Error(err))
 	}
+
 	session.clearSRPolicyIntents()
 
 	s.sessionMu.Lock()
@@ -463,11 +508,13 @@ func (s *Server) closeSession(session *Session) {
 func (s *Server) SearchSession(peerAddr netip.Addr) *Session {
 	s.sessionMu.RLock()
 	defer s.sessionMu.RUnlock()
+
 	for _, pcepSession := range s.sessionList {
 		if pcepSession.peerAddr == peerAddr {
 			return pcepSession
 		}
 	}
+
 	return nil
 }
 
@@ -475,20 +522,24 @@ func (s *Server) SearchSession(peerAddr netip.Addr) *Session {
 func (s *Server) Sessions() []*Session {
 	s.sessionMu.RLock()
 	defer s.sessionMu.RUnlock()
+
 	return slices.Clone(s.sessionList)
 }
 
 func (s *Server) recordSetupResult(addr netip.Addr, ok bool) {
 	s.peerStatsMu.Lock()
 	defer s.peerStatsMu.Unlock()
+
 	if s.peerStats == nil {
 		s.peerStats = make(map[netip.Addr]*peerSetupStats)
 	}
+
 	stats, exists := s.peerStats[addr]
 	if !exists {
 		stats = &peerSetupStats{}
 		s.peerStats[addr] = stats
 	}
+
 	if ok {
 		stats.ok++
 	} else {
@@ -501,8 +552,10 @@ func (s *Server) recordSetupResult(addr netip.Addr, ok bool) {
 func (s *Server) PeerSetupStats(addr netip.Addr) (ok, fail uint64) {
 	s.peerStatsMu.Lock()
 	defer s.peerStatsMu.Unlock()
+
 	if stats, exists := s.peerStats[addr]; exists {
 		return stats.ok, stats.fail
 	}
+
 	return 0, 0
 }

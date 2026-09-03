@@ -18,5 +18,6 @@ func newSRPolicyCmd(c *cli) *cobra.Command {
 		Args: cobra.NoArgs,
 	}
 	cmd.AddCommand(newSRPolicyListCmd(c), newSRPolicyAddCmd(c), newSRPolicyDeleteCmd(c))
+
 	return cmd
 }

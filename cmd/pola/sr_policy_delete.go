@@ -27,6 +27,7 @@ func newSRPolicyDeleteCmd(c *cli) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("failed to retrieve 'file' flag: %w", err)
 			}
+
 			if filepath == "" {
 				return errors.New("file path option \"-f filepath\" is mandatory")
 			}
@@ -50,6 +51,7 @@ func newSRPolicyDeleteCmd(c *cli) *cobra.Command {
 			if err := deleteSRPolicy(cmd.OutOrStdout(), inputData, c.jsonFmt, c.client); err != nil {
 				return fmt.Errorf("failed to delete SR policy: %w", err)
 			}
+
 			return nil
 		},
 	}
@@ -69,6 +71,7 @@ func deleteSRPolicy(out io.Writer, input inputFormat, jsonFlag bool, client pb.P
 		errMsg := "invalid input\n" +
 			"Input example is below:\n\n" +
 			sampleInput
+
 		return errors.New(errMsg)
 	}
 
@@ -78,6 +81,7 @@ func deleteSRPolicy(out io.Writer, input inputFormat, jsonFlag bool, client pb.P
 		Color:      input.SRPolicy.Color,
 		PolicyName: input.SRPolicy.Name,
 	}
+
 	inputData := &pb.DeleteSRPolicyRequest{
 		SrPolicy: srPolicy,
 		Asn:      input.ASN,
@@ -86,12 +90,14 @@ func deleteSRPolicy(out io.Writer, input inputFormat, jsonFlag bool, client pb.P
 		if st, ok := status.FromError(err); ok {
 			return fmt.Errorf("gRPC Server Error: %s", st.Message())
 		}
+
 		return fmt.Errorf("gRPC Server Error: %s", err.Error())
 	}
 
 	if jsonFlag {
 		return writeJSON(out, statusResult{Status: statusSuccess})
 	}
+
 	fmt.Fprintln(out, "success!")
 
 	return nil

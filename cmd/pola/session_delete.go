@@ -25,13 +25,16 @@ func newSessionDeleteCmd(c *cli) *cobra.Command {
 			if len(args) < 1 {
 				return errors.New("requires session address\nUsage: pola session delete [session address]")
 			}
+
 			ssAddr, err := netip.ParseAddr(args[0])
 			if err != nil {
 				return errors.New("invalid input\nUsage: pola session delete [session address]")
 			}
+
 			return deleteSession(cmd.OutOrStdout(), ssAddr, c.jsonFmt, c.client)
 		},
 	}
+
 	return cmd
 }
 
@@ -39,13 +42,17 @@ func deleteSession(out io.Writer, session netip.Addr, jsonFlag bool, client pb.P
 	request := &pb.DeleteSessionRequest{
 		PeerAddr: session.AsSlice(),
 	}
+
 	err := grpc.DeleteSession(client, request)
 	if err != nil {
 		return err
 	}
+
 	if jsonFlag {
 		return writeJSON(out, statusResult{Status: statusSuccess})
 	}
+
 	fmt.Fprintln(out, "success!")
+
 	return nil
 }

@@ -93,12 +93,14 @@ func TestParseLogLevel(t *testing.T) {
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
+
 			got, err := parseLogLevel(tt.level)
 
 			if tt.wantErr {
 				require.ErrorContains(t, err, "global.log.level")
 				return
 			}
+
 			require.NoError(t, err)
 			require.Equal(t, tt.want, got)
 		})
@@ -169,6 +171,7 @@ func TestOpenLogFile(t *testing.T) {
 
 	t.Run("returns an error when the log file cannot be opened", func(t *testing.T) {
 		t.Parallel()
+
 		if os.Geteuid() == 0 {
 			t.Skip("running as root; directory permissions are not enforced")
 		}
@@ -218,6 +221,7 @@ func TestNewTEDElemsChan(t *testing.T) {
 
 	t.Run("returns nil when TED is not configured", func(t *testing.T) {
 		t.Parallel()
+
 		c := &config.Config{Global: config.Global{}}
 
 		ch, err := newTEDElemsChan(context.Background(), c, logger.NewNop(), nil)
@@ -228,6 +232,7 @@ func TestNewTEDElemsChan(t *testing.T) {
 
 	t.Run("returns nil when TED is disabled", func(t *testing.T) {
 		t.Parallel()
+
 		c := &config.Config{Global: config.Global{TED: &config.TED{Enable: false}}}
 
 		ch, err := newTEDElemsChan(context.Background(), c, logger.NewNop(), nil)
@@ -238,6 +243,7 @@ func TestNewTEDElemsChan(t *testing.T) {
 
 	t.Run("returns an error when ASN is missing", func(t *testing.T) {
 		t.Parallel()
+
 		c := &config.Config{Global: config.Global{TED: &config.TED{Enable: true, Source: tedSourceGoBGP}}}
 
 		ch, err := newTEDElemsChan(context.Background(), c, logger.NewNop(), nil)
@@ -248,6 +254,7 @@ func TestNewTEDElemsChan(t *testing.T) {
 
 	t.Run("returns an error when the source is not supported", func(t *testing.T) {
 		t.Parallel()
+
 		c := &config.Config{Global: config.Global{TED: &config.TED{Enable: true, ASN: 65000, Source: "unknown"}}}
 
 		ch, err := newTEDElemsChan(context.Background(), c, logger.NewNop(), nil)
@@ -258,6 +265,7 @@ func TestNewTEDElemsChan(t *testing.T) {
 
 	t.Run("starts the configured monitor and returns a channel", func(t *testing.T) {
 		t.Parallel()
+
 		c := &config.Config{
 			Global: config.Global{
 				TED: &config.TED{Enable: true, ASN: 65000, Source: tedSourceGoBGP},
@@ -286,6 +294,7 @@ func TestRun(t *testing.T) {
 
 	t.Run("prints the version and exits without touching config", func(t *testing.T) {
 		t.Parallel()
+
 		err := run([]string{versionFlag}, runDeps{})
 
 		require.NoError(t, err)
@@ -293,6 +302,7 @@ func TestRun(t *testing.T) {
 
 	t.Run("returns an error for an unrecognized flag", func(t *testing.T) {
 		t.Parallel()
+
 		err := run([]string{"-nonexistent-flag"}, defaultRunDeps())
 
 		require.Error(t, err)
@@ -307,6 +317,7 @@ func TestRun(t *testing.T) {
 
 	t.Run("returns an error when the log file cannot be opened", func(t *testing.T) {
 		t.Parallel()
+
 		if os.Geteuid() == 0 {
 			t.Skip("running as root; directory permissions are not enforced")
 		}
@@ -320,6 +331,7 @@ func TestRun(t *testing.T) {
 				t.Logf("cleanup chmod: %v", err)
 			}
 		})
+
 		c.Global.Log.Path = filepath.Join(blockedDir, "nested") + string(filepath.Separator)
 		path := writeConfigFile(t, c)
 
@@ -391,6 +403,7 @@ func TestRun(t *testing.T) {
 		err := run([]string{"-f", path}, deps)
 
 		require.NoError(t, err)
+
 		select {
 		case <-called:
 		default:

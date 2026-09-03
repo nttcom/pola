@@ -15,9 +15,11 @@ func TestEffectiveKeepalive(t *testing.T) {
 	if v, ok := EffectiveKeepalive(SessionState_SESSION_STATE_UP, effective); v != 30 || !ok {
 		t.Errorf("got (%d, %v), want (30, true)", v, ok)
 	}
+
 	if v, ok := EffectiveKeepalive(SessionState_SESSION_STATE_KEEP_WAIT, effective); v != 0 || ok {
 		t.Errorf("got (%d, %v), want (0, false)", v, ok)
 	}
+
 	if v, ok := EffectiveKeepalive(SessionState_SESSION_STATE_UP, nil); v != 0 || ok {
 		t.Errorf("got (%d, %v), want (0, false)", v, ok)
 	}
@@ -31,9 +33,11 @@ func TestEffectiveDeadTimer(t *testing.T) {
 	if v, ok := EffectiveDeadTimer(SessionState_SESSION_STATE_UP, effective); v != 120 || !ok {
 		t.Errorf("got (%d, %v), want (120, true)", v, ok)
 	}
+
 	if v, ok := EffectiveDeadTimer(SessionState_SESSION_STATE_TCP_PENDING, effective); v != 0 || ok {
 		t.Errorf("got (%d, %v), want (0, false)", v, ok)
 	}
+
 	if v, ok := EffectiveDeadTimer(SessionState_SESSION_STATE_UP, nil); v != 0 || ok {
 		t.Errorf("got (%d, %v), want (0, false)", v, ok)
 	}

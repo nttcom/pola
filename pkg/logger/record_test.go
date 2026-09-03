@@ -122,10 +122,12 @@ func TestRecorderConcurrentAccess(t *testing.T) {
 	for range 100 {
 		wg.Go(func() {
 			lg.Info("concurrent")
+
 			_ = rec.Len()
 			_ = rec.All()
 		})
 	}
+
 	wg.Wait()
 
 	assert.Equal(t, 100, rec.Len())

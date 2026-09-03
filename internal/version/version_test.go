@@ -86,6 +86,7 @@ func TestVcsSettings(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			revision, ts, modified := vcsSettings(tt.settings)
 			assert.Equal(t, tt.wantRevision, revision)
 			assert.Equal(t, tt.wantTime, ts)

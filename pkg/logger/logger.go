@@ -69,6 +69,7 @@ func New(w, console io.Writer, level Level) *Logger {
 		zapcore.NewCore(jsonEncoder, zapcore.AddSync(w), zl),
 		zapcore.NewCore(consoleEncoder, zapcore.AddSync(console), zl),
 	)
+
 	return &Logger{z: zap.New(core)}
 }
 

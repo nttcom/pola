@@ -27,8 +27,10 @@ func mainRun(args []string, out, errOut io.Writer) int {
 	cmd.SetArgs(args)
 	cmd.SetOut(out)
 	cmd.SetErr(errOut)
+
 	if err := cmd.Execute(); err != nil {
 		return 1
 	}
+
 	return 0
 }

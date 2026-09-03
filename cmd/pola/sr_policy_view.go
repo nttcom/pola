@@ -24,6 +24,7 @@ func newSRPolicySessionView(ss grpc.SRPolicySession) srPolicySessionView {
 	if policies == nil {
 		policies = []table.SRPolicy{}
 	}
+
 	return srPolicySessionView{
 		PeerAddress: ss.PeerAddr.String(),
 		State:       ss.State,

@@ -19,6 +19,7 @@ func writeConfig(t *testing.T, content string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "polad.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+
 	return path
 }
 
@@ -312,11 +313,14 @@ global:
 			err = c.Validate()
 			if tt.wantErr {
 				assert.Error(t, err)
+
 				if tt.errContains != "" {
 					require.ErrorContains(t, err, tt.errContains)
 				}
+
 				return
 			}
+
 			require.NoError(t, err)
 		})
 	}

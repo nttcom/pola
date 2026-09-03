@@ -147,12 +147,14 @@ func TestNewPCInitiateMessage_OriginatorASNReachesWire(t *testing.T) {
 			require.NotNil(t, m.AssociationObject, "RFC compliant PCInitiate must carry an ASSOCIATION object")
 
 			var cpathID *SRPolicyCandidatePathIdentifier
+
 			for _, tlv := range m.AssociationObject.TLVs {
 				if id, ok := tlv.(*SRPolicyCandidatePathIdentifier); ok {
 					cpathID = id
 					break
 				}
 			}
+
 			require.NotNil(t, cpathID, "SRPOLICY-CPATH-ID TLV missing from ASSOCIATION object")
 			assert.Equal(t, tt.expectedASN, cpathID.OriginatorASN, "OriginatorASN not propagated to the TLV")
 
@@ -381,6 +383,7 @@ func TestCommonHeader_DecodeFromBytes_Version(t *testing.T) {
 			t.Parallel()
 
 			var h CommonHeader
+
 			err := h.DecodeFromBytes(tt.header)
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -515,6 +518,7 @@ func TestPCRptMessage_DecodeFromBytes(t *testing.T) {
 	newBaseStateReport := func() *StateReport {
 		sr := NewStateReport()
 		sr.SrpObject, sr.LSPObject, sr.EroObject = srp, lsp, ero
+
 		return sr
 	}
 
@@ -658,6 +662,7 @@ func TestPCRptMessage_DecodeFromBytes_MalformedNestedObjectBody(t *testing.T) {
 	require.NoError(t, err)
 	lspRaw, err := lsp.Serialize()
 	require.NoError(t, err)
+
 	prefix := AppendByteSlices(srpRaw, lspRaw)
 
 	cases := map[string][]uint8{
@@ -734,20 +739,25 @@ func TestNewPCUpdMessage(t *testing.T) {
 
 	var srpHeader CommonObjectHeader
 	require.NoError(t, srpHeader.DecodeFromBytes(body))
+
 	var srp SrpObject
 	require.NoError(t, srp.DecodeFromBytes(srpHeader.ObjectType, body[commonObjectHeaderLength:srpHeader.ObjectLength]))
 	assert.Equal(t, m.SrpObject, &srp)
+
 	body = body[srpHeader.ObjectLength:]
 
 	var lspHeader CommonObjectHeader
 	require.NoError(t, lspHeader.DecodeFromBytes(body))
+
 	var lsp LSPObject
 	require.NoError(t, lsp.DecodeFromBytes(lspHeader.ObjectType, body[commonObjectHeaderLength:lspHeader.ObjectLength]))
 	assert.Equal(t, m.LSPObject, &lsp)
+
 	body = body[lspHeader.ObjectLength:]
 
 	var eroHeader CommonObjectHeader
 	require.NoError(t, eroHeader.DecodeFromBytes(body))
+
 	var ero EroObject
 	require.NoError(t, ero.DecodeFromBytes(eroHeader.ObjectType, body[commonObjectHeaderLength:eroHeader.ObjectLength]))
 	assert.Equal(t, m.EroObject, &ero)
@@ -827,6 +837,7 @@ func TestMessage_Serialize_RejectsOversizedMessage(t *testing.T) {
 			Segment:       table.NewSegmentSRMPLS(16001),
 		}
 	}
+
 	ero := &EroObject{ObjectType: ObjectTypeEROExplicitRoute, EroSubobjects: subobjects}
 
 	pcupd := &PCUpdMessage{SrpObject: &SrpObject{}, LSPObject: &LSPObject{}, EroObject: ero}

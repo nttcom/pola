@@ -16,10 +16,12 @@ func zapFields(fields []Field) []zap.Field {
 	if len(fields) == 0 {
 		return nil
 	}
+
 	out := make([]zap.Field, len(fields))
 	for i, f := range fields {
 		out[i] = f.zf
 	}
+
 	return out
 }
 

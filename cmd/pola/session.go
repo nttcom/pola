@@ -26,11 +26,13 @@ func newSessionCmd(c *cli) *cobra.Command {
 			if err != nil {
 				return err
 			}
+
 			return showSession(cmd.OutOrStdout(), addr, detail, resolveOutputFormat(c.jsonFmt), c.client)
 		},
 	}
 
 	cmd.AddCommand(newSessionDeleteCmd(c))
+
 	return cmd
 }
 
@@ -39,24 +41,32 @@ const sessionDetailArg = "detail"
 // parseSessionArgs parses an optional peer address and "detail" argument.
 func parseSessionArgs(args []string) (netip.Addr, bool, error) {
 	var addr netip.Addr
+
 	detail := false
+
 	for _, arg := range args {
 		if arg == sessionDetailArg {
 			if detail {
 				return netip.Addr{}, false, errors.New(`"detail" specified more than once`)
 			}
+
 			detail = true
+
 			continue
 		}
+
 		if addr.IsValid() {
 			return netip.Addr{}, false, fmt.Errorf("unexpected argument %q\nUsage: pola session [peer-address] [detail]", arg)
 		}
+
 		parsed, err := netip.ParseAddr(arg)
 		if err != nil {
 			return netip.Addr{}, false, fmt.Errorf("invalid peer address %q: %w", arg, err)
 		}
+
 		addr = parsed
 	}
+
 	return addr, detail, nil
 }
 
@@ -78,6 +88,7 @@ func showSession(w io.Writer, addr netip.Addr, detail bool, format outputFormat,
 	if format == outputJSON {
 		return writeJSON(w, views)
 	}
+
 	return writeSessionText(w, views)
 }
 
@@ -86,10 +97,13 @@ func writeNoSessions(w io.Writer, addr netip.Addr, format outputFormat) error {
 		_, err := fmt.Fprintln(w, "[]")
 		return err
 	}
+
 	if addr.IsValid() {
 		_, err := fmt.Fprintf(w, "No PCEP session for %s.\n", addr)
 		return err
 	}
+
 	_, err := fmt.Fprintln(w, "No PCEP sessions connected.")
+
 	return err
 }

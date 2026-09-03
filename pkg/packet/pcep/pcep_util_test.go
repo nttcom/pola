@@ -72,7 +72,9 @@ func TestUint16ToByteSlice(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			var result []byte
+
 			switch v := tt.input.(type) {
 			case uint16:
 				result = Uint16ToByteSlice(v)
@@ -81,6 +83,7 @@ func TestUint16ToByteSlice(t *testing.T) {
 			default:
 				t.Fatalf("unexpected type %T", v)
 			}
+
 			assert.Equal(t, tt.expected, result)
 		})
 	}
@@ -126,6 +129,7 @@ func TestIsBitSet(t *testing.T) {
 
 	t.Run("uint8", func(t *testing.T) {
 		t.Parallel()
+
 		tests := []testCase[uint8]{
 			{"bit 0 set", 0x01, 0x01, true},
 			{"bit 1 set", 0x03, 0x02, true},
@@ -141,6 +145,7 @@ func TestIsBitSet(t *testing.T) {
 
 	t.Run("uint16", func(t *testing.T) {
 		t.Parallel()
+
 		tests := []testCase[uint16]{
 			{"bit 8 set", 0x0100, 0x0100, true},
 			{"bit 9 set", 0x0201, 0x0200, true},
@@ -156,6 +161,7 @@ func TestIsBitSet(t *testing.T) {
 
 	t.Run("uint32", func(t *testing.T) {
 		t.Parallel()
+
 		tests := []testCase[uint32]{
 			{"bit 16 set", 0x00010000, 0x00010000, true},
 			{"bit 17 set", 0x00020001, 0x00020000, true},

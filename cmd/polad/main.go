@@ -70,6 +70,7 @@ func run(args []string, deps runDeps) error {
 	fs := flag.NewFlagSet("polad", flag.ContinueOnError)
 	f := &flags{}
 	fs.StringVar(&f.configFile, "f", "polad.yaml", "Specify a configuration file")
+
 	if err := fs.Parse(args); err != nil {
 		return fmt.Errorf("parse arguments: %w", err)
 	}
@@ -154,6 +155,7 @@ func loadConfig(configFile string) (config.Config, error) {
 	if err != nil {
 		return c, fmt.Errorf("failed to read config file: %w", err)
 	}
+
 	if err := c.Validate(); err != nil {
 		return c, fmt.Errorf("invalid config file: %w", err)
 	}
@@ -184,9 +186,11 @@ func newTEDElemsChan(ctx context.Context, c *config.Config, lg *logger.Logger, m
 	if c.Global.TED == nil || !c.Global.TED.Enable {
 		return nil, nil
 	}
+
 	if c.Global.TED.ASN == 0 {
 		return nil, errors.New("TED is enabled but Global.TED.ASN is missing or invalid")
 	}
+
 	if c.Global.TED.Source != tedSourceGoBGP {
 		return nil, fmt.Errorf("specified TED source %q is not defined", c.Global.TED.Source)
 	}

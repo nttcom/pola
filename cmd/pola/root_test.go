@@ -22,6 +22,7 @@ func TestNewRootCmd_Structure(t *testing.T) {
 	for _, c := range cmd.Commands() {
 		names = append(names, c.Name())
 	}
+
 	assert.ElementsMatch(t, []string{"session", "sr-policy", "ted"}, names)
 
 	assert.Equal(t, "false", cmd.PersistentFlags().Lookup("json").DefValue)
@@ -34,6 +35,7 @@ func TestPersistentPreRunE(t *testing.T) {
 
 	t.Run("success sets the client", func(t *testing.T) {
 		t.Parallel()
+
 		c := &cli{}
 		cmd := newRootCmd()
 		require.NoError(t, persistentPreRunE(c)(cmd, []string{}))
@@ -42,6 +44,7 @@ func TestPersistentPreRunE(t *testing.T) {
 
 	t.Run("malformed host is rejected before dialing", func(t *testing.T) {
 		t.Parallel()
+
 		c := &cli{}
 		cmd := newRootCmd()
 		require.NoError(t, cmd.PersistentFlags().Set("host", "bad%zzhost"))

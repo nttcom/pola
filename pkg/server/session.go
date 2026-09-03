@@ -141,6 +141,7 @@ type SessionStats struct {
 func (s *sessionStats) snapshot() SessionStats {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	return SessionStats{
 		OpenSent:       s.openSent,
 		OpenRcvd:       s.openRcvd,
@@ -244,26 +245,33 @@ func (ss *Session) rememberSRPolicyIntent(srpID uint32, polType table.PolicyType
 	if srpID == 0 {
 		return
 	}
+
 	ss.srPolicyIntentsMu.Lock()
 	defer ss.srPolicyIntentsMu.Unlock()
+
 	if ss.srPolicyIntents == nil {
 		ss.srPolicyIntents = make(map[uint32]srPolicyIntent)
 	}
+
 	ss.srPolicyIntents[srpID] = srPolicyIntent{polType: polType, metric: metric, expiresAt: time.Now().Add(ss.srPolicyIntentTTL)}
 }
 
 func (ss *Session) srPolicyIntentExists(srpID uint32) bool {
 	ss.srPolicyIntentsMu.Lock()
 	defer ss.srPolicyIntentsMu.Unlock()
+
 	_, ok := ss.srPolicyIntents[srpID]
+
 	return ok
 }
 
 // sweepExpiredSRPolicyIntents removes expired intents.
 func (ss *Session) sweepExpiredSRPolicyIntents() {
 	now := time.Now()
+
 	ss.srPolicyIntentsMu.Lock()
 	defer ss.srPolicyIntentsMu.Unlock()
+
 	for srpID, intent := range ss.srPolicyIntents {
 		if now.After(intent.expiresAt) {
 			delete(ss.srPolicyIntents, srpID)
@@ -281,14 +289,17 @@ func (ss *Session) startIntentSweep() {
 	}
 
 	ss.sweepStop = make(chan struct{})
+
 	ss.sweepDone = make(chan struct{})
 	go ss.runIntentSweep(ss.sweepStop, ss.sweepDone)
 }
 
 func (ss *Session) runIntentSweep(stop, done chan struct{}) {
 	defer close(done)
+
 	ticker := time.NewTicker(ss.sweepInterval)
 	defer ticker.Stop()
+
 	for {
 		select {
 		case <-stop:
@@ -322,10 +333,13 @@ func (ss *Session) takeSRPolicyIntent(srpID uint32) (srPolicyIntent, bool) {
 	if srpID == 0 {
 		return srPolicyIntent{}, false
 	}
+
 	ss.srPolicyIntentsMu.Lock()
 	defer ss.srPolicyIntentsMu.Unlock()
+
 	intent, ok := ss.srPolicyIntents[srpID]
 	delete(ss.srPolicyIntents, srpID)
+
 	return intent, ok
 }
 
@@ -334,8 +348,10 @@ func (ss *Session) forgetSRPolicyIntent(srpID uint32) {
 	if srpID == 0 {
 		return
 	}
+
 	ss.srPolicyIntentsMu.Lock()
 	defer ss.srPolicyIntentsMu.Unlock()
+
 	delete(ss.srPolicyIntents, srpID)
 }
 
@@ -343,6 +359,7 @@ func (ss *Session) forgetSRPolicyIntent(srpID uint32) {
 func (ss *Session) clearSRPolicyIntents() {
 	ss.srPolicyIntentsMu.Lock()
 	defer ss.srPolicyIntentsMu.Unlock()
+
 	ss.srPolicyIntents = nil
 }
 
@@ -378,9 +395,11 @@ func (ss *Session) Established() error {
 		ss.logger.Debug("ERROR! PCEP session establishment failed", logger.Error(err))
 		return err
 	}
+
 	if ss.onEstablished != nil {
 		ss.onEstablished()
 	}
+
 	ss.logger.Debug("PCEP session established")
 
 	ss.startIntentSweep()
@@ -393,6 +412,7 @@ func (ss *Session) Established() error {
 		if err := ss.ReceivePCEPMessage(); err != nil {
 			ss.logger.Debug("ERROR! Receive PCEP Message", logger.Error(err))
 		}
+
 		done <- struct{}{}
 	}()
 
@@ -431,6 +451,7 @@ func (ss *Session) sendPCEPMessage(message pcep.Message) error {
 	if _, err := ss.tcpConn.Write(byteMessage); err != nil {
 		return fmt.Errorf("write PCEP message: %w", err)
 	}
+
 	return nil
 }
 
@@ -485,6 +506,7 @@ func (ss *Session) Open() error {
 	if err := ss.SendOpen(); err != nil {
 		return err
 	}
+
 	return ss.negotiateOpen(&openNegotiation{})
 }
 
@@ -502,11 +524,13 @@ func (ss *Session) negotiateOpen(neg *openNegotiation) error {
 
 	for {
 		ss.setState(neg.state())
+
 		if neg.established() {
 			return nil
 		}
 
 		before := neg.vars()
+
 		messageType, body, err := ss.readNegotiationMessage(neg)
 		if err != nil {
 			return err
@@ -520,18 +544,22 @@ func (ss *Session) negotiateOpen(neg *openNegotiation) error {
 				ss.sendPCErrBestEffort(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
 				return errors.New("received a Keepalive before the peer's Open message")
 			}
+
 			ss.logger.Debug("Received Keepalive acknowledging Pola's Open")
+
 			neg.localOK = true
 		case pcep.MessageTypeError:
 			if !neg.peerOpened() {
 				ss.sendPCErrBestEffort(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
 				return errors.New("received a PCErr before the peer's Open message")
 			}
+
 			err = ss.handleNegotiationPCErr(body, neg)
 		default:
 			ss.sendPCErrBestEffort(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
 			return fmt.Errorf("received %s while establishing the PCEP session", messageType)
 		}
+
 		if err != nil {
 			return err
 		}
@@ -559,6 +587,7 @@ func (ss *Session) restartInitializationTimer(neg *openNegotiation) {
 	if neg.state() == SessionStateKeepWait {
 		timer = ss.keepWait
 	}
+
 	neg.deadline = time.Now().Add(timer)
 }
 
@@ -571,11 +600,14 @@ func (ss *Session) startNegotiationKeepalive() func() {
 	}
 
 	stop := make(chan struct{})
+
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
+
 		ticker := time.NewTicker(time.Duration(interval) * time.Second)
 		defer ticker.Stop()
+
 		for {
 			select {
 			case <-stop:
@@ -588,6 +620,7 @@ func (ss *Session) startNegotiationKeepalive() func() {
 			}
 		}
 	}()
+
 	return func() {
 		close(stop)
 		<-done
@@ -604,6 +637,7 @@ func (ss *Session) readNegotiationMessage(neg *openNegotiation) (pcep.MessageTyp
 		if isDeadlineExceeded(err) {
 			return 0, nil, ss.negotiationTimerExpired(neg, "without a message from the peer")
 		}
+
 		return 0, nil, err
 	}
 
@@ -611,8 +645,10 @@ func (ss *Session) readNegotiationMessage(neg *openNegotiation) (pcep.MessageTyp
 	if err := commonHeader.DecodeFromBytes(headerBytes); err != nil {
 		ss.stats.inc(&ss.stats.corruptRcvd)
 		ss.sendPCErrBestEffort(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
+
 		return 0, nil, err
 	}
+
 	ss.countReceived(commonHeader.MessageType)
 
 	body, err := ss.readMessageBody(commonHeader.MessageLength, deadline)
@@ -620,6 +656,7 @@ func (ss *Session) readNegotiationMessage(neg *openNegotiation) (pcep.MessageTyp
 		if isDeadlineExceeded(err) {
 			return 0, nil, ss.negotiationTimerExpired(neg, "before the message was complete")
 		}
+
 		return 0, nil, err
 	}
 
@@ -633,7 +670,9 @@ func (ss *Session) negotiationTimerExpired(neg *openNegotiation, detail string) 
 	if neg.state() == SessionStateKeepWait {
 		timer, errorValue = "KeepWait", pcepErrorValueKeepWaitTimerExpired
 	}
+
 	ss.sendPCErrBestEffort(pcepErrorTypeSessionEstablishmentFailure, errorValue)
+
 	return fmt.Errorf("%s timer expired %s", timer, detail)
 }
 
@@ -644,11 +683,13 @@ func (ss *Session) handlePeerOpen(body []uint8, neg *openNegotiation) error {
 	if err := openMessage.DecodeFromBytes(body); err != nil {
 		ss.stats.inc(&ss.stats.corruptRcvd)
 		ss.sendPCErrBestEffort(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
+
 		return err
 	}
 
 	if neg.remoteOK {
 		ss.sendPCErrBestEffort(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
+
 		return fmt.Errorf("received a further Open (Keepalive=%d, DeadTimer=%d) after the peer's Open was already accepted",
 			openMessage.OpenObject.Keepalive, openMessage.OpenObject.Deadtime)
 	}
@@ -657,25 +698,34 @@ func (ss *Session) handlePeerOpen(body []uint8, neg *openNegotiation) error {
 
 	if ss.acceptableOpen(peerOpen) {
 		ss.commitPeerOpen(peerOpen, pccType, caps)
+
 		if err := ss.SendKeepalive(); err != nil {
 			return err
 		}
+
 		neg.remoteOK = true
+
 		return nil
 	}
+
 	if neg.peerOpensRejected > 0 {
 		ss.sendPCErrBestEffort(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueSecondOpenStillUnacceptable)
+
 		return fmt.Errorf("peer's second Open still advertises unacceptable session characteristics (Keepalive=%d, DeadTimer=%d)",
 			peerOpen.Keepalive, peerOpen.DeadTimer)
 	}
+
 	if !ss.allowNegotiation {
 		ss.sendPCErrBestEffort(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableNonNegotiable)
+
 		return fmt.Errorf("peer's session characteristics (Keepalive=%d, DeadTimer=%d) are unacceptable and non-negotiable",
 			peerOpen.Keepalive, peerOpen.DeadTimer)
 	}
+
 	if err := ss.proposeAcceptableOpen(peerOpen); err != nil {
 		return err
 	}
+
 	neg.peerOpensRejected++
 
 	return nil
@@ -720,8 +770,10 @@ func (ss *Session) handleNegotiationPCErr(body []uint8, neg *openNegotiation) er
 	if err := pcerrMessage.DecodeFromBytes(body); err != nil {
 		ss.stats.inc(&ss.stats.corruptRcvd)
 		ss.sendPCErrBestEffort(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
+
 		return fmt.Errorf("received malformed PCErr while establishing the PCEP session: %w", err)
 	}
+
 	ss.logger.Debug("Received PCErr while establishing the PCEP session",
 		logger.String("errors", formatPCErrErrors(pcerrMessage.Errors)))
 
@@ -742,6 +794,7 @@ func formatPCErrErrors(errObjs []*pcep.ErrorObject) string {
 	for _, errObj := range errObjs {
 		reasons = append(reasons, fmt.Sprintf("error-type=%d, error-value=%d", errObj.ErrorType, errObj.ErrorValue))
 	}
+
 	return strings.Join(reasons, "; ")
 }
 
@@ -758,13 +811,17 @@ func (ss *Session) adoptProposedOpen(proposedOpen *pcep.OpenObject, neg *openNeg
 		Keepalive: proposedOpen.Keepalive,
 		DeadTimer: proposedOpen.Deadtime,
 	}
+
 	if neg.localOpenRetries >= maxLocalOpenRetries {
 		ss.sendPCErrBestEffort(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableProposal)
+
 		return fmt.Errorf("peer rejected Pola's re-sent Open with a further proposal (Keepalive=%d, DeadTimer=%d)",
 			proposed.Keepalive, proposed.DeadTimer)
 	}
+
 	if !ss.acceptableOpen(proposed) {
 		ss.sendPCErrBestEffort(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableProposal)
+
 		return fmt.Errorf("peer proposed unacceptable session characteristics (Keepalive=%d, DeadTimer=%d)",
 			proposed.Keepalive, proposed.DeadTimer)
 	}
@@ -779,6 +836,7 @@ func (ss *Session) adoptProposedOpen(proposedOpen *pcep.OpenObject, neg *openNeg
 	if err := ss.SendOpen(); err != nil {
 		return err
 	}
+
 	neg.localOpenRetries++
 
 	// A re-sent Open starts a new negotiation round.
@@ -792,6 +850,7 @@ func (ss *Session) readDeadline() time.Duration {
 	if !ok || pccOpen.Keepalive == 0 || pccOpen.DeadTimer == 0 {
 		return 0
 	}
+
 	return time.Duration(pccOpen.DeadTimer) * time.Second
 }
 
@@ -808,10 +867,12 @@ func (ss *Session) sendPCErrBestEffort(errorType, errorValue uint8) {
 // validateCapabilities validates peer capabilities and logs known RFC deviations.
 func (ss *Session) validateCapabilities(caps []pcep.CapabilityInterface) {
 	var hasSRCapability, hasSRv6Capability bool
+
 	for _, capability := range pcep.FlattenCapabilities(caps) {
 		switch c := capability.(type) {
 		case *pcep.SRPCECapability:
 			hasSRCapability = true
+
 			if c.HasInvalidZeroMSD() {
 				ss.logger.Warn("peer advertised SR-PCE-CAPABILITY with X=0 and MSD=0 (RFC 8664 §5.1); tolerating as a known deployed-peer deviation")
 			}
@@ -825,9 +886,11 @@ func (ss *Session) validateCapabilities(caps []pcep.CapabilityInterface) {
 		if !ok {
 			continue
 		}
+
 		if pst.HasPathSetupType(pcep.PathSetupTypeSRTE) && !hasSRCapability {
 			ss.logger.Warn("peer advertised PST=1 (SR-TE) without an SR-PCE-CAPABILITY sub-TLV (RFC 8664 §4.1.2)")
 		}
+
 		if pst.HasPathSetupType(pcep.PathSetupTypeSRv6TE) && !hasSRv6Capability {
 			ss.logger.Warn("peer advertised PST=3 (SRv6-TE) without an SRv6-PCE-CAPABILITY sub-TLV (RFC 9603 §4.1.1)")
 		}
@@ -838,9 +901,11 @@ func (ss *Session) readFullWithDeadline(buf []uint8, deadline time.Time) error {
 	if err := ss.tcpConn.SetReadDeadline(deadline); err != nil {
 		return fmt.Errorf("set read deadline: %w", err)
 	}
+
 	if _, err := io.ReadFull(ss.tcpConn, buf); err != nil {
 		return fmt.Errorf("read PCEP message: %w", err)
 	}
+
 	return nil
 }
 
@@ -849,6 +914,7 @@ func (ss *Session) messageDeadline() time.Time {
 	if d := ss.readDeadline(); d > 0 {
 		deadline = time.Now().Add(d)
 	}
+
 	return deadline
 }
 
@@ -859,6 +925,7 @@ func validTimerRelationship(open OpenParams) bool {
 	if open.Keepalive == 0 {
 		return true
 	}
+
 	return open.DeadTimer == 0 || open.DeadTimer > open.Keepalive
 }
 
@@ -868,15 +935,18 @@ func (ss *Session) acceptableOpen(peerOpen OpenParams) bool {
 	if !validTimerRelationship(peerOpen) {
 		return false
 	}
+
 	if !ss.keepaliveRangeEnabled {
 		return true
 	}
+
 	return peerOpen.Keepalive >= ss.minKeepalive && peerOpen.Keepalive <= ss.maxKeepalive
 }
 
 // proposedTimers returns acceptable Keepalive and DeadTimer values.
 func (ss *Session) proposedTimers(peerOpen OpenParams) (keepalive, deadTimer uint8) {
 	keepalive = peerOpen.Keepalive
+
 	if ss.keepaliveRangeEnabled {
 		switch {
 		case keepalive < ss.minKeepalive:
@@ -885,11 +955,13 @@ func (ss *Session) proposedTimers(peerOpen OpenParams) (keepalive, deadTimer uin
 			keepalive = ss.maxKeepalive
 		}
 	}
+
 	deadTimer = pcep.DeadTimerFor(keepalive)
 	if deadTimer <= keepalive {
 		// No 8-bit DeadTimer exceeds keepalive (e.g. keepalive=255), so use 0.
 		deadTimer = 0
 	}
+
 	return keepalive, deadTimer
 }
 
@@ -904,21 +976,28 @@ func (ss *Session) proposeAcceptableOpen(peerOpen OpenParams) error {
 		logger.Uint8("error-value", pcepErrorValueUnacceptableNegotiable),
 		logger.Uint8("proposed-keepalive", keepalive),
 		logger.Uint8("proposed-deadtimer", deadTimer))
+
 	if err := ss.sendPCEPMessage(pcerrMessage); err != nil {
 		return err
 	}
+
 	ss.stats.inc(&ss.stats.pcerrSent)
+
 	return nil
 }
 
 // SendKeepalive sends a PCEP Keepalive message to the peer.
 func (ss *Session) SendKeepalive() error {
 	keepaliveMessage := pcep.NewKeepaliveMessage()
+
 	ss.logger.Debug("Send Keepalive Message")
+
 	if err := ss.sendPCEPMessage(keepaliveMessage); err != nil {
 		return err
 	}
+
 	ss.stats.inc(&ss.stats.keepaliveSent)
+
 	return nil
 }
 
@@ -929,10 +1008,13 @@ func (ss *Session) SendClose(reason pcep.CloseReason) error {
 	ss.logger.Debug("Send Close Message",
 		logger.Uint8("reason", uint8(closeMessage.CloseObject.Reason)),
 		logger.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#close-object-reason-field"))
+
 	if err := ss.sendPCEPMessage(closeMessage); err != nil {
 		return err
 	}
+
 	ss.stats.inc(&ss.stats.closeSent)
+
 	return nil
 }
 
@@ -944,10 +1026,13 @@ func (ss *Session) SendPCErr(errorType, errorValue uint8) error {
 		logger.Uint8("error-Type", errorType),
 		logger.Uint8("error-value", errorValue),
 		logger.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#pcep-error-object"))
+
 	if err := ss.sendPCEPMessage(pcerrMessage); err != nil {
 		return err
 	}
+
 	ss.stats.inc(&ss.stats.pcerrSent)
+
 	return nil
 }
 
@@ -962,8 +1047,10 @@ func (ss *Session) ReceivePCEPMessage() error {
 					ss.logger.Debug("ERROR! Send Close Message", logger.Error(closeErr))
 				}
 			}
+
 			return err
 		}
+
 		if done {
 			return nil
 		}
@@ -972,10 +1059,12 @@ func (ss *Session) ReceivePCEPMessage() error {
 
 func (ss *Session) receiveOnePCEPMessage() (done bool, err error) {
 	deadline := ss.messageDeadline()
+
 	commonHeader, err := ss.readCommonHeader(deadline)
 	if err != nil {
 		return false, err
 	}
+
 	ss.countReceived(commonHeader.MessageType)
 
 	switch commonHeader.MessageType {
@@ -999,12 +1088,14 @@ func (ss *Session) receiveOnePCEPMessage() (done bool, err error) {
 		if _, err := ss.readMessageBody(commonHeader.MessageLength, deadline); err != nil {
 			return false, err
 		}
+
 		ss.logger.Debug("Received Notification")
 	default:
 		if err := ss.handleUnsupportedMessage(commonHeader, deadline); err != nil {
 			return false, err
 		}
 	}
+
 	return false, nil
 }
 
@@ -1037,12 +1128,15 @@ func (ss *Session) receivePCErr(messageLength uint16, deadline time.Time) error 
 	if err != nil {
 		return err
 	}
+
 	pcerrMessage := &pcep.PCErrMessage{}
 	if err := pcerrMessage.DecodeFromBytes(bytePCErrMessageBody); err != nil {
 		ss.stats.inc(&ss.stats.corruptRcvd)
 		return err
 	}
+
 	ss.handlePCErr(pcerrMessage)
+
 	return nil
 }
 
@@ -1051,14 +1145,17 @@ func (ss *Session) receiveClose(messageLength uint16, deadline time.Time) error 
 	if err != nil {
 		return err
 	}
+
 	closeMessage := &pcep.CloseMessage{}
 	if err := closeMessage.DecodeFromBytes(byteCloseMessageBody); err != nil {
 		ss.stats.inc(&ss.stats.corruptRcvd)
 		return err
 	}
+
 	ss.logger.Debug("Received Close",
 		logger.String("reason", closeMessage.CloseObject.Reason.String()),
 		logger.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#close-object-reason-field"))
+
 	return nil
 }
 
@@ -1068,8 +1165,10 @@ func (ss *Session) handleUnexpectedOpen(messageLength uint16, deadline time.Time
 	if _, err := ss.readMessageBody(messageLength, deadline); err != nil {
 		return err
 	}
+
 	ss.logger.Debug("Received Open message while session is already Up")
 	ss.sendPCErrBestEffort(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
+
 	return nil
 }
 
@@ -1077,6 +1176,7 @@ func (ss *Session) handleUnsupportedMessage(commonHeader *pcep.CommonHeader, dea
 	if _, err := ss.readMessageBody(commonHeader.MessageLength, deadline); err != nil {
 		return err
 	}
+
 	ss.logger.Debug("Received unsupported MessageType",
 		logger.String("MessageType", commonHeader.MessageType.String()))
 
@@ -1088,8 +1188,10 @@ func (ss *Session) handleUnsupportedMessage(commonHeader *pcep.CommonHeader, dea
 		if err := ss.SendClose(pcep.CloseReasonTooManyUnrecognizedPCEPMessages); err != nil {
 			ss.logger.Debug("ERROR! Send Close Message", logger.Error(err))
 		}
+
 		return fmt.Errorf("too many unrecognized PCEP messages received within %s", ss.unknownMsgWindow)
 	}
+
 	return nil
 }
 
@@ -1113,6 +1215,7 @@ func (ss *Session) readMessageBody(messageLength uint16, deadline time.Time) ([]
 	if err := ss.readFullWithDeadline(body, deadline); err != nil {
 		return nil, err
 	}
+
 	return body, nil
 }
 
@@ -1133,6 +1236,7 @@ func (ss *Session) recordUnknownMessage() bool {
 	if count > math.MaxUint32 {
 		return true
 	}
+
 	return uint32(count) > ss.maxUnknownMsgs
 }
 
@@ -1146,6 +1250,7 @@ func (ss *Session) handlePCErr(pcerrMessage *pcep.PCErrMessage) {
 			logger.Uint32s("srp-ids", srpIDs),
 			logger.String("detail", "See https://www.iana.org/assignments/pcep/pcep.xhtml#pcep-error-object"))
 	}
+
 	for _, srpID := range srpIDs {
 		ss.forgetSRPolicyIntent(srpID)
 	}
@@ -1195,10 +1300,12 @@ func (ss *Session) handleStateReport(sr *pcep.StateReport, message *pcep.PCRptMe
 func (ss *Session) handleSynchronization(sr *pcep.StateReport, message *pcep.PCRptMessage) error {
 	ss.setSyncState(SyncStateOngoing)
 	ss.logger.Debug("Synchronize SR Policy information", logger.Any("Message", message))
+
 	if err := ss.RegisterSRPolicy(sr); err != nil {
 		ss.logger.Error("Failed to register SR Policy during synchronization", logger.Error(err), logger.Uint32("plspID", sr.LSPObject.PlspID))
 		return err
 	}
+
 	return nil
 }
 
@@ -1216,6 +1323,7 @@ func (ss *Session) IsSynced() bool {
 func (ss *Session) setSynced() {
 	ss.stateMu.Lock()
 	defer ss.stateMu.Unlock()
+
 	ss.syncState = SyncStateFinished
 }
 
@@ -1223,12 +1331,14 @@ func (ss *Session) setSynced() {
 func (ss *Session) State() SessionState {
 	ss.stateMu.RLock()
 	defer ss.stateMu.RUnlock()
+
 	return ss.state
 }
 
 func (ss *Session) setState(state SessionState) {
 	ss.stateMu.Lock()
 	defer ss.stateMu.Unlock()
+
 	ss.state = state
 	if state == SessionStateUp && ss.establishedAt.IsZero() {
 		ss.establishedAt = time.Now()
@@ -1239,6 +1349,7 @@ func (ss *Session) setState(state SessionState) {
 func (ss *Session) CreatedAt() time.Time {
 	ss.stateMu.RLock()
 	defer ss.stateMu.RUnlock()
+
 	return ss.createdAt
 }
 
@@ -1247,6 +1358,7 @@ func (ss *Session) CreatedAt() time.Time {
 func (ss *Session) EstablishedAt() time.Time {
 	ss.stateMu.RLock()
 	defer ss.stateMu.RUnlock()
+
 	return ss.establishedAt
 }
 
@@ -1254,6 +1366,7 @@ func (ss *Session) EstablishedAt() time.Time {
 func (ss *Session) Initiator() SessionInitiator {
 	ss.stateMu.RLock()
 	defer ss.stateMu.RUnlock()
+
 	return ss.initiator
 }
 
@@ -1261,15 +1374,18 @@ func (ss *Session) Initiator() SessionInitiator {
 func (ss *Session) SyncState() SyncState {
 	ss.stateMu.RLock()
 	defer ss.stateMu.RUnlock()
+
 	return ss.syncState
 }
 
 func (ss *Session) setSyncState(state SyncState) {
 	ss.stateMu.Lock()
 	defer ss.stateMu.Unlock()
+
 	if ss.syncState == SyncStateFinished {
 		return
 	}
+
 	ss.syncState = state
 }
 
@@ -1287,6 +1403,7 @@ func (ss *Session) Up() bool {
 func (ss *Session) PccType() pcep.PccType {
 	ss.stateMu.RLock()
 	defer ss.stateMu.RUnlock()
+
 	return ss.pccType
 }
 
@@ -1294,9 +1411,11 @@ func (ss *Session) PccType() pcep.PccType {
 func (ss *Session) LocalOpen() (OpenParams, bool) {
 	ss.stateMu.RLock()
 	defer ss.stateMu.RUnlock()
+
 	if ss.localOpen == nil {
 		return OpenParams{}, false
 	}
+
 	return *ss.localOpen, true
 }
 
@@ -1304,9 +1423,11 @@ func (ss *Session) LocalOpen() (OpenParams, bool) {
 func (ss *Session) PccOpen() (OpenParams, bool) {
 	ss.stateMu.RLock()
 	defer ss.stateMu.RUnlock()
+
 	if ss.pccOpen == nil {
 		return OpenParams{}, false
 	}
+
 	return *ss.pccOpen, true
 }
 
@@ -1315,6 +1436,7 @@ func (ss *Session) keepaliveInterval() uint8 {
 	if !ok {
 		return 0
 	}
+
 	return effectiveKeepalive(localOpen.Keepalive, localOpen.DeadTimer)
 }
 
@@ -1324,11 +1446,13 @@ func effectiveKeepalive(localKeepalive, localDeadTimer uint8) uint8 {
 	if localKeepalive == 0 || localDeadTimer == 0 {
 		return localKeepalive
 	}
+
 	limit := localDeadTimer / localDeadTimerKeepaliveDivisor
 	if limit == 0 {
 		// RFC 5440 §4.2.2: the minimum Keepalive timer value is 1 second.
 		limit = 1
 	}
+
 	return min(localKeepalive, limit)
 }
 
@@ -1349,6 +1473,7 @@ type sessionSnapshot struct {
 func (ss *Session) snapshot() sessionSnapshot {
 	ss.stateMu.RLock()
 	defer ss.stateMu.RUnlock()
+
 	return sessionSnapshot{
 		state:                   ss.state,
 		pccType:                 ss.pccType,
@@ -1368,6 +1493,7 @@ func (snap sessionSnapshot) keepaliveInterval() uint8 {
 	if snap.localOpen == nil {
 		return 0
 	}
+
 	return effectiveKeepalive(snap.localOpen.Keepalive, snap.localOpen.DeadTimer)
 }
 
@@ -1376,6 +1502,7 @@ func (snap sessionSnapshot) readDeadline() time.Duration {
 	if snap.pccOpen == nil || snap.pccOpen.Keepalive == 0 || snap.pccOpen.DeadTimer == 0 {
 		return 0
 	}
+
 	return time.Duration(snap.pccOpen.DeadTimer) * time.Second
 }
 
@@ -1383,6 +1510,7 @@ func (snap sessionSnapshot) readDeadline() time.Duration {
 func (ss *Session) ReceivedCapabilities() []pcep.CapabilityInterface {
 	ss.stateMu.RLock()
 	defer ss.stateMu.RUnlock()
+
 	return slices.Clone(ss.receivedPccCapabilities)
 }
 
@@ -1390,18 +1518,21 @@ func (ss *Session) ReceivedCapabilities() []pcep.CapabilityInterface {
 func (ss *Session) AdvertisedCapabilities() []pcep.CapabilityInterface {
 	ss.stateMu.RLock()
 	defer ss.stateMu.RUnlock()
+
 	return slices.Clone(ss.advertisedCapabilities)
 }
 
 // Response to request from PCE (SrpID != 0).
 func (ss *Session) handleStatefulPCERequest(sr *pcep.StateReport) error {
 	ss.logger.Debug("Finish Stateful PCE request", logger.Uint32("srpID", sr.SrpObject.SrpID))
+
 	if sr.LSPObject.RFlag {
 		ss.DeleteSRPolicy(sr)
 	} else if err := ss.RegisterSRPolicy(sr); err != nil {
 		ss.logger.Error("Failed to register SR Policy for Stateful PCE request", logger.Error(err), logger.Uint32("plspID", sr.LSPObject.PlspID))
 		return err
 	}
+
 	return nil
 }
 
@@ -1419,11 +1550,13 @@ func (ss *Session) handleSRPolicyWithPLSPID(sr *pcep.StateReport) error {
 		ss.logger.Error("Failed to compute path from TED", logger.Error(err))
 		return err
 	}
+
 	eroObject, err := createEroFromSegmentList(computedSegmentList)
 	if err != nil {
 		ss.logger.Error("Failed to create ERO from computed segment list", logger.Error(err))
 		return err
 	}
+
 	sr.EroObject = eroObject
 
 	if err := ss.RegisterSRPolicy(sr); err != nil {
@@ -1441,6 +1574,7 @@ func (ss *Session) handleSRPolicyWithPLSPID(sr *pcep.StateReport) error {
 		ss.logger.Error("Failed to send PC update", logger.Uint32("plspID", sr.LSPObject.PlspID), logger.Error(err))
 		return err
 	}
+
 	return nil
 }
 
@@ -1452,6 +1586,7 @@ func (ss *Session) handleReportedSRPolicy(sr *pcep.StateReport) error {
 		ss.logger.Error("Failed to register reported SR Policy", logger.Error(err), logger.Uint32("plspID", sr.LSPObject.PlspID))
 		return err
 	}
+
 	return nil
 }
 
@@ -1486,6 +1621,7 @@ func (ss *Session) extractSrcDstRouterIDs(sr *pcep.StateReport) (srcRouterID, ds
 	if sr.LSPObject.SrcAddr.IsValid() {
 		srcAddr = sr.LSPObject.SrcAddr
 	}
+
 	if sr.LSPObject.DstAddr.IsValid() {
 		dstAddr = sr.LSPObject.DstAddr
 	}
@@ -1513,9 +1649,11 @@ func (ss *Session) findRouterIDFromAddress(addrIndex map[netip.Addr]string, addr
 	if node, ok := tedNode(ss.ted, addr.String()); ok {
 		return node.RouterID, nil
 	}
+
 	if routerID, ok := addrIndex[addr]; ok {
 		return routerID, nil
 	}
+
 	return "", fmt.Errorf("address %s not found in TED", addr)
 }
 
@@ -1541,6 +1679,7 @@ func (ss *Session) selectMetricType(sr *pcep.StateReport) table.MetricType {
 	if ss.pccType == pcep.JuniperLegacy {
 		return table.IGPMetric
 	}
+
 	return table.TEMetric
 }
 
@@ -1557,12 +1696,14 @@ func createEroFromSegmentList(segmentList []table.Segment) (*pcep.EroObject, err
 			if err != nil {
 				return nil, fmt.Errorf("failed to build SR-MPLS ERO subobject: %w", err)
 			}
+
 			eroObject.EroSubobjects = append(eroObject.EroSubobjects, subobj)
 		case table.SegmentSRv6:
 			subobj, err := pcep.NewSRv6EroSubobject(seg)
 			if err != nil {
 				return nil, fmt.Errorf("failed to build SRv6 ERO subobject: %w", err)
 			}
+
 			eroObject.EroSubobjects = append(eroObject.EroSubobjects, subobj)
 		}
 	}
@@ -1594,6 +1735,7 @@ func (ss *Session) SendOpen() error {
 
 	openMessage := pcep.NewOpenMessage(sessionID, keepalive, deadTimer, ss.AdvertisedCapabilities())
 	ss.logger.Debug("Send Open Message")
+
 	if err := ss.sendPCEPMessage(openMessage); err != nil {
 		return err
 	}
@@ -1621,12 +1763,15 @@ func nextUnusedSRPID(
 		if head == 0 || head >= limit {
 			head = 1
 		}
+
 		candidate := head
+
 		head++
 		if !used(candidate) {
 			return candidate, head, nil
 		}
 	}
+
 	return 0, head, errors.New("no SRP-ID available: all SRP-IDs are in use")
 }
 
@@ -1639,8 +1784,10 @@ func (ss *Session) allocateSRPID(polType table.PolicyType, metric table.MetricTy
 	if err != nil {
 		return 0, err
 	}
+
 	ss.srpIDHead = nextHead
 	ss.rememberSRPolicyIntent(srpID, polType, metric)
+
 	return srpID, nil
 }
 
@@ -1657,16 +1804,21 @@ func (ss *Session) SendPCInitiate(srPolicy table.SRPolicy, lspDelete bool) error
 	} else {
 		pcinitiateMessage, err = pcep.NewPCInitiateMessage(srpID, srPolicy, pcep.VendorSpecific(ss.pccType), pcep.OriginatorASN(ss.asn))
 	}
+
 	if err != nil {
 		ss.forgetSRPolicyIntent(srpID)
 		return fmt.Errorf("build PC-Initiate message for SR policy %q: %w", srPolicy.Name, err)
 	}
+
 	ss.logger.Debug("Send PCInitiate Message")
+
 	if err := ss.sendPCEPMessage(pcinitiateMessage); err != nil {
 		ss.forgetSRPolicyIntent(srpID)
 		return err
 	}
+
 	ss.stats.inc(&ss.stats.pcinitiateSent)
+
 	return nil
 }
 
@@ -1682,12 +1834,16 @@ func (ss *Session) SendPCUpdate(srPolicy table.SRPolicy) error {
 		ss.forgetSRPolicyIntent(srpID)
 		return fmt.Errorf("build PC-Update message for SR policy %q: %w", srPolicy.Name, err)
 	}
+
 	ss.logger.Debug("Send Update Message")
+
 	if err := ss.sendPCEPMessage(pcupdateMessage); err != nil {
 		ss.forgetSRPolicyIntent(srpID)
 		return err
 	}
+
 	ss.stats.inc(&ss.stats.updSent)
+
 	return nil
 }
 
@@ -1713,6 +1869,7 @@ func (ss *Session) resolveColorPreference(sr *pcep.StateReport) (color, preferen
 	} else {
 		// Check if PCC supports color capability
 		hasColor := false
+
 		for _, cap := range ss.receivedPccCapabilities {
 			if c, ok := cap.(*pcep.StatefulPCECapability); ok && c.ColorCapability {
 				hasColor = true
@@ -1752,10 +1909,12 @@ func validateSegmentList(sr *pcep.StateReport) ([]table.Segment, error) {
 	if sr.EroObject == nil {
 		return nil, fmt.Errorf("EroObject is nil for PlspID %d", sr.LSPObject.PlspID)
 	}
+
 	list := sr.EroObject.ToSegmentList()
 	if len(list) == 0 {
 		return nil, fmt.Errorf("SegmentList is empty for PlspID %d", sr.LSPObject.PlspID)
 	}
+
 	return list, nil
 }
 
@@ -1777,11 +1936,13 @@ func (ss *Session) updateOrCreatePolicy(sr *pcep.StateReport, segmentList []tabl
 				LSPID:       lspID,
 				State:       state,
 			})
+
 			if intent, ok := ss.takeSRPolicyIntent(sr.SrpObject.SrpID); ok {
 				p.Type = intent.polType
 				p.Metric = intent.metric
 			}
 		}
+
 		return nil
 	}
 
@@ -1789,6 +1950,7 @@ func (ss *Session) updateOrCreatePolicy(sr *pcep.StateReport, segmentList []tabl
 	if !src.IsValid() {
 		src = sr.AssociationObject.AssocSrc
 	}
+
 	if !src.IsValid() {
 		return fmt.Errorf("invalid source address for PlspID %d", sr.LSPObject.PlspID)
 	}
@@ -1797,6 +1959,7 @@ func (ss *Session) updateOrCreatePolicy(sr *pcep.StateReport, segmentList []tabl
 	if !dst.IsValid() {
 		dst = sr.AssociationObject.Endpoint()
 	}
+
 	if !dst.IsValid() {
 		return fmt.Errorf("invalid destination address for PlspID %d", sr.LSPObject.PlspID)
 	}
@@ -1806,7 +1969,9 @@ func (ss *Session) updateOrCreatePolicy(sr *pcep.StateReport, segmentList []tabl
 		p.Type = intent.polType
 		p.Metric = intent.metric
 	}
+
 	ss.srPolicies = append(ss.srPolicies, p)
+
 	return nil
 }
 
@@ -1823,6 +1988,7 @@ func (ss *Session) DeleteSRPolicy(sr *pcep.StateReport) {
 			ss.forgetSRPolicyIntent(sr.SrpObject.SrpID)
 			ss.srPolicies[i] = ss.srPolicies[len(ss.srPolicies)-1]
 			ss.srPolicies = ss.srPolicies[:len(ss.srPolicies)-1]
+
 			break
 		}
 	}
@@ -1835,6 +2001,7 @@ func (ss *Session) searchSRPolicyLocked(plspID uint32) (*table.SRPolicy, bool) {
 			return v, true
 		}
 	}
+
 	return nil, false
 }
 
@@ -1842,6 +2009,7 @@ func (ss *Session) searchSRPolicyLocked(plspID uint32) (*table.SRPolicy, bool) {
 func (ss *Session) SearchSRPolicy(plspID uint32) (*table.SRPolicy, bool) {
 	ss.srPoliciesMu.RLock()
 	defer ss.srPoliciesMu.RUnlock()
+
 	return ss.searchSRPolicyLocked(plspID)
 }
 
@@ -1849,11 +2017,13 @@ func (ss *Session) SearchSRPolicy(plspID uint32) (*table.SRPolicy, bool) {
 func (ss *Session) SearchPlspID(color uint32, endpoint netip.Addr) (uint32, bool) {
 	ss.srPoliciesMu.RLock()
 	defer ss.srPoliciesMu.RUnlock()
+
 	for _, v := range ss.srPolicies {
 		if v.Color == color && v.DstAddr == endpoint {
 			return v.PlspID, true
 		}
 	}
+
 	return 0, false
 }
 
@@ -1861,9 +2031,11 @@ func (ss *Session) SearchPlspID(color uint32, endpoint netip.Addr) (uint32, bool
 func (ss *Session) SRPolicies() []*table.SRPolicy {
 	ss.srPoliciesMu.RLock()
 	defer ss.srPoliciesMu.RUnlock()
+
 	policies := make([]*table.SRPolicy, len(ss.srPolicies))
 	for i, p := range ss.srPolicies {
 		clone := *p
+
 		clone.SegmentList = slices.Clone(p.SegmentList)
 		for j, seg := range clone.SegmentList {
 			if srv6, ok := seg.(table.SegmentSRv6); ok {
@@ -1871,7 +2043,9 @@ func (ss *Session) SRPolicies() []*table.SRPolicy {
 				clone.SegmentList[j] = srv6
 			}
 		}
+
 		policies[i] = &clone
 	}
+
 	return policies
 }

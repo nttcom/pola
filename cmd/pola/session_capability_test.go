@@ -112,10 +112,12 @@ func TestBuildCapabilitiesView_PathSetupTypeSubCapabilitiesActAsOwnGroups(t *tes
 	view := buildCapabilitiesView(local, peer)
 
 	lines := view.commonLines()
+
 	headers := make([]string, len(lines))
 	for i, l := range lines {
 		headers[i] = l.Header
 	}
+
 	assert.Contains(t, headers, "SR-PCE-CAPABILITY [RFC8664]: SR",
 		"SR sub-capability must render as its own common group")
 	assert.Contains(t, headers, "SRv6-PCE-CAPABILITY [RFC9603]: SRv6",
@@ -275,10 +277,12 @@ func TestCommonCapabilityLines_OrdersByTLVTypeRegardlessOfInputOrder(t *testing.
 	}
 
 	lines := capabilityLines(capabilityGroups(common))
+
 	headers := make([]string, 0, len(lines))
 	for _, line := range lines {
 		headers = append(headers, line.Header)
 	}
+
 	assert.Equal(t, []string{
 		"VENDOR-INFORMATION [RFC7470]: 2636 (Juniper Networks, Inc.)",
 		"STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Stateful",
@@ -317,6 +321,7 @@ func TestBuildCapabilitiesView_UntypedCommonCapabilitiesLandInOther(t *testing.T
 	for _, g := range view.Common.Other {
 		otherByGroup[g.Capability] = g.Items
 	}
+
 	assert.Contains(t, otherByGroup[capGroupVendorInformation], pcep.EnterpriseNumberJuniper.DisplayLabel())
 	assert.Contains(t, otherByGroup[capGroupMultipath], "Multipath")
 	assert.Contains(t, otherByGroup[capGroupMultipath], "MaxMultipaths=4")

@@ -26,6 +26,7 @@ func TestNewTEDCmd_RunE(t *testing.T) {
 		Enabled: true,
 		Nodes:   []*pb.LsNode{{RouterId: testRouterID1}},
 	}}
+
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	require.NoError(t, cmd.RunE(cmd, []string{}))
@@ -40,34 +41,45 @@ func TestShowTED(t *testing.T) {
 
 	t.Run("grpc error propagates", func(t *testing.T) {
 		t.Parallel()
+
 		client := &fakePCEServiceClient{tedErr: assert.AnError}
+
 		var buf bytes.Buffer
+
 		err := showTED(&buf, outputText, client)
 		require.Error(t, err)
 	})
 
 	t.Run("disabled TED returns an error", func(t *testing.T) {
 		t.Parallel()
+
 		client := &fakePCEServiceClient{tedResp: &pb.GetTEDResponse{Enabled: false}}
+
 		var buf bytes.Buffer
+
 		err := showTED(&buf, outputText, client)
 		require.ErrorContains(t, err, "TED is disabled by polad")
 	})
 
 	t.Run("disabled TED returns an error even in JSON mode", func(t *testing.T) {
 		t.Parallel()
+
 		client := &fakePCEServiceClient{tedResp: &pb.GetTEDResponse{Enabled: false}}
+
 		var buf bytes.Buffer
+
 		err := showTED(&buf, outputJSON, client)
 		require.ErrorContains(t, err, "TED is disabled by polad")
 	})
 
 	t.Run("plain text output", func(t *testing.T) {
 		t.Parallel()
+
 		client := &fakePCEServiceClient{tedResp: &pb.GetTEDResponse{
 			Enabled: true,
 			Nodes:   []*pb.LsNode{{RouterId: testRouterID1}},
 		}}
+
 		var buf bytes.Buffer
 		require.NoError(t, showTED(&buf, outputText, client))
 		assert.Contains(t, buf.String(), testRouterID1)
@@ -75,6 +87,7 @@ func TestShowTED(t *testing.T) {
 
 	t.Run("json output", func(t *testing.T) {
 		t.Parallel()
+
 		node := &pb.LsNode{
 			Asn:      65000,
 			RouterId: testRouterID1,
@@ -128,6 +141,7 @@ func TestShowTED(t *testing.T) {
 
 		linkMap2, ok := links[1].(map[string]any)
 		require.True(t, ok)
+
 		_, hasLocalIP := linkMap2["localIp"]
 		assert.False(t, hasLocalIP)
 		assert.Equal(t, testPeerAddr2, linkMap2["remoteIp"])
@@ -139,6 +153,7 @@ func TestShowTED(t *testing.T) {
 		require.True(t, ok)
 		//nolint:testifylint // float-compare: JSON decodes numbers to float64, and this is an exact small integer.
 		assert.Equal(t, float64(1), prefixMap["sidIndex"])
+
 		_, hasSidIndex := prefixes[1].(map[string]any)["sidIndex"]
 		assert.False(t, hasSidIndex)
 
