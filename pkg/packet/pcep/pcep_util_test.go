@@ -3,12 +3,14 @@
 // This software is released under the MIT License.
 // see https://github.com/nttcom/pola/blob/main/LICENSE
 
-package pcep
+package pcep_test
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/nttcom/pola/pkg/packet/pcep"
 )
 
 func TestAppendByteSlices(t *testing.T) {
@@ -34,7 +36,7 @@ func TestAppendByteSlices(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tt.expected, AppendByteSlices(tt.input...))
+			assert.Equal(t, tt.expected, pcep.AppendByteSlices(tt.input...))
 		})
 	}
 }
@@ -59,12 +61,12 @@ func TestUint16ToByteSlice(t *testing.T) {
 		},
 		{
 			name:     "Convert TLVType 0x0102 to bytes",
-			input:    TLVType(0x0102),
+			input:    pcep.TLVType(0x0102),
 			expected: []byte{0x01, 0x02},
 		},
 		{
 			name:     "Convert TLVType 0xFFFF to bytes",
-			input:    TLVType(0xFFFF),
+			input:    pcep.TLVType(0xFFFF),
 			expected: []byte{0xFF, 0xFF},
 		},
 	}
@@ -77,9 +79,9 @@ func TestUint16ToByteSlice(t *testing.T) {
 
 			switch v := tt.input.(type) {
 			case uint16:
-				result = Uint16ToByteSlice(v)
-			case TLVType:
-				result = Uint16ToByteSlice(v)
+				result = pcep.Uint16ToByteSlice(v)
+			case pcep.TLVType:
+				result = pcep.Uint16ToByteSlice(v)
 			default:
 				t.Fatalf("unexpected type %T", v)
 			}
@@ -112,7 +114,7 @@ func TestUint32ToByteSlice(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tt.expected, Uint32ToByteSlice(tt.input))
+			assert.Equal(t, tt.expected, pcep.Uint32ToByteSlice(tt.input))
 		})
 	}
 }
@@ -120,7 +122,7 @@ func TestUint32ToByteSlice(t *testing.T) {
 func TestIsBitSet(t *testing.T) {
 	t.Parallel()
 
-	type testCase[T Bitwise] struct {
+	type testCase[T pcep.Bitwise] struct {
 		name     string
 		value    T
 		mask     T
@@ -138,7 +140,7 @@ func TestIsBitSet(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				assert.Equal(t, tt.expected, IsBitSet(tt.value, tt.mask))
+				assert.Equal(t, tt.expected, pcep.IsBitSet(tt.value, tt.mask))
 			})
 		}
 	})
@@ -154,7 +156,7 @@ func TestIsBitSet(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				assert.Equal(t, tt.expected, IsBitSet(tt.value, tt.mask))
+				assert.Equal(t, tt.expected, pcep.IsBitSet(tt.value, tt.mask))
 			})
 		}
 	})
@@ -170,7 +172,7 @@ func TestIsBitSet(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				assert.Equal(t, tt.expected, IsBitSet(tt.value, tt.mask))
+				assert.Equal(t, tt.expected, pcep.IsBitSet(tt.value, tt.mask))
 			})
 		}
 	})
@@ -233,7 +235,7 @@ func TestSetBit(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tt.expected, SetBit(tt.value, tt.bit, tt.condition))
+			assert.Equal(t, tt.expected, pcep.SetBit(tt.value, tt.bit, tt.condition))
 		})
 	}
 }

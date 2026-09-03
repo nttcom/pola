@@ -3,7 +3,7 @@
 // This software is released under the MIT License.
 // see https://github.com/nttcom/pola/blob/main/LICENSE
 
-package logger
+package logger_test
 
 import (
 	"bytes"
@@ -15,7 +15,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap/zapcore"
+
+	"github.com/nttcom/pola/pkg/logger"
 )
 
 func TestNew(t *testing.T) {
@@ -23,19 +24,19 @@ func TestNew(t *testing.T) {
 
 	tests := []struct {
 		name            string
-		level           Level
+		level           logger.Level
 		wantDebugLogged bool
 		wantInfoLogged  bool
 	}{
 		{
 			name:            "info level logs only info and above",
-			level:           LevelInfo,
+			level:           logger.LevelInfo,
 			wantDebugLogged: false,
 			wantInfoLogged:  true,
 		},
 		{
 			name:            "debug level logs debug and above",
-			level:           LevelDebug,
+			level:           logger.LevelDebug,
 			wantDebugLogged: true,
 			wantInfoLogged:  true,
 		},
@@ -55,7 +56,7 @@ func TestNew(t *testing.T) {
 
 			var console bytes.Buffer
 
-			l := New(fp, &console, tt.level)
+			l := logger.New(fp, &console, tt.level)
 			l.Debug("debug message")
 			l.Info("info message")
 
@@ -105,25 +106,10 @@ func TestNew(t *testing.T) {
 func TestNewNop(t *testing.T) {
 	t.Parallel()
 
-	l := NewNop()
+	l := logger.NewNop()
 	l.Debug("debug message")
 	l.Info("info message")
 	l.Warn("warn message")
 	l.Error("error message")
 	require.NoError(t, l.Sync())
-}
-
-func TestLevelZapLevel(t *testing.T) {
-	t.Parallel()
-
-	cases := map[Level]zapcore.Level{
-		LevelDebug: zapcore.DebugLevel,
-		LevelInfo:  zapcore.InfoLevel,
-		LevelWarn:  zapcore.WarnLevel,
-		LevelError: zapcore.ErrorLevel,
-		Level(99):  zapcore.InfoLevel,
-	}
-	for level, want := range cases {
-		assert.Equal(t, want, level.zapLevel())
-	}
 }

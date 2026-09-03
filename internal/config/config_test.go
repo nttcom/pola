@@ -3,7 +3,7 @@
 // This software is released under the MIT License.
 // see https://github.com/nttcom/pola/blob/main/LICENSE
 
-package config
+package config_test
 
 import (
 	"io/fs"
@@ -13,6 +13,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/nttcom/pola/internal/config"
 )
 
 func writeConfig(t *testing.T, content string) string {
@@ -50,10 +52,10 @@ func TestReadConfigFile_Valid(t *testing.T) {
 
 	path := writeConfig(t, validConfig)
 
-	c, err := ReadConfigFile(path)
+	c, err := config.ReadConfigFile(path)
 	require.NoError(t, err)
-	assert.Equal(t, GRPCServer{Address: "127.0.0.1", Port: "50052"}, c.Global.GRPCServer)
-	assert.Equal(t, &TED{Enable: true, Source: "gobgp", ASN: 65000}, c.Global.TED)
+	assert.Equal(t, config.GRPCServer{Address: "127.0.0.1", Port: "50052"}, c.Global.GRPCServer)
+	assert.Equal(t, &config.TED{Enable: true, Source: "gobgp", ASN: 65000}, c.Global.TED)
 	assert.NoError(t, c.Validate())
 }
 
@@ -78,7 +80,7 @@ global:
 `
 	path := writeConfig(t, legacyConfig)
 
-	_, err := ReadConfigFile(path)
+	_, err := config.ReadConfigFile(path)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "grpc-server")
 }
@@ -86,7 +88,7 @@ global:
 func TestReadConfigFile_FileNotFound(t *testing.T) {
 	t.Parallel()
 
-	_, err := ReadConfigFile(filepath.Join(t.TempDir(), "does-not-exist.yaml"))
+	_, err := config.ReadConfigFile(filepath.Join(t.TempDir(), "does-not-exist.yaml"))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, fs.ErrNotExist)
 }
@@ -307,7 +309,7 @@ global:
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			path := writeConfig(t, tt.config)
-			c, err := ReadConfigFile(path)
+			c, err := config.ReadConfigFile(path)
 			require.NoError(t, err)
 
 			err = c.Validate()
@@ -333,7 +335,7 @@ func TestReadConfigFile_UnquotedIntegerPort(t *testing.T) {
 
 	path := writeConfig(t, validConfig)
 
-	c, err := ReadConfigFile(path)
+	c, err := config.ReadConfigFile(path)
 	require.NoError(t, err)
 	assert.Equal(t, "50052", c.Global.GRPCServer.Port)
 }
@@ -358,7 +360,7 @@ global:
     enable: false
 `)
 
-	c, err := ReadConfigFile(path)
+	c, err := config.ReadConfigFile(path)
 	require.NoError(t, err)
 	require.NoError(t, c.Validate())
 	require.NotNil(t, c.Global.PCEP.Keepalive)
@@ -372,7 +374,7 @@ func TestPCEPTimers_UnsetLeavesTimersNil(t *testing.T) {
 
 	path := writeConfig(t, validConfig)
 
-	c, err := ReadConfigFile(path)
+	c, err := config.ReadConfigFile(path)
 	require.NoError(t, err)
 
 	assert.Nil(t, c.Global.PCEP.Keepalive)
@@ -399,7 +401,7 @@ global:
     enable: false
 `)
 
-	c, err := ReadConfigFile(path)
+	c, err := config.ReadConfigFile(path)
 	require.NoError(t, err)
 	require.ErrorContains(t, c.Validate(), "global.pcep.deadTimer must be 0")
 }
@@ -424,7 +426,7 @@ global:
     enable: false
 `)
 
-	c, err := ReadConfigFile(path)
+	c, err := config.ReadConfigFile(path)
 	require.NoError(t, err)
 	require.ErrorContains(t, c.Validate(), "global.pcep.deadTimer must be greater than keepalive")
 }
@@ -448,7 +450,7 @@ global:
     enable: false
 `)
 
-	c, err := ReadConfigFile(path)
+	c, err := config.ReadConfigFile(path)
 	require.NoError(t, err)
 	require.ErrorContains(t, c.Validate(), "global.pcep.deadTimer must be greater than keepalive")
 }
@@ -473,7 +475,7 @@ global:
     enable: false
 `)
 
-	c, err := ReadConfigFile(path)
+	c, err := config.ReadConfigFile(path)
 	require.NoError(t, err)
 	require.ErrorContains(t, c.Validate(), "global.pcep.deadTimer must be greater than keepalive")
 }
@@ -497,7 +499,7 @@ global:
     enable: false
 `)
 
-	c, err := ReadConfigFile(path)
+	c, err := config.ReadConfigFile(path)
 	require.NoError(t, err)
 	require.ErrorContains(t, c.Validate(), "global.pcep.deadTimer must be greater than keepalive")
 }
@@ -523,7 +525,7 @@ global:
     enable: false
 `)
 
-	c, err := ReadConfigFile(path)
+	c, err := config.ReadConfigFile(path)
 	require.NoError(t, err)
 	require.NoError(t, c.Validate())
 
@@ -540,7 +542,7 @@ func TestPCEPKeepaliveRange_UnsetLeavesFieldsNil(t *testing.T) {
 
 	path := writeConfig(t, validConfig)
 
-	c, err := ReadConfigFile(path)
+	c, err := config.ReadConfigFile(path)
 	require.NoError(t, err)
 
 	assert.Nil(t, c.Global.PCEP.MinKeepalive)
@@ -568,7 +570,7 @@ global:
     enable: false
 `)
 
-	c, err := ReadConfigFile(path)
+	c, err := config.ReadConfigFile(path)
 	require.NoError(t, err)
 
 	require.ErrorContains(t, c.Validate(), "global.pcep.minKeepalive must be <= global.pcep.maxKeepalive")

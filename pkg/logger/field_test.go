@@ -3,28 +3,30 @@
 // This software is released under the MIT License.
 // see https://github.com/nttcom/pola/blob/main/LICENSE
 
-package logger
+package logger_test
 
 import (
 	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/nttcom/pola/pkg/logger"
 )
 
 func TestFieldConstructors(t *testing.T) {
 	t.Parallel()
 
-	lg, rec := NewRecorder(LevelDebug)
+	lg, rec := logger.NewRecorder(logger.LevelDebug)
 	lg.Info(
 		"msg",
-		Any("any", 42),
-		Error(errors.New("boom")),
-		Int("int", -1),
-		String("string", "val"),
-		Uint8("uint8", 8),
-		Uint32("uint32", 32),
-		Uint32s("uint32s", []uint32{1, 2, 3}),
+		logger.Any("any", 42),
+		logger.Error(errors.New("boom")),
+		logger.Int("int", -1),
+		logger.String("string", "val"),
+		logger.Uint8("uint8", 8),
+		logger.Uint32("uint32", 32),
+		logger.Uint32s("uint32s", []uint32{1, 2, 3}),
 	)
 
 	entries := rec.All()
@@ -38,11 +40,4 @@ func TestFieldConstructors(t *testing.T) {
 		"uint32":  uint32(32),
 		"uint32s": []any{uint32(1), uint32(2), uint32(3)},
 	}, entries[0].Fields)
-}
-
-func TestZapFieldsNil(t *testing.T) {
-	t.Parallel()
-
-	assert.Nil(t, zapFields(nil))
-	assert.Nil(t, zapFields([]Field{}))
 }

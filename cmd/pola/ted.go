@@ -7,6 +7,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"io"
 
 	"github.com/spf13/cobra"
@@ -29,7 +30,7 @@ func newTEDCmd(c *cli) *cobra.Command {
 func showTED(w io.Writer, format outputFormat, client pb.PCEServiceClient) error {
 	ted, err := grpc.GetTED(client)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get TED: %w", err)
 	}
 
 	if ted == nil {

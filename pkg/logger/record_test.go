@@ -3,7 +3,7 @@
 // This software is released under the MIT License.
 // see https://github.com/nttcom/pola/blob/main/LICENSE
 
-package logger
+package logger_test
 
 import (
 	"sync"
@@ -11,13 +11,14 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap/zapcore"
+
+	"github.com/nttcom/pola/pkg/logger"
 )
 
 func TestNewRecorderFiltersByLevel(t *testing.T) {
 	t.Parallel()
 
-	lg, rec := NewRecorder(LevelWarn)
+	lg, rec := logger.NewRecorder(logger.LevelWarn)
 	lg.Debug("debug")
 	lg.Info("info")
 	lg.Warn("warn")
@@ -31,7 +32,7 @@ func TestNewRecorderFiltersByLevel(t *testing.T) {
 func TestNewRecorderLevels(t *testing.T) {
 	t.Parallel()
 
-	lg, rec := NewRecorder(LevelDebug)
+	lg, rec := logger.NewRecorder(logger.LevelDebug)
 	lg.Debug("debug")
 	lg.Info("info")
 	lg.Warn("warn")
@@ -39,7 +40,7 @@ func TestNewRecorderLevels(t *testing.T) {
 
 	entries := rec.All()
 	require.Len(t, entries, 4)
-	assert.Equal(t, []Level{LevelDebug, LevelInfo, LevelWarn, LevelError}, []Level{
+	assert.Equal(t, []logger.Level{logger.LevelDebug, logger.LevelInfo, logger.LevelWarn, logger.LevelError}, []logger.Level{
 		entries[0].Level, entries[1].Level, entries[2].Level, entries[3].Level,
 	})
 }
@@ -47,8 +48,8 @@ func TestNewRecorderLevels(t *testing.T) {
 func TestLoggerWithMergesFields(t *testing.T) {
 	t.Parallel()
 
-	lg, rec := NewRecorder(LevelDebug)
-	child := lg.With(String("server", "grpc"))
+	lg, rec := logger.NewRecorder(logger.LevelDebug)
+	child := lg.With(logger.String("server", "grpc"))
 	child.Info("started")
 	lg.Info("root")
 
@@ -61,10 +62,10 @@ func TestLoggerWithMergesFields(t *testing.T) {
 func TestRecorderFilterByMessage(t *testing.T) {
 	t.Parallel()
 
-	_, rec := NewRecorder(LevelDebug)
+	_, rec := logger.NewRecorder(logger.LevelDebug)
 	assert.Nil(t, rec.FilterByMessage("missing"))
 
-	lg, rec := NewRecorder(LevelDebug)
+	lg, rec := logger.NewRecorder(logger.LevelDebug)
 	lg.Info("hello")
 	lg.Info("world")
 	lg.Info("hello")
@@ -77,7 +78,7 @@ func TestRecorderFilterByMessage(t *testing.T) {
 func TestRecorderAllReturnsCopy(t *testing.T) {
 	t.Parallel()
 
-	lg, rec := NewRecorder(LevelDebug)
+	lg, rec := logger.NewRecorder(logger.LevelDebug)
 	lg.Info("first")
 
 	entries := rec.All()
@@ -89,8 +90,8 @@ func TestRecorderAllReturnsCopy(t *testing.T) {
 func TestRecorderAllFieldsNotShared(t *testing.T) {
 	t.Parallel()
 
-	lg, rec := NewRecorder(LevelDebug)
-	lg.Info("first", String("key", "orig"))
+	lg, rec := logger.NewRecorder(logger.LevelDebug)
+	lg.Info("first", logger.String("key", "orig"))
 
 	entries := rec.All()
 	entries[0].Fields["key"] = "mutated"
@@ -103,8 +104,8 @@ func TestRecorderAllFieldsNotShared(t *testing.T) {
 func TestRecorderFilterByMessageFieldsNotShared(t *testing.T) {
 	t.Parallel()
 
-	lg, rec := NewRecorder(LevelDebug)
-	lg.Info("hello", String("key", "orig"))
+	lg, rec := logger.NewRecorder(logger.LevelDebug)
+	lg.Info("hello", logger.String("key", "orig"))
 
 	entries := rec.FilterByMessage("hello")
 	entries[0].Fields["key"] = "mutated"
@@ -116,7 +117,7 @@ func TestRecorderFilterByMessageFieldsNotShared(t *testing.T) {
 func TestRecorderConcurrentAccess(t *testing.T) {
 	t.Parallel()
 
-	lg, rec := NewRecorder(LevelDebug)
+	lg, rec := logger.NewRecorder(logger.LevelDebug)
 
 	var wg sync.WaitGroup
 	for range 100 {
@@ -136,21 +137,6 @@ func TestRecorderConcurrentAccess(t *testing.T) {
 func TestRecorderSync(t *testing.T) {
 	t.Parallel()
 
-	lg, _ := NewRecorder(LevelDebug)
+	lg, _ := logger.NewRecorder(logger.LevelDebug)
 	require.NoError(t, lg.Sync())
-}
-
-func TestRecordCore_Check_DisabledLevel(t *testing.T) {
-	t.Parallel()
-
-	_, rec := NewRecorder(LevelWarn)
-	core := &recordCore{min: LevelWarn.zapLevel(), rec: rec}
-
-	entry := zapcore.Entry{Level: LevelDebug.zapLevel(), Message: "debug"}
-	checked := &zapcore.CheckedEntry{}
-
-	result := core.Check(entry, checked)
-
-	require.Equal(t, checked, result)
-	require.Equal(t, 0, rec.Len())
 }

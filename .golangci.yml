@@ -49,6 +49,7 @@ linters:
     - revive
     - spancheck
     - testifylint
+    - testpackage
     - unconvert
     - usestdlibvars
     - wastedassign
@@ -116,6 +117,8 @@ linters:
       require-specific: true
     prealloc:
       simple: true
+    testpackage:
+      skip-regexp: (export|internal)_test\.go
     revive:
       enable-all-rules: true
       rules:
@@ -176,7 +179,6 @@ linters:
       ignore-package-globs:
         # Must preserve *status.Status errors for CLI rendering/details.
         - github.com/nttcom/pola/api/pola/v1
-        - github.com/nttcom/pola/cmd/pola/grpc
   exclusions:
     generated: lax
     presets:
@@ -188,6 +190,7 @@ linters:
           - dupl
           - gosec
           - noctx
+          - wrapcheck
       - path: \.pb\.go$
         linters:
           - gochecknoinits

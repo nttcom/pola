@@ -45,7 +45,7 @@ func deleteSession(out io.Writer, session netip.Addr, jsonFlag bool, client pb.P
 
 	err := grpc.DeleteSession(client, request)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to delete session: %w", err)
 	}
 
 	if jsonFlag {

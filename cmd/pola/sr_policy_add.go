@@ -236,7 +236,11 @@ func addSRPolicyWithEndpointAddr(input inputFormat, noSIDValidate bool, client p
 		NoSidValidate:      noSIDValidate,
 	}
 
-	return grpc.CreateSRPolicy(client, request)
+	if err := grpc.CreateSRPolicy(client, request); err != nil {
+		return fmt.Errorf("failed to create SR policy: %w", err)
+	}
+
+	return nil
 }
 
 func addSRPolicyWithRouterID(input inputFormat, noSIDValidate bool, client pb.PCEServiceClient) error {
@@ -269,7 +273,11 @@ func addSRPolicyWithRouterID(input inputFormat, noSIDValidate bool, client pb.PC
 		NoSidValidate: noSIDValidate,
 	}
 
-	return grpc.CreateSRPolicy(client, req)
+	if err := grpc.CreateSRPolicy(client, req); err != nil {
+		return fmt.Errorf("failed to create SR policy: %w", err)
+	}
+
+	return nil
 }
 
 func sampleInputs() (dynamic, explicit string) {

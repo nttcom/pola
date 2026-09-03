@@ -73,7 +73,7 @@ func parseSessionArgs(args []string) (netip.Addr, bool, error) {
 func showSession(w io.Writer, addr netip.Addr, detail bool, format outputFormat, client pb.PCEServiceClient) error {
 	sessions, err := grpc.GetSessions(client, addr, detail)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get sessions: %w", err)
 	}
 
 	if len(sessions) == 0 {
