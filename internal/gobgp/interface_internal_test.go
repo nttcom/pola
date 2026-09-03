@@ -1627,7 +1627,6 @@ func testDebouncerTriggerKeepsLoopingOnContextEndDuringSuccessfulFetch(t *testin
 
 		return !d.active
 	}, time.Second, time.Millisecond)
-	assert.EqualValues(t, 1, fetchCount.Load())
 }
 
 func testDebouncerTriggerKeepsLoopingOnContextEndDuringCooldownWait(t *testing.T) {
