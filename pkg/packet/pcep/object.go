@@ -942,7 +942,7 @@ func (o *EroObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
 }
 
 // Serialize encodes the EroObject into bytes.
-func (o EroObject) Serialize() ([]uint8, error) {
+func (o *EroObject) Serialize() ([]uint8, error) {
 	byteEroSubobjects := []uint8{}
 	for _, eroSubobject := range o.EroSubobjects {
 		// Len() also validates flag/NAI-type combinations that Serialize() does not check itself.
@@ -966,7 +966,7 @@ func (o EroObject) Serialize() ([]uint8, error) {
 }
 
 // Len returns the wire length of the EroObject.
-func (o EroObject) Len() (int, error) {
+func (o *EroObject) Len() (int, error) {
 	eroSubobjByteLength := 0
 	for _, eroSubObj := range o.EroSubobjects {
 		objByteLength, err := eroSubObj.Len()
@@ -1959,7 +1959,7 @@ func (o *AssociationObject) Serialize() ([]uint8, error) {
 }
 
 // Len returns the wire length of the receiver.
-func (o AssociationObject) Len() (int, error) {
+func (o *AssociationObject) Len() (int, error) {
 	tlvsByteLength := 0
 	for _, tlv := range o.TLVs {
 		tlvsByteLength += tlv.Len()

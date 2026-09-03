@@ -45,6 +45,7 @@ linters:
     - predeclared
     - protogetter
     - reassign
+    - recvcheck
     - revive
     - spancheck
     - testifylint
