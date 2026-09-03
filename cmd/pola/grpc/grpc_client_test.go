@@ -614,13 +614,13 @@ func TestCapabilityDetail_Strings(t *testing.T) {
 
 func TestCapability_Strings(t *testing.T) {
 	t.Run("nil Detail falls back to type token", func(t *testing.T) {
-		cap := Capability{Type: "VENDOR_INFORMATION"}
-		assert.Equal(t, []string{"VENDOR_INFORMATION"}, cap.Strings())
+		capability := Capability{Type: "VENDOR_INFORMATION"}
+		assert.Equal(t, []string{"VENDOR_INFORMATION"}, capability.Strings())
 	})
 
 	t.Run("typed Detail is unaffected", func(t *testing.T) {
-		cap := Capability{Type: "SR", Detail: SRCapability{MSD: proto.Uint32(10)}}
-		assert.Equal(t, []string{"SR", "MSD=10"}, cap.Strings())
+		capability := Capability{Type: "SR", Detail: SRCapability{MSD: proto.Uint32(10)}}
+		assert.Equal(t, []string{"SR", "MSD=10"}, capability.Strings())
 	})
 }
 

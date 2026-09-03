@@ -20,7 +20,7 @@ import (
 	"github.com/nttcom/pola/cmd/pola/grpc"
 )
 
-func newSRPolicyAddCmd(client *pb.PCEServiceClient, jsonFmt *bool) *cobra.Command {
+func newSRPolicyAddCmd(c *cli) *cobra.Command {
 	srPolicyAddCmd := &cobra.Command{
 		Use: "add",
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -53,7 +53,7 @@ func newSRPolicyAddCmd(client *pb.PCEServiceClient, jsonFmt *bool) *cobra.Comman
 				return fmt.Errorf("YAML syntax error in file \"%s\": %w", filepath, err)
 			}
 
-			if err := addSRPolicy(inputData, *jsonFmt, noSIDValidateFlag, *client); err != nil {
+			if err := addSRPolicy(inputData, c.jsonFmt, noSIDValidateFlag, c.client); err != nil {
 				return fmt.Errorf("failed to add SR policy: %w", err)
 			}
 			return nil
@@ -109,7 +109,7 @@ const (
 	metricTypeHopcount = "hopcount"
 )
 
-func addSRPolicy(input inputFormat, jsonFlag bool, noSIDValidate bool, client pb.PCEServiceClient) error {
+func addSRPolicy(input inputFormat, jsonFlag, noSIDValidate bool, client pb.PCEServiceClient) error {
 	if noSIDValidate {
 		fmt.Fprintln(os.Stderr, "warning: skipping SID validation (--no-sid-validate)")
 	}

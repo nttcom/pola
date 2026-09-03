@@ -21,8 +21,7 @@ import (
 )
 
 func newTestSRPolicyDeleteCmd(client pb.PCEServiceClient) *cobra.Command {
-	jsonFmt := false
-	return newSRPolicyDeleteCmd(&client, &jsonFmt)
+	return newSRPolicyDeleteCmd(&cli{client: client})
 }
 
 func TestNewSRPolicyDeleteCmd_RunE(t *testing.T) {

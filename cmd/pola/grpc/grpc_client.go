@@ -279,10 +279,10 @@ type SRPolicySession struct {
 
 // capabilityFromPB converts a gRPC Capability into its typed client-side representation.
 func capabilityFromPB(c *pb.Capability) Capability {
-	cap := Capability{Type: strings.TrimPrefix(c.GetType().String(), "CAPABILITY_TYPE_")}
+	capability := Capability{Type: strings.TrimPrefix(c.GetType().String(), "CAPABILITY_TYPE_")}
 	switch detail := c.GetDetail().(type) {
 	case *pb.Capability_Stateful:
-		cap.Detail = StatefulCapability{
+		capability.Detail = StatefulCapability{
 			LSPUpdate:            detail.Stateful.GetLspUpdate(),
 			IncludeDBVersion:     detail.Stateful.GetIncludeDbVersion(),
 			LSPInstantiation:     detail.Stateful.GetLspInstantiation(),
@@ -292,25 +292,25 @@ func capabilityFromPB(c *pb.Capability) Capability {
 			Color:                detail.Stateful.GetColor(),
 		}
 	case *pb.Capability_Sr:
-		cap.Detail = SRCapability{
+		capability.Detail = SRCapability{
 			UnlimitedMSD: detail.Sr.GetUnlimitedMsd(),
 			NAISupported: detail.Sr.GetNaiSupported(),
 			MSD:          detail.Sr.Msd,
 		}
 	case *pb.Capability_Srv6:
-		cap.Detail = SRv6Capability{NAISupported: detail.Srv6.GetNaiSupported()}
+		capability.Detail = SRv6Capability{NAISupported: detail.Srv6.GetNaiSupported()}
 	case *pb.Capability_PathSetupType:
 		pst := PathSetupTypeCapability{PathSetupTypes: detail.PathSetupType.GetPathSetupTypes()}
 		for _, sub := range detail.PathSetupType.GetSubCapabilities() {
 			pst.SubCapabilities = append(pst.SubCapabilities, capabilityFromPB(sub))
 		}
-		cap.Detail = pst
+		capability.Detail = pst
 	case *pb.Capability_AssocTypeList:
-		cap.Detail = AssocTypeListCapability{AssocTypes: detail.AssocTypeList.GetAssocTypes()}
+		capability.Detail = AssocTypeListCapability{AssocTypes: detail.AssocTypeList.GetAssocTypes()}
 	case *pb.Capability_LspDbVersion:
-		cap.Detail = LSPDBVersionCapability{VersionNumber: detail.LspDbVersion.GetVersionNumber()}
+		capability.Detail = LSPDBVersionCapability{VersionNumber: detail.LspDbVersion.GetVersionNumber()}
 	case *pb.Capability_Multipath:
-		cap.Detail = MultipathCapability{
+		capability.Detail = MultipathCapability{
 			MaxMultipaths: detail.Multipath.GetMaxMultipaths(),
 			Weighted:      detail.Multipath.GetWeighted(),
 			OppositeDir:   detail.Multipath.GetOppositeDir(),
@@ -318,11 +318,11 @@ func capabilityFromPB(c *pb.Capability) Capability {
 			CompositePath: detail.Multipath.GetCompositePath(),
 		}
 	case *pb.Capability_VendorInformation:
-		cap.Detail = VendorInformationCapability{EnterpriseNumber: detail.VendorInformation.GetEnterpriseNumber()}
+		capability.Detail = VendorInformationCapability{EnterpriseNumber: detail.VendorInformation.GetEnterpriseNumber()}
 	case *pb.Capability_Unknown:
-		cap.Detail = UnknownCapability{TLVType: detail.Unknown.GetTlvType()}
+		capability.Detail = UnknownCapability{TLVType: detail.Unknown.GetTlvType()}
 	}
-	return cap
+	return capability
 }
 
 func sessionFromPB(pbss *pb.Session) (Session, error) {

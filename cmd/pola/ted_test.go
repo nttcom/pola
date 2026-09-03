@@ -17,11 +17,10 @@ import (
 )
 
 func TestNewTEDCmd_RunE(t *testing.T) {
-	var client pb.PCEServiceClient
-	jsonFmt := false
-	cmd := newTEDCmd(&client, &jsonFmt)
+	c := &cli{}
+	cmd := newTEDCmd(c)
 
-	client = &fakePCEServiceClient{tedResp: &pb.GetTEDResponse{
+	c.client = &fakePCEServiceClient{tedResp: &pb.GetTEDResponse{
 		Enabled: true,
 		Nodes:   []*pb.LsNode{{RouterId: testRouterID1}},
 	}}
@@ -29,7 +28,7 @@ func TestNewTEDCmd_RunE(t *testing.T) {
 		require.NoError(t, cmd.RunE(cmd, []string{}))
 	})
 
-	client = &fakePCEServiceClient{tedErr: assert.AnError}
+	c.client = &fakePCEServiceClient{tedErr: assert.AnError}
 	err := cmd.RunE(cmd, []string{})
 	require.ErrorIs(t, err, assert.AnError)
 }

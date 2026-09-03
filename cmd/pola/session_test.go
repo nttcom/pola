@@ -20,9 +20,7 @@ import (
 
 func TestNewSessionCmd_RunE(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
-		client := pb.PCEServiceClient(&fakePCEServiceClient{})
-		jsonFmt := false
-		cmd := newSessionCmd(&client, &jsonFmt)
+		cmd := newSessionCmd(&cli{client: &fakePCEServiceClient{}})
 
 		captureStdout(t, func() {
 			require.NoError(t, cmd.RunE(cmd, []string{}))
@@ -30,11 +28,9 @@ func TestNewSessionCmd_RunE(t *testing.T) {
 	})
 
 	t.Run("gRPC error propagates", func(t *testing.T) {
-		client := pb.PCEServiceClient(&fakePCEServiceClient{
+		cmd := newSessionCmd(&cli{client: &fakePCEServiceClient{
 			sessionListErr: assert.AnError,
-		})
-		jsonFmt := false
-		cmd := newSessionCmd(&client, &jsonFmt)
+		}})
 
 		err := cmd.RunE(cmd, []string{})
 		require.ErrorIs(t, err, assert.AnError)
@@ -42,16 +38,15 @@ func TestNewSessionCmd_RunE(t *testing.T) {
 }
 
 func TestNewSessionCmd_PassesParsedArgs(t *testing.T) {
-	var client pb.PCEServiceClient
-	jsonFmt := false
-	cmd := newSessionCmd(&client, &jsonFmt)
-	client = &fakePCEServiceClient{}
+	c := &cli{}
+	cmd := newSessionCmd(c)
+	c.client = &fakePCEServiceClient{}
 
 	captureStdout(t, func() {
 		require.NoError(t, cmd.RunE(cmd, []string{testPeerAddr1, sessionDetailArg}))
 	})
 
-	fakeClient, ok := client.(*fakePCEServiceClient)
+	fakeClient, ok := c.client.(*fakePCEServiceClient)
 	require.True(t, ok)
 	require.NotNil(t, fakeClient.sessionListReq)
 	req := fakeClient.sessionListReq

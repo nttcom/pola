@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"testing"
 
-	pb "github.com/nttcom/pola/api/pola/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -30,17 +29,17 @@ func TestNewRootCmd_Structure(t *testing.T) {
 
 func TestPersistentPreRunE(t *testing.T) {
 	t.Run("success sets the client", func(t *testing.T) {
-		var client pb.PCEServiceClient
+		c := &cli{}
 		cmd := newRootCmd()
-		require.NoError(t, persistentPreRunE(&client)(cmd, []string{}))
-		assert.NotNil(t, client)
+		require.NoError(t, persistentPreRunE(c)(cmd, []string{}))
+		assert.NotNil(t, c.client)
 	})
 
 	t.Run("malformed host is rejected before dialing", func(t *testing.T) {
-		var client pb.PCEServiceClient
+		c := &cli{}
 		cmd := newRootCmd()
 		require.NoError(t, cmd.PersistentFlags().Set("host", "bad%zzhost"))
-		err := persistentPreRunE(&client)(cmd, []string{})
+		err := persistentPreRunE(c)(cmd, []string{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to dial polad connection")
 	})

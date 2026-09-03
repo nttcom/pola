@@ -143,8 +143,8 @@ func validatePCEOptions(o *PCEOptions) error {
 	return nil
 }
 
-func resolveLocalTimers(keepalive, deadTimer *uint8) (uint8, uint8) {
-	localKeepalive := defaultLocalKeepalive
+func resolveLocalTimers(keepalive, deadTimer *uint8) (localKeepalive, localDeadTimer uint8) {
+	localKeepalive = defaultLocalKeepalive
 	if keepalive != nil {
 		localKeepalive = *keepalive
 	}
@@ -261,7 +261,7 @@ func parseRemoteAddr(tcpConn *net.TCPConn) (netip.Addr, error) {
 }
 
 // Serve starts the PCEP server on the specified address and port.
-func (s *Server) Serve(address string, port string) error {
+func (s *Server) Serve(address, port string) error {
 	localAddr, err := parseListenAddrPort(address, port)
 	if err != nil {
 		return err

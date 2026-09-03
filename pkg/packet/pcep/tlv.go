@@ -839,7 +839,7 @@ func (tlv *SRPCECapability) HasInvalidZeroMSD() bool {
 }
 
 // NewSRPCECapability creates an SR-PCE-CAPABILITY TLV.
-func NewSRPCECapability(hasUnlimitedMaxSIDDepth bool, isNAISupported bool, maximumSidDepth uint8) *SRPCECapability {
+func NewSRPCECapability(hasUnlimitedMaxSIDDepth, isNAISupported bool, maximumSidDepth uint8) *SRPCECapability {
 	return &SRPCECapability{
 		HasUnlimitedMaxSIDDepth: hasUnlimitedMaxSIDDepth,
 		IsNAISupported:          isNAISupported,

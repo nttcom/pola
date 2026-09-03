@@ -120,7 +120,7 @@ func (c *fakeConn) SetWriteDeadline(_ time.Time) error { return nil }
 func (c *fakeConn) SetReadDeadline(_ time.Time) error  { return c.setReadDeadlineErr }
 
 // newTestStateReport builds a PCRpt state report for an SR-MPLS policy with an explicit path.
-func newTestStateReport(t *testing.T, plspID uint32, srpID uint32) *pcep.StateReport {
+func newTestStateReport(t *testing.T, plspID, srpID uint32) *pcep.StateReport {
 	t.Helper()
 
 	sr := pcep.NewStateReport()
@@ -953,7 +953,7 @@ func TestExtractSrcDstRouterIDs(t *testing.T) {
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), ted, 0)
 
 	sr := newTestStateReport(t, 1, 0)
-	srcRouterID, dstRouterID, err := ss.extractSrcDstRouterIDs(*sr)
+	srcRouterID, dstRouterID, err := ss.extractSrcDstRouterIDs(sr)
 	require.NoError(t, err, "extractSrcDstRouterIDs failed")
 	assert.Equal(t, "src-router", srcRouterID)
 	assert.Equal(t, "10.255.0.2", dstRouterID)
@@ -964,7 +964,7 @@ func TestExtractSrcDstRouterIDs_AddressNotFound(t *testing.T) {
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), ted, 0)
 
 	sr := newTestStateReport(t, 1, 0)
-	_, _, err := ss.extractSrcDstRouterIDs(*sr)
+	_, _, err := ss.extractSrcDstRouterIDs(sr)
 	assert.Error(t, err, "expected an error when neither address is present in the TED")
 }
 
@@ -976,7 +976,7 @@ func TestExtractSrcDstRouterIDs_InvalidAddresses(t *testing.T) {
 	sr.LSPObject.SrcAddr = netip.Addr{}
 	sr.LSPObject.DstAddr = netip.Addr{}
 
-	_, _, err := ss.extractSrcDstRouterIDs(*sr)
+	_, _, err := ss.extractSrcDstRouterIDs(sr)
 	assert.Error(t, err, "expected an error when neither address is valid")
 }
 
@@ -988,7 +988,7 @@ func TestExtractSrcDstRouterIDs_DestinationNotFound(t *testing.T) {
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), ted, 0)
 	sr := newTestStateReport(t, 1, 0)
 
-	_, _, err := ss.extractSrcDstRouterIDs(*sr)
+	_, _, err := ss.extractSrcDstRouterIDs(sr)
 	assert.Error(t, err, "expected an error when the destination address is not present in the TED")
 }
 
@@ -3826,7 +3826,7 @@ func TestComputePathFromTED_NoTED(t *testing.T) {
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	sr := newTestStateReport(t, 1, 0)
 
-	_, err := ss.computePathFromTED(*sr)
+	_, err := ss.computePathFromTED(sr)
 	assert.Error(t, err)
 }
 
@@ -3852,7 +3852,7 @@ func TestComputePathFromTED_CSPFFailsWithoutNodeSID(t *testing.T) {
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), ted, 0)
 	sr := newTestStateReport(t, 1, 0)
 
-	_, err := ss.computePathFromTED(*sr)
+	_, err := ss.computePathFromTED(sr)
 	assert.Error(t, err, "CSPF must fail when the headend advertises no Prefix-SID or SRv6 SID")
 }
 
@@ -4019,7 +4019,7 @@ func TestSelectMetricType(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 			ss.pccType = tc.pccType
-			sr := *newTestStateReport(t, 1, 0)
+			sr := newTestStateReport(t, 1, 0)
 			if tc.hasMetric {
 				sr.MetricObjects = []*pcep.MetricObject{{MetricType: tc.metricObjType}}
 			}
@@ -4080,7 +4080,7 @@ func TestResolvePolicyState(t *testing.T) {
 }
 
 func TestValidateSegmentList_NilEroObject(t *testing.T) {
-	sr := *newTestStateReport(t, 1, 0)
+	sr := newTestStateReport(t, 1, 0)
 	sr.EroObject = nil
 
 	_, err := validateSegmentList(sr)
@@ -4088,7 +4088,7 @@ func TestValidateSegmentList_NilEroObject(t *testing.T) {
 }
 
 func TestValidateSegmentList_EmptySegmentList(t *testing.T) {
-	sr := *newTestStateReport(t, 1, 0)
+	sr := newTestStateReport(t, 1, 0)
 	sr.EroObject.EroSubobjects = nil
 
 	_, err := validateSegmentList(sr)
@@ -4097,7 +4097,7 @@ func TestValidateSegmentList_EmptySegmentList(t *testing.T) {
 
 func TestUpdateOrCreatePolicy_SrcAddrFallsBackToAssociationSrc(t *testing.T) {
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
-	sr := *newTestStateReport(t, 1, 0)
+	sr := newTestStateReport(t, 1, 0)
 	sr.LSPObject.SrcAddr = netip.Addr{}
 	sr.AssociationObject.AssocSrc = netip.MustParseAddr("192.0.2.9")
 
@@ -4110,7 +4110,7 @@ func TestUpdateOrCreatePolicy_SrcAddrFallsBackToAssociationSrc(t *testing.T) {
 
 func TestUpdateOrCreatePolicy_InvalidSrcAddr(t *testing.T) {
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
-	sr := *newTestStateReport(t, 1, 0)
+	sr := newTestStateReport(t, 1, 0)
 	sr.LSPObject.SrcAddr = netip.Addr{}
 
 	err := ss.updateOrCreatePolicy(sr, sr.EroObject.ToSegmentList(), 0, 0, table.PolicyUp)
@@ -4119,7 +4119,7 @@ func TestUpdateOrCreatePolicy_InvalidSrcAddr(t *testing.T) {
 
 func TestUpdateOrCreatePolicy_DstAddrFallsBackToAssociationEndpoint(t *testing.T) {
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
-	sr := *newTestStateReport(t, 1, 0)
+	sr := newTestStateReport(t, 1, 0)
 	sr.LSPObject.DstAddr = netip.Addr{}
 	sr.AssociationObject.TLVs = append(sr.AssociationObject.TLVs,
 		pcep.NewExtendedAssociationID(0, netip.MustParseAddr("192.0.2.20")))
@@ -4133,7 +4133,7 @@ func TestUpdateOrCreatePolicy_DstAddrFallsBackToAssociationEndpoint(t *testing.T
 
 func TestUpdateOrCreatePolicy_InvalidDstAddr(t *testing.T) {
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
-	sr := *newTestStateReport(t, 1, 0)
+	sr := newTestStateReport(t, 1, 0)
 	sr.LSPObject.DstAddr = netip.Addr{}
 
 	err := ss.updateOrCreatePolicy(sr, sr.EroObject.ToSegmentList(), 0, 0, table.PolicyUp)
@@ -4143,7 +4143,7 @@ func TestUpdateOrCreatePolicy_InvalidDstAddr(t *testing.T) {
 // RFC 8231 §7.3: a stale LSP-ID must not overwrite newer state.
 func TestUpdateOrCreatePolicy_StaleLSPIDIsIgnored(t *testing.T) {
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
-	sr := *newTestStateReport(t, 1, 0)
+	sr := newTestStateReport(t, 1, 0)
 	sr.LSPObject.LSPID = 5
 	require.NoError(t, ss.updateOrCreatePolicy(sr, sr.EroObject.ToSegmentList(), 10, 20, table.PolicyUp))
 
@@ -4253,14 +4253,14 @@ func TestRequestAllSRPolicyDeleted(t *testing.T) {
 func TestSelectMetricType_AlwaysUsableForCSPF(t *testing.T) {
 	for _, metricType := range []uint8{0, 1, 2, 3, 255} {
 		ss := &Session{logger: logger.NewNop()}
-		sr := pcep.StateReport{MetricObjects: []*pcep.MetricObject{{MetricType: metricType}}}
+		sr := &pcep.StateReport{MetricObjects: []*pcep.MetricObject{{MetricType: metricType}}}
 		got := ss.selectMetricType(sr)
 		assert.Truef(t, got.IsValid() && got != table.UnspecifiedMetric,
 			"PCEP metric type %d mapped to a metric CSPF rejects: %v", metricType, got)
 	}
 	for _, pccType := range []pcep.PccType{pcep.CiscoLegacy, pcep.JuniperLegacy, pcep.RFCCompliant} {
 		ss := &Session{logger: logger.NewNop(), pccType: pccType}
-		got := ss.selectMetricType(pcep.StateReport{})
+		got := ss.selectMetricType(&pcep.StateReport{})
 		assert.Truef(t, got.IsValid() && got != table.UnspecifiedMetric,
 			"pccType %v with no METRIC object mapped to a metric CSPF rejects: %v", pccType, got)
 	}

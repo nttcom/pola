@@ -109,9 +109,9 @@ func toPBPccType(pccType pcep.PccType) pb.PccType {
 	}
 }
 
-func buildCapability(cap pcep.CapabilityInterface) *pb.Capability {
-	c := &pb.Capability{Type: capabilityType(cap.Type())}
-	switch tlv := cap.(type) {
+func buildCapability(capability pcep.CapabilityInterface) *pb.Capability {
+	c := &pb.Capability{Type: capabilityType(capability.Type())}
+	switch tlv := capability.(type) {
 	case *pcep.StatefulPCECapability:
 		c.Detail = &pb.Capability_Stateful{Stateful: &pb.StatefulCapability{
 			LspUpdate:            tlv.LSPUpdateCapability,

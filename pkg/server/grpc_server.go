@@ -93,7 +93,7 @@ func NewAPIServer(pce *Server, grpcServer *grpc.Server, usidMode bool, lg *logge
 }
 
 // Serve starts the gRPC server on the specified address and port.
-func (s *APIServer) Serve(address string, port string) error {
+func (s *APIServer) Serve(address, port string) error {
 	a, err := netip.ParseAddr(address)
 	if err != nil {
 		return fmt.Errorf("failed to parse gRPC address %q: %w", address, err)

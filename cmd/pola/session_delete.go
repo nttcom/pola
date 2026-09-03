@@ -16,7 +16,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newSessionDeleteCmd(client *pb.PCEServiceClient, jsonFmt *bool) *cobra.Command {
+func newSessionDeleteCmd(c *cli) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          cmdNameDelete,
 		Aliases:      []string{"del"},
@@ -29,7 +29,7 @@ func newSessionDeleteCmd(client *pb.PCEServiceClient, jsonFmt *bool) *cobra.Comm
 			if err != nil {
 				return errors.New("invalid input\nUsage: pola session delete [session address]")
 			}
-			if err := deleteSession(ssAddr, *jsonFmt, *client); err != nil {
+			if err := deleteSession(ssAddr, c.jsonFmt, c.client); err != nil {
 				return err
 			}
 			return nil

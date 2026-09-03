@@ -18,7 +18,7 @@ import (
 	"github.com/nttcom/pola/cmd/pola/grpc"
 )
 
-func newSRPolicyDeleteCmd(client *pb.PCEServiceClient, jsonFmt *bool) *cobra.Command {
+func newSRPolicyDeleteCmd(c *cli) *cobra.Command {
 	srPolicyDeleteCmd := &cobra.Command{
 		Use: cmdNameDelete,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -46,7 +46,7 @@ func newSRPolicyDeleteCmd(client *pb.PCEServiceClient, jsonFmt *bool) *cobra.Com
 				return fmt.Errorf("YAML syntax error in file \"%s\": %w", filepath, err)
 			}
 
-			if err := deleteSRPolicy(inputData, *jsonFmt, *client); err != nil {
+			if err := deleteSRPolicy(inputData, c.jsonFmt, c.client); err != nil {
 				return fmt.Errorf("failed to delete SR policy: %w", err)
 			}
 			return nil

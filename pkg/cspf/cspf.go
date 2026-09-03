@@ -74,7 +74,7 @@ func validateMetricType(metric table.MetricType) error {
 }
 
 // CSPF computes the shortest path from srcRouterID to dstRouterID using the given metric.
-func CSPF(srcRouterID string, dstRouterID string, metric table.MetricType, ted *table.LsTED) ([]table.Segment, error) {
+func CSPF(srcRouterID, dstRouterID string, metric table.MetricType, ted *table.LsTED) ([]table.Segment, error) {
 	if ted == nil {
 		return nil, errors.New("ted is nil")
 	}
@@ -131,26 +131,29 @@ func WithLooseSourceRouting(
 }
 
 // buildSectionSegments calculates CSPF to waypoint and builds the waypoint segment.
-func buildSectionSegments(prev string, wp table.Waypoint, metric table.MetricType, ted *table.LsTED, fullList []table.Segment) ([]table.Segment, table.Segment, error) {
-	// Compute CSPF from prev → waypoint
-	sectionSegs, err := CSPF(prev, wp.RouterID, metric, ted)
+func buildSectionSegments(
+	prev string,
+	wp table.Waypoint,
+	metric table.MetricType,
+	ted *table.LsTED,
+	fullList []table.Segment,
+) (sectionSegs []table.Segment, waypointSeg table.Segment, err error) {
+	sectionSegs, err = CSPF(prev, wp.RouterID, metric, ted)
 	if err != nil {
 		return nil, nil, fmt.Errorf("CSPF failed between %s and %s: %w", prev, wp.RouterID, err)
 	}
 
-	// Remove first segment if it duplicates the last segment of the previous sections
 	sectionSegs = removeDuplicateFirst(fullList, sectionSegs)
 
-	// Lookup the node from TED; existence is already guaranteed by the CSPF call above.
+	// Existence is guaranteed by the CSPF call above.
 	node, _ := nodeInTED(ted.Nodes, wp.RouterID)
 
-	// Build the segment (SRv6 or SR-MPLS)
-	seg, err := buildWaypointSegment(node, wp.SID)
+	waypointSeg, err = buildWaypointSegment(node, wp.SID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to build segment for waypoint %s: %w", wp.RouterID, err)
 	}
 
-	return sectionSegs, seg, nil
+	return sectionSegs, waypointSeg, nil
 }
 
 // buildWaypointSegment builds a Segment for a waypoint using the node and optional explicit SID.
@@ -179,7 +182,7 @@ func buildWaypointSegment(node *table.LsNode, explicitSID string) (table.Segment
 }
 
 // removeDuplicateFirst removes the first segment of section if it equals the last of fullList.
-func removeDuplicateFirst(fullList []table.Segment, section []table.Segment) []table.Segment {
+func removeDuplicateFirst(fullList, section []table.Segment) []table.Segment {
 	if len(fullList) > 0 && len(section) > 0 && table.SegmentsEqual(fullList[len(fullList)-1], section[0]) {
 		return section[1:]
 	}
@@ -194,7 +197,7 @@ func appendIfNotDuplicate(list []table.Segment, seg table.Segment) []table.Segme
 	return list
 }
 
-func spf(srcRouterID string, dstRouterID string, metricType table.MetricType, network map[string]*table.LsNode) ([]table.Segment, error) {
+func spf(srcRouterID, dstRouterID string, metricType table.MetricType, network map[string]*table.LsNode) ([]table.Segment, error) {
 	calculatingNodes, err := initNodeMap(srcRouterID, network)
 	if err != nil {
 		return nil, err

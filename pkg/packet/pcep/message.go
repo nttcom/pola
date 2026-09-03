@@ -109,8 +109,7 @@ func (h *CommonHeader) DecodeFromBytes(header []uint8) error {
 func (h *CommonHeader) Serialize() []uint8 {
 	buf := make([]uint8, 0, 4)
 	verFlag := h.Version<<5 | h.Flag
-	buf = append(buf, verFlag)
-	buf = append(buf, uint8(h.MessageType))
+	buf = append(buf, verFlag, uint8(h.MessageType))
 	buf = append(buf, Uint16ToByteSlice(h.MessageLength)...)
 	return buf
 }
@@ -216,7 +215,7 @@ func (m *OpenMessage) Serialize() ([]uint8, error) {
 }
 
 // NewOpenMessage creates a new OpenMessage.
-func NewOpenMessage(sessionID uint8, keepalive uint8, deadTimer uint8, capabilities []CapabilityInterface) *OpenMessage {
+func NewOpenMessage(sessionID, keepalive, deadTimer uint8, capabilities []CapabilityInterface) *OpenMessage {
 	return &OpenMessage{
 		OpenObject: NewOpenObject(sessionID, keepalive, deadTimer, capabilities),
 	}
@@ -349,14 +348,14 @@ func (m *PCErrMessage) SRPIDs() []uint32 {
 }
 
 // NewPCErrMessage creates a new PCErrMessage.
-func NewPCErrMessage(errorType uint8, errorValue uint8, tlvs []TLVInterface) *PCErrMessage {
+func NewPCErrMessage(errorType, errorValue uint8, tlvs []TLVInterface) *PCErrMessage {
 	return &PCErrMessage{
 		Errors: []*ErrorObject{NewErrorObject(errorType, errorValue, tlvs)},
 	}
 }
 
 // NewPCErrMessageWithOpen creates a PCErrMessage with an attached OPEN object.
-func NewPCErrMessageWithOpen(errorType uint8, errorValue uint8, openObject *OpenObject) *PCErrMessage {
+func NewPCErrMessageWithOpen(errorType, errorValue uint8, openObject *OpenObject) *PCErrMessage {
 	return &PCErrMessage{
 		Errors: []*ErrorObject{NewErrorObject(errorType, errorValue, nil)},
 		Open:   openObject,

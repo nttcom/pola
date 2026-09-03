@@ -274,24 +274,26 @@ func NewSegmentSRv6WithNodeInfo(sid netip.Addr, n *LsNode) (SegmentSRv6, error) 
 
 	var found bool
 	for _, srv6SID := range n.SRv6SIDs {
-		if len(srv6SID.Sids) > 0 {
-			addr, err := netip.ParseAddr(srv6SID.Sids[FirstSIDIndex])
-			if err != nil {
-				return seg, err
-			}
-			seg.LocalAddr = addr
-			seg.Structure = SIDStructureBytes{
-				srv6SID.SIDStructure.LocalBlock,
-				srv6SID.SIDStructure.LocalNode,
-				srv6SID.SIDStructure.LocalFunc,
-				srv6SID.SIDStructure.LocalArg,
-			}
-			if IsUSidBehavior(srv6SID.EndpointBehavior.Behavior) {
-				seg.USid = true
-			}
-			found = true
-			break
+		if len(srv6SID.Sids) == 0 {
+			continue
 		}
+
+		addr, err := netip.ParseAddr(srv6SID.Sids[FirstSIDIndex])
+		if err != nil {
+			return seg, err
+		}
+		seg.LocalAddr = addr
+		seg.Structure = SIDStructureBytes{
+			srv6SID.SIDStructure.LocalBlock,
+			srv6SID.SIDStructure.LocalNode,
+			srv6SID.SIDStructure.LocalFunc,
+			srv6SID.SIDStructure.LocalArg,
+		}
+		if IsUSidBehavior(srv6SID.EndpointBehavior.Behavior) {
+			seg.USid = true
+		}
+		found = true
+		break
 	}
 	if !found {
 		return seg, errors.New("no SRv6 SIDs available")

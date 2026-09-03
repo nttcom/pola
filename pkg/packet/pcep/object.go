@@ -302,7 +302,7 @@ func (o *OpenObject) Len() int {
 }
 
 // NewOpenObject creates a new OpenObject.
-func NewOpenObject(sessionID uint8, keepalive uint8, deadTimer uint8, capabilities []CapabilityInterface) *OpenObject {
+func NewOpenObject(sessionID, keepalive, deadTimer uint8, capabilities []CapabilityInterface) *OpenObject {
 	return &OpenObject{
 		ObjectType: ObjectTypeOpenOpen,
 		Version:    uint8(1), // PCEP version. Current version is 1
@@ -544,7 +544,7 @@ func (o *ErrorObject) Len() int {
 }
 
 // NewErrorObject creates a new ErrorObject.
-func NewErrorObject(errorType uint8, errorValue uint8, tlvs []TLVInterface) *ErrorObject {
+func NewErrorObject(errorType, errorValue uint8, tlvs []TLVInterface) *ErrorObject {
 	return &ErrorObject{
 		ObjectType: ObjectTypeErrorError,
 		ErrorType:  errorType,
@@ -730,11 +730,12 @@ func NewSrpObject(segs []table.Segment, srpID uint32, isRemove bool) (*SrpObject
 	if len(segs) == 0 {
 		return o, nil
 	}
-	if _, ok := segs[0].(table.SegmentSRMPLS); ok {
+	switch segs[0].(type) {
+	case table.SegmentSRMPLS:
 		o.TLVs = append(o.TLVs, &PathSetupType{PathSetupType: PathSetupTypeSRTE})
-	} else if _, ok := segs[0].(table.SegmentSRv6); ok {
+	case table.SegmentSRv6:
 		o.TLVs = append(o.TLVs, &PathSetupType{PathSetupType: PathSetupTypeSRv6TE})
-	} else {
+	default:
 		return nil, errors.New("invalid Segment type")
 	}
 	return o, nil
@@ -1029,20 +1030,22 @@ type EroSubobject interface {
 
 // NewEroSubobject creates an appropriate EroSubobject from the given segment.
 func NewEroSubobject(seg table.Segment) (EroSubobject, error) {
-	if v, ok := seg.(table.SegmentSRMPLS); ok {
+	switch v := seg.(type) {
+	case table.SegmentSRMPLS:
 		subo, err := NewSREroSubobject(v)
 		if err != nil {
 			return nil, err
 		}
 		return subo, nil
-	} else if v, ok := seg.(table.SegmentSRv6); ok {
+	case table.SegmentSRv6:
 		subo, err := NewSRv6EroSubobject(v)
 		if err != nil {
 			return nil, err
 		}
 		return subo, nil
+	default:
+		return nil, errors.New("invalid Segment type")
 	}
-	return nil, errors.New("invalid Segment type")
 }
 
 // SR-ERO Subobject (RFC 8664 §4.3.1).
@@ -1812,7 +1815,7 @@ func (o *EndpointsObject) Len() (uint16, error) {
 }
 
 // NewEndpointsObject creates and returns a new EndpointsObject.
-func NewEndpointsObject(dstAddr netip.Addr, srcAddr netip.Addr) (*EndpointsObject, error) {
+func NewEndpointsObject(dstAddr, srcAddr netip.Addr) (*EndpointsObject, error) {
 	var objectType ObjectType
 	switch {
 	case dstAddr.Is4() && srcAddr.Is4():
@@ -1976,7 +1979,7 @@ func (o AssociationObject) Len() (int, error) {
 }
 
 // NewAssociationObject creates and returns a new AssociationObject.
-func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, preference uint32, opt ...Opt) (*AssociationObject, error) {
+func NewAssociationObject(srcAddr, dstAddr netip.Addr, color, preference uint32, opt ...Opt) (*AssociationObject, error) {
 	opts := optParams{
 		pccType: RFCCompliant,
 	}
@@ -2163,7 +2166,7 @@ func (o *VendorInformationObject) Len() int {
 }
 
 // NewVendorInformationObject creates and returns a new VendorInformationObject.
-func NewVendorInformationObject(vendor PccType, color uint32, preference uint32) (*VendorInformationObject, error) {
+func NewVendorInformationObject(vendor PccType, color, preference uint32) (*VendorInformationObject, error) {
 	o := &VendorInformationObject{ // for Cisco PCC
 		ObjectType: ObjectTypeVendorSpecificConstraints, // (RFC 7470 §4)
 		TLVs:       []TLVInterface{},

@@ -9,14 +9,11 @@ import (
 	"bytes"
 	"testing"
 
-	pb "github.com/nttcom/pola/api/pola/v1"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestNewSRPolicyCmd(t *testing.T) {
-	var client pb.PCEServiceClient
-	jsonFmt := false
-	cmd := newSRPolicyCmd(&client, &jsonFmt)
+	cmd := newSRPolicyCmd(&cli{})
 
 	var names []string
 	for _, c := range cmd.Commands() {

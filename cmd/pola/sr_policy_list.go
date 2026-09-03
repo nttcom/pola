@@ -17,11 +17,11 @@ import (
 	"github.com/nttcom/pola/cmd/pola/grpc"
 )
 
-func newSRPolicyListCmd(client *pb.PCEServiceClient, jsonFmt *bool) *cobra.Command {
+func newSRPolicyListCmd(c *cli) *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "list",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return showSRPolicyList(cmd, args, *client, *jsonFmt)
+			return showSRPolicyList(cmd, args, c.client, c.jsonFmt)
 		},
 	}
 	cmd.Flags().String("peer", "", "filter by PCEP peer address")

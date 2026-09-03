@@ -48,7 +48,7 @@ func decodeTLVLength(data []byte, allowPadding bool) (int, error) {
 	return length, nil
 }
 
-func paddedLength(n int, align int) int {
+func paddedLength(n, align int) int {
 	if n%align == 0 {
 		return n
 	}

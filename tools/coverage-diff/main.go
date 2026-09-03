@@ -95,7 +95,7 @@ func run(cfg config, out io.Writer) error {
 	return report(res, cfg.min, mergeBase, out)
 }
 
-func report(res *result, min float64, mergeBase string, out io.Writer) error {
+func report(res *result, minPercent float64, mergeBase string, out io.Writer) error {
 	if _, err := io.WriteString(out, formatReport(res, mergeBase)); err != nil {
 		return err
 	}
@@ -103,8 +103,8 @@ func report(res *result, min float64, mergeBase string, out io.Writer) error {
 		return nil
 	}
 	pct := res.percent()
-	if min >= 0 && rounded(pct) < min {
-		return fmt.Errorf("%w: %.1f%% < %.1f%%", errBelowThreshold, pct, min)
+	if minPercent >= 0 && rounded(pct) < minPercent {
+		return fmt.Errorf("%w: %.1f%% < %.1f%%", errBelowThreshold, pct, minPercent)
 	}
 	return nil
 }

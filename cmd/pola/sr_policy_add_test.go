@@ -23,8 +23,7 @@ import (
 )
 
 func newTestSRPolicyAddCmd(client pb.PCEServiceClient) *cobra.Command {
-	jsonFmt := false
-	return newSRPolicyAddCmd(&client, &jsonFmt)
+	return newSRPolicyAddCmd(&cli{client: client})
 }
 
 const testErrorDomain = "pola"

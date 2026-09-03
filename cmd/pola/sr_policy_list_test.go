@@ -18,7 +18,7 @@ import (
 )
 
 func newTestSRPolicyListCmd(client pb.PCEServiceClient, jsonFmt bool) *cobra.Command {
-	return newSRPolicyListCmd(&client, &jsonFmt)
+	return newSRPolicyListCmd(&cli{client: client, jsonFmt: jsonFmt})
 }
 
 func TestPeerAddrFlag_Unset(t *testing.T) {
@@ -314,11 +314,9 @@ func TestShowSRPolicyList(t *testing.T) {
 }
 
 func TestNewSRPolicyListCmd_RunE(t *testing.T) {
-	client := pb.PCEServiceClient(&fakePCEServiceClient{
+	cmd := newSRPolicyListCmd(&cli{client: &fakePCEServiceClient{
 		srPolicyListResp: &pb.GetSRPolicyListResponse{},
-	})
-	jsonFmt := false
-	cmd := newSRPolicyListCmd(&client, &jsonFmt)
+	}})
 
 	out := captureStdout(t, func() {
 		require.NoError(t, cmd.RunE(cmd, []string{}))

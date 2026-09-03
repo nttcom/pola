@@ -75,6 +75,20 @@ linters:
     goconst:
       ignore-tests: true
       min-occurrences: 3
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+        - opinionated
+      disabled-checks:
+        # Duplicates nolintlint.require-explanation.
+        - whyNoLint
+        # Not suitable for this codebase.
+        - hugeParam
+        - rangeValCopy
+        # PCEP wire-format test data is intentional.
+        - commentedOutCode
     gocyclo:
       min-complexity: 15
     godot:

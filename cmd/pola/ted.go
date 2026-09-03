@@ -16,11 +16,11 @@ import (
 	"github.com/nttcom/pola/cmd/pola/grpc"
 )
 
-func newTEDCmd(client *pb.PCEServiceClient, jsonFmt *bool) *cobra.Command {
+func newTEDCmd(c *cli) *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "ted",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return showTED(os.Stdout, resolveOutputFormat(*jsonFmt), *client)
+			return showTED(os.Stdout, resolveOutputFormat(c.jsonFmt), c.client)
 		},
 	}
 	return cmd

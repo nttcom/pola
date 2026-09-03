@@ -1568,7 +1568,7 @@ func (s *testGoBGPServer) WatchEvent(_ *api.WatchEventRequest, stream grpc.Serve
 }
 
 // startTestGoBGPServer serves server on a loopback port and returns its host and port.
-func startTestGoBGPServer(t *testing.T, server *testGoBGPServer) (string, string) {
+func startTestGoBGPServer(t *testing.T, server *testGoBGPServer) (host, port string) {
 	t.Helper()
 
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
@@ -1583,7 +1583,7 @@ func startTestGoBGPServer(t *testing.T, server *testGoBGPServer) (string, string
 	}()
 	t.Cleanup(srv.Stop)
 
-	host, port, err := net.SplitHostPort(lis.Addr().String())
+	host, port, err = net.SplitHostPort(lis.Addr().String())
 	require.NoError(t, err)
 	return host, port
 }

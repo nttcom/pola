@@ -35,14 +35,14 @@ type monitorOptions struct {
 }
 
 // MonitorBGPLsEvents monitors BGP-LS events and sends updates to the TED channel.
-func MonitorBGPLsEvents(ctx context.Context, serverAddr string, serverPort string, tedChan chan []table.TEDElem, lg *logger.Logger) {
+func MonitorBGPLsEvents(ctx context.Context, serverAddr, serverPort string, tedChan chan []table.TEDElem, lg *logger.Logger) {
 	monitorBGPLsEvents(ctx, serverAddr, serverPort, tedChan, lg, monitorOptions{
 		debounceCooldown: defaultDebounceCooldown,
 		retryInterval:    defaultRetryInterval,
 	})
 }
 
-func monitorBGPLsEvents(ctx context.Context, serverAddr string, serverPort string, tedChan chan []table.TEDElem, lg *logger.Logger, opts monitorOptions) {
+func monitorBGPLsEvents(ctx context.Context, serverAddr, serverPort string, tedChan chan []table.TEDElem, lg *logger.Logger, opts monitorOptions) {
 	cc, client, err := newGoBGPClient(serverAddr, serverPort)
 	if err != nil {
 		lg.Error("failed to create gRPC client", logger.String("address", fmt.Sprintf("%s:%s", serverAddr, serverPort)), logger.Error(err))
@@ -157,7 +157,7 @@ func waitForRetry(ctx context.Context, interval time.Duration) bool {
 	}
 }
 
-func newGoBGPClient(serverAddress string, serverPort string) (*grpc.ClientConn, api.GoBgpServiceClient, error) {
+func newGoBGPClient(serverAddress, serverPort string) (*grpc.ClientConn, api.GoBgpServiceClient, error) {
 	gobgpAddress := fmt.Sprintf("%s:%s", serverAddress, serverPort)
 
 	cc, err := grpc.NewClient(

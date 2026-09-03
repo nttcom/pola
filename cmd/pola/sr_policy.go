@@ -6,11 +6,10 @@
 package main
 
 import (
-	pb "github.com/nttcom/pola/api/pola/v1"
 	"github.com/spf13/cobra"
 )
 
-func newSRPolicyCmd(client *pb.PCEServiceClient, jsonFmt *bool) *cobra.Command {
+func newSRPolicyCmd(c *cli) *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "sr-policy",
 		Run: func(cmd *cobra.Command, args []string) {
@@ -18,6 +17,6 @@ func newSRPolicyCmd(client *pb.PCEServiceClient, jsonFmt *bool) *cobra.Command {
 		},
 		Args: cobra.NoArgs,
 	}
-	cmd.AddCommand(newSRPolicyListCmd(client, jsonFmt), newSRPolicyAddCmd(client, jsonFmt), newSRPolicyDeleteCmd(client, jsonFmt))
+	cmd.AddCommand(newSRPolicyListCmd(c), newSRPolicyAddCmd(c), newSRPolicyDeleteCmd(c))
 	return cmd
 }

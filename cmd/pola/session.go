@@ -17,7 +17,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newSessionCmd(client *pb.PCEServiceClient, jsonFmt *bool) *cobra.Command {
+func newSessionCmd(c *cli) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "session [peer-address] [detail]",
 		Short: "Show PCEP sessions",
@@ -27,11 +27,11 @@ func newSessionCmd(client *pb.PCEServiceClient, jsonFmt *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return showSession(os.Stdout, addr, detail, resolveOutputFormat(*jsonFmt), *client)
+			return showSession(os.Stdout, addr, detail, resolveOutputFormat(c.jsonFmt), c.client)
 		},
 	}
 
-	cmd.AddCommand(newSessionDeleteCmd(client, jsonFmt))
+	cmd.AddCommand(newSessionDeleteCmd(c))
 	return cmd
 }
 

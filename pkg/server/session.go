@@ -731,9 +731,9 @@ func (ss *Session) handleNegotiationPCErr(body []uint8, neg *openNegotiation) er
 	return ss.adoptProposedOpen(pcerrMessage.Open, neg)
 }
 
-func formatPCErrErrors(errors []*pcep.ErrorObject) string {
-	reasons := make([]string, 0, len(errors))
-	for _, errObj := range errors {
+func formatPCErrErrors(errObjs []*pcep.ErrorObject) string {
+	reasons := make([]string, 0, len(errObjs))
+	for _, errObj := range errObjs {
 		reasons = append(reasons, fmt.Sprintf("error-type=%d, error-value=%d", errObj.ErrorType, errObj.ErrorValue))
 	}
 	return strings.Join(reasons, "; ")
@@ -1116,14 +1116,10 @@ func (ss *Session) recordUnknownMessage() bool {
 
 	now := time.Now()
 	cutoff := now.Add(-ss.unknownMsgWindow)
-	live := ss.unknownMsgTimes[:0]
-	for _, t := range ss.unknownMsgTimes {
-		if t.After(cutoff) {
-			live = append(live, t)
-		}
-	}
-	//nolint:gocritic // appendAssign: live aliases unknownMsgTimes[:0] for in-place filtering.
-	ss.unknownMsgTimes = append(live, now)
+	ss.unknownMsgTimes = slices.DeleteFunc(ss.unknownMsgTimes, func(t time.Time) bool {
+		return !t.After(cutoff)
+	})
+	ss.unknownMsgTimes = append(ss.unknownMsgTimes, now)
 
 	count := len(ss.unknownMsgTimes)
 	if count > math.MaxUint32 {
@@ -1191,7 +1187,7 @@ func (ss *Session) handleStateReport(sr *pcep.StateReport, message *pcep.PCRptMe
 func (ss *Session) handleSynchronization(sr *pcep.StateReport, message *pcep.PCRptMessage) error {
 	ss.setSyncState(lspDBSyncOngoing)
 	ss.logger.Debug("Synchronize SR Policy information", logger.Any("Message", message))
-	if err := ss.RegisterSRPolicy(*sr); err != nil {
+	if err := ss.RegisterSRPolicy(sr); err != nil {
 		ss.logger.Error("Failed to register SR Policy during synchronization", logger.Error(err), logger.Uint32("plspID", sr.LSPObject.PlspID))
 		return err
 	}
@@ -1393,8 +1389,8 @@ func (ss *Session) AdvertisedCapabilities() []pcep.CapabilityInterface {
 func (ss *Session) handleStatefulPCERequest(sr *pcep.StateReport) error {
 	ss.logger.Debug("Finish Stateful PCE request", logger.Uint32("srpID", sr.SrpObject.SrpID))
 	if sr.LSPObject.RFlag {
-		ss.DeleteSRPolicy(*sr)
-	} else if err := ss.RegisterSRPolicy(*sr); err != nil {
+		ss.DeleteSRPolicy(sr)
+	} else if err := ss.RegisterSRPolicy(sr); err != nil {
 		ss.logger.Error("Failed to register SR Policy for Stateful PCE request", logger.Error(err), logger.Uint32("plspID", sr.LSPObject.PlspID))
 		return err
 	}
@@ -1410,7 +1406,7 @@ func (ss *Session) handleSRPolicyWithPLSPID(sr *pcep.StateReport) error {
 		return ss.handleReportedSRPolicy(sr)
 	}
 
-	computedSegmentList, err := ss.computePathFromTED(*sr)
+	computedSegmentList, err := ss.computePathFromTED(sr)
 	if err != nil {
 		ss.logger.Error("Failed to compute path from TED", logger.Error(err))
 		return err
@@ -1422,7 +1418,7 @@ func (ss *Session) handleSRPolicyWithPLSPID(sr *pcep.StateReport) error {
 	}
 	sr.EroObject = eroObject
 
-	if err := ss.RegisterSRPolicy(*sr); err != nil {
+	if err := ss.RegisterSRPolicy(sr); err != nil {
 		ss.logger.Error("Failed to register SR Policy", logger.Error(err), logger.Uint32("plspID", sr.LSPObject.PlspID))
 		return err
 	}
@@ -1443,15 +1439,15 @@ func (ss *Session) handleSRPolicyWithPLSPID(sr *pcep.StateReport) error {
 // Register (or delete) an SR Policy exactly as reported by the PCC.
 func (ss *Session) handleReportedSRPolicy(sr *pcep.StateReport) error {
 	if sr.LSPObject.RFlag {
-		ss.DeleteSRPolicy(*sr)
-	} else if err := ss.RegisterSRPolicy(*sr); err != nil {
+		ss.DeleteSRPolicy(sr)
+	} else if err := ss.RegisterSRPolicy(sr); err != nil {
 		ss.logger.Error("Failed to register reported SR Policy", logger.Error(err), logger.Uint32("plspID", sr.LSPObject.PlspID))
 		return err
 	}
 	return nil
 }
 
-func (ss *Session) computePathFromTED(sr pcep.StateReport) ([]table.Segment, error) {
+func (ss *Session) computePathFromTED(sr *pcep.StateReport) ([]table.Segment, error) {
 	if ss.ted == nil {
 		return nil, errors.New("TED not available")
 	}
@@ -1476,7 +1472,7 @@ func (ss *Session) computePathFromTED(sr pcep.StateReport) ([]table.Segment, err
 	return segmentList, nil
 }
 
-func (ss *Session) extractSrcDstRouterIDs(sr pcep.StateReport) (string, string, error) {
+func (ss *Session) extractSrcDstRouterIDs(sr *pcep.StateReport) (srcRouterID, dstRouterID string, err error) {
 	var srcAddr, dstAddr netip.Addr
 
 	if sr.LSPObject.SrcAddr.IsValid() {
@@ -1492,12 +1488,12 @@ func (ss *Session) extractSrcDstRouterIDs(sr pcep.StateReport) (string, string, 
 
 	addrIndex := ss.ted.AddressRouterIDIndex()
 
-	srcRouterID, err := ss.findRouterIDFromAddress(addrIndex, srcAddr)
+	srcRouterID, err = ss.findRouterIDFromAddress(addrIndex, srcAddr)
 	if err != nil {
 		return "", "", fmt.Errorf("cannot find source router ID for %s: %w", srcAddr, err)
 	}
 
-	dstRouterID, err := ss.findRouterIDFromAddress(addrIndex, dstAddr)
+	dstRouterID, err = ss.findRouterIDFromAddress(addrIndex, dstAddr)
 	if err != nil {
 		return "", "", fmt.Errorf("cannot find destination router ID for %s: %w", dstAddr, err)
 	}
@@ -1517,7 +1513,7 @@ func (ss *Session) findRouterIDFromAddress(addrIndex map[netip.Addr]string, addr
 
 // selectMetricType maps the PCEP METRIC object's T field to the internal MetricType.
 // T=1, 2, and 3 correspond to IGP metric, TE metric, and hop count, respectively.
-func (ss *Session) selectMetricType(sr pcep.StateReport) table.MetricType {
+func (ss *Session) selectMetricType(sr *pcep.StateReport) table.MetricType {
 	if len(sr.MetricObjects) > 0 {
 		switch sr.MetricObjects[0].MetricType {
 		case 1:
@@ -1608,12 +1604,15 @@ func (ss *Session) SendOpen() error {
 	return nil
 }
 
-// nextUnusedSRPID returns an unused SRP-ID, wrapping at max.
+// nextUnusedSRPID returns an unused SRP-ID, wrapping at limit.
 // It returns an error if all non-reserved IDs are in use.
-func nextUnusedSRPID(head, max uint32, used func(uint32) bool) (srpID uint32, nextHead uint32, err error) {
-	capacity := max - 1 // valid range is [1, max-1]; 0 and max are reserved.
+func nextUnusedSRPID(
+	head, limit uint32,
+	used func(uint32) bool,
+) (srpID, nextHead uint32, err error) {
+	capacity := limit - 1 // valid range is [1, limit-1]; 0 and limit are reserved.
 	for range capacity {
-		if head == 0 || head >= max {
+		if head == 0 || head >= limit {
 			head = 1
 		}
 		candidate := head
@@ -1687,8 +1686,8 @@ func (ss *Session) SendPCUpdate(srPolicy table.SRPolicy) error {
 }
 
 // RegisterSRPolicy registers an SR Policy from a PCEP state report.
-func (ss *Session) RegisterSRPolicy(sr pcep.StateReport) error {
-	color, preference := ss.resolveColorPreference(&sr)
+func (ss *Session) RegisterSRPolicy(sr *pcep.StateReport) error {
+	color, preference := ss.resolveColorPreference(sr)
 	state := resolvePolicyState(sr.LSPObject.OFlag)
 
 	segmentList, err := validateSegmentList(sr)
@@ -1700,9 +1699,7 @@ func (ss *Session) RegisterSRPolicy(sr pcep.StateReport) error {
 }
 
 // resolveColorPreference returns the color and preference for the SR Policy.
-func (ss *Session) resolveColorPreference(sr *pcep.StateReport) (uint32, uint32) {
-	var color, preference uint32
-
+func (ss *Session) resolveColorPreference(sr *pcep.StateReport) (color, preference uint32) {
 	if ss.pccType == pcep.CiscoLegacy {
 		// Cisco legacy mode: get color and preference from Vendor Information Object
 		color = sr.VendorInformationObject.Color()
@@ -1745,7 +1742,7 @@ func resolvePolicyState(oflag uint8) table.PolicyState {
 }
 
 // validateSegmentList checks if the Segment List exists and is non-empty.
-func validateSegmentList(sr pcep.StateReport) ([]table.Segment, error) {
+func validateSegmentList(sr *pcep.StateReport) ([]table.Segment, error) {
 	if sr.EroObject == nil {
 		return nil, fmt.Errorf("EroObject is nil for PlspID %d", sr.LSPObject.PlspID)
 	}
@@ -1757,7 +1754,7 @@ func validateSegmentList(sr pcep.StateReport) ([]table.Segment, error) {
 }
 
 // updateOrCreatePolicy updates an existing SR Policy or creates a new one.
-func (ss *Session) updateOrCreatePolicy(sr pcep.StateReport, segmentList []table.Segment, color, preference uint32, state table.PolicyState) error {
+func (ss *Session) updateOrCreatePolicy(sr *pcep.StateReport, segmentList []table.Segment, color, preference uint32, state table.PolicyState) error {
 	lspID := sr.LSPObject.LSPID
 
 	ss.srPoliciesMu.Lock()
@@ -1808,7 +1805,7 @@ func (ss *Session) updateOrCreatePolicy(sr pcep.StateReport, segmentList []table
 }
 
 // DeleteSRPolicy deletes an SR Policy from the session.
-func (ss *Session) DeleteSRPolicy(sr pcep.StateReport) {
+func (ss *Session) DeleteSRPolicy(sr *pcep.StateReport) {
 	lspID := sr.LSPObject.LSPID
 
 	ss.srPoliciesMu.Lock()

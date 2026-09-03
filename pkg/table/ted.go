@@ -313,7 +313,7 @@ type LsLink struct {
 }
 
 // NewLsLink creates a new BGP-LS link between two nodes.
-func NewLsLink(localNode *LsNode, remoteNode *LsNode) *LsLink {
+func NewLsLink(localNode, remoteNode *LsNode) *LsLink {
 	return &LsLink{
 		LocalNode:  localNode,
 		RemoteNode: remoteNode,
