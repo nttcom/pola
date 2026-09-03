@@ -13,12 +13,19 @@ import (
 )
 
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "--version" {
+	os.Exit(mainRun(os.Args[1:]))
+}
+
+func mainRun(args []string) int {
+	if len(args) > 0 && args[0] == "--version" {
 		fmt.Printf("pola %s\n", version.Version())
-		return
+		return 0
 	}
 
-	if err := newRootCmd().Execute(); err != nil {
-		os.Exit(1)
+	cmd := newRootCmd()
+	cmd.SetArgs(args)
+	if err := cmd.Execute(); err != nil {
+		return 1
 	}
+	return 0
 }

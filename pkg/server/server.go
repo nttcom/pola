@@ -197,7 +197,7 @@ func NewPCE(ctx context.Context, o *PCEOptions, lg *logger.Logger, tedElemsChan 
 	}()
 
 	go func() {
-		resultChan <- result{server: "grpc", err: apiServer.Serve(o.GRPCAddr, o.GRPCPort)}
+		resultChan <- result{server: "grpc", err: apiServer.Serve(ctx, o.GRPCAddr, o.GRPCPort)}
 	}()
 
 	go s.awaitShutdown(ctx, grpcServer.GracefulStop)

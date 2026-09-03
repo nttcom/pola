@@ -9,6 +9,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -17,6 +18,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"regexp"
 	"slices"
 	"sort"
@@ -40,6 +42,10 @@ type config struct {
 }
 
 func main() {
+	os.Exit(realMain())
+}
+
+func realMain() int {
 	var cfg config
 	flag.StringVar(&cfg.base, "base", "origin/main", "branch or commit to compare against; its merge base with HEAD is used")
 	flag.StringVar(&cfg.profile, "profile", "coverage.out", "coverage profile produced by go test -coverprofile")
@@ -50,28 +56,32 @@ func main() {
 		cfg.paths = defaultPaths
 	}
 
-	switch err := run(cfg, os.Stdout); {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	switch err := run(ctx, cfg, os.Stdout); {
 	case err == nil:
+		return 0
 	case errors.Is(err, errBelowThreshold):
 		fmt.Fprintf(os.Stderr, "coverage-diff: %v\n", err)
-		os.Exit(1)
+		return 1
 	default:
 		fmt.Fprintf(os.Stderr, "coverage-diff: %v\n", err)
-		os.Exit(2)
+		return 2
 	}
 }
 
-func run(cfg config, out io.Writer) error {
-	module, err := goModule()
+func run(ctx context.Context, cfg config, out io.Writer) error {
+	module, err := goModule(ctx)
 	if err != nil {
 		return err
 	}
-	mergeBase, err := git("merge-base", cfg.base, "HEAD")
+	mergeBase, err := git(ctx, "merge-base", cfg.base, "HEAD")
 	if err != nil {
 		return fmt.Errorf("no merge base for %q and HEAD (in CI, check out with fetch-depth: 0): %w", cfg.base, err)
 	}
 
-	diff, err := gitDiff(mergeBase, cfg.paths)
+	diff, err := gitDiff(ctx, mergeBase, cfg.paths)
 	if err != nil {
 		return err
 	}
@@ -146,25 +156,25 @@ func short(rev string) string {
 	return rev
 }
 
-func gitDiff(mergeBase string, paths []string) ([]byte, error) {
+func gitDiff(ctx context.Context, mergeBase string, paths []string) ([]byte, error) {
 	// -U0 reports only added lines; the other flags make the parsed diff format
 	// independent of external diff, color, and prefix configuration.
 	args := []string{"diff", "-U0", "--no-ext-diff", "--no-color", "--src-prefix=a/", "--dst-prefix=b/", mergeBase, "--"}
 	args = append(args, paths...)
-	cmd := exec.Command("git", args...)
+	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Stderr = os.Stderr
 	return cmd.Output()
 }
 
-func git(args ...string) (string, error) {
-	cmd := exec.Command("git", args...)
+func git(ctx context.Context, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Stderr = io.Discard
 	b, err := cmd.Output()
 	return strings.TrimSpace(string(b)), err
 }
 
-func goModule() (string, error) {
-	cmd := exec.Command("go", "list", "-m")
+func goModule(ctx context.Context) (string, error) {
+	cmd := exec.CommandContext(ctx, "go", "list", "-m")
 	cmd.Stderr = os.Stderr
 	b, err := cmd.Output()
 	if err != nil {

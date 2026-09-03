@@ -453,17 +453,17 @@ func TestValidateSIDs_MixedSegmentTypesAreRejected(t *testing.T) {
 
 func TestServe_InvalidAddress(t *testing.T) {
 	s := &APIServer{grpcServer: grpc.NewServer(), logger: logger.NewNop()}
-	require.Error(t, s.Serve("", "50052"))
+	require.Error(t, s.Serve(t.Context(), "", "50052"))
 }
 
 func TestServe_InvalidPort(t *testing.T) {
 	s := &APIServer{grpcServer: grpc.NewServer(), logger: logger.NewNop()}
-	require.Error(t, s.Serve("127.0.0.1", "notaport"))
+	require.Error(t, s.Serve(t.Context(), "127.0.0.1", "notaport"))
 }
 
 func TestServe_PortOutOfRange(t *testing.T) {
 	s := &APIServer{grpcServer: grpc.NewServer(), logger: logger.NewNop()}
-	require.Error(t, s.Serve("127.0.0.1", "70000"))
+	require.Error(t, s.Serve(t.Context(), "127.0.0.1", "70000"))
 }
 
 func TestServe_ListenFailure(t *testing.T) {
@@ -477,7 +477,7 @@ func TestServe_ListenFailure(t *testing.T) {
 	require.NoError(t, err)
 
 	s := &APIServer{grpcServer: grpc.NewServer(), logger: logger.NewNop()}
-	require.ErrorContains(t, s.Serve(addr, port), "failed to listen on gRPC port", "expected the already-bound port to be rejected")
+	require.ErrorContains(t, s.Serve(t.Context(), addr, port), "failed to listen on gRPC port", "expected the already-bound port to be rejected")
 }
 
 func TestServe_ReturnsNilWhenAlreadyStoppedBeforeServing(t *testing.T) {
@@ -485,7 +485,7 @@ func TestServe_ReturnsNilWhenAlreadyStoppedBeforeServing(t *testing.T) {
 	grpcServer.GracefulStop() // simulate cancellation winning the startup race
 
 	s := &APIServer{grpcServer: grpcServer, logger: logger.NewNop()}
-	assert.NoError(t, s.Serve("127.0.0.1", "0"), "grpc.ErrServerStopped from the startup race should not be reported as a failure")
+	assert.NoError(t, s.Serve(t.Context(), "127.0.0.1", "0"), "grpc.ErrServerStopped from the startup race should not be reported as a failure")
 }
 
 func TestServe_ListensAndLogsActualAddr(t *testing.T) {
@@ -493,7 +493,7 @@ func TestServe_ListensAndLogsActualAddr(t *testing.T) {
 	s := &APIServer{grpcServer: grpc.NewServer(), logger: lg}
 
 	errCh := make(chan error, 1)
-	go func() { errCh <- s.Serve("127.0.0.1", "0") }()
+	go func() { errCh <- s.Serve(t.Context(), "127.0.0.1", "0") }()
 
 	require.Eventually(t, func() bool {
 		return len(logs.FilterByMessage("Start listening on gRPC port")) > 0

@@ -100,8 +100,8 @@ func NewAPIServer(pce *Server, grpcServer *grpc.Server, usidMode bool, lg *logge
 	return s
 }
 
-// Serve starts the gRPC server on the specified address and port.
-func (s *APIServer) Serve(address, port string) error {
+// Serve starts the gRPC server and stops listening if ctx is canceled.
+func (s *APIServer) Serve(ctx context.Context, address, port string) error {
 	a, err := netip.ParseAddr(address)
 	if err != nil {
 		return fmt.Errorf("failed to parse gRPC address %q: %w", address, err)
@@ -115,7 +115,8 @@ func (s *APIServer) Serve(address, port string) error {
 	}
 	localAddr := netip.AddrPortFrom(a, uint16(p))
 
-	grpcListener, err := net.Listen("tcp", localAddr.String())
+	var lc net.ListenConfig
+	grpcListener, err := lc.Listen(ctx, "tcp", localAddr.String())
 	if err != nil {
 		return fmt.Errorf("failed to listen on gRPC port %s: %w", localAddr.String(), err)
 	}

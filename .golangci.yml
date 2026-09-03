@@ -37,6 +37,7 @@ linters:
     - nestif
     - nilerr
     - nilnesserr
+    - noctx
     - nolintlint
     - perfsprint
     - reassign
@@ -126,6 +127,7 @@ linters:
           - containedctx
           - dupl
           - gosec
+          - noctx
       - path: ^tools/coverage-diff/
         linters:
           - gosec
