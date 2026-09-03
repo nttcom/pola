@@ -63,8 +63,8 @@ func mainRun(args []string) int {
 
 func run(args []string, deps runDeps) error {
 	if len(args) > 0 && args[0] == versionFlag {
-		fmt.Println("polad " + version.Version())
-		return nil
+		_, err := fmt.Fprintln(os.Stdout, "polad "+version.Version())
+		return err
 	}
 
 	fs := flag.NewFlagSet("polad", flag.ContinueOnError)
@@ -175,8 +175,8 @@ func openLogFile(c *config.Config) (*os.File, error) {
 	}
 	// OpenFile's mode does not apply to existing files.
 	if err := fp.Chmod(0o600); err != nil {
-		_ = fp.Close()
-		return nil, fmt.Errorf("failed to restrict log file permissions: %w", err)
+		err = fmt.Errorf("failed to restrict log file permissions: %w", err)
+		return nil, errors.Join(err, fp.Close())
 	}
 
 	return fp, nil

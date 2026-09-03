@@ -19,7 +19,10 @@ func main() {
 
 func mainRun(args []string, out, errOut io.Writer) int {
 	if len(args) > 0 && args[0] == "--version" {
-		fmt.Fprintf(out, "pola %s\n", version.Version())
+		if _, err := fmt.Fprintf(out, "pola %s\n", version.Version()); err != nil {
+			return 1
+		}
+
 		return 0
 	}
 

@@ -17,6 +17,7 @@ linters:
     - errorlint
     - exhaustive
     - fatcontext
+    - forbidigo
     - forcetypeassert
     - gocheckcompilerdirectives
     - gochecknoinits
@@ -83,6 +84,12 @@ linters:
       check-blank: true
     exhaustive:
       default-signifies-exhaustive: true
+    forbidigo:
+      forbid:
+        - pattern: '^fmt\.Print(|f|ln)$'
+          msg: use pkg/logger, or write CLI output to an explicit io.Writer
+        - pattern: '^os\.Exit$'
+          msg: call os.Exit only from a main package's main(), wrapping a testable run function
     gochecksumtype:
       default-signifies-exhaustive: false
     gocognit:
@@ -189,8 +196,6 @@ linters:
         - github.com/nttcom/pola/api/pola/v1
   exclusions:
     generated: lax
-    presets:
-      - std-error-handling
     rules:
       - path: _test\.go$
         linters:
@@ -207,6 +212,9 @@ linters:
       - path: ^tools/coverage-diff/
         linters:
           - gosec
+      - path: ^(cmd/pola|cmd/polad|tools/coverage-diff)/main\.go$
+        linters:
+          - forbidigo
 formatters:
   enable:
     - gofumpt

@@ -39,6 +39,7 @@ func newSRPolicyDeleteCmd(c *cli) *cobra.Command {
 			}
 			defer func() {
 				if err := f.Close(); err != nil {
+					//nolint:errcheck // best-effort warning; no fallback if stderr fails
 					fmt.Fprintf(cmd.ErrOrStderr(), "warning: failed to close file \"%s\": %v\n", filepath, err)
 				}
 			}()
@@ -98,7 +99,7 @@ func deleteSRPolicy(out io.Writer, input inputFormat, jsonFlag bool, client pb.P
 		return writeJSON(out, statusResult{Status: statusSuccess})
 	}
 
-	fmt.Fprintln(out, "success!")
+	_, err := fmt.Fprintln(out, "success!")
 
-	return nil
+	return err
 }

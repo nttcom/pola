@@ -5115,7 +5115,10 @@ func TestServer_PeerSetupStats_RecordsOkOnSuccessfulEstablishment(t *testing.T) 
 
 	client, err := net.Dial("tcp", ln.Addr().String())
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = client.Close() })
+	t.Cleanup(func() {
+		//nolint:errcheck // test cleanup connection close errors are not critical
+		_ = client.Close()
+	})
 
 	clientAddr, err := netip.ParseAddrPort(client.LocalAddr().String())
 	require.NoError(t, err)

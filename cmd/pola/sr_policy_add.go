@@ -46,6 +46,7 @@ func newSRPolicyAddCmd(c *cli) *cobra.Command {
 			}
 			defer func() {
 				if err := f.Close(); err != nil {
+					//nolint:errcheck // best-effort warning; no fallback if stderr fails
 					fmt.Fprintf(cmd.ErrOrStderr(), "warning: failed to close file \"%s\": %v\n", filepath, err)
 				}
 			}()
@@ -114,7 +115,9 @@ const (
 
 func addSRPolicy(out, errOut io.Writer, input inputFormat, jsonFlag, noSIDValidate bool, client pb.PCEServiceClient) error {
 	if noSIDValidate {
-		fmt.Fprintln(errOut, "warning: skipping SID validation (--no-sid-validate)")
+		if _, err := fmt.Fprintln(errOut, "warning: skipping SID validation (--no-sid-validate)"); err != nil {
+			return err
+		}
 	}
 
 	usesRouterID := input.SRPolicy.SrcRouterID != "" || input.SRPolicy.DstRouterID != ""
@@ -138,9 +141,9 @@ func addSRPolicy(out, errOut io.Writer, input inputFormat, jsonFlag, noSIDValida
 		return writeJSON(out, statusResult{Status: statusSuccess})
 	}
 
-	fmt.Fprintln(out, "success!")
+	_, err := fmt.Fprintln(out, "success!")
 
-	return nil
+	return err
 }
 
 // translateCreateSRPolicyError converts gRPC errors into CLI-friendly messages.

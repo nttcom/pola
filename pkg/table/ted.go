@@ -74,18 +74,43 @@ func (ted *LsTED) FindRouterIDByLoopback(addr netip.Addr) (string, bool) {
 	return routerID, ok
 }
 
-// Print writes the TED to w, listing each node with its prefixes, links and SRv6 SIDs.
-func (ted *LsTED) Print(w io.Writer) {
-	if ted == nil || ted.Nodes == nil {
-		fmt.Fprintln(w, "TED is empty")
+type errWriter struct {
+	w   io.Writer
+	err error
+}
+
+func (ew *errWriter) printf(format string, args ...any) {
+	if ew.err != nil {
 		return
 	}
 
-	printNodes(w, ted.Nodes)
+	_, ew.err = fmt.Fprintf(ew.w, format, args...)
+}
+
+func (ew *errWriter) println(args ...any) {
+	if ew.err != nil {
+		return
+	}
+
+	_, ew.err = fmt.Fprintln(ew.w, args...)
+}
+
+// Print writes the TED to w, listing each node with its prefixes, links and SRv6 SIDs.
+func (ted *LsTED) Print(w io.Writer) error {
+	ew := &errWriter{w: w}
+
+	if ted == nil || ted.Nodes == nil {
+		ew.println("TED is empty")
+		return ew.err
+	}
+
+	printNodes(ew, ted.Nodes)
+
+	return ew.err
 }
 
 // printNodes iterates over each node in the map and prints its details.
-func printNodes(w io.Writer, nodes map[string]*LsNode) {
+func printNodes(ew *errWriter, nodes map[string]*LsNode) {
 	nodeCnt := 1
 
 	for nodeID, node := range nodes {
@@ -93,28 +118,28 @@ func printNodes(w io.Writer, nodes map[string]*LsNode) {
 			continue
 		}
 
-		fmt.Fprintf(w, "Node: %d\n", nodeCnt)
-		printNodeBasic(w, nodeID, node)
-		printNodePrefixes(w, node)
-		printNodeLinks(w, node)
-		printNodeSRv6SIDs(w, node)
-		fmt.Fprintln(w)
+		ew.printf("Node: %d\n", nodeCnt)
+		printNodeBasic(ew, nodeID, node)
+		printNodePrefixes(ew, node)
+		printNodeLinks(ew, node)
+		printNodeSRv6SIDs(ew, node)
+		ew.println()
 
 		nodeCnt++
 	}
 }
 
 // printNodeBasic prints the basic information of a node.
-func printNodeBasic(w io.Writer, nodeID string, node *LsNode) {
-	fmt.Fprintf(w, "  %s\n", nodeID)
-	fmt.Fprintf(w, "  Hostname: %s\n", node.Hostname)
-	fmt.Fprintf(w, "  ISIS Area ID: %s\n", node.IsisAreaID)
-	fmt.Fprintf(w, "  SRGB: %d - %d\n", node.SrgbBegin, node.SrgbEnd)
+func printNodeBasic(ew *errWriter, nodeID string, node *LsNode) {
+	ew.printf("  %s\n", nodeID)
+	ew.printf("  Hostname: %s\n", node.Hostname)
+	ew.printf("  ISIS Area ID: %s\n", node.IsisAreaID)
+	ew.printf("  SRGB: %d - %d\n", node.SrgbBegin, node.SrgbEnd)
 }
 
 // printNodePrefixes prints the prefixes associated with a node.
-func printNodePrefixes(w io.Writer, node *LsNode) {
-	fmt.Fprintln(w, "  Prefixes:")
+func printNodePrefixes(ew *errWriter, node *LsNode) {
+	ew.println("  Prefixes:")
 
 	if node.Prefixes == nil {
 		return
@@ -125,17 +150,17 @@ func printNodePrefixes(w io.Writer, node *LsNode) {
 			continue
 		}
 
-		fmt.Fprintf(w, "    %s\n", prefix.Prefix.String())
+		ew.printf("    %s\n", prefix.Prefix.String())
 
 		if prefix.HasPrefixSID() {
-			fmt.Fprintf(w, "      index: %d\n", prefix.SidIndex)
+			ew.printf("      index: %d\n", prefix.SidIndex)
 		}
 	}
 }
 
 // printNodeLinks prints the links associated with a node.
-func printNodeLinks(w io.Writer, node *LsNode) {
-	fmt.Fprintln(w, "  Links:")
+func printNodeLinks(ew *errWriter, node *LsNode) {
+	ew.println("  Links:")
 
 	if node.Links == nil {
 		return
@@ -146,14 +171,14 @@ func printNodeLinks(w io.Writer, node *LsNode) {
 			continue
 		}
 
-		printLink(w, link)
+		printLink(ew, link)
 	}
 }
 
 const displayNone = "None"
 
 // printLink prints the details of a single link to w.
-func printLink(w io.Writer, link *LsLink) {
+func printLink(ew *errWriter, link *LsLink) {
 	localIP := displayNone
 	remoteIP := displayNone
 
@@ -165,16 +190,16 @@ func printLink(w io.Writer, link *LsLink) {
 		remoteIP = link.RemoteIP.String()
 	}
 
-	fmt.Fprintf(w, "    Local: %s Remote: %s\n", localIP, remoteIP)
+	ew.printf("    Local: %s Remote: %s\n", localIP, remoteIP)
 
 	remoteNodeID := displayNone
 	if link.RemoteNode != nil {
 		remoteNodeID = link.RemoteNode.RouterID
 	}
 
-	fmt.Fprintf(w, "      RemoteNode: %s\n", remoteNodeID)
+	ew.printf("      RemoteNode: %s\n", remoteNodeID)
 
-	fmt.Fprintln(w, "      Metrics:")
+	ew.println("      Metrics:")
 
 	if link.Metrics != nil {
 		for _, metric := range link.Metrics {
@@ -182,17 +207,17 @@ func printLink(w io.Writer, link *LsLink) {
 				continue
 			}
 
-			fmt.Fprintf(w, "        %s: %d\n", metric.Type.DisplayString(), metric.Value)
+			ew.printf("        %s: %d\n", metric.Type.DisplayString(), metric.Value)
 		}
 	}
 
-	fmt.Fprintf(w, "      Adj-SID: %d\n", link.AdjSid)
+	ew.printf("      Adj-SID: %d\n", link.AdjSid)
 
 	if link.Srv6EndXSID != nil {
-		fmt.Fprintln(w, "      SRv6 End.X SID:")
-		fmt.Fprintf(w, "        EndpointBehavior: %s\n", BehaviorToString(link.Srv6EndXSID.EndpointBehavior))
-		fmt.Fprintf(w, "        SIDs: %v\n", link.Srv6EndXSID.Sids)
-		fmt.Fprintf(w, "        SID Structure: Block: %d, Node: %d, Func: %d, Arg: %d\n",
+		ew.println("      SRv6 End.X SID:")
+		ew.printf("        EndpointBehavior: %s\n", BehaviorToString(link.Srv6EndXSID.EndpointBehavior))
+		ew.printf("        SIDs: %v\n", link.Srv6EndXSID.Sids)
+		ew.printf("        SID Structure: Block: %d, Node: %d, Func: %d, Arg: %d\n",
 			link.Srv6EndXSID.Srv6SIDStructure.LocalBlock,
 			link.Srv6EndXSID.Srv6SIDStructure.LocalNode,
 			link.Srv6EndXSID.Srv6SIDStructure.LocalFunc,
@@ -201,8 +226,8 @@ func printLink(w io.Writer, link *LsLink) {
 }
 
 // printNodeSRv6SIDs prints the SRv6 SIDs associated with a node.
-func printNodeSRv6SIDs(w io.Writer, node *LsNode) {
-	fmt.Fprintln(w, "  SRv6 SIDs:")
+func printNodeSRv6SIDs(ew *errWriter, node *LsNode) {
+	ew.println("  SRv6 SIDs:")
 
 	if node.SRv6SIDs == nil {
 		return
@@ -213,17 +238,17 @@ func printNodeSRv6SIDs(w io.Writer, node *LsNode) {
 			continue
 		}
 
-		fmt.Fprintf(w, "    SIDs: %v\n", srv6SID.Sids)
-		fmt.Fprintf(w, "    Block: %d, Node: %d, Func: %d, Arg: %d\n",
+		ew.printf("    SIDs: %v\n", srv6SID.Sids)
+		ew.printf("    Block: %d, Node: %d, Func: %d, Arg: %d\n",
 			srv6SID.SIDStructure.LocalBlock,
 			srv6SID.SIDStructure.LocalNode,
 			srv6SID.SIDStructure.LocalFunc,
 			srv6SID.SIDStructure.LocalArg)
-		fmt.Fprintf(w, "    EndpointBehavior: %s, Flags: %d, Algorithm: %d\n",
+		ew.printf("    EndpointBehavior: %s, Flags: %d, Algorithm: %d\n",
 			BehaviorToString(srv6SID.EndpointBehavior.Behavior),
 			srv6SID.EndpointBehavior.Flags,
 			srv6SID.EndpointBehavior.Algorithm)
-		fmt.Fprintf(w, "    MultiTopoIDs: %v\n", srv6SID.MultiTopoIDs)
+		ew.printf("    MultiTopoIDs: %v\n", srv6SID.MultiTopoIDs)
 	}
 }
 

@@ -98,6 +98,7 @@ func run(ctx context.Context, cfg config, out io.Writer) error {
 		return fmt.Errorf("open coverage profile %q: %w", cfg.profile, err)
 	}
 	defer func() {
+		//nolint:errcheck // read-only input; close failure does not affect the result
 		_ = f.Close()
 	}()
 

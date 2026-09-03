@@ -662,7 +662,7 @@ func TestLsTEDPrint(t *testing.T) {
 			ted *table.LsTED
 			buf bytes.Buffer
 		)
-		ted.Print(&buf)
+		require.NoError(t, ted.Print(&buf))
 		assert.Equal(t, "TED is empty\n", buf.String())
 	})
 
@@ -672,7 +672,7 @@ func TestLsTEDPrint(t *testing.T) {
 		ted := &table.LsTED{Nodes: make(map[string]*table.LsNode)}
 
 		var buf bytes.Buffer
-		ted.Print(&buf)
+		require.NoError(t, ted.Print(&buf))
 		assert.Empty(t, buf.String())
 	})
 
@@ -690,7 +690,7 @@ func TestLsTEDPrint(t *testing.T) {
 		}}
 
 		var buf bytes.Buffer
-		ted.Print(&buf)
+		require.NoError(t, ted.Print(&buf))
 		assert.Contains(t, buf.String(), "R1")
 		assert.Contains(t, buf.String(), "router1")
 	})

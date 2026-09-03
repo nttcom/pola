@@ -52,7 +52,7 @@ func deleteSession(out io.Writer, session netip.Addr, jsonFlag bool, client pb.P
 		return writeJSON(out, statusResult{Status: statusSuccess})
 	}
 
-	fmt.Fprintln(out, "success!")
+	_, err = fmt.Fprintln(out, "success!")
 
-	return nil
+	return err
 }
