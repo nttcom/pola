@@ -34,24 +34,32 @@ func wrapStatusError(err error, format string, a ...any) error {
 		return nil
 	}
 	prefix := fmt.Sprintf(format, a...)
-	if st, ok := status.FromError(err); ok {
-		wrapped := status.New(st.Code(), prefix+": "+st.Message())
-		if details := st.Details(); len(details) > 0 {
-			protoDetails := make([]protoadapt.MessageV1, 0, len(details))
-			for _, d := range details {
-				if m, ok := d.(proto.Message); ok {
-					protoDetails = append(protoDetails, protoadapt.MessageV1Of(m))
-				}
-			}
-			if len(protoDetails) > 0 {
-				if withDetails, derr := wrapped.WithDetails(protoDetails...); derr == nil {
-					return withDetails.Err()
-				}
-			}
-		}
+	st, ok := status.FromError(err)
+	if !ok {
+		return fmt.Errorf("%s: %w", prefix, err)
+	}
+
+	wrapped := status.New(st.Code(), prefix+": "+st.Message())
+	details := st.Details()
+	if len(details) == 0 {
 		return wrapped.Err()
 	}
-	return fmt.Errorf("%s: %w", prefix, err)
+
+	protoDetails := make([]protoadapt.MessageV1, 0, len(details))
+	for _, d := range details {
+		if m, ok := d.(proto.Message); ok {
+			protoDetails = append(protoDetails, protoadapt.MessageV1Of(m))
+		}
+	}
+	if len(protoDetails) == 0 {
+		return wrapped.Err()
+	}
+
+	withDetails, derr := wrapped.WithDetails(protoDetails...)
+	if derr != nil {
+		return wrapped.Err()
+	}
+	return withDetails.Err()
 }
 
 // statusFromCSPFError maps CSPF errors to gRPC status codes and reasons.

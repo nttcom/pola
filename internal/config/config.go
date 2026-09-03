@@ -121,6 +121,40 @@ func (p PCEP) validate() []error {
 	return errs
 }
 
+// validateTED checks the TED configuration and, when TED sources a backend
+// such as gobgp, the corresponding backend client settings.
+func (g Global) validateTED() []error {
+	if g.TED == nil {
+		return []error{errors.New("global.ted is required")}
+	}
+	if !g.TED.Enable {
+		return nil
+	}
+
+	var errs []error
+	if g.TED.Source == "" {
+		errs = append(errs, errors.New("global.ted.source is required when global.ted.enable is true"))
+	}
+	if g.TED.ASN == 0 {
+		errs = append(errs, errors.New("global.ted.asn is required when global.ted.enable is true"))
+	}
+	switch g.TED.Source {
+	case "gobgp":
+		if g.GoBGP.GRPCClient.Address == "" {
+			errs = append(errs, errors.New("global.gobgp.grpcClient.address is required when global.ted.source is gobgp"))
+		}
+		if g.GoBGP.GRPCClient.Port == "" {
+			errs = append(errs, errors.New("global.gobgp.grpcClient.port is required when global.ted.source is gobgp"))
+		}
+	case "":
+		// already reported above
+	default:
+		errs = append(errs, fmt.Errorf("global.ted.source %q is not supported", g.TED.Source))
+	}
+
+	return errs
+}
+
 // Validate checks the configuration.
 func (c *Config) Validate() error {
 	errs := c.Global.PCEP.validate()
@@ -137,29 +171,7 @@ func (c *Config) Validate() error {
 	if c.Global.Log.Name == "" {
 		errs = append(errs, errors.New("global.log.name is required"))
 	}
-	if c.Global.TED == nil {
-		errs = append(errs, errors.New("global.ted is required"))
-	} else if c.Global.TED.Enable {
-		if c.Global.TED.Source == "" {
-			errs = append(errs, errors.New("global.ted.source is required when global.ted.enable is true"))
-		}
-		if c.Global.TED.ASN == 0 {
-			errs = append(errs, errors.New("global.ted.asn is required when global.ted.enable is true"))
-		}
-		switch c.Global.TED.Source {
-		case "gobgp":
-			if c.Global.GoBGP.GRPCClient.Address == "" {
-				errs = append(errs, errors.New("global.gobgp.grpcClient.address is required when global.ted.source is gobgp"))
-			}
-			if c.Global.GoBGP.GRPCClient.Port == "" {
-				errs = append(errs, errors.New("global.gobgp.grpcClient.port is required when global.ted.source is gobgp"))
-			}
-		case "":
-			// already reported above
-		default:
-			errs = append(errs, fmt.Errorf("global.ted.source %q is not supported", c.Global.TED.Source))
-		}
-	}
+	errs = append(errs, c.Global.validateTED()...)
 
 	return errors.Join(errs...)
 }
