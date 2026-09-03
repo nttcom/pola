@@ -51,8 +51,10 @@ type TLVTestCase struct {
 }
 
 func runTLVDecodeTests(t *testing.T, cases map[string]TLVTestCase, constructor func() pcep.TLVInterface) {
+	t.Helper()
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Helper()
 			t.Parallel()
 
 			tlv := constructor()
@@ -73,8 +75,10 @@ func runTLVSerializeTests(t *testing.T, cases map[string]struct {
 	expected []byte
 },
 ) {
+	t.Helper()
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Helper()
 			t.Parallel()
 
 			actual, err := tt.input.Serialize()
@@ -89,8 +93,10 @@ func runTLVLenTests(t *testing.T, cases map[string]struct {
 	expected uint16
 },
 ) {
+	t.Helper()
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Helper()
 			t.Parallel()
 
 			actual := tt.input.Len()

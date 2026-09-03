@@ -28,8 +28,10 @@ func runTLVLenTests(t *testing.T, cases map[string]struct {
 	expected uint16
 },
 ) {
+	t.Helper()
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Helper()
 			t.Parallel()
 
 			actual := tt.input.Len()

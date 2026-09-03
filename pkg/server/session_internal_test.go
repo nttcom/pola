@@ -2284,6 +2284,7 @@ func TestOpen_MalformedOrUnexpectedPeerMessageIsRejected(t *testing.T) {
 		{
 			name: "PCEP version mismatch",
 			setup: func(t *testing.T, client *net.TCPConn) bool {
+				t.Helper()
 				header := &pcep.CommonHeader{Version: 2, MessageType: pcep.MessageTypeOpen, MessageLength: pcep.CommonHeaderLength}
 				_, err := client.Write(header.Serialize())
 				require.NoError(t, err, "failed to write header")
@@ -2295,6 +2296,7 @@ func TestOpen_MalformedOrUnexpectedPeerMessageIsRejected(t *testing.T) {
 			name:    "Keepalive before the peer's Open",
 			wantErr: "received a Keepalive before the peer's Open message",
 			setup: func(t *testing.T, client *net.TCPConn) bool {
+				t.Helper()
 				writeMessage(t, client, pcep.NewKeepaliveMessage())
 				return false
 			},
@@ -2303,6 +2305,7 @@ func TestOpen_MalformedOrUnexpectedPeerMessageIsRejected(t *testing.T) {
 			name:    "message that cannot appear during establishment",
 			wantErr: "while establishing the PCEP session",
 			setup: func(t *testing.T, client *net.TCPConn) bool {
+				t.Helper()
 				writeMessage(t, client, pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided))
 				return false
 			},
@@ -2310,6 +2313,7 @@ func TestOpen_MalformedOrUnexpectedPeerMessageIsRejected(t *testing.T) {
 		{
 			name: "MessageLength below CommonHeaderLength",
 			setup: func(t *testing.T, client *net.TCPConn) bool {
+				t.Helper()
 				header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeOpen, MessageLength: pcep.CommonHeaderLength - 1}
 				_, err := client.Write(header.Serialize())
 				require.NoError(t, err, "failed to write header")
@@ -2320,6 +2324,7 @@ func TestOpen_MalformedOrUnexpectedPeerMessageIsRejected(t *testing.T) {
 		{
 			name: "connection closed before the Open object body is read",
 			setup: func(t *testing.T, client *net.TCPConn) bool {
+				t.Helper()
 				header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeOpen, MessageLength: pcep.CommonHeaderLength + 10}
 				_, err := client.Write(header.Serialize())
 				require.NoError(t, err, "failed to write header")
@@ -2331,6 +2336,7 @@ func TestOpen_MalformedOrUnexpectedPeerMessageIsRejected(t *testing.T) {
 		{
 			name: "Open object has the wrong ObjectClass",
 			setup: func(t *testing.T, client *net.TCPConn) bool {
+				t.Helper()
 				body := pcep.NewCommonObjectHeader(pcep.ObjectClassClose, pcep.ObjectTypeOpenOpen, pcep.CommonHeaderLength).Serialize()
 				header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeOpen, MessageLength: pcep.CommonHeaderLength + uint16(len(body))}
 				_, err := client.Write(append(header.Serialize(), body...))
@@ -3753,6 +3759,7 @@ func TestReceivePCEPMessage_Errors(t *testing.T) {
 		{
 			name: "connection closed before a header is read",
 			setup: func(t *testing.T, client *net.TCPConn) bool {
+				t.Helper()
 				require.NoError(t, client.Close(), "failed to close client connection")
 				return true
 			},
@@ -3760,6 +3767,7 @@ func TestReceivePCEPMessage_Errors(t *testing.T) {
 		{
 			name: "PCRpt with a malformed StateReport object",
 			setup: func(t *testing.T, client *net.TCPConn) bool {
+				t.Helper()
 				body := pcep.NewCommonObjectHeader(pcep.ObjectClassLSP, pcep.ObjectTypeLSPLSP, pcep.CommonHeaderLength).Serialize()
 				writeRawPCEPMessage(t, client, pcep.MessageTypeReport, body)
 
@@ -3769,6 +3777,7 @@ func TestReceivePCEPMessage_Errors(t *testing.T) {
 		{
 			name: "connection closed before a PCRpt body is read",
 			setup: func(t *testing.T, client *net.TCPConn) bool {
+				t.Helper()
 				header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeReport, MessageLength: pcep.CommonHeaderLength + 8}
 				_, err := client.Write(header.Serialize())
 				require.NoError(t, err, "failed to write header")
@@ -3780,6 +3789,7 @@ func TestReceivePCEPMessage_Errors(t *testing.T) {
 		{
 			name: "PCErr message with no PCEP-ERROR object",
 			setup: func(t *testing.T, client *net.TCPConn) bool {
+				t.Helper()
 				writeRawPCEPMessage(t, client, pcep.MessageTypeError, nil)
 				return false
 			},
@@ -3787,6 +3797,7 @@ func TestReceivePCEPMessage_Errors(t *testing.T) {
 		{
 			name: "connection closed before a PCErr body is read",
 			setup: func(t *testing.T, client *net.TCPConn) bool {
+				t.Helper()
 				header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeError, MessageLength: pcep.CommonHeaderLength + 8}
 				_, err := client.Write(header.Serialize())
 				require.NoError(t, err, "failed to write header")
@@ -3798,6 +3809,7 @@ func TestReceivePCEPMessage_Errors(t *testing.T) {
 		{
 			name: "Close message body too short to decode",
 			setup: func(t *testing.T, client *net.TCPConn) bool {
+				t.Helper()
 				writeRawPCEPMessage(t, client, pcep.MessageTypeClose, nil)
 				return false
 			},
@@ -3805,6 +3817,7 @@ func TestReceivePCEPMessage_Errors(t *testing.T) {
 		{
 			name: "connection closed before a Close body is read",
 			setup: func(t *testing.T, client *net.TCPConn) bool {
+				t.Helper()
 				header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeClose, MessageLength: pcep.CommonHeaderLength + 8}
 				_, err := client.Write(header.Serialize())
 				require.NoError(t, err, "failed to write header")
