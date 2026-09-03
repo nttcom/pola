@@ -426,8 +426,15 @@ func convertLsLinks(links []*table.LsLink, lg *logger.Logger) []*pb.LsLink {
 
 // buildLsLink converts a single table.LsLink to protobuf LsLink.
 func buildLsLink(link *table.LsLink) *pb.LsLink {
-	localIP := link.LocalIP.String()
-	remoteIP := link.RemoteIP.String()
+	var localIP, remoteIP string
+
+	if link.LocalIP.IsValid() {
+		localIP = link.LocalIP.String()
+	}
+
+	if link.RemoteIP.IsValid() {
+		remoteIP = link.RemoteIP.String()
+	}
 
 	pbLink := &pb.LsLink{
 		LocalRouterId:  link.LocalNode.RouterID,

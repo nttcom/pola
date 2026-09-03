@@ -6,14 +6,19 @@
 package server
 
 import (
+	"context"
+	"errors"
 	"net/netip"
 	"testing"
 
 	pb "github.com/nttcom/pola/api/pola/v1"
+	cligrpc "github.com/nttcom/pola/cmd/pola/grpc"
 	"github.com/nttcom/pola/pkg/logger"
 	"github.com/nttcom/pola/pkg/packet/pcep"
+	"github.com/nttcom/pola/pkg/table"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
 )
 
 func TestToPBSessionState(t *testing.T) {
@@ -188,4 +193,111 @@ func TestSessionListFilter(t *testing.T) {
 
 	_, err = sessionListFilter(&pb.GetSessionListRequest{PeerAddr: []byte{0x01, 0x02, 0x03}})
 	assert.Error(t, err, "an address that is neither 4 nor 16 bytes must be rejected")
+}
+
+func TestBuildLsLink_LinkIPs(t *testing.T) {
+	t.Parallel()
+
+	localNode := table.NewLsNode(65000, testRouterID1)
+	remoteNode := table.NewLsNode(65000, testRouterID2)
+
+	tests := []struct {
+		name         string
+		localIP      netip.Addr
+		remoteIP     netip.Addr
+		wantLocalIP  string
+		wantRemoteIP string
+	}{
+		{
+			name:         "valid IPs are stringified",
+			localIP:      netip.MustParseAddr("192.0.2.1"),
+			remoteIP:     netip.MustParseAddr("192.0.2.2"),
+			wantLocalIP:  "192.0.2.1",
+			wantRemoteIP: "192.0.2.2",
+		},
+		{
+			name: "absent IPs stay empty",
+		},
+		{
+			name:        "only the valid side is stringified",
+			localIP:     netip.MustParseAddr("2001:db8::1"),
+			wantLocalIP: "2001:db8::1",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			link := table.NewLsLink(localNode, remoteNode)
+			link.LocalIP = tt.localIP
+			link.RemoteIP = tt.remoteIP
+
+			got := buildLsLink(link)
+
+			assert.Equal(t, tt.wantLocalIP, got.GetLocalIp())
+			assert.Equal(t, tt.wantRemoteIP, got.GetRemoteIp())
+		})
+	}
+}
+
+type tedOnlyClient struct {
+	resp *pb.GetTEDResponse
+}
+
+func (c *tedOnlyClient) GetTED(_ context.Context, _ *pb.GetTEDRequest, _ ...grpc.CallOption) (*pb.GetTEDResponse, error) {
+	return c.resp, nil
+}
+
+func (c *tedOnlyClient) CreateSRPolicy(_ context.Context, _ *pb.CreateSRPolicyRequest, _ ...grpc.CallOption) (*pb.CreateSRPolicyResponse, error) {
+	return nil, errors.New("unexpected call")
+}
+
+func (c *tedOnlyClient) DeleteSRPolicy(_ context.Context, _ *pb.DeleteSRPolicyRequest, _ ...grpc.CallOption) (*pb.DeleteSRPolicyResponse, error) {
+	return nil, errors.New("unexpected call")
+}
+
+func (c *tedOnlyClient) GetSessionList(_ context.Context, _ *pb.GetSessionListRequest, _ ...grpc.CallOption) (*pb.GetSessionListResponse, error) {
+	return nil, errors.New("unexpected call")
+}
+
+func (c *tedOnlyClient) GetSRPolicyList(_ context.Context, _ *pb.GetSRPolicyListRequest, _ ...grpc.CallOption) (*pb.GetSRPolicyListResponse, error) {
+	return nil, errors.New("unexpected call")
+}
+
+func (c *tedOnlyClient) DeleteSession(_ context.Context, _ *pb.DeleteSessionRequest, _ ...grpc.CallOption) (*pb.DeleteSessionResponse, error) {
+	return nil, errors.New("unexpected call")
+}
+
+func TestGetTED_LinksWithoutIPsRoundTripToCLI(t *testing.T) {
+	t.Parallel()
+
+	node := table.NewLsNode(65000, testRouterID1)
+	remote := table.NewLsNode(65000, testRouterID2)
+	node.Links = []*table.LsLink{table.NewLsLink(node, remote)}
+	remote.Links = []*table.LsLink{table.NewLsLink(remote, node)}
+
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{
+		node.RouterID:   node,
+		remote.RouterID: remote,
+	}}
+
+	resp, err := newTestAPIServer(ted).GetTED(context.Background(), &pb.GetTEDRequest{})
+	require.NoError(t, err)
+
+	for _, pbNode := range resp.GetNodes() {
+		for _, pbLink := range pbNode.GetLinks() {
+			assert.Empty(t, pbLink.GetLocalIp())
+			assert.Empty(t, pbLink.GetRemoteIp())
+		}
+	}
+
+	got, err := cligrpc.GetTED(&tedOnlyClient{resp: resp})
+	require.NoError(t, err)
+	require.Len(t, got.Nodes, 2)
+
+	for _, gotNode := range got.Nodes {
+		require.Len(t, gotNode.Links, 1)
+		assert.False(t, gotNode.Links[0].LocalIP.IsValid())
+		assert.False(t, gotNode.Links[0].RemoteIP.IsValid())
+	}
 }

@@ -1184,6 +1184,15 @@ func TestCreateLsLink(t *testing.T) {
 	localNode := table.NewLsNode(65000, "0000.0000.0001")
 	remoteNode := table.NewLsNode(65000, "0000.0000.0002")
 
+	t.Run("absent IPs are accepted", func(t *testing.T) {
+		t.Parallel()
+
+		link, err := createLsLink(localNode, remoteNode, &pb.LsLink{})
+		require.NoError(t, err)
+		assert.False(t, link.LocalIP.IsValid())
+		assert.False(t, link.RemoteIP.IsValid())
+	})
+
 	t.Run("invalid localIp", func(t *testing.T) {
 		t.Parallel()
 
