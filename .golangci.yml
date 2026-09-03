@@ -29,6 +29,7 @@ linters:
     - gosec
     - iface
     - intrange
+    - loggercheck
     - makezero
     - mirror
     - misspell
@@ -116,6 +117,9 @@ linters:
       enable:
         - identical
         - unused
+    loggercheck:
+      require-string-key: true
+      no-printf-like: true
     nolintlint:
       require-explanation: true
       require-specific: true
