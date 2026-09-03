@@ -94,6 +94,11 @@ linters:
       min-complexity: 15
     godot:
       scope: declarations
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+        - shadow
     iface:
       enable:
         - identical
