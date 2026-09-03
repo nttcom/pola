@@ -21,14 +21,14 @@ func TestToPBSessionState(t *testing.T) {
 
 	tests := []struct {
 		name string
-		in   sessionState
+		in   SessionState
 		want pb.SessionState
 	}{
-		{"TCPPending", sessionStateTCPPending, pb.SessionState_SESSION_STATE_TCP_PENDING},
-		{"OpenWait", sessionStateOpenWait, pb.SessionState_SESSION_STATE_OPEN_WAIT},
-		{"KeepWait", sessionStateKeepWait, pb.SessionState_SESSION_STATE_KEEP_WAIT},
-		{"Up", sessionStateUp, pb.SessionState_SESSION_STATE_UP},
-		{"unrecognized value maps to unspecified", sessionState(99), pb.SessionState_SESSION_STATE_UNSPECIFIED},
+		{"TCPPending", SessionStateTCPPending, pb.SessionState_SESSION_STATE_TCP_PENDING},
+		{"OpenWait", SessionStateOpenWait, pb.SessionState_SESSION_STATE_OPEN_WAIT},
+		{"KeepWait", SessionStateKeepWait, pb.SessionState_SESSION_STATE_KEEP_WAIT},
+		{"Up", SessionStateUp, pb.SessionState_SESSION_STATE_UP},
+		{"unrecognized value maps to unspecified", SessionState(99), pb.SessionState_SESSION_STATE_UNSPECIFIED},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -64,12 +64,12 @@ func TestToPBInitiator(t *testing.T) {
 
 	tests := []struct {
 		name string
-		in   sessionInitiator
+		in   SessionInitiator
 		want pb.SessionInitiator
 	}{
-		{"Remote", sessionInitiatorRemote, pb.SessionInitiator_SESSION_INITIATOR_REMOTE},
-		{"Local", sessionInitiatorLocal, pb.SessionInitiator_SESSION_INITIATOR_LOCAL},
-		{"unrecognized value maps to unspecified", sessionInitiator(99), pb.SessionInitiator_SESSION_INITIATOR_UNSPECIFIED},
+		{"Remote", SessionInitiatorRemote, pb.SessionInitiator_SESSION_INITIATOR_REMOTE},
+		{"Local", SessionInitiatorLocal, pb.SessionInitiator_SESSION_INITIATOR_LOCAL},
+		{"unrecognized value maps to unspecified", SessionInitiator(99), pb.SessionInitiator_SESSION_INITIATOR_UNSPECIFIED},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -84,13 +84,13 @@ func TestToPBSyncState(t *testing.T) {
 
 	tests := []struct {
 		name string
-		in   lspDBSyncState
+		in   SyncState
 		want pb.LspDbSyncState
 	}{
-		{"Pending", lspDBSyncPending, pb.LspDbSyncState_LSP_DB_SYNC_STATE_PENDING},
-		{"Ongoing", lspDBSyncOngoing, pb.LspDbSyncState_LSP_DB_SYNC_STATE_ONGOING},
-		{"Finished", lspDBSyncFinished, pb.LspDbSyncState_LSP_DB_SYNC_STATE_FINISHED},
-		{"unrecognized value maps to unspecified", lspDBSyncState(99), pb.LspDbSyncState_LSP_DB_SYNC_STATE_UNSPECIFIED},
+		{"Pending", SyncStatePending, pb.LspDbSyncState_LSP_DB_SYNC_STATE_PENDING},
+		{"Ongoing", SyncStateOngoing, pb.LspDbSyncState_LSP_DB_SYNC_STATE_ONGOING},
+		{"Finished", SyncStateFinished, pb.LspDbSyncState_LSP_DB_SYNC_STATE_FINISHED},
+		{"unrecognized value maps to unspecified", SyncState(99), pb.LspDbSyncState_LSP_DB_SYNC_STATE_UNSPECIFIED},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -103,7 +103,7 @@ func TestToPBSyncState(t *testing.T) {
 func TestToPBSessionStats_AlwaysZeroCountersForRolesPolaNeverPlays(t *testing.T) {
 	t.Parallel()
 
-	stats := sessionStatsSnapshot{
+	stats := SessionStats{
 		OpenSent: 20, OpenRcvd: 21,
 		KeepaliveSent: 1, KeepaliveRcvd: 2,
 		CloseSent: 22, CloseRcvd: 23,
@@ -168,7 +168,7 @@ func TestBuildPBSession_TimestampsAndInitiatorAndSyncState(t *testing.T) {
 	assert.Equal(t, pb.SessionInitiator_SESSION_INITIATOR_REMOTE, pbSession.GetInitiator())
 	assert.Equal(t, pb.LspDbSyncState_LSP_DB_SYNC_STATE_PENDING, pbSession.GetSyncState())
 
-	ss.setState(sessionStateUp)
+	ss.setState(SessionStateUp)
 	pbSession = apiServer.buildPBSession(ss, false)
 	assert.NotZero(t, pbSession.GetEstablishedAtUnixNano())
 }

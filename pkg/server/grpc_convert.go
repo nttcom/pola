@@ -36,39 +36,39 @@ func dedupCapabilities(lg *logger.Logger, kind string, caps []pcep.CapabilityInt
 	return pbCaps
 }
 
-func toPBSessionState(state sessionState) pb.SessionState {
+func toPBSessionState(state SessionState) pb.SessionState {
 	switch state {
-	case sessionStateTCPPending:
+	case SessionStateTCPPending:
 		return pb.SessionState_SESSION_STATE_TCP_PENDING
-	case sessionStateOpenWait:
+	case SessionStateOpenWait:
 		return pb.SessionState_SESSION_STATE_OPEN_WAIT
-	case sessionStateKeepWait:
+	case SessionStateKeepWait:
 		return pb.SessionState_SESSION_STATE_KEEP_WAIT
-	case sessionStateUp:
+	case SessionStateUp:
 		return pb.SessionState_SESSION_STATE_UP
 	default:
 		return pb.SessionState_SESSION_STATE_UNSPECIFIED
 	}
 }
 
-func toPBInitiator(initiator sessionInitiator) pb.SessionInitiator {
+func toPBInitiator(initiator SessionInitiator) pb.SessionInitiator {
 	switch initiator {
-	case sessionInitiatorLocal:
+	case SessionInitiatorLocal:
 		return pb.SessionInitiator_SESSION_INITIATOR_LOCAL
-	case sessionInitiatorRemote:
+	case SessionInitiatorRemote:
 		return pb.SessionInitiator_SESSION_INITIATOR_REMOTE
 	default:
 		return pb.SessionInitiator_SESSION_INITIATOR_UNSPECIFIED
 	}
 }
 
-func toPBSyncState(state lspDBSyncState) pb.LspDbSyncState {
+func toPBSyncState(state SyncState) pb.LspDbSyncState {
 	switch state {
-	case lspDBSyncPending:
+	case SyncStatePending:
 		return pb.LspDbSyncState_LSP_DB_SYNC_STATE_PENDING
-	case lspDBSyncOngoing:
+	case SyncStateOngoing:
 		return pb.LspDbSyncState_LSP_DB_SYNC_STATE_ONGOING
-	case lspDBSyncFinished:
+	case SyncStateFinished:
 		return pb.LspDbSyncState_LSP_DB_SYNC_STATE_FINISHED
 	default:
 		return pb.LspDbSyncState_LSP_DB_SYNC_STATE_UNSPECIFIED
@@ -77,7 +77,7 @@ func toPBSyncState(state lspDBSyncState) pb.LspDbSyncState {
 
 // toPBSessionStats converts session counters and setup counters to protobuf.
 // Counters not applicable to Pola's PCE role are reported as 0.
-func toPBSessionStats(stats sessionStatsSnapshot, setupOK, setupFail uint64) *pb.SessionStats {
+func toPBSessionStats(stats SessionStats, setupOK, setupFail uint64) *pb.SessionStats {
 	return &pb.SessionStats{
 		Open:             &pb.MessageCounter{Sent: stats.OpenSent, Rcvd: stats.OpenRcvd},
 		Keepalive:        &pb.MessageCounter{Sent: stats.KeepaliveSent, Rcvd: stats.KeepaliveRcvd},
@@ -234,7 +234,7 @@ func (s *APIServer) buildPBSession(pcepSession *Session, includeStats bool) *pb.
 			DeadTimer: uint32(snap.pccOpen.DeadTimer),
 		}
 	}
-	if snap.state == sessionStateUp {
+	if snap.state == SessionStateUp {
 		deadTimer := snap.readDeadline() / time.Second
 		if deadTimer > math.MaxUint32 {
 			deadTimer = 0

@@ -19,7 +19,7 @@ import (
 
 	"github.com/nttcom/pola/pkg/logger"
 	"github.com/nttcom/pola/pkg/table"
-	api "github.com/osrg/gobgp/v4/api"
+	"github.com/osrg/gobgp/v4/api"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -1813,7 +1813,7 @@ func testMonitorBGPLsEventsReconnectsAfterStreamEnd(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		monitorBGPLsEvents(ctx, host, port, tedChan, logger.NewNop(), monitorOptions{
+		monitorLoop(ctx, host, port, tedChan, logger.NewNop(), monitorOptions{
 			debounceCooldown: 10 * time.Millisecond,
 			retryInterval:    10 * time.Millisecond,
 		})
@@ -1836,7 +1836,7 @@ func testMonitorBGPLsEventsReconnectsAfterStreamEnd(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		t.Fatal("monitorBGPLsEvents did not return after the context was canceled")
+		t.Fatal("monitorLoop did not return after the context was canceled")
 	}
 }
 
@@ -1893,7 +1893,7 @@ func testMonitorBGPLsEventsDebouncedFetch(t *testing.T) {
 	done := make(chan struct{})
 
 	go func() {
-		monitorBGPLsEvents(ctx, host, port, tedChan, logger.NewNop(), monitorOptions{
+		monitorLoop(ctx, host, port, tedChan, logger.NewNop(), monitorOptions{
 			debounceCooldown: 20 * time.Millisecond,
 			retryInterval:    10 * time.Millisecond,
 		})
@@ -1919,7 +1919,7 @@ func testMonitorBGPLsEventsDebouncedFetch(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		t.Fatal("monitorBGPLsEvents did not return after the context was canceled")
+		t.Fatal("monitorLoop did not return after the context was canceled")
 	}
 }
 
@@ -1944,7 +1944,7 @@ func testMonitorBGPLsEventsReestablishesStream(t *testing.T) {
 	done := make(chan struct{})
 
 	go func() {
-		monitorBGPLsEvents(ctx, host, port, tedChan, lg, monitorOptions{
+		monitorLoop(ctx, host, port, tedChan, lg, monitorOptions{
 			debounceCooldown: 20 * time.Millisecond,
 			retryInterval:    10 * time.Millisecond,
 		})
@@ -1972,7 +1972,7 @@ func testMonitorBGPLsEventsReestablishesStream(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		t.Fatal("monitorBGPLsEvents did not return after the context was canceled")
+		t.Fatal("monitorLoop did not return after the context was canceled")
 	}
 }
 
@@ -2029,7 +2029,7 @@ func testMonitorBGPLsEventsResyncsAfterReconnect(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		monitorBGPLsEvents(ctx, host, port, tedChan, logger.NewNop(), monitorOptions{
+		monitorLoop(ctx, host, port, tedChan, logger.NewNop(), monitorOptions{
 			debounceCooldown: 10 * time.Millisecond,
 			retryInterval:    10 * time.Millisecond,
 		})
@@ -2053,6 +2053,6 @@ func testMonitorBGPLsEventsResyncsAfterReconnect(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		t.Fatal("monitorBGPLsEvents did not return after the context was canceled")
+		t.Fatal("monitorLoop did not return after the context was canceled")
 	}
 }

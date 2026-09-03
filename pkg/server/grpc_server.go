@@ -21,7 +21,7 @@ import (
 	"github.com/nttcom/pola/pkg/logger"
 	"github.com/nttcom/pola/pkg/packet/pcep"
 	"github.com/nttcom/pola/pkg/table"
-	grpc "google.golang.org/grpc"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
@@ -523,15 +523,15 @@ func (s *APIServer) DeleteSRPolicy(_ context.Context, input *pb.DeleteSRPolicyRe
 		Preference:  100,
 	}
 
-	if id, exists := pcepSession.SearchPlspID(inputSRPolicy.GetColor(), dstAddr); exists {
-		s.logger.Debug("Request to delete SR Policy", logger.Uint32("plspID", id))
-		srPolicy.PlspID = id
-
-		if err := pcepSession.RequestSRPolicyDeleted(srPolicy); err != nil {
-			return nil, newStatus(codes.Internal, ReasonPCEPRequestFailed, "failed to send PC delete: %v", err)
-		}
-	} else {
+	id, exists := pcepSession.SearchPlspID(inputSRPolicy.GetColor(), dstAddr)
+	if !exists {
 		return nil, newStatus(codes.NotFound, ReasonSRPolicyNotFound, "requested SR Policy not found")
+	}
+
+	s.logger.Debug("Request to delete SR Policy", logger.Uint32("plspID", id))
+	srPolicy.PlspID = id
+	if err := pcepSession.RequestSRPolicyDeleted(srPolicy); err != nil {
+		return nil, newStatus(codes.Internal, ReasonPCEPRequestFailed, "failed to send PC delete: %v", err)
 	}
 
 	return &pb.DeleteSRPolicyResponse{}, nil
@@ -607,12 +607,12 @@ func validate(inputSRPolicy *pb.SRPolicy, asn uint32, validationKind ValidationK
 	if validationKind == ValidationAdd && asn == 0 {
 		return newStatus(codes.InvalidArgument, ReasonInvalidRequest, "validate error, ASN must not be zero")
 	}
-	if validateFunc, ok := validator[validationKind]; ok {
-		if err := validateFunc(inputSRPolicy, asn); err != nil {
-			return newStatus(codes.InvalidArgument, ReasonInvalidRequest, "validate error: %s", err.Error())
-		}
-	} else {
+	validateFunc, ok := validator[validationKind]
+	if !ok {
 		return newStatus(codes.InvalidArgument, ReasonInvalidRequest, "validate error: unknown validation kind %q", validationKind)
+	}
+	if err := validateFunc(inputSRPolicy, asn); err != nil {
+		return newStatus(codes.InvalidArgument, ReasonInvalidRequest, "validate error: %s", err.Error())
 	}
 
 	return nil

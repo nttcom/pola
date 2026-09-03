@@ -3,6 +3,7 @@
 // This software is released under the MIT License.
 // see https://github.com/nttcom/pola/blob/main/LICENSE
 
+// Command pola is the CLI client for the pola PCE.
 package main
 
 const (

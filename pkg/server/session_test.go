@@ -355,7 +355,7 @@ func TestSendSRPolicyRequest_ForgetsIntentOnSendFailure(t *testing.T) {
 	})
 
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
-	ss.syncState = lspDBSyncFinished
+	ss.syncState = SyncStateFinished
 	wantSRPID := ss.srpIDHead
 
 	// Close the PCEP-side connection so the send inside sendSRPolicyRequest fails.
@@ -433,9 +433,7 @@ func TestConcurrentSRPolicyRequestsAllocateUniqueSRPIDs(t *testing.T) {
 	var wg sync.WaitGroup
 	errCh := make(chan error, goroutines)
 	for i := range goroutines {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
+		wg.Go(func() {
 			srPolicy := table.SRPolicy{
 				Name:    "concurrent-test",
 				SrcAddr: netip.MustParseAddr("10.255.0.1"),
@@ -451,7 +449,7 @@ func TestConcurrentSRPolicyRequestsAllocateUniqueSRPIDs(t *testing.T) {
 				err = ss.RequestSRPolicyCreated(srPolicy)
 			}
 			errCh <- err
-		}(i)
+		})
 	}
 	wg.Wait()
 	close(errCh)
@@ -663,13 +661,11 @@ func TestIntentSweep_ConcurrentWithIntentConsumption(t *testing.T) {
 
 	var wg sync.WaitGroup
 	for i := uint32(1); i <= 20; i++ {
-		wg.Add(1)
-		go func(srpID uint32) {
-			defer wg.Done()
-			ss.rememberSRPolicyIntent(srpID, table.PolicyTypeDynamic, table.TEMetric)
+		wg.Go(func() {
+			ss.rememberSRPolicyIntent(i, table.PolicyTypeDynamic, table.TEMetric)
 			time.Sleep(time.Millisecond)
-			ss.takeSRPolicyIntent(srpID)
-		}(i)
+			ss.takeSRPolicyIntent(i)
+		})
 	}
 	wg.Wait()
 }
@@ -817,12 +813,10 @@ func sendConcurrentPCEPMessages(t *testing.T, ss *Session, goroutines int) {
 	errCh := make(chan error, goroutines)
 
 	for i := range goroutines {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
+		wg.Go(func() {
 			c := concurrentSendCases[i%len(concurrentSendCases)]
 			errCh <- c.send(ss, i)
-		}(i)
+		})
 	}
 
 	wg.Wait()
@@ -1198,7 +1192,7 @@ func TestHandlePeerOpen_AcknowledgesAndStoresPeerOpenParams(t *testing.T) {
 	assert.True(t, neg.remoteOK, "an acceptable Open sets Appendix A's RemoteOK")
 	assert.False(t, neg.localOK, "LocalOK is only set by the peer's Keepalive")
 	assert.Zero(t, neg.peerOpensRejected, "an acceptable Open does not consume OpenRetry")
-	assert.Equal(t, sessionStateKeepWait, neg.state())
+	assert.Equal(t, SessionStateKeepWait, neg.state())
 
 	pccOpen, ok := ss.PccOpen()
 	require.True(t, ok)
@@ -1545,7 +1539,7 @@ func TestEstablished_StateMachineFollowsRFC5440(t *testing.T) {
 	})
 
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
-	assert.Equal(t, sessionStateTCPPending, ss.State(), "a freshly accepted session is TCP pending")
+	assert.Equal(t, SessionStateTCPPending, ss.State(), "a freshly accepted session is TCP pending")
 	assert.Equal(t, pb.SessionState_SESSION_STATE_TCP_PENDING, toPBSessionState(ss.State()))
 	assert.False(t, ss.Up())
 
@@ -1564,7 +1558,7 @@ func TestEstablished_StateMachineFollowsRFC5440(t *testing.T) {
 
 	// RFC 5440 §6.2: the session is established only once both peers have received
 	// a Keepalive, so Pola stays in KeepWait until the PCC acknowledges its Open.
-	require.Eventually(t, func() bool { return ss.State() == sessionStateKeepWait }, 2*time.Second, 10*time.Millisecond,
+	require.Eventually(t, func() bool { return ss.State() == SessionStateKeepWait }, 2*time.Second, 10*time.Millisecond,
 		"Pola must wait in KeepWait for the peer's Keepalive")
 	assert.Equal(t, pb.SessionState_SESSION_STATE_KEEP_WAIT, toPBSessionState(ss.State()))
 	assert.False(t, ss.Up(), "the session must not be up before the peer acknowledges Pola's Open")
@@ -2360,20 +2354,20 @@ func TestOpenNegotiation_DerivesAppendixAStateFromRemoteOKAndLocalOK(t *testing.
 	cases := []struct {
 		name            string
 		neg             openNegotiation
-		wantState       sessionState
+		wantState       SessionState
 		wantEstablished bool
 		wantPeerOpened  bool
 	}{
 		{
 			name:      "nothing acknowledged yet",
-			wantState: sessionStateOpenWait,
+			wantState: SessionStateOpenWait,
 		},
 		{
 			// Appendix A: OpenWait + unacceptable-but-negotiable + LocalOK=0
 			// clears the OpenWait timer, starts KeepWait and moves to KeepWait.
 			name:           "peer's Open answered with PCErr(1,4) while Pola's Open is unacknowledged",
 			neg:            openNegotiation{peerOpensRejected: 1},
-			wantState:      sessionStateKeepWait,
+			wantState:      SessionStateKeepWait,
 			wantPeerOpened: true,
 		},
 		{
@@ -2381,24 +2375,24 @@ func TestOpenNegotiation_DerivesAppendixAStateFromRemoteOKAndLocalOK(t *testing.
 			// timer, starts OpenWait and moves back to OpenWait.
 			name:           "Pola's Open acknowledged while the peer's revised Open is awaited",
 			neg:            openNegotiation{peerOpensRejected: 1, localOK: true},
-			wantState:      sessionStateOpenWait,
+			wantState:      SessionStateOpenWait,
 			wantPeerOpened: true,
 		},
 		{
 			name:           "peer's Open accepted, only its Keepalive outstanding",
 			neg:            openNegotiation{remoteOK: true},
-			wantState:      sessionStateKeepWait,
+			wantState:      SessionStateKeepWait,
 			wantPeerOpened: true,
 		},
 		{
 			name:      "Pola's Open acknowledged, peer's Open still awaited",
 			neg:       openNegotiation{localOK: true},
-			wantState: sessionStateOpenWait,
+			wantState: SessionStateOpenWait,
 		},
 		{
 			name:            "both directions acknowledged",
 			neg:             openNegotiation{remoteOK: true, localOK: true},
-			wantState:       sessionStateUp,
+			wantState:       SessionStateUp,
 			wantEstablished: true,
 			wantPeerOpened:  true,
 		},
@@ -2421,31 +2415,31 @@ func TestOpenNegotiation_TracksAppendixAState(t *testing.T) {
 	ss := negotiatingSession(t, conn)
 
 	neg := &openNegotiation{}
-	assert.Equal(t, sessionStateOpenWait, neg.state(), "(0,0) awaits the peer's Open: OpenWait/1-2")
+	assert.Equal(t, SessionStateOpenWait, neg.state(), "(0,0) awaits the peer's Open: OpenWait/1-2")
 	assert.False(t, neg.established())
 
 	require.NoError(t, ss.handlePeerOpen(openMessageBody(t, 1, 5, 20), neg))
 	assert.False(t, neg.remoteOK)
 	assert.Equal(t, 1, neg.peerOpensRejected)
-	assert.Equal(t, sessionStateKeepWait, neg.state(),
+	assert.Equal(t, SessionStateKeepWait, neg.state(),
 		"Appendix A moves to KeepWait after PCErr(1,4) while LocalOK=0: KeepWait/1-7")
 
 	rejection, err := negotiableRejection(40, 160).Serialize()
 	require.NoError(t, err)
 	require.NoError(t, ss.handleNegotiationPCErr(rejection[pcep.CommonHeaderLength:], neg))
 	assert.Equal(t, 1, neg.localOpenRetries)
-	assert.Equal(t, sessionStateKeepWait, neg.state(),
+	assert.Equal(t, SessionStateKeepWait, neg.state(),
 		"the re-sent Open is still unacknowledged, and an Open has been received, so 1/2 would misreport")
 
 	require.NoError(t, ss.handlePeerOpen(openMessageBody(t, 1, 30, 120), neg))
 	assert.True(t, neg.remoteOK)
 	assert.False(t, neg.localOK)
-	assert.Equal(t, sessionStateKeepWait, neg.state(), "only the acknowledgment of Pola's Open remains outstanding: KeepWait/1-7")
+	assert.Equal(t, SessionStateKeepWait, neg.state(), "only the acknowledgment of Pola's Open remains outstanding: KeepWait/1-7")
 	assert.False(t, neg.established())
 
 	neg.localOK = true
 	assert.True(t, neg.established())
-	assert.Equal(t, sessionStateUp, neg.state())
+	assert.Equal(t, SessionStateUp, neg.state())
 }
 
 func TestOpen_SendOpenFailureIsPropagated(t *testing.T) {
@@ -2874,7 +2868,7 @@ func TestNegotiateOpen_SecondOpenAfterAnAcceptableOpenIsRejected(t *testing.T) {
 	neg := &openNegotiation{}
 	require.Error(t, ss.negotiateOpen(neg))
 	assert.False(t, neg.localOK)
-	assert.NotEqual(t, sessionStateUp, ss.State())
+	assert.NotEqual(t, SessionStateUp, ss.State())
 
 	pccOpen, ok := ss.PccOpen()
 	require.True(t, ok)
@@ -2985,7 +2979,7 @@ func TestNegotiateOpen_KeepWaitRenegotiationSpendsTheLocalOpenRetryBudget(t *tes
 
 	assert.Equal(t, 1, neg.localOpenRetries, "adopting the proposal spends one local Open retry")
 	assert.True(t, neg.remoteOK)
-	assert.Equal(t, sessionStateKeepWait, ss.State(), "RemoteOK=1 keeps the session in KeepWait across the re-sent Open")
+	assert.Equal(t, SessionStateKeepWait, ss.State(), "RemoteOK=1 keeps the session in KeepWait across the re-sent Open")
 
 	writes := conn.writes()
 	require.Len(t, writes, 2, "expected the Keepalive acknowledging the peer's Open and the re-sent Open")
@@ -3045,7 +3039,7 @@ func TestNegotiateOpen_SimultaneousRejectionInterleavesPCErrBeforeRevisedOpen(t 
 	assert.Equal(t, 1, neg.peerOpensRejected)
 	assert.Equal(t, uint8(20), ss.localKeepalive)
 	assert.Equal(t, uint8(80), ss.localDeadTimer)
-	assert.Equal(t, sessionStateUp, ss.State())
+	assert.Equal(t, SessionStateUp, ss.State())
 
 	pccOpen, ok := ss.PccOpen()
 	require.True(t, ok)
@@ -3070,7 +3064,7 @@ func TestNegotiateOpen_KeepaliveMayArriveBeforeThePeersRevisedOpen(t *testing.T)
 	assert.True(t, neg.localOK)
 	assert.True(t, neg.remoteOK)
 	assert.Zero(t, neg.localOpenRetries, "acknowledging Pola's Open costs no retry budget")
-	assert.Equal(t, sessionStateUp, ss.State())
+	assert.Equal(t, SessionStateUp, ss.State())
 }
 
 func TestNegotiateOpen_RevisedOpenMayArriveBeforeTheAcknowledgmentOfPolasOpen(t *testing.T) {
@@ -3090,7 +3084,7 @@ func TestNegotiateOpen_RevisedOpenMayArriveBeforeTheAcknowledgmentOfPolasOpen(t 
 
 	assert.Equal(t, 1, neg.peerOpensRejected, "the revised Open is acceptable, so it must not draw PCErr(1,5)")
 	assert.Zero(t, neg.localOpenRetries, "Pola never re-sent its own Open")
-	assert.Equal(t, sessionStateUp, ss.State())
+	assert.Equal(t, SessionStateUp, ss.State())
 
 	writes := conn.writes()
 	require.Len(t, writes, 2)
@@ -3122,7 +3116,7 @@ func TestNegotiateOpen_ResentOpenMustBeAcknowledgedBeforeUp(t *testing.T) {
 	require.NoError(t, ss.negotiateOpen(neg))
 
 	assert.True(t, neg.established())
-	assert.Equal(t, sessionStateUp, ss.State())
+	assert.Equal(t, SessionStateUp, ss.State())
 	assert.Equal(t, uint64(2), ss.Stats().KeepaliveRcvd,
 		"only the Keepalive acknowledging the re-sent Open may complete establishment")
 }
@@ -3885,7 +3879,7 @@ func TestReceivePCEPMessage_OpenAfterSessionUpIsRejectedWithErrorValue1(t *testi
 
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 	ss.pccOpen = &OpenParams{SessionID: 1, Keepalive: 30, DeadTimer: 120}
-	ss.setState(sessionStateUp)
+	ss.setState(SessionStateUp)
 
 	writeMessage(t, client, pcep.NewOpenMessage(2, 60, 240, nil))
 	writeMessage(t, client, pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided))
@@ -3913,7 +3907,7 @@ func TestReceivePCEPMessage_OpenAfterSessionUpDoesNotOverwriteNegotiatedOpen(t *
 
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 	ss.pccOpen = &OpenParams{SessionID: 1, Keepalive: 30, DeadTimer: 120}
-	ss.setState(sessionStateUp)
+	ss.setState(SessionStateUp)
 
 	writeMessage(t, client, pcep.NewOpenMessage(2, 60, 240, nil))
 	writeMessage(t, client, pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided))
@@ -3940,7 +3934,7 @@ func TestReceivePCEPMessage_OpenAfterSessionUpDoesNotDisruptSubsequentMessageHan
 
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 	ss.pccOpen = &OpenParams{SessionID: 1, Keepalive: 30, DeadTimer: 120}
-	ss.setState(sessionStateUp)
+	ss.setState(SessionStateUp)
 
 	writeMessage(t, client, pcep.NewOpenMessage(2, 60, 240, nil))
 	writeStateReportMessage(t, client, newTestStateReport(t, 5, 0))
@@ -3965,7 +3959,7 @@ func TestReceivePCEPMessage_UnexpectedOpenMessageBodyReadError(t *testing.T) {
 
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 	ss.pccOpen = &OpenParams{SessionID: 1, Keepalive: 30, DeadTimer: 120}
-	ss.setState(sessionStateUp)
+	ss.setState(SessionStateUp)
 
 	err = ss.ReceivePCEPMessage()
 	require.Error(t, err, "reading incomplete Open message body should return an error")
@@ -4664,7 +4658,7 @@ func TestSession_InitiatorDefaultsToRemote(t *testing.T) {
 	t.Parallel()
 
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
-	assert.Equal(t, sessionInitiatorRemote, ss.Initiator(), "Pola only accepts connections, so the initiator is always remote today")
+	assert.Equal(t, SessionInitiatorRemote, ss.Initiator(), "Pola only accepts connections, so the initiator is always remote today")
 }
 
 func TestEstablished_SetsEstablishedAtOnceUp(t *testing.T) {
@@ -4716,16 +4710,16 @@ func TestSyncState_TransitionsPendingOngoingFinished(t *testing.T) {
 	t.Parallel()
 
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
-	assert.Equal(t, lspDBSyncPending, ss.SyncState())
+	assert.Equal(t, SyncStatePending, ss.SyncState())
 
 	sr := newTestStateReport(t, 1, 0)
 	sr.LSPObject.SFlag = true
 	require.NoError(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
-	assert.Equal(t, lspDBSyncOngoing, ss.SyncState())
+	assert.Equal(t, SyncStateOngoing, ss.SyncState())
 
 	finish := newTestStateReport(t, 0, 0)
 	require.NoError(t, ss.handleStateReport(finish, pcep.NewPCRptMessage()))
-	assert.Equal(t, lspDBSyncFinished, ss.SyncState())
+	assert.Equal(t, SyncStateFinished, ss.SyncState())
 }
 
 func TestSyncState_DoesNotRegressAfterFinished(t *testing.T) {
@@ -4733,13 +4727,13 @@ func TestSyncState_DoesNotRegressAfterFinished(t *testing.T) {
 
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	ss.setSynced()
-	require.Equal(t, lspDBSyncFinished, ss.SyncState())
+	require.Equal(t, SyncStateFinished, ss.SyncState())
 
 	sr := newTestStateReport(t, 1, 0)
 	sr.LSPObject.SFlag = true
 	require.NoError(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
 
-	assert.Equal(t, lspDBSyncFinished, ss.SyncState(), "sync state must not regress once finished")
+	assert.Equal(t, SyncStateFinished, ss.SyncState(), "sync state must not regress once finished")
 }
 
 func TestSessionStats_SendCountersIncrementOnSuccess(t *testing.T) {
@@ -4795,17 +4789,17 @@ func TestCountReceived_IncrementsExpectedCounter(t *testing.T) {
 
 	cases := map[string]struct {
 		messageType pcep.MessageType
-		get         func(sessionStatsSnapshot) uint64
+		get         func(SessionStats) uint64
 	}{
-		"Open":         {pcep.MessageTypeOpen, func(s sessionStatsSnapshot) uint64 { return s.OpenRcvd }},
-		"Keepalive":    {pcep.MessageTypeKeepalive, func(s sessionStatsSnapshot) uint64 { return s.KeepaliveRcvd }},
-		"Report":       {pcep.MessageTypeReport, func(s sessionStatsSnapshot) uint64 { return s.RptRcvd }},
-		"Error":        {pcep.MessageTypeError, func(s sessionStatsSnapshot) uint64 { return s.PCErrRcvd }},
-		"Notification": {pcep.MessageTypeNotification, func(s sessionStatsSnapshot) uint64 { return s.PCNtfRcvd }},
-		"Close":        {pcep.MessageTypeClose, func(s sessionStatsSnapshot) uint64 { return s.CloseRcvd }},
-		"Pcreq":        {pcep.MessageTypePcreq, func(s sessionStatsSnapshot) uint64 { return s.PCReqRcvd }},
-		"Pcrep":        {pcep.MessageTypePcrep, func(s sessionStatsSnapshot) uint64 { return s.PCRepRcvd }},
-		"Unknown":      {pcep.MessageTypeStartTLS, func(s sessionStatsSnapshot) uint64 { return s.UnknownRcvd }},
+		"Open":         {pcep.MessageTypeOpen, func(s SessionStats) uint64 { return s.OpenRcvd }},
+		"Keepalive":    {pcep.MessageTypeKeepalive, func(s SessionStats) uint64 { return s.KeepaliveRcvd }},
+		"Report":       {pcep.MessageTypeReport, func(s SessionStats) uint64 { return s.RptRcvd }},
+		"Error":        {pcep.MessageTypeError, func(s SessionStats) uint64 { return s.PCErrRcvd }},
+		"Notification": {pcep.MessageTypeNotification, func(s SessionStats) uint64 { return s.PCNtfRcvd }},
+		"Close":        {pcep.MessageTypeClose, func(s SessionStats) uint64 { return s.CloseRcvd }},
+		"Pcreq":        {pcep.MessageTypePcreq, func(s SessionStats) uint64 { return s.PCReqRcvd }},
+		"Pcrep":        {pcep.MessageTypePcrep, func(s SessionStats) uint64 { return s.PCRepRcvd }},
+		"Unknown":      {pcep.MessageTypeStartTLS, func(s SessionStats) uint64 { return s.UnknownRcvd }},
 	}
 
 	for name, tt := range cases {
@@ -4901,7 +4895,7 @@ func TestServer_PeerSetupStats_RecordsOkAndFail(t *testing.T) {
 
 	s := &Server{logger: logger.NewNop()}
 	serveErrCh := make(chan error, 1)
-	go func() { serveErrCh <- s.serve(ln) }()
+	go func() { serveErrCh <- s.acceptLoop(ln) }()
 	t.Cleanup(func() {
 		assert.NoError(t, s.Shutdown())
 		select {
@@ -4939,7 +4933,7 @@ func TestServer_PeerSetupStats_RecordsOkOnSuccessfulEstablishment(t *testing.T) 
 
 	s := &Server{logger: logger.NewNop(), localKeepalive: defaultLocalKeepalive, localDeadTimer: pcep.DeadTimerFor(defaultLocalKeepalive)}
 	serveErrCh := make(chan error, 1)
-	go func() { serveErrCh <- s.serve(ln) }()
+	go func() { serveErrCh <- s.acceptLoop(ln) }()
 	t.Cleanup(func() {
 		assert.NoError(t, s.Shutdown())
 		select {

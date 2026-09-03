@@ -235,7 +235,7 @@ func addSRPolicyWithRouterID(input inputFormat, noSIDValidate bool, client pb.PC
 		return err
 	}
 
-	srPolicyType, metric, segmentList, waypoints, err := buildPolicyByType(input, sampleInputDynamic, sampleInputExplicit)
+	spec, err := buildPolicyByType(input, sampleInputDynamic, sampleInputExplicit)
 	if err != nil {
 		return err
 	}
@@ -246,10 +246,10 @@ func addSRPolicyWithRouterID(input inputFormat, noSIDValidate bool, client pb.PC
 		DstRouterId: input.SRPolicy.DstRouterID,
 		Color:       input.SRPolicy.Color,
 		PolicyName:  input.SRPolicy.Name,
-		Type:        srPolicyType,
-		SegmentList: segmentList,
-		Metric:      metric,
-		Waypoints:   waypoints,
+		Type:        spec.Type,
+		SegmentList: spec.Segments,
+		Metric:      spec.Metric,
+		Waypoints:   spec.Waypoints,
 	}
 
 	req := &pb.CreateSRPolicyRequest{
@@ -286,7 +286,7 @@ func sampleInputs() (dynamic, explicit string) {
 		"    - sid: 16003\n" +
 		"    - sid: 16002\n"
 
-	return
+	return dynamic, explicit
 }
 
 func validateCommonInput(input inputFormat, sampleDynamic, sampleExplicit string) error {
@@ -295,7 +295,6 @@ func validateCommonInput(input inputFormat, sampleDynamic, sampleExplicit string
 		input.SRPolicy.Color == 0 ||
 		input.SRPolicy.SrcRouterID == "" ||
 		input.SRPolicy.DstRouterID == "" {
-
 		return errors.New(
 			"invalid input\n" +
 				"input example is below\n\n" +
@@ -308,38 +307,29 @@ func validateCommonInput(input inputFormat, sampleDynamic, sampleExplicit string
 	return nil
 }
 
-func buildPolicyByType(
-	input inputFormat,
-	sampleDynamic, sampleExplicit string,
-) (
-	pb.SRPolicyType,
-	pb.MetricType,
-	[]*pb.Segment,
-	[]*pb.Waypoint,
-	error,
-) {
+// policySpec is the outcome of translating YAML input into the fields of a
+// pb.SRPolicy that depend on the policy's type (explicit vs. dynamic).
+type policySpec struct {
+	Type      pb.SRPolicyType
+	Metric    pb.MetricType
+	Segments  []*pb.Segment
+	Waypoints []*pb.Waypoint
+}
+
+func buildPolicyByType(input inputFormat, sampleDynamic, sampleExplicit string) (policySpec, error) {
 	switch input.SRPolicy.Type {
 	case srPolicyTypeExplicit:
 		return buildExplicitPolicy(input, sampleExplicit)
 	case srPolicyTypeDynamic:
 		return buildDynamicPolicy(input, sampleDynamic)
 	default:
-		return 0, 0, nil, nil, errors.New("invalid input `type`")
+		return policySpec{}, errors.New("invalid input `type`")
 	}
 }
 
-func buildExplicitPolicy(
-	input inputFormat,
-	sampleExplicit string,
-) (
-	pb.SRPolicyType,
-	pb.MetricType,
-	[]*pb.Segment,
-	[]*pb.Waypoint,
-	error,
-) {
+func buildExplicitPolicy(input inputFormat, sampleExplicit string) (policySpec, error) {
 	if len(input.SRPolicy.SegmentList) == 0 {
-		return 0, 0, nil, nil, errors.New(
+		return policySpec{}, errors.New(
 			"invalid input\n" +
 				"input example is below\n\n" +
 				sampleExplicit,
@@ -356,21 +346,12 @@ func buildExplicitPolicy(
 		})
 	}
 
-	return pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT, 0, segments, nil, nil
+	return policySpec{Type: pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT, Segments: segments}, nil
 }
 
-func buildDynamicPolicy(
-	input inputFormat,
-	sampleDynamic string,
-) (
-	pb.SRPolicyType,
-	pb.MetricType,
-	[]*pb.Segment,
-	[]*pb.Waypoint,
-	error,
-) {
+func buildDynamicPolicy(input inputFormat, sampleDynamic string) (policySpec, error) {
 	if input.SRPolicy.Metric == "" {
-		return 0, 0, nil, nil, errors.New(
+		return policySpec{}, errors.New(
 			"invalid input\n" +
 				"input example is below\n\n" +
 				sampleDynamic,
@@ -379,7 +360,7 @@ func buildDynamicPolicy(
 
 	metric, err := parseMetric(input.SRPolicy.Metric)
 	if err != nil {
-		return 0, 0, nil, nil, err
+		return policySpec{}, err
 	}
 
 	var waypoints []*pb.Waypoint
@@ -390,7 +371,7 @@ func buildDynamicPolicy(
 		})
 	}
 
-	return pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC, metric, nil, waypoints, nil
+	return policySpec{Type: pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC, Metric: metric, Waypoints: waypoints}, nil
 }
 
 func parseMetric(metric string) (pb.MetricType, error) {

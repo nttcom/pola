@@ -3,6 +3,7 @@
 // This software is released under the MIT License.
 // see https://github.com/nttcom/pola/blob/main/LICENSE
 
+// Package table provides the in-memory Traffic Engineering Database (TED) and SR Policy tables.
 package table
 
 import (

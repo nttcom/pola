@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/nttcom/pola/pkg/logger"
-	grpc "google.golang.org/grpc"
+	"google.golang.org/grpc"
 
 	"github.com/nttcom/pola/pkg/packet/pcep"
 	"github.com/nttcom/pola/pkg/table"
@@ -273,12 +273,10 @@ func (s *Server) Serve(address, port string) error {
 		return fmt.Errorf("failed to listen on PCEP port %s: %w", localAddr.String(), err)
 	}
 
-	return s.serve(l)
+	return s.acceptLoop(l)
 }
 
-// serve runs the accept loop and tracks the listener so Shutdown can close it.
-// Split from Serve to allow testing with a fake listener.
-func (s *Server) serve(l tcpListener) error {
+func (s *Server) acceptLoop(l tcpListener) error {
 	s.listenerMu.Lock()
 	if s.closed {
 		// Shutdown ran before the listener was registered; don't accept connections.

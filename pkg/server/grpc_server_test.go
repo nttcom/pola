@@ -26,7 +26,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
-	grpc "google.golang.org/grpc"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
@@ -610,7 +610,7 @@ func TestGetSessionList_DeduplicatesNonAdjacentCapabilities(t *testing.T) {
 
 	session := &Session{
 		peerAddr:  netip.MustParseAddr("10.0.0.1"),
-		syncState: lspDBSyncFinished,
+		syncState: SyncStateFinished,
 		advertisedCapabilities: []pcep.CapabilityInterface{
 			&pcep.SRPCECapability{IsNAISupported: true},
 			&pcep.SRv6PCECapability{IsNAISupported: true},
@@ -641,7 +641,7 @@ func TestGetSessionList_BuildsStructuredCapabilities(t *testing.T) {
 
 	session := &Session{
 		peerAddr:  netip.MustParseAddr("10.0.0.1"),
-		syncState: lspDBSyncFinished,
+		syncState: SyncStateFinished,
 		advertisedCapabilities: []pcep.CapabilityInterface{
 			&pcep.SRPCECapability{IsNAISupported: true, MaximumSidDepth: 10},
 			&pcep.LSPDBVersion{VersionNumber: 42},
@@ -681,7 +681,7 @@ func TestGetSessionList_SkipsCapabilityOnSerializeError(t *testing.T) {
 	lg, logs := logger.NewRecorder(logger.LevelWarn)
 	session := &Session{
 		peerAddr:  netip.MustParseAddr("10.0.0.1"),
-		syncState: lspDBSyncFinished,
+		syncState: SyncStateFinished,
 		advertisedCapabilities: []pcep.CapabilityInterface{
 			&failingCapability{},
 			&pcep.SRv6PCECapability{IsNAISupported: true},
@@ -707,7 +707,7 @@ func TestGetSessionList_MultipathCapabilityDoesNotSetMsd(t *testing.T) {
 
 	session := &Session{
 		peerAddr:  netip.MustParseAddr("10.0.0.1"),
-		syncState: lspDBSyncFinished,
+		syncState: SyncStateFinished,
 		advertisedCapabilities: []pcep.CapabilityInterface{
 			pcep.NewMultipathCapability(8, true, true, true, true),
 		},
@@ -733,8 +733,8 @@ func TestGetSessionList_ReportsLocalAndPccTimersAndSessionID(t *testing.T) {
 
 	session := &Session{
 		peerAddr:  netip.MustParseAddr("10.0.0.1"),
-		syncState: lspDBSyncFinished,
-		state:     sessionStateUp,
+		syncState: SyncStateFinished,
+		state:     SessionStateUp,
 		localOpen: &OpenParams{SessionID: 3, Keepalive: 30, DeadTimer: 120},
 		pccOpen:   &OpenParams{SessionID: 7, Keepalive: 10, DeadTimer: 40},
 	}
@@ -764,7 +764,7 @@ func TestGetSessionList_LeavesAdvertisedValuesUnsetBeforeTheOpenExchange(t *test
 
 	s := &APIServer{
 		pce: &Server{sessionList: []*Session{
-			{peerAddr: netip.MustParseAddr("10.0.0.1"), state: sessionStateOpenWait},
+			{peerAddr: netip.MustParseAddr("10.0.0.1"), state: SessionStateOpenWait},
 		}},
 		logger: logger.NewNop(),
 	}
@@ -787,7 +787,7 @@ func TestGetSessionList_ReportsZeroPccSessionIDAsAdvertised(t *testing.T) {
 	s := &APIServer{
 		pce: &Server{sessionList: []*Session{{
 			peerAddr:  netip.MustParseAddr("10.0.0.1"),
-			state:     sessionStateUp,
+			state:     SessionStateUp,
 			localOpen: &OpenParams{SessionID: 0, Keepalive: 30, DeadTimer: 120},
 			pccOpen:   &OpenParams{SessionID: 0, Keepalive: 0, DeadTimer: 0},
 		}}},
@@ -894,7 +894,7 @@ func TestGetSRPolicyList_FillsMissingFieldsAndOrdersDeterministically(t *testing
 
 	session2 := &Session{
 		peerAddr:  netip.MustParseAddr("10.0.0.2"),
-		syncState: lspDBSyncFinished,
+		syncState: SyncStateFinished,
 		srPolicies: []*table.SRPolicy{
 			table.NewSRPolicy(1, "policy-b", []table.Segment{seg},
 				netip.MustParseAddr("192.0.2.10"), netip.MustParseAddr("192.0.2.20"),
@@ -903,7 +903,7 @@ func TestGetSRPolicyList_FillsMissingFieldsAndOrdersDeterministically(t *testing
 	}
 	session1 := &Session{
 		peerAddr:  netip.MustParseAddr("10.0.0.1"),
-		syncState: lspDBSyncFinished,
+		syncState: SyncStateFinished,
 		srPolicies: []*table.SRPolicy{
 			table.NewSRPolicy(2, "policy-a", []table.Segment{seg},
 				netip.MustParseAddr("192.0.2.10"), netip.MustParseAddr("192.0.2.20"),
@@ -938,7 +938,7 @@ func TestGetSRPolicyList_IncludesUnsyncedSessions(t *testing.T) {
 
 	s := &APIServer{
 		pce: &Server{sessionList: []*Session{
-			{peerAddr: netip.MustParseAddr("10.0.0.1"), syncState: lspDBSyncPending},
+			{peerAddr: netip.MustParseAddr("10.0.0.1"), syncState: SyncStatePending},
 		}},
 		logger: logger.NewNop(),
 	}
@@ -960,14 +960,14 @@ func TestGetSRPolicyList_FiltersBySessionAddr(t *testing.T) {
 		pce: &Server{sessionList: []*Session{
 			{
 				peerAddr:  netip.MustParseAddr("10.0.0.1"),
-				syncState: lspDBSyncFinished,
+				syncState: SyncStateFinished,
 				srPolicies: []*table.SRPolicy{
 					table.NewSRPolicy(1, "policy-a", []table.Segment{seg}, netip.Addr{}, netip.Addr{}, 100, 100, 0, table.PolicyUp),
 				},
 			},
 			{
 				peerAddr:  netip.MustParseAddr("10.0.0.2"),
-				syncState: lspDBSyncFinished,
+				syncState: SyncStateFinished,
 				srPolicies: []*table.SRPolicy{
 					table.NewSRPolicy(2, "policy-b", []table.Segment{seg}, netip.Addr{}, netip.Addr{}, 200, 100, 0, table.PolicyUp),
 				},
@@ -1068,7 +1068,7 @@ func TestGetSRPolicyList_RoundTripsTypeAndMetric(t *testing.T) {
 		pce: &Server{sessionList: []*Session{
 			{
 				peerAddr:   netip.MustParseAddr("10.0.0.1"),
-				syncState:  lspDBSyncFinished,
+				syncState:  SyncStateFinished,
 				srPolicies: []*table.SRPolicy{knownPolicy, unknownPolicy},
 			},
 		}},
@@ -1201,7 +1201,7 @@ func TestSessionList_ConcurrentAccess(t *testing.T) {
 	go func() {
 		defer close(done)
 		for i := range 100 {
-			ss := &Session{localSessionID: uint8(i), peerAddr: addr, syncState: lspDBSyncFinished}
+			ss := &Session{localSessionID: uint8(i), peerAddr: addr, syncState: SyncStateFinished}
 
 			s.sessionMu.Lock()
 			s.sessionList = append(s.sessionList, ss)
@@ -1240,7 +1240,7 @@ func TestDeleteSRPolicy_SrcAddrOmitted(t *testing.T) {
 	dstAddr := netip.MustParseAddr("10.255.0.2")
 
 	ss := NewSession(testLocalOpen(1), peerAddr, server, logger.NewNop(), nil, 0)
-	ss.syncState = lspDBSyncFinished
+	ss.syncState = SyncStateFinished
 	ss.srPolicies = []*table.SRPolicy{
 		{
 			PlspID:     1,
@@ -1518,7 +1518,7 @@ func TestGetSRPolicyList_SortsBySameColorThenPlspIdThenName(t *testing.T) {
 		pce: &Server{sessionList: []*Session{
 			{
 				peerAddr:  netip.MustParseAddr("10.0.0.1"),
-				syncState: lspDBSyncFinished,
+				syncState: SyncStateFinished,
 				srPolicies: []*table.SRPolicy{
 					mk(200, 1, "z"),
 					mk(100, 1, "z"),
@@ -1665,7 +1665,7 @@ func TestGetSyncedPCEPSession(t *testing.T) {
 	t.Parallel()
 
 	peerAddr := netip.MustParseAddr("10.0.255.1")
-	ss := &Session{peerAddr: peerAddr, syncState: lspDBSyncFinished}
+	ss := &Session{peerAddr: peerAddr, syncState: SyncStateFinished}
 	pce := &Server{sessionList: []*Session{ss}}
 
 	got, err := getSyncedPCEPSession(pce, peerAddr.AsSlice())
@@ -1686,7 +1686,7 @@ func TestResolveSession(t *testing.T) {
 
 	t.Run("the peer address identifies the session", func(t *testing.T) {
 		t.Parallel()
-		ss := &Session{peerAddr: peerAddr, syncState: lspDBSyncFinished}
+		ss := &Session{peerAddr: peerAddr, syncState: SyncStateFinished}
 		pce := &Server{sessionList: []*Session{ss}}
 
 		got, err := resolveSession(pce, peerAddr.AsSlice(), true)
@@ -1706,7 +1706,7 @@ func TestResolveSession(t *testing.T) {
 
 	t.Run("an unsynced session reports not synced", func(t *testing.T) {
 		t.Parallel()
-		ss := &Session{peerAddr: peerAddr, syncState: lspDBSyncPending}
+		ss := &Session{peerAddr: peerAddr, syncState: SyncStatePending}
 		pce := &Server{sessionList: []*Session{ss}}
 
 		_, err := resolveSession(pce, peerAddr.AsSlice(), true)
@@ -1717,7 +1717,7 @@ func TestResolveSession(t *testing.T) {
 
 	t.Run("requireSynced false accepts an unsynced session", func(t *testing.T) {
 		t.Parallel()
-		ss := &Session{peerAddr: peerAddr, syncState: lspDBSyncPending}
+		ss := &Session{peerAddr: peerAddr, syncState: SyncStatePending}
 		pce := &Server{sessionList: []*Session{ss}}
 
 		got, err := resolveSession(pce, peerAddr.AsSlice(), false)
@@ -2054,7 +2054,7 @@ func TestCreateSRPolicy(t *testing.T) {
 
 		peerAddr := netip.MustParseAddr("10.0.255.1")
 		ss := NewSession(testLocalOpen(1), peerAddr, server, logger.NewNop(), nil, 0)
-		ss.syncState = lspDBSyncFinished
+		ss.syncState = SyncStateFinished
 
 		s := &APIServer{pce: &Server{ted: ted, sessionList: []*Session{ss}}, logger: logger.NewNop()}
 
@@ -2103,7 +2103,7 @@ func TestCreateSRPolicy_SRv6WithoutLocalAddr(t *testing.T) {
 
 	peerAddr := netip.MustParseAddr("10.0.255.1")
 	ss := NewSession(testLocalOpen(1), peerAddr, server, logger.NewNop(), nil, 0)
-	ss.syncState = lspDBSyncFinished
+	ss.syncState = SyncStateFinished
 
 	s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: logger.NewNop()}
 
@@ -2347,7 +2347,7 @@ func TestDeleteSRPolicy(t *testing.T) {
 
 	t.Run("SR Policy not found", func(t *testing.T) {
 		t.Parallel()
-		ss := &Session{peerAddr: peerAddr, syncState: lspDBSyncFinished}
+		ss := &Session{peerAddr: peerAddr, syncState: SyncStateFinished}
 		s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: logger.NewNop()}
 		resp, err := s.DeleteSRPolicy(context.Background(), &pb.DeleteSRPolicyRequest{SrPolicy: validPolicy()})
 		require.ErrorContains(t, err, "requested SR Policy not found")
@@ -2373,7 +2373,7 @@ func TestDeleteSRPolicy(t *testing.T) {
 		})
 
 		ss := NewSession(testLocalOpen(1), peerAddr, server, logger.NewNop(), nil, 0)
-		ss.syncState = lspDBSyncFinished
+		ss.syncState = SyncStateFinished
 		ss.srPolicies = []*table.SRPolicy{{PlspID: 1, Name: testSRPolicyName, DstAddr: dstAddr, Color: 100, Preference: 100}}
 		require.NoError(t, server.Close(), "failed to close server connection")
 
@@ -2392,7 +2392,7 @@ func TestDeleteSRPolicy(t *testing.T) {
 		})
 
 		ss := NewSession(testLocalOpen(1), peerAddr, server, logger.NewNop(), nil, 0)
-		ss.syncState = lspDBSyncFinished
+		ss.syncState = SyncStateFinished
 		ss.srPolicies = []*table.SRPolicy{{PlspID: 1, Name: testSRPolicyName, DstAddr: dstAddr, Color: 100, Preference: 100}}
 
 		s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: logger.NewNop()}
@@ -2557,7 +2557,7 @@ func TestSendSRPolicyRequest_ResolveIntentError(t *testing.T) {
 	t.Parallel()
 
 	peerAddr := netip.MustParseAddr("10.0.255.1")
-	ss := &Session{peerAddr: peerAddr, syncState: lspDBSyncFinished}
+	ss := &Session{peerAddr: peerAddr, syncState: SyncStateFinished}
 	s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: logger.NewNop()}
 	req := &pb.CreateSRPolicyRequest{SrPolicy: &pb.SRPolicy{PeerAddr: peerAddr.AsSlice(), Type: pb.SRPolicyType_SR_POLICY_TYPE_UNSPECIFIED}}
 
@@ -2576,7 +2576,7 @@ func TestSendSRPolicyRequest_CreatesNewPolicy(t *testing.T) {
 	peerAddr := netip.MustParseAddr("10.0.255.1")
 	dstAddr := netip.MustParseAddr("10.255.0.2")
 	ss := NewSession(testLocalOpen(1), peerAddr, server, logger.NewNop(), nil, 0)
-	ss.syncState = lspDBSyncFinished
+	ss.syncState = SyncStateFinished
 
 	s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: logger.NewNop()}
 	req := &pb.CreateSRPolicyRequest{SrPolicy: &pb.SRPolicy{PeerAddr: peerAddr.AsSlice(), Color: 100, Type: pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT}}
@@ -2597,7 +2597,7 @@ func TestSendSRPolicyRequest_UpdatesExistingPolicy(t *testing.T) {
 	peerAddr := netip.MustParseAddr("10.0.255.1")
 	dstAddr := netip.MustParseAddr("10.255.0.2")
 	ss := NewSession(testLocalOpen(1), peerAddr, server, logger.NewNop(), nil, 0)
-	ss.syncState = lspDBSyncFinished
+	ss.syncState = SyncStateFinished
 	ss.srPolicies = []*table.SRPolicy{{PlspID: 7, Color: 100, DstAddr: dstAddr}}
 
 	s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: logger.NewNop()}
@@ -2619,7 +2619,7 @@ func TestSendSRPolicyRequest_UpdateSendFailure(t *testing.T) {
 	peerAddr := netip.MustParseAddr("10.0.255.1")
 	dstAddr := netip.MustParseAddr("10.255.0.2")
 	ss := NewSession(testLocalOpen(1), peerAddr, server, logger.NewNop(), nil, 0)
-	ss.syncState = lspDBSyncFinished
+	ss.syncState = SyncStateFinished
 	ss.srPolicies = []*table.SRPolicy{{PlspID: 7, Color: 100, DstAddr: dstAddr}}
 	require.NoError(t, server.Close(), "failed to close server connection")
 
@@ -2643,7 +2643,7 @@ func TestSendSRPolicyRequest_CreateSendFailure(t *testing.T) {
 	peerAddr := netip.MustParseAddr("10.0.255.1")
 	dstAddr := netip.MustParseAddr("10.255.0.2")
 	ss := NewSession(testLocalOpen(1), peerAddr, server, logger.NewNop(), nil, 0)
-	ss.syncState = lspDBSyncFinished
+	ss.syncState = SyncStateFinished
 	require.NoError(t, server.Close(), "failed to close server connection")
 
 	s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: logger.NewNop()}

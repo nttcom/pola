@@ -29,10 +29,7 @@ func newSessionDeleteCmd(c *cli) *cobra.Command {
 			if err != nil {
 				return errors.New("invalid input\nUsage: pola session delete [session address]")
 			}
-			if err := deleteSession(cmd.OutOrStdout(), ssAddr, c.jsonFmt, c.client); err != nil {
-				return err
-			}
-			return nil
+			return deleteSession(cmd.OutOrStdout(), ssAddr, c.jsonFmt, c.client)
 		},
 	}
 	return cmd

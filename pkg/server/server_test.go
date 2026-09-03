@@ -75,7 +75,7 @@ func TestServer_Serve_AcceptsConnectionAndUntracksOnClose(t *testing.T) {
 
 	s := &Server{logger: logger.NewNop()}
 	serveErrCh := make(chan error, 1)
-	go func() { serveErrCh <- s.serve(ln) }()
+	go func() { serveErrCh <- s.acceptLoop(ln) }()
 	t.Cleanup(func() {
 		assert.NoError(t, s.Shutdown())
 		select {
@@ -114,7 +114,7 @@ func TestServer_Shutdown_ClosesListenerAndStopsServe(t *testing.T) {
 
 	s := &Server{logger: logger.NewNop()}
 	serveErrCh := make(chan error, 1)
-	go func() { serveErrCh <- s.serve(ln) }()
+	go func() { serveErrCh <- s.acceptLoop(ln) }()
 
 	conn, err := net.Dial("tcp", addr)
 	require.NoError(t, err, "expected the PCEP listener to accept connections before shutdown")
@@ -143,7 +143,7 @@ func TestServer_Shutdown_BeforeServeStillReturnsCleanly(t *testing.T) {
 	s := &Server{logger: logger.NewNop()}
 	require.NoError(t, s.Shutdown(), "Shutdown before serve starts should be a no-op that succeeds")
 
-	require.NoError(t, s.serve(ln), "serve should return cleanly if Shutdown already ran")
+	require.NoError(t, s.acceptLoop(ln), "serve should return cleanly if Shutdown already ran")
 
 	_, dialErr := net.DialTimeout("tcp", addr, 100*time.Millisecond)
 	assert.Error(t, dialErr, "expected serve not to accept connections after an earlier Shutdown")
@@ -171,7 +171,7 @@ func TestServer_Shutdown_ClosesActiveSessions(t *testing.T) {
 
 	s := &Server{logger: logger.NewNop()}
 	serveErrCh := make(chan error, 1)
-	go func() { serveErrCh <- s.serve(ln) }()
+	go func() { serveErrCh <- s.acceptLoop(ln) }()
 	t.Cleanup(func() {
 		select {
 		case err := <-serveErrCh:
@@ -941,7 +941,7 @@ func TestServer_Serve_AcceptErrorPropagated(t *testing.T) {
 	wantErr := errors.New("accept boom")
 	s := &Server{logger: logger.NewNop()}
 
-	err := s.serve(&acceptErrListener{acceptErr: wantErr})
+	err := s.acceptLoop(&acceptErrListener{acceptErr: wantErr})
 
 	require.ErrorIs(t, err, wantErr)
 	assert.ErrorContains(t, err, "failed to accept TCP connection")
@@ -954,7 +954,7 @@ func TestServer_Serve_ListenerCloseErrorLogged(t *testing.T) {
 	lg, logs := logger.NewRecorder(logger.LevelWarn)
 	s := &Server{logger: lg}
 
-	err := s.serve(&acceptOnceThenClosedListener{closeErr: wantErr})
+	err := s.acceptLoop(&acceptOnceThenClosedListener{closeErr: wantErr})
 
 	require.NoError(t, err, "serve should return nil once AcceptTCP reports the listener closed")
 	entries := logs.FilterByMessage("failed to close PCEP listener")

@@ -3,6 +3,7 @@
 // This software is released under the MIT License.
 // see https://github.com/nttcom/pola/blob/main/LICENSE
 
+// Package pcep implements PCEP (RFC 5440) message and object encoding and decoding.
 package pcep
 
 // CapabilityInterface identifies TLVs valid in an OPEN object's capability list.

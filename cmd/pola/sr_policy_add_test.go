@@ -476,48 +476,48 @@ func TestBuildPolicyByType(t *testing.T) {
 	t.Run(srPolicyTypeExplicit, func(t *testing.T) {
 		t.Parallel()
 		input := inputFormat{SRPolicy: srPolicy{Type: srPolicyTypeExplicit, SegmentList: []segment{{SID: "16003"}}}}
-		typ, metric, segs, waypoints, err := buildPolicyByType(input, "d", "e")
+		spec, err := buildPolicyByType(input, "d", "e")
 		require.NoError(t, err)
-		assert.Equal(t, pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT, typ)
-		assert.Equal(t, pb.MetricType_METRIC_TYPE_UNSPECIFIED, metric)
-		assert.Equal(t, []*pb.Segment{{Sid: "16003"}}, segs)
-		assert.Nil(t, waypoints)
+		assert.Equal(t, pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT, spec.Type)
+		assert.Equal(t, pb.MetricType_METRIC_TYPE_UNSPECIFIED, spec.Metric)
+		assert.Equal(t, []*pb.Segment{{Sid: "16003"}}, spec.Segments)
+		assert.Nil(t, spec.Waypoints)
 	})
 
 	t.Run(srPolicyTypeDynamic, func(t *testing.T) {
 		t.Parallel()
 		input := inputFormat{SRPolicy: srPolicy{Type: srPolicyTypeDynamic, Metric: metricTypeIGP, Waypoints: []waypoint{{RouterID: "r1"}}}}
-		typ, metric, segs, waypoints, err := buildPolicyByType(input, "d", "e")
+		spec, err := buildPolicyByType(input, "d", "e")
 		require.NoError(t, err)
-		assert.Equal(t, pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC, typ)
-		assert.Equal(t, pb.MetricType_METRIC_TYPE_IGP, metric)
-		assert.Nil(t, segs)
-		assert.Equal(t, []*pb.Waypoint{{RouterId: "r1"}}, waypoints)
+		assert.Equal(t, pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC, spec.Type)
+		assert.Equal(t, pb.MetricType_METRIC_TYPE_IGP, spec.Metric)
+		assert.Nil(t, spec.Segments)
+		assert.Equal(t, []*pb.Waypoint{{RouterId: "r1"}}, spec.Waypoints)
 	})
 
 	t.Run("unrecognized type is rejected", func(t *testing.T) {
 		t.Parallel()
-		_, _, _, _, err := buildPolicyByType(inputFormat{SRPolicy: srPolicy{Type: "unknown"}}, "d", "e")
+		_, err := buildPolicyByType(inputFormat{SRPolicy: srPolicy{Type: "unknown"}}, "d", "e")
 		require.Error(t, err)
 	})
 
 	t.Run("explicit with no segments", func(t *testing.T) {
 		t.Parallel()
-		_, _, _, _, err := buildPolicyByType(inputFormat{SRPolicy: srPolicy{Type: srPolicyTypeExplicit}}, "d", "sample-explicit")
+		_, err := buildPolicyByType(inputFormat{SRPolicy: srPolicy{Type: srPolicyTypeExplicit}}, "d", "sample-explicit")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "sample-explicit")
 	})
 
 	t.Run("dynamic with no metric", func(t *testing.T) {
 		t.Parallel()
-		_, _, _, _, err := buildPolicyByType(inputFormat{SRPolicy: srPolicy{Type: srPolicyTypeDynamic}}, "sample-dynamic", "e")
+		_, err := buildPolicyByType(inputFormat{SRPolicy: srPolicy{Type: srPolicyTypeDynamic}}, "sample-dynamic", "e")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "sample-dynamic")
 	})
 
 	t.Run("dynamic with invalid metric", func(t *testing.T) {
 		t.Parallel()
-		_, _, _, _, err := buildPolicyByType(inputFormat{SRPolicy: srPolicy{Type: srPolicyTypeDynamic, Metric: "bandwidth"}}, "d", "e")
+		_, err := buildPolicyByType(inputFormat{SRPolicy: srPolicy{Type: srPolicyTypeDynamic, Metric: "bandwidth"}}, "d", "e")
 		require.Error(t, err)
 	})
 }

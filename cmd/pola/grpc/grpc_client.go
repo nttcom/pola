@@ -3,6 +3,7 @@
 // This software is released under the MIT License.
 // see https://github.com/nttcom/pola/blob/main/LICENSE
 
+// Package grpc provides the pola CLI's gRPC client for the PCE server API.
 package grpc
 
 import (

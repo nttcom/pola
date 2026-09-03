@@ -42,10 +42,6 @@ type config struct {
 }
 
 func main() {
-	os.Exit(realMain())
-}
-
-func realMain() int {
 	var cfg config
 	flag.StringVar(&cfg.base, "base", "origin/main", "branch or commit to compare against; its merge base with HEAD is used")
 	flag.StringVar(&cfg.profile, "profile", "coverage.out", "coverage profile produced by go test -coverprofile")
@@ -56,6 +52,10 @@ func realMain() int {
 		cfg.paths = defaultPaths
 	}
 
+	os.Exit(realMain(cfg))
+}
+
+func realMain(cfg config) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 

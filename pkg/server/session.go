@@ -61,31 +61,34 @@ const (
 	pcepErrorValueUnassigned                  uint8 = 0
 )
 
-// sessionState represents the PCEP session state (RFC 5440 Appendix A).
-type sessionState uint8
+// SessionState represents the PCEP session state (RFC 5440 Appendix A).
+type SessionState uint8
 
+// Session states, in the order a session progresses through them.
 const (
-	sessionStateTCPPending sessionState = iota
-	sessionStateOpenWait
-	sessionStateKeepWait
-	sessionStateUp
+	SessionStateTCPPending SessionState = iota
+	SessionStateOpenWait
+	SessionStateKeepWait
+	SessionStateUp
 )
 
-// lspDBSyncState is the LSP-DB synchronization state of RFC 8231 §5.6.
-type lspDBSyncState uint8
+// SyncState is the LSP-DB synchronization state of RFC 8231 §5.6.
+type SyncState uint8
 
+// LSP-DB synchronization states.
 const (
-	lspDBSyncPending  lspDBSyncState = iota // no PCRpt with the S-flag seen yet
-	lspDBSyncOngoing                        // S-flag reports received, end-of-sync pending
-	lspDBSyncFinished                       // PCRpt with PLSP-ID 0 received
+	SyncStatePending  SyncState = iota // no PCRpt with the S-flag seen yet
+	SyncStateOngoing                   // S-flag reports received, end-of-sync pending
+	SyncStateFinished                  // PCRpt with PLSP-ID 0 received
 )
 
-// sessionInitiator records which side started the TCP connection.
-type sessionInitiator uint8
+// SessionInitiator records which side started the TCP connection.
+type SessionInitiator uint8
 
+// Session initiators.
 const (
-	sessionInitiatorRemote sessionInitiator = iota
-	sessionInitiatorLocal
+	SessionInitiatorRemote SessionInitiator = iota
+	SessionInitiatorLocal
 )
 
 // sessionStats holds per-session PCEP message counters (RFC 9826).
@@ -115,7 +118,8 @@ func (s *sessionStats) inc(counter *uint64) {
 	s.mu.Unlock()
 }
 
-type sessionStatsSnapshot struct {
+// SessionStats is a snapshot of per-session PCEP message counters (RFC 9826).
+type SessionStats struct {
 	OpenSent       uint64
 	OpenRcvd       uint64
 	KeepaliveSent  uint64
@@ -134,10 +138,10 @@ type sessionStatsSnapshot struct {
 	CorruptRcvd    uint64
 }
 
-func (s *sessionStats) snapshot() sessionStatsSnapshot {
+func (s *sessionStats) snapshot() SessionStats {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return sessionStatsSnapshot{
+	return SessionStats{
 		OpenSent:       s.openSent,
 		OpenRcvd:       s.openRcvd,
 		KeepaliveSent:  s.keepaliveSent,
@@ -187,17 +191,17 @@ type Session struct {
 	maxUnknownMsgs    uint32
 	unknownMsgWindow  time.Duration
 	logger            *logger.Logger
-	state             sessionState
+	state             SessionState
 
 	// Session lifetime timestamps.
 	createdAt     time.Time
 	establishedAt time.Time
 
 	// syncState is the RFC 8231 LSP-DB synchronization state.
-	syncState lspDBSyncState
+	syncState SyncState
 
 	// initiator records which side started the TCP connection.
-	initiator sessionInitiator
+	initiator SessionInitiator
 
 	stats sessionStats
 
@@ -463,14 +467,14 @@ func (neg *openNegotiation) peerOpened() bool {
 }
 
 // state derives the Appendix A state from the negotiation conditions.
-func (neg *openNegotiation) state() sessionState {
+func (neg *openNegotiation) state() SessionState {
 	switch {
 	case neg.established():
-		return sessionStateUp
+		return SessionStateUp
 	case neg.peerOpened() && !neg.localOK:
-		return sessionStateKeepWait
+		return SessionStateKeepWait
 	default:
-		return sessionStateOpenWait
+		return SessionStateOpenWait
 	}
 }
 
@@ -550,7 +554,7 @@ func (ss *Session) applyNegotiationTransition(neg *openNegotiation, before negot
 
 func (ss *Session) restartInitializationTimer(neg *openNegotiation) {
 	timer := ss.openWait
-	if neg.state() == sessionStateKeepWait {
+	if neg.state() == SessionStateKeepWait {
 		timer = ss.keepWait
 	}
 	neg.deadline = time.Now().Add(timer)
@@ -624,7 +628,7 @@ func (ss *Session) readNegotiationMessage(neg *openNegotiation) (pcep.MessageTyp
 // the error value corresponding to the current negotiation state.
 func (ss *Session) negotiationTimerExpired(neg *openNegotiation, detail string) error {
 	timer, errorValue := "OpenWait", pcepErrorValueOpenWaitTimerExpired
-	if neg.state() == sessionStateKeepWait {
+	if neg.state() == SessionStateKeepWait {
 		timer, errorValue = "KeepWait", pcepErrorValueKeepWaitTimerExpired
 	}
 	ss.sendPCErrBestEffort(pcepErrorTypeSessionEstablishmentFailure, errorValue)
@@ -1185,7 +1189,7 @@ func (ss *Session) handleStateReport(sr *pcep.StateReport, message *pcep.PCRptMe
 
 // Synchronization (S-Flag).
 func (ss *Session) handleSynchronization(sr *pcep.StateReport, message *pcep.PCRptMessage) error {
-	ss.setSyncState(lspDBSyncOngoing)
+	ss.setSyncState(SyncStateOngoing)
 	ss.logger.Debug("Synchronize SR Policy information", logger.Any("Message", message))
 	if err := ss.RegisterSRPolicy(sr); err != nil {
 		ss.logger.Error("Failed to register SR Policy during synchronization", logger.Error(err), logger.Uint32("plspID", sr.LSPObject.PlspID))
@@ -1202,27 +1206,27 @@ func (ss *Session) handleFinishSynchronization() {
 
 // IsSynced reports whether the session has finished PCRpt state synchronization.
 func (ss *Session) IsSynced() bool {
-	return ss.SyncState() == lspDBSyncFinished
+	return ss.SyncState() == SyncStateFinished
 }
 
 func (ss *Session) setSynced() {
 	ss.stateMu.Lock()
 	defer ss.stateMu.Unlock()
-	ss.syncState = lspDBSyncFinished
+	ss.syncState = SyncStateFinished
 }
 
 // State returns the PCEP session state (RFC 5440 Appendix A).
-func (ss *Session) State() sessionState {
+func (ss *Session) State() SessionState {
 	ss.stateMu.RLock()
 	defer ss.stateMu.RUnlock()
 	return ss.state
 }
 
-func (ss *Session) setState(state sessionState) {
+func (ss *Session) setState(state SessionState) {
 	ss.stateMu.Lock()
 	defer ss.stateMu.Unlock()
 	ss.state = state
-	if state == sessionStateUp && ss.establishedAt.IsZero() {
+	if state == SessionStateUp && ss.establishedAt.IsZero() {
 		ss.establishedAt = time.Now()
 	}
 }
@@ -1243,36 +1247,36 @@ func (ss *Session) EstablishedAt() time.Time {
 }
 
 // Initiator returns which side started the TCP connection.
-func (ss *Session) Initiator() sessionInitiator {
+func (ss *Session) Initiator() SessionInitiator {
 	ss.stateMu.RLock()
 	defer ss.stateMu.RUnlock()
 	return ss.initiator
 }
 
 // SyncState returns the RFC 8231 LSP-DB synchronization state.
-func (ss *Session) SyncState() lspDBSyncState {
+func (ss *Session) SyncState() SyncState {
 	ss.stateMu.RLock()
 	defer ss.stateMu.RUnlock()
 	return ss.syncState
 }
 
-func (ss *Session) setSyncState(state lspDBSyncState) {
+func (ss *Session) setSyncState(state SyncState) {
 	ss.stateMu.Lock()
 	defer ss.stateMu.Unlock()
-	if ss.syncState == lspDBSyncFinished {
+	if ss.syncState == SyncStateFinished {
 		return
 	}
 	ss.syncState = state
 }
 
 // Stats returns a snapshot of the session's RFC 9826 message counters.
-func (ss *Session) Stats() sessionStatsSnapshot {
+func (ss *Session) Stats() SessionStats {
 	return ss.stats.snapshot()
 }
 
 // Up reports whether the PCEP session is up.
 func (ss *Session) Up() bool {
-	return ss.State() == sessionStateUp
+	return ss.State() == SessionStateUp
 }
 
 // PccType returns the PCC implementation type detected from the Open handshake.
@@ -1326,12 +1330,12 @@ func effectiveKeepalive(localKeepalive, localDeadTimer uint8) uint8 {
 
 // sessionSnapshot is a consistent view of session state.
 type sessionSnapshot struct {
-	state                   sessionState
+	state                   SessionState
 	pccType                 pcep.PccType
 	localOpen               *OpenParams
 	pccOpen                 *OpenParams
-	initiator               sessionInitiator
-	syncState               lspDBSyncState
+	initiator               SessionInitiator
+	syncState               SyncState
 	createdAt               time.Time
 	establishedAt           time.Time
 	advertisedCapabilities  []pcep.CapabilityInterface
@@ -1528,14 +1532,12 @@ func (ss *Session) selectMetricType(sr *pcep.StateReport) table.MetricType {
 		}
 	}
 
-	switch ss.pccType {
-	case pcep.CiscoLegacy:
-		return table.TEMetric
-	case pcep.JuniperLegacy:
+	// Only Juniper legacy PCCs default to IGP metric; Cisco legacy and
+	// RFC-compliant PCCs both default to TE metric.
+	if ss.pccType == pcep.JuniperLegacy {
 		return table.IGPMetric
-	default:
-		return table.TEMetric
 	}
+	return table.TEMetric
 }
 
 func createEroFromSegmentList(segmentList []table.Segment) (*pcep.EroObject, error) {

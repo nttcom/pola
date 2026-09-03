@@ -185,14 +185,14 @@ func (h *CommonObjectHeader) DecodeFromBytes(objectHeader []uint8) error {
 func (h *CommonObjectHeader) Serialize() []uint8 {
 	buf := make([]uint8, 0, 4)
 	buf = append(buf, uint8(h.ObjectClass))
-	Flagbyte := uint8(h.ObjectType)<<4 | h.ResFlags<<2
+	flagByte := uint8(h.ObjectType)<<4 | h.ResFlags<<2
 	if h.PFlag {
-		Flagbyte |= PFlagMask
+		flagByte |= PFlagMask
 	}
 	if h.IFlag {
-		Flagbyte |= IFlagMask
+		flagByte |= IFlagMask
 	}
-	buf = append(buf, Flagbyte)
+	buf = append(buf, flagByte)
 	buf = append(buf, Uint16ToByteSlice(h.ObjectLength)...)
 	return buf
 }
@@ -785,7 +785,6 @@ func (o *LSPObject) DecodeFromBytes(typ ObjectType, objectBody []uint8) error {
 			return err
 		}
 		for _, tlv := range o.TLVs {
-
 			if t, ok := tlv.(*SymbolicPathName); ok {
 				o.Name = t.Name
 			}
@@ -1851,8 +1850,8 @@ const (
 )
 
 // DeterminePccType determines the PCC type from the given capabilities.
-func DeterminePccType(caps []CapabilityInterface) (pccType PccType) {
-	pccType = RFCCompliant
+func DeterminePccType(caps []CapabilityInterface) PccType {
+	pccType := RFCCompliant
 	for _, cap := range caps {
 		if t, ok := cap.(*AssocTypeList); ok {
 			for _, v := range t.AssocTypes {
@@ -1865,7 +1864,7 @@ func DeterminePccType(caps []CapabilityInterface) (pccType PccType) {
 			}
 		}
 	}
-	return
+	return pccType
 }
 
 // AssociationObject is a PCEP ASSOCIATION object carrying the SR Policy association and its TLVs (RFC 8697 §6).
@@ -2128,7 +2127,6 @@ func (o *VendorInformationObject) DecodeFromBytes(typ ObjectType, objectBody []u
 		if o.TLVs, err = DecodeVendorTLVs(byteTLVs); err != nil {
 			return err
 		}
-
 	}
 	return nil
 }
@@ -2171,22 +2169,21 @@ func NewVendorInformationObject(vendor PccType, color, preference uint32) (*Vend
 		ObjectType: ObjectTypeVendorSpecificConstraints, // (RFC 7470 §4)
 		TLVs:       []TLVInterface{},
 	}
-	if vendor == CiscoLegacy {
-		o.EnterpriseNumber = EnterpriseNumberCisco
-		vendorInformationObjectTLVs := []TLVInterface{
-			&UnknownTLV{
-				Typ:   SubTLVColorCisco,
-				Value: Uint32ToByteSlice(color), // TODO: 20 if ipv6 endpoint
-			},
-			&UnknownTLV{
-				Typ:   SubTLVPreferenceCisco,
-				Value: Uint32ToByteSlice(preference),
-			},
-		}
-		o.TLVs = append(o.TLVs, vendorInformationObjectTLVs...)
-	} else {
+	if vendor != CiscoLegacy {
 		return nil, errors.New("unknown vendor information object type")
 	}
+	o.EnterpriseNumber = EnterpriseNumberCisco
+	vendorInformationObjectTLVs := []TLVInterface{
+		&UnknownTLV{
+			Typ:   SubTLVColorCisco,
+			Value: Uint32ToByteSlice(color), // TODO: 20 if ipv6 endpoint
+		},
+		&UnknownTLV{
+			Typ:   SubTLVPreferenceCisco,
+			Value: Uint32ToByteSlice(preference),
+		},
+	}
+	o.TLVs = append(o.TLVs, vendorInformationObjectTLVs...)
 	return o, nil
 }
 

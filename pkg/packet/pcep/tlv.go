@@ -1178,10 +1178,10 @@ func (tlv *ExtendedAssociationID) DecodeFromBytes(data []byte) error {
 
 // Serialize implements TLVInterface.
 func (tlv *ExtendedAssociationID) Serialize() ([]byte, error) {
-	return tlv.serialize(tlv.Type()), nil
+	return tlv.serializeAs(tlv.Type()), nil
 }
 
-func (tlv *ExtendedAssociationID) serialize(typ TLVType) []byte {
+func (tlv *ExtendedAssociationID) serializeAs(typ TLVType) []byte {
 	if !tlv.Endpoint.IsValid() {
 		return nil
 	}
@@ -1257,7 +1257,7 @@ func (tlv *ExtendedAssociationIDIPv4Juniper) Serialize() ([]byte, error) {
 		return nil, nil
 	}
 
-	return tlv.serialize(tlv.Type()), nil
+	return tlv.serializeAs(tlv.Type()), nil
 }
 
 // Type implements TLVInterface.
@@ -1873,18 +1873,16 @@ func (tlv *UnknownTLV) Len() int {
 
 func (tlv *UnknownTLV) isCapability() {}
 
-// DecodeTLV decodes a single TLV from data, selecting the implementation from
-// its type field and falling back to UnknownTLV for unhandled types.
+// DecodeTLV decodes a single PCEP TLV.
 func DecodeTLV(data []byte) (TLVInterface, error) {
 	if len(data) < 2 {
 		return nil, errors.New("insufficient data to read TLV type")
 	}
 
-	return decodeTLV(data, TLVType(binary.BigEndian.Uint16(data[0:2])))
+	return decodeKnownTLV(data, TLVType(binary.BigEndian.Uint16(data[0:2])))
 }
 
-// decodeTLV decodes a single TLV of an already known type from the standard PCEP TLV type space.
-func decodeTLV(data []byte, tlvType TLVType) (TLVInterface, error) {
+func decodeKnownTLV(data []byte, tlvType TLVType) (TLVInterface, error) {
 	createTLV, found := tlvMap[tlvType]
 	if !found {
 		return decodeUnknownTLV(data, tlvType)
@@ -1898,7 +1896,6 @@ func decodeTLV(data []byte, tlvType TLVType) (TLVInterface, error) {
 	return tlv, nil
 }
 
-// decodeUnknownTLV decodes a single TLV without consulting tlvMap, keeping its value as raw bytes.
 func decodeUnknownTLV(data []byte, tlvType TLVType) (TLVInterface, error) {
 	tlv := &UnknownTLV{}
 	if err := tlv.DecodeFromBytes(data); err != nil {
@@ -1908,9 +1905,9 @@ func decodeUnknownTLV(data []byte, tlvType TLVType) (TLVInterface, error) {
 	return tlv, nil
 }
 
-// DecodeTLVs decodes a sequence of TLVs using the standard PCEP TLV type space.
+// DecodeTLVs decodes a sequence of PCEP TLVs.
 func DecodeTLVs(data []byte) ([]TLVInterface, error) {
-	return decodeTLVSequence(data, decodeTLV)
+	return decodeTLVSequence(data, decodeKnownTLV)
 }
 
 // DecodeVendorTLVs decodes vendor-specific TLVs as UnknownTLV.

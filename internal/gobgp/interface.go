@@ -3,6 +3,7 @@
 // This software is released under the MIT License.
 // see https://github.com/nttcom/pola/blob/main/LICENSE
 
+// Package gobgp integrates with GoBGP to monitor BGP-LS updates and build the TED.
 package gobgp
 
 import (
@@ -19,7 +20,7 @@ import (
 	"github.com/nttcom/pola/internal/safecast"
 	"github.com/nttcom/pola/pkg/logger"
 	"github.com/nttcom/pola/pkg/table"
-	api "github.com/osrg/gobgp/v4/api"
+	"github.com/osrg/gobgp/v4/api"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -36,13 +37,13 @@ type monitorOptions struct {
 
 // MonitorBGPLsEvents monitors BGP-LS events and sends updates to the TED channel.
 func MonitorBGPLsEvents(ctx context.Context, serverAddr, serverPort string, tedChan chan []table.TEDElem, lg *logger.Logger) {
-	monitorBGPLsEvents(ctx, serverAddr, serverPort, tedChan, lg, monitorOptions{
+	monitorLoop(ctx, serverAddr, serverPort, tedChan, lg, monitorOptions{
 		debounceCooldown: defaultDebounceCooldown,
 		retryInterval:    defaultRetryInterval,
 	})
 }
 
-func monitorBGPLsEvents(ctx context.Context, serverAddr, serverPort string, tedChan chan []table.TEDElem, lg *logger.Logger, opts monitorOptions) {
+func monitorLoop(ctx context.Context, serverAddr, serverPort string, tedChan chan []table.TEDElem, lg *logger.Logger, opts monitorOptions) {
 	cc, client, err := newGoBGPClient(serverAddr, serverPort)
 	if err != nil {
 		lg.Error("failed to create gRPC client", logger.String("address", fmt.Sprintf("%s:%s", serverAddr, serverPort)), logger.Error(err))
