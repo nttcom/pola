@@ -1824,9 +1824,8 @@ func firstPathSetupTypeCapability(caps []pcep.CapabilityInterface) *pcep.PathSet
 }
 
 // peerSupportsPST reports whether the peer supports the given path setup type.
-// PATH-SETUP-TYPE-CAPABILITY is authoritative (RFC 8408 §5); otherwise,
-// legacy SR-CAPABILITY-TLV implies PSTs 0 and 1 (RFC 8664 Appendix A), and
-// no PST information is treated as permissive for legacy compatibility.
+// PATH-SETUP-TYPE-CAPABILITY takes precedence; otherwise, legacy SR-CAPABILITY-TLV
+// implies PSTs 0 and 1, and its absence implies PST=0 (RFC 8408 §3, RFC 8664 Appendix A).
 func peerSupportsPST(caps []pcep.CapabilityInterface, pst pcep.Pst) bool {
 	if pstCap := firstPathSetupTypeCapability(caps); pstCap != nil {
 		return pstCap.HasPathSetupType(pst)
@@ -1836,13 +1835,13 @@ func peerSupportsPST(caps []pcep.CapabilityInterface, pst pcep.Pst) bool {
 		return pst == pcep.PathSetupTypeRSVPTE || pst == pcep.PathSetupTypeSRTE
 	}
 
-	return true
+	return pst == pcep.PathSetupTypeRSVPTE
 }
 
 // peerMaxSIDs returns the advertised SID depth for the given path setup type.
-// PATH-SETUP-TYPE-CAPABILITY takes precedence over the legacy top-level
-// capability (RFC 8408 §3, RFC 8664 Appendix A). An unlisted PST is ignored
-// (RFC 8664 §5.1, RFC 9603 §5.1).
+// PATH-SETUP-TYPE-CAPABILITY takes precedence; otherwise, the top-level capability
+// is used as a legacy fallback for SRTE (RFC 8408 §3, RFC 8664 Appendix A).
+// An unlisted PST has no advertised SID depth (RFC 8664 §5.1, RFC 9603 §5.1).
 func peerMaxSIDs(caps []pcep.CapabilityInterface, pst pcep.Pst) (maxSIDs uint8, ok bool) {
 	if pstCap := firstPathSetupTypeCapability(caps); pstCap != nil {
 		if !pstCap.HasPathSetupType(pst) {

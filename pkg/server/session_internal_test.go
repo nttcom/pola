@@ -4516,6 +4516,8 @@ func TestHandleSRPolicyWithPLSPID_ComputesPathFromTED(t *testing.T) {
 	})
 
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), ted, 0)
+	ss.commitPeerOpen(OpenParams{SessionID: 1, Keepalive: 30, DeadTimer: 120}, pcep.RFCCompliant,
+		[]pcep.CapabilityInterface{pcep.NewSRPCECapability(true, false, 0)})
 
 	sr := newTestStateReport(t, 1, 0)
 	sr.LSPObject.SrcAddr = srcAddr
@@ -5408,7 +5410,7 @@ func TestValidateSegmentListForPeer(t *testing.T) {
 		segmentList []table.Segment
 		wantErr     bool
 	}{
-		"NoCapabilityAdvertised": {nil, srMPLS, false},
+		"NoCapabilityAdvertised": {nil, srMPLS, true},
 		"EmptySegmentList":       {[]pcep.CapabilityInterface{pcep.NewSRPCECapability(false, false, 1)}, nil, false},
 		"SRWithinMSD":            {[]pcep.CapabilityInterface{pcep.NewSRPCECapability(false, false, 3)}, srMPLS, false},
 		"SRExceedsMSD":           {[]pcep.CapabilityInterface{pcep.NewSRPCECapability(false, false, 2)}, srMPLS, true},
@@ -5421,17 +5423,24 @@ func TestValidateSegmentListForPeer(t *testing.T) {
 			}},
 			srv6, false,
 		},
-		"SRv6WithinHEncapsMSD": {
-			[]pcep.CapabilityInterface{pcep.NewSRv6PCECapability(false, pcep.MSD{Type: pcep.MSDTypeSRHMaxHEncaps, Value: 3})},
-			srv6, false,
-		},
 		"SRv6ExceedsHEncapsMSD": {
-			[]pcep.CapabilityInterface{pcep.NewSRv6PCECapability(false, pcep.MSD{Type: pcep.MSDTypeSRHMaxHEncaps, Value: 2})},
+			[]pcep.CapabilityInterface{&pcep.PathSetupTypeCapability{
+				PathSetupTypes: pcep.Psts{pcep.PathSetupTypeSRv6TE},
+				SubTLVs:        []pcep.TLVInterface{pcep.NewSRv6PCECapability(false, pcep.MSD{Type: pcep.MSDTypeSRHMaxHEncaps, Value: 2})},
+			}},
 			srv6, true,
 		},
 		"SRv6OtherMSDTypeIsNotALimit": {
-			[]pcep.CapabilityInterface{pcep.NewSRv6PCECapability(false, pcep.MSD{Type: pcep.MSDTypeSRHMaxSL, Value: 1})},
+			[]pcep.CapabilityInterface{&pcep.PathSetupTypeCapability{
+				PathSetupTypes: pcep.Psts{pcep.PathSetupTypeSRv6TE},
+				SubTLVs:        []pcep.TLVInterface{pcep.NewSRv6PCECapability(false, pcep.MSD{Type: pcep.MSDTypeSRHMaxSL, Value: 1})},
+			}},
 			srv6, false,
+		},
+		// RFC 9603: a top-level SRv6-PCE-CAPABILITY does not imply PST=3 support.
+		"TopLevelSRv6CapAloneDoesNotImplyPSTSupport": {
+			[]pcep.CapabilityInterface{pcep.NewSRv6PCECapability(false, pcep.MSD{Type: pcep.MSDTypeSRHMaxHEncaps, Value: 3})},
+			srv6, true,
 		},
 		"NestedInPathSetupTypeCapability": {
 			[]pcep.CapabilityInterface{&pcep.PathSetupTypeCapability{
@@ -5440,8 +5449,7 @@ func TestValidateSegmentListForPeer(t *testing.T) {
 			}},
 			srMPLS, true,
 		},
-		// RFC 8664 Appendix A: PATH-SETUP-TYPE-CAPABILITY takes precedence over
-		// the top-level SR-CAPABILITY-TLV.
+		// RFC 8664 Appendix A: PATH-SETUP-TYPE-CAPABILITY takes precedence.
 		"SubTLVEnforcedOverPermissiveTopLevelSRCap": {
 			[]pcep.CapabilityInterface{
 				pcep.NewSRPCECapability(true, false, 0),
@@ -5554,8 +5562,8 @@ func TestValidateSegmentListForPeer(t *testing.T) {
 			[]pcep.CapabilityInterface{pcep.NewSRPCECapability(true, false, 0)},
 			srv6, true,
 		},
-		// RFC 8408 §5 leaves the behavior unspecified when no PST list is sent.
-		"NoPSTInformationStaysPermissive": {nil, srv6, false},
+		// RFC 8408 §3: no PATH-SETUP-TYPE-CAPABILITY TLV means only PST=0 (RSVP-TE) is supported.
+		"NoPSTInformationImpliesRSVPTEOnly": {nil, srv6, true},
 	}
 
 	for name, tc := range cases {
@@ -5587,6 +5595,15 @@ func TestPeerMaxSIDs_PSTNotInPathSetupTypeListIsUnbounded(t *testing.T) {
 	}}
 
 	maxSIDs, ok := peerMaxSIDs(caps, pcep.PathSetupTypeSRTE)
+
+	require.False(t, ok)
+	require.Zero(t, maxSIDs)
+}
+
+func TestPeerMaxSIDs_NoCapabilitiesIsUnbounded(t *testing.T) {
+	t.Parallel()
+
+	maxSIDs, ok := peerMaxSIDs([]pcep.CapabilityInterface{}, pcep.PathSetupTypeSRTE)
 
 	require.False(t, ok)
 	require.Zero(t, maxSIDs)

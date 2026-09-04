@@ -789,6 +789,10 @@ func PathSetupTypeForSegments(segs []table.Segment) (pst Pst, ok bool) {
 		return 0, false
 	}
 
+	if table.HasUnknownSegmentType(segs) || table.HasMixedSegmentTypes(segs) {
+		return 0, false
+	}
+
 	switch segs[0].(type) {
 	case table.SegmentSRMPLS:
 		return PathSetupTypeSRTE, true
