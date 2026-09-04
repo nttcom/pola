@@ -139,9 +139,12 @@ func buildCapability(capability pcep.CapabilityInterface) *pb.Capability {
 
 		c.Detail = &pb.Capability_Sr{Sr: sr}
 	case *pcep.SRv6PCECapability:
-		c.Detail = &pb.Capability_Srv6{Srv6: &pb.Srv6Capability{
-			NaiSupported: tlv.IsNAISupported,
-		}}
+		srv6 := &pb.Srv6Capability{NaiSupported: tlv.IsNAISupported}
+		for _, msd := range tlv.MSDs {
+			srv6.Msds = append(srv6.Msds, &pb.Msd{Type: uint32(msd.Type), Value: uint32(msd.Value)})
+		}
+
+		c.Detail = &pb.Capability_Srv6{Srv6: srv6}
 	case *pcep.PathSetupTypeCapability:
 		psts := make([]uint32, len(tlv.PathSetupTypes))
 		for i, pst := range tlv.PathSetupTypes {

@@ -2146,6 +2146,8 @@ func TestCreateSRPolicy(t *testing.T) {
 		peerAddr := netip.MustParseAddr("10.0.255.1")
 		ss := NewSession(testLocalOpen(1), peerAddr, server, logger.NewNop(), nil, 0)
 		ss.syncState = SyncStateFinished
+		ss.commitPeerOpen(OpenParams{SessionID: 1, Keepalive: 30, DeadTimer: 120}, pcep.RFCCompliant,
+			[]pcep.CapabilityInterface{pcep.NewSRPCECapability(true, false, 0)})
 
 		s := &APIServer{pce: &Server{ted: ted, sessionList: []*Session{ss}}, logger: logger.NewNop()}
 
@@ -2200,6 +2202,8 @@ func TestCreateSRPolicy_SRv6WithoutLocalAddr(t *testing.T) {
 	peerAddr := netip.MustParseAddr("10.0.255.1")
 	ss := NewSession(testLocalOpen(1), peerAddr, server, logger.NewNop(), nil, 0)
 	ss.syncState = SyncStateFinished
+	ss.commitPeerOpen(OpenParams{SessionID: 1, Keepalive: 30, DeadTimer: 120}, pcep.RFCCompliant,
+		[]pcep.CapabilityInterface{&pcep.PathSetupTypeCapability{PathSetupTypes: pcep.Psts{pcep.PathSetupTypeSRv6TE}}})
 
 	s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: logger.NewNop()}
 
@@ -2514,6 +2518,8 @@ func TestDeleteSRPolicy(t *testing.T) {
 		ss := NewSession(testLocalOpen(1), peerAddr, server, logger.NewNop(), nil, 0)
 		ss.syncState = SyncStateFinished
 		ss.srPolicies = []*table.SRPolicy{{PlspID: 1, Name: testSRPolicyName, DstAddr: dstAddr, Color: 100, Preference: 100}}
+		ss.commitPeerOpen(OpenParams{SessionID: 1, Keepalive: 30, DeadTimer: 120}, pcep.RFCCompliant,
+			[]pcep.CapabilityInterface{pcep.NewSRPCECapability(true, false, 0)})
 
 		s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: logger.NewNop()}
 		policy := validPolicy()
@@ -2706,6 +2712,8 @@ func TestSendSRPolicyRequest_CreatesNewPolicy(t *testing.T) {
 	dstAddr := netip.MustParseAddr("10.255.0.2")
 	ss := NewSession(testLocalOpen(1), peerAddr, server, logger.NewNop(), nil, 0)
 	ss.syncState = SyncStateFinished
+	ss.commitPeerOpen(OpenParams{SessionID: 1, Keepalive: 30, DeadTimer: 120}, pcep.RFCCompliant,
+		[]pcep.CapabilityInterface{pcep.NewSRPCECapability(true, false, 0)})
 
 	s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: logger.NewNop()}
 	req := &pb.CreateSRPolicyRequest{SrPolicy: &pb.SRPolicy{PeerAddr: peerAddr.AsSlice(), Color: 100, Type: pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT}}
@@ -2728,6 +2736,8 @@ func TestSendSRPolicyRequest_UpdatesExistingPolicy(t *testing.T) {
 	ss := NewSession(testLocalOpen(1), peerAddr, server, logger.NewNop(), nil, 0)
 	ss.syncState = SyncStateFinished
 	ss.srPolicies = []*table.SRPolicy{{PlspID: 7, Color: 100, DstAddr: dstAddr}}
+	ss.commitPeerOpen(OpenParams{SessionID: 1, Keepalive: 30, DeadTimer: 120}, pcep.RFCCompliant,
+		[]pcep.CapabilityInterface{pcep.NewSRPCECapability(true, false, 0)})
 
 	s := &APIServer{pce: &Server{sessionList: []*Session{ss}}, logger: logger.NewNop()}
 	req := &pb.CreateSRPolicyRequest{SrPolicy: &pb.SRPolicy{PeerAddr: peerAddr.AsSlice(), Color: 100, Type: pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT}}
@@ -2917,6 +2927,20 @@ func TestBuildCapability(t *testing.T) {
 			want: &pb.Capability{
 				Type:   pb.CapabilityType_CAPABILITY_TYPE_SR,
 				Detail: &pb.Capability_Sr{Sr: &pb.SrCapability{UnlimitedMsd: true}},
+			},
+		},
+		{
+			name: "srv6 with MSDs",
+			cap: &pcep.SRv6PCECapability{IsNAISupported: true, MSDs: []pcep.MSD{
+				{Type: pcep.MSDTypeSRHMaxSL, Value: 8},
+				{Type: pcep.MSDTypeSRHMaxHEncaps, Value: 6},
+			}},
+			want: &pb.Capability{
+				Type: pb.CapabilityType_CAPABILITY_TYPE_SRV6,
+				Detail: &pb.Capability_Srv6{Srv6: &pb.Srv6Capability{
+					NaiSupported: true,
+					Msds:         []*pb.Msd{{Type: 41, Value: 8}, {Type: 44, Value: 6}},
+				}},
 			},
 		},
 		{

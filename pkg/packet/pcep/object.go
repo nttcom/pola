@@ -772,16 +772,35 @@ func NewSrpObject(segs []table.Segment, srpID uint32, isRemove bool) (*SrpObject
 		return o, nil
 	}
 
-	switch segs[0].(type) {
-	case table.SegmentSRMPLS:
-		o.TLVs = append(o.TLVs, &PathSetupType{PathSetupType: PathSetupTypeSRTE})
-	case table.SegmentSRv6:
-		o.TLVs = append(o.TLVs, &PathSetupType{PathSetupType: PathSetupTypeSRv6TE})
-	default:
+	pst, ok := PathSetupTypeForSegments(segs)
+	if !ok {
 		return nil, errors.New("invalid Segment type")
 	}
 
+	o.TLVs = append(o.TLVs, &PathSetupType{PathSetupType: pst})
+
 	return o, nil
+}
+
+// PathSetupTypeForSegments returns the path setup type for the segment list.
+// ok is false for an empty or unknown segment list.
+func PathSetupTypeForSegments(segs []table.Segment) (pst Pst, ok bool) {
+	if len(segs) == 0 {
+		return 0, false
+	}
+
+	if table.HasUnknownSegmentType(segs) || table.HasMixedSegmentTypes(segs) {
+		return 0, false
+	}
+
+	switch segs[0].(type) {
+	case table.SegmentSRMPLS:
+		return PathSetupTypeSRTE, true
+	case table.SegmentSRv6:
+		return PathSetupTypeSRv6TE, true
+	}
+
+	return 0, false
 }
 
 // LSP Object (RFC 8281 §5.3.1).

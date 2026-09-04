@@ -1340,6 +1340,31 @@ func TestNewSrpObject(t *testing.T) {
 	}
 }
 
+func TestPathSetupTypeForSegments(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		segs   []table.Segment
+		want   pcep.Pst
+		wantOK bool
+	}{
+		"NoSegments":         {nil, 0, false},
+		"UnknownSegmentType": {[]table.Segment{fakeSegment{}}, 0, false},
+		"SRMPLS":             {[]table.Segment{table.NewSegmentSRMPLS(16001)}, pcep.PathSetupTypeSRTE, true},
+		"SRv6":               {[]table.Segment{table.NewSegmentSRv6(netip.MustParseAddr("fc00:0:1::"))}, pcep.PathSetupTypeSRv6TE, true},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			got, ok := pcep.PathSetupTypeForSegments(tt.segs)
+			assert.Equal(t, tt.wantOK, ok)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func TestLSPObject_Color(t *testing.T) {
 	t.Parallel()
 

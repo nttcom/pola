@@ -1893,21 +1893,40 @@ var (
 	testSRv6PCECapability            = pcep.NewSRv6PCECapability(true)
 	testSRv6PCECapabilityBytes       = append(tlvHeader(pcep.TLVSRv6PCECapability, 4), 0x00, 0x00, 0x00, 0x02)
 	testSRv6PCECapabilityNoNAIBytes  = append(tlvHeader(pcep.TLVSRv6PCECapability, 4), 0x00, 0x00, 0x00, 0x00)
-	testSRv6PCECapabilityExtended    = append(tlvHeader(pcep.TLVSRv6PCECapability, 8), 0x00, 0x00, 0x00, 0x02, 0xde, 0xad, 0xbe, 0xef)
 	testSRv6PCECapabilityShortLength = append(tlvHeader(pcep.TLVSRv6PCECapability, 3), 0x00, 0x00, 0x00)
 	testSRv6PCECapabilityTruncated   = append(tlvHeader(pcep.TLVSRv6PCECapability, 4), 0x00, 0x00)
 	testSRv6PCECapabilityNoNAI       = &pcep.SRv6PCECapability{}
+
+	// Two (MSD-Type, MSD-Value) pairs: SRH Max SL = 10, SRH Max H.encaps = 5.
+	testSRv6PCECapabilityMSDs = pcep.NewSRv6PCECapability(true,
+		pcep.MSD{Type: pcep.MSDTypeSRHMaxSL, Value: 10},
+		pcep.MSD{Type: pcep.MSDTypeSRHMaxHEncaps, Value: 5},
+	)
+	testSRv6PCECapabilityMSDsBytes = append(tlvHeader(pcep.TLVSRv6PCECapability, 8),
+		0x00, 0x00, 0x00, 0x02, 0x29, 0x0a, 0x2c, 0x05)
+
+	// A single pair requires 4-octet TLV padding.
+	testSRv6PCECapabilityOneMSD = pcep.NewSRv6PCECapability(true,
+		pcep.MSD{Type: pcep.MSDTypeSRHMaxHEncaps, Value: 5},
+	)
+	testSRv6PCECapabilityOneMSDBytes = append(tlvHeader(pcep.TLVSRv6PCECapability, 6),
+		0x00, 0x00, 0x00, 0x02, 0x2c, 0x05, 0x00, 0x00)
+
+	testSRv6PCECapabilityOddMSDBytes = append(tlvHeader(pcep.TLVSRv6PCECapability, 7),
+		0x00, 0x00, 0x00, 0x02, 0x2c, 0x05, 0x00)
 )
 
 func TestSRv6PCECapability_DecodeFromBytes(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string]TLVTestCase{
-		"ValidSRv6PCECapability":          {testSRv6PCECapabilityBytes, testSRv6PCECapability, false},
-		"ValidSRv6PCECapabilityNoNAI":     {testSRv6PCECapabilityNoNAIBytes, testSRv6PCECapabilityNoNAI, false},
-		"ExtendedLengthSRv6PCECapability": {testSRv6PCECapabilityExtended, testSRv6PCECapability, false},
-		"ShortLengthSRv6PCECapability":    {testSRv6PCECapabilityShortLength, nil, true},
-		"TruncatedSRv6PCECapability":      {testSRv6PCECapabilityTruncated, nil, true},
+		"ValidSRv6PCECapability":       {testSRv6PCECapabilityBytes, testSRv6PCECapability, false},
+		"ValidSRv6PCECapabilityNoNAI":  {testSRv6PCECapabilityNoNAIBytes, testSRv6PCECapabilityNoNAI, false},
+		"SRv6PCECapabilityWithMSDs":    {testSRv6PCECapabilityMSDsBytes, testSRv6PCECapabilityMSDs, false},
+		"SRv6PCECapabilityOneMSD":      {testSRv6PCECapabilityOneMSDBytes, testSRv6PCECapabilityOneMSD, false},
+		"SRv6PCECapabilityOddMSDBytes": {testSRv6PCECapabilityOddMSDBytes, nil, true},
+		"ShortLengthSRv6PCECapability": {testSRv6PCECapabilityShortLength, nil, true},
+		"TruncatedSRv6PCECapability":   {testSRv6PCECapabilityTruncated, nil, true},
 	}
 	runTLVDecodeTests(t, cases, func() pcep.TLVInterface { return &pcep.SRv6PCECapability{} })
 }
@@ -1921,8 +1940,32 @@ func TestSRv6PCECapability_Serialize(t *testing.T) {
 	}{
 		"ValidSRv6PCECapability":      {testSRv6PCECapability, testSRv6PCECapabilityBytes},
 		"ValidSRv6PCECapabilityNoNAI": {testSRv6PCECapabilityNoNAI, testSRv6PCECapabilityNoNAIBytes},
+		"SRv6PCECapabilityWithMSDs":   {testSRv6PCECapabilityMSDs, testSRv6PCECapabilityMSDsBytes},
+		"SRv6PCECapabilityOneMSD":     {testSRv6PCECapabilityOneMSD, testSRv6PCECapabilityOneMSDBytes},
 	}
 	runTLVSerializeTests(t, cases)
+}
+
+func TestSRv6PCECapability_Serialize_LengthBoundary(t *testing.T) {
+	t.Parallel()
+
+	t.Run("AtLimit", func(t *testing.T) {
+		t.Parallel()
+
+		tlv := &pcep.SRv6PCECapability{MSDs: make([]pcep.MSD, 32765)}
+		raw, err := tlv.Serialize()
+		require.NoError(t, err)
+		assert.Len(t, raw, tlv.Len(), "Len() must match serialized size")
+		assert.Equal(t, uint16(65534), binary.BigEndian.Uint16(raw[pcep.TLVLengthOffset:pcep.TLVValueOffset]))
+	})
+
+	t.Run("ExceedsLimit", func(t *testing.T) {
+		t.Parallel()
+
+		tlv := &pcep.SRv6PCECapability{MSDs: make([]pcep.MSD, 32766)}
+		_, err := tlv.Serialize()
+		assert.ErrorContains(t, err, "is outside the range")
+	})
 }
 
 func TestSRv6PCECapability_Len(t *testing.T) {
@@ -1933,6 +1976,8 @@ func TestSRv6PCECapability_Len(t *testing.T) {
 		expected uint16
 	}{
 		"ValidSRv6PCECapabilityLength": {testSRv6PCECapability, pcep.TLVValueOffset + pcep.TLVSRv6PCECapabilityValueLength},
+		"WithTwoMSDs":                  {testSRv6PCECapabilityMSDs, pcep.TLVValueOffset + pcep.TLVSRv6PCECapabilityValueLength + 4},
+		"WithOneMSDIsPadded":           {testSRv6PCECapabilityOneMSD, pcep.TLVValueOffset + pcep.TLVSRv6PCECapabilityValueLength + 4},
 	}
 	runTLVLenTests(t, cases)
 }
@@ -2047,6 +2092,73 @@ func TestMultipathCapability_RoundTrip(t *testing.T) {
 			gotData, err := got.Serialize()
 			require.NoError(t, err, "Serialize failed")
 			assert.Equal(t, data, gotData, "re-serialized bytes differ")
+		})
+	}
+}
+
+func TestSRPCECapability_MaxSIDs(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		tlv         *pcep.SRPCECapability
+		wantMaxSIDs uint8
+		wantOK      bool
+	}{
+		"BoundedMSD":   {pcep.NewSRPCECapability(false, false, 10), 10, true},
+		"UnlimitedMSD": {pcep.NewSRPCECapability(true, false, 0), 0, false},
+		"ZeroMSD":      {pcep.NewSRPCECapability(false, false, 0), 0, false},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			maxSIDs, ok := tc.tlv.MaxSIDs()
+			assert.Equal(t, tc.wantOK, ok)
+			assert.Equal(t, tc.wantMaxSIDs, maxSIDs)
+		})
+	}
+}
+
+func TestSRv6PCECapability_MaxSIDs(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		tlv         *pcep.SRv6PCECapability
+		wantMaxSIDs uint8
+		wantOK      bool
+	}{
+		"NoMSDs": {pcep.NewSRv6PCECapability(true), 0, false},
+		"HEncaps": {
+			pcep.NewSRv6PCECapability(true, pcep.MSD{Type: pcep.MSDTypeSRHMaxHEncaps, Value: 7}),
+			7, true,
+		},
+		"HEncapsAmongOtherTypes": {
+			pcep.NewSRv6PCECapability(true,
+				pcep.MSD{Type: pcep.MSDTypeSRHMaxSL, Value: 3},
+				pcep.MSD{Type: pcep.MSDTypeSRHMaxHEncaps, Value: 7},
+				pcep.MSD{Type: pcep.MSDTypeSRHMaxEndD, Value: 2},
+			),
+			7, true,
+		},
+		"OnlyOtherTypes": {
+			pcep.NewSRv6PCECapability(true, pcep.MSD{Type: pcep.MSDTypeSRHMaxEndPop, Value: 4}),
+			0, false,
+		},
+		// A zero H.Encaps MSD still allows one SID (RFC 9352 §4.3).
+		"ZeroHEncaps": {
+			pcep.NewSRv6PCECapability(true, pcep.MSD{Type: pcep.MSDTypeSRHMaxHEncaps, Value: 0}),
+			1, true,
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			maxSIDs, ok := tc.tlv.MaxSIDs()
+			assert.Equal(t, tc.wantOK, ok)
+			assert.Equal(t, tc.wantMaxSIDs, maxSIDs)
 		})
 	}
 }

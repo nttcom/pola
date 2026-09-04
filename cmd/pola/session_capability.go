@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"math"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/nttcom/pola/cmd/pola/grpc"
@@ -29,17 +28,17 @@ const (
 	capGroupUnknown           = "UNKNOWN"
 )
 
-// assocTypeListLabel is the display header for the ASSOC_TYPE_LIST group.
 const assocTypeListLabel = "ASSOC-TYPE-LIST [RFC8697]"
 
-// capFeature is a comparable capability token.
+// capFeature represents a capability feature with an optional numeric value.
 type capFeature struct {
-	group string
-	token string
+	group  string
+	token  string
+	num    uint32
+	hasNum bool
 }
 
-// capabilitiesFeatures flattens capabilities into deduplicated
-// (group, token) features, preserving first-seen order.
+// capabilitiesFeatures flattens capabilities into deduplicated features.
 func capabilitiesFeatures(caps []grpc.Capability) []capFeature {
 	seen := make(map[capFeature]struct{})
 
@@ -51,11 +50,44 @@ func capabilitiesFeatures(caps []grpc.Capability) []capFeature {
 	return features
 }
 
-// appendCapabilityFeatures adds c's tokens and recursively processes
-// PATH-SETUP-TYPE-CAPABILITY sub-capabilities.
+// capabilityFeatures turns c into its features.
+func capabilityFeatures(c grpc.Capability) []capFeature {
+	switch detail := c.Detail.(type) {
+	case grpc.AssocTypeListCapability:
+		features := make([]capFeature, 0, len(detail.AssocTypes))
+		for _, assocType := range detail.AssocTypes {
+			features = append(features, capFeature{
+				group:  c.Type,
+				token:  grpc.AssocTypeToken(assocType),
+				num:    assocType,
+				hasNum: true,
+			})
+		}
+
+		return features
+
+	case grpc.UnknownCapability:
+		return []capFeature{{
+			group:  c.Type,
+			token:  grpc.UnknownTLVToken(detail.TLVType),
+			num:    detail.TLVType,
+			hasNum: true,
+		}}
+	}
+
+	tokens := c.Strings()
+
+	features := make([]capFeature, 0, len(tokens))
+	for _, token := range tokens {
+		features = append(features, capFeature{group: c.Type, token: token})
+	}
+
+	return features
+}
+
+// appendCapabilityFeatures adds c's features and its sub-capabilities.
 func appendCapabilityFeatures(features []capFeature, seen map[capFeature]struct{}, c grpc.Capability) []capFeature {
-	for _, token := range c.Strings() {
-		f := capFeature{group: c.Type, token: token}
+	for _, f := range capabilityFeatures(c) {
 		if _, ok := seen[f]; ok {
 			continue
 		}
@@ -173,26 +205,13 @@ func buildCapabilitiesView(localCaps, peerCaps []grpc.Capability) capabilitiesVi
 	return view
 }
 
-func parseTokenUint32(token, prefix string) (uint32, bool) {
-	if !strings.HasPrefix(token, prefix) {
-		return 0, false
-	}
-
-	n, err := strconv.ParseUint(strings.TrimPrefix(token, prefix), 10, 32)
-	if err != nil {
-		return 0, false
-	}
-
-	return uint32(n), true
-}
-
 func applyStatefulFeature(common *commonCapView, token string) bool {
 	switch token {
-	case "Stateful":
+	case grpc.CapTokenStateful:
 		common.Stateful = true
-	case "Update":
+	case grpc.CapTokenUpdate:
 		common.Update = true
-	case "Instantiation":
+	case grpc.CapTokenInstantiation:
 		common.Instantiation = true
 	default:
 		return false
@@ -210,13 +229,13 @@ func applyCommonFeature(common *commonCapView, f capFeature) bool {
 		common.PathSetupTypes = append(common.PathSetupTypes, f.token)
 		return true
 	case capGroupAssocTypeList:
-		if n, ok := parseTokenUint32(f.token, "AssocType:"); ok {
-			common.AssociationTypes = append(common.AssociationTypes, n)
+		if f.hasNum {
+			common.AssociationTypes = append(common.AssociationTypes, f.num)
 			return true
 		}
 	case capGroupUnknown:
-		if n, ok := parseTokenUint32(f.token, "unknown_type_"); ok {
-			common.UnrecognizedTLVTypes = append(common.UnrecognizedTLVTypes, n)
+		if f.hasNum {
+			common.UnrecognizedTLVTypes = append(common.UnrecognizedTLVTypes, f.num)
 			return true
 		}
 	}
@@ -224,18 +243,17 @@ func applyCommonFeature(common *commonCapView, f capFeature) bool {
 	return false
 }
 
-// capabilityGroups groups features by capability and formats their items
-// according to the capability type.
+// capabilityGroups groups features by capability.
 func capabilityGroups(features []capFeature) []capGroupView {
 	order := make([]string, 0)
 
-	tokensByGroup := make(map[string][]string)
+	byGroup := make(map[string][]capFeature)
 	for _, f := range features {
-		if _, ok := tokensByGroup[f.group]; !ok {
+		if _, ok := byGroup[f.group]; !ok {
 			order = append(order, f.group)
 		}
 
-		tokensByGroup[f.group] = append(tokensByGroup[f.group], f.token)
+		byGroup[f.group] = append(byGroup[f.group], f)
 	}
 
 	slices.SortFunc(order, func(a, b string) int {
@@ -244,29 +262,33 @@ func capabilityGroups(features []capFeature) []capGroupView {
 
 	groups := make([]capGroupView, 0, len(order))
 	for _, group := range order {
-		groups = append(groups, capGroupView{Capability: group, Items: groupItems(group, tokensByGroup[group])})
+		groups = append(groups, capGroupView{Capability: group, Items: groupItems(group, byGroup[group])})
 	}
 
 	return groups
 }
 
-func groupItems(group string, tokens []string) []string {
+func groupItems(group string, features []capFeature) []string {
 	switch group {
 	case capGroupAssocTypeList:
-		return sortedUint32Labels(tokens, "AssocType:", assocTypeLabel)
+		return sortedNumericLabels(features, assocTypeLabel)
 	case capGroupUnknown:
-		return sortedUint32Labels(tokens, "unknown_type_", unrecognizedTLVItem)
+		return sortedNumericLabels(features, unrecognizedTLVItem)
 	default:
-		return tokens
+		items := make([]string, len(features))
+		for i, f := range features {
+			items[i] = f.token
+		}
+
+		return items
 	}
 }
 
-// sortedUint32Labels sorts token values numerically and renders them with label.
-func sortedUint32Labels(tokens []string, prefix string, label func(uint32) string) []string {
-	ns := make([]uint32, 0, len(tokens))
-	for _, token := range tokens {
-		if n, ok := parseTokenUint32(token, prefix); ok {
-			ns = append(ns, n)
+func sortedNumericLabels(features []capFeature, label func(uint32) string) []string {
+	ns := make([]uint32, 0, len(features))
+	for _, f := range features {
+		if f.hasNum {
+			ns = append(ns, f.num)
 		}
 	}
 

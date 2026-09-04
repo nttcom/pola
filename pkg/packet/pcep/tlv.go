@@ -842,6 +842,16 @@ func (tlv *SRPCECapability) HasInvalidZeroMSD() bool {
 	return !tlv.HasUnlimitedMaxSIDDepth && tlv.MaximumSidDepth == 0
 }
 
+// MaxSIDs returns the sender's session-wide SID depth limit.
+// ok is false when no limit is enforced.
+func (tlv *SRPCECapability) MaxSIDs() (maxSIDs uint8, ok bool) {
+	if tlv.HasUnlimitedMaxSIDDepth || tlv.MaximumSidDepth == 0 {
+		return 0, false
+	}
+
+	return tlv.MaximumSidDepth, true
+}
+
 // NewSRPCECapability creates an SR-PCE-CAPABILITY TLV.
 func NewSRPCECapability(hasUnlimitedMaxSIDDepth, isNAISupported bool, maximumSidDepth uint8) *SRPCECapability {
 	return &SRPCECapability{
@@ -851,25 +861,42 @@ func NewSRPCECapability(hasUnlimitedMaxSIDDepth, isNAISupported bool, maximumSid
 	}
 }
 
-// SRv6PCECapability represents the SRv6-PCE-CAPABILITY TLV, advertising SRv6
-// path setup support (RFC 9603).
-type SRv6PCECapability struct {
-	IsNAISupported bool
+// MSD is an (MSD-Type, MSD-Value) pair.
+type MSD struct {
+	Type  uint8
+	Value uint8
 }
 
-// SRv6NAISupportedFlag is the SRv6-PCE-CAPABILITY Flags bit indicating NAI
-// support in SRv6-ERO subobjects.
+// MSDPairLength is the size of an MSD pair on the wire.
+const MSDPairLength = 2
+
+// SRv6 MSD types defined in RFC 9352 (Type 43 is unassigned by IANA).
+const (
+	MSDTypeSRHMaxSL      uint8 = 41
+	MSDTypeSRHMaxEndPop  uint8 = 42
+	MSDTypeSRHMaxHEncaps uint8 = 44
+	MSDTypeSRHMaxEndD    uint8 = 45
+)
+
+// SRv6PCECapability represents the SRv6-PCE-CAPABILITY TLV (RFC 9603).
+type SRv6PCECapability struct {
+	IsNAISupported bool
+	MSDs           []MSD
+}
+
+// SRv6NAISupportedFlag indicates NAI resolution support.
 const SRv6NAISupportedFlag uint16 = 0x0002
 
-// Byte offsets of the fields within the SRv6-PCE-CAPABILITY TLV value.
+// Byte offsets of fields within the SRv6-PCE-CAPABILITY TLV value.
 const (
 	SRv6PCECapabilityReservedOffset = 0
 	SRv6PCECapabilityFlagsOffset    = 2
+	SRv6PCECapabilityMSDsOffset     = 4
 )
 
 // DecodeFromBytes implements TLVInterface.
 func (tlv *SRv6PCECapability) DecodeFromBytes(data []byte) error {
-	valueLen, err := decodeTLVLength(data, false)
+	valueLen, err := decodeTLVLength(data, true)
 	if err != nil {
 		return fmt.Errorf("SRv6PCECapability: %w", err)
 	}
@@ -883,13 +910,34 @@ func (tlv *SRv6PCECapability) DecodeFromBytes(data []byte) error {
 	flags := binary.BigEndian.Uint16(value[SRv6PCECapabilityFlagsOffset : SRv6PCECapabilityFlagsOffset+2])
 	tlv.IsNAISupported = (flags & SRv6NAISupportedFlag) != 0
 
+	msdBytes := value[SRv6PCECapabilityMSDsOffset:]
+	if len(msdBytes)%MSDPairLength != 0 {
+		return fmt.Errorf("SRv6PCECapability: value length %d leaves a truncated (MSD-Type, MSD-Value) pair", valueLen)
+	}
+
+	tlv.MSDs = nil
+	for i := 0; i < len(msdBytes); i += MSDPairLength {
+		tlv.MSDs = append(tlv.MSDs, MSD{Type: msdBytes[i], Value: msdBytes[i+1]})
+	}
+
 	return nil
+}
+
+func (tlv *SRv6PCECapability) valueLength() int {
+	return int(TLVSRv6PCECapabilityValueLength) + MSDPairLength*len(tlv.MSDs)
 }
 
 // Serialize implements TLVInterface.
 func (tlv *SRv6PCECapability) Serialize() ([]byte, error) {
-	value := make([]byte, TLVSRv6PCECapabilityValueLength)
-	// value[0:2] reserved, must be zero.
+	valueLenInt := tlv.valueLength()
+
+	valueLen, err := tlvValueLength(valueLenInt)
+	if err != nil {
+		return nil, fmt.Errorf("SRv6PCECapability: %w", err)
+	}
+
+	value := make([]byte, paddedLength(valueLenInt, TLVAlignment))
+
 	var flags uint16
 	if tlv.IsNAISupported {
 		flags |= SRv6NAISupportedFlag
@@ -897,9 +945,16 @@ func (tlv *SRv6PCECapability) Serialize() ([]byte, error) {
 
 	binary.BigEndian.PutUint16(value[SRv6PCECapabilityFlagsOffset:SRv6PCECapabilityFlagsOffset+2], flags)
 
+	offset := SRv6PCECapabilityMSDsOffset
+	for _, msd := range tlv.MSDs {
+		value[offset] = msd.Type
+		value[offset+1] = msd.Value
+		offset += MSDPairLength
+	}
+
 	return AppendByteSlices(
 		Uint16ToByteSlice(tlv.Type()),
-		Uint16ToByteSlice(TLVSRv6PCECapabilityValueLength),
+		Uint16ToByteSlice(valueLen),
 		value,
 	), nil
 }
@@ -911,21 +966,39 @@ func (tlv *SRv6PCECapability) Type() TLVType {
 
 // Len implements TLVInterface.
 func (tlv *SRv6PCECapability) Len() int {
-	return int(TLVValueOffset + TLVSRv6PCECapabilityValueLength)
+	return TLVValueOffset + paddedLength(tlv.valueLength(), TLVAlignment)
 }
 
 func (tlv *SRv6PCECapability) isCapability() {}
 
+// MaxSIDs returns the SID limit from the SRH Max H.Encaps MSD.
+// A zero MSD-Value maps to one SID (RFC 9352 §4.3).
+// ok is false when the MSD is absent.
+func (tlv *SRv6PCECapability) MaxSIDs() (maxSIDs uint8, ok bool) {
+	for _, msd := range tlv.MSDs {
+		if msd.Type != MSDTypeSRHMaxHEncaps {
+			continue
+		}
+
+		if msd.Value == 0 {
+			return 1, true
+		}
+
+		return msd.Value, true
+	}
+
+	return 0, false
+}
+
 // NewSRv6PCECapability creates an SRv6-PCE-CAPABILITY TLV.
-func NewSRv6PCECapability(isNAISupported bool) *SRv6PCECapability {
+func NewSRv6PCECapability(isNAISupported bool, msds ...MSD) *SRv6PCECapability {
 	return &SRv6PCECapability{
 		IsNAISupported: isNAISupported,
+		MSDs:           msds,
 	}
 }
 
-// MultipathCapability represents the MULTIPATH-CAP TLV, advertising the
-// maximum number of paths the speaker can return and its supported multipath
-// attributes (draft-ietf-pce-multipath).
+// MultipathCapability represents the MULTIPATH-CAP TLV (draft-ietf-pce-multipath).
 type MultipathCapability struct {
 	MaxMultipaths            uint16
 	IsWeightedSupported      bool
@@ -934,13 +1007,12 @@ type MultipathCapability struct {
 	IsCompositePathSupported bool
 }
 
-// Flag bits of the MULTIPATH-CAP TLV, as masks against its 16-bit Flags field.
-// 0x0002 is unassigned.
+// Flag bits of the MULTIPATH-CAP TLV.
 const (
-	MultipathFlagW uint16 = 0x0001 // weighted paths
-	MultipathFlagO uint16 = 0x0004 // opposite-direction paths
-	MultipathFlagF uint16 = 0x0008 // forward class
-	MultipathFlagC uint16 = 0x0010 // composite paths
+	MultipathFlagW uint16 = 0x0001
+	MultipathFlagO uint16 = 0x0004
+	MultipathFlagF uint16 = 0x0008
+	MultipathFlagC uint16 = 0x0010
 )
 
 // Byte offsets of the fields within the MULTIPATH-CAP TLV value.
@@ -1431,9 +1503,14 @@ func (tlv *PathSetupTypeCapability) SubCapabilities() []CapabilityInterface {
 	return ret
 }
 
+// PathSetupTypeList returns the advertised PSTs, limited by the PST count.
+func (tlv *PathSetupTypeCapability) PathSetupTypeList() Psts {
+	return tlv.PathSetupTypes[:tlv.pstCount()]
+}
+
 // HasPathSetupType reports whether the receiver advertises the given PST.
 func (tlv *PathSetupTypeCapability) HasPathSetupType(pst Pst) bool {
-	return slices.Contains(tlv.PathSetupTypes[:tlv.pstCount()], pst)
+	return slices.Contains(tlv.PathSetupTypeList(), pst)
 }
 
 // AssocType is an ASSOCIATION object type (RFC 8697).

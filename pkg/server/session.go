@@ -45,8 +45,9 @@ const (
 	localDeadTimerKeepaliveDivisor = 4
 )
 
-// PCEP error codes used during session management (RFC 5440 §7.15).
+// PCEP error codes.
 const (
+	// Session establishment (RFC 5440 §7.15).
 	pcepErrorTypeSessionEstablishmentFailure  uint8 = 1
 	pcepErrorValueInvalidOpenMessage          uint8 = 1
 	pcepErrorValueOpenWaitTimerExpired        uint8 = 2
@@ -59,7 +60,27 @@ const (
 	pcepErrorTypeSecondSessionAttempt         uint8 = 9
 	pcepErrorValueSecondSessionAttempt        uint8 = 1
 	pcepErrorValueUnassigned                  uint8 = 0
+
+	// Reception of an invalid object (RFC 5440 §7.15).
+	pcepErrorTypeInvalidObject    uint8 = 10
+	pcepErrorValueMalformedObject uint8 = 11
+
+	// Invalid traffic engineering path setup type (RFC 8408 §8.3).
+	pcepErrorTypeInvalidPathSetupType     uint8 = 21
+	pcepErrorValueMismatchedPathSetupType uint8 = 2
+
+	// Association Error (RFC 8697 §6.4).
+	pcepErrorTypeAssociationError             uint8 = 26
+	pcepErrorValueAssociationTypeNotSupported uint8 = 1
 )
+
+// acceptedAssocTypes lists Association Types accepted from received messages.
+// Legacy vendor-specific types are accepted for interoperability but not advertised.
+var acceptedAssocTypes = []pcep.AssocType{
+	pcep.AssocTypeSRPolicyAssociation,
+	pcep.AssocTypeSRPolicyAssociationCisco,
+	pcep.AssocTypeSRPolicyAssociationJuniper,
+}
 
 // SessionState represents the PCEP session state (RFC 5440 Appendix A).
 type SessionState uint8
@@ -389,7 +410,6 @@ func NewSession(localOpen OpenParams, peerAddr netip.Addr, tcpConn net.Conn, lg 
 }
 
 // Established runs the PCEP session until it terminates.
-// The returned error indicates the session establishment outcome (RFC 9826).
 func (ss *Session) Established() error {
 	if err := ss.Open(); err != nil {
 		ss.logger.Debug("ERROR! PCEP session establishment failed", logger.Error(err))
@@ -407,7 +427,6 @@ func (ss *Session) Established() error {
 
 	done := make(chan struct{}, 1)
 
-	// Receive PCEP messages in a separate goroutine
 	go func() {
 		if err := ss.ReceivePCEPMessage(); err != nil {
 			ss.logger.Debug("ERROR! Receive PCEP Message", logger.Error(err))
@@ -438,7 +457,6 @@ func (ss *Session) Established() error {
 	}
 }
 
-// sendPCEPMessage serializes and writes a PCEP message.
 func (ss *Session) sendPCEPMessage(message pcep.Message) error {
 	byteMessage, err := message.Serialize()
 	if err != nil {
@@ -461,7 +479,7 @@ func (ss *Session) sendPCEPMessage(message pcep.Message) error {
 const maxLocalOpenRetries = 1
 
 // openNegotiation tracks the Open negotiation state, including the independent
-// RemoteOK and LocalOK conditions from RFC 5440 Appendix A.
+// RemoteOK and LocalOK conditions (RFC 5440 Appendix A).
 type openNegotiation struct {
 	remoteOK          bool
 	localOK           bool
@@ -483,13 +501,11 @@ func (neg *openNegotiation) established() bool {
 	return neg.remoteOK && neg.localOK
 }
 
-// peerOpened reports whether an Open has been received from the peer,
-// acceptable or not.
+// peerOpened reports whether the peer has sent an Open.
 func (neg *openNegotiation) peerOpened() bool {
 	return neg.remoteOK || neg.peerOpensRejected > 0
 }
 
-// state derives the Appendix A state from the negotiation conditions.
 func (neg *openNegotiation) state() SessionState {
 	switch {
 	case neg.established():
@@ -501,7 +517,7 @@ func (neg *openNegotiation) state() SessionState {
 	}
 }
 
-// Open sends Pola's Open and negotiates the PCEP session.
+// Open establishes the PCEP session (RFC 5440 §6.2).
 func (ss *Session) Open() error {
 	if err := ss.SendOpen(); err != nil {
 		return err
@@ -510,8 +526,6 @@ func (ss *Session) Open() error {
 	return ss.negotiateOpen(&openNegotiation{})
 }
 
-// negotiateOpen handles PCEP Open negotiation until both peers have
-// acknowledged each other's Open.
 func (ss *Session) negotiateOpen(neg *openNegotiation) error {
 	ss.restartInitializationTimer(neg)
 
@@ -568,9 +582,7 @@ func (ss *Session) negotiateOpen(neg *openNegotiation) error {
 	}
 }
 
-// applyNegotiationTransition restarts the initialization timer when the
-// negotiation state changed this round, and starts the negotiation Keepalive
-// once the peer's Open has just been accepted.
+// applyNegotiationTransition updates timers and Keepalive state.
 func (ss *Session) applyNegotiationTransition(neg *openNegotiation, before negotiationVars, stopNegotiationKeepalive *func()) {
 	after := neg.vars()
 	if after != before {
@@ -591,8 +603,7 @@ func (ss *Session) restartInitializationTimer(neg *openNegotiation) {
 	neg.deadline = time.Now().Add(timer)
 }
 
-// startNegotiationKeepalive starts the Keepalive timer once RemoteOK is set,
-// while Pola's Open is still awaiting acknowledgment.
+// startNegotiationKeepalive sends Keepalives during Open negotiation.
 func (ss *Session) startNegotiationKeepalive() func() {
 	interval := ss.keepaliveInterval()
 	if interval == 0 {
@@ -627,8 +638,7 @@ func (ss *Session) startNegotiationKeepalive() func() {
 	}
 }
 
-// readNegotiationMessage reads one message under the current initialization
-// timer and handles malformed messages according to session-establishment rules.
+// readNegotiationMessage reads one message before the initialization timer expires.
 func (ss *Session) readNegotiationMessage(neg *openNegotiation) (pcep.MessageType, []uint8, error) {
 	deadline := neg.deadline
 
@@ -664,7 +674,7 @@ func (ss *Session) readNegotiationMessage(neg *openNegotiation) (pcep.MessageTyp
 }
 
 // negotiationTimerExpired reports an initialization timer expiration using
-// the error value corresponding to the current negotiation state.
+// the error value for the current negotiation state.
 func (ss *Session) negotiationTimerExpired(neg *openNegotiation, detail string) error {
 	timer, errorValue := "OpenWait", pcepErrorValueOpenWaitTimerExpired
 	if neg.state() == SessionStateKeepWait {
@@ -676,8 +686,7 @@ func (ss *Session) negotiationTimerExpired(neg *openNegotiation, detail string) 
 	return fmt.Errorf("%s timer expired %s", timer, detail)
 }
 
-// handlePeerOpen processes an Open received during session establishment,
-// accepting it or responding with an appropriate negotiation error.
+// handlePeerOpen processes an Open received during session establishment.
 func (ss *Session) handlePeerOpen(body []uint8, neg *openNegotiation) error {
 	openMessage := &pcep.OpenMessage{}
 	if err := openMessage.DecodeFromBytes(body); err != nil {
@@ -695,6 +704,15 @@ func (ss *Session) handlePeerOpen(body []uint8, neg *openNegotiation) error {
 	}
 
 	peerOpen, pccType, caps := ss.decodePeerOpen(openMessage)
+
+	if err := ss.rejectOnEmptyPathSetupTypeList(caps); err != nil {
+		return err
+	}
+
+	// Refuse the session when the peer has no path setup type in common (RFC 8408 §5).
+	if err := ss.rejectOnPathSetupTypeMismatch(caps); err != nil {
+		return err
+	}
 
 	if ss.acceptableOpen(peerOpen) {
 		ss.commitPeerOpen(peerOpen, pccType, caps)
@@ -732,7 +750,6 @@ func (ss *Session) handlePeerOpen(body []uint8, neg *openNegotiation) error {
 }
 
 // decodePeerOpen decodes the peer's Open without committing it to session state.
-// Capability validation is diagnostic and runs regardless of acceptability.
 func (ss *Session) decodePeerOpen(openMessage *pcep.OpenMessage) (OpenParams, pcep.PccType, []pcep.CapabilityInterface) {
 	receivedCaps := slices.Clone(openMessage.OpenObject.Caps)
 
@@ -763,8 +780,8 @@ func (ss *Session) commitPeerOpen(peerOpen OpenParams, pccType pcep.PccType, cap
 	ss.stateMu.Unlock()
 }
 
-// handleNegotiationPCErr processes a PCErr received during session
-// establishment, continuing negotiation only for Error 1/4.
+// handleNegotiationPCErr processes a PCErr during session establishment.
+// Negotiation continues only for Error 1/4.
 func (ss *Session) handleNegotiationPCErr(body []uint8, neg *openNegotiation) error {
 	pcerrMessage := &pcep.PCErrMessage{}
 	if err := pcerrMessage.DecodeFromBytes(body); err != nil {
@@ -777,7 +794,7 @@ func (ss *Session) handleNegotiationPCErr(body []uint8, neg *openNegotiation) er
 	ss.logger.Debug("Received PCErr while establishing the PCEP session",
 		logger.String("errors", formatPCErrErrors(pcerrMessage.Errors)))
 
-	// A negotiable Error 1/4 may be accompanied by unrelated PCEP-ERROR objects.
+	// Error 1/4 may be accompanied by unrelated PCEP-ERROR objects.
 	negotiable := slices.ContainsFunc(pcerrMessage.Errors, func(errObj *pcep.ErrorObject) bool {
 		return errObj.ErrorType == pcepErrorTypeSessionEstablishmentFailure &&
 			errObj.ErrorValue == pcepErrorValueUnacceptableNegotiable
@@ -798,8 +815,8 @@ func formatPCErrErrors(errObjs []*pcep.ErrorObject) string {
 	return strings.Join(reasons, "; ")
 }
 
-// adoptProposedOpen validates and adopts the peer's proposed session
-// characteristics, then re-sends Pola's Open.
+// adoptProposedOpen adopts the peer's proposed session characteristics and
+// re-sends Pola's Open.
 func (ss *Session) adoptProposedOpen(proposedOpen *pcep.OpenObject, neg *openNegotiation) error {
 	if proposedOpen == nil {
 		ss.sendPCErrBestEffort(pcepErrorValueUnacceptableProposal)
@@ -838,8 +855,6 @@ func (ss *Session) adoptProposedOpen(proposedOpen *pcep.OpenObject, neg *openNeg
 	}
 
 	neg.localOpenRetries++
-
-	// A re-sent Open starts a new negotiation round.
 	neg.localOK = false
 
 	return nil
@@ -859,9 +874,45 @@ func isDeadlineExceeded(err error) bool {
 }
 
 func (ss *Session) sendPCErrBestEffort(errorValue uint8) {
-	if err := ss.SendPCErr(pcepErrorTypeSessionEstablishmentFailure, errorValue); err != nil {
+	ss.sendTypedPCErrBestEffort(pcepErrorTypeSessionEstablishmentFailure, errorValue)
+}
+
+func (ss *Session) sendTypedPCErrBestEffort(errorType, errorValue uint8) {
+	if err := ss.SendPCErr(errorType, errorValue); err != nil {
 		ss.logger.Debug("ERROR! Send PCErr Message", logger.Error(err))
 	}
+}
+
+// rejectOnEmptyPathSetupTypeList rejects an empty PST list (RFC 8408 §3).
+func (ss *Session) rejectOnEmptyPathSetupTypeList(caps []pcep.CapabilityInterface) error {
+	pstCap := firstPathSetupTypeCapability(caps)
+	if pstCap == nil || len(pstCap.PathSetupTypeList()) > 0 {
+		return nil
+	}
+
+	ss.sendTypedPCErrBestEffort(pcepErrorTypeInvalidObject, pcepErrorValueMalformedObject)
+
+	return errors.New("peer advertised a PATH-SETUP-TYPE-CAPABILITY with an empty path setup type list")
+}
+
+// rejectOnPathSetupTypeMismatch rejects when no PST is shared with the peer (RFC 8408 §5).
+// Peers without the capability are accepted for legacy compatibility.
+func (ss *Session) rejectOnPathSetupTypeMismatch(caps []pcep.CapabilityInterface) error {
+	peerCap := firstPathSetupTypeCapability(caps)
+	localCap := firstPathSetupTypeCapability(ss.AdvertisedCapabilities())
+
+	if peerCap == nil || localCap == nil {
+		return nil
+	}
+
+	peerPSTs, localPSTs := peerCap.PathSetupTypeList(), localCap.PathSetupTypeList()
+	if slices.ContainsFunc(localPSTs, func(pst pcep.Pst) bool { return slices.Contains(peerPSTs, pst) }) {
+		return nil
+	}
+
+	ss.sendTypedPCErrBestEffort(pcepErrorTypeInvalidPathSetupType, pcepErrorValueMismatchedPathSetupType)
+
+	return fmt.Errorf("peer advertised no path setup type in common with Pola (peer: %v, Pola: %v)", peerPSTs, localPSTs)
 }
 
 // validateCapabilities validates peer capabilities and logs known RFC deviations.
@@ -918,9 +969,9 @@ func (ss *Session) messageDeadline() time.Time {
 	return deadline
 }
 
-// validTimerRelationship reports whether Keepalive and DeadTimer are
-// mutually consistent. A nonzero DeadTimer is ignored when Keepalive is 0
-// (RFC 5440 §7.3); otherwise DeadTimer must exceed Keepalive (§6.3).
+// validTimerRelationship reports whether Keepalive and DeadTimer are valid.
+// DeadTimer is ignored when Keepalive is 0 (RFC 5440 §7.3); otherwise it
+// must exceed Keepalive (§6.3).
 func validTimerRelationship(open OpenParams) bool {
 	if open.Keepalive == 0 {
 		return true
@@ -929,8 +980,6 @@ func validTimerRelationship(open OpenParams) bool {
 	return open.DeadTimer == 0 || open.DeadTimer > open.Keepalive
 }
 
-// acceptableOpen reports whether the proposed session parameters are
-// acceptable, including a peer's counter-proposal.
 func (ss *Session) acceptableOpen(peerOpen OpenParams) bool {
 	if !validTimerRelationship(peerOpen) {
 		return false
@@ -943,7 +992,6 @@ func (ss *Session) acceptableOpen(peerOpen OpenParams) bool {
 	return peerOpen.Keepalive >= ss.minKeepalive && peerOpen.Keepalive <= ss.maxKeepalive
 }
 
-// proposedTimers returns acceptable Keepalive and DeadTimer values.
 func (ss *Session) proposedTimers(peerOpen OpenParams) (keepalive, deadTimer uint8) {
 	keepalive = peerOpen.Keepalive
 
@@ -965,7 +1013,6 @@ func (ss *Session) proposedTimers(peerOpen OpenParams) (keepalive, deadTimer uin
 	return keepalive, deadTimer
 }
 
-// proposeAcceptableOpen sends a PCErr proposing acceptable session characteristics.
 func (ss *Session) proposeAcceptableOpen(peerOpen OpenParams) error {
 	keepalive, deadTimer := ss.proposedTimers(peerOpen)
 	openObject := pcep.NewOpenObject(peerOpen.SessionID, keepalive, deadTimer, nil)
@@ -1001,7 +1048,7 @@ func (ss *Session) SendKeepalive() error {
 	return nil
 }
 
-// SendClose sends a PCEP Close message to the peer.
+// SendClose sends a PCEP Close message with the given reason.
 func (ss *Session) SendClose(reason pcep.CloseReason) error {
 	closeMessage := pcep.NewCloseMessage(reason)
 
@@ -1018,7 +1065,7 @@ func (ss *Session) SendClose(reason pcep.CloseReason) error {
 	return nil
 }
 
-// SendPCErr sends a PCErr message with the given error type and value.
+// SendPCErr sends a PCEP Error message carrying the given Error-Type and Error-value.
 func (ss *Session) SendPCErr(errorType, errorValue uint8) error {
 	pcerrMessage := pcep.NewPCErrMessage(errorType, errorValue, nil)
 
@@ -1036,13 +1083,13 @@ func (ss *Session) SendPCErr(errorType, errorValue uint8) error {
 	return nil
 }
 
-// ReceivePCEPMessage receives and processes PCEP messages from the peer.
+// ReceivePCEPMessage reads and dispatches PCEP messages until the session ends.
 func (ss *Session) ReceivePCEPMessage() error {
 	for {
 		done, err := ss.receiveOnePCEPMessage()
 		if err != nil {
 			if isDeadlineExceeded(err) {
-				// RFC 5440 Appendix A: DeadTimer expiry terminates the session per §6.8.
+				// DeadTimer expiry terminates the session (RFC 5440 §6.8).
 				if closeErr := ss.SendClose(pcep.CloseReasonDeadTimerExpired); closeErr != nil {
 					ss.logger.Debug("ERROR! Send Close Message", logger.Error(closeErr))
 				}
@@ -1099,7 +1146,7 @@ func (ss *Session) receiveOnePCEPMessage() (done bool, err error) {
 	return false, nil
 }
 
-// countReceived updates the RFC 9826 receive-side counter for a message type.
+// countReceived updates the RFC 9826 receive counter for a message type.
 func (ss *Session) countReceived(mt pcep.MessageType) {
 	switch mt {
 	case pcep.MessageTypeOpen:
@@ -1159,8 +1206,8 @@ func (ss *Session) receiveClose(messageLength uint16, deadline time.Time) error 
 	return nil
 }
 
-// handleUnexpectedOpen rejects an Open received while the session is Up.
-// RFC 5440 Appendix A does not define Open as an event in the Up state.
+// handleUnexpectedOpen rejects Open received in the Up state, which is not
+// defined as an event by RFC 5440 Appendix A.
 func (ss *Session) handleUnexpectedOpen(messageLength uint16, deadline time.Time) error {
 	if _, err := ss.readMessageBody(messageLength, deadline); err != nil {
 		return err
@@ -1220,7 +1267,7 @@ func (ss *Session) readMessageBody(messageLength uint16, deadline time.Time) ([]
 }
 
 // recordUnknownMessage records an unrecognized message and reports whether
-// more than maxUnknownMsgs have arrived within the trailing unknownMsgWindow.
+// the rate limit has been exceeded within unknownMsgWindow.
 func (ss *Session) recordUnknownMessage() bool {
 	ss.unknownMsgMu.Lock()
 	defer ss.unknownMsgMu.Unlock()
@@ -1240,7 +1287,6 @@ func (ss *Session) recordUnknownMessage() bool {
 	return uint32(count) > ss.maxUnknownMsgs
 }
 
-// handlePCErr logs the error and forgets intents for the reported SRP-IDs.
 func (ss *Session) handlePCErr(pcerrMessage *pcep.PCErrMessage) {
 	srpIDs := pcerrMessage.SRPIDs()
 	for _, errObj := range pcerrMessage.Errors {
@@ -1281,6 +1327,10 @@ func (ss *Session) handlePCRpt(length uint16, deadline time.Time) error {
 }
 
 func (ss *Session) handleStateReport(sr *pcep.StateReport, message *pcep.PCRptMessage) error {
+	if err := ss.rejectUnsupportedAssocTypes(sr.AssociationObjects); err != nil {
+		return err
+	}
+
 	if sr.LSPObject.SFlag {
 		return ss.handleSynchronization(sr, message)
 	}
@@ -1296,7 +1346,35 @@ func (ss *Session) handleStateReport(sr *pcep.StateReport, message *pcep.PCRptMe
 	}
 }
 
-// Synchronization (S-Flag).
+// rejectUnsupportedAssocTypes reports unsupported ASSOCIATION types.
+func (ss *Session) rejectUnsupportedAssocTypes(assocs []*pcep.AssociationObject) error {
+	for _, assoc := range assocs {
+		if assoc == nil || slices.Contains(acceptedAssocTypes, assoc.AssocType) {
+			continue
+		}
+
+		ss.logger.Warn("Received unsupported ASSOCIATION type",
+			logger.String("assocType", assoc.AssocType.StringWithReference()))
+
+		if err := ss.SendPCErr(pcepErrorTypeAssociationError, pcepErrorValueAssociationTypeNotSupported); err != nil {
+			return fmt.Errorf("failed to send PCErr for unsupported ASSOCIATION type: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// srPolicyAssociation returns the first accepted ASSOCIATION object.
+func srPolicyAssociation(sr *pcep.StateReport) *pcep.AssociationObject {
+	for _, assoc := range sr.AssociationObjects {
+		if assoc != nil && slices.Contains(acceptedAssocTypes, assoc.AssocType) {
+			return assoc
+		}
+	}
+
+	return nil
+}
+
 func (ss *Session) handleSynchronization(sr *pcep.StateReport, message *pcep.PCRptMessage) error {
 	ss.setSyncState(SyncStateOngoing)
 	ss.logger.Debug("Synchronize SR Policy information", logger.Any("Message", message))
@@ -1309,7 +1387,6 @@ func (ss *Session) handleSynchronization(sr *pcep.StateReport, message *pcep.PCR
 	return nil
 }
 
-// Finish synchronization (PlspID == 0).
 func (ss *Session) handleFinishSynchronization() {
 	ss.logger.Debug("Finish PCRpt state synchronization")
 	ss.setSynced()
@@ -1327,7 +1404,7 @@ func (ss *Session) setSynced() {
 	ss.syncState = SyncStateFinished
 }
 
-// State returns the PCEP session state (RFC 5440 Appendix A).
+// State returns the PCEP session state defined by RFC 5440 Appendix A.
 func (ss *Session) State() SessionState {
 	ss.stateMu.RLock()
 	defer ss.stateMu.RUnlock()
@@ -1440,8 +1517,8 @@ func (ss *Session) keepaliveInterval() uint8 {
 	return effectiveKeepalive(localOpen.Keepalive, localOpen.DeadTimer)
 }
 
-// effectiveKeepalive returns the Keepalive interval Pola uses.
-// It keeps the interval within Pola's advertised DeadTimer.
+// effectiveKeepalive returns the Keepalive interval Pola uses, limited by
+// Pola's advertised DeadTimer.
 func effectiveKeepalive(localKeepalive, localDeadTimer uint8) uint8 {
 	if localKeepalive == 0 || localDeadTimer == 0 {
 		return localKeepalive
@@ -1711,6 +1788,113 @@ func createEroFromSegmentList(segmentList []table.Segment) (*pcep.EroObject, err
 	return eroObject, nil
 }
 
+type sidDepthCapability interface {
+	MaxSIDs() (maxSIDs uint8, ok bool)
+}
+
+// firstSIDDepthCapability returns the first matching capability.
+// Later capabilities are ignored per RFC 8664 §5.1 and RFC 9603 §5.1.
+func firstSIDDepthCapability(caps []pcep.CapabilityInterface, pst pcep.Pst) sidDepthCapability {
+	for _, capability := range caps {
+		switch c := capability.(type) {
+		case *pcep.SRPCECapability:
+			if pst == pcep.PathSetupTypeSRTE {
+				return c
+			}
+		case *pcep.SRv6PCECapability:
+			if pst == pcep.PathSetupTypeSRv6TE {
+				return c
+			}
+		}
+	}
+
+	return nil
+}
+
+// firstPathSetupTypeCapability returns the first PATH-SETUP-TYPE-CAPABILITY.
+// Later instances are ignored per RFC 8408 §3.
+func firstPathSetupTypeCapability(caps []pcep.CapabilityInterface) *pcep.PathSetupTypeCapability {
+	for _, capability := range caps {
+		if pstCap, ok := capability.(*pcep.PathSetupTypeCapability); ok {
+			return pstCap
+		}
+	}
+
+	return nil
+}
+
+// peerSupportsPST reports whether the peer supports the given path setup type.
+// PATH-SETUP-TYPE-CAPABILITY takes precedence; otherwise, legacy SR-CAPABILITY-TLV
+// implies PSTs 0 and 1, and its absence implies PST=0 (RFC 8408 §3, RFC 8664 Appendix A).
+func peerSupportsPST(caps []pcep.CapabilityInterface, pst pcep.Pst) bool {
+	if pstCap := firstPathSetupTypeCapability(caps); pstCap != nil {
+		return pstCap.HasPathSetupType(pst)
+	}
+
+	if firstSIDDepthCapability(caps, pcep.PathSetupTypeSRTE) != nil {
+		return pst == pcep.PathSetupTypeRSVPTE || pst == pcep.PathSetupTypeSRTE
+	}
+
+	return pst == pcep.PathSetupTypeRSVPTE
+}
+
+// peerMaxSIDs returns the advertised SID depth for the given path setup type.
+// PATH-SETUP-TYPE-CAPABILITY takes precedence; otherwise, the top-level capability
+// is used as a legacy fallback for SRTE (RFC 8408 §3, RFC 8664 Appendix A).
+// An unlisted PST has no advertised SID depth (RFC 8664 §5.1, RFC 9603 §5.1).
+func peerMaxSIDs(caps []pcep.CapabilityInterface, pst pcep.Pst) (maxSIDs uint8, ok bool) {
+	if pstCap := firstPathSetupTypeCapability(caps); pstCap != nil {
+		if !pstCap.HasPathSetupType(pst) {
+			return 0, false
+		}
+
+		if sub := firstSIDDepthCapability(pstCap.SubCapabilities(), pst); sub != nil {
+			return sub.MaxSIDs()
+		}
+
+		return 0, false
+	}
+
+	if topLevel := firstSIDDepthCapability(caps, pst); topLevel != nil {
+		return topLevel.MaxSIDs()
+	}
+
+	return 0, false
+}
+
+// validatePathSetupTypeForPeer rejects segment lists with unsupported path setup types.
+func (ss *Session) validatePathSetupTypeForPeer(segmentList []table.Segment) error {
+	pst, ok := pcep.PathSetupTypeForSegments(segmentList)
+	if !ok {
+		// An empty or unknown segment list is caught when the message is built.
+		return nil
+	}
+
+	if !peerSupportsPST(ss.ReceivedCapabilities(), pst) {
+		return fmt.Errorf("the PCC did not advertise the path setup type this segment list requires: %s", pst)
+	}
+
+	return nil
+}
+
+// validateSegmentListForPeer rejects segment lists unsupported by the peer.
+func (ss *Session) validateSegmentListForPeer(segmentList []table.Segment) error {
+	if err := ss.validatePathSetupTypeForPeer(segmentList); err != nil {
+		return err
+	}
+
+	pst, ok := pcep.PathSetupTypeForSegments(segmentList)
+	if !ok {
+		return nil
+	}
+
+	if maxSIDs, ok := peerMaxSIDs(ss.ReceivedCapabilities(), pst); ok && len(segmentList) > int(maxSIDs) {
+		return fmt.Errorf("segment list has %d SIDs, exceeding the maximum SID depth of %d advertised by the PCC", len(segmentList), maxSIDs)
+	}
+
+	return nil
+}
+
 // RequestAllSRPolicyDeleted requests deletion of all SR Policies for this session.
 func (ss *Session) RequestAllSRPolicyDeleted() error {
 	var srPolicy table.SRPolicy
@@ -1793,6 +1977,16 @@ func (ss *Session) allocateSRPID(polType table.PolicyType, metric table.MetricTy
 
 // SendPCInitiate sends a PCEP PC-Initiate message to request creation or deletion of an SR Policy.
 func (ss *Session) SendPCInitiate(srPolicy table.SRPolicy, lspDelete bool) error {
+	// Deletion imposes no SID, so only the path setup type is checked.
+	validate, action := ss.validateSegmentListForPeer, "instantiate"
+	if lspDelete {
+		validate, action = ss.validatePathSetupTypeForPeer, "delete"
+	}
+
+	if err := validate(srPolicy.SegmentList); err != nil {
+		return fmt.Errorf("cannot %s SR policy %q: %w", action, srPolicy.Name, err)
+	}
+
 	srpID, err := ss.allocateSRPID(srPolicy.Type, srPolicy.Metric)
 	if err != nil {
 		return err
@@ -1824,6 +2018,10 @@ func (ss *Session) SendPCInitiate(srPolicy table.SRPolicy, lspDelete bool) error
 
 // SendPCUpdate sends a PCEP PC-Update message to update an existing SR Policy.
 func (ss *Session) SendPCUpdate(srPolicy table.SRPolicy) error {
+	if err := ss.validateSegmentListForPeer(srPolicy.SegmentList); err != nil {
+		return fmt.Errorf("cannot update SR policy %q: %w", srPolicy.Name, err)
+	}
+
 	srpID, err := ss.allocateSRPID(srPolicy.Type, srPolicy.Metric)
 	if err != nil {
 		return err
@@ -1877,14 +2075,19 @@ func (ss *Session) resolveColorPreference(sr *pcep.StateReport) (color, preferen
 			}
 		}
 
-		// SR Policy Association color takes precedence
-		if c := sr.AssociationObject.Color(); c != 0 {
-			color = c
-		} else if hasColor {
-			color = sr.LSPObject.Color()
+		var assocColor uint32
+		if assoc := srPolicyAssociation(sr); assoc != nil {
+			assocColor = assoc.Color()
+			preference = assoc.Preference()
 		}
 
-		preference = sr.AssociationObject.Preference()
+		// SR Policy Association color takes precedence
+		switch {
+		case assocColor != 0:
+			color = assocColor
+		case hasColor:
+			color = sr.LSPObject.Color()
+		}
 	}
 
 	return color, preference
@@ -1946,9 +2149,11 @@ func (ss *Session) updateOrCreatePolicy(sr *pcep.StateReport, segmentList []tabl
 		return nil
 	}
 
+	assoc := srPolicyAssociation(sr)
+
 	src := sr.LSPObject.SrcAddr
-	if !src.IsValid() {
-		src = sr.AssociationObject.AssocSrc
+	if !src.IsValid() && assoc != nil {
+		src = assoc.AssocSrc
 	}
 
 	if !src.IsValid() {
@@ -1956,8 +2161,8 @@ func (ss *Session) updateOrCreatePolicy(sr *pcep.StateReport, segmentList []tabl
 	}
 
 	dst := sr.LSPObject.DstAddr
-	if !dst.IsValid() {
-		dst = sr.AssociationObject.Endpoint()
+	if !dst.IsValid() && assoc != nil {
+		dst = assoc.Endpoint()
 	}
 
 	if !dst.IsValid() {

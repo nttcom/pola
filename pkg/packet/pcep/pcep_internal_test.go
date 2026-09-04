@@ -1197,7 +1197,7 @@ func TestPCRptMessage_DecodeFromBytes(t *testing.T) {
 		want.MetricObjects = []*MetricObject{metric1, metric2}
 		want.BandwidthObjects = []*BandwidthObject{{ObjectType: ObjectType(1), Bandwidth: 1000}}
 		want.LSPAObject = lspa
-		want.AssociationObject = assoc
+		want.AssociationObjects = []*AssociationObject{assoc}
 		want.VendorInformationObject = vendorInfo
 
 		assert.Equal(t, []*StateReport{want}, m.StateReports)

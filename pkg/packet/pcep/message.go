@@ -458,7 +458,7 @@ type StateReport struct {
 	LSPAObject              *LSPAObject
 	MetricObjects           []*MetricObject
 	BandwidthObjects        []*BandwidthObject
-	AssociationObject       *AssociationObject
+	AssociationObjects      []*AssociationObject
 	VendorInformationObject *VendorInformationObject
 }
 
@@ -471,7 +471,6 @@ func NewStateReport() *StateReport {
 		LSPAObject:              &LSPAObject{},
 		MetricObjects:           []*MetricObject{},
 		BandwidthObjects:        []*BandwidthObject{},
-		AssociationObject:       &AssociationObject{},
 		VendorInformationObject: &VendorInformationObject{},
 	}
 }
@@ -522,7 +521,14 @@ func (r *StateReport) decodeSrpObject(objectType ObjectType, objectBody []uint8)
 }
 
 func (r *StateReport) decodeAssociationObject(objectType ObjectType, objectBody []uint8) error {
-	return r.AssociationObject.DecodeFromBytes(objectType, objectBody)
+	associationObject := &AssociationObject{}
+	if err := associationObject.DecodeFromBytes(objectType, objectBody); err != nil {
+		return err
+	}
+
+	r.AssociationObjects = append(r.AssociationObjects, associationObject)
+
+	return nil
 }
 
 func (r *StateReport) decodeVendorInformationObject(objectType ObjectType, objectBody []uint8) error {
