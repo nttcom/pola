@@ -237,6 +237,16 @@ func TestAddSRPolicy(t *testing.T) {
 		assert.Equal(t, "success!\n", out.String())
 	})
 
+	t.Run("error writing no-sid-validate warning to stderr", func(t *testing.T) {
+		t.Parallel()
+
+		var out bytes.Buffer
+
+		failingErrOut := &condFailWriter{fail: containsFail("no-sid-validate")}
+		err := addSRPolicy(&out, failingErrOut, validEndpointInput(), false, true, &fakePCEServiceClient{})
+		require.Error(t, err)
+	})
+
 	t.Run("router ID form is used when router IDs are set", func(t *testing.T) {
 		t.Parallel()
 

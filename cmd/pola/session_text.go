@@ -103,13 +103,18 @@ func writeTimerTableText(ew *errWriter, timers timersView) {
 	ew.println("  Timers:")
 
 	tw := tabwriter.NewWriter(ew.w, 0, 0, 2, ' ', 0)
-	ew.printf("    \tLocal\tPeer\tEffective\n")
-	ew.printf("    Keepalive\t%s\t%s\t%s\n",
+	tew := &errWriter{w: tw}
+	tew.printf("    \tLocal\tPeer\tEffective\n")
+	tew.printf("    Keepalive\t%s\t%s\t%s\n",
 		formatTimerValue(timers.Keepalive.Local), formatTimerValue(timers.Keepalive.Peer),
 		formatTimerValue(timers.Keepalive.Effective))
-	ew.printf("    DeadTimer\t%s\t%s\t%s\n",
+	tew.printf("    DeadTimer\t%s\t%s\t%s\n",
 		formatTimerValue(timers.DeadTimer.Local), formatTimerValue(timers.DeadTimer.Peer),
 		formatTimerValue(timers.DeadTimer.Effective))
+
+	if ew.err == nil {
+		ew.err = tew.err
+	}
 
 	if ew.err == nil {
 		ew.err = tw.Flush()
@@ -158,7 +163,8 @@ func writeStatsTableText(ew *errWriter, s statsView) {
 	ew.println("  Stats:")
 
 	tw := tabwriter.NewWriter(ew.w, 0, 0, 2, ' ', 0)
-	ew.printf("    \tSent\tRcvd\n")
+	tew := &errWriter{w: tw}
+	tew.printf("    \tSent\tRcvd\n")
 
 	counters := []struct {
 		name string
@@ -176,7 +182,11 @@ func writeStatsTableText(ew *errWriter, s statsView) {
 		{"Initiate", s.Initiate},
 	}
 	for _, c := range counters {
-		ew.printf("    %s\t%d\t%d\n", c.name, c.c.Sent, c.c.Rcvd)
+		tew.printf("    %s\t%d\t%d\n", c.name, c.c.Sent, c.c.Rcvd)
+	}
+
+	if ew.err == nil {
+		ew.err = tew.err
 	}
 
 	if ew.err == nil {

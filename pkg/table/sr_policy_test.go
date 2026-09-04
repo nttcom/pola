@@ -474,6 +474,20 @@ func TestNewSegmentSRv6WithNodeInfo(t *testing.T) {
 			},
 		},
 		{
+			name: "nil entries are skipped",
+			node: &table.LsNode{
+				SRv6SIDs: []*table.LsSrv6SID{
+					nil,
+					{Sids: []string{testSRv6Addr}, EndpointBehavior: table.EndpointBehavior{Behavior: table.BehaviorEND}},
+				},
+			},
+			want: table.SegmentSRv6{
+				Sid:       netip.MustParseAddr("2001:db8::1"),
+				LocalAddr: netip.MustParseAddr(testSRv6Addr),
+				Structure: table.SIDStructureBytes{0, 0, 0, 0},
+			},
+		},
+		{
 			name: "invalid local SID address",
 			node: &table.LsNode{
 				SRv6SIDs: []*table.LsSrv6SID{{Sids: []string{testInvalidAddr}}},

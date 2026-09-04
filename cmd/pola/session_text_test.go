@@ -60,6 +60,24 @@ func TestWriteSessionText_DetailWithNilStatsRendersWithoutError(t *testing.T) {
 	assert.NotContains(t, w.buf.String(), "Stats:")
 }
 
+func TestWriteSessionText_TablesAreTabAligned(t *testing.T) {
+	t.Parallel()
+
+	v := fullSessionViewFixture()
+
+	w := &condFailWriter{}
+	require.NoError(t, writeSessionText(w, []sessionView{v}))
+
+	out := w.buf.String()
+	assert.NotContains(t, out, "\t", "tabwriter output must not contain literal tabs")
+
+	for line := range strings.SplitSeq(out, "\n") {
+		if strings.Contains(line, "Keepalive") || strings.Contains(line, "PCErr") {
+			assert.Regexp(t, `\s{2,}`, line, "table row %q must be column-aligned", line)
+		}
+	}
+}
+
 // blankLineAfterFail matches the first bare newline after a write containing
 // sub. This avoids matching newlines emitted internally by tabwriter.Flush.
 func blankLineAfterFail(sub string) func(string) bool {

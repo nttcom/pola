@@ -288,7 +288,7 @@ func NewSegmentSRv6WithNodeInfo(sid netip.Addr, n *LsNode) (SegmentSRv6, error) 
 	var found bool
 
 	for _, srv6SID := range n.SRv6SIDs {
-		if len(srv6SID.Sids) == 0 {
+		if srv6SID == nil || len(srv6SID.Sids) == 0 {
 			continue
 		}
 

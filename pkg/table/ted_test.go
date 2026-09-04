@@ -694,4 +694,25 @@ func TestLsTEDPrint(t *testing.T) {
 		assert.Contains(t, buf.String(), "R1")
 		assert.Contains(t, buf.String(), "router1")
 	})
+
+	t.Run("print returns error when writer fails", func(t *testing.T) {
+		t.Parallel()
+
+		ted := &table.LsTED{Nodes: map[string]*table.LsNode{
+			"R1": {
+				RouterID: "R1",
+				Hostname: "router1",
+			},
+		}}
+
+		failingWriter := &errorWriter{}
+		err := ted.Print(failingWriter)
+		require.Error(t, err)
+	})
+}
+
+type errorWriter struct{}
+
+func (errorWriter) Write([]byte) (int, error) {
+	return 0, assert.AnError
 }

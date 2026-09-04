@@ -63,3 +63,10 @@ func TestRunRootCmd_PrintsHelp(t *testing.T) {
 	runRootCmd(cmd, []string{})
 	assert.Contains(t, buf.String(), "Usage:")
 }
+
+func TestMainRun_VersionFprintf_Error(t *testing.T) {
+	t.Parallel()
+
+	code := mainRun([]string{"--version"}, erroringWriter{}, &bytes.Buffer{})
+	assert.Equal(t, 1, code)
+}
