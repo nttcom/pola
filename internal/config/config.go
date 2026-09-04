@@ -3,6 +3,7 @@
 // This software is released under the MIT License.
 // see https://github.com/nttcom/pola/blob/main/LICENSE
 
+// Package config loads and validates polad's configuration.
 package config
 
 import (
@@ -12,6 +13,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/nttcom/pola/pkg/logger"
 	"github.com/nttcom/pola/pkg/packet/pcep"
 )
 
@@ -42,7 +44,7 @@ type GRPCClient struct {
 type Log struct {
 	Path  string `yaml:"path"`
 	Name  string `yaml:"name"`
-	Debug bool   `yaml:"debug"`
+	Level string `yaml:"level"`
 }
 
 // GoBGP holds the configuration for GoBGP.
@@ -76,10 +78,10 @@ type Config struct {
 func ReadConfigFile(configFile string) (Config, error) {
 	c := &Config{}
 
-	//nolint:gosec // G304: configFile is chosen by the operator.
+	//nolint:gosec // path is explicitly provided by the operator.
 	f, err := os.Open(configFile)
 	if err != nil {
-		return *c, err
+		return *c, fmt.Errorf("failed to open config file %q: %w", configFile, err)
 	}
 	defer func() {
 		if err := f.Close(); err != nil {
@@ -89,9 +91,11 @@ func ReadConfigFile(configFile string) (Config, error) {
 
 	dec := yaml.NewDecoder(f)
 	dec.KnownFields(true)
+
 	if err := dec.Decode(c); err != nil {
 		return *c, fmt.Errorf("failed to parse config file %q: %w", configFile, err)
 	}
+
 	return *c, nil
 }
 
@@ -104,18 +108,60 @@ func (p PCEP) validate() []error {
 	if p.Address == "" {
 		errs = append(errs, errors.New("global.pcep.address is required"))
 	}
+
 	if p.Port == "" {
 		errs = append(errs, errors.New("global.pcep.port is required"))
 	}
+
 	keepalive := defaultKeepalive
 	if p.Keepalive != nil {
 		keepalive = *p.Keepalive
 	}
+
 	if err := pcep.ValidateTimers(keepalive, p.DeadTimer); err != nil {
 		errs = append(errs, fmt.Errorf("global.pcep.%w", err))
 	}
+
 	if p.MinKeepalive != nil && p.MaxKeepalive != nil && *p.MinKeepalive > *p.MaxKeepalive {
 		errs = append(errs, errors.New("global.pcep.minKeepalive must be <= global.pcep.maxKeepalive"))
+	}
+
+	return errs
+}
+
+// validateTED checks the TED configuration and, when TED sources a backend
+// such as gobgp, the corresponding backend client settings.
+func (g Global) validateTED() []error {
+	if g.TED == nil {
+		return []error{errors.New("global.ted is required")}
+	}
+
+	if !g.TED.Enable {
+		return nil
+	}
+
+	var errs []error
+	if g.TED.Source == "" {
+		errs = append(errs, errors.New("global.ted.source is required when global.ted.enable is true"))
+	}
+
+	if g.TED.ASN == 0 {
+		errs = append(errs, errors.New("global.ted.asn is required when global.ted.enable is true"))
+	}
+
+	switch g.TED.Source {
+	case "gobgp":
+		if g.GoBGP.GRPCClient.Address == "" {
+			errs = append(errs, errors.New("global.gobgp.grpcClient.address is required when global.ted.source is gobgp"))
+		}
+
+		if g.GoBGP.GRPCClient.Port == "" {
+			errs = append(errs, errors.New("global.gobgp.grpcClient.port is required when global.ted.source is gobgp"))
+		}
+	case "":
+		// already reported above
+	default:
+		errs = append(errs, fmt.Errorf("global.ted.source %q is not supported", g.TED.Source))
 	}
 
 	return errs
@@ -128,38 +174,24 @@ func (c *Config) Validate() error {
 	if c.Global.GRPCServer.Address == "" {
 		errs = append(errs, errors.New("global.grpcServer.address is required"))
 	}
+
 	if c.Global.GRPCServer.Port == "" {
 		errs = append(errs, errors.New("global.grpcServer.port is required"))
 	}
+
 	if c.Global.Log.Path == "" {
 		errs = append(errs, errors.New("global.log.path is required"))
 	}
+
 	if c.Global.Log.Name == "" {
 		errs = append(errs, errors.New("global.log.name is required"))
 	}
-	if c.Global.TED == nil {
-		errs = append(errs, errors.New("global.ted is required"))
-	} else if c.Global.TED.Enable {
-		if c.Global.TED.Source == "" {
-			errs = append(errs, errors.New("global.ted.source is required when global.ted.enable is true"))
-		}
-		if c.Global.TED.ASN == 0 {
-			errs = append(errs, errors.New("global.ted.asn is required when global.ted.enable is true"))
-		}
-		switch c.Global.TED.Source {
-		case "gobgp":
-			if c.Global.GoBGP.GRPCClient.Address == "" {
-				errs = append(errs, errors.New("global.gobgp.grpcClient.address is required when global.ted.source is gobgp"))
-			}
-			if c.Global.GoBGP.GRPCClient.Port == "" {
-				errs = append(errs, errors.New("global.gobgp.grpcClient.port is required when global.ted.source is gobgp"))
-			}
-		case "":
-			// already reported above
-		default:
-			errs = append(errs, fmt.Errorf("global.ted.source %q is not supported", c.Global.TED.Source))
-		}
+
+	if _, err := logger.ParseLevel(c.Global.Log.Level); err != nil {
+		errs = append(errs, fmt.Errorf("global.log.level: %w", err))
 	}
+
+	errs = append(errs, c.Global.validateTED()...)
 
 	return errors.Join(errs...)
 }

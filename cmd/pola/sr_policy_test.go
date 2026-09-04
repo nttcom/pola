@@ -13,13 +13,16 @@ import (
 )
 
 func TestNewSRPolicyCmd(t *testing.T) {
-	cmd := newSRPolicyCmd()
+	t.Parallel()
 
-	var names []string
+	cmd := newSRPolicyCmd(&cli{})
+
+	names := make([]string, 0, len(cmd.Commands()))
 	for _, c := range cmd.Commands() {
 		names = append(names, c.Name())
 	}
-	assert.ElementsMatch(t, []string{"list", "add", "delete"}, names)
+
+	assert.ElementsMatch(t, []string{"list", "add", cmdNameDelete}, names)
 
 	buf := &bytes.Buffer{}
 	cmd.SetOut(buf)

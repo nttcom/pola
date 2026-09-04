@@ -14,33 +14,25 @@ import (
 )
 
 func writeSessionText(w io.Writer, views []sessionView) error {
+	ew := &errWriter{w: w}
+
 	for i, v := range views {
 		if i > 0 {
-			if _, err := fmt.Fprintln(w); err != nil {
-				return err
-			}
+			ew.println()
 		}
-		if err := writeSessionSummary(w, i, v); err != nil {
-			return err
-		}
+
+		writeSessionSummaryText(ew, i, v)
+
 		if v.isDetail() {
-			if err := writeSessionDetail(w, v); err != nil {
-				return err
-			}
+			writeSessionDetailText(ew, v)
 		}
 	}
-	return nil
+
+	return ew.err
 }
 
-func writeLabeledLine(w io.Writer, indent int, label, value string) error {
-	_, err := fmt.Fprintf(w, "%s%-18s %s\n", strings.Repeat(" ", indent), label+":", value)
-	return err
-}
-
-func writeSessionSummary(w io.Writer, index int, v sessionView) error {
-	if _, err := fmt.Fprintf(w, "Session #%d: %s\n", index, v.PeerAddress); err != nil {
-		return err
-	}
+func writeSessionSummaryText(ew *errWriter, index int, v sessionView) {
+	ew.printf("Session #%d: %s\n", index, v.PeerAddress)
 
 	fields := []struct{ label, value string }{
 		{"State", v.State},
@@ -50,37 +42,35 @@ func writeSessionSummary(w io.Writer, index int, v sessionView) error {
 	if v.UpTime != "" {
 		fields = append(fields, struct{ label, value string }{"Up Time", v.UpTime})
 	}
+
 	fields = append(fields,
 		struct{ label, value string }{"Session ID", formatSessionID(v.SessionID)},
 		struct{ label, value string }{"Transport", v.Transport.Protocol + ", auth=" + v.Transport.Auth},
 	)
 	for _, f := range fields {
-		if err := writeLabeledLine(w, 2, f.label, f.value); err != nil {
-			return err
-		}
+		writeLabeledLineText(ew, 2, f.label, f.value)
 	}
 
-	if err := writeTimerTable(w, v.Timers); err != nil {
-		return err
-	}
-	return writeCapabilitySections(w, v.Capabilities)
+	writeTimerTableText(ew, v.Timers)
+	writeCapabilitySectionsText(ew, v.Capabilities)
 }
 
-func writeSessionDetail(w io.Writer, v sessionView) error {
+func writeSessionDetailText(ew *errWriter, v sessionView) {
 	if v.SessionCreation != "" {
-		if err := writeLabeledLine(w, 2, "Session Creation", v.SessionCreation); err != nil {
-			return err
-		}
+		writeLabeledLineText(ew, 2, "Session Creation", v.SessionCreation)
 	}
+
 	if v.Initiator != "" {
-		if err := writeLabeledLine(w, 2, "Initiator", v.Initiator); err != nil {
-			return err
-		}
+		writeLabeledLineText(ew, 2, "Initiator", v.Initiator)
 	}
+
 	if v.Stats != nil {
-		return writeStatsTable(w, *v.Stats)
+		writeStatsTableText(ew, *v.Stats)
 	}
-	return nil
+}
+
+func writeLabeledLineText(ew *errWriter, indent int, label, value string) {
+	ew.printf("%s%-18s %s\n", strings.Repeat(" ", indent), label+":", value)
 }
 
 func formatSessionID(id sessionIDView) string {
@@ -91,6 +81,7 @@ func formatOptionalUint32(v *uint32) string {
 	if v == nil {
 		return "-"
 	}
+
 	return strconv.FormatUint(uint64(*v), 10)
 }
 
@@ -100,96 +91,89 @@ func formatTimerValue(v *uint32) string {
 	if v == nil {
 		return "-"
 	}
+
 	if *v == 0 {
 		return "disabled"
 	}
+
 	return strconv.FormatUint(uint64(*v), 10)
 }
 
-func writeTimerTable(w io.Writer, timers timersView) error {
-	if _, err := fmt.Fprintln(w, "  Timers:"); err != nil {
-		return err
+func writeTimerTableText(ew *errWriter, timers timersView) {
+	if ew.err != nil {
+		return
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	if _, err := fmt.Fprintln(tw, "    \tLocal\tPeer\tEffective"); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(tw, "    Keepalive\t%s\t%s\t%s\n",
+	ew.println("  Timers:")
+
+	tw := tabwriter.NewWriter(ew.w, 0, 0, 2, ' ', 0)
+	tew := &errWriter{w: tw}
+	tew.printf("    \tLocal\tPeer\tEffective\n")
+	tew.printf("    Keepalive\t%s\t%s\t%s\n",
 		formatTimerValue(timers.Keepalive.Local), formatTimerValue(timers.Keepalive.Peer),
-		formatTimerValue(timers.Keepalive.Effective)); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(tw, "    DeadTimer\t%s\t%s\t%s\n",
+		formatTimerValue(timers.Keepalive.Effective))
+	tew.printf("    DeadTimer\t%s\t%s\t%s\n",
 		formatTimerValue(timers.DeadTimer.Local), formatTimerValue(timers.DeadTimer.Peer),
-		formatTimerValue(timers.DeadTimer.Effective)); err != nil {
-		return err
+		formatTimerValue(timers.DeadTimer.Effective))
+
+	if ew.err == nil {
+		ew.err = tew.err
 	}
-	return tw.Flush()
+
+	if ew.err == nil {
+		ew.err = tw.Flush()
+	}
 }
 
-func writeCapabilitySections(w io.Writer, c capabilitiesView) error {
-	if _, err := fmt.Fprintln(w, "  Capabilities:"); err != nil {
-		return err
-	}
-	if err := writeCapabilityGroupSection(w, "Common", c.commonLines()); err != nil {
-		return err
-	}
-	if err := writeCapabilityGroupSection(w, "Local only", capabilityLines(c.LocalOnly)); err != nil {
-		return err
-	}
-	return writeCapabilityGroupSection(w, "Peer only", capabilityLines(c.PeerOnly))
+func writeCapabilitySectionsText(ew *errWriter, c capabilitiesView) {
+	ew.println("  Capabilities:")
+	writeCapabilityGroupSectionText(ew, "Common", c.commonLines())
+	writeCapabilityGroupSectionText(ew, "Local only", capabilityLines(c.LocalOnly))
+	writeCapabilityGroupSectionText(ew, "Peer only", capabilityLines(c.PeerOnly))
 }
 
-// writeCapabilityGroupSection writes a labeled capability section.
-func writeCapabilityGroupSection(w io.Writer, label string, lines []capDisplayLine) error {
+func writeCapabilityGroupSectionText(ew *errWriter, label string, lines []capDisplayLine) {
 	if len(lines) == 0 {
-		return writeLabeledLine(w, 4, label, "-")
+		writeLabeledLineText(ew, 4, label, "-")
+		return
 	}
-	if _, err := fmt.Fprintf(w, "    %s:\n", label); err != nil {
-		return err
-	}
+
+	ew.printf("    %s:\n", label)
+
 	for _, line := range lines {
 		if line.Items == nil {
-			if _, err := fmt.Fprintf(w, "      %s\n", line.Header); err != nil {
-				return err
-			}
+			ew.printf("      %s\n", line.Header)
 			continue
 		}
-		if err := writeGroupedLine(w, 6, line.Header, line.Items); err != nil {
-			return err
-		}
+
+		writeGroupedLineText(ew, 6, line.Header, line.Items)
 	}
-	return nil
 }
 
-// writeGroupedLine writes a heading followed by each item on its own
-// indented line, or "-" when there are no items.
-func writeGroupedLine(w io.Writer, indent int, header string, items []string) error {
-	if _, err := fmt.Fprintf(w, "%s%s:\n", strings.Repeat(" ", indent), header); err != nil {
-		return err
-	}
+func writeGroupedLineText(ew *errWriter, indent int, header string, items []string) {
+	ew.printf("%s%s:\n", strings.Repeat(" ", indent), header)
+
 	if len(items) == 0 {
 		items = []string{"-"}
 	}
+
 	itemIndent := strings.Repeat(" ", indent+2)
 	for _, item := range items {
-		if _, err := fmt.Fprintf(w, "%s%s\n", itemIndent, item); err != nil {
-			return err
-		}
+		ew.printf("%s%s\n", itemIndent, item)
 	}
-	return nil
 }
 
-func writeStatsTable(w io.Writer, s statsView) error {
-	if _, err := fmt.Fprintln(w, "  Stats:"); err != nil {
-		return err
+func writeStatsTableText(ew *errWriter, s statsView) {
+	if ew.err != nil {
+		return
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	if _, err := fmt.Fprintln(tw, "    \tSent\tRcvd"); err != nil {
-		return err
-	}
+	ew.println("  Stats:")
+
+	tw := tabwriter.NewWriter(ew.w, 0, 0, 2, ' ', 0)
+	tew := &errWriter{w: tw}
+	tew.printf("    \tSent\tRcvd\n")
+
 	counters := []struct {
 		name string
 		c    counterView
@@ -206,20 +190,19 @@ func writeStatsTable(w io.Writer, s statsView) error {
 		{"Initiate", s.Initiate},
 	}
 	for _, c := range counters {
-		if _, err := fmt.Fprintf(tw, "    %s\t%d\t%d\n", c.name, c.c.Sent, c.c.Rcvd); err != nil {
-			return err
-		}
-	}
-	if err := tw.Flush(); err != nil {
-		return err
+		tew.printf("    %s\t%d\t%d\n", c.name, c.c.Sent, c.c.Rcvd)
 	}
 
-	if err := writeLabeledLine(w, 4, "Unrecognized Rcvd", strconv.FormatUint(s.UnrecognizedRcvd, 10)); err != nil {
-		return err
+	if ew.err == nil {
+		ew.err = tew.err
 	}
-	if err := writeLabeledLine(w, 4, "Corrupt Rcvd", strconv.FormatUint(s.CorruptRcvd, 10)); err != nil {
-		return err
+
+	if ew.err == nil {
+		ew.err = tw.Flush()
 	}
+
+	writeLabeledLineText(ew, 4, "Unrecognized Rcvd", strconv.FormatUint(s.UnrecognizedRcvd, 10))
+	writeLabeledLineText(ew, 4, "Corrupt Rcvd", strconv.FormatUint(s.CorruptRcvd, 10))
 	setup := fmt.Sprintf("ok=%d, fail=%d", s.SessionSetup.OK, s.SessionSetup.Fail)
-	return writeLabeledLine(w, 4, "Session Setup", setup)
+	writeLabeledLineText(ew, 4, "Session Setup", setup)
 }

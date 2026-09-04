@@ -13,29 +13,33 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+const testRevision = "abc123"
+
 func TestVersion_Default(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, devVersion, Version())
 }
 
-func TestVersion_Ldflags(t *testing.T) {
-	old := version
-	defer func() { version = old }()
+func TestGet(t *testing.T) {
+	t.Parallel()
 
-	version = "1.2.3"
-	assert.Equal(t, "1.2.3", Version())
+	info := Get()
+	assert.Equal(t, devVersion, info.Version)
+	assert.Equal(t, runtime.Version(), info.GoVersion)
 }
 
-func TestGet(t *testing.T) {
-	old := version
-	defer func() { version = old }()
+func TestGetWith(t *testing.T) {
+	t.Parallel()
 
-	version = "1.2.3"
-	info := Get()
+	info := getWith("1.2.3")
 	assert.Equal(t, "1.2.3", info.Version)
 	assert.Equal(t, runtime.Version(), info.GoVersion)
 }
 
 func TestVcsSettings(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name         string
 		settings     []debug.BuildSetting
@@ -46,21 +50,21 @@ func TestVcsSettings(t *testing.T) {
 		{
 			name: "vcs info present and clean",
 			settings: []debug.BuildSetting{
-				{Key: "vcs.revision", Value: "abc123"},
+				{Key: "vcs.revision", Value: testRevision},
 				{Key: "vcs.time", Value: "2026-08-14T00:00:00Z"},
 				{Key: "vcs.modified", Value: "false"},
 			},
-			wantRevision: "abc123",
+			wantRevision: testRevision,
 			wantTime:     "2026-08-14T00:00:00Z",
 			wantModified: false,
 		},
 		{
 			name: "vcs info present and modified",
 			settings: []debug.BuildSetting{
-				{Key: "vcs.revision", Value: "abc123"},
+				{Key: "vcs.revision", Value: testRevision},
 				{Key: "vcs.modified", Value: "true"},
 			},
-			wantRevision: "abc123",
+			wantRevision: testRevision,
 			wantModified: true,
 		},
 		{
@@ -81,6 +85,8 @@ func TestVcsSettings(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			revision, ts, modified := vcsSettings(tt.settings)
 			assert.Equal(t, tt.wantRevision, revision)
 			assert.Equal(t, tt.wantTime, ts)

@@ -3,6 +3,7 @@
 // This software is released under the MIT License.
 // see https://github.com/nttcom/pola/blob/main/LICENSE
 
+// Package cspf computes constrained shortest paths over the TED for dynamic SR Policies.
 package cspf
 
 import (
@@ -38,6 +39,14 @@ func topologyLimitationf(reason, format string, a ...any) error {
 	return &TopologyLimitationError{Err: fmt.Errorf(format, a...), Reason: reason}
 }
 
+const (
+	reasonTEDDataIncomplete      = "TED_DATA_INCOMPLETE"
+	reasonMetricNotCarried       = "METRIC_NOT_CARRIED"
+	reasonDestinationUnreachable = "DESTINATION_UNREACHABLE"
+)
+
+const errNextNodeNotFound = "next node not found"
+
 type node struct {
 	id          string
 	calculated  bool
@@ -59,17 +68,20 @@ func validateMetricType(metric table.MetricType) error {
 	if !metric.IsValid() {
 		return invalidInputf("unsupported metric type %d", int(metric))
 	}
+
 	if metric == table.UnspecifiedMetric {
 		return invalidInputf("metric type must be specified for path computation")
 	}
+
 	return nil
 }
 
 // CSPF computes the shortest path from srcRouterID to dstRouterID using the given metric.
-func CSPF(srcRouterID string, dstRouterID string, metric table.MetricType, ted *table.LsTED) ([]table.Segment, error) {
+func CSPF(srcRouterID, dstRouterID string, metric table.MetricType, ted *table.LsTED) ([]table.Segment, error) {
 	if ted == nil {
 		return nil, errors.New("ted is nil")
 	}
+
 	if err := validateMetricType(metric); err != nil {
 		return nil, err
 	}
@@ -92,6 +104,7 @@ func WithLooseSourceRouting(
 	if ted == nil {
 		return nil, errors.New("ted is nil")
 	}
+
 	if err := validateMetricType(metric); err != nil {
 		return nil, err
 	}
@@ -114,6 +127,7 @@ func WithLooseSourceRouting(
 		if err != nil {
 			return nil, err
 		}
+
 		fullList = append(fullList, sectionSegs...)
 		fullList = appendIfNotDuplicate(fullList, seg)
 		prev = wp.RouterID
@@ -123,26 +137,29 @@ func WithLooseSourceRouting(
 }
 
 // buildSectionSegments calculates CSPF to waypoint and builds the waypoint segment.
-func buildSectionSegments(prev string, wp table.Waypoint, metric table.MetricType, ted *table.LsTED, fullList []table.Segment) ([]table.Segment, table.Segment, error) {
-	// Compute CSPF from prev → waypoint
-	sectionSegs, err := CSPF(prev, wp.RouterID, metric, ted)
+func buildSectionSegments(
+	prev string,
+	wp table.Waypoint,
+	metric table.MetricType,
+	ted *table.LsTED,
+	fullList []table.Segment,
+) (sectionSegs []table.Segment, waypointSeg table.Segment, err error) {
+	sectionSegs, err = CSPF(prev, wp.RouterID, metric, ted)
 	if err != nil {
 		return nil, nil, fmt.Errorf("CSPF failed between %s and %s: %w", prev, wp.RouterID, err)
 	}
 
-	// Remove first segment if it duplicates the last segment of the previous sections
 	sectionSegs = removeDuplicateFirst(fullList, sectionSegs)
 
-	// Lookup the node from TED; existence is already guaranteed by the CSPF call above.
+	// Existence is guaranteed by the CSPF call above.
 	node, _ := nodeInTED(ted.Nodes, wp.RouterID)
 
-	// Build the segment (SRv6 or SR-MPLS)
-	seg, err := buildWaypointSegment(node, wp.SID)
+	waypointSeg, err = buildWaypointSegment(node, wp.SID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to build segment for waypoint %s: %w", wp.RouterID, err)
 	}
 
-	return sectionSegs, seg, nil
+	return sectionSegs, waypointSeg, nil
 }
 
 // buildWaypointSegment builds a Segment for a waypoint using the node and optional explicit SID.
@@ -157,24 +174,29 @@ func buildWaypointSegment(node *table.LsNode, explicitSID string) (table.Segment
 		if !addr.Is6() {
 			return nil, invalidInputf("explicit SID %q must be an IPv6 SRv6 SID", explicitSID)
 		}
+
 		seg, err := table.NewSegmentSRv6WithNodeInfo(addr, node)
 		if err != nil {
-			return nil, topologyLimitationf("TED_DATA_INCOMPLETE", "%w", err)
+			return nil, topologyLimitationf(reasonTEDDataIncomplete, "%w", err)
 		}
+
 		return seg, nil
 	}
+
 	seg, err := node.NodeSegment()
 	if err != nil {
-		return nil, topologyLimitationf("TED_DATA_INCOMPLETE", "%w", err)
+		return nil, topologyLimitationf(reasonTEDDataIncomplete, "%w", err)
 	}
+
 	return seg, nil
 }
 
 // removeDuplicateFirst removes the first segment of section if it equals the last of fullList.
-func removeDuplicateFirst(fullList []table.Segment, section []table.Segment) []table.Segment {
+func removeDuplicateFirst(fullList, section []table.Segment) []table.Segment {
 	if len(fullList) > 0 && len(section) > 0 && table.SegmentsEqual(fullList[len(fullList)-1], section[0]) {
 		return section[1:]
 	}
+
 	return section
 }
 
@@ -183,10 +205,11 @@ func appendIfNotDuplicate(list []table.Segment, seg table.Segment) []table.Segme
 	if len(list) == 0 || !table.SegmentsEqual(list[len(list)-1], seg) {
 		list = append(list, seg)
 	}
+
 	return list
 }
 
-func spf(srcRouterID string, dstRouterID string, metricType table.MetricType, network map[string]*table.LsNode) ([]table.Segment, error) {
+func spf(srcRouterID, dstRouterID string, metricType table.MetricType, network map[string]*table.LsNode) ([]table.Segment, error) {
 	calculatingNodes, err := initNodeMap(srcRouterID, network)
 	if err != nil {
 		return nil, err
@@ -202,6 +225,7 @@ func spf(srcRouterID string, dstRouterID string, metricType table.MetricType, ne
 		if err != nil {
 			return nil, err
 		}
+
 		if calcNodeID == dstRouterID {
 			break
 		}
@@ -222,6 +246,7 @@ func nodeInTED(network map[string]*table.LsNode, routerID string) (*table.LsNode
 	if !ok || node == nil {
 		return nil, false
 	}
+
 	return node, true
 }
 
@@ -231,12 +256,15 @@ func initNodeMap(srcRouterID string, network map[string]*table.LsNode) (map[stri
 	if !ok {
 		return nil, invalidInputf("source router %s not found in TED", srcRouterID)
 	}
+
 	startNodeSeg, err := srcNode.NodeSegment()
 	if err != nil {
-		return nil, topologyLimitationf("TED_DATA_INCOMPLETE", "%w", err)
+		return nil, topologyLimitationf(reasonTEDDataIncomplete, "%w", err)
 	}
+
 	startNode := newNode(srcRouterID, 0, startNodeSeg)
 	startNode.calculated = false
+
 	return map[string]*node{srcRouterID: startNode}, nil
 }
 
@@ -244,20 +272,21 @@ func initNodeMap(srcRouterID string, network map[string]*table.LsNode) (map[stri
 func updateNeighborCosts(calcNodeID string, calculatingNodes map[string]*node, network map[string]*table.LsNode, metricType table.MetricType) error {
 	calcNode, ok := nodeInTED(network, calcNodeID)
 	if !ok {
-		return topologyLimitationf("TED_DATA_INCOMPLETE", "router %s not found in TED", calcNodeID)
+		return topologyLimitationf(reasonTEDDataIncomplete, "router %s not found in TED", calcNodeID)
 	}
 
 	for _, link := range calcNode.Links {
 		if link == nil || link.RemoteNode == nil {
 			continue
 		}
+
 		if _, ok := nodeInTED(network, link.RemoteNode.RouterID); !ok {
 			continue
 		}
 
 		metric, err := link.Metric(metricType)
 		if err != nil {
-			return topologyLimitationf("METRIC_NOT_CARRIED", "%w", err)
+			return topologyLimitationf(reasonMetricNotCarried, "%w", err)
 		}
 
 		if remoteNode, exists := calculatingNodes[link.RemoteNode.RouterID]; exists {
@@ -268,13 +297,15 @@ func updateNeighborCosts(calcNodeID string, calculatingNodes map[string]*node, n
 		} else {
 			remoteNodeSeg, err := link.RemoteNode.NodeSegment()
 			if err != nil {
-				return topologyLimitationf("TED_DATA_INCOMPLETE", "%w", err)
+				return topologyLimitationf(reasonTEDDataIncomplete, "%w", err)
 			}
+
 			remoteNode := newNode(link.RemoteNode.RouterID, calculatingNodes[calcNodeID].cost+metric, remoteNodeSeg)
 			remoteNode.prevNode = calcNodeID
 			calculatingNodes[link.RemoteNode.RouterID] = remoteNode
 		}
 	}
+
 	return nil
 }
 
@@ -296,16 +327,20 @@ func buildSegmentListFromPath(srcRouterID, dstRouterID string, calculatingNodes 
 // nextNode returns the ID of the next node to calculate.
 func nextNode(calculatingNodes map[string]*node) (string, error) {
 	nextNodeID := ""
+
 	for nodeID, node := range calculatingNodes {
 		if node.calculated {
 			continue
 		}
+
 		if nextNodeID == "" || calculatingNodes[nextNodeID].cost > node.cost {
 			nextNodeID = nodeID
 		}
 	}
+
 	if nextNodeID == "" {
-		return "", topologyLimitationf("DESTINATION_UNREACHABLE", "next node not found")
+		return "", topologyLimitationf(reasonDestinationUnreachable, errNextNodeNotFound)
 	}
+
 	return nextNodeID, nil
 }

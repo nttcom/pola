@@ -98,16 +98,20 @@ type PolicyDiff struct {
 // Update modifies the SR Policy with the attributes specified in the diff.
 func (p *SRPolicy) Update(df PolicyDiff) {
 	p.State = df.State
+
 	p.LSPID = df.LSPID
 	if df.Name != nil {
 		p.Name = *df.Name
 	}
+
 	if df.Color != nil {
 		p.Color = *df.Color
 	}
+
 	if df.Preference != nil {
 		p.Preference = *df.Preference
 	}
+
 	if df.SegmentList != nil {
 		p.SegmentList = df.SegmentList
 	}
@@ -206,10 +210,12 @@ func (s SIDStructureBytes) MarshalJSON() ([]byte, error) {
 	if len(s) == 0 {
 		return json.Marshal(nil)
 	}
+
 	parts := make([]string, len(s))
 	for i, v := range s {
 		parts[i] = strconv.Itoa(int(v))
 	}
+
 	return json.Marshal(strings.Join(parts, ","))
 }
 
@@ -218,13 +224,16 @@ func (s SIDStructureBytes) Validate() error {
 	if len(s) == 0 {
 		return nil
 	}
+
 	if len(s) != 4 {
 		return fmt.Errorf("SID structure must have 4 elements, got %d", len(s))
 	}
+
 	sum := int(s[0]) + int(s[1]) + int(s[2]) + int(s[3])
 	if sum > SRv6SIDBitLength {
 		return fmt.Errorf("SID structure sum %d exceeds %d bits", sum, SRv6SIDBitLength)
 	}
+
 	return nil
 }
 
@@ -247,15 +256,19 @@ func (seg SegmentSRv6) Behavior() uint16 {
 	if !seg.LocalAddr.IsValid() {
 		return BehaviorOpaque
 	}
+
 	if seg.USid {
 		if seg.RemoteAddr.IsValid() {
 			return BehaviorUA
 		}
+
 		return BehaviorUN
 	}
+
 	if seg.RemoteAddr.IsValid() {
 		return BehaviorENDX
 	}
+
 	return BehaviorEND
 }
 
@@ -273,29 +286,38 @@ func NewSegmentSRv6WithNodeInfo(sid netip.Addr, n *LsNode) (SegmentSRv6, error) 
 	}
 
 	var found bool
+
 	for _, srv6SID := range n.SRv6SIDs {
-		if len(srv6SID.Sids) > 0 {
-			addr, err := netip.ParseAddr(srv6SID.Sids[FirstSIDIndex])
-			if err != nil {
-				return seg, err
-			}
-			seg.LocalAddr = addr
-			seg.Structure = SIDStructureBytes{
-				srv6SID.SIDStructure.LocalBlock,
-				srv6SID.SIDStructure.LocalNode,
-				srv6SID.SIDStructure.LocalFunc,
-				srv6SID.SIDStructure.LocalArg,
-			}
-			if IsUSidBehavior(srv6SID.EndpointBehavior.Behavior) {
-				seg.USid = true
-			}
-			found = true
-			break
+		if srv6SID == nil || len(srv6SID.Sids) == 0 {
+			continue
 		}
+
+		addr, err := netip.ParseAddr(srv6SID.Sids[FirstSIDIndex])
+		if err != nil {
+			return seg, fmt.Errorf("SRv6 SID %q is invalid: %w", srv6SID.Sids[FirstSIDIndex], err)
+		}
+
+		seg.LocalAddr = addr
+
+		seg.Structure = SIDStructureBytes{
+			srv6SID.SIDStructure.LocalBlock,
+			srv6SID.SIDStructure.LocalNode,
+			srv6SID.SIDStructure.LocalFunc,
+			srv6SID.SIDStructure.LocalArg,
+		}
+		if IsUSidBehavior(srv6SID.EndpointBehavior.Behavior) {
+			seg.USid = true
+		}
+
+		found = true
+
+		break
 	}
+
 	if !found {
 		return seg, errors.New("no SRv6 SIDs available")
 	}
+
 	return seg, nil
 }
 
@@ -343,9 +365,11 @@ func (seg SegmentSRMPLS) Equal(other SegmentSRMPLS) bool {
 	if seg.SidAbsent != other.SidAbsent {
 		return false
 	}
+
 	if !seg.SidAbsent && seg.Sid != other.Sid {
 		return false
 	}
+
 	return seg.TTL == other.TTL && seg.TC == other.TC && seg.S == other.S &&
 		seg.LocalAddr == other.LocalAddr && seg.RemoteAddr == other.RemoteAddr
 }

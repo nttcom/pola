@@ -3,68 +3,59 @@
 // This software is released under the MIT License.
 // see https://github.com/nttcom/pola/blob/main/LICENSE
 
-package pcep
+package pcep_test
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/nttcom/pola/pkg/packet/pcep"
 )
 
+const enterpriseJuniperString = "Juniper (2636)"
+
 func TestEnterpriseNumber_String(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
-		enterpriseNumber EnterpriseNumber
+		enterpriseNumber pcep.EnterpriseNumber
 		expected         string
 	}{
-		"Cisco":       {EnterpriseNumberCisco, "Cisco (9)"},
-		"Huawei":      {EnterpriseNumberHuawei, "Huawei (2011)"},
-		"Juniper":     {EnterpriseNumberJuniper, "Juniper (2636)"},
+		"Cisco":       {pcep.EnterpriseNumberCisco, "Cisco (9)"},
+		"Huawei":      {pcep.EnterpriseNumberHuawei, "Huawei (2011)"},
+		"Juniper":     {pcep.EnterpriseNumberJuniper, enterpriseJuniperString},
 		"UnknownEN":   {12345, "Unknown Enterprise (12345)"},
 		"ZeroEN":      {0, "Unknown Enterprise (0)"},
-		"MaxUint32EN": {EnterpriseNumber(^uint32(0)), "Unknown Enterprise (4294967295)"},
+		"MaxUint32EN": {pcep.EnterpriseNumber(^uint32(0)), "Unknown Enterprise (4294967295)"},
 	}
 
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
 			actual := tt.enterpriseNumber.String()
 			assert.Equal(t, tt.expected, actual, "unexpected EnterpriseNumber.String() result")
 		})
 	}
 }
 
-func TestEnterpriseNumber_capLabel(t *testing.T) {
-	cases := map[string]struct {
-		enterpriseNumber EnterpriseNumber
-		expected         string
-	}{
-		"Cisco":     {EnterpriseNumberCisco, "Cisco"},
-		"Huawei":    {EnterpriseNumberHuawei, "Huawei"},
-		"Juniper":   {EnterpriseNumberJuniper, "Juniper"},
-		"UnknownEN": {12345, "EN-12345"},
-	}
-
-	for name, tt := range cases {
-		t.Run(name, func(t *testing.T) {
-			actual := tt.enterpriseNumber.capLabel()
-			assert.Equal(t, tt.expected, actual, "unexpected enterpriseNumberCapLabel() result")
-			assert.NotContains(t, actual, " ", "capability labels must not contain spaces")
-		})
-	}
-}
-
 func TestEnterpriseNumber_DisplayLabel(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
-		enterpriseNumber EnterpriseNumber
+		enterpriseNumber pcep.EnterpriseNumber
 		expected         string
 	}{
-		"Cisco":     {EnterpriseNumberCisco, "9 (Cisco Systems, Inc.)"},
-		"Huawei":    {EnterpriseNumberHuawei, "2011 (Huawei Technologies Co., Ltd.)"},
-		"Juniper":   {EnterpriseNumberJuniper, "2636 (Juniper Networks, Inc.)"},
+		"Cisco":     {pcep.EnterpriseNumberCisco, "9 (Cisco Systems, Inc.)"},
+		"Huawei":    {pcep.EnterpriseNumberHuawei, "2011 (Huawei Technologies Co., Ltd.)"},
+		"Juniper":   {pcep.EnterpriseNumberJuniper, "2636 (Juniper Networks, Inc.)"},
 		"UnknownEN": {99999, "99999 (Unknown)"},
 	}
 
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.expected, tt.enterpriseNumber.DisplayLabel())
 		})
 	}

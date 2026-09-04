@@ -87,16 +87,20 @@ type statsView struct {
 	SessionSetup     sessionSetupView `json:"sessionSetup"`
 }
 
+const roleActiveStatefulPCE = "active-stateful-pce"
+
 // sessionRole reports Pola's PCE role based on its own advertised U-flag.
 func sessionRole(localCaps []grpc.Capability) string {
 	for _, c := range localCaps {
 		if sc, ok := c.Detail.(grpc.StatefulCapability); ok {
 			if sc.LSPUpdate {
-				return "active-stateful-pce"
+				return roleActiveStatefulPCE
 			}
+
 			return "passive-stateful-pce"
 		}
 	}
+
 	return "stateless-pce"
 }
 
@@ -107,6 +111,7 @@ func formatUpTime(d time.Duration) string {
 	hours := total / 3600
 	minutes := (total % 3600) / 60
 	seconds := total % 60
+
 	return fmt.Sprintf("%02d:%02d:%02d", hours, minutes, seconds)
 }
 
@@ -116,10 +121,12 @@ func timersViewFrom(local, peer *grpc.SessionTimers, effective grpc.EffectiveTim
 		localKeepalive = new(local.Keepalive)
 		localDeadTimer = new(local.DeadTimer)
 	}
+
 	if peer != nil {
 		peerKeepalive = new(peer.Keepalive)
 		peerDeadTimer = new(peer.DeadTimer)
 	}
+
 	return timersView{
 		Keepalive: timerTriple{Local: localKeepalive, Peer: peerKeepalive, Effective: effective.Keepalive},
 		DeadTimer: timerTriple{Local: localDeadTimer, Peer: peerDeadTimer, Effective: effective.DeadTimer},
@@ -128,6 +135,7 @@ func timersViewFrom(local, peer *grpc.SessionTimers, effective grpc.EffectiveTim
 
 func statsViewFrom(s grpc.SessionStats) *statsView {
 	toCounter := func(c grpc.MessageCounter) counterView { return counterView{Sent: c.Sent, Rcvd: c.Rcvd} }
+
 	return &statsView{
 		Open:             toCounter(s.Open),
 		Keepalive:        toCounter(s.Keepalive),
@@ -167,6 +175,7 @@ func newSessionView(ss grpc.Session, detail bool) sessionView {
 		if !ss.CreatedAt.IsZero() {
 			v.SessionCreation = ss.CreatedAt.UTC().Format(time.RFC3339)
 		}
+
 		v.Initiator = ss.Initiator
 		if ss.Stats != nil {
 			v.Stats = statsViewFrom(*ss.Stats)

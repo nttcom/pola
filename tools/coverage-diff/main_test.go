@@ -19,6 +19,8 @@ const module = "github.com/nttcom/pola"
 func keepAll(string) bool { return true }
 
 func TestInstrumentable(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		path string
 		want bool
@@ -37,6 +39,8 @@ func TestInstrumentable(t *testing.T) {
 }
 
 func TestParseHunks(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		diff string
@@ -92,36 +96,46 @@ func TestParseHunks(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got, err := parseHunks(strings.NewReader(tt.diff), keepAll)
 			if err != nil {
 				t.Fatalf("parseHunks() error = %v", err)
 			}
+
 			assertChangedLines(t, got, tt.want)
 		})
 	}
 }
 
 func TestParseHunksAppliesKeep(t *testing.T) {
+	t.Parallel()
+
 	diff := "diff --git a/a.go b/a.go\n--- a/a.go\n+++ b/a.go\n@@ -1,0 +2,1 @@\n+a\n" +
 		"diff --git a/a_test.go b/a_test.go\n--- a/a_test.go\n+++ b/a_test.go\n@@ -1,0 +2,1 @@\n+a\n"
+
 	got, err := parseHunks(strings.NewReader(diff), instrumentable)
 	if err != nil {
 		t.Fatalf("parseHunks() error = %v", err)
 	}
+
 	assertChangedLines(t, got, changedLines{"a.go": {2: true}})
 }
 
 func assertChangedLines(t *testing.T, got, want changedLines) {
 	t.Helper()
+
 	if len(got) != len(want) {
 		t.Fatalf("files = %v, want %v", keys(got), keys(want))
 	}
+
 	for file, wantLines := range want {
 		gotLines := got[file]
 		if len(gotLines) != len(wantLines) {
 			t.Errorf("%s: lines = %v, want %v", file, gotLines, wantLines)
 			continue
 		}
+
 		for ln := range wantLines {
 			if !gotLines[ln] {
 				t.Errorf("%s: line %d missing", file, ln)
@@ -135,10 +149,13 @@ func keys(c changedLines) []string {
 	for k := range c {
 		out = append(out, k)
 	}
+
 	return out
 }
 
 func TestParseProfileLine(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		line string
@@ -180,10 +197,13 @@ func TestParseProfileLine(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got, ok := parseProfileLine(tt.line)
 			if ok != tt.ok {
 				t.Fatalf("ok = %v, want %v", ok, tt.ok)
 			}
+
 			if ok && got != tt.want {
 				t.Errorf("block = %+v, want %+v", got, tt.want)
 			}
@@ -192,6 +212,8 @@ func TestParseProfileLine(t *testing.T) {
 }
 
 func TestParseProfile(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name          string
 		profile       string
@@ -263,50 +285,58 @@ func TestParseProfile(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			res, err := parseProfile(strings.NewReader(tt.profile), module, tt.changed)
 			if err != nil {
 				t.Fatalf("parseProfile() error = %v", err)
 			}
-			if res.total != tt.wantTotal || res.covered != tt.wantCovered {
-				t.Errorf("total/covered = %d/%d, want %d/%d", res.total, res.covered, tt.wantTotal, tt.wantCovered)
-			}
-			for _, fr := range res.files {
-				want, ok := tt.wantUncovered[fr.file]
-				if !ok {
-					if len(fr.uncovered) > 0 {
-						t.Errorf("%s: unexpected uncovered %v", fr.file, fr.uncovered)
-					}
-					continue
-				}
-				if !equalInts(fr.uncovered, want) {
-					t.Errorf("%s: uncovered = %v, want %v", fr.file, fr.uncovered, want)
-				}
-			}
+
+			assertProfileResult(t, res, tt.wantTotal, tt.wantCovered, tt.wantUncovered)
 		})
 	}
 }
 
-// withSourceFile writes src to name in a temporary directory and changes
-// the working directory for the duration of the test.
-func withSourceFile(t *testing.T, name, src string) {
+// assertProfileResult checks the expected coverage totals and uncovered lines.
+func assertProfileResult(t *testing.T, res *result, wantTotal, wantCovered int, wantUncovered map[string][]int) {
 	t.Helper()
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(src), 0o644); err != nil {
-		t.Fatal(err)
+
+	if res.total != wantTotal || res.covered != wantCovered {
+		t.Errorf("total/covered = %d/%d, want %d/%d", res.total, res.covered, wantTotal, wantCovered)
 	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
+
+	for _, fr := range res.files {
+		want, ok := wantUncovered[fr.file]
+		if !ok {
+			if len(fr.uncovered) > 0 {
+				t.Errorf("%s: unexpected uncovered %v", fr.file, fr.uncovered)
+			}
+
+			continue
+		}
+
+		if !equalInts(fr.uncovered, want) {
+			t.Errorf("%s: uncovered = %v, want %v", fr.file, fr.uncovered, want)
+		}
 	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(cwd) })
 }
 
+// withSourceFile creates a temporary source file and changes the working directory.
+func withSourceFile(t *testing.T, src string) {
+	t.Helper()
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Chdir(dir)
+}
+
+//nolint:paralleltest // t.Chdir cannot be used with parallel tests.
 func TestParseProfileSkipsDeclarationAndClosingBraceLines(t *testing.T) {
 	src := "package p\n\nfunc Foo(x int) int {\n\tif x < 0 {\n\t\treturn 0\n\t}\n\treturn x\n}\n"
-	withSourceFile(t, "a.go", src)
+	withSourceFile(t, src)
 
 	profile := "mode: set\n" +
 		module + "/a.go:3.21,4.11 1 1\n" +
@@ -318,9 +348,11 @@ func TestParseProfileSkipsDeclarationAndClosingBraceLines(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseProfile() error = %v", err)
 	}
+
 	if res.total != 3 || res.covered != 3 {
 		t.Errorf("total/covered = %d/%d, want 3/3 (lines 4, 5, 7 only)", res.total, res.covered)
 	}
+
 	for _, fr := range res.files {
 		if len(fr.uncovered) > 0 {
 			t.Errorf("unexpected uncovered lines %v", fr.uncovered)
@@ -328,9 +360,10 @@ func TestParseProfileSkipsDeclarationAndClosingBraceLines(t *testing.T) {
 	}
 }
 
+//nolint:paralleltest // t.Chdir cannot be used with parallel tests.
 func TestParseProfileSkipsCommentOnlyInteriorLines(t *testing.T) {
 	src := "package p\n\nfunc Foo(x int) int {\n\t// entry comment\n\tif x < 0 {\n\t\treturn 0\n\t}\n\treturn x\n}\n"
-	withSourceFile(t, "a.go", src)
+	withSourceFile(t, src)
 
 	profile := "mode: set\n" +
 		module + "/a.go:3.21,5.11 1 0\n" +
@@ -342,9 +375,11 @@ func TestParseProfileSkipsCommentOnlyInteriorLines(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseProfile() error = %v", err)
 	}
+
 	if res.total != 3 || res.covered != 0 {
 		t.Errorf("total/covered = %d/%d, want 3/0", res.total, res.covered)
 	}
+
 	for _, fr := range res.files {
 		if !equalInts(fr.uncovered, []int{5, 6, 8}) {
 			t.Errorf("uncovered = %v, want [5 6 8]", fr.uncovered)
@@ -352,9 +387,10 @@ func TestParseProfileSkipsCommentOnlyInteriorLines(t *testing.T) {
 	}
 }
 
+//nolint:paralleltest // t.Chdir cannot be used with parallel tests.
 func TestParseProfileHandlesMultilineRawString(t *testing.T) {
 	src := "package p\n\nfunc Foo() string {\n\ts := `\na\n`\n\treturn s\n}\n"
-	withSourceFile(t, "a.go", src)
+	withSourceFile(t, src)
 
 	profile := "mode: set\n" + module + "/a.go:4.2,6.2 1 1\n"
 	changed := changedLines{"a.go": {4: true, 5: true, 6: true}}
@@ -363,14 +399,16 @@ func TestParseProfileHandlesMultilineRawString(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseProfile() error = %v", err)
 	}
+
 	if res.total != 3 || res.covered != 3 {
 		t.Errorf("total/covered = %d/%d, want 3/3 (raw string spans lines 4-6, including the closing backtick's own line)", res.total, res.covered)
 	}
 }
 
+//nolint:paralleltest // t.Chdir cannot be used with parallel tests.
 func TestParseProfileHandlesMultilineRawStringCRLF(t *testing.T) {
 	src := "package p\r\n\r\nfunc Foo() string {\r\n\ts := `\r\na\r\n`\r\n\treturn s\r\n}\r\n"
-	withSourceFile(t, "a.go", src)
+	withSourceFile(t, src)
 
 	profile := "mode: set\n" + module + "/a.go:4.2,6.2 1 1\n"
 	changed := changedLines{"a.go": {4: true, 5: true, 6: true}}
@@ -379,12 +417,15 @@ func TestParseProfileHandlesMultilineRawStringCRLF(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseProfile() error = %v", err)
 	}
+
 	if res.total != 3 || res.covered != 3 {
 		t.Errorf("total/covered = %d/%d, want 3/3 (scanner strips '\\r' from the raw string, so byte-length arithmetic must not be used to find the closing line)", res.total, res.covered)
 	}
 }
 
 func TestParseProfileFallsBackWhenSourceIsUnavailable(t *testing.T) {
+	t.Parallel()
+
 	profile := "mode: set\n" + module + "/missing.go:1.1,3.2 1 1\n"
 	changed := changedLines{"missing.go": {1: true, 2: true, 3: true}}
 
@@ -392,14 +433,16 @@ func TestParseProfileFallsBackWhenSourceIsUnavailable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseProfile() error = %v", err)
 	}
+
 	if res.total != 3 || res.covered != 3 {
 		t.Errorf("total/covered = %d/%d, want 3/3", res.total, res.covered)
 	}
 }
 
+//nolint:paralleltest // t.Chdir cannot be used with parallel tests.
 func TestParseProfileFallsBackOnLineDirective(t *testing.T) {
 	src := "package p\n\n//line a.go:3\nfunc Foo(x int) int {\n\t// comment only\n\treturn x\n}\n"
-	withSourceFile(t, "a.go", src)
+	withSourceFile(t, src)
 
 	profile := "mode: set\n" + module + "/a.go:3.21,5.10 1 1\n"
 	changed := changedLines{"a.go": {4: true, 5: true}}
@@ -408,18 +451,23 @@ func TestParseProfileFallsBackOnLineDirective(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseProfile() error = %v", err)
 	}
+
 	if res.total != 2 || res.covered != 2 {
 		t.Errorf("total/covered = %d/%d, want 2/2 (comment-only line counted conservatively)", res.total, res.covered)
 	}
 }
 
 func TestParseProfileRejectsEmptyProfile(t *testing.T) {
+	t.Parallel()
+
 	if _, err := parseProfile(strings.NewReader(""), module, changedLines{}); err == nil {
 		t.Fatal("parseProfile() error = nil, want error for profile without mode header")
 	}
 }
 
 func TestParseProfileHandlesHugeBlockRange(t *testing.T) {
+	t.Parallel()
+
 	profile := "mode: set\n" + module + "/missing.go:1.1,9223372036854775807.1 1 1\n"
 	changed := changedLines{"missing.go": {2: true}}
 
@@ -427,12 +475,15 @@ func TestParseProfileHandlesHugeBlockRange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseProfile() error = %v", err)
 	}
+
 	if res.total != 1 || res.covered != 1 {
 		t.Errorf("total/covered = %d/%d, want 1/1", res.total, res.covered)
 	}
 }
 
 func TestParseProfileSortsFiles(t *testing.T) {
+	t.Parallel()
+
 	profile := "mode: set\n" +
 		module + "/z.go:1.1,1.2 1 0\n" +
 		module + "/a.go:1.1,1.2 1 0\n" +
@@ -443,28 +494,36 @@ func TestParseProfileSortsFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseProfile() error = %v", err)
 	}
-	var got []string
+
+	got := make([]string, 0, len(res.files))
 	for _, fr := range res.files {
 		got = append(got, fr.file)
 	}
+
 	if !equalStrings(got, []string{"a.go", "m.go", "z.go"}) {
 		t.Errorf("files = %v, want sorted", got)
 	}
 }
 
 func TestStripModule(t *testing.T) {
+	t.Parallel()
+
 	if got := stripModule(module+"/pkg/a.go", module); got != "pkg/a.go" {
 		t.Errorf("stripModule() = %q, want %q", got, "pkg/a.go")
 	}
+
 	if got := stripModule("example.com/x/a.go", module); got != "example.com/x/a.go" {
 		t.Errorf("stripModule() = %q, want unchanged", got)
 	}
+
 	if got := stripModule(module+"-extra/a.go", module); got != module+"-extra/a.go" {
 		t.Errorf("stripModule() = %q, want unchanged", got)
 	}
 }
 
 func TestFormatRanges(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		lines []int
 		want  string
@@ -484,15 +543,20 @@ func TestFormatRanges(t *testing.T) {
 }
 
 func TestResultPercent(t *testing.T) {
+	t.Parallel()
+
 	if got := (&result{}).percent(); got != 100 {
 		t.Errorf("percent() on empty = %v, want 100", got)
 	}
+
 	if got := (&result{total: 4, covered: 3}).percent(); got != 75 {
 		t.Errorf("percent() = %v, want 75", got)
 	}
 }
 
 func TestReport(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name        string
 		res         *result
@@ -546,14 +610,19 @@ func TestReport(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			var buf bytes.Buffer
+
 			err := report(tt.res, tt.min, "0123456789abcdef", &buf)
 			if tt.wantErr && !errors.Is(err, errBelowThreshold) {
 				t.Fatalf("error = %v, want errBelowThreshold", err)
 			}
+
 			if !tt.wantErr && err != nil {
 				t.Fatalf("unexpected error = %v", err)
 			}
+
 			for _, want := range tt.wantContain {
 				if !strings.Contains(buf.String(), want) {
 					t.Errorf("output %q missing %q", buf.String(), want)
@@ -564,9 +633,12 @@ func TestReport(t *testing.T) {
 }
 
 func TestShort(t *testing.T) {
+	t.Parallel()
+
 	if got := short("0123456789abcdef"); got != "0123456789ab" {
 		t.Errorf("short() = %q", got)
 	}
+
 	if got := short("abc"); got != "abc" {
 		t.Errorf("short() = %q, want unchanged", got)
 	}
@@ -576,11 +648,13 @@ func equalInts(a, b []int) bool {
 	if len(a) != len(b) {
 		return false
 	}
+
 	for i := range a {
 		if a[i] != b[i] {
 			return false
 		}
 	}
+
 	return true
 }
 
@@ -588,10 +662,12 @@ func equalStrings(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
 	}
+
 	for i := range a {
 		if a[i] != b[i] {
 			return false
 		}
 	}
+
 	return true
 }

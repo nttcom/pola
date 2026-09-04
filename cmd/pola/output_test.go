@@ -14,6 +14,8 @@ import (
 )
 
 func TestResolveOutputFormat(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, outputText, resolveOutputFormat(false))
 	assert.Equal(t, outputJSON, resolveOutputFormat(true))
 }
@@ -23,11 +25,15 @@ type erroringWriter struct{}
 func (erroringWriter) Write([]byte) (int, error) { return 0, assert.AnError }
 
 func TestWriteJSON_PropagatesWriteError(t *testing.T) {
+	t.Parallel()
+
 	err := writeJSON(erroringWriter{}, []sessionView{{}})
 	require.ErrorIs(t, err, assert.AnError)
 }
 
 func TestWriteJSON_PropagatesMarshalError(t *testing.T) {
+	t.Parallel()
+
 	err := writeJSON(&bytes.Buffer{}, make(chan int))
 	require.Error(t, err)
 }

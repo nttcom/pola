@@ -3,6 +3,7 @@
 // This software is released under the MIT License.
 // see https://github.com/nttcom/pola/blob/main/LICENSE
 
+// Package v1 provides the pola API v1 types and helpers.
 package v1
 
 // EffectiveKeepalive reports the session's effective Keepalive and whether
@@ -11,6 +12,7 @@ func EffectiveKeepalive(state SessionState, effective *EffectiveTimers) (value u
 	if state != SessionState_SESSION_STATE_UP || effective == nil {
 		return 0, false
 	}
+
 	return effective.GetKeepalive(), true
 }
 
@@ -20,5 +22,6 @@ func EffectiveDeadTimer(state SessionState, effective *EffectiveTimers) (value u
 	if state != SessionState_SESSION_STATE_UP || effective == nil {
 		return 0, false
 	}
+
 	return effective.GetDeadTimer(), true
 }

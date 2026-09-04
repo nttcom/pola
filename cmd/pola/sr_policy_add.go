@@ -8,6 +8,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/netip"
 	"os"
 
@@ -20,7 +21,7 @@ import (
 	"github.com/nttcom/pola/cmd/pola/grpc"
 )
 
-func newSRPolicyAddCmd() *cobra.Command {
+func newSRPolicyAddCmd(c *cli) *cobra.Command {
 	srPolicyAddCmd := &cobra.Command{
 		Use: "add",
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -33,18 +34,20 @@ func newSRPolicyAddCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("failed to retrieve 'file' flag: %w", err)
 			}
+
 			if filepath == "" {
 				return errors.New("file path option \"-f filepath\" is mandatory")
 			}
 
-			//nolint:gosec // G304: the file path comes from the operator's -f flag.
+			//nolint:gosec // path is provided by the operator.
 			f, err := os.Open(filepath)
 			if err != nil {
 				return fmt.Errorf("failed to open file \"%s\": %w", filepath, err)
 			}
 			defer func() {
 				if err := f.Close(); err != nil {
-					fmt.Fprintf(os.Stderr, "warning: failed to close file \"%s\": %v\n", filepath, err)
+					//nolint:errcheck // best-effort warning; no fallback if stderr fails
+					fmt.Fprintf(cmd.ErrOrStderr(), "warning: failed to close file \"%s\": %v\n", filepath, err)
 				}
 			}()
 
@@ -53,9 +56,10 @@ func newSRPolicyAddCmd() *cobra.Command {
 				return fmt.Errorf("YAML syntax error in file \"%s\": %w", filepath, err)
 			}
 
-			if err := addSRPolicy(inputData, jsonFmt, noSIDValidateFlag); err != nil {
+			if err := addSRPolicy(cmd.OutOrStdout(), cmd.ErrOrStderr(), inputData, c.jsonFmt, noSIDValidateFlag, c.client); err != nil {
 				return fmt.Errorf("failed to add SR policy: %w", err)
 			}
+
 			return nil
 		},
 	}
@@ -97,33 +101,49 @@ type inputFormat struct {
 	ASN      uint32   `yaml:"asn"`
 }
 
-func addSRPolicy(input inputFormat, jsonFlag bool, noSIDValidate bool) error {
+const (
+	srPolicyTypeExplicit = "explicit"
+	srPolicyTypeDynamic  = "dynamic"
+)
+
+const (
+	metricTypeIGP      = "igp"
+	metricTypeDelay    = "delay"
+	metricTypeTE       = "te"
+	metricTypeHopcount = "hopcount"
+)
+
+func addSRPolicy(out, errOut io.Writer, input inputFormat, jsonFlag, noSIDValidate bool, client pb.PCEServiceClient) error {
 	if noSIDValidate {
-		fmt.Fprintln(os.Stderr, "warning: skipping SID validation (--no-sid-validate)")
+		if _, err := fmt.Fprintln(errOut, "warning: skipping SID validation (--no-sid-validate)"); err != nil {
+			return err
+		}
 	}
 
 	usesRouterID := input.SRPolicy.SrcRouterID != "" || input.SRPolicy.DstRouterID != ""
+
 	usesEndpointAddr := input.SRPolicy.SrcAddr.IsValid() || input.SRPolicy.DstAddr.IsValid()
 	if usesRouterID && usesEndpointAddr {
 		return errors.New("srcRouterID / dstRouterID and srcAddr / dstAddr are mutually exclusive, use one form only")
 	}
 
 	if usesRouterID {
-		if err := addSRPolicyWithRouterID(input, noSIDValidate); err != nil {
+		if err := addSRPolicyWithRouterID(input, noSIDValidate, client); err != nil {
 			return translateCreateSRPolicyError(err)
 		}
 	} else {
-		if err := addSRPolicyWithEndpointAddr(input, noSIDValidate); err != nil {
+		if err := addSRPolicyWithEndpointAddr(input, noSIDValidate, client); err != nil {
 			return translateCreateSRPolicyError(err)
 		}
 	}
 
 	if jsonFlag {
-		return writeJSON(os.Stdout, statusResult{Status: "success"})
+		return writeJSON(out, statusResult{Status: statusSuccess})
 	}
-	fmt.Printf("success!\n")
 
-	return nil
+	_, err := fmt.Fprintln(out, "success!")
+
+	return err
 }
 
 // translateCreateSRPolicyError converts gRPC errors into CLI-friendly messages.
@@ -139,7 +159,8 @@ func translateCreateSRPolicyError(err error) error {
 		if !ok {
 			continue
 		}
-		switch info.Reason {
+
+		switch info.GetReason() {
 		case reasonSIDValidationFailed:
 			return fmt.Errorf("%s\n  hint: use --no-sid-validate to provision without validation", msg)
 		case reasonTEDDisabled:
@@ -156,13 +177,15 @@ func translateCreateSRPolicyError(err error) error {
 			return fmt.Errorf("%s\n  hint: the requested metric type is not advertised on this topology", msg)
 		}
 	}
+
 	return errors.New(msg)
 }
 
-func addSRPolicyWithEndpointAddr(input inputFormat, noSIDValidate bool) error {
-	if input.SRPolicy.Type != "" && input.SRPolicy.Type != "explicit" {
+func addSRPolicyWithEndpointAddr(input inputFormat, noSIDValidate bool, client pb.PCEServiceClient) error {
+	if input.SRPolicy.Type != "" && input.SRPolicy.Type != srPolicyTypeExplicit {
 		return fmt.Errorf("the srcAddr / dstAddr form supports `type: explicit` only, got %q", input.SRPolicy.Type)
 	}
+
 	if input.SRPolicy.Metric != "" || len(input.SRPolicy.Waypoints) > 0 {
 		return errors.New("`metric` and `waypoints` require a dynamic path, which the srcAddr / dstAddr form does not support")
 	}
@@ -183,10 +206,12 @@ func addSRPolicyWithEndpointAddr(input inputFormat, noSIDValidate bool) error {
 			sampleInput +
 			"or, to resolve endpoints from the TED by router ID instead,\n" +
 			"use the srcRouterID / dstRouterID form\n"
+
 		return errors.New(errMsg)
 	}
 
 	segmentList := []*pb.Segment{}
+
 	for _, segment := range input.SRPolicy.SegmentList {
 		pbSeg := &pb.Segment{
 			Sid:          segment.SID,
@@ -196,6 +221,7 @@ func addSRPolicyWithEndpointAddr(input inputFormat, noSIDValidate bool) error {
 		}
 		segmentList = append(segmentList, pbSeg)
 	}
+
 	srPolicy := &pb.SRPolicy{
 		PeerAddr:    input.SRPolicy.PCEPSessionAddr.AsSlice(),
 		SrcAddr:     input.SRPolicy.SrcAddr.AsSlice(),
@@ -212,18 +238,22 @@ func addSRPolicyWithEndpointAddr(input inputFormat, noSIDValidate bool) error {
 		DisablePathCompute: true,
 		NoSidValidate:      noSIDValidate,
 	}
-	return grpc.CreateSRPolicy(client, request)
+
+	if err := grpc.CreateSRPolicy(client, request); err != nil {
+		return fmt.Errorf("failed to create SR policy: %w", err)
+	}
+
+	return nil
 }
 
-func addSRPolicyWithRouterID(input inputFormat, noSIDValidate bool) error {
+func addSRPolicyWithRouterID(input inputFormat, noSIDValidate bool, client pb.PCEServiceClient) error {
 	sampleInputDynamic, sampleInputExplicit := sampleInputs()
 
 	if err := validateCommonInput(input, sampleInputDynamic, sampleInputExplicit); err != nil {
 		return err
 	}
 
-	srPolicyType, metric, segmentList, waypoints, err :=
-		buildPolicyByType(input, sampleInputDynamic, sampleInputExplicit)
+	spec, err := buildPolicyByType(input, sampleInputDynamic, sampleInputExplicit)
 	if err != nil {
 		return err
 	}
@@ -234,10 +264,10 @@ func addSRPolicyWithRouterID(input inputFormat, noSIDValidate bool) error {
 		DstRouterId: input.SRPolicy.DstRouterID,
 		Color:       input.SRPolicy.Color,
 		PolicyName:  input.SRPolicy.Name,
-		Type:        srPolicyType,
-		SegmentList: segmentList,
-		Metric:      metric,
-		Waypoints:   waypoints,
+		Type:        spec.Type,
+		SegmentList: spec.Segments,
+		Metric:      spec.Metric,
+		Waypoints:   spec.Waypoints,
 	}
 
 	req := &pb.CreateSRPolicyRequest{
@@ -246,7 +276,11 @@ func addSRPolicyWithRouterID(input inputFormat, noSIDValidate bool) error {
 		NoSidValidate: noSIDValidate,
 	}
 
-	return grpc.CreateSRPolicy(client, req)
+	if err := grpc.CreateSRPolicy(client, req); err != nil {
+		return fmt.Errorf("failed to create SR policy: %w", err)
+	}
+
+	return nil
 }
 
 func sampleInputs() (dynamic, explicit string) {
@@ -274,7 +308,7 @@ func sampleInputs() (dynamic, explicit string) {
 		"    - sid: 16003\n" +
 		"    - sid: 16002\n"
 
-	return
+	return dynamic, explicit
 }
 
 func validateCommonInput(input inputFormat, sampleDynamic, sampleExplicit string) error {
@@ -283,7 +317,6 @@ func validateCommonInput(input inputFormat, sampleDynamic, sampleExplicit string
 		input.SRPolicy.Color == 0 ||
 		input.SRPolicy.SrcRouterID == "" ||
 		input.SRPolicy.DstRouterID == "" {
-
 		return errors.New(
 			"invalid input\n" +
 				"input example is below\n\n" +
@@ -293,41 +326,33 @@ func validateCommonInput(input inputFormat, sampleDynamic, sampleExplicit string
 				"use the srcAddr / dstAddr form\n",
 		)
 	}
+
 	return nil
 }
 
-func buildPolicyByType(
-	input inputFormat,
-	sampleDynamic, sampleExplicit string,
-) (
-	pb.SRPolicyType,
-	pb.MetricType,
-	[]*pb.Segment,
-	[]*pb.Waypoint,
-	error,
-) {
+// policySpec is the outcome of translating YAML input into the fields of a
+// pb.SRPolicy that depend on the policy's type (explicit vs. dynamic).
+type policySpec struct {
+	Type      pb.SRPolicyType
+	Metric    pb.MetricType
+	Segments  []*pb.Segment
+	Waypoints []*pb.Waypoint
+}
+
+func buildPolicyByType(input inputFormat, sampleDynamic, sampleExplicit string) (policySpec, error) {
 	switch input.SRPolicy.Type {
-	case "explicit":
+	case srPolicyTypeExplicit:
 		return buildExplicitPolicy(input, sampleExplicit)
-	case "dynamic":
+	case srPolicyTypeDynamic:
 		return buildDynamicPolicy(input, sampleDynamic)
 	default:
-		return 0, 0, nil, nil, errors.New("invalid input `type`")
+		return policySpec{}, errors.New("invalid input `type`")
 	}
 }
 
-func buildExplicitPolicy(
-	input inputFormat,
-	sampleExplicit string,
-) (
-	pb.SRPolicyType,
-	pb.MetricType,
-	[]*pb.Segment,
-	[]*pb.Waypoint,
-	error,
-) {
+func buildExplicitPolicy(input inputFormat, sampleExplicit string) (policySpec, error) {
 	if len(input.SRPolicy.SegmentList) == 0 {
-		return 0, 0, nil, nil, errors.New(
+		return policySpec{}, errors.New(
 			"invalid input\n" +
 				"input example is below\n\n" +
 				sampleExplicit,
@@ -344,21 +369,12 @@ func buildExplicitPolicy(
 		})
 	}
 
-	return pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT, 0, segments, nil, nil
+	return policySpec{Type: pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT, Segments: segments}, nil
 }
 
-func buildDynamicPolicy(
-	input inputFormat,
-	sampleDynamic string,
-) (
-	pb.SRPolicyType,
-	pb.MetricType,
-	[]*pb.Segment,
-	[]*pb.Waypoint,
-	error,
-) {
+func buildDynamicPolicy(input inputFormat, sampleDynamic string) (policySpec, error) {
 	if input.SRPolicy.Metric == "" {
-		return 0, 0, nil, nil, errors.New(
+		return policySpec{}, errors.New(
 			"invalid input\n" +
 				"input example is below\n\n" +
 				sampleDynamic,
@@ -367,7 +383,7 @@ func buildDynamicPolicy(
 
 	metric, err := parseMetric(input.SRPolicy.Metric)
 	if err != nil {
-		return 0, 0, nil, nil, err
+		return policySpec{}, err
 	}
 
 	var waypoints []*pb.Waypoint
@@ -378,18 +394,18 @@ func buildDynamicPolicy(
 		})
 	}
 
-	return pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC, metric, nil, waypoints, nil
+	return policySpec{Type: pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC, Metric: metric, Waypoints: waypoints}, nil
 }
 
 func parseMetric(metric string) (pb.MetricType, error) {
 	switch metric {
-	case "igp":
+	case metricTypeIGP:
 		return pb.MetricType_METRIC_TYPE_IGP, nil
-	case "delay":
+	case metricTypeDelay:
 		return pb.MetricType_METRIC_TYPE_DELAY, nil
-	case "te":
+	case metricTypeTE:
 		return pb.MetricType_METRIC_TYPE_TE, nil
-	case "hopcount":
+	case metricTypeHopcount:
 		return pb.MetricType_METRIC_TYPE_HOPCOUNT, nil
 	default:
 		return 0, errors.New("invalid input `metric`")

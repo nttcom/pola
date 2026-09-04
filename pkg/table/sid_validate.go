@@ -3,6 +3,7 @@
 // This software is released under the MIT License.
 // see https://github.com/nttcom/pola/blob/main/LICENSE
 
+// Package table provides the in-memory Traffic Engineering Database (TED) and SR Policy tables.
 package table
 
 import (
@@ -66,14 +67,17 @@ func NewSIDIndex(ted *LsTED) *SIDIndex {
 	if ted == nil {
 		return idx
 	}
+
 	for _, node := range ted.Nodes {
 		if node == nil {
 			continue
 		}
+
 		idx.addNodePrefixSIDs(node)
 		idx.addLinkSIDs(node)
 		idx.addSRv6NodeSIDs(node)
 	}
+
 	return idx
 }
 
@@ -83,10 +87,12 @@ func (idx *SIDIndex) addNodePrefixSIDs(node *LsNode) {
 	if node.SrgbBegin == 0 {
 		return
 	}
+
 	for _, p := range node.Prefixes {
 		if !p.HasPrefixSID() {
 			continue
 		}
+
 		if label, ok := srgbLabel(node, p.SidIndex); ok {
 			idx.mplsSIDs[label] = struct{}{}
 			idx.mplsNodeSIDOwner[label] = node.RouterID
@@ -101,9 +107,11 @@ func srgbLabel(node *LsNode, sidIndex uint32) (uint32, bool) {
 	if label > uint64(MPLSLabelMax) {
 		return 0, false
 	}
+
 	if node.SrgbEnd > node.SrgbBegin && label >= uint64(node.SrgbEnd) {
 		return 0, false
 	}
+
 	return uint32(label), true
 }
 
@@ -113,21 +121,39 @@ func (idx *SIDIndex) addLinkSIDs(node *LsNode) {
 		if l == nil {
 			continue
 		}
-		if l.AdjSid != 0 {
-			idx.mplsSIDs[l.AdjSid] = struct{}{}
-			if l.RemoteNode != nil {
-				idx.mplsAdjSIDNextHop[adjKeyMPLS{node.RouterID, l.AdjSid}] = l.RemoteNode.RouterID
-			}
-		}
-		if l.Srv6EndXSID != nil {
-			idx.addSRv6(l.Srv6EndXSID.Sids, l.Srv6EndXSID.Srv6SIDStructure)
-			if l.RemoteNode != nil {
-				for _, s := range l.Srv6EndXSID.Sids {
-					if addr, err := netip.ParseAddr(s); err == nil {
-						idx.srv6AdjSIDNextHop[adjKeySRv6{node.RouterID, addr}] = l.RemoteNode.RouterID
-					}
-				}
-			}
+
+		idx.addAdjSID(node, l)
+		idx.addEndXSID(node, l)
+	}
+}
+
+// addAdjSID registers a link's SR-MPLS adjacency SID and its next hop.
+func (idx *SIDIndex) addAdjSID(node *LsNode, l *LsLink) {
+	if l.AdjSid == 0 {
+		return
+	}
+
+	idx.mplsSIDs[l.AdjSid] = struct{}{}
+	if l.RemoteNode != nil {
+		idx.mplsAdjSIDNextHop[adjKeyMPLS{node.RouterID, l.AdjSid}] = l.RemoteNode.RouterID
+	}
+}
+
+// addEndXSID registers a link's SRv6 End.X SIDs and their next hop.
+func (idx *SIDIndex) addEndXSID(node *LsNode, l *LsLink) {
+	if l.Srv6EndXSID == nil {
+		return
+	}
+
+	idx.addSRv6(l.Srv6EndXSID.Sids, l.Srv6EndXSID.Srv6SIDStructure)
+
+	if l.RemoteNode == nil {
+		return
+	}
+
+	for _, s := range l.Srv6EndXSID.Sids {
+		if addr, err := netip.ParseAddr(s); err == nil {
+			idx.srv6AdjSIDNextHop[adjKeySRv6{node.RouterID, addr}] = l.RemoteNode.RouterID
 		}
 	}
 }
@@ -137,6 +163,7 @@ func (idx *SIDIndex) addSRv6NodeSIDs(node *LsNode) {
 	for _, s := range node.SRv6SIDs {
 		if s != nil {
 			idx.addSRv6(s.Sids, s.SIDStructure)
+
 			for _, sidStr := range s.Sids {
 				if addr, err := netip.ParseAddr(sidStr); err == nil {
 					idx.srv6NodeSIDOwner[addr] = node.RouterID
@@ -149,15 +176,19 @@ func (idx *SIDIndex) addSRv6NodeSIDs(node *LsNode) {
 // addSRv6 registers exact SIDs and their locator prefixes.
 func (idx *SIDIndex) addSRv6(sids []string, st SIDStructure) {
 	locBits := int(st.LocalBlock) + int(st.LocalNode)
+
 	for _, s := range sids {
 		addr, err := netip.ParseAddr(s)
 		if err != nil || !addr.Is6() {
 			continue
 		}
+
 		idx.srv6SIDs[addr] = struct{}{}
+
 		if locBits <= 0 || locBits > SRv6SIDBitLength {
 			continue
 		}
+
 		if p, err := addr.Prefix(locBits); err == nil {
 			idx.srv6Locators[p] = struct{}{}
 		}
@@ -173,6 +204,7 @@ func (idx *SIDIndex) Has(seg Segment) bool {
 	case SegmentSRv6:
 		return idx.hasSRv6(s)
 	}
+
 	return false
 }
 
@@ -181,6 +213,7 @@ func (idx *SIDIndex) hasSRv6(s SegmentSRv6) bool {
 	if _, ok := idx.srv6SIDs[s.Sid]; ok {
 		return true
 	}
+
 	if !s.USid {
 		return false
 	}
@@ -189,6 +222,7 @@ func (idx *SIDIndex) hasSRv6(s SegmentSRv6) bool {
 	if len(s.Structure) == 4 {
 		locBits = int(s.Structure[0]) + int(s.Structure[1])
 	}
+
 	for loc := range idx.srv6Locators {
 		if !loc.Contains(s.Sid) {
 			continue
@@ -197,8 +231,10 @@ func (idx *SIDIndex) hasSRv6(s SegmentSRv6) bool {
 		if locBits > 0 && loc.Bits() > locBits {
 			continue
 		}
+
 		return true
 	}
+
 	return false
 }
 
@@ -225,19 +261,23 @@ func (idx *SIDIndex) nextHopMPLS(owner string, s SegmentSRMPLS) (string, error) 
 	if next, ok := idx.mplsNodeSIDOwner[s.Sid]; ok {
 		return next, nil
 	}
+
 	if owner == ownerUnknown {
 		if _, exists := idx.mplsSIDs[s.Sid]; exists {
 			return ownerUnknown, nil
 		}
+
 		return "", fmt.Errorf("SID %s not found in TED", s.SidString())
 	}
 	// Adjacency SID — must be on owner.
 	if next, ok := idx.mplsAdjSIDNextHop[adjKeyMPLS{owner, s.Sid}]; ok {
 		return next, nil
 	}
+
 	if _, exists := idx.mplsSIDs[s.Sid]; exists {
 		return "", fmt.Errorf("%s does not have adjacency SID %s", owner, s.SidString())
 	}
+
 	return "", fmt.Errorf("SID %s not found in TED", s.SidString())
 }
 
@@ -246,19 +286,23 @@ func (idx *SIDIndex) nextHopSRv6(owner string, s SegmentSRv6) (string, error) {
 	if next, ok := idx.srv6NodeSIDOwner[s.Sid]; ok {
 		return next, nil
 	}
+
 	if owner == ownerUnknown {
 		if idx.hasSRv6(s) {
 			return ownerUnknown, nil
 		}
+
 		return "", fmt.Errorf("SID %s not found in TED", s.SidString())
 	}
 	// Adjacency SID (End.X) — must be on owner.
 	if next, ok := idx.srv6AdjSIDNextHop[adjKeySRv6{owner, s.Sid}]; ok {
 		return next, nil
 	}
+
 	if idx.hasSRv6(s) {
 		return "", fmt.Errorf("%s does not have adjacency SID %s", owner, s.SidString())
 	}
+
 	return "", fmt.Errorf("SID %s not found in TED", s.SidString())
 }
 
@@ -270,9 +314,11 @@ func ValidateExplicitPath(ted *LsTED, srcRouterID string, segmentList []Segment)
 	if ted == nil {
 		return errors.New("TED is nil")
 	}
+
 	if srcRouterID == "" {
 		return errors.New("source router ID is empty")
 	}
+
 	if _, ok := ted.Nodes[srcRouterID]; !ok {
 		return fmt.Errorf("source router ID %s not found in TED", srcRouterID)
 	}
@@ -280,47 +326,59 @@ func ValidateExplicitPath(ted *LsTED, srcRouterID string, segmentList []Segment)
 	if len(segmentList) == 0 {
 		return nil
 	}
+
 	idx := NewSIDIndex(ted)
 	owner := srcRouterID
+
 	for i, seg := range segmentList {
 		if seg == nil {
 			return fmt.Errorf("hop %d: nil segment", i+1)
 		}
+
 		next, err := idx.NextHop(owner, seg)
 		if err != nil {
 			return fmt.Errorf("hop %d (%s): %w", i+1, seg.SidString(), err)
 		}
+
 		owner = next
 	}
+
 	return nil
 }
 
 // MissingSegments reports the segments not found in the TED.
 func MissingSegments(ted *LsTED, segmentList []Segment) []MissingSegment {
 	idx := NewSIDIndex(ted)
+
 	var missing []MissingSegment
+
 	for i, seg := range segmentList {
 		if seg == nil || !idx.Has(seg) {
 			sid := "<nil>"
 			if seg != nil {
 				sid = seg.SidString()
 			}
+
 			missing = append(missing, MissingSegment{Hop: i + 1, SID: sid})
 		}
 	}
+
 	return missing
 }
 
 // OutOfRangeSRMPLSLabels reports SR-MPLS segments with labels outside the 20-bit range.
 func OutOfRangeSRMPLSLabels(segmentList []Segment) []MissingSegment {
 	var invalid []MissingSegment
+
 	for i, segment := range segmentList {
 		seg, ok := segment.(SegmentSRMPLS)
 		if !ok || seg.Sid <= MPLSLabelMax {
 			continue
 		}
+
 		invalid = append(invalid, MissingSegment{Hop: i + 1, SID: seg.SidString()})
 	}
+
 	return invalid
 }
 
@@ -330,10 +388,12 @@ func HasUnknownSegmentType(segmentList []Segment) bool {
 		if segment == nil {
 			continue
 		}
+
 		if segmentFamily(segment) == SegmentUnknown {
 			return true
 		}
 	}
+
 	return false
 }
 

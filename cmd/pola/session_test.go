@@ -19,35 +19,50 @@ import (
 )
 
 func TestNewSessionCmd_RunE(t *testing.T) {
-	jsonFmt = false
-	cmd := newSessionCmd()
+	t.Parallel()
 
-	client = &fakePCEServiceClient{}
-	captureStdout(t, func() {
+	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+
+		cmd := newSessionCmd(&cli{client: &fakePCEServiceClient{}})
+
+		cmd.SetOut(&bytes.Buffer{})
 		require.NoError(t, cmd.RunE(cmd, []string{}))
 	})
 
-	client = &fakePCEServiceClient{sessionListErr: assert.AnError}
-	err := cmd.RunE(cmd, []string{})
-	require.ErrorIs(t, err, assert.AnError)
+	t.Run("gRPC error propagates", func(t *testing.T) {
+		t.Parallel()
+
+		cmd := newSessionCmd(&cli{client: &fakePCEServiceClient{
+			sessionListErr: assert.AnError,
+		}})
+
+		err := cmd.RunE(cmd, []string{})
+		require.ErrorIs(t, err, assert.AnError)
+	})
 }
 
 func TestNewSessionCmd_PassesParsedArgs(t *testing.T) {
-	jsonFmt = false
-	cmd := newSessionCmd()
-	client = &fakePCEServiceClient{}
+	t.Parallel()
 
-	captureStdout(t, func() {
-		require.NoError(t, cmd.RunE(cmd, []string{"192.0.2.1", "detail"}))
-	})
+	c := &cli{}
+	cmd := newSessionCmd(c)
+	c.client = &fakePCEServiceClient{}
 
-	require.NotNil(t, client.(*fakePCEServiceClient).sessionListReq)
-	req := client.(*fakePCEServiceClient).sessionListReq
-	assert.Equal(t, netip.MustParseAddr("192.0.2.1").AsSlice(), req.GetPeerAddr())
+	cmd.SetOut(&bytes.Buffer{})
+	require.NoError(t, cmd.RunE(cmd, []string{testPeerAddr1, sessionDetailArg}))
+
+	fakeClient, ok := c.client.(*fakePCEServiceClient)
+	require.True(t, ok)
+	require.NotNil(t, fakeClient.sessionListReq)
+	req := fakeClient.sessionListReq
+	assert.Equal(t, netip.MustParseAddr(testPeerAddr1).AsSlice(), req.GetPeerAddr())
 	assert.True(t, req.GetIncludeStats())
 }
 
 func TestParseSessionArgs(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name       string
 		args       []string
@@ -56,28 +71,33 @@ func TestParseSessionArgs(t *testing.T) {
 		wantErr    bool
 	}{
 		{name: "no args", args: []string{}},
-		{name: "addr only", args: []string{"192.0.2.1"}, wantAddr: "192.0.2.1"},
-		{name: "detail only", args: []string{"detail"}, wantDetail: true},
-		{name: "addr then detail", args: []string{"192.0.2.1", "detail"}, wantAddr: "192.0.2.1", wantDetail: true},
-		{name: "detail then addr", args: []string{"detail", "192.0.2.1"}, wantAddr: "192.0.2.1", wantDetail: true},
+		{name: "addr only", args: []string{testPeerAddr1}, wantAddr: testPeerAddr1},
+		{name: "detail only", args: []string{sessionDetailArg}, wantDetail: true},
+		{name: "addr then detail", args: []string{testPeerAddr1, sessionDetailArg}, wantAddr: testPeerAddr1, wantDetail: true},
+		{name: "detail then addr", args: []string{sessionDetailArg, testPeerAddr1}, wantAddr: testPeerAddr1, wantDetail: true},
 		{name: "invalid address", args: []string{"not-an-addr"}, wantErr: true},
-		{name: "duplicate detail", args: []string{"detail", "detail"}, wantErr: true},
-		{name: "two addresses", args: []string{"192.0.2.1", "192.0.2.2"}, wantErr: true},
+		{name: "duplicate detail", args: []string{sessionDetailArg, sessionDetailArg}, wantErr: true},
+		{name: "two addresses", args: []string{testPeerAddr1, testPeerAddr2}, wantErr: true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			addr, detail, err := parseSessionArgs(tt.args)
 			if tt.wantErr {
 				require.Error(t, err)
 				return
 			}
+
 			require.NoError(t, err)
+
 			if tt.wantAddr == "" {
 				assert.False(t, addr.IsValid())
 			} else {
 				assert.Equal(t, netip.MustParseAddr(tt.wantAddr), addr)
 			}
+
 			assert.Equal(t, tt.wantDetail, detail)
 		})
 	}
@@ -85,7 +105,7 @@ func TestParseSessionArgs(t *testing.T) {
 
 func sessionFixture() *pb.Session {
 	return &pb.Session{
-		PeerAddr:       netip.MustParseAddr("192.0.2.1").AsSlice(),
+		PeerAddr:       netip.MustParseAddr(testPeerAddr1).AsSlice(),
 		State:          pb.SessionState_SESSION_STATE_UP,
 		LocalSessionId: proto.Uint32(1),
 		PeerSessionId:  proto.Uint32(7),
@@ -122,10 +142,12 @@ func sessionFixture() *pb.Session {
 }
 
 func TestShowSession_Text(t *testing.T) {
-	client = &fakePCEServiceClient{sessionListResp: &pb.GetSessionListResponse{Sessions: []*pb.Session{sessionFixture()}}}
+	t.Parallel()
+
+	client := &fakePCEServiceClient{sessionListResp: &pb.GetSessionListResponse{Sessions: []*pb.Session{sessionFixture()}}}
 
 	var buf bytes.Buffer
-	require.NoError(t, showSession(&buf, netip.Addr{}, true, outputText))
+	require.NoError(t, showSession(&buf, netip.Addr{}, true, outputText, client))
 	out := buf.String()
 
 	assert.Contains(t, out, "Session #0: 192.0.2.1")
@@ -143,6 +165,8 @@ func TestShowSession_Text(t *testing.T) {
 }
 
 func TestShowSession_Text_CapabilityGrouping(t *testing.T) {
+	t.Parallel()
+
 	fixture := sessionFixture()
 	assocTypeList := &pb.Capability{
 		Type: pb.CapabilityType_CAPABILITY_TYPE_ASSOC_TYPE_LIST,
@@ -155,52 +179,54 @@ func TestShowSession_Text_CapabilityGrouping(t *testing.T) {
 		Detail: &pb.Capability_Unknown{Unknown: &pb.UnknownCapability{TlvType: 73}},
 	}
 	fixture.LocalCapabilities = []*pb.Capability{
-		fixture.LocalCapabilities[0], // STATEFUL
+		fixture.GetLocalCapabilities()[0], // STATEFUL
 		{Type: pb.CapabilityType_CAPABILITY_TYPE_SR, Detail: &pb.Capability_Sr{Sr: &pb.SrCapability{Msd: proto.Uint32(10)}}},
 		assocTypeList,
 		unknownTLV,
 	}
 	fixture.PeerCapabilities = []*pb.Capability{
-		fixture.PeerCapabilities[0], // STATEFUL
+		fixture.GetPeerCapabilities()[0], // STATEFUL
 		{Type: pb.CapabilityType_CAPABILITY_TYPE_SR, Detail: &pb.Capability_Sr{Sr: &pb.SrCapability{Msd: proto.Uint32(10)}}},
 		assocTypeList,
 		unknownTLV,
 	}
 
-	client = &fakePCEServiceClient{sessionListResp: &pb.GetSessionListResponse{Sessions: []*pb.Session{fixture}}}
+	client := &fakePCEServiceClient{sessionListResp: &pb.GetSessionListResponse{Sessions: []*pb.Session{fixture}}}
 
 	var buf bytes.Buffer
-	require.NoError(t, showSession(&buf, netip.Addr{}, true, outputText))
+	require.NoError(t, showSession(&buf, netip.Addr{}, true, outputText, client))
 	out := buf.String()
 
 	assert.Contains(t, out, "      ASSOC-TYPE-LIST [RFC8697]:\n"+
-		"        2 Disjoint Association\n"+
-		"        3 Policy Association\n"+
-		"        5 Double Sided Bidirectional LSP Association\n"+
-		"        6 SR Policy Association\n"+
-		"        9 P2MP SR Policy Association (draft)\n")
+		"        Disjoint Association (0x0002) [RFC8800]\n"+
+		"        Policy Association (0x0003) [RFC9005]\n"+
+		"        Double Sided Bidirectional LSP Association (0x0005) [RFC9059]\n"+
+		"        SR Policy Association (0x0006) [RFC9862]\n"+
+		"        P2MP SR Policy Association (0x0009) [draft-ietf-pce-sr-p2mp-policy-11]\n")
 	assert.Contains(t, out, "      Unrecognized TLVs:\n"+
 		"        type=73: SR-P2MP-POLICY-CAPABILITY (draft-ietf-pce-sr-p2mp-policy-11)\n")
 	assert.Contains(t, out, "Local only:        -\n")
 	assert.Contains(t, out, "Peer only:         -\n")
-	assert.NotContains(t, out, "ASSOC-TYPE-LIST [RFC8697]: 2 Disjoint Association")
+	assert.NotContains(t, out, "ASSOC-TYPE-LIST [RFC8697]: Disjoint Association (0x0002)")
 }
 
 func TestShowSession_JSON(t *testing.T) {
-	client = &fakePCEServiceClient{sessionListResp: &pb.GetSessionListResponse{Sessions: []*pb.Session{sessionFixture()}}}
+	t.Parallel()
+
+	client := &fakePCEServiceClient{sessionListResp: &pb.GetSessionListResponse{Sessions: []*pb.Session{sessionFixture()}}}
 
 	var buf bytes.Buffer
-	require.NoError(t, showSession(&buf, netip.Addr{}, false, outputJSON))
+	require.NoError(t, showSession(&buf, netip.Addr{}, false, outputJSON, client))
 
 	var decoded []map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &decoded))
 	require.Len(t, decoded, 1)
 
 	summary := decoded[0]
-	assert.Equal(t, "192.0.2.1", summary["peerAddress"])
+	assert.Equal(t, testPeerAddr1, summary["peerAddress"])
 	assert.Equal(t, "up", summary["state"])
 	assert.Equal(t, "finished", summary["lspDbSync"])
-	assert.Equal(t, "active-stateful-pce", summary["role"])
+	assert.Equal(t, roleActiveStatefulPCE, summary["role"])
 
 	// Summary output must not include detail-only fields.
 	assert.NotContains(t, summary, "sessionCreation")
@@ -209,11 +235,13 @@ func TestShowSession_JSON(t *testing.T) {
 }
 
 func TestShowSession_JSONDetailAddsWithoutChangingSummaryKeys(t *testing.T) {
-	client = &fakePCEServiceClient{sessionListResp: &pb.GetSessionListResponse{Sessions: []*pb.Session{sessionFixture()}}}
+	t.Parallel()
+
+	client := &fakePCEServiceClient{sessionListResp: &pb.GetSessionListResponse{Sessions: []*pb.Session{sessionFixture()}}}
 
 	var summaryBuf, detailBuf bytes.Buffer
-	require.NoError(t, showSession(&summaryBuf, netip.Addr{}, false, outputJSON))
-	require.NoError(t, showSession(&detailBuf, netip.Addr{}, true, outputJSON))
+	require.NoError(t, showSession(&summaryBuf, netip.Addr{}, false, outputJSON, client))
+	require.NoError(t, showSession(&detailBuf, netip.Addr{}, true, outputJSON, client))
 
 	var summary, detail []map[string]any
 	require.NoError(t, json.Unmarshal(summaryBuf.Bytes(), &summary))
@@ -224,6 +252,7 @@ func TestShowSession_JSONDetailAddsWithoutChangingSummaryKeys(t *testing.T) {
 	for k, v := range summary[0] {
 		assert.Equal(t, v, detail[0][k], "detail must not change summary key %q", k)
 	}
+
 	assert.Contains(t, detail[0], "sessionCreation")
 	assert.Contains(t, detail[0], "initiator")
 	assert.Contains(t, detail[0], "lspDbSync")
@@ -231,13 +260,15 @@ func TestShowSession_JSONDetailAddsWithoutChangingSummaryKeys(t *testing.T) {
 }
 
 func TestShowSession_AdvertisedValuesUnsetBeforeOpenExchange(t *testing.T) {
-	client = &fakePCEServiceClient{sessionListResp: &pb.GetSessionListResponse{Sessions: []*pb.Session{{
-		PeerAddr: netip.MustParseAddr("192.0.2.1").AsSlice(),
+	t.Parallel()
+
+	client := &fakePCEServiceClient{sessionListResp: &pb.GetSessionListResponse{Sessions: []*pb.Session{{
+		PeerAddr: netip.MustParseAddr(testPeerAddr1).AsSlice(),
 		State:    pb.SessionState_SESSION_STATE_OPEN_WAIT,
 	}}}}
 
 	var buf bytes.Buffer
-	require.NoError(t, showSession(&buf, netip.Addr{}, false, outputText))
+	require.NoError(t, showSession(&buf, netip.Addr{}, false, outputText, client))
 	out := buf.String()
 
 	assert.Contains(t, out, "State:             open-wait")
@@ -246,57 +277,70 @@ func TestShowSession_AdvertisedValuesUnsetBeforeOpenExchange(t *testing.T) {
 }
 
 func TestShowSession_SessionIDZeroDistinguishedFromUnset(t *testing.T) {
-	client = &fakePCEServiceClient{sessionListResp: &pb.GetSessionListResponse{Sessions: []*pb.Session{{
-		PeerAddr:       netip.MustParseAddr("192.0.2.1").AsSlice(),
+	t.Parallel()
+
+	client := &fakePCEServiceClient{sessionListResp: &pb.GetSessionListResponse{Sessions: []*pb.Session{{
+		PeerAddr:       netip.MustParseAddr(testPeerAddr1).AsSlice(),
 		State:          pb.SessionState_SESSION_STATE_UP,
 		LocalSessionId: proto.Uint32(0),
 		PeerSessionId:  proto.Uint32(0),
 	}}}}
 
 	var buf bytes.Buffer
-	require.NoError(t, showSession(&buf, netip.Addr{}, false, outputText))
+	require.NoError(t, showSession(&buf, netip.Addr{}, false, outputText, client))
 	assert.Contains(t, buf.String(), "Session ID:        Local=0, Peer=0")
 }
 
 func TestShowSession_NoSessionsText(t *testing.T) {
-	client = &fakePCEServiceClient{sessionListResp: &pb.GetSessionListResponse{}}
+	t.Parallel()
+
+	client := &fakePCEServiceClient{sessionListResp: &pb.GetSessionListResponse{}}
 
 	var buf bytes.Buffer
-	require.NoError(t, showSession(&buf, netip.Addr{}, false, outputText))
+	require.NoError(t, showSession(&buf, netip.Addr{}, false, outputText, client))
 	assert.Equal(t, "No PCEP sessions connected.\n", buf.String())
 }
 
 func TestShowSession_NoSessionForAddrText(t *testing.T) {
-	client = &fakePCEServiceClient{sessionListResp: &pb.GetSessionListResponse{}}
+	t.Parallel()
+
+	client := &fakePCEServiceClient{sessionListResp: &pb.GetSessionListResponse{}}
 	addr := netip.MustParseAddr("192.0.2.9")
 
 	var buf bytes.Buffer
-	require.NoError(t, showSession(&buf, addr, false, outputText))
+	require.NoError(t, showSession(&buf, addr, false, outputText, client))
 	assert.Equal(t, "No PCEP session for 192.0.2.9.\n", buf.String())
 }
 
 func TestShowSession_NoSessionsJSON(t *testing.T) {
-	client = &fakePCEServiceClient{sessionListResp: &pb.GetSessionListResponse{}}
+	t.Parallel()
+
+	client := &fakePCEServiceClient{sessionListResp: &pb.GetSessionListResponse{}}
 
 	var buf bytes.Buffer
-	require.NoError(t, showSession(&buf, netip.Addr{}, false, outputJSON))
+	require.NoError(t, showSession(&buf, netip.Addr{}, false, outputJSON, client))
 	assert.Equal(t, "[]\n", buf.String())
 }
 
 func TestShowSession_GRPCErrorPropagates(t *testing.T) {
-	client = &fakePCEServiceClient{sessionListErr: assert.AnError}
+	t.Parallel()
+
+	client := &fakePCEServiceClient{sessionListErr: assert.AnError}
+
 	var buf bytes.Buffer
-	err := showSession(&buf, netip.Addr{}, false, outputText)
+
+	err := showSession(&buf, netip.Addr{}, false, outputText, client)
 	require.ErrorIs(t, err, assert.AnError)
 }
 
 func TestShowSession_PassesAddrFilterAndDetailFlag(t *testing.T) {
+	t.Parallel()
+
 	fake := &fakePCEServiceClient{sessionListResp: &pb.GetSessionListResponse{}}
-	client = fake
-	addr := netip.MustParseAddr("192.0.2.1")
+	addr := netip.MustParseAddr(testPeerAddr1)
 
 	var buf bytes.Buffer
-	require.NoError(t, showSession(&buf, addr, true, outputText))
+	require.NoError(t, showSession(&buf, addr, true, outputText, fake))
 
 	require.NotNil(t, fake.sessionListReq)
 	assert.Equal(t, addr.AsSlice(), fake.sessionListReq.GetPeerAddr())

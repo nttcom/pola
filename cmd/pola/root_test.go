@@ -14,12 +14,15 @@ import (
 )
 
 func TestNewRootCmd_Structure(t *testing.T) {
+	t.Parallel()
+
 	cmd := newRootCmd()
 
-	var names []string
+	names := make([]string, 0, len(cmd.Commands()))
 	for _, c := range cmd.Commands() {
 		names = append(names, c.Name())
 	}
+
 	assert.ElementsMatch(t, []string{"session", "sr-policy", "ted"}, names)
 
 	assert.Equal(t, "false", cmd.PersistentFlags().Lookup("json").DefValue)
@@ -28,26 +31,42 @@ func TestNewRootCmd_Structure(t *testing.T) {
 }
 
 func TestPersistentPreRunE(t *testing.T) {
-	t.Run("success sets the package client", func(t *testing.T) {
-		client = nil
+	t.Parallel()
+
+	t.Run("success sets the client", func(t *testing.T) {
+		t.Parallel()
+
+		c := &cli{}
 		cmd := newRootCmd()
-		require.NoError(t, cmd.PersistentPreRunE(cmd, []string{}))
-		assert.NotNil(t, client)
+		require.NoError(t, persistentPreRunE(c)(cmd, []string{}))
+		assert.NotNil(t, c.client)
 	})
 
 	t.Run("malformed host is rejected before dialing", func(t *testing.T) {
+		t.Parallel()
+
+		c := &cli{}
 		cmd := newRootCmd()
 		require.NoError(t, cmd.PersistentFlags().Set("host", "bad%zzhost"))
-		err := cmd.PersistentPreRunE(cmd, []string{})
+		err := persistentPreRunE(c)(cmd, []string{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to dial polad connection")
 	})
 }
 
 func TestRunRootCmd_PrintsHelp(t *testing.T) {
+	t.Parallel()
+
 	cmd := newRootCmd()
 	buf := &bytes.Buffer{}
 	cmd.SetOut(buf)
 	runRootCmd(cmd, []string{})
 	assert.Contains(t, buf.String(), "Usage:")
+}
+
+func TestMainRun_VersionFprintf_Error(t *testing.T) {
+	t.Parallel()
+
+	code := mainRun([]string{"--version"}, erroringWriter{}, &bytes.Buffer{})
+	assert.Equal(t, 1, code)
 }

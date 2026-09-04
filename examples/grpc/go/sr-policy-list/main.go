@@ -25,6 +25,7 @@ const requestTimeout = 10 * time.Second
 
 func main() {
 	serverAddr := flag.String("server", "localhost:50051", "address of the polad gRPC server")
+
 	flag.Parse()
 
 	conn, err := grpc.NewClient(
@@ -34,7 +35,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("unable to connect to %s: %v", *serverAddr, err)
 	}
-	defer func() { _ = conn.Close() }()
+	defer func() { _ = conn.Close() }() //nolint:errcheck // best-effort cleanup
 
 	c := pb.NewPCEServiceClient(conn)
 
@@ -43,16 +44,19 @@ func main() {
 
 	ret, err := c.GetSRPolicyList(ctx, &pb.GetSRPolicyListRequest{})
 	if err != nil {
-		log.Fatalf("unable to get SR policy list from server: %v", err)
+		log.Fatalf("unable to get SR policy list from server: %v", err) //nolint:gocritic // main exits immediately.
 	}
 
 	i := 0
+
 	for _, session := range ret.GetSessions() {
 		peerAddr := formatAddr(session.GetPeerAddr())
 		fmt.Printf("session: %s (state: %s, syncState: %s)\n", peerAddr, session.GetState(), session.GetSyncState())
+
 		for _, srPolicy := range session.GetSrPolicies() {
 			fmt.Printf("srPolicy(%d):\n", i)
 			i++
+
 			fmt.Printf("  peerAddr: %s\n", peerAddr)
 			fmt.Printf("  policyName: %s\n", srPolicy.GetPolicyName())
 			fmt.Printf("  srcAddr: %s\n", formatAddr(srPolicy.GetSrcAddr()))
@@ -70,6 +74,7 @@ func formatAddr(b []byte) string {
 	if !ok {
 		return fmt.Sprintf("invalid (%v)", b)
 	}
+
 	return addr.String()
 }
 
@@ -82,6 +87,7 @@ func formatSegmentList(segmentList []*pb.Segment) string {
 	for _, segment := range segmentList {
 		sids = append(sids, formatSegment(segment))
 	}
+
 	return strings.Join(sids, " -> ")
 }
 

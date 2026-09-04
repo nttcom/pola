@@ -48,17 +48,19 @@ func decodeTLVLength(data []byte, allowPadding bool) (int, error) {
 	return length, nil
 }
 
-func paddedLength(n int, align int) int {
+func paddedLength(n, align int) int {
 	if n%align == 0 {
 		return n
 	}
+
 	return n + (align - (n % align))
 }
 
 func tlvValueLength(n int) (uint16, error) {
-	if n > math.MaxUint16 {
-		return 0, fmt.Errorf("PCEP TLV value length %d exceeds %d", n, math.MaxUint16)
+	if n < 0 || n > math.MaxUint16 {
+		return 0, fmt.Errorf("PCEP TLV value length %d is outside the range 0..%d", n, math.MaxUint16)
 	}
+
 	return uint16(n), nil
 }
 
@@ -72,10 +74,12 @@ func isIPv4Bytes(b []byte) bool {
 	if len(b) != IPv6AddrLen {
 		return false
 	}
+
 	for i := range IPv4InIPv6Offset {
 		if b[i] != 0 {
 			return false
 		}
 	}
+
 	return true
 }

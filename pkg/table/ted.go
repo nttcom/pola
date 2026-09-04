@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/netip"
 )
 
@@ -35,12 +36,14 @@ func (ted *LsTED) RouterIDIndex() map[netip.Addr]string {
 		if node == nil {
 			continue
 		}
+
 		for _, prefix := range node.Prefixes {
 			if prefix.Prefix.Bits() == prefix.Prefix.Addr().BitLen() {
 				index[prefix.Prefix.Addr()] = node.RouterID
 			}
 		}
 	}
+
 	return index
 }
 
@@ -49,15 +52,19 @@ func (ted *LsTED) AddressRouterIDIndex() map[netip.Addr]string {
 	if ted == nil {
 		return nil
 	}
+
 	index := make(map[netip.Addr]string)
+
 	for routerID, node := range ted.Nodes {
 		if node == nil {
 			continue
 		}
+
 		for _, prefix := range node.Prefixes {
 			index[prefix.Prefix.Addr()] = routerID
 		}
 	}
+
 	return index
 }
 
@@ -67,107 +74,150 @@ func (ted *LsTED) FindRouterIDByLoopback(addr netip.Addr) (string, bool) {
 	return routerID, ok
 }
 
-// Print prints the TED, listing each node with its prefixes, links and SRv6 SIDs.
-func (ted *LsTED) Print() {
-	if ted == nil || ted.Nodes == nil {
-		fmt.Println("TED is empty")
+type errWriter struct {
+	w   io.Writer
+	err error
+}
+
+func (ew *errWriter) printf(format string, args ...any) {
+	if ew.err != nil {
 		return
 	}
 
-	printNodes(ted.Nodes)
+	_, ew.err = fmt.Fprintf(ew.w, format, args...)
+}
+
+func (ew *errWriter) println(args ...any) {
+	if ew.err != nil {
+		return
+	}
+
+	_, ew.err = fmt.Fprintln(ew.w, args...)
+}
+
+// Print writes the TED to w, listing each node with its prefixes, links and SRv6 SIDs.
+func (ted *LsTED) Print(w io.Writer) error {
+	ew := &errWriter{w: w}
+
+	if ted == nil || ted.Nodes == nil {
+		ew.println("TED is empty")
+		return ew.err
+	}
+
+	printNodes(ew, ted.Nodes)
+
+	return ew.err
 }
 
 // printNodes iterates over each node in the map and prints its details.
-func printNodes(nodes map[string]*LsNode) {
+func printNodes(ew *errWriter, nodes map[string]*LsNode) {
 	nodeCnt := 1
+
 	for nodeID, node := range nodes {
 		if node == nil {
 			continue
 		}
-		fmt.Printf("Node: %d\n", nodeCnt)
-		printNodeBasic(nodeID, node)
-		printNodePrefixes(node)
-		printNodeLinks(node)
-		printNodeSRv6SIDs(node)
-		fmt.Println()
+
+		ew.printf("Node: %d\n", nodeCnt)
+		printNodeBasic(ew, nodeID, node)
+		printNodePrefixes(ew, node)
+		printNodeLinks(ew, node)
+		printNodeSRv6SIDs(ew, node)
+		ew.println()
+
 		nodeCnt++
 	}
 }
 
 // printNodeBasic prints the basic information of a node.
-func printNodeBasic(nodeID string, node *LsNode) {
-	fmt.Printf("  %s\n", nodeID)
-	fmt.Printf("  Hostname: %s\n", node.Hostname)
-	fmt.Printf("  ISIS Area ID: %s\n", node.IsisAreaID)
-	fmt.Printf("  SRGB: %d - %d\n", node.SrgbBegin, node.SrgbEnd)
+func printNodeBasic(ew *errWriter, nodeID string, node *LsNode) {
+	ew.printf("  %s\n", nodeID)
+	ew.printf("  Hostname: %s\n", node.Hostname)
+	ew.printf("  ISIS Area ID: %s\n", node.IsisAreaID)
+	ew.printf("  SRGB: %d - %d\n", node.SrgbBegin, node.SrgbEnd)
 }
 
 // printNodePrefixes prints the prefixes associated with a node.
-func printNodePrefixes(node *LsNode) {
-	fmt.Println("  Prefixes:")
+func printNodePrefixes(ew *errWriter, node *LsNode) {
+	ew.println("  Prefixes:")
+
 	if node.Prefixes == nil {
 		return
 	}
+
 	for _, prefix := range node.Prefixes {
 		if prefix == nil {
 			continue
 		}
-		fmt.Printf("    %s\n", prefix.Prefix.String())
+
+		ew.printf("    %s\n", prefix.Prefix.String())
+
 		if prefix.HasPrefixSID() {
-			fmt.Printf("      index: %d\n", prefix.SidIndex)
+			ew.printf("      index: %d\n", prefix.SidIndex)
 		}
 	}
 }
 
 // printNodeLinks prints the links associated with a node.
-func printNodeLinks(node *LsNode) {
-	fmt.Println("  Links:")
+func printNodeLinks(ew *errWriter, node *LsNode) {
+	ew.println("  Links:")
+
 	if node.Links == nil {
 		return
 	}
+
 	for _, link := range node.Links {
 		if link == nil {
 			continue
 		}
-		printLink(link)
+
+		printLink(ew, link)
 	}
 }
 
-// printLink prints the details of a single link.
-func printLink(link *LsLink) {
-	localIP := "None"
-	remoteIP := "None"
+const displayNone = "None"
+
+// printLink prints the details of a single link to w.
+func printLink(ew *errWriter, link *LsLink) {
+	localIP := displayNone
+	remoteIP := displayNone
+
 	if link.LocalIP.IsValid() {
 		localIP = link.LocalIP.String()
 	}
+
 	if link.RemoteIP.IsValid() {
 		remoteIP = link.RemoteIP.String()
 	}
-	fmt.Printf("    Local: %s Remote: %s\n", localIP, remoteIP)
 
-	remoteNodeID := "None"
+	ew.printf("    Local: %s Remote: %s\n", localIP, remoteIP)
+
+	remoteNodeID := displayNone
 	if link.RemoteNode != nil {
 		remoteNodeID = link.RemoteNode.RouterID
 	}
-	fmt.Printf("      RemoteNode: %s\n", remoteNodeID)
 
-	fmt.Println("      Metrics:")
+	ew.printf("      RemoteNode: %s\n", remoteNodeID)
+
+	ew.println("      Metrics:")
+
 	if link.Metrics != nil {
 		for _, metric := range link.Metrics {
 			if metric == nil {
 				continue
 			}
-			fmt.Printf("        %s: %d\n", metric.Type.DisplayString(), metric.Value)
+
+			ew.printf("        %s: %d\n", metric.Type.DisplayString(), metric.Value)
 		}
 	}
 
-	fmt.Printf("      Adj-SID: %d\n", link.AdjSid)
+	ew.printf("      Adj-SID: %d\n", link.AdjSid)
 
 	if link.Srv6EndXSID != nil {
-		fmt.Println("      SRv6 End.X SID:")
-		fmt.Printf("        EndpointBehavior: %s\n", BehaviorToString(link.Srv6EndXSID.EndpointBehavior))
-		fmt.Printf("        SIDs: %v\n", link.Srv6EndXSID.Sids)
-		fmt.Printf("        SID Structure: Block: %d, Node: %d, Func: %d, Arg: %d\n",
+		ew.println("      SRv6 End.X SID:")
+		ew.printf("        EndpointBehavior: %s\n", BehaviorToString(link.Srv6EndXSID.EndpointBehavior))
+		ew.printf("        SIDs: %v\n", link.Srv6EndXSID.Sids)
+		ew.printf("        SID Structure: Block: %d, Node: %d, Func: %d, Arg: %d\n",
 			link.Srv6EndXSID.Srv6SIDStructure.LocalBlock,
 			link.Srv6EndXSID.Srv6SIDStructure.LocalNode,
 			link.Srv6EndXSID.Srv6SIDStructure.LocalFunc,
@@ -176,26 +226,29 @@ func printLink(link *LsLink) {
 }
 
 // printNodeSRv6SIDs prints the SRv6 SIDs associated with a node.
-func printNodeSRv6SIDs(node *LsNode) {
-	fmt.Println("  SRv6 SIDs:")
+func printNodeSRv6SIDs(ew *errWriter, node *LsNode) {
+	ew.println("  SRv6 SIDs:")
+
 	if node.SRv6SIDs == nil {
 		return
 	}
+
 	for _, srv6SID := range node.SRv6SIDs {
 		if srv6SID == nil {
 			continue
 		}
-		fmt.Printf("    SIDs: %v\n", srv6SID.Sids)
-		fmt.Printf("    Block: %d, Node: %d, Func: %d, Arg: %d\n",
+
+		ew.printf("    SIDs: %v\n", srv6SID.Sids)
+		ew.printf("    Block: %d, Node: %d, Func: %d, Arg: %d\n",
 			srv6SID.SIDStructure.LocalBlock,
 			srv6SID.SIDStructure.LocalNode,
 			srv6SID.SIDStructure.LocalFunc,
 			srv6SID.SIDStructure.LocalArg)
-		fmt.Printf("    EndpointBehavior: %s, Flags: %d, Algorithm: %d\n",
+		ew.printf("    EndpointBehavior: %s, Flags: %d, Algorithm: %d\n",
 			BehaviorToString(srv6SID.EndpointBehavior.Behavior),
 			srv6SID.EndpointBehavior.Flags,
 			srv6SID.EndpointBehavior.Algorithm)
-		fmt.Printf("    MultiTopoIDs: %v\n", srv6SID.MultiTopoIDs)
+		ew.printf("    MultiTopoIDs: %v\n", srv6SID.MultiTopoIDs)
 	}
 }
 
@@ -233,10 +286,12 @@ func (n *LsNode) NodeSegment() (Segment, error) {
 			if n.SrgbBegin == 0 {
 				return nil, fmt.Errorf("cannot resolve prefix-SID index %d without an SRGB", prefix.SidIndex)
 			}
+
 			label, ok := srgbLabel(n, prefix.SidIndex)
 			if !ok {
 				return nil, fmt.Errorf("prefix-SID index %d is out of range for SRGB [%d, %d)", prefix.SidIndex, n.SrgbBegin, n.SrgbEnd)
 			}
+
 			return NewSegmentSRMPLS(label), nil
 		}
 	}
@@ -245,11 +300,13 @@ func (n *LsNode) NodeSegment() (Segment, error) {
 		if len(srv6SID.Sids) > FirstSIDIndex {
 			addr, err := netip.ParseAddr(srv6SID.Sids[FirstSIDIndex])
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("SRv6 SID %q is invalid: %w", srv6SID.Sids[FirstSIDIndex], err)
 			}
+
 			if !addr.Is6() || addr.Is4In6() {
 				return nil, fmt.Errorf("SRv6 SID %q is not a valid IPv6 address", srv6SID.Sids[FirstSIDIndex])
 			}
+
 			return NewSegmentSRv6WithNodeInfo(addr, n)
 		}
 	}
@@ -309,7 +366,7 @@ type LsLink struct {
 }
 
 // NewLsLink creates a new BGP-LS link between two nodes.
-func NewLsLink(localNode *LsNode, remoteNode *LsNode) *LsLink {
+func NewLsLink(localNode, remoteNode *LsNode) *LsLink {
 	return &LsLink{
 		LocalNode:  localNode,
 		RemoteNode: remoteNode,

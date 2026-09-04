@@ -25,8 +25,8 @@ Examples with `NoSidValidate` bypass that requirement.
 Every example accepts a `-server` flag, defaulting to `localhost:50051`:
 
 ```shell
-go run ./examples/grpc/go/session-list
-go run ./examples/grpc/go/session-list -server 192.0.2.100:50051
+go run -C examples/grpc/go ./session-list
+go run -C examples/grpc/go ./session-list -server 192.0.2.100:50051
 ```
 
 The connection is insecure, matching polad's default. Add real transport

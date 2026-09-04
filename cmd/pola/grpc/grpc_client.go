@@ -3,6 +3,7 @@
 // This software is released under the MIT License.
 // see https://github.com/nttcom/pola/blob/main/LICENSE
 
+// Package grpc provides the pola CLI's gRPC client for the PCE server API.
 package grpc
 
 import (
@@ -15,9 +16,12 @@ import (
 	"time"
 
 	pb "github.com/nttcom/pola/api/pola/v1"
+	"github.com/nttcom/pola/internal/safecast"
 	"github.com/nttcom/pola/pkg/packet/pcep"
 	"github.com/nttcom/pola/pkg/table"
 )
+
+const unknownDisplayValue = "unknown"
 
 func withTimeout() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), time.Second)
@@ -25,13 +29,13 @@ func withTimeout() (context.Context, context.CancelFunc) {
 
 // StatefulCapability holds the RFC 8231/8232 Stateful PCE capability flags.
 type StatefulCapability struct {
-	LSPUpdate            bool
-	IncludeDBVersion     bool
-	LSPInstantiation     bool
-	TriggeredResync      bool
-	DeltaLSPSync         bool
-	TriggeredInitialSync bool
-	Color                bool
+	LSPUpdate            bool `json:"LSPUpdate"`
+	IncludeDBVersion     bool `json:"IncludeDBVersion"`
+	LSPInstantiation     bool `json:"LSPInstantiation"`
+	TriggeredResync      bool `json:"TriggeredResync"`
+	DeltaLSPSync         bool `json:"DeltaLSPSync"`
+	TriggeredInitialSync bool `json:"TriggeredInitialSync"`
+	Color                bool `json:"Color"`
 }
 
 // Strings returns the human-readable flags for this capability.
@@ -40,52 +44,62 @@ func (c StatefulCapability) Strings() []string {
 	if c.LSPUpdate {
 		ret = append(ret, "Update")
 	}
+
 	if c.IncludeDBVersion {
 		ret = append(ret, "Include-DB-Ver")
 	}
+
 	if c.LSPInstantiation {
 		ret = append(ret, "Instantiation")
 	}
+
 	if c.TriggeredResync {
 		ret = append(ret, "Triggered-Resync")
 	}
+
 	if c.DeltaLSPSync {
 		ret = append(ret, "Delta-LSP-Sync")
 	}
+
 	if c.TriggeredInitialSync {
 		ret = append(ret, "Triggered-Initial-Sync")
 	}
+
 	if c.Color {
 		ret = append(ret, "Color")
 	}
+
 	return ret
 }
 
 // SRCapability holds the RFC 8664 SR-PCE capability flags.
 type SRCapability struct {
-	UnlimitedMSD bool
-	NAISupported bool
-	MSD          *uint32
+	UnlimitedMSD bool    `json:"UnlimitedMSD"`
+	NAISupported bool    `json:"NAISupported"`
+	MSD          *uint32 `json:"MSD"`
 }
 
 // Strings returns the human-readable flags for this capability.
 func (c SRCapability) Strings() []string {
 	ret := []string{"SR"}
+
 	switch {
 	case c.UnlimitedMSD:
 		ret = append(ret, "Unlimited-SID-Depth")
 	case c.MSD != nil:
 		ret = append(ret, fmt.Sprintf("MSD=%d", *c.MSD))
 	}
+
 	if c.NAISupported {
 		ret = append(ret, "SR-NAI-Supported")
 	}
+
 	return ret
 }
 
 // SRv6Capability holds the RFC 9603 SRv6-PCE capability flags.
 type SRv6Capability struct {
-	NAISupported bool
+	NAISupported bool `json:"NAISupported"`
 }
 
 // Strings returns the human-readable flags for this capability.
@@ -94,19 +108,21 @@ func (c SRv6Capability) Strings() []string {
 	if c.NAISupported {
 		ret = append(ret, "SRv6-NAI-Supported")
 	}
+
 	return ret
 }
 
 // PathSetupTypeCapability holds the raw PathSetupType values advertised by the peer,
 // along with any per-PST capability sub-TLVs (RFC 8408).
 type PathSetupTypeCapability struct {
-	PathSetupTypes  []uint32
-	SubCapabilities []Capability
+	PathSetupTypes  []uint32     `json:"PathSetupTypes"`
+	SubCapabilities []Capability `json:"SubCapabilities"`
 }
 
 // Strings returns the human-readable flags for this capability.
 func (c PathSetupTypeCapability) Strings() []string {
 	var ret []string
+
 	for _, pst := range c.PathSetupTypes {
 		switch pst {
 		case 1:
@@ -115,12 +131,13 @@ func (c PathSetupTypeCapability) Strings() []string {
 			ret = append(ret, "SRv6-TE")
 		}
 	}
+
 	return ret
 }
 
 // AssocTypeListCapability holds the raw Association types advertised by the peer.
 type AssocTypeListCapability struct {
-	AssocTypes []uint32
+	AssocTypes []uint32 `json:"AssocTypes"`
 }
 
 // Strings returns the human-readable flags for this capability.
@@ -129,12 +146,13 @@ func (c AssocTypeListCapability) Strings() []string {
 	for _, at := range c.AssocTypes {
 		ret = append(ret, fmt.Sprintf("AssocType:%d", at))
 	}
+
 	return ret
 }
 
 // LSPDBVersionCapability holds the LSP-DB version number advertised by the peer.
 type LSPDBVersionCapability struct {
-	VersionNumber uint64
+	VersionNumber uint64 `json:"VersionNumber"`
 }
 
 // Strings returns the human-readable flags for this capability.
@@ -145,11 +163,11 @@ func (c LSPDBVersionCapability) Strings() []string {
 // MultipathCapability holds the multipath capability flags
 // (draft-ietf-pce-multipath).
 type MultipathCapability struct {
-	MaxMultipaths uint32
-	Weighted      bool
-	OppositeDir   bool
-	ForwardClass  bool
-	CompositePath bool
+	MaxMultipaths uint32 `json:"MaxMultipaths"`
+	Weighted      bool   `json:"Weighted"`
+	OppositeDir   bool   `json:"OppositeDir"`
+	ForwardClass  bool   `json:"ForwardClass"`
+	CompositePath bool   `json:"CompositePath"`
 }
 
 // Strings returns the human-readable flags for this capability.
@@ -158,21 +176,25 @@ func (c MultipathCapability) Strings() []string {
 	if c.Weighted {
 		ret = append(ret, "Weighted")
 	}
+
 	if c.OppositeDir {
 		ret = append(ret, "OppositeDir")
 	}
+
 	if c.ForwardClass {
 		ret = append(ret, "ForwardClass")
 	}
+
 	if c.CompositePath {
 		ret = append(ret, "CompositePath")
 	}
+
 	return ret
 }
 
 // VendorInformationCapability holds the enterprise number of a vendor-specific capability TLV.
 type VendorInformationCapability struct {
-	EnterpriseNumber uint32
+	EnterpriseNumber uint32 `json:"EnterpriseNumber"`
 }
 
 // Strings returns the human-readable flags for this capability.
@@ -182,7 +204,7 @@ func (c VendorInformationCapability) Strings() []string {
 
 // UnknownCapability holds the raw TLV type of a capability Pola does not recognize.
 type UnknownCapability struct {
-	TLVType uint32
+	TLVType uint32 `json:"TLVType"`
 }
 
 // Strings returns a human-readable representation of this capability.
@@ -197,8 +219,8 @@ type capabilityDetail interface {
 
 // Capability represents a PCEP capability with optional detailed information.
 type Capability struct {
-	Type   string
-	Detail capabilityDetail
+	Type   string           `json:"Type"`
+	Detail capabilityDetail `json:"Detail"`
 }
 
 // Strings returns a human-readable representation of this capability.
@@ -206,80 +228,81 @@ func (c Capability) Strings() []string {
 	if c.Detail == nil {
 		return []string{c.Type}
 	}
+
 	return c.Detail.Strings()
 }
 
 // SessionTimers holds the timers advertised by a PCEP speaker.
 type SessionTimers struct {
-	Keepalive uint32
-	DeadTimer uint32
+	Keepalive uint32 `json:"Keepalive"`
+	DeadTimer uint32 `json:"DeadTimer"`
 }
 
 // EffectiveTimers holds the timers currently applied by Pola.
 // Keepalive and DeadTimer are nil until the session reaches SESSION_STATE_UP.
 type EffectiveTimers struct {
-	Keepalive *uint32
-	DeadTimer *uint32
+	Keepalive *uint32 `json:"Keepalive"`
+	DeadTimer *uint32 `json:"DeadTimer"`
 }
 
 // MessageCounter mirrors one RFC 9826 sent/rcvd counter pair.
 type MessageCounter struct {
-	Sent uint64
-	Rcvd uint64
+	Sent uint64 `json:"Sent"`
+	Rcvd uint64 `json:"Rcvd"`
 }
 
 // SessionStats contains per-session PCEP statistics.
 type SessionStats struct {
-	Open             MessageCounter
-	Keepalive        MessageCounter
-	Close            MessageCounter
-	PCErr            MessageCounter
-	PCNtf            MessageCounter
-	PCReq            MessageCounter
-	PCRep            MessageCounter
-	Report           MessageCounter
-	Update           MessageCounter
-	Initiate         MessageCounter
-	UnrecognizedRcvd uint64
-	CorruptRcvd      uint64
-	SessSetupOK      uint64
-	SessSetupFail    uint64
+	Open             MessageCounter `json:"Open"`
+	Keepalive        MessageCounter `json:"Keepalive"`
+	Close            MessageCounter `json:"Close"`
+	PCErr            MessageCounter `json:"PCErr"`
+	PCNtf            MessageCounter `json:"PCNtf"`
+	PCReq            MessageCounter `json:"PCReq"`
+	PCRep            MessageCounter `json:"PCRep"`
+	Report           MessageCounter `json:"Report"`
+	Update           MessageCounter `json:"Update"`
+	Initiate         MessageCounter `json:"Initiate"`
+	UnrecognizedRcvd uint64         `json:"UnrecognizedRcvd"`
+	CorruptRcvd      uint64         `json:"CorruptRcvd"`
+	SessSetupOK      uint64         `json:"SessSetupOK"`
+	SessSetupFail    uint64         `json:"SessSetupFail"`
 }
 
 // Session represents a PCEP session.
 type Session struct {
-	PeerAddr          netip.Addr
-	State             string
-	LocalSessionID    *uint32
-	PeerSessionID     *uint32
-	LocalTimers       *SessionTimers
-	PeerTimers        *SessionTimers
-	EffectiveTimers   EffectiveTimers
-	PccType           string
-	LocalCapabilities []Capability
-	PeerCapabilities  []Capability
-	Initiator         string
-	SyncState         string
-	CreatedAt         time.Time
-	EstablishedAt     time.Time
-	UptimeNanos       int64
-	Stats             *SessionStats
+	PeerAddr          netip.Addr      `json:"PeerAddr"`
+	State             string          `json:"State"`
+	LocalSessionID    *uint32         `json:"LocalSessionID"`
+	PeerSessionID     *uint32         `json:"PeerSessionID"`
+	LocalTimers       *SessionTimers  `json:"LocalTimers"`
+	PeerTimers        *SessionTimers  `json:"PeerTimers"`
+	EffectiveTimers   EffectiveTimers `json:"EffectiveTimers"`
+	PccType           string          `json:"PccType"`
+	LocalCapabilities []Capability    `json:"LocalCapabilities"`
+	PeerCapabilities  []Capability    `json:"PeerCapabilities"`
+	Initiator         string          `json:"Initiator"`
+	SyncState         string          `json:"SyncState"`
+	CreatedAt         time.Time       `json:"CreatedAt"`
+	EstablishedAt     time.Time       `json:"EstablishedAt"`
+	UptimeNanos       int64           `json:"UptimeNanos"`
+	Stats             *SessionStats   `json:"Stats"`
 }
 
 // SRPolicySession groups SR Policies by PCEP peer.
 type SRPolicySession struct {
-	PeerAddr   netip.Addr
-	State      string
-	SyncState  string
-	SRPolicies []table.SRPolicy
+	PeerAddr   netip.Addr       `json:"PeerAddr"`
+	State      string           `json:"State"`
+	SyncState  string           `json:"SyncState"`
+	SRPolicies []table.SRPolicy `json:"SRPolicies"`
 }
 
 // capabilityFromPB converts a gRPC Capability into its typed client-side representation.
 func capabilityFromPB(c *pb.Capability) Capability {
-	cap := Capability{Type: strings.TrimPrefix(c.GetType().String(), "CAPABILITY_TYPE_")}
+	capability := Capability{Type: strings.TrimPrefix(c.GetType().String(), "CAPABILITY_TYPE_")}
 	switch detail := c.GetDetail().(type) {
 	case *pb.Capability_Stateful:
-		cap.Detail = StatefulCapability{
+		capability.Detail = StatefulCapability{
 			LSPUpdate:            detail.Stateful.GetLspUpdate(),
 			IncludeDBVersion:     detail.Stateful.GetIncludeDbVersion(),
 			LSPInstantiation:     detail.Stateful.GetLspInstantiation(),
@@ -289,25 +312,26 @@ func capabilityFromPB(c *pb.Capability) Capability {
 			Color:                detail.Stateful.GetColor(),
 		}
 	case *pb.Capability_Sr:
-		cap.Detail = SRCapability{
+		capability.Detail = SRCapability{
 			UnlimitedMSD: detail.Sr.GetUnlimitedMsd(),
 			NAISupported: detail.Sr.GetNaiSupported(),
 			MSD:          detail.Sr.Msd,
 		}
 	case *pb.Capability_Srv6:
-		cap.Detail = SRv6Capability{NAISupported: detail.Srv6.GetNaiSupported()}
+		capability.Detail = SRv6Capability{NAISupported: detail.Srv6.GetNaiSupported()}
 	case *pb.Capability_PathSetupType:
 		pst := PathSetupTypeCapability{PathSetupTypes: detail.PathSetupType.GetPathSetupTypes()}
 		for _, sub := range detail.PathSetupType.GetSubCapabilities() {
 			pst.SubCapabilities = append(pst.SubCapabilities, capabilityFromPB(sub))
 		}
-		cap.Detail = pst
+
+		capability.Detail = pst
 	case *pb.Capability_AssocTypeList:
-		cap.Detail = AssocTypeListCapability{AssocTypes: detail.AssocTypeList.GetAssocTypes()}
+		capability.Detail = AssocTypeListCapability{AssocTypes: detail.AssocTypeList.GetAssocTypes()}
 	case *pb.Capability_LspDbVersion:
-		cap.Detail = LSPDBVersionCapability{VersionNumber: detail.LspDbVersion.GetVersionNumber()}
+		capability.Detail = LSPDBVersionCapability{VersionNumber: detail.LspDbVersion.GetVersionNumber()}
 	case *pb.Capability_Multipath:
-		cap.Detail = MultipathCapability{
+		capability.Detail = MultipathCapability{
 			MaxMultipaths: detail.Multipath.GetMaxMultipaths(),
 			Weighted:      detail.Multipath.GetWeighted(),
 			OppositeDir:   detail.Multipath.GetOppositeDir(),
@@ -315,11 +339,12 @@ func capabilityFromPB(c *pb.Capability) Capability {
 			CompositePath: detail.Multipath.GetCompositePath(),
 		}
 	case *pb.Capability_VendorInformation:
-		cap.Detail = VendorInformationCapability{EnterpriseNumber: detail.VendorInformation.GetEnterpriseNumber()}
+		capability.Detail = VendorInformationCapability{EnterpriseNumber: detail.VendorInformation.GetEnterpriseNumber()}
 	case *pb.Capability_Unknown:
-		cap.Detail = UnknownCapability{TLVType: detail.Unknown.GetTlvType()}
+		capability.Detail = UnknownCapability{TLVType: detail.Unknown.GetTlvType()}
 	}
-	return cap
+
+	return capability
 }
 
 func sessionFromPB(pbss *pb.Session) (Session, error) {
@@ -338,36 +363,46 @@ func sessionFromPB(pbss *pb.Session) (Session, error) {
 	if v, ok := pb.EffectiveKeepalive(pbss.GetState(), pbss.GetEffectiveTimers()); ok {
 		ss.EffectiveTimers.Keepalive = new(v)
 	}
+
 	if v, ok := pb.EffectiveDeadTimer(pbss.GetState(), pbss.GetEffectiveTimers()); ok {
 		ss.EffectiveTimers.DeadTimer = new(v)
 	}
+
 	if pbss.LocalSessionId != nil {
 		ss.LocalSessionID = new(pbss.GetLocalSessionId())
 	}
+
 	if pbss.PeerSessionId != nil {
 		ss.PeerSessionID = new(pbss.GetPeerSessionId())
 	}
+
 	if t := pbss.GetLocalTimers(); t != nil {
 		ss.LocalTimers = &SessionTimers{Keepalive: t.GetKeepalive(), DeadTimer: t.GetDeadTimer()}
 	}
+
 	if t := pbss.GetPeerTimers(); t != nil {
 		ss.PeerTimers = &SessionTimers{Keepalive: t.GetKeepalive(), DeadTimer: t.GetDeadTimer()}
 	}
+
 	for _, c := range pbss.GetLocalCapabilities() {
 		ss.LocalCapabilities = append(ss.LocalCapabilities, capabilityFromPB(c))
 	}
+
 	for _, c := range pbss.GetPeerCapabilities() {
 		ss.PeerCapabilities = append(ss.PeerCapabilities, capabilityFromPB(c))
 	}
 
 	ss.Initiator = initiatorFromPB(pbss.GetInitiator())
+
 	ss.SyncState = syncStateFromPB(pbss.GetSyncState())
 	if n := pbss.GetCreatedAtUnixNano(); n != 0 {
 		ss.CreatedAt = time.Unix(0, n)
 	}
+
 	if n := pbss.GetEstablishedAtUnixNano(); n != 0 {
 		ss.EstablishedAt = time.Unix(0, n)
 	}
+
 	ss.UptimeNanos = pbss.GetUptimeNanos()
 	if s := pbss.GetStats(); s != nil {
 		ss.Stats = sessionStatsFromPB(s)
@@ -384,7 +419,7 @@ func initiatorFromPB(initiator pb.SessionInitiator) string {
 	case pb.SessionInitiator_SESSION_INITIATOR_REMOTE:
 		return "remote"
 	default:
-		return "unknown"
+		return unknownDisplayValue
 	}
 }
 
@@ -400,7 +435,7 @@ func sessionStateFromPB(state pb.SessionState) string {
 	case pb.SessionState_SESSION_STATE_KEEP_WAIT:
 		return "keep-wait"
 	default:
-		return "unknown"
+		return unknownDisplayValue
 	}
 }
 
@@ -413,7 +448,7 @@ func syncStateFromPB(state pb.LspDbSyncState) string {
 	case pb.LspDbSyncState_LSP_DB_SYNC_STATE_FINISHED:
 		return "finished"
 	default:
-		return "unknown"
+		return unknownDisplayValue
 	}
 }
 
@@ -456,11 +491,13 @@ func GetSessions(client pb.PCEServiceClient, addr netip.Addr, includeStats bool)
 	}
 
 	var sessions []Session
+
 	for _, pbss := range ret.GetSessions() {
 		ss, err := sessionFromPB(pbss)
 		if err != nil {
 			return nil, err
 		}
+
 		sessions = append(sessions, ss)
 	}
 
@@ -476,6 +513,7 @@ func DeleteSession(client pb.PCEServiceClient, req *pb.DeleteSessionRequest) err
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -514,6 +552,7 @@ func GetSRPolicyList(client pb.PCEServiceClient, peerAddr netip.Addr) ([]SRPolic
 			if err != nil {
 				return nil, err
 			}
+
 			ss.SRPolicies = append(ss.SRPolicies, policy)
 		}
 
@@ -540,7 +579,13 @@ func convertSRPolicy(p *pb.SRPolicy) (table.SRPolicy, error) {
 		if err != nil {
 			return table.SRPolicy{}, err
 		}
+
 		segmentList = append(segmentList, seg)
+	}
+
+	lspID, err := safecast.Uint16(p.GetLspId(), "SR policy LSP-ID")
+	if err != nil {
+		return table.SRPolicy{}, err
 	}
 
 	return table.SRPolicy{
@@ -553,10 +598,39 @@ func convertSRPolicy(p *pb.SRPolicy) (table.SRPolicy, error) {
 		DstRouterID: p.GetDstRouterId(),
 		Color:       p.GetColor(),
 		Preference:  p.GetPreference(),
-		LSPID:       uint16(p.GetLspId()),
+		LSPID:       lspID,
 		State:       policyStateFromPB(p.GetState()),
 		Type:        policyTypeFromPB(p.GetType()),
 		Metric:      metricTypeFromPB(p.GetMetric()),
+	}, nil
+}
+
+func sidStructureFromPB(s *pb.SidStructure) (table.SIDStructure, error) {
+	localBlock, err := safecast.Uint8(s.GetLocalBlock(), "SID structure LocalBlock")
+	if err != nil {
+		return table.SIDStructure{}, err
+	}
+
+	localNode, err := safecast.Uint8(s.GetLocalNode(), "SID structure LocalNode")
+	if err != nil {
+		return table.SIDStructure{}, err
+	}
+
+	localFunc, err := safecast.Uint8(s.GetLocalFunc(), "SID structure LocalFunc")
+	if err != nil {
+		return table.SIDStructure{}, err
+	}
+
+	localArg, err := safecast.Uint8(s.GetLocalArg(), "SID structure LocalArg")
+	if err != nil {
+		return table.SIDStructure{}, err
+	}
+
+	return table.SIDStructure{
+		LocalBlock: localBlock,
+		LocalNode:  localNode,
+		LocalFunc:  localFunc,
+		LocalArg:   localArg,
 	}, nil
 }
 
@@ -604,36 +678,44 @@ func metricTypeFromPB(metricType pb.MetricType) table.MetricType {
 func segmentFromPB(s *pb.Segment) (table.Segment, error) {
 	seg, err := table.NewSegment(s.GetSid())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse segment SID %q: %w", s.GetSid(), err)
 	}
+
 	switch v := seg.(type) {
 	case table.SegmentSRv6:
-		v.LocalAddr, err = parseOptionalAddr(s.GetLocalAddr())
+		v.LocalAddr, err = parseOptionalAddr("SRv6 local address", s.GetLocalAddr())
 		if err != nil {
-			return nil, fmt.Errorf("invalid SRv6 local address %q: %w", s.GetLocalAddr(), err)
+			return nil, err
 		}
-		v.RemoteAddr, err = parseOptionalAddr(s.GetRemoteAddr())
+
+		v.RemoteAddr, err = parseOptionalAddr("SRv6 remote address", s.GetRemoteAddr())
 		if err != nil {
-			return nil, fmt.Errorf("invalid SRv6 remote address %q: %w", s.GetRemoteAddr(), err)
+			return nil, err
 		}
+
 		structure, err := parseSidStructure(s.GetSidStructure())
 		if err != nil {
-			return nil, fmt.Errorf("invalid SID structure %q: %w", s.GetSidStructure(), err)
+			return nil, err
 		}
+
 		if structure != nil {
 			v.Structure = table.SIDStructureBytes(structure)
 		}
+
 		return v, nil
 	case table.SegmentSRMPLS:
-		v.LocalAddr, err = parseOptionalAddr(s.GetLocalAddr())
+		v.LocalAddr, err = parseOptionalAddr("SR-MPLS local address", s.GetLocalAddr())
 		if err != nil {
-			return nil, fmt.Errorf("invalid SR-MPLS local address %q: %w", s.GetLocalAddr(), err)
+			return nil, err
 		}
-		v.RemoteAddr, err = parseOptionalAddr(s.GetRemoteAddr())
+
+		v.RemoteAddr, err = parseOptionalAddr("SR-MPLS remote address", s.GetRemoteAddr())
 		if err != nil {
-			return nil, fmt.Errorf("invalid SR-MPLS remote address %q: %w", s.GetRemoteAddr(), err)
+			return nil, err
 		}
+
 		v.SidAbsent = s.GetSidAbsent()
+
 		return v, nil
 	default:
 		return nil, fmt.Errorf("unsupported segment type for SID %q", s.GetSid())
@@ -641,11 +723,17 @@ func segmentFromPB(s *pb.Segment) (table.Segment, error) {
 }
 
 // parseOptionalAddr parses an IP address, treating an empty string as unset.
-func parseOptionalAddr(s string) (netip.Addr, error) {
+func parseOptionalAddr(field, s string) (netip.Addr, error) {
 	if s == "" {
 		return netip.Addr{}, nil
 	}
-	return netip.ParseAddr(s)
+
+	addr, err := netip.ParseAddr(s)
+	if err != nil {
+		return netip.Addr{}, fmt.Errorf("invalid %s %q: %w", field, s, err)
+	}
+
+	return addr, nil
 }
 
 // parseSidStructure parses a comma-separated SID structure string and treats an empty string as unset.
@@ -653,21 +741,27 @@ func parseSidStructure(s string) ([]uint8, error) {
 	if s == "" {
 		return nil, nil
 	}
+
 	parts := strings.Split(s, ",")
 	if len(parts) != 4 {
 		return nil, fmt.Errorf("expected 4 comma-separated values, got %d", len(parts))
 	}
+
 	result := make([]uint8, 4)
+
 	for i, p := range parts {
 		v, err := strconv.ParseUint(strings.TrimSpace(p), 10, 8)
 		if err != nil {
 			return nil, fmt.Errorf("part %d: %w", i, err)
 		}
+
 		result[i] = uint8(v)
 	}
+
 	if err := table.SIDStructureBytes(result).Validate(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid SID structure %q: %w", s, err)
 	}
+
 	return result, nil
 }
 
@@ -677,6 +771,7 @@ func CreateSRPolicy(client pb.PCEServiceClient, req *pb.CreateSRPolicyRequest) e
 	defer cancel()
 
 	_, err := client.CreateSRPolicy(ctx, req)
+
 	return err
 }
 
@@ -686,6 +781,7 @@ func DeleteSRPolicy(client pb.PCEServiceClient, req *pb.DeleteSRPolicyRequest) e
 	defer cancel()
 
 	_, err := client.DeleteSRPolicy(ctx, req)
+
 	return err
 }
 
@@ -733,12 +829,14 @@ func initializeLsNodes(ted *table.LsTED, nodes []*pb.LsNode) {
 
 func addLsNode(ted *table.LsTED, node *pb.LsNode) error {
 	for _, link := range node.GetLinks() {
-		localNode := ted.Nodes[link.LocalRouterId]
-		remoteNode := ted.Nodes[link.RemoteRouterId]
+		localNode := ted.Nodes[link.GetLocalRouterId()]
+		remoteNode := ted.Nodes[link.GetRemoteRouterId()]
+
 		lsLink, err := createLsLink(localNode, remoteNode, link)
 		if err != nil {
 			return err
 		}
+
 		ted.Nodes[node.GetRouterId()].Links = append(ted.Nodes[node.GetRouterId()].Links, lsLink)
 	}
 
@@ -747,11 +845,16 @@ func addLsNode(ted *table.LsTED, node *pb.LsNode) error {
 		if err != nil {
 			return err
 		}
+
 		ted.Nodes[node.GetRouterId()].Prefixes = append(ted.Nodes[node.GetRouterId()].Prefixes, lsPrefix)
 	}
 
 	for _, srv6SID := range node.GetSrv6Sids() {
-		lsSrv6SID := createSrv6SID(ted.Nodes[node.GetRouterId()], srv6SID)
+		lsSrv6SID, err := createSrv6SID(ted.Nodes[node.GetRouterId()], srv6SID)
+		if err != nil {
+			return err
+		}
+
 		ted.Nodes[node.GetRouterId()].SRv6SIDs = append(ted.Nodes[node.GetRouterId()].SRv6SIDs, lsSrv6SID)
 	}
 
@@ -760,11 +863,14 @@ func addLsNode(ted *table.LsTED, node *pb.LsNode) error {
 
 func createLsPrefix(lsNode *table.LsNode, prefix *pb.LsPrefix) (*table.LsPrefix, error) {
 	lsPrefix := table.NewLsPrefix(lsNode)
+
 	var err error
+
 	lsPrefix.Prefix, err = netip.ParsePrefix(prefix.GetPrefix())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse prefix %q: %w", prefix.GetPrefix(), err)
 	}
+
 	if prefix.SidIndex != nil {
 		lsPrefix.SidIndex = prefix.GetSidIndex()
 		lsPrefix.HasSidIndex = true
@@ -779,25 +885,37 @@ func createLsLink(localNode, remoteNode *table.LsNode, link *pb.LsLink) (*table.
 		RemoteNode: remoteNode,
 		AdjSid:     link.GetAdjSid(),
 	}
+
 	var err error
+
 	err = lsLink.LocalIP.UnmarshalText([]byte(link.GetLocalIp()))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid link local IP %q: %w", link.GetLocalIp(), err)
 	}
+
 	err = lsLink.RemoteIP.UnmarshalText([]byte(link.GetRemoteIp()))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid link remote IP %q: %w", link.GetRemoteIp(), err)
 	}
+
 	for _, metricInfo := range link.GetMetrics() {
 		metric, err := createMetric(metricInfo)
 		if err != nil {
 			return nil, err
 		}
+
 		lsLink.Metrics = append(lsLink.Metrics, metric)
 	}
+
 	if link.GetSrv6EndXSid() != nil {
-		lsLink.Srv6EndXSID = createSrv6EndXSID(link.GetSrv6EndXSid())
+		srv6EndXSID, err := createSrv6EndXSID(link.GetSrv6EndXSid())
+		if err != nil {
+			return nil, err
+		}
+
+		lsLink.Srv6EndXSID = srv6EndXSID
 	}
+
 	return lsLink, nil
 }
 
@@ -816,43 +934,66 @@ func createMetric(metricInfo *pb.Metric) (*table.Metric, error) {
 	}
 }
 
-func createSrv6EndXSID(srv6EndXSID *pb.Srv6EndXSID) *table.Srv6EndXSID {
+func createSrv6EndXSID(srv6EndXSID *pb.Srv6EndXSID) (*table.Srv6EndXSID, error) {
+	endpointBehavior, err := safecast.Uint16(srv6EndXSID.GetEndpointBehavior(), "SRv6 End.X SID endpoint behavior")
+	if err != nil {
+		return nil, err
+	}
+
+	structure, err := sidStructureFromPB(srv6EndXSID.GetSidStructure())
+	if err != nil {
+		return nil, err
+	}
+
 	lsSrv6EndXSID := &table.Srv6EndXSID{
-		EndpointBehavior: uint16(srv6EndXSID.EndpointBehavior),
+		EndpointBehavior: endpointBehavior,
 		Sids:             []string{},
-		Srv6SIDStructure: table.SIDStructure{
-			LocalBlock: uint8(srv6EndXSID.GetSidStructure().GetLocalBlock()),
-			LocalNode:  uint8(srv6EndXSID.GetSidStructure().GetLocalNode()),
-			LocalFunc:  uint8(srv6EndXSID.GetSidStructure().GetLocalFunc()),
-			LocalArg:   uint8(srv6EndXSID.GetSidStructure().GetLocalArg()),
-		},
+		Srv6SIDStructure: structure,
 	}
 
 	for _, sid := range srv6EndXSID.GetSids() {
 		lsSrv6EndXSID.Sids = append(lsSrv6EndXSID.Sids, sid.GetSid())
 	}
 
-	return lsSrv6EndXSID
+	return lsSrv6EndXSID, nil
 }
 
-func createSrv6SID(lsNode *table.LsNode, srv6SID *pb.LsSrv6SID) *table.LsSrv6SID {
+func createSrv6SID(lsNode *table.LsNode, srv6SID *pb.LsSrv6SID) (*table.LsSrv6SID, error) {
 	lsSrv6SID := table.NewLsSrv6SID(lsNode)
 
 	for _, sid := range srv6SID.GetSids() {
 		lsSrv6SID.Sids = append(lsSrv6SID.Sids, sid.GetSid())
 	}
+
 	for _, topoID := range srv6SID.GetMultiTopoIds() {
 		lsSrv6SID.MultiTopoIDs = append(lsSrv6SID.MultiTopoIDs, topoID.GetMultiTopoId())
 	}
 
-	lsSrv6SID.EndpointBehavior.Behavior = uint16(srv6SID.GetEndpointBehavior().GetBehavior())
-	lsSrv6SID.EndpointBehavior.Flags = uint8(srv6SID.GetEndpointBehavior().GetFlags())
-	lsSrv6SID.EndpointBehavior.Algorithm = uint8(srv6SID.GetEndpointBehavior().GetAlgorithm())
+	behavior, err := safecast.Uint16(srv6SID.GetEndpointBehavior().GetBehavior(), "SRv6 SID endpoint behavior")
+	if err != nil {
+		return nil, err
+	}
 
-	lsSrv6SID.SIDStructure.LocalBlock = uint8(srv6SID.GetSidStructure().GetLocalBlock())
-	lsSrv6SID.SIDStructure.LocalNode = uint8(srv6SID.GetSidStructure().GetLocalNode())
-	lsSrv6SID.SIDStructure.LocalFunc = uint8(srv6SID.GetSidStructure().GetLocalFunc())
-	lsSrv6SID.SIDStructure.LocalArg = uint8(srv6SID.GetSidStructure().GetLocalArg())
+	flags, err := safecast.Uint8(srv6SID.GetEndpointBehavior().GetFlags(), "SRv6 SID endpoint behavior flags")
+	if err != nil {
+		return nil, err
+	}
 
-	return lsSrv6SID
+	algorithm, err := safecast.Uint8(srv6SID.GetEndpointBehavior().GetAlgorithm(), "SRv6 SID endpoint behavior algorithm")
+	if err != nil {
+		return nil, err
+	}
+
+	lsSrv6SID.EndpointBehavior.Behavior = behavior
+	lsSrv6SID.EndpointBehavior.Flags = flags
+	lsSrv6SID.EndpointBehavior.Algorithm = algorithm
+
+	structure, err := sidStructureFromPB(srv6SID.GetSidStructure())
+	if err != nil {
+		return nil, err
+	}
+
+	lsSrv6SID.SIDStructure = structure
+
+	return lsSrv6SID, nil
 }

@@ -1,64 +1,231 @@
 version: "2"
-
 linters:
   default: standard
   enable:
+    - asasalint
+    - asciicheck
+    - bidichk
+    - containedctx
+    - contextcheck
     - copyloopvar
+    - depguard
+    - dupl
+    - dupword
+    - durationcheck
+    - errchkjson
+    - errname
     - errorlint
+    - exhaustive
+    - fatcontext
+    - forbidigo
+    - forcetypeassert
+    - gocheckcompilerdirectives
+    - gochecknoinits
+    - gochecksumtype
+    - gocognit
+    - goconst
     - gocritic
     - gocyclo
+    - godot
     - gosec
+    - iface
     - intrange
+    - loggercheck
+    - makezero
+    - mirror
     - misspell
+    - modernize
+    - musttag
+    - nestif
     - nilerr
+    - nilnesserr
+    - noctx
     - nolintlint
+    - paralleltest
     - perfsprint
+    - prealloc
+    - predeclared
+    - protogetter
+    - reassign
+    - recvcheck
     - revive
+    - spancheck
     - testifylint
+    - testpackage
+    - thelper
+    - tparallel
     - unconvert
+    - unparam
+    - usetesting
     - usestdlibvars
     - wastedassign
+    - wrapcheck
+    - wsl_v5
   settings:
+    depguard:
+      rules:
+        logging:
+          files:
+            - '!**/pkg/logger/*.go'
+          deny:
+            - pkg: log
+              desc: use pkg/logger instead
+            - pkg: go.uber.org/zap
+              desc: use pkg/logger instead
+        gobgp:
+          files:
+            - '!**/internal/gobgp/*.go'
+          deny:
+            - pkg: github.com/osrg/gobgp/v4
+              desc: use internal/gobgp instead
+    dupl:
+      threshold: 150
+    errcheck:
+      check-blank: true
+    exhaustive:
+      default-signifies-exhaustive: true
+    forbidigo:
+      forbid:
+        - pattern: '^fmt\.Print(|f|ln)$'
+          msg: use pkg/logger, or write CLI output to an explicit io.Writer
+        - pattern: '^os\.Exit$'
+          msg: call os.Exit only from a main package's main(), wrapping a testable run function
+    gochecksumtype:
+      default-signifies-exhaustive: false
+    gocognit:
+      min-complexity: 20
+    goconst:
+      ignore-tests: true
+      min-occurrences: 3
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+        - opinionated
+      disabled-checks:
+        # Duplicates nolintlint.require-explanation.
+        - whyNoLint
+        # Not suitable for this codebase.
+        - hugeParam
+        - rangeValCopy
+        # PCEP wire-format test data is intentional.
+        - commentedOutCode
     gocyclo:
       min-complexity: 15
-    gosec:
-      excludes:
-        # TODO: Remove after validating integer narrowing conversions.
-        - G115
+    godot:
+      scope: declarations
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+        - shadow
+    iface:
+      enable:
+        - identical
+        - unused
+    loggercheck:
+      require-string-key: true
+      no-printf-like: true
     nolintlint:
       require-explanation: true
       require-specific: true
+    prealloc:
+      simple: true
+    testpackage:
+      skip-regexp: (export|internal)_test\.go
     revive:
+      enable-all-rules: true
       rules:
-        - name: error-naming
-        - name: error-strings
-        - name: exported
-        - name: indent-error-flow
-        - name: receiver-naming
-        - name: unused-parameter
-        - name: unreachable-code
-        - name: var-naming
+        - name: add-constant
+          disabled: true
+        - name: argument-limit
+          disabled: true
+        - name: banned-characters
+          disabled: true
+        - name: cognitive-complexity
+          disabled: true
+        - name: cyclomatic
+          disabled: true
+        - name: enforce-switch-style
+          disabled: true
+        - name: file-header
+          disabled: true
+        - name: flag-parameter
+          disabled: true
+        - name: function-length
+          disabled: true
+        - name: line-length-limit
+          disabled: true
+        - name: max-public-structs
+          disabled: true
+        - name: redefines-builtin-id
+          disabled: true
+        - name: redundant-test-main-exit
+          disabled: true
+        - name: unchecked-type-assertion
+          disabled: true
+        - name: unhandled-error
+          disabled: true
+        - name: unused-receiver
+          disabled: true
+    wrapcheck:
+      extra-ignore-sigs:
+        # Writer errors already provide the relevant context.
+        - fmt.Fprintf(
+        - fmt.Fprintln(
+        - (*text/tabwriter.Writer).Flush(
+        # io.Reader / io.Writer implementations must preserve underlying errors.
+        - (io.Reader).Read(
+        - (*bytes.Buffer).Write(
+        # encoding/json provides sufficient context for MarshalJSON implementations.
+        - encoding/json.Marshal(
+        # Constructs a gRPC status error; wrapping changes the status message.
+        - status.Status).Err(
+        # Transport expects the handler error unchanged.
+        - .ServerStreamingServer[
+        # Caller already provides the operation context.
+        - (*go.uber.org/zap.Logger).Sync(
+        # Errors already identify the offending value.
+        - safecast.Uint8(
+        - safecast.Uint16(
+        - pcep.ValidateTimers(
+      ignore-sig-regexps:
+        # PCEP decoders add the message type to their own errors.
+        - \(\*github\.com/nttcom/pola/pkg/packet/pcep\.(CommonHeader|\w+Message)\)\.DecodeFromBytes\(
+      ignore-package-globs:
+        # Must preserve *status.Status errors for CLI rendering/details.
+        - github.com/nttcom/pola/api/pola/v1
   exclusions:
     generated: lax
-    presets:
-      - std-error-handling
     rules:
       - path: _test\.go$
         linters:
+          - containedctx
+          - dupl
           - gosec
+          - noctx
+          - wrapcheck
+      - path: \.pb\.go$
+        linters:
+          - gochecknoinits
+          - protogetter
+          - revive
       - path: ^tools/coverage-diff/
         linters:
           - gosec
-      - path: ^examples/
-        text: exitAfterDefer
+      - path: ^(cmd/pola|cmd/polad|tools/coverage-diff)/main\.go$
         linters:
-          - gocritic
-
+          - forbidigo
+      # Examples are standalone demos and intentionally use stdout directly.
+      - path: ^examples/.*/main\.go$
+        linters:
+          - depguard
+          - forbidigo
 formatters:
   enable:
-    - gofmt
+    - gofumpt
     - goimports
-
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0

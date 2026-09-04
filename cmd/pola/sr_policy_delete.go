@@ -8,6 +8,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 
 	pb "github.com/nttcom/pola/api/pola/v1"
@@ -18,26 +19,28 @@ import (
 	"github.com/nttcom/pola/cmd/pola/grpc"
 )
 
-func newSRPolicyDeleteCmd() *cobra.Command {
+func newSRPolicyDeleteCmd(c *cli) *cobra.Command {
 	srPolicyDeleteCmd := &cobra.Command{
-		Use: "delete",
+		Use: cmdNameDelete,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			filepath, err := cmd.Flags().GetString("file")
 			if err != nil {
 				return fmt.Errorf("failed to retrieve 'file' flag: %w", err)
 			}
+
 			if filepath == "" {
 				return errors.New("file path option \"-f filepath\" is mandatory")
 			}
 
-			//nolint:gosec // G304: the file path comes from the operator's -f flag.
+			//nolint:gosec // path is provided by the operator.
 			f, err := os.Open(filepath)
 			if err != nil {
 				return fmt.Errorf("failed to open file \"%s\": %w", filepath, err)
 			}
 			defer func() {
 				if err := f.Close(); err != nil {
-					fmt.Fprintf(os.Stderr, "warning: failed to close file \"%s\": %v\n", filepath, err)
+					//nolint:errcheck // best-effort warning; no fallback if stderr fails
+					fmt.Fprintf(cmd.ErrOrStderr(), "warning: failed to close file \"%s\": %v\n", filepath, err)
 				}
 			}()
 
@@ -46,9 +49,10 @@ func newSRPolicyDeleteCmd() *cobra.Command {
 				return fmt.Errorf("YAML syntax error in file \"%s\": %w", filepath, err)
 			}
 
-			if err := deleteSRPolicy(inputData, jsonFmt); err != nil {
+			if err := deleteSRPolicy(cmd.OutOrStdout(), inputData, c.jsonFmt, c.client); err != nil {
 				return fmt.Errorf("failed to delete SR policy: %w", err)
 			}
+
 			return nil
 		},
 	}
@@ -58,7 +62,7 @@ func newSRPolicyDeleteCmd() *cobra.Command {
 	return srPolicyDeleteCmd
 }
 
-func deleteSRPolicy(input inputFormat, jsonFlag bool) error {
+func deleteSRPolicy(out io.Writer, input inputFormat, jsonFlag bool, client pb.PCEServiceClient) error {
 	if !input.SRPolicy.PCEPSessionAddr.IsValid() || input.SRPolicy.Color == 0 || !input.SRPolicy.DstAddr.IsValid() || input.SRPolicy.Name == "" {
 		sampleInput := "srPolicy:\n" +
 			"  pcepSessionAddr: 192.0.2.1\n" +
@@ -68,6 +72,7 @@ func deleteSRPolicy(input inputFormat, jsonFlag bool) error {
 		errMsg := "invalid input\n" +
 			"Input example is below:\n\n" +
 			sampleInput
+
 		return errors.New(errMsg)
 	}
 
@@ -77,6 +82,7 @@ func deleteSRPolicy(input inputFormat, jsonFlag bool) error {
 		Color:      input.SRPolicy.Color,
 		PolicyName: input.SRPolicy.Name,
 	}
+
 	inputData := &pb.DeleteSRPolicyRequest{
 		SrPolicy: srPolicy,
 		Asn:      input.ASN,
@@ -85,13 +91,15 @@ func deleteSRPolicy(input inputFormat, jsonFlag bool) error {
 		if st, ok := status.FromError(err); ok {
 			return fmt.Errorf("gRPC Server Error: %s", st.Message())
 		}
+
 		return fmt.Errorf("gRPC Server Error: %s", err.Error())
 	}
 
 	if jsonFlag {
-		return writeJSON(os.Stdout, statusResult{Status: "success"})
+		return writeJSON(out, statusResult{Status: statusSuccess})
 	}
-	fmt.Printf("success!\n")
 
-	return nil
+	_, err := fmt.Fprintln(out, "success!")
+
+	return err
 }

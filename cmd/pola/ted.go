@@ -7,28 +7,30 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"io"
-	"os"
 
 	"github.com/spf13/cobra"
 
+	pb "github.com/nttcom/pola/api/pola/v1"
 	"github.com/nttcom/pola/cmd/pola/grpc"
 )
 
-func newTEDCmd() *cobra.Command {
+func newTEDCmd(c *cli) *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "ted",
-		RunE: func(_ *cobra.Command, _ []string) error {
-			return showTED(os.Stdout, resolveOutputFormat(jsonFmt))
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return showTED(cmd.OutOrStdout(), resolveOutputFormat(c.jsonFmt), c.client)
 		},
 	}
+
 	return cmd
 }
 
-func showTED(w io.Writer, format outputFormat) error {
+func showTED(w io.Writer, format outputFormat, client pb.PCEServiceClient) error {
 	ted, err := grpc.GetTED(client)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get TED: %w", err)
 	}
 
 	if ted == nil {
@@ -40,5 +42,6 @@ func showTED(w io.Writer, format outputFormat) error {
 	if format == outputJSON {
 		return writeJSON(w, views)
 	}
+
 	return writeTEDText(w, views)
 }

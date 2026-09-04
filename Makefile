@@ -23,8 +23,14 @@ GOBGP_VERSION := $(shell go list -m -f '{{.Version}}' $(GOBGP_MODULE))
 MARKDOWNLINT_VERSION ?= 0.49.1
 RUFF_VERSION         ?= 0.16.3
 
-LICENSES_TEMPLATE := licenses/report.md.tmpl
-LICENSES_OUTPUT   := licenses/THIRD_PARTY_LICENSES.md
+# examples is a separate module, so use the root module's pinned tool versions explicitly.
+GOLANGCI_LINT_VERSION := $(shell go list -m -f '{{.Version}}' github.com/golangci/golangci-lint/v2)
+GOVULNCHECK_VERSION   := $(shell go list -m -f '{{.Version}}' golang.org/x/vuln)
+GOLICENSES_VERSION    := $(shell go list -m -f '{{.Version}}' github.com/google/go-licenses/v2)
+
+LICENSES_TEMPLATE         := licenses/report.md.tmpl
+LICENSES_OUTPUT           := licenses/THIRD_PARTY_LICENSES.md
+LICENSES_OUTPUT_EXAMPLES  := licenses/THIRD_PARTY_LICENSES_EXAMPLES.md
 
 .PHONY: \
 	help \
@@ -33,6 +39,7 @@ LICENSES_OUTPUT   := licenses/THIRD_PARTY_LICENSES.md
 	fix \
 	lint \
 	lint-go \
+	lint-go-examples \
 	lint-proto \
 	lint-python \
 	lint-markdown \
@@ -43,6 +50,7 @@ LICENSES_OUTPUT   := licenses/THIRD_PARTY_LICENSES.md
 	build \
 	install \
 	test \
+	test-examples \
 	test-race \
 	test-coverage \
 	test-coverage-html \
@@ -85,10 +93,14 @@ setup: ## Install development tools required by this Makefile
 
 fmt: ## Format Go and Python source code
 	go tool golangci-lint fmt
+	cd examples && go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) fmt --config=../.golangci.yml
 	ruff format $(PYTHON_DIRS)
 
 fix: fmt ## Apply automatic fixes
+	go fix ./...
 	go tool golangci-lint run --fix --config=.golangci.yml
+	cd examples && go fix ./...
+	cd examples && go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) run --fix --config=../.golangci.yml
 	ruff check --fix $(PYTHON_DIRS)
 	go tool pinact run -u
 
@@ -96,6 +108,10 @@ lint: lint-go lint-proto lint-python lint-markdown lint-actions ## Run every lin
 
 lint-go: ## Lint Go code
 	go tool golangci-lint run --config=.golangci.yml
+	$(MAKE) lint-go-examples
+
+lint-go-examples: ## Lint the examples module
+	cd examples && go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) run --config=../.golangci.yml
 
 lint-proto: ## Lint protobuf definitions
 	go tool buf lint
@@ -113,6 +129,7 @@ lint-actions: ## Verify GitHub Actions are pinned to commit SHAs
 
 vuln: ## Report known vulnerabilities in dependencies
 	go tool govulncheck ./...
+	cd examples && go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
 proto: ## Generate protobuf code
 	go tool buf generate
@@ -134,6 +151,9 @@ install: ## Install Go binaries into GOPATH/bin
 
 test: ## Run Go unit tests
 	go test ./...
+
+test-examples: ## Run Go unit tests for the examples module
+	cd examples && go test ./...
 
 test-race: ## Run Go unit tests with race detector
 	go test -race ./...
@@ -165,12 +185,15 @@ image-debug: ## Build debug Docker image (adds a shell and network tools)
 		--load \
 		.
 
-licenses: ## Generate third-party license file
+licenses: ## Generate third-party license files for the root and examples modules
 	go tool go-licenses report --include_tests --ignore $(shell go list -m) \
 		--template=$(LICENSES_TEMPLATE) ./... > $(LICENSES_OUTPUT)
+	cd examples && go run github.com/google/go-licenses/v2@$(GOLICENSES_VERSION) report --include_tests \
+		--ignore $$(go list -m) --ignore github.com/nttcom/pola \
+		--template=../$(LICENSES_TEMPLATE) ./... > ../$(LICENSES_OUTPUT_EXAMPLES)
 
-check-licenses: licenses ## Verify third-party license file is up to date
-	git diff --exit-code -- $(LICENSES_OUTPUT)
+check-licenses: licenses ## Verify third-party license files are up to date
+	git diff --exit-code -- $(LICENSES_OUTPUT) $(LICENSES_OUTPUT_EXAMPLES)
 
 fetch-gobgp: ## Fetch gobgp/gobgpd binaries into test/bin
 	mkdir -p $(TEST_BIN_DIR)
@@ -191,7 +214,7 @@ test-scenario: test-deps ## Run containerlab scenario tests
 test-scenario-parallel: PYTEST_ARGS = -s -n 4 --dist loadgroup
 test-scenario-parallel: test-scenario ## Run containerlab scenario tests, one lab per worker
 
-ci: check-proto check-licenses lint build test test-coverage-diff ## Run the same checks as CI
+ci: check-proto check-licenses lint build test test-examples test-coverage-diff ## Run the same checks as CI
 
 release: ## Cut a release: make release VERSION=X.Y.Z
 	@if [ -z "$(VERSION)" ]; then echo "Usage: make release VERSION=X.Y.Z"; exit 1; fi

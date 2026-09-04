@@ -15,9 +15,11 @@ import (
 )
 
 func TestWriteSRPolicyText_PropagatesWriteErrors(t *testing.T) {
+	t.Parallel()
+
 	views := []srPolicySessionView{
 		{
-			PeerAddress: "192.0.2.1",
+			PeerAddress: testPeerAddr1,
 			State:       "up",
 			LSPDBSync:   "finished",
 			SRPolicies: []table.SRPolicy{
@@ -35,6 +37,8 @@ func TestWriteSRPolicyText_PropagatesWriteErrors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			w := &condFailWriter{fail: tt.fail}
 			err := writeSRPolicyText(w, views)
 			require.Error(t, err)
@@ -43,6 +47,8 @@ func TestWriteSRPolicyText_PropagatesWriteErrors(t *testing.T) {
 }
 
 func TestWriteSRPolicySession_EmptyPolicies_PropagatesWriteError(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		v    srPolicySessionView
@@ -50,33 +56,38 @@ func TestWriteSRPolicySession_EmptyPolicies_PropagatesWriteError(t *testing.T) {
 	}{
 		{
 			name: "finished",
-			v:    srPolicySessionView{PeerAddress: "192.0.2.1", State: "up", LSPDBSync: "finished"},
+			v:    srPolicySessionView{PeerAddress: testPeerAddr1, State: "up", LSPDBSync: "finished"},
 			fail: exactFail("  No SR Policies.\n"),
 		},
 		{
 			name: "still synchronizing",
-			v:    srPolicySessionView{PeerAddress: "192.0.2.1", State: "up", LSPDBSync: "pending"},
+			v:    srPolicySessionView{PeerAddress: testPeerAddr1, State: "up", LSPDBSync: "pending"},
 			fail: exactFail("  No SR Policies: session is still synchronizing.\n"),
 		},
 		{
 			name: "not established",
-			v:    srPolicySessionView{PeerAddress: "192.0.2.1", State: "tcp-pending", LSPDBSync: "pending"},
+			v:    srPolicySessionView{PeerAddress: testPeerAddr1, State: "tcp-pending", LSPDBSync: "pending"},
 			fail: exactFail("  No SR Policies: session is not established.\n"),
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			w := &condFailWriter{fail: tt.fail}
-			err := writeSRPolicySession(w, tt.v)
-			require.Error(t, err)
+			ew := &errWriter{w: w}
+			writeSRPolicySessionText(ew, tt.v)
+			require.Error(t, ew.err)
 		})
 	}
 }
 
 func TestWriteSRPolicyText_PropagatesSeparatorWriteError(t *testing.T) {
+	t.Parallel()
+
 	views := []srPolicySessionView{
-		{PeerAddress: "192.0.2.1", State: "up", LSPDBSync: "finished"},
-		{PeerAddress: "192.0.2.2", State: "up", LSPDBSync: "finished"},
+		{PeerAddress: testPeerAddr1, State: "up", LSPDBSync: "finished"},
+		{PeerAddress: testPeerAddr2, State: "up", LSPDBSync: "finished"},
 	}
 	w := &condFailWriter{fail: exactFail("\n")}
 	err := writeSRPolicyText(w, views)
@@ -84,9 +95,11 @@ func TestWriteSRPolicyText_PropagatesSeparatorWriteError(t *testing.T) {
 }
 
 func TestWriteSRPolicyText_SeparatesMultipleSessionsWithBlankLine(t *testing.T) {
+	t.Parallel()
+
 	views := []srPolicySessionView{
-		{PeerAddress: "192.0.2.1", State: "up", LSPDBSync: "finished"},
-		{PeerAddress: "192.0.2.2", State: "up", LSPDBSync: "finished"},
+		{PeerAddress: testPeerAddr1, State: "up", LSPDBSync: "finished"},
+		{PeerAddress: testPeerAddr2, State: "up", LSPDBSync: "finished"},
 	}
 	w := &condFailWriter{}
 	require.NoError(t, writeSRPolicyText(w, views))

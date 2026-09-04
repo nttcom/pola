@@ -17,24 +17,28 @@ import (
 )
 
 func TestNewSRPolicySessionView(t *testing.T) {
+	t.Parallel()
+
 	ss := grpc.SRPolicySession{
-		PeerAddr:  netip.MustParseAddr("192.0.2.1"),
+		PeerAddr:  netip.MustParseAddr(testPeerAddr1),
 		State:     "up",
 		SyncState: "finished",
 		SRPolicies: []table.SRPolicy{
-			{Name: "pol1"},
+			{Name: testPolicyName},
 		},
 	}
 
 	v := newSRPolicySessionView(ss)
-	assert.Equal(t, "192.0.2.1", v.PeerAddress)
+	assert.Equal(t, testPeerAddr1, v.PeerAddress)
 	assert.Equal(t, "up", v.State)
 	assert.Equal(t, "finished", v.LSPDBSync)
-	assert.Equal(t, []table.SRPolicy{{Name: "pol1"}}, v.SRPolicies)
+	assert.Equal(t, []table.SRPolicy{{Name: testPolicyName}}, v.SRPolicies)
 }
 
 func TestNewSRPolicySessionView_NilSRPoliciesBecomesEmptySlice(t *testing.T) {
-	ss := grpc.SRPolicySession{PeerAddr: netip.MustParseAddr("192.0.2.1"), State: "up", SyncState: "pending"}
+	t.Parallel()
+
+	ss := grpc.SRPolicySession{PeerAddr: netip.MustParseAddr(testPeerAddr1), State: "up", SyncState: "pending"}
 
 	v := newSRPolicySessionView(ss)
 	require.NotNil(t, v.SRPolicies)

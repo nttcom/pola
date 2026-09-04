@@ -14,15 +14,15 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"runtime"
 	"slices"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/nttcom/pola/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest/observer"
 
 	pb "github.com/nttcom/pola/api/pola/v1"
 	"github.com/nttcom/pola/pkg/packet/pcep"
@@ -57,18 +57,28 @@ func newTCPConnPair(t *testing.T) (server, client *net.TCPConn) {
 			errCh <- err
 			return
 		}
-		serverCh <- conn.(*net.TCPConn)
+
+		tcpConn, ok := conn.(*net.TCPConn)
+		if !ok {
+			errCh <- fmt.Errorf("expected *net.TCPConn, got %T", conn)
+			return
+		}
+
+		serverCh <- tcpConn
 	}()
 
 	clientConn, err := net.Dial("tcp", ln.Addr().String())
 	require.NoError(t, err, "failed to dial")
 
+	clientTCPConn, ok := clientConn.(*net.TCPConn)
+	require.True(t, ok)
+
 	select {
 	case server := <-serverCh:
-		return server, clientConn.(*net.TCPConn)
+		return server, clientTCPConn
 	case err := <-errCh:
 		require.NoError(t, err, "failed to accept connection")
-		return nil, clientConn.(*net.TCPConn)
+		return nil, clientTCPConn
 	}
 }
 
@@ -90,11 +100,14 @@ func (c *fakeConn) Read(p []byte) (int, error) { return c.r.Read(p) }
 func (c *fakeConn) Write(p []byte) (int, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	c.writeCount++
+
 	c.written = append(c.written, append([]byte{}, p...))
 	if c.writeErr != nil && c.writeCount > c.failAfter {
 		return 0, c.writeErr
 	}
+
 	return len(p), nil
 }
 
@@ -102,6 +115,7 @@ func (c *fakeConn) Write(p []byte) (int, error) {
 func (c *fakeConn) writes() [][]byte {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	return append([][]byte{}, c.written...)
 }
 
@@ -113,7 +127,7 @@ func (c *fakeConn) SetWriteDeadline(_ time.Time) error { return nil }
 func (c *fakeConn) SetReadDeadline(_ time.Time) error  { return c.setReadDeadlineErr }
 
 // newTestStateReport builds a PCRpt state report for an SR-MPLS policy with an explicit path.
-func newTestStateReport(t *testing.T, plspID uint32, srpID uint32) *pcep.StateReport {
+func newTestStateReport(t *testing.T, plspID, srpID uint32) *pcep.StateReport {
 	t.Helper()
 
 	sr := pcep.NewStateReport()
@@ -128,6 +142,7 @@ func newTestStateReport(t *testing.T, plspID uint32, srpID uint32) *pcep.StateRe
 	for _, sid := range []uint32{16002, 16003} {
 		subobj, err := pcep.NewSREroSubobject(table.NewSegmentSRMPLS(sid))
 		require.NoError(t, err, "failed to create SR ERO subobject")
+
 		sr.EroObject.EroSubobjects = append(sr.EroObject.EroSubobjects, subobj)
 	}
 
@@ -136,7 +151,9 @@ func newTestStateReport(t *testing.T, plspID uint32, srpID uint32) *pcep.StateRe
 
 // A PCC may report an SR Policy with SRP-ID 0 even when TED is unavailable.
 func TestHandleStateReportWithoutTED(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	sr := newTestStateReport(t, 1, 0)
 
 	require.NoError(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
@@ -148,7 +165,9 @@ func TestHandleStateReportWithoutTED(t *testing.T) {
 }
 
 func TestSRPolicies_SnapshotSegmentListIsIndependent(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	sr := newTestStateReport(t, 1, 0)
 
 	require.NoError(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
@@ -166,7 +185,9 @@ func TestSRPolicies_SnapshotSegmentListIsIndependent(t *testing.T) {
 }
 
 func TestSRPolicies_SnapshotSRv6StructureIsIndependent(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 
 	srv6Seg := table.NewSegmentSRv6(netip.MustParseAddr("2001:db8:1005::"))
 	srv6Seg.Structure = table.SIDStructureBytes{32, 16, 0, 80}
@@ -178,10 +199,12 @@ func TestSRPolicies_SnapshotSRv6StructureIsIndependent(t *testing.T) {
 
 	snapshotSeg, ok := policies[0].SegmentList[0].(table.SegmentSRv6)
 	require.Truef(t, ok, "segment type: got %T, want table.SegmentSRv6", policies[0].SegmentList[0])
+
 	snapshotSeg.Structure[0] = 99
 
 	got, found := ss.SearchSRPolicy(1)
 	require.True(t, found, "SR Policy was not registered")
+
 	gotSeg, ok := got.SegmentList[0].(table.SegmentSRv6)
 	require.Truef(t, ok, "segment type: got %T, want table.SegmentSRv6", got.SegmentList[0])
 	assert.Equal(t, table.SIDStructureBytes{32, 16, 0, 80}, gotSeg.Structure,
@@ -189,7 +212,9 @@ func TestSRPolicies_SnapshotSRv6StructureIsIndependent(t *testing.T) {
 }
 
 func TestSRPolicyIntent_AttachedOnCreationBySRPID(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	sr := newTestStateReport(t, 1, 7)
 
 	ss.rememberSRPolicyIntent(7, table.PolicyTypeDynamic, table.TEMetric)
@@ -203,9 +228,12 @@ func TestSRPolicyIntent_AttachedOnCreationBySRPID(t *testing.T) {
 }
 
 func TestSRPolicyIntent_AttachedOnUpdateBySRPID(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 
 	ss.rememberSRPolicyIntent(1, table.PolicyTypeExplicit, table.UnspecifiedMetric)
+
 	sr := newTestStateReport(t, 1, 1)
 	require.NoError(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
 
@@ -216,6 +244,7 @@ func TestSRPolicyIntent_AttachedOnUpdateBySRPID(t *testing.T) {
 
 	// A PCRpt for the same PLSP-ID takes the update path and must pick up the new intent.
 	ss.rememberSRPolicyIntent(2, table.PolicyTypeDynamic, table.TEMetric)
+
 	sr2 := newTestStateReport(t, 1, 2)
 	require.NoError(t, ss.handleStateReport(sr2, pcep.NewPCRptMessage()))
 
@@ -226,7 +255,9 @@ func TestSRPolicyIntent_AttachedOnUpdateBySRPID(t *testing.T) {
 }
 
 func TestSRPolicyIntent_UnknownWhenNeverRemembered(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	sr := newTestStateReport(t, 1, 0)
 
 	require.NoError(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
@@ -238,7 +269,9 @@ func TestSRPolicyIntent_UnknownWhenNeverRemembered(t *testing.T) {
 }
 
 func TestSRPolicyIntent_IndependentPerSRPID(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 
 	ss.rememberSRPolicyIntent(1, table.PolicyTypeExplicit, table.UnspecifiedMetric)
 	ss.rememberSRPolicyIntent(2, table.PolicyTypeDynamic, table.TEMetric)
@@ -266,7 +299,9 @@ func TestSRPolicyIntent_IndependentPerSRPID(t *testing.T) {
 }
 
 func TestSRPolicyIntent_UnsolicitedPCRptDoesNotConsume(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	ss.rememberSRPolicyIntent(1, table.PolicyTypeDynamic, table.TEMetric)
 
 	sr := newTestStateReport(t, 1, 0)
@@ -281,7 +316,9 @@ func TestSRPolicyIntent_UnsolicitedPCRptDoesNotConsume(t *testing.T) {
 }
 
 func TestSRPolicyIntent_ClearedOnRFlagDelete(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 
 	// Create the policy unsolicited so its creation does not consume the intent below.
 	sr := newTestStateReport(t, 1, 0)
@@ -301,7 +338,9 @@ func TestSRPolicyIntent_ClearedOnRFlagDelete(t *testing.T) {
 }
 
 func TestHandlePCErr_ForgetsReportedSRPIDIntents(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	ss.rememberSRPolicyIntent(1, table.PolicyTypeDynamic, table.TEMetric)
 	ss.rememberSRPolicyIntent(2, table.PolicyTypeExplicit, table.UnspecifiedMetric)
 
@@ -319,20 +358,22 @@ func TestHandlePCErr_ForgetsReportedSRPIDIntents(t *testing.T) {
 
 // A failed PCEP send must not leave an intent waiting for a PCRpt that will never arrive.
 func TestSendSRPolicyRequest_ForgetsIntentOnSendFailure(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		assert.NoError(t, client.Close(), "failed to close client connection")
 	})
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
-	ss.syncState = lspDBSyncFinished
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
+	ss.syncState = SyncStateFinished
 	wantSRPID := ss.srpIDHead
 
 	// Close the PCEP-side connection so the send inside sendSRPolicyRequest fails.
 	require.NoError(t, server.Close(), "failed to close server connection")
 
 	pce := &Server{sessionList: []*Session{ss}}
-	apiServer := &APIServer{pce: pce, logger: zap.NewNop()}
+	apiServer := &APIServer{pce: pce, logger: logger.NewNop()}
 
 	dstAddr := netip.MustParseAddr("10.255.0.2")
 	req := &pb.CreateSRPolicyRequest{
@@ -340,7 +381,7 @@ func TestSendSRPolicyRequest_ForgetsIntentOnSendFailure(t *testing.T) {
 			PeerAddr:   ss.peerAddr.AsSlice(),
 			DstAddr:    dstAddr.AsSlice(),
 			Color:      100,
-			PolicyName: "test-policy",
+			PolicyName: testSRPolicyName,
 			Type:       pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT,
 		},
 		DisablePathCompute: true,
@@ -355,15 +396,17 @@ func TestSendSRPolicyRequest_ForgetsIntentOnSendFailure(t *testing.T) {
 
 // Closing a session must clear its remembered SR Policy intents.
 func TestCloseSession_ClearsSRPolicyIntents(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		assert.NoError(t, client.Close(), "failed to close client connection")
 	})
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 	ss.rememberSRPolicyIntent(1, table.PolicyTypeDynamic, table.TEMetric)
 
-	s := &Server{sessionList: []*Session{ss}, logger: zap.NewNop()}
+	s := &Server{sessionList: []*Session{ss}, logger: logger.NewNop()}
 	s.closeSession(ss)
 
 	assert.Empty(t, ss.srPolicyIntents, "srPolicyIntents was not cleared on session close")
@@ -372,6 +415,8 @@ func TestCloseSession_ClearsSRPolicyIntents(t *testing.T) {
 // Concurrent SendPCUpdate/SendPCInitiate calls must never allocate the same SRP-ID,
 // and every allocated SRP-ID must have exactly one intent registered for it.
 func TestConcurrentSRPolicyRequestsAllocateUniqueSRPIDs(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		assert.NoError(t, server.Close(), "failed to close server connection")
@@ -381,6 +426,7 @@ func TestConcurrentSRPolicyRequestsAllocateUniqueSRPIDs(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
+
 		buf := make([]byte, 4096)
 		for {
 			if _, err := client.Read(buf); err != nil {
@@ -388,20 +434,21 @@ func TestConcurrentSRPolicyRequestsAllocateUniqueSRPIDs(t *testing.T) {
 			}
 		}
 	}()
+
 	t.Cleanup(func() {
 		assert.NoError(t, client.Close(), "failed to close client connection")
 		<-done
 	})
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 
 	const goroutines = 20
+
 	var wg sync.WaitGroup
+
 	errCh := make(chan error, goroutines)
 	for i := range goroutines {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
+		wg.Go(func() {
 			srPolicy := table.SRPolicy{
 				Name:    "concurrent-test",
 				SrcAddr: netip.MustParseAddr("10.255.0.1"),
@@ -410,15 +457,18 @@ func TestConcurrentSRPolicyRequestsAllocateUniqueSRPIDs(t *testing.T) {
 				Type:    table.PolicyTypeDynamic,
 				Metric:  table.TEMetric,
 			}
+
 			var err error
 			if i%2 == 0 {
 				err = ss.SendPCUpdate(srPolicy)
 			} else {
 				err = ss.RequestSRPolicyCreated(srPolicy)
 			}
+
 			errCh <- err
-		}(i)
+		})
 	}
+
 	wg.Wait()
 	close(errCh)
 
@@ -434,7 +484,9 @@ func TestConcurrentSRPolicyRequestsAllocateUniqueSRPIDs(t *testing.T) {
 }
 
 func TestAllocateSRPID_SkipsReservedValues(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	ss.srpIDHead = math.MaxUint32 - 1
 
 	for i, want := range []uint32{math.MaxUint32 - 1, 1, 2} {
@@ -447,7 +499,9 @@ func TestAllocateSRPID_SkipsReservedValues(t *testing.T) {
 
 // The same report with the R-Flag set removes the SR Policy instead of registering it.
 func TestHandleStateReportRemove(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	sr := newTestStateReport(t, 1, 0)
 
 	require.NoError(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
@@ -460,6 +514,8 @@ func TestHandleStateReportRemove(t *testing.T) {
 }
 
 func TestPeerOpenDoesNotOverwriteAdvertisedCapabilities(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		assert.NoError(t, server.Close(), "failed to close server connection")
@@ -478,7 +534,7 @@ func TestPeerOpenDoesNotOverwriteAdvertisedCapabilities(t *testing.T) {
 	writeMessage(t, client, pcep.NewOpenMessage(1, 30, pcep.DeadTimerFor(30), pccCaps))
 	writeMessage(t, client, pcep.NewKeepaliveMessage())
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 	require.NoError(t, ss.Open())
 
 	assert.Equal(t, pccCaps, ss.receivedPccCapabilities)
@@ -492,15 +548,19 @@ func TestPeerOpenDoesNotOverwriteAdvertisedCapabilities(t *testing.T) {
 	color, _ := ss.resolveColorPreference(sr)
 	assert.Equal(t, uint32(100), color, "resolveColorPreference did not detect Color Capability from receivedPccCapabilities")
 
-	receivedCap := ss.receivedPccCapabilities[0].(*pcep.StatefulPCECapability)
-	polaCap := ss.advertisedCapabilities[0].(*pcep.StatefulPCECapability)
+	receivedCap, ok := ss.receivedPccCapabilities[0].(*pcep.StatefulPCECapability)
+	require.True(t, ok)
+	polaCap, ok := ss.advertisedCapabilities[0].(*pcep.StatefulPCECapability)
+	require.True(t, ok)
 	assert.NotSame(t, receivedCap, polaCap, "receivedPccCapabilities and advertisedCapabilities share the same StatefulPCECapability instance")
 	assert.NotEqual(t, receivedCap.LSPUpdateCapability, polaCap.LSPUpdateCapability,
 		"expected received and advertised StatefulPCECapability to diverge, got identical LSPUpdateCapability")
 }
 
 func TestSweepExpiredSRPolicyIntents_RemovesExpired(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	ss.srPolicyIntentsMu.Lock()
 	ss.srPolicyIntents = map[uint32]srPolicyIntent{
 		1: {polType: table.PolicyTypeDynamic, metric: table.TEMetric, expiresAt: time.Now().Add(-time.Second)},
@@ -514,7 +574,9 @@ func TestSweepExpiredSRPolicyIntents_RemovesExpired(t *testing.T) {
 }
 
 func TestSweepExpiredSRPolicyIntents_KeepsUnexpired(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	ss.srPolicyIntentsMu.Lock()
 	ss.srPolicyIntents = map[uint32]srPolicyIntent{
 		1: {polType: table.PolicyTypeDynamic, metric: table.TEMetric, expiresAt: time.Now().Add(time.Hour)},
@@ -528,7 +590,9 @@ func TestSweepExpiredSRPolicyIntents_KeepsUnexpired(t *testing.T) {
 }
 
 func TestSweepExpiredSRPolicyIntents_KeepsUnrelatedIntent(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	ss.rememberSRPolicyIntent(1, table.PolicyTypeDynamic, table.TEMetric)
 	ss.rememberSRPolicyIntent(2, table.PolicyTypeExplicit, table.UnspecifiedMetric)
 
@@ -542,7 +606,9 @@ func TestSweepExpiredSRPolicyIntents_KeepsUnrelatedIntent(t *testing.T) {
 }
 
 func TestIntentSweep_RunsInBackgroundAndStopsCleanly(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	ss.srPolicyIntentTTL = 10 * time.Millisecond
 	ss.sweepInterval = 5 * time.Millisecond
 
@@ -557,31 +623,41 @@ func TestIntentSweep_RunsInBackgroundAndStopsCleanly(t *testing.T) {
 }
 
 func TestRememberSRPolicyIntent_IgnoresReservedSRPID(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	ss.rememberSRPolicyIntent(0, table.PolicyTypeDynamic, table.TEMetric)
 	assert.False(t, ss.srPolicyIntentExists(0))
 }
 
 func TestStartIntentSweep_Idempotent(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	ss.startIntentSweep()
 	firstStop := ss.sweepStop
+
 	ss.startIntentSweep()
 	defer ss.stopIntentSweep()
 
 	assert.Equal(t, firstStop, ss.sweepStop, "startIntentSweep must not replace an already-running sweeper's stop channel")
 }
 
-func TestStopIntentSweep_NoopWhenNeverStarted(_ *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+func TestStopIntentSweep_NoopWhenNeverStarted(t *testing.T) {
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	ss.stopIntentSweep()
 }
 
 func TestIntentSweep_StopsCleanly(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	ss.startIntentSweep()
 
 	done := make(chan struct{})
+
 	go func() {
 		ss.stopIntentSweep()
 		close(done)
@@ -594,27 +670,31 @@ func TestIntentSweep_StopsCleanly(t *testing.T) {
 	}
 }
 
-func TestIntentSweep_ConcurrentWithIntentConsumption(_ *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+func TestIntentSweep_ConcurrentWithIntentConsumption(t *testing.T) {
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	ss.srPolicyIntentTTL = 5 * time.Millisecond
 	ss.sweepInterval = 2 * time.Millisecond
+
 	ss.startIntentSweep()
 	defer ss.stopIntentSweep()
 
 	var wg sync.WaitGroup
 	for i := uint32(1); i <= 20; i++ {
-		wg.Add(1)
-		go func(srpID uint32) {
-			defer wg.Done()
-			ss.rememberSRPolicyIntent(srpID, table.PolicyTypeDynamic, table.TEMetric)
+		wg.Go(func() {
+			ss.rememberSRPolicyIntent(i, table.PolicyTypeDynamic, table.TEMetric)
 			time.Sleep(time.Millisecond)
-			ss.takeSRPolicyIntent(srpID)
-		}(i)
+			ss.takeSRPolicyIntent(i)
+		})
 	}
+
 	wg.Wait()
 }
 
 func TestNextUnusedSRPID_SkipsUsedAcrossWraparound(t *testing.T) {
+	t.Parallel()
+
 	used := map[uint32]bool{1: true, 2: true, 4: true}
 	got, _, err := nextUnusedSRPID(4, 5, func(id uint32) bool { return used[id] })
 	require.NoError(t, err)
@@ -622,13 +702,17 @@ func TestNextUnusedSRPID_SkipsUsedAcrossWraparound(t *testing.T) {
 }
 
 func TestNextUnusedSRPID_ErrorsWhenExhausted(t *testing.T) {
+	t.Parallel()
+
 	used := map[uint32]bool{1: true, 2: true, 3: true, 4: true}
 	_, _, err := nextUnusedSRPID(1, 5, func(id uint32) bool { return used[id] })
 	require.Error(t, err, "expected an error when every non-reserved SRP-ID is in use")
 }
 
 func TestAllocateSRPID_SkipsInUseIDsOnWraparound(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	ss.srpIDHead = math.MaxUint32 - 1
 
 	// Pre-occupy SRP-ID 1 so the wraparound scan must skip over it.
@@ -647,7 +731,9 @@ func TestAllocateSRPID_SkipsInUseIDsOnWraparound(t *testing.T) {
 }
 
 func TestAllocateSRPID_ErrorsWhenExhausted(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	ss.srpIDMax = 3 // valid range is [1, 2]; 0 and 3 are reserved.
 	ss.rememberSRPolicyIntent(1, table.PolicyTypeDynamic, table.TEMetric)
 	ss.rememberSRPolicyIntent(2, table.PolicyTypeDynamic, table.TEMetric)
@@ -657,7 +743,9 @@ func TestAllocateSRPID_ErrorsWhenExhausted(t *testing.T) {
 }
 
 func TestSendPCInitiate_ErrorsWhenSRPIDExhausted(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	ss.srpIDMax = 3
 	ss.rememberSRPolicyIntent(1, table.PolicyTypeDynamic, table.TEMetric)
 	ss.rememberSRPolicyIntent(2, table.PolicyTypeDynamic, table.TEMetric)
@@ -674,7 +762,9 @@ func TestSendPCInitiate_ErrorsWhenSRPIDExhausted(t *testing.T) {
 }
 
 func TestSendPCUpdate_ErrorsWhenSRPIDExhausted(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	ss.srpIDMax = 3
 	ss.rememberSRPolicyIntent(1, table.PolicyTypeDynamic, table.TEMetric)
 	ss.rememberSRPolicyIntent(2, table.PolicyTypeDynamic, table.TEMetric)
@@ -742,15 +832,14 @@ func sendConcurrentPCEPMessages(t *testing.T, ss *Session, goroutines int) {
 	t.Helper()
 
 	var wg sync.WaitGroup
+
 	errCh := make(chan error, goroutines)
 
 	for i := range goroutines {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
+		wg.Go(func() {
 			c := concurrentSendCases[i%len(concurrentSendCases)]
 			errCh <- c.send(ss, i)
-		}(i)
+		})
 	}
 
 	wg.Wait()
@@ -765,7 +854,7 @@ func sendConcurrentPCEPMessages(t *testing.T, ss *Session, goroutines int) {
 func readPCEPMessage(r io.Reader) error {
 	headerBytes := make([]byte, pcep.CommonHeaderLength)
 	if _, err := io.ReadFull(r, headerBytes); err != nil {
-		return err
+		return fmt.Errorf("failed to read a PCEP common header; sends may have interleaved: %w", err)
 	}
 
 	var header pcep.CommonHeader
@@ -777,8 +866,12 @@ func readPCEPMessage(r io.Reader) error {
 	if bodyLen == 0 {
 		return nil
 	}
-	_, err := io.ReadFull(r, make([]byte, bodyLen))
-	return err
+
+	if _, err := io.ReadFull(r, make([]byte, bodyLen)); err != nil {
+		return fmt.Errorf("failed to read a PCEP message body; sends may have interleaved: %w", err)
+	}
+
+	return nil
 }
 
 // startPCEPFramingValidator validates PCEP message framing in the background.
@@ -792,6 +885,7 @@ func startPCEPFramingValidator(r io.Reader, wantCount int) <-chan error {
 				return
 			}
 		}
+
 		result <- nil
 	}()
 
@@ -799,12 +893,14 @@ func startPCEPFramingValidator(r io.Reader, wantCount int) <-chan error {
 }
 
 func TestSendPCEPMessage_ConcurrentSendsDoNotInterleave(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		assert.NoError(t, client.Close(), "failed to close client connection")
 	})
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 
 	const goroutines = 40
 
@@ -821,12 +917,14 @@ func TestSendPCEPMessage_ConcurrentSendsDoNotInterleave(t *testing.T) {
 }
 
 func TestSendPCEPMessage_UnlocksAfterSendFailure(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		assert.NoError(t, client.Close(), "failed to close client connection")
 	})
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 
 	require.NoError(t, server.Close(), "failed to close server connection")
 
@@ -846,9 +944,12 @@ func TestSendPCEPMessage_UnlocksAfterSendFailure(t *testing.T) {
 }
 
 func TestSearchPlspID_FindsByColorAndEndpoint(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	endpoint := netip.MustParseAddr("10.255.0.2")
-	ss.srPolicies = append(ss.srPolicies,
+	ss.srPolicies = append(
+		ss.srPolicies,
 		table.NewSRPolicy(1, "pe01-policy1", nil, netip.MustParseAddr("10.255.0.1"), endpoint, 100, 0, 0, table.PolicyUp),
 		table.NewSRPolicy(2, "pe01-policy2", nil, netip.MustParseAddr("10.255.0.1"), netip.MustParseAddr("10.255.0.3"), 200, 0, 0, table.PolicyUp),
 	)
@@ -859,9 +960,12 @@ func TestSearchPlspID_FindsByColorAndEndpoint(t *testing.T) {
 }
 
 func TestSearchPlspID_NotFoundWhenColorOrEndpointDiffer(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	endpoint := netip.MustParseAddr("10.255.0.2")
-	ss.srPolicies = append(ss.srPolicies,
+	ss.srPolicies = append(
+		ss.srPolicies,
 		table.NewSRPolicy(1, "pe01-policy1", nil, netip.MustParseAddr("10.255.0.1"), endpoint, 100, 0, 0, table.PolicyUp),
 	)
 
@@ -873,6 +977,8 @@ func TestSearchPlspID_NotFoundWhenColorOrEndpointDiffer(t *testing.T) {
 }
 
 func TestFindRouterIDFromAddress(t *testing.T) {
+	t.Parallel()
+
 	ted := &table.LsTED{Nodes: map[string]*table.LsNode{}}
 
 	v4Node := table.NewLsNode(0, "router-v4")
@@ -916,11 +1022,14 @@ func TestFindRouterIDFromAddress(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			got, err := ss.findRouterIDFromAddress(addrIndex, tc.addr)
 			if tc.wantErr {
 				require.Errorf(t, err, "expected error, got routerID %q", got)
 				return
 			}
+
 			require.NoError(t, err)
 			assert.Equal(t, tc.want, got)
 		})
@@ -928,6 +1037,8 @@ func TestFindRouterIDFromAddress(t *testing.T) {
 }
 
 func TestExtractSrcDstRouterIDs(t *testing.T) {
+	t.Parallel()
+
 	ted := &table.LsTED{Nodes: map[string]*table.LsNode{}}
 
 	srcNode := table.NewLsNode(0, "src-router")
@@ -939,50 +1050,57 @@ func TestExtractSrcDstRouterIDs(t *testing.T) {
 	dstNode := table.NewLsNode(0, "10.255.0.2")
 	ted.Nodes[dstNode.RouterID] = dstNode
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), ted, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), ted, 0)
 
 	sr := newTestStateReport(t, 1, 0)
-	srcRouterID, dstRouterID, err := ss.extractSrcDstRouterIDs(*sr)
+	srcRouterID, dstRouterID, err := ss.extractSrcDstRouterIDs(sr)
 	require.NoError(t, err, "extractSrcDstRouterIDs failed")
 	assert.Equal(t, "src-router", srcRouterID)
 	assert.Equal(t, "10.255.0.2", dstRouterID)
 }
 
 func TestExtractSrcDstRouterIDs_AddressNotFound(t *testing.T) {
+	t.Parallel()
+
 	ted := &table.LsTED{Nodes: map[string]*table.LsNode{}}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), ted, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), ted, 0)
 
 	sr := newTestStateReport(t, 1, 0)
-	_, _, err := ss.extractSrcDstRouterIDs(*sr)
+	_, _, err := ss.extractSrcDstRouterIDs(sr)
 	assert.Error(t, err, "expected an error when neither address is present in the TED")
 }
 
 func TestExtractSrcDstRouterIDs_InvalidAddresses(t *testing.T) {
+	t.Parallel()
+
 	ted := &table.LsTED{Nodes: map[string]*table.LsNode{}}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), ted, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), ted, 0)
 
 	sr := newTestStateReport(t, 1, 0)
 	sr.LSPObject.SrcAddr = netip.Addr{}
 	sr.LSPObject.DstAddr = netip.Addr{}
 
-	_, _, err := ss.extractSrcDstRouterIDs(*sr)
+	_, _, err := ss.extractSrcDstRouterIDs(sr)
 	assert.Error(t, err, "expected an error when neither address is valid")
 }
 
 func TestExtractSrcDstRouterIDs_DestinationNotFound(t *testing.T) {
+	t.Parallel()
+
 	ted := &table.LsTED{Nodes: map[string]*table.LsNode{}}
 	srcNode := table.NewLsNode(0, "10.255.0.1")
 	ted.Nodes[srcNode.RouterID] = srcNode
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), ted, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), ted, 0)
 	sr := newTestStateReport(t, 1, 0)
 
-	_, _, err := ss.extractSrcDstRouterIDs(*sr)
+	_, _, err := ss.extractSrcDstRouterIDs(sr)
 	assert.Error(t, err, "expected an error when the destination address is not present in the TED")
 }
 
 func writeMessage(t *testing.T, w io.Writer, message pcep.Message) {
 	t.Helper()
+
 	b, err := message.Serialize()
 	require.NoError(t, err, "failed to serialize message")
 	_, err = w.Write(b)
@@ -1006,10 +1124,13 @@ func readOpenMessage(t *testing.T, r io.Reader) *pcep.OpenMessage {
 
 	openMessage := &pcep.OpenMessage{}
 	require.NoError(t, openMessage.DecodeFromBytes(body))
+
 	return openMessage
 }
 
 func TestSendOpen_StoresWireValuesAsLocalOpen(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		assert.NoError(t, client.Close(), "failed to close client connection")
@@ -1018,7 +1139,7 @@ func TestSendOpen_StoresWireValuesAsLocalOpen(t *testing.T) {
 		assert.NoError(t, server.Close(), "failed to close server connection")
 	})
 
-	ss := NewSession(testLocalOpen(7), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(7), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 	_, ok := ss.LocalOpen()
 	require.False(t, ok, "nothing is advertised before the Open message is sent")
 
@@ -1036,13 +1157,15 @@ func TestSendOpen_StoresWireValuesAsLocalOpen(t *testing.T) {
 }
 
 func TestSendOpen_AdvertisesConfiguredTimers(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() { assert.NoError(t, client.Close()) })
 	t.Cleanup(func() { assert.NoError(t, server.Close()) })
 
 	// RFC 5440 §8.1: the local Keepalive and DeadTimer are configurable.
 	local := OpenParams{SessionID: 1, Keepalive: 5, DeadTimer: 60}
-	ss := NewSession(local, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(local, netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 	require.NoError(t, ss.SendOpen())
 
 	sent := readOpenMessage(t, client)
@@ -1051,11 +1174,13 @@ func TestSendOpen_AdvertisesConfiguredTimers(t *testing.T) {
 }
 
 func TestSendOpen_AdvertisesFullCapabilitySetOnTheWire(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() { assert.NoError(t, client.Close()) })
 	t.Cleanup(func() { assert.NoError(t, server.Close()) })
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 	require.NoError(t, ss.SendOpen())
 
 	sent := readOpenMessage(t, client)
@@ -1066,8 +1191,10 @@ func TestSendOpen_AdvertisesFullCapabilitySetOnTheWire(t *testing.T) {
 }
 
 func TestSendOpen_ErrorPropagatesFromSendFailure(t *testing.T) {
+	t.Parallel()
+
 	conn := &fakeConn{r: bytes.NewReader(nil), writeErr: errors.New("write: broken pipe")}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
 	require.Error(t, ss.SendOpen())
 }
@@ -1079,12 +1206,15 @@ func openMessageBody(t *testing.T, sessionID, keepalive, deadTimer uint8) []uint
 
 	full, err := pcep.NewOpenMessage(sessionID, keepalive, deadTimer, nil).Serialize()
 	require.NoError(t, err, "failed to serialize Open message")
+
 	return full[pcep.CommonHeaderLength:]
 }
 
 func TestHandlePeerOpen_AcknowledgesAndStoresPeerOpenParams(t *testing.T) {
+	t.Parallel()
+
 	conn := &fakeConn{r: bytes.NewReader(nil)}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
 	_, ok := ss.PccOpen()
 	require.False(t, ok, "nothing is known before the peer's Open message arrives")
@@ -1095,7 +1225,7 @@ func TestHandlePeerOpen_AcknowledgesAndStoresPeerOpenParams(t *testing.T) {
 	assert.True(t, neg.remoteOK, "an acceptable Open sets Appendix A's RemoteOK")
 	assert.False(t, neg.localOK, "LocalOK is only set by the peer's Keepalive")
 	assert.Zero(t, neg.peerOpensRejected, "an acceptable Open does not consume OpenRetry")
-	assert.Equal(t, sessionStateKeepWait, neg.state())
+	assert.Equal(t, SessionStateKeepWait, neg.state())
 
 	pccOpen, ok := ss.PccOpen()
 	require.True(t, ok)
@@ -1103,14 +1233,17 @@ func TestHandlePeerOpen_AcknowledgesAndStoresPeerOpenParams(t *testing.T) {
 
 	writes := conn.writes()
 	require.Len(t, writes, 1, "Appendix A acknowledges an acceptable Open with a Keepalive")
+
 	var header pcep.CommonHeader
 	require.NoError(t, header.DecodeFromBytes(writes[0]))
 	assert.Equal(t, pcep.MessageTypeKeepalive, header.MessageType)
 }
 
 func TestHandlePeerOpen_StoresSessionIDZeroAsAdvertised(t *testing.T) {
+	t.Parallel()
+
 	conn := &fakeConn{r: bytes.NewReader(nil)}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
 	require.NoError(t, ss.handlePeerOpen(openMessageBody(t, 0, 30, 120), &openNegotiation{}))
 
@@ -1120,8 +1253,10 @@ func TestHandlePeerOpen_StoresSessionIDZeroAsAdvertised(t *testing.T) {
 }
 
 func TestHandlePeerOpen_KeepaliveFailureIsPropagated(t *testing.T) {
+	t.Parallel()
+
 	conn := &fakeConn{r: bytes.NewReader(nil), writeErr: errors.New("write: broken pipe")}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
 	neg := &openNegotiation{}
 	require.ErrorContains(t, ss.handlePeerOpen(openMessageBody(t, 1, 30, 120), neg), "write: broken pipe")
@@ -1129,8 +1264,10 @@ func TestHandlePeerOpen_KeepaliveFailureIsPropagated(t *testing.T) {
 }
 
 func TestHandlePeerOpen_RejectedOpenDoesNotOverwriteNegotiatedTimers(t *testing.T) {
+	t.Parallel()
+
 	conn := &fakeConn{r: bytes.NewReader(nil)}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
 	neg := &openNegotiation{}
 	require.NoError(t, ss.handlePeerOpen(openMessageBody(t, 1, 30, 120), neg))
@@ -1146,13 +1283,16 @@ func TestHandlePeerOpen_RejectedOpenDoesNotOverwriteNegotiatedTimers(t *testing.
 
 	writes := conn.writes()
 	require.Len(t, writes, 2, "the Keepalive acknowledging the first Open, then the PCErr rejecting the second")
+
 	var header pcep.CommonHeader
 	require.NoError(t, header.DecodeFromBytes(writes[0]))
 	assert.Equal(t, pcep.MessageTypeKeepalive, header.MessageType)
-	assertPCErr(t, writes[1], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
+	assertPCErr(t, writes[1], pcepErrorValueInvalidOpenMessage)
 }
 
 func TestHandlePeerOpen_RejectedOpenIsNotPublishedAsSessionState(t *testing.T) {
+	t.Parallel()
+
 	conn := &fakeConn{r: bytes.NewReader(nil)}
 	ss := negotiatingSession(t, conn) // Keepalive range [10, 60]
 
@@ -1167,6 +1307,8 @@ func TestHandlePeerOpen_RejectedOpenIsNotPublishedAsSessionState(t *testing.T) {
 }
 
 func TestAcceptableOpen(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		session *Session
@@ -1242,12 +1384,15 @@ func TestAcceptableOpen(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, tt.session.acceptableOpen(tt.pccOpen))
 		})
 	}
 }
 
 func TestProposedTimers(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name          string
 		session       *Session
@@ -1286,6 +1431,8 @@ func TestProposedTimers(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			keepalive, deadTimer := tt.session.proposedTimers(tt.pccOpen)
 			assert.Equal(t, tt.wantKeepalive, keepalive)
 			assert.Equal(t, tt.wantDeadTimer, deadTimer)
@@ -1294,6 +1441,8 @@ func TestProposedTimers(t *testing.T) {
 }
 
 func TestEffectiveKeepalive(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name           string
 		localKeepalive uint8
@@ -1310,12 +1459,15 @@ func TestEffectiveKeepalive(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tt.want, effectiveKeepalive(tt.localKeepalive, tt.localDeadTimer))
 		})
 	}
 }
 
 func TestKeepaliveInterval_IgnoresPccAdvertisedValues(t *testing.T) {
+	t.Parallel()
+
 	// RFC 5440 §7.3: advertising 0 disables Keepalive transmissions.
 	ss := &Session{localOpen: &OpenParams{Keepalive: 30, DeadTimer: 120}}
 	assert.Equal(t, uint8(30), ss.keepaliveInterval())
@@ -1325,16 +1477,22 @@ func TestKeepaliveInterval_IgnoresPccAdvertisedValues(t *testing.T) {
 }
 
 func TestKeepaliveInterval_ConstrainedByOwnDeadTimer(t *testing.T) {
+	t.Parallel()
+
 	ss := &Session{localOpen: &OpenParams{Keepalive: 30, DeadTimer: 20}}
 	assert.Equal(t, uint8(5), ss.keepaliveInterval())
 }
 
 func TestKeepaliveInterval_ZeroBeforeOpenIsSent(t *testing.T) {
+	t.Parallel()
+
 	ss := &Session{}
 	assert.Zero(t, ss.keepaliveInterval())
 }
 
 func TestKeepaliveInterval_ZeroWhenPolaAdvertisedKeepaliveZero(t *testing.T) {
+	t.Parallel()
+
 	ss := &Session{localOpen: &OpenParams{Keepalive: 0, DeadTimer: 0}}
 	assert.Zero(t, ss.keepaliveInterval())
 }
@@ -1345,19 +1503,23 @@ func handshakeBytes(t *testing.T, openMessage *pcep.OpenMessage) ([]byte, error)
 
 	openBytes, err := openMessage.Serialize()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("serialize Open message: %w", err)
 	}
+
 	keepaliveBytes, err := pcep.NewKeepaliveMessage().Serialize()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("serialize Keepalive message: %w", err)
 	}
+
 	return append(openBytes, keepaliveBytes...), nil
 }
 
 // writeStateReportMessage writes sr as an unsolicited PCRpt.
 func writeStateReportMessage(t *testing.T, w io.Writer, sr *pcep.StateReport) {
 	t.Helper()
-	sr.LSPObject.TLVs = append(sr.LSPObject.TLVs,
+
+	sr.LSPObject.TLVs = append(
+		sr.LSPObject.TLVs,
 		&pcep.SymbolicPathName{Name: sr.LSPObject.Name},
 		pcep.NewIPv4LSPIdentifiers(sr.LSPObject.SrcAddr, sr.LSPObject.DstAddr, sr.LSPObject.LSPID, 0, 0),
 	)
@@ -1367,18 +1529,22 @@ func writeStateReportMessage(t *testing.T, w io.Writer, sr *pcep.StateReport) {
 	require.NoError(t, err, "failed to serialize LSPObject")
 	byteEro, err := sr.EroObject.Serialize()
 	require.NoError(t, err, "failed to serialize EroObject")
+
 	body := append(append(byteSrp, byteLsp...), byteEro...)
 	writeRawPCEPMessage(t, w, pcep.MessageTypeReport, body)
 }
 
 func writeRawPCEPMessage(t *testing.T, w io.Writer, msgType pcep.MessageType, body []byte) {
 	t.Helper()
+
 	header := &pcep.CommonHeader{Version: 1, MessageType: msgType, MessageLength: pcep.CommonHeaderLength + uint16(len(body))}
 	_, err := w.Write(append(header.Serialize(), body...))
 	require.NoError(t, err, "failed to write PCEP message")
 }
 
 func TestOpen_Established_ReturnsWhenOpenFails(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		assert.NoError(t, server.Close(), "failed to close server connection")
@@ -1386,11 +1552,15 @@ func TestOpen_Established_ReturnsWhenOpenFails(t *testing.T) {
 
 	require.NoError(t, client.Close(), "failed to close client connection")
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 
 	done := make(chan struct{})
+
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
+
 		close(done)
 	}()
 
@@ -1404,21 +1574,27 @@ func TestOpen_Established_ReturnsWhenOpenFails(t *testing.T) {
 }
 
 func TestEstablished_StateMachineFollowsRFC5440(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		assert.NoError(t, client.Close(), "failed to close client connection")
 	})
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
-	assert.Equal(t, sessionStateTCPPending, ss.State(), "a freshly accepted session is TCP pending")
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
+	assert.Equal(t, SessionStateTCPPending, ss.State(), "a freshly accepted session is TCP pending")
 	assert.Equal(t, pb.SessionState_SESSION_STATE_TCP_PENDING, toPBSessionState(ss.State()))
 	assert.False(t, ss.Up())
 
 	writeMessage(t, client, pcep.NewOpenMessage(1, 30, 120, nil))
 
 	done := make(chan struct{})
+
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
+
 		close(done)
 	}()
 
@@ -1427,7 +1603,7 @@ func TestEstablished_StateMachineFollowsRFC5440(t *testing.T) {
 
 	// RFC 5440 §6.2: the session is established only once both peers have received
 	// a Keepalive, so Pola stays in KeepWait until the PCC acknowledges its Open.
-	require.Eventually(t, func() bool { return ss.State() == sessionStateKeepWait }, 2*time.Second, 10*time.Millisecond,
+	require.Eventually(t, func() bool { return ss.State() == SessionStateKeepWait }, 2*time.Second, 10*time.Millisecond,
 		"Pola must wait in KeepWait for the peer's Keepalive")
 	assert.Equal(t, pb.SessionState_SESSION_STATE_KEEP_WAIT, toPBSessionState(ss.State()))
 	assert.False(t, ss.Up(), "the session must not be up before the peer acknowledges Pola's Open")
@@ -1439,6 +1615,7 @@ func TestEstablished_StateMachineFollowsRFC5440(t *testing.T) {
 	assert.Equal(t, pb.SessionState_SESSION_STATE_UP, toPBSessionState(ss.State()))
 
 	writeMessage(t, client, pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided))
+
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
@@ -1447,17 +1624,23 @@ func TestEstablished_StateMachineFollowsRFC5440(t *testing.T) {
 }
 
 func TestEstablished_KeepWaitExpiryReportsErrorValue7(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() { assert.NoError(t, client.Close()) })
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 	ss.keepWait = 50 * time.Millisecond
 
 	writeMessage(t, client, pcep.NewOpenMessage(1, 30, 120, nil))
 
 	done := make(chan struct{})
+
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
+
 		close(done)
 	}()
 
@@ -1475,19 +1658,26 @@ func TestEstablished_KeepWaitExpiryReportsErrorValue7(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		require.Fail(t, "Established did not return after KeepWait expired")
 	}
+
 	assert.False(t, ss.Up())
 }
 
 func TestEstablished_OpenWaitExpiryReportsErrorValue2(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() { assert.NoError(t, client.Close()) })
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 	ss.openWait = 50 * time.Millisecond
 
 	done := make(chan struct{})
+
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
+
 		close(done)
 	}()
 
@@ -1507,17 +1697,23 @@ func TestEstablished_OpenWaitExpiryReportsErrorValue2(t *testing.T) {
 }
 
 func TestEstablished_NonOpenFirstMessageReportsErrorValue1(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() { assert.NoError(t, client.Close()) })
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 
 	// RFC 5440 §6.2: any message received before an Open message is an error.
 	writeMessage(t, client, pcep.NewKeepaliveMessage())
 
 	done := make(chan struct{})
+
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
+
 		close(done)
 	}()
 
@@ -1536,11 +1732,13 @@ func TestEstablished_NonOpenFirstMessageReportsErrorValue1(t *testing.T) {
 }
 
 func TestEstablished_InvalidZeroMSDIsToleratedWithWarning(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() { assert.NoError(t, client.Close()) })
 
-	core, logs := observer.New(zap.WarnLevel)
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.New(core), nil, 0)
+	lg, logs := logger.NewRecorder(logger.LevelWarn)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, lg, nil, 0)
 
 	// RFC 8664 §5.1 forbids X=0 with a zero MSD, but Cisco XRd, Juniper
 	// vJunos, and FRRouting all advertise it in practice; the session must
@@ -1550,8 +1748,12 @@ func TestEstablished_InvalidZeroMSDIsToleratedWithWarning(t *testing.T) {
 	writeMessage(t, client, openMessage)
 
 	done := make(chan struct{})
+
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
+
 		close(done)
 	}()
 
@@ -1563,10 +1765,12 @@ func TestEstablished_InvalidZeroMSDIsToleratedWithWarning(t *testing.T) {
 	require.Eventually(t, ss.Up, 2*time.Second, 10*time.Millisecond,
 		"the session must come up despite the peer's invalid SR-PCE-CAPABILITY")
 
-	assert.Len(t, logs.FilterMessage(
-		"peer advertised SR-PCE-CAPABILITY with X=0 and MSD=0 (RFC 8664 §5.1); tolerating as a known deployed-peer deviation").All(), 1)
+	assert.Len(t, logs.FilterByMessage(
+		"peer advertised SR-PCE-CAPABILITY with X=0 and MSD=0 (RFC 8664 §5.1); tolerating as a known deployed-peer deviation",
+	), 1)
 
 	writeMessage(t, client, pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided))
+
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
@@ -1575,8 +1779,10 @@ func TestEstablished_InvalidZeroMSDIsToleratedWithWarning(t *testing.T) {
 }
 
 func TestValidateCapabilities_ChecksSRPCECapabilityNestedInPathSetupType(t *testing.T) {
-	core, logs := observer.New(zap.WarnLevel)
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.New(core), nil, 0)
+	t.Parallel()
+
+	lg, logs := logger.NewRecorder(logger.LevelWarn)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, lg, nil, 0)
 
 	caps := []pcep.CapabilityInterface{
 		&pcep.PathSetupTypeCapability{
@@ -1589,13 +1795,16 @@ func TestValidateCapabilities_ChecksSRPCECapabilityNestedInPathSetupType(t *test
 
 	ss.validateCapabilities(caps)
 
-	assert.Len(t, logs.FilterMessage(
-		"peer advertised SR-PCE-CAPABILITY with X=0 and MSD=0 (RFC 8664 §5.1); tolerating as a known deployed-peer deviation").All(), 1)
+	assert.Len(t, logs.FilterByMessage(
+		"peer advertised SR-PCE-CAPABILITY with X=0 and MSD=0 (RFC 8664 §5.1); tolerating as a known deployed-peer deviation",
+	), 1)
 }
 
 func TestValidateCapabilities_WarnsWhenSRTEAdvertisedWithoutSRCapability(t *testing.T) {
-	core, logs := observer.New(zap.WarnLevel)
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.New(core), nil, 0)
+	t.Parallel()
+
+	lg, logs := logger.NewRecorder(logger.LevelWarn)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, lg, nil, 0)
 
 	caps := []pcep.CapabilityInterface{
 		&pcep.PathSetupTypeCapability{PathSetupTypes: pcep.Psts{pcep.PathSetupTypeSRTE}},
@@ -1603,13 +1812,16 @@ func TestValidateCapabilities_WarnsWhenSRTEAdvertisedWithoutSRCapability(t *test
 
 	ss.validateCapabilities(caps)
 
-	assert.Len(t, logs.FilterMessage(
-		"peer advertised PST=1 (SR-TE) without an SR-PCE-CAPABILITY sub-TLV (RFC 8664 §4.1.2)").All(), 1)
+	assert.Len(t, logs.FilterByMessage(
+		"peer advertised PST=1 (SR-TE) without an SR-PCE-CAPABILITY sub-TLV (RFC 8664 §4.1.2)",
+	), 1)
 }
 
 func TestValidateCapabilities_WarnsWhenSRv6TEAdvertisedWithoutSRv6Capability(t *testing.T) {
-	core, logs := observer.New(zap.WarnLevel)
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.New(core), nil, 0)
+	t.Parallel()
+
+	lg, logs := logger.NewRecorder(logger.LevelWarn)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, lg, nil, 0)
 
 	caps := []pcep.CapabilityInterface{
 		&pcep.PathSetupTypeCapability{PathSetupTypes: pcep.Psts{pcep.PathSetupTypeSRv6TE}},
@@ -1617,13 +1829,16 @@ func TestValidateCapabilities_WarnsWhenSRv6TEAdvertisedWithoutSRv6Capability(t *
 
 	ss.validateCapabilities(caps)
 
-	assert.Len(t, logs.FilterMessage(
-		"peer advertised PST=3 (SRv6-TE) without an SRv6-PCE-CAPABILITY sub-TLV (RFC 9603 §4.1.1)").All(), 1)
+	assert.Len(t, logs.FilterByMessage(
+		"peer advertised PST=3 (SRv6-TE) without an SRv6-PCE-CAPABILITY sub-TLV (RFC 9603 §4.1.1)",
+	), 1)
 }
 
 func TestValidateCapabilities_NoWarningWhenSRCapabilityAdvertisedAtTopLevel(t *testing.T) {
-	core, logs := observer.New(zap.WarnLevel)
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.New(core), nil, 0)
+	t.Parallel()
+
+	lg, logs := logger.NewRecorder(logger.LevelWarn)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, lg, nil, 0)
 
 	caps := []pcep.CapabilityInterface{
 		&pcep.PathSetupTypeCapability{PathSetupTypes: pcep.Psts{pcep.PathSetupTypeSRTE}},
@@ -1636,8 +1851,10 @@ func TestValidateCapabilities_NoWarningWhenSRCapabilityAdvertisedAtTopLevel(t *t
 }
 
 func TestValidateCapabilities_NoWarningWhenSRv6CapabilityAdvertisedAtTopLevel(t *testing.T) {
-	core, logs := observer.New(zap.WarnLevel)
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.New(core), nil, 0)
+	t.Parallel()
+
+	lg, logs := logger.NewRecorder(logger.LevelWarn)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, lg, nil, 0)
 
 	caps := []pcep.CapabilityInterface{
 		&pcep.PathSetupTypeCapability{PathSetupTypes: pcep.Psts{pcep.PathSetupTypeSRv6TE}},
@@ -1650,18 +1867,24 @@ func TestValidateCapabilities_NoWarningWhenSRv6CapabilityAdvertisedAtTopLevel(t 
 }
 
 func TestEstablished_PCErrDuringKeepWaitReportsErrorValue6(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() { assert.NoError(t, client.Close()) })
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 
 	writeMessage(t, client, pcep.NewOpenMessage(1, 30, 120, nil))
 	// Pola does not negotiate, so a proposal in KeepWait is unacceptable.
 	writeMessage(t, client, pcep.NewPCErrMessage(1, 4, nil))
 
 	done := make(chan struct{})
+
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
+
 		close(done)
 	}()
 
@@ -1678,14 +1901,17 @@ func TestEstablished_PCErrDuringKeepWaitReportsErrorValue6(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		require.Fail(t, "Established did not return after receiving a PCErr in KeepWait")
 	}
+
 	assert.False(t, ss.Up())
 }
 
 func TestEstablished_UnacceptableKeepaliveNonNegotiableReportsErrorValue3(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() { assert.NoError(t, client.Close()) })
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 	ss.keepaliveRangeEnabled = true
 	ss.minKeepalive, ss.maxKeepalive = 10, 60
 	ss.allowNegotiation = false
@@ -1694,8 +1920,12 @@ func TestEstablished_UnacceptableKeepaliveNonNegotiableReportsErrorValue3(t *tes
 	writeMessage(t, client, pcep.NewOpenMessage(1, 5, 20, nil))
 
 	done := make(chan struct{})
+
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
+
 		close(done)
 	}()
 
@@ -1713,14 +1943,17 @@ func TestEstablished_UnacceptableKeepaliveNonNegotiableReportsErrorValue3(t *tes
 	case <-time.After(2 * time.Second):
 		require.Fail(t, "Established did not return after an unacceptable, non-negotiable Open")
 	}
+
 	assert.False(t, ss.Up())
 }
 
 func TestEstablished_NegotiatesAcceptableKeepaliveThenEstablishes(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() { assert.NoError(t, client.Close()) })
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 	ss.keepaliveRangeEnabled = true
 	ss.minKeepalive, ss.maxKeepalive = 10, 60
 	ss.allowNegotiation = true
@@ -1728,8 +1961,12 @@ func TestEstablished_NegotiatesAcceptableKeepaliveThenEstablishes(t *testing.T) 
 	writeMessage(t, client, pcep.NewOpenMessage(1, 5, 20, nil))
 
 	done := make(chan struct{})
+
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
+
 		close(done)
 	}()
 
@@ -1754,6 +1991,7 @@ func TestEstablished_NegotiatesAcceptableKeepaliveThenEstablishes(t *testing.T) 
 		"the session must come up once the peer proposes acceptable session characteristics")
 
 	writeMessage(t, client, pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided))
+
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
@@ -1762,10 +2000,12 @@ func TestEstablished_NegotiatesAcceptableKeepaliveThenEstablishes(t *testing.T) 
 }
 
 func TestEstablished_SecondOpenStillUnacceptableReportsErrorValue5(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() { assert.NoError(t, client.Close()) })
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 	ss.keepaliveRangeEnabled = true
 	ss.minKeepalive, ss.maxKeepalive = 10, 60
 	ss.allowNegotiation = true
@@ -1773,8 +2013,12 @@ func TestEstablished_SecondOpenStillUnacceptableReportsErrorValue5(t *testing.T)
 	writeMessage(t, client, pcep.NewOpenMessage(1, 5, 20, nil))
 
 	done := make(chan struct{})
+
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
+
 		close(done)
 	}()
 
@@ -1796,20 +2040,27 @@ func TestEstablished_SecondOpenStillUnacceptableReportsErrorValue5(t *testing.T)
 	case <-time.After(2 * time.Second):
 		require.Fail(t, "Established did not return after a second unacceptable Open")
 	}
+
 	assert.False(t, ss.Up())
 }
 
 func TestEstablished_SecondOpenAfterAcceptanceDoesNotChangeNegotiatedTimers(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() { assert.NoError(t, client.Close()) })
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 
 	writeMessage(t, client, pcep.NewOpenMessage(1, 30, 120, nil))
 
 	done := make(chan struct{})
+
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
+
 		close(done)
 	}()
 
@@ -1829,6 +2080,7 @@ func TestEstablished_SecondOpenAfterAcceptanceDoesNotChangeNegotiatedTimers(t *t
 	case <-time.After(2 * time.Second):
 		require.Fail(t, "Established did not return after a further Open arrived post-acceptance")
 	}
+
 	assert.False(t, ss.Up())
 
 	pccOpen, ok := ss.PccOpen()
@@ -1838,6 +2090,8 @@ func TestEstablished_SecondOpenAfterAcceptanceDoesNotChangeNegotiatedTimers(t *t
 }
 
 func TestEstablished_ReturnsOnCloseMessage(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		assert.NoError(t, client.Close(), "failed to close client connection")
@@ -1846,11 +2100,15 @@ func TestEstablished_ReturnsOnCloseMessage(t *testing.T) {
 	writeMessage(t, client, pcep.NewOpenMessage(1, 30, 120, nil))
 	writeMessage(t, client, pcep.NewKeepaliveMessage())
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 
 	done := make(chan struct{})
+
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
+
 		close(done)
 	}()
 
@@ -1869,6 +2127,8 @@ func TestEstablished_ReturnsOnCloseMessage(t *testing.T) {
 }
 
 func TestEstablished_ZeroKeepaliveDoesNotPanic(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		assert.NoError(t, client.Close(), "failed to close client connection")
@@ -1877,11 +2137,15 @@ func TestEstablished_ZeroKeepaliveDoesNotPanic(t *testing.T) {
 	writeMessage(t, client, pcep.NewOpenMessage(1, 0, 0, nil))
 	writeMessage(t, client, pcep.NewKeepaliveMessage())
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 
 	done := make(chan struct{})
+
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
+
 		close(done)
 	}()
 
@@ -1899,6 +2163,8 @@ func TestEstablished_ZeroKeepaliveDoesNotPanic(t *testing.T) {
 }
 
 func TestEstablished_ReturnsWhenPeerDisconnectsAbruptly(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		assert.NoError(t, server.Close(), "failed to close server connection")
@@ -1907,11 +2173,15 @@ func TestEstablished_ReturnsWhenPeerDisconnectsAbruptly(t *testing.T) {
 	writeMessage(t, client, pcep.NewOpenMessage(1, 30, 120, nil))
 	writeMessage(t, client, pcep.NewKeepaliveMessage())
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 
 	done := make(chan struct{})
+
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
+
 		close(done)
 	}()
 
@@ -1928,12 +2198,15 @@ func TestEstablished_ReturnsWhenPeerDisconnectsAbruptly(t *testing.T) {
 }
 
 func TestEstablished_ReturnsWhenPeriodicKeepaliveSendFails(t *testing.T) {
+	t.Parallel()
+
 	// Use a 1-second Keepalive so the periodic send fails quickly.
 	openBytes, err := handshakeBytes(t, pcep.NewOpenMessage(1, 30, 120, nil))
 	require.NoError(t, err)
 
 	// Block the receive loop so the test observes the periodic send failure.
 	pr, pw := io.Pipe()
+
 	t.Cleanup(func() {
 		assert.NoError(t, pw.Close(), "failed to close pipe writer")
 	})
@@ -1944,11 +2217,15 @@ func TestEstablished_ReturnsWhenPeriodicKeepaliveSendFails(t *testing.T) {
 		writeErr:  errors.New("write: broken pipe"),
 	}
 
-	ss := NewSession(OpenParams{SessionID: 1, Keepalive: 1, DeadTimer: 4}, netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss := NewSession(OpenParams{SessionID: 1, Keepalive: 1, DeadTimer: 4}, netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
 	done := make(chan struct{})
+
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
+
 		close(done)
 	}()
 
@@ -1960,10 +2237,13 @@ func TestEstablished_ReturnsWhenPeriodicKeepaliveSendFails(t *testing.T) {
 }
 
 func TestEstablished_ReturnsWhenInitialKeepaliveSendFails(t *testing.T) {
+	t.Parallel()
+
 	openBytes, err := handshakeBytes(t, pcep.NewOpenMessage(1, 30, 120, nil))
 	require.NoError(t, err)
 
 	pr, pw := io.Pipe()
+
 	t.Cleanup(func() {
 		assert.NoError(t, pw.Close(), "failed to close pipe writer")
 	})
@@ -1974,11 +2254,15 @@ func TestEstablished_ReturnsWhenInitialKeepaliveSendFails(t *testing.T) {
 		writeErr:  errors.New("write: broken pipe"),
 	}
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
 	done := make(chan struct{})
+
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
+
 		close(done)
 	}()
 
@@ -1990,6 +2274,8 @@ func TestEstablished_ReturnsWhenInitialKeepaliveSendFails(t *testing.T) {
 }
 
 func TestOpen_MalformedOrUnexpectedPeerMessageIsRejected(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name    string
 		wantErr string
@@ -1998,9 +2284,12 @@ func TestOpen_MalformedOrUnexpectedPeerMessageIsRejected(t *testing.T) {
 		{
 			name: "PCEP version mismatch",
 			setup: func(t *testing.T, client *net.TCPConn) bool {
+				t.Helper()
+
 				header := &pcep.CommonHeader{Version: 2, MessageType: pcep.MessageTypeOpen, MessageLength: pcep.CommonHeaderLength}
 				_, err := client.Write(header.Serialize())
 				require.NoError(t, err, "failed to write header")
+
 				return false
 			},
 		},
@@ -2008,7 +2297,9 @@ func TestOpen_MalformedOrUnexpectedPeerMessageIsRejected(t *testing.T) {
 			name:    "Keepalive before the peer's Open",
 			wantErr: "received a Keepalive before the peer's Open message",
 			setup: func(t *testing.T, client *net.TCPConn) bool {
+				t.Helper()
 				writeMessage(t, client, pcep.NewKeepaliveMessage())
+
 				return false
 			},
 		},
@@ -2016,36 +2307,47 @@ func TestOpen_MalformedOrUnexpectedPeerMessageIsRejected(t *testing.T) {
 			name:    "message that cannot appear during establishment",
 			wantErr: "while establishing the PCEP session",
 			setup: func(t *testing.T, client *net.TCPConn) bool {
+				t.Helper()
 				writeMessage(t, client, pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided))
+
 				return false
 			},
 		},
 		{
 			name: "MessageLength below CommonHeaderLength",
 			setup: func(t *testing.T, client *net.TCPConn) bool {
+				t.Helper()
+
 				header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeOpen, MessageLength: pcep.CommonHeaderLength - 1}
 				_, err := client.Write(header.Serialize())
 				require.NoError(t, err, "failed to write header")
+
 				return false
 			},
 		},
 		{
 			name: "connection closed before the Open object body is read",
 			setup: func(t *testing.T, client *net.TCPConn) bool {
+				t.Helper()
+
 				header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeOpen, MessageLength: pcep.CommonHeaderLength + 10}
 				_, err := client.Write(header.Serialize())
 				require.NoError(t, err, "failed to write header")
 				require.NoError(t, client.Close(), "failed to close client connection")
+
 				return true
 			},
 		},
 		{
 			name: "Open object has the wrong ObjectClass",
 			setup: func(t *testing.T, client *net.TCPConn) bool {
+				t.Helper()
+
 				body := pcep.NewCommonObjectHeader(pcep.ObjectClassClose, pcep.ObjectTypeOpenOpen, pcep.CommonHeaderLength).Serialize()
 				header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeOpen, MessageLength: pcep.CommonHeaderLength + uint16(len(body))}
 				_, err := client.Write(append(header.Serialize(), body...))
 				require.NoError(t, err, "failed to write message")
+
 				return false
 			},
 		},
@@ -2053,6 +2355,7 @@ func TestOpen_MalformedOrUnexpectedPeerMessageIsRejected(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			server, client := newTCPConnPair(t)
 			t.Cleanup(func() {
 				assert.NoError(t, server.Close(), "failed to close server connection")
@@ -2065,12 +2368,14 @@ func TestOpen_MalformedOrUnexpectedPeerMessageIsRejected(t *testing.T) {
 				})
 			}
 
-			ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+			ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 			err := ss.Open()
 			require.Error(t, err)
+
 			if tc.wantErr != "" {
 				require.ErrorContains(t, err, tc.wantErr)
 			}
+
 			assert.False(t, ss.Up())
 		})
 	}
@@ -2087,8 +2392,10 @@ func (r *errAfterReader) Read(p []byte) (int, error) {
 	if len(r.prefix) > 0 {
 		n := copy(p, r.prefix)
 		r.prefix = r.prefix[n:]
+
 		return n, nil
 	}
+
 	return 0, r.err
 }
 
@@ -2098,11 +2405,14 @@ func concatMessages(t *testing.T, messages ...pcep.Message) []byte {
 	t.Helper()
 
 	var stream []byte
+
 	for _, message := range messages {
 		b, err := message.Serialize()
 		require.NoError(t, err, "failed to serialize message")
+
 		stream = append(stream, b...)
 	}
+
 	return stream
 }
 
@@ -2116,21 +2426,22 @@ func negotiableRejection(keepalive, deadTimer uint8) *pcep.PCErrMessage {
 func negotiatingSession(t *testing.T, conn net.Conn) *Session {
 	t.Helper()
 
-	return negotiatingSessionWithLogger(t, conn, zap.NewNop())
+	return negotiatingSessionWithLogger(t, conn, logger.NewNop())
 }
 
-func negotiatingSessionWithLogger(t *testing.T, conn net.Conn, logger *zap.Logger) *Session {
+func negotiatingSessionWithLogger(t *testing.T, conn net.Conn, lg *logger.Logger) *Session {
 	t.Helper()
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger, nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, lg, nil, 0)
 	ss.keepaliveRangeEnabled = true
 	ss.minKeepalive, ss.maxKeepalive = 10, 60
 	ss.allowNegotiation = true
+
 	return ss
 }
 
-// assertPCErr decodes write and asserts it is a PCErr carrying errorType/errorValue.
-func assertPCErr(t *testing.T, write []byte, errorType, errorValue uint8) {
+// assertPCErr decodes write and asserts it is a session-establishment-failure PCErr carrying errorValue.
+func assertPCErr(t *testing.T, write []byte, errorValue uint8) {
 	t.Helper()
 
 	var header pcep.CommonHeader
@@ -2140,28 +2451,30 @@ func assertPCErr(t *testing.T, write []byte, errorType, errorValue uint8) {
 	pcerrMessage := &pcep.PCErrMessage{}
 	require.NoError(t, pcerrMessage.DecodeFromBytes(write[pcep.CommonHeaderLength:]))
 	require.Len(t, pcerrMessage.Errors, 1)
-	assert.Equal(t, errorType, pcerrMessage.Errors[0].ErrorType)
+	assert.Equal(t, pcepErrorTypeSessionEstablishmentFailure, pcerrMessage.Errors[0].ErrorType)
 	assert.Equal(t, errorValue, pcerrMessage.Errors[0].ErrorValue)
 }
 
 func TestOpenNegotiation_DerivesAppendixAStateFromRemoteOKAndLocalOK(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name            string
 		neg             openNegotiation
-		wantState       sessionState
+		wantState       SessionState
 		wantEstablished bool
 		wantPeerOpened  bool
 	}{
 		{
 			name:      "nothing acknowledged yet",
-			wantState: sessionStateOpenWait,
+			wantState: SessionStateOpenWait,
 		},
 		{
 			// Appendix A: OpenWait + unacceptable-but-negotiable + LocalOK=0
 			// clears the OpenWait timer, starts KeepWait and moves to KeepWait.
 			name:           "peer's Open answered with PCErr(1,4) while Pola's Open is unacknowledged",
 			neg:            openNegotiation{peerOpensRejected: 1},
-			wantState:      sessionStateKeepWait,
+			wantState:      SessionStateKeepWait,
 			wantPeerOpened: true,
 		},
 		{
@@ -2169,24 +2482,24 @@ func TestOpenNegotiation_DerivesAppendixAStateFromRemoteOKAndLocalOK(t *testing.
 			// timer, starts OpenWait and moves back to OpenWait.
 			name:           "Pola's Open acknowledged while the peer's revised Open is awaited",
 			neg:            openNegotiation{peerOpensRejected: 1, localOK: true},
-			wantState:      sessionStateOpenWait,
+			wantState:      SessionStateOpenWait,
 			wantPeerOpened: true,
 		},
 		{
 			name:           "peer's Open accepted, only its Keepalive outstanding",
 			neg:            openNegotiation{remoteOK: true},
-			wantState:      sessionStateKeepWait,
+			wantState:      SessionStateKeepWait,
 			wantPeerOpened: true,
 		},
 		{
 			name:      "Pola's Open acknowledged, peer's Open still awaited",
 			neg:       openNegotiation{localOK: true},
-			wantState: sessionStateOpenWait,
+			wantState: SessionStateOpenWait,
 		},
 		{
 			name:            "both directions acknowledged",
 			neg:             openNegotiation{remoteOK: true, localOK: true},
-			wantState:       sessionStateUp,
+			wantState:       SessionStateUp,
 			wantEstablished: true,
 			wantPeerOpened:  true,
 		},
@@ -2194,6 +2507,7 @@ func TestOpenNegotiation_DerivesAppendixAStateFromRemoteOKAndLocalOK(t *testing.
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tc.wantState, tc.neg.state())
 			assert.Equal(t, tc.wantEstablished, tc.neg.established())
 			assert.Equal(t, tc.wantPeerOpened, tc.neg.peerOpened())
@@ -2202,48 +2516,54 @@ func TestOpenNegotiation_DerivesAppendixAStateFromRemoteOKAndLocalOK(t *testing.
 }
 
 func TestOpenNegotiation_TracksAppendixAState(t *testing.T) {
+	t.Parallel()
+
 	conn := &fakeConn{r: bytes.NewReader(nil)}
 	ss := negotiatingSession(t, conn)
 
 	neg := &openNegotiation{}
-	assert.Equal(t, sessionStateOpenWait, neg.state(), "(0,0) awaits the peer's Open: OpenWait/1-2")
+	assert.Equal(t, SessionStateOpenWait, neg.state(), "(0,0) awaits the peer's Open: OpenWait/1-2")
 	assert.False(t, neg.established())
 
 	require.NoError(t, ss.handlePeerOpen(openMessageBody(t, 1, 5, 20), neg))
 	assert.False(t, neg.remoteOK)
 	assert.Equal(t, 1, neg.peerOpensRejected)
-	assert.Equal(t, sessionStateKeepWait, neg.state(),
+	assert.Equal(t, SessionStateKeepWait, neg.state(),
 		"Appendix A moves to KeepWait after PCErr(1,4) while LocalOK=0: KeepWait/1-7")
 
 	rejection, err := negotiableRejection(40, 160).Serialize()
 	require.NoError(t, err)
 	require.NoError(t, ss.handleNegotiationPCErr(rejection[pcep.CommonHeaderLength:], neg))
 	assert.Equal(t, 1, neg.localOpenRetries)
-	assert.Equal(t, sessionStateKeepWait, neg.state(),
+	assert.Equal(t, SessionStateKeepWait, neg.state(),
 		"the re-sent Open is still unacknowledged, and an Open has been received, so 1/2 would misreport")
 
 	require.NoError(t, ss.handlePeerOpen(openMessageBody(t, 1, 30, 120), neg))
 	assert.True(t, neg.remoteOK)
 	assert.False(t, neg.localOK)
-	assert.Equal(t, sessionStateKeepWait, neg.state(), "only the acknowledgment of Pola's Open remains outstanding: KeepWait/1-7")
+	assert.Equal(t, SessionStateKeepWait, neg.state(), "only the acknowledgment of Pola's Open remains outstanding: KeepWait/1-7")
 	assert.False(t, neg.established())
 
 	neg.localOK = true
 	assert.True(t, neg.established())
-	assert.Equal(t, sessionStateUp, neg.state())
+	assert.Equal(t, SessionStateUp, neg.state())
 }
 
 func TestOpen_SendOpenFailureIsPropagated(t *testing.T) {
+	t.Parallel()
+
 	conn := &fakeConn{r: bytes.NewReader(nil), writeErr: errors.New("write: broken pipe")}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
 	require.ErrorContains(t, ss.Open(), "write: broken pipe")
 	assert.False(t, ss.Up())
 }
 
 func TestNegotiateOpen_PeerDisconnectIsNotReportedAsTimerExpiry(t *testing.T) {
+	t.Parallel()
+
 	conn := &fakeConn{r: bytes.NewReader(concatMessages(t, pcep.NewOpenMessage(1, 30, 120, nil)))}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
 	err := ss.negotiateOpen(&openNegotiation{})
 	require.Error(t, err)
@@ -2251,52 +2571,65 @@ func TestNegotiateOpen_PeerDisconnectIsNotReportedAsTimerExpiry(t *testing.T) {
 }
 
 func TestNegotiateOpen_TruncatedMessageBodyReturnsError(t *testing.T) {
+	t.Parallel()
+
 	truncated := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeReport, MessageLength: pcep.CommonHeaderLength + 4}
 	stream := slices.Concat(truncated.Serialize(), []byte{0x00, 0x00})
 
 	conn := &fakeConn{r: bytes.NewReader(stream)}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
 	require.Error(t, ss.negotiateOpen(&openNegotiation{}), "a truncated message body must be reported as an error")
 }
 
 func TestNegotiateOpen_UnexpectedMessageTypeIsCounted(t *testing.T) {
+	t.Parallel()
+
 	header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeReport, MessageLength: pcep.CommonHeaderLength}
 	conn := &fakeConn{r: bytes.NewReader(header.Serialize())}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
 	require.Error(t, ss.negotiateOpen(&openNegotiation{}))
 	assert.Equal(t, uint64(1), ss.Stats().RptRcvd)
 }
 
 func TestNegotiateOpen_PreOpenKeepaliveIsCounted(t *testing.T) {
+	t.Parallel()
+
 	conn := &fakeConn{r: bytes.NewReader(concatMessages(t, pcep.NewKeepaliveMessage()))}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
 	require.Error(t, ss.negotiateOpen(&openNegotiation{}))
 	assert.Equal(t, uint64(1), ss.Stats().KeepaliveRcvd)
 }
 
 func TestNegotiateOpen_PreOpenPCErrIsCounted(t *testing.T) {
+	t.Parallel()
+
 	full, err := pcep.NewPCErrMessage(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueSecondOpenStillUnacceptable, nil).Serialize()
 	require.NoError(t, err)
+
 	conn := &fakeConn{r: bytes.NewReader(full)}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
 	require.Error(t, ss.negotiateOpen(&openNegotiation{}))
 	assert.Equal(t, uint64(1), ss.Stats().PCErrRcvd)
 }
 
 func TestNegotiateOpen_ReadMessageBodyErrorIsPropagated(t *testing.T) {
+	t.Parallel()
+
 	header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeOpen, MessageLength: pcep.CommonHeaderLength + 10}
 	wantErr := errors.New("connection reset by peer")
 	conn := &fakeConn{r: &errAfterReader{prefix: header.Serialize(), err: wantErr}}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
 	assert.ErrorIs(t, ss.negotiateOpen(&openNegotiation{}), wantErr)
 }
 
 func TestNegotiateOpen_TimerExpiryFollowsTheDerivedState(t *testing.T) {
+	t.Parallel()
+
 	header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeOpen, MessageLength: pcep.CommonHeaderLength + 10}
 
 	cases := []struct {
@@ -2346,21 +2679,26 @@ func TestNegotiateOpen_TimerExpiryFollowsTheDerivedState(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			conn := &fakeConn{r: &errAfterReader{prefix: tc.prefix, err: os.ErrDeadlineExceeded}}
-			ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+			ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
 			neg := tc.neg
 			require.ErrorContains(t, ss.negotiateOpen(&neg), tc.wantErr)
 
 			writes := conn.writes()
 			require.Len(t, writes, 1)
-			assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, tc.wantErrorValue)
+			assertPCErr(t, writes[0], tc.wantErrorValue)
 		})
 	}
 }
 
 func TestNegotiateOpen_KeepWaitExpiryAfterOwnProposalReportsErrorValue7(t *testing.T) {
-	stream := concatMessages(t,
+	t.Parallel()
+
+	stream := concatMessages(
+		t,
 		pcep.NewOpenMessage(1, 30, 120, nil), // accepted: RemoteOK=1
 		negotiableRejection(20, 80),          // Pola adopts and re-sends its Open
 	)
@@ -2374,10 +2712,12 @@ func TestNegotiateOpen_KeepWaitExpiryAfterOwnProposalReportsErrorValue7(t *testi
 
 	writes := conn.writes()
 	require.Len(t, writes, 3, "expected the acknowledging Keepalive, the re-sent Open, and the KeepWait PCErr")
-	assertPCErr(t, writes[2], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueKeepWaitTimerExpired)
+	assertPCErr(t, writes[2], pcepErrorValueKeepWaitTimerExpired)
 }
 
 func TestNegotiateOpen_PCErr14SelectsTheKeepWaitTimer(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		assert.NoError(t, client.Close(), "failed to close client connection")
@@ -2397,7 +2737,9 @@ func TestNegotiateOpen_PCErr14SelectsTheKeepWaitTimer(t *testing.T) {
 }
 
 func TestRestartInitializationTimer_SelectsTimerForCurrentState(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	ss.openWait = time.Hour
 	ss.keepWait = 30 * time.Minute
 
@@ -2413,6 +2755,8 @@ func TestRestartInitializationTimer_SelectsTimerForCurrentState(t *testing.T) {
 }
 
 func TestNegotiateOpen_DuplicateKeepalivesDoNotExtendTheInitializationTimer(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() { assert.NoError(t, client.Close()) })
 
@@ -2425,6 +2769,7 @@ func TestNegotiateOpen_DuplicateKeepalivesDoNotExtendTheInitializationTimer(t *t
 
 	neg := &openNegotiation{}
 	start := time.Now()
+
 	errCh := make(chan error, 1)
 	go func() { errCh <- ss.negotiateOpen(neg) }()
 
@@ -2432,9 +2777,11 @@ func TestNegotiateOpen_DuplicateKeepalivesDoNotExtendTheInitializationTimer(t *t
 
 	done := make(chan struct{})
 	defer close(done)
+
 	go func() {
 		ticker := time.NewTicker(20 * time.Millisecond)
 		defer ticker.Stop()
+
 		for {
 			select {
 			case <-done:
@@ -2444,6 +2791,7 @@ func TestNegotiateOpen_DuplicateKeepalivesDoNotExtendTheInitializationTimer(t *t
 				if err != nil {
 					return
 				}
+
 				if _, err := client.Write(b); err != nil {
 					return
 				}
@@ -2461,20 +2809,24 @@ func TestNegotiateOpen_DuplicateKeepalivesDoNotExtendTheInitializationTimer(t *t
 	}
 }
 
-func TestStartNegotiationKeepalive_NoopWhenKeepaliveIsZero(_ *testing.T) {
+func TestStartNegotiationKeepalive_NoopWhenKeepaliveIsZero(t *testing.T) {
+	t.Parallel()
+
 	ss := &Session{localOpen: &OpenParams{Keepalive: 0, DeadTimer: 0}}
 	stop := ss.startNegotiationKeepalive()
 	stop()
 }
 
 func TestStartNegotiationKeepalive_HandlesKeepaliveSendFailure(t *testing.T) {
+	t.Parallel()
+
 	conn := &fakeConn{r: bytes.NewReader(nil), writeErr: errors.New("write: connection reset")}
-	core, logs := observer.New(zap.DebugLevel)
+	lg, logs := logger.NewRecorder(logger.LevelDebug)
 	ss := NewSession(
 		OpenParams{SessionID: 1, Keepalive: 1, DeadTimer: 4},
 		netip.MustParseAddr("10.0.255.1"),
 		conn,
-		zap.New(core),
+		lg,
 		nil,
 		0,
 	)
@@ -2485,16 +2837,18 @@ func TestStartNegotiationKeepalive_HandlesKeepaliveSendFailure(t *testing.T) {
 	defer stop()
 
 	require.Eventually(t, func() bool {
-		return len(logs.FilterMessage("ERROR! Send Keepalive Message during negotiation").All()) > 0
+		return len(logs.FilterByMessage("ERROR! Send Keepalive Message during negotiation")) > 0
 	}, 2*time.Second, 50*time.Millisecond, "expected negotiation keepalive send to fail and be logged")
 }
 
 func TestNegotiateOpen_SendsKeepalivesWhileAwaitingAcknowledgmentOfItsOwnOpen(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() { assert.NoError(t, client.Close()) })
 
 	localOpen := OpenParams{SessionID: 1, Keepalive: 1, DeadTimer: pcep.DeadTimerFor(1)}
-	ss := NewSession(localOpen, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(localOpen, netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 	ss.keepWait = 5 * time.Second
 
 	errCh := make(chan error, 1)
@@ -2516,15 +2870,18 @@ func TestNegotiateOpen_SendsKeepalivesWhileAwaitingAcknowledgmentOfItsOwnOpen(t 
 	case <-time.After(2 * time.Second):
 		require.Fail(t, "Open did not return once both sides acknowledged")
 	}
+
 	assert.True(t, ss.Up())
 }
 
 func TestNegotiateOpen_NegotiationKeepaliveStopsWhenNegotiationFails(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() { assert.NoError(t, client.Close()) })
 
 	localOpen := OpenParams{SessionID: 1, Keepalive: 1, DeadTimer: pcep.DeadTimerFor(1)}
-	ss := NewSession(localOpen, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(localOpen, netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- ss.Open() }()
@@ -2548,49 +2905,59 @@ func TestNegotiateOpen_NegotiationKeepaliveStopsWhenNegotiationFails(t *testing.
 
 	require.NoError(t, client.SetReadDeadline(time.Now().Add(1200*time.Millisecond)))
 	_, err := client.Read(make([]byte, 1))
+
+	runtime.KeepAlive(ss) // ss.tcpConn (== server) must survive until the read above completes.
 	assert.ErrorIs(t, err, os.ErrDeadlineExceeded,
 		"the negotiation Keepalive goroutine must stop before Open returns, not fire once more a second later")
 }
 
 func TestNegotiateOpen_SendPCErrFailureIsLoggedNotFatal(t *testing.T) {
+	t.Parallel()
+
 	conn := &fakeConn{r: &errAfterReader{err: os.ErrDeadlineExceeded}, writeErr: errors.New("write: broken pipe")}
-	core, logs := observer.New(zap.DebugLevel)
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.New(core), nil, 0)
+	lg, logs := logger.NewRecorder(logger.LevelDebug)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, lg, nil, 0)
 
 	require.ErrorContains(t, ss.negotiateOpen(&openNegotiation{remoteOK: true}), "KeepWait timer expired",
 		"the session must still report timer expiry even though the best-effort PCErr send failed")
-	assert.NotEmpty(t, logs.FilterMessage("ERROR! Send PCErr Message").All())
+	assert.NotEmpty(t, logs.FilterByMessage("ERROR! Send PCErr Message"))
 }
 
 func TestNegotiateOpen_MalformedCommonHeaderIsRejectedWithErrorValue1(t *testing.T) {
+	t.Parallel()
+
 	header := &pcep.CommonHeader{Version: 2, MessageType: pcep.MessageTypeOpen, MessageLength: pcep.CommonHeaderLength}
 	conn := &fakeConn{r: bytes.NewReader(header.Serialize())}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
 	require.Error(t, ss.negotiateOpen(&openNegotiation{}))
 	assert.Equal(t, uint64(1), ss.stats.corruptRcvd)
 
 	writes := conn.writes()
 	require.Len(t, writes, 1)
-	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
+	assertPCErr(t, writes[0], pcepErrorValueInvalidOpenMessage)
 }
 
 func TestNegotiateOpen_PeerOpenDecodeErrorIsRejectedWithErrorValue1(t *testing.T) {
+	t.Parallel()
+
 	body := pcep.NewCommonObjectHeader(pcep.ObjectClassClose, pcep.ObjectTypeOpenOpen, pcep.CommonHeaderLength).Serialize()
 	header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeOpen, MessageLength: pcep.CommonHeaderLength + uint16(len(body))}
 
 	conn := &fakeConn{r: bytes.NewReader(slices.Concat(header.Serialize(), body))}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
 	require.Error(t, ss.negotiateOpen(&openNegotiation{}))
 	assert.Equal(t, uint64(1), ss.stats.corruptRcvd)
 
 	writes := conn.writes()
 	require.Len(t, writes, 1)
-	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
+	assertPCErr(t, writes[0], pcepErrorValueInvalidOpenMessage)
 }
 
 func TestNegotiateOpen_ProposeAcceptableOpenSendFailure(t *testing.T) {
+	t.Parallel()
+
 	conn := &fakeConn{
 		r:        bytes.NewReader(concatMessages(t, pcep.NewOpenMessage(1, 5, 20, nil))),
 		writeErr: errors.New("write: broken pipe"),
@@ -2603,7 +2970,10 @@ func TestNegotiateOpen_ProposeAcceptableOpenSendFailure(t *testing.T) {
 }
 
 func TestNegotiateOpen_SecondOpenAfterAnAcceptableOpenIsRejected(t *testing.T) {
-	stream := concatMessages(t,
+	t.Parallel()
+
+	stream := concatMessages(
+		t,
 		pcep.NewOpenMessage(1, 30, 120, nil),
 		pcep.NewOpenMessage(1, 200, 255, nil),
 	)
@@ -2613,7 +2983,7 @@ func TestNegotiateOpen_SecondOpenAfterAnAcceptableOpenIsRejected(t *testing.T) {
 	neg := &openNegotiation{}
 	require.Error(t, ss.negotiateOpen(neg))
 	assert.False(t, neg.localOK)
-	assert.NotEqual(t, sessionStateUp, ss.State())
+	assert.NotEqual(t, SessionStateUp, ss.State())
 
 	pccOpen, ok := ss.PccOpen()
 	require.True(t, ok)
@@ -2621,14 +2991,18 @@ func TestNegotiateOpen_SecondOpenAfterAnAcceptableOpenIsRejected(t *testing.T) {
 
 	writes := conn.writes()
 	require.Len(t, writes, 2)
+
 	var header pcep.CommonHeader
 	require.NoError(t, header.DecodeFromBytes(writes[0]))
 	assert.Equal(t, pcep.MessageTypeKeepalive, header.MessageType)
-	assertPCErr(t, writes[1], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
+	assertPCErr(t, writes[1], pcepErrorValueInvalidOpenMessage)
 }
 
 func TestNegotiateOpen_SecondPeerOpenStillUnacceptableReportsErrorValue5(t *testing.T) {
-	stream := concatMessages(t,
+	t.Parallel()
+
+	stream := concatMessages(
+		t,
 		pcep.NewOpenMessage(1, 5, 20, nil),
 		pcep.NewOpenMessage(1, 5, 20, nil),
 	)
@@ -2642,17 +3016,20 @@ func TestNegotiateOpen_SecondPeerOpenStillUnacceptableReportsErrorValue5(t *test
 
 	writes := conn.writes()
 	require.Len(t, writes, 2)
-	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableNegotiable)
-	assertPCErr(t, writes[1], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueSecondOpenStillUnacceptable)
+	assertPCErr(t, writes[0], pcepErrorValueUnacceptableNegotiable)
+	assertPCErr(t, writes[1], pcepErrorValueSecondOpenStillUnacceptable)
 }
 
 func TestNegotiateOpen_ZeroKeepaliveWithNonzeroDeadTimerIsAccepted(t *testing.T) {
-	stream := concatMessages(t,
+	t.Parallel()
+
+	stream := concatMessages(
+		t,
 		pcep.NewOpenMessage(1, 0, 120, nil),
 		pcep.NewKeepaliveMessage(),
 	)
 	conn := &fakeConn{r: bytes.NewReader(stream)}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
 	neg := &openNegotiation{}
 	require.NoError(t, ss.negotiateOpen(neg))
@@ -2660,12 +3037,15 @@ func TestNegotiateOpen_ZeroKeepaliveWithNonzeroDeadTimerIsAccepted(t *testing.T)
 
 	writes := conn.writes()
 	require.Len(t, writes, 1, "only the acknowledging Keepalive; a Keepalive=0 Open must not draw a PCErr")
+
 	var header pcep.CommonHeader
 	require.NoError(t, header.DecodeFromBytes(writes[0]))
 	assert.Equal(t, pcep.MessageTypeKeepalive, header.MessageType)
 }
 
 func TestNegotiateOpen_UnacceptableOpenIsRejectedWithErrorValue3WhenNegotiationIsDisabled(t *testing.T) {
+	t.Parallel()
+
 	conn := &fakeConn{r: bytes.NewReader(concatMessages(t, pcep.NewOpenMessage(1, 5, 20, nil)))}
 	ss := negotiatingSession(t, conn)
 	ss.allowNegotiation = false
@@ -2676,11 +3056,14 @@ func TestNegotiateOpen_UnacceptableOpenIsRejectedWithErrorValue3WhenNegotiationI
 
 	writes := conn.writes()
 	require.Len(t, writes, 1)
-	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableNonNegotiable)
+	assertPCErr(t, writes[0], pcepErrorValueUnacceptableNonNegotiable)
 }
 
 func TestNegotiateOpen_PCErrBeforeThePeersOpenIsRejected(t *testing.T) {
-	stream := concatMessages(t,
+	t.Parallel()
+
+	stream := concatMessages(
+		t,
 		negotiableRejection(20, 80),
 		pcep.NewOpenMessage(1, 30, 120, nil),
 		pcep.NewKeepaliveMessage(),
@@ -2692,13 +3075,17 @@ func TestNegotiateOpen_PCErrBeforeThePeersOpenIsRejected(t *testing.T) {
 	require.ErrorContains(t, ss.negotiateOpen(neg), "received a PCErr before the peer's Open message")
 
 	assert.Zero(t, neg.localOpenRetries, "the proposal must not be adopted")
+
 	writes := conn.writes()
 	require.Len(t, writes, 1)
-	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
+	assertPCErr(t, writes[0], pcepErrorValueInvalidOpenMessage)
 }
 
 func TestNegotiateOpen_KeepWaitRenegotiationSpendsTheLocalOpenRetryBudget(t *testing.T) {
-	stream := concatMessages(t,
+	t.Parallel()
+
+	stream := concatMessages(
+		t,
 		pcep.NewOpenMessage(1, 30, 120, nil),
 		negotiableRejection(20, 80),
 	)
@@ -2710,10 +3097,11 @@ func TestNegotiateOpen_KeepWaitRenegotiationSpendsTheLocalOpenRetryBudget(t *tes
 
 	assert.Equal(t, 1, neg.localOpenRetries, "adopting the proposal spends one local Open retry")
 	assert.True(t, neg.remoteOK)
-	assert.Equal(t, sessionStateKeepWait, ss.State(), "RemoteOK=1 keeps the session in KeepWait across the re-sent Open")
+	assert.Equal(t, SessionStateKeepWait, ss.State(), "RemoteOK=1 keeps the session in KeepWait across the re-sent Open")
 
 	writes := conn.writes()
 	require.Len(t, writes, 2, "expected the Keepalive acknowledging the peer's Open and the re-sent Open")
+
 	var header pcep.CommonHeader
 	require.NoError(t, header.DecodeFromBytes(writes[0]))
 	assert.Equal(t, pcep.MessageTypeKeepalive, header.MessageType)
@@ -2722,7 +3110,10 @@ func TestNegotiateOpen_KeepWaitRenegotiationSpendsTheLocalOpenRetryBudget(t *tes
 }
 
 func TestNegotiateOpen_OpenWaitAndKeepWaitShareOneLocalOpenRetryBudget(t *testing.T) {
-	stream := concatMessages(t,
+	t.Parallel()
+
+	stream := concatMessages(
+		t,
 		pcep.NewOpenMessage(1, 5, 20, nil),
 		negotiableRejection(20, 80),
 		pcep.NewOpenMessage(1, 30, 120, nil),
@@ -2743,12 +3134,15 @@ func TestNegotiateOpen_OpenWaitAndKeepWaitShareOneLocalOpenRetryBudget(t *testin
 
 	writes := conn.writes()
 	require.Len(t, writes, 4)
-	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableNegotiable)
-	assertPCErr(t, writes[3], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableProposal)
+	assertPCErr(t, writes[0], pcepErrorValueUnacceptableNegotiable)
+	assertPCErr(t, writes[3], pcepErrorValueUnacceptableProposal)
 }
 
 func TestNegotiateOpen_SimultaneousRejectionInterleavesPCErrBeforeRevisedOpen(t *testing.T) {
-	stream := concatMessages(t,
+	t.Parallel()
+
+	stream := concatMessages(
+		t,
 		pcep.NewOpenMessage(1, 5, 20, nil),
 		negotiableRejection(20, 80),
 		pcep.NewOpenMessage(1, 30, 120, nil),
@@ -2764,7 +3158,7 @@ func TestNegotiateOpen_SimultaneousRejectionInterleavesPCErrBeforeRevisedOpen(t 
 	assert.Equal(t, 1, neg.peerOpensRejected)
 	assert.Equal(t, uint8(20), ss.localKeepalive)
 	assert.Equal(t, uint8(80), ss.localDeadTimer)
-	assert.Equal(t, sessionStateUp, ss.State())
+	assert.Equal(t, SessionStateUp, ss.State())
 
 	pccOpen, ok := ss.PccOpen()
 	require.True(t, ok)
@@ -2772,7 +3166,10 @@ func TestNegotiateOpen_SimultaneousRejectionInterleavesPCErrBeforeRevisedOpen(t 
 }
 
 func TestNegotiateOpen_KeepaliveMayArriveBeforeThePeersRevisedOpen(t *testing.T) {
-	stream := concatMessages(t,
+	t.Parallel()
+
+	stream := concatMessages(
+		t,
 		pcep.NewOpenMessage(1, 5, 20, nil),
 		pcep.NewKeepaliveMessage(),
 		pcep.NewOpenMessage(1, 30, 120, nil),
@@ -2786,11 +3183,14 @@ func TestNegotiateOpen_KeepaliveMayArriveBeforeThePeersRevisedOpen(t *testing.T)
 	assert.True(t, neg.localOK)
 	assert.True(t, neg.remoteOK)
 	assert.Zero(t, neg.localOpenRetries, "acknowledging Pola's Open costs no retry budget")
-	assert.Equal(t, sessionStateUp, ss.State())
+	assert.Equal(t, SessionStateUp, ss.State())
 }
 
 func TestNegotiateOpen_RevisedOpenMayArriveBeforeTheAcknowledgmentOfPolasOpen(t *testing.T) {
-	stream := concatMessages(t,
+	t.Parallel()
+
+	stream := concatMessages(
+		t,
 		pcep.NewOpenMessage(1, 5, 20, nil),
 		pcep.NewOpenMessage(1, 30, 120, nil),
 		pcep.NewKeepaliveMessage(),
@@ -2803,11 +3203,12 @@ func TestNegotiateOpen_RevisedOpenMayArriveBeforeTheAcknowledgmentOfPolasOpen(t 
 
 	assert.Equal(t, 1, neg.peerOpensRejected, "the revised Open is acceptable, so it must not draw PCErr(1,5)")
 	assert.Zero(t, neg.localOpenRetries, "Pola never re-sent its own Open")
-	assert.Equal(t, sessionStateUp, ss.State())
+	assert.Equal(t, SessionStateUp, ss.State())
 
 	writes := conn.writes()
 	require.Len(t, writes, 2)
-	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableNegotiable)
+	assertPCErr(t, writes[0], pcepErrorValueUnacceptableNegotiable)
+
 	var header pcep.CommonHeader
 	require.NoError(t, header.DecodeFromBytes(writes[1]))
 	assert.Equal(t, pcep.MessageTypeKeepalive, header.MessageType, "the revised Open must be acknowledged")
@@ -2818,7 +3219,10 @@ func TestNegotiateOpen_RevisedOpenMayArriveBeforeTheAcknowledgmentOfPolasOpen(t 
 }
 
 func TestNegotiateOpen_ResentOpenMustBeAcknowledgedBeforeUp(t *testing.T) {
-	reader := bytes.NewReader(concatMessages(t,
+	t.Parallel()
+
+	reader := bytes.NewReader(concatMessages(
+		t,
 		pcep.NewOpenMessage(1, 5, 20, nil),
 		pcep.NewKeepaliveMessage(),
 		negotiableRejection(40, 160),
@@ -2832,14 +3236,16 @@ func TestNegotiateOpen_ResentOpenMustBeAcknowledgedBeforeUp(t *testing.T) {
 	require.NoError(t, ss.negotiateOpen(neg))
 
 	assert.True(t, neg.established())
-	assert.Equal(t, sessionStateUp, ss.State())
+	assert.Equal(t, SessionStateUp, ss.State())
 	assert.Equal(t, uint64(2), ss.Stats().KeepaliveRcvd,
 		"only the Keepalive acknowledging the re-sent Open may complete establishment")
 }
 
 func TestHandleNegotiationPCErr_MalformedPCErrIsRejectedWithErrorValue1(t *testing.T) {
+	t.Parallel()
+
 	conn := &fakeConn{r: bytes.NewReader(nil)}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
 	require.ErrorContains(t, ss.handleNegotiationPCErr([]byte{}, &openNegotiation{}),
 		"malformed PCErr while establishing the PCEP session")
@@ -2847,12 +3253,14 @@ func TestHandleNegotiationPCErr_MalformedPCErrIsRejectedWithErrorValue1(t *testi
 
 	writes := conn.writes()
 	require.Len(t, writes, 1)
-	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
+	assertPCErr(t, writes[0], pcepErrorValueInvalidOpenMessage)
 }
 
 func TestHandleNegotiationPCErr_NonNegotiableRejectionIsReportedAsIs(t *testing.T) {
+	t.Parallel()
+
 	conn := &fakeConn{r: bytes.NewReader(nil)}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
 	full, err := pcep.NewPCErrMessage(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueSecondOpenStillUnacceptable, nil).Serialize()
 	require.NoError(t, err)
@@ -2863,8 +3271,10 @@ func TestHandleNegotiationPCErr_NonNegotiableRejectionIsReportedAsIs(t *testing.
 }
 
 func TestHandleNegotiationPCErr_NegotiableProposalIsFoundBehindOtherErrors(t *testing.T) {
+	t.Parallel()
+
 	conn := &fakeConn{r: bytes.NewReader(nil)}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
 	pcerrMessage := &pcep.PCErrMessage{
 		Errors: []*pcep.ErrorObject{
@@ -2883,8 +3293,10 @@ func TestHandleNegotiationPCErr_NegotiableProposalIsFoundBehindOtherErrors(t *te
 }
 
 func TestHandleNegotiationPCErr_AllErrorsAreReported(t *testing.T) {
+	t.Parallel()
+
 	conn := &fakeConn{r: bytes.NewReader(nil)}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
 	pcerrMessage := &pcep.PCErrMessage{
 		Errors: []*pcep.ErrorObject{
@@ -2902,8 +3314,10 @@ func TestHandleNegotiationPCErr_AllErrorsAreReported(t *testing.T) {
 }
 
 func TestAdoptProposedOpen_MissingOpenObjectIsRejected(t *testing.T) {
+	t.Parallel()
+
 	conn := &fakeConn{r: bytes.NewReader(nil)}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
 	neg := &openNegotiation{}
 	require.ErrorContains(t, ss.adoptProposedOpen(nil, neg), "without proposing acceptable ones")
@@ -2911,12 +3325,14 @@ func TestAdoptProposedOpen_MissingOpenObjectIsRejected(t *testing.T) {
 
 	writes := conn.writes()
 	require.Len(t, writes, 1)
-	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableProposal)
+	assertPCErr(t, writes[0], pcepErrorValueUnacceptableProposal)
 }
 
 func TestAdoptProposedOpen_UnacceptableProposalIsRejected(t *testing.T) {
+	t.Parallel()
+
 	conn := &fakeConn{r: bytes.NewReader(nil)}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
 	neg := &openNegotiation{}
 	require.ErrorContains(t, ss.adoptProposedOpen(pcep.NewOpenObject(1, 50, 10, nil), neg),
@@ -2925,10 +3341,12 @@ func TestAdoptProposedOpen_UnacceptableProposalIsRejected(t *testing.T) {
 
 	writes := conn.writes()
 	require.Len(t, writes, 1)
-	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableProposal)
+	assertPCErr(t, writes[0], pcepErrorValueUnacceptableProposal)
 }
 
 func TestAdoptProposedOpen_ProposalOutsideTheConfiguredKeepaliveRangeIsRejectedWithErrorValue6(t *testing.T) {
+	t.Parallel()
+
 	conn := &fakeConn{r: bytes.NewReader(nil)}
 	ss := negotiatingSession(t, conn) // range [10,60]
 
@@ -2940,10 +3358,12 @@ func TestAdoptProposedOpen_ProposalOutsideTheConfiguredKeepaliveRangeIsRejectedW
 
 	writes := conn.writes()
 	require.Len(t, writes, 1)
-	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableProposal)
+	assertPCErr(t, writes[0], pcepErrorValueUnacceptableProposal)
 }
 
 func TestAdoptProposedOpen_AcceptsProposalWithinTheConfiguredKeepaliveRange(t *testing.T) {
+	t.Parallel()
+
 	conn := &fakeConn{r: bytes.NewReader(nil)}
 	ss := negotiatingSession(t, conn) // range [10,60]
 
@@ -2955,8 +3375,10 @@ func TestAdoptProposedOpen_AcceptsProposalWithinTheConfiguredKeepaliveRange(t *t
 }
 
 func TestAdoptProposedOpen_ExhaustedBudgetIsRejectedWithErrorValue6(t *testing.T) {
+	t.Parallel()
+
 	conn := &fakeConn{r: bytes.NewReader(nil)}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
 	neg := &openNegotiation{localOpenRetries: maxLocalOpenRetries}
 	require.ErrorContains(t, ss.adoptProposedOpen(pcep.NewOpenObject(1, 20, 80, nil), neg), "further proposal")
@@ -2964,12 +3386,14 @@ func TestAdoptProposedOpen_ExhaustedBudgetIsRejectedWithErrorValue6(t *testing.T
 
 	writes := conn.writes()
 	require.Len(t, writes, 1)
-	assertPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableProposal)
+	assertPCErr(t, writes[0], pcepErrorValueUnacceptableProposal)
 }
 
 func TestAdoptProposedOpen_SendOpenFailureDoesNotSpendTheBudget(t *testing.T) {
+	t.Parallel()
+
 	conn := &fakeConn{r: bytes.NewReader(nil), writeErr: errors.New("write: broken pipe")}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
 	neg := &openNegotiation{}
 	require.ErrorContains(t, ss.adoptProposedOpen(pcep.NewOpenObject(1, 20, 80, nil), neg), "write: broken pipe")
@@ -2977,10 +3401,14 @@ func TestAdoptProposedOpen_SendOpenFailureDoesNotSpendTheBudget(t *testing.T) {
 }
 
 func TestAdoptProposedOpen_ClearsTheAcknowledgmentOfThePreviousOpen(t *testing.T) {
+	t.Parallel()
+
 	for _, initialLocalOK := range []bool{true, false} {
 		t.Run(fmt.Sprintf("localOK=%v", initialLocalOK), func(t *testing.T) {
+			t.Parallel()
+
 			conn := &fakeConn{r: bytes.NewReader(nil)}
-			ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+			ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
 			neg := &openNegotiation{localOK: initialLocalOK}
 			require.NoError(t, ss.adoptProposedOpen(pcep.NewOpenObject(1, 20, 80, nil), neg))
@@ -2990,8 +3418,10 @@ func TestAdoptProposedOpen_ClearsTheAcknowledgmentOfThePreviousOpen(t *testing.T
 }
 
 func TestAdoptProposedOpen_ZeroKeepaliveProposalIsAdopted(t *testing.T) {
+	t.Parallel()
+
 	conn := &fakeConn{r: bytes.NewReader(nil)}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
 	neg := &openNegotiation{}
 	require.NoError(t, ss.adoptProposedOpen(pcep.NewOpenObject(1, 0, 0, nil), neg))
@@ -3001,13 +3431,16 @@ func TestAdoptProposedOpen_ZeroKeepaliveProposalIsAdopted(t *testing.T) {
 }
 
 func TestOpen_RetriesAfterAcceptablePCErrProposal(t *testing.T) {
-	stream := concatMessages(t,
+	t.Parallel()
+
+	stream := concatMessages(
+		t,
 		pcep.NewOpenMessage(1, 30, 120, nil),
 		negotiableRejection(20, 80),
 		pcep.NewKeepaliveMessage(),
 	)
 	conn := &fakeConn{r: bytes.NewReader(stream)}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
 	require.NoError(t, ss.Open(), "Open must retry with the peer's acceptable proposal instead of failing")
 	assert.True(t, ss.Up())
@@ -3017,7 +3450,10 @@ func TestOpen_RetriesAfterAcceptablePCErrProposal(t *testing.T) {
 }
 
 func TestOpen_SendOpenFailsAfterRetryingWithProposal(t *testing.T) {
-	stream := concatMessages(t,
+	t.Parallel()
+
+	stream := concatMessages(
+		t,
 		pcep.NewOpenMessage(2, 30, 120, nil),
 		pcep.NewPCErrMessageWithOpen(pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueUnacceptableNegotiable,
 			pcep.NewOpenObject(2, 20, 80, nil)),
@@ -3027,7 +3463,7 @@ func TestOpen_SendOpenFailsAfterRetryingWithProposal(t *testing.T) {
 		failAfter: 2,
 		writeErr:  errors.New("write: broken pipe"),
 	}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
 	require.ErrorContains(t, ss.Open(), "write: broken pipe")
 
@@ -3046,10 +3482,12 @@ func TestOpen_SendOpenFailsAfterRetryingWithProposal(t *testing.T) {
 }
 
 func TestOpen_RejectsSecondProposalWithErrorValue6(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() { assert.NoError(t, client.Close()) })
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 
 	writeMessage(t, client, pcep.NewOpenMessage(1, 30, 120, nil))
 	writeMessage(t, client, negotiableRejection(20, 80))
@@ -3074,21 +3512,26 @@ func TestOpen_RejectsSecondProposalWithErrorValue6(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		require.Fail(t, "Open did not return after rejecting the second proposal")
 	}
+
 	assert.False(t, ss.Up())
 }
 
 func TestReceivePCEPMessage_SendCloseFailureIsLoggedNotFatal(t *testing.T) {
+	t.Parallel()
+
 	conn := &fakeConn{r: &errAfterReader{err: os.ErrDeadlineExceeded}, writeErr: errors.New("write: broken pipe")}
-	core, logs := observer.New(zap.DebugLevel)
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.New(core), nil, 0)
+	lg, logs := logger.NewRecorder(logger.LevelDebug)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, lg, nil, 0)
 	ss.pccOpen = &OpenParams{Keepalive: 1, DeadTimer: 1}
 
 	err := ss.ReceivePCEPMessage()
 	require.Error(t, err, "the DeadTimer expiry error must still be returned even if the Close send fails")
-	assert.NotEmpty(t, logs.FilterMessage("ERROR! Send Close Message").All())
+	assert.NotEmpty(t, logs.FilterByMessage("ERROR! Send Close Message"))
 }
 
 func TestReceivePCEPMessage_ProcessesMessagesThenReturnsOnClose(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		assert.NoError(t, server.Close(), "failed to close server connection")
@@ -3097,7 +3540,7 @@ func TestReceivePCEPMessage_ProcessesMessagesThenReturnsOnClose(t *testing.T) {
 		assert.NoError(t, client.Close(), "failed to close client connection")
 	})
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 	ss.rememberSRPolicyIntent(9, table.PolicyTypeExplicit, table.UnspecifiedMetric)
 
 	keepaliveMessage := pcep.NewKeepaliveMessage()
@@ -3128,6 +3571,8 @@ func TestReceivePCEPMessage_ProcessesMessagesThenReturnsOnClose(t *testing.T) {
 
 // A stalled peer must not block the session goroutine beyond the DeadTimer.
 func TestReadCommonHeader_TimesOutOnStalledPeer(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		assert.NoError(t, client.Close(), "failed to close client connection")
@@ -3136,7 +3581,7 @@ func TestReadCommonHeader_TimesOutOnStalledPeer(t *testing.T) {
 		assert.NoError(t, server.Close(), "failed to close server connection")
 	})
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 	// The DeadTimer the PCC advertised bounds the read (RFC 5440 §7.3).
 	ss.pccOpen = &OpenParams{Keepalive: 1, DeadTimer: 1}
 
@@ -3152,6 +3597,8 @@ func TestReadCommonHeader_TimesOutOnStalledPeer(t *testing.T) {
 }
 
 func TestReadDeadline_UsesPccAdvertisedDeadTimer(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		pccOpen *OpenParams
@@ -3167,6 +3614,8 @@ func TestReadDeadline_UsesPccAdvertisedDeadTimer(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			ss := &Session{pccOpen: tt.pccOpen}
 			assert.Equal(t, tt.want, ss.readDeadline())
 		})
@@ -3174,6 +3623,8 @@ func TestReadDeadline_UsesPccAdvertisedDeadTimer(t *testing.T) {
 }
 
 func TestReadDeadline_IgnoresLocalDeadTimer(t *testing.T) {
+	t.Parallel()
+
 	// Pola's own DeadTimer tells the PCC when to declare Pola down; it must never
 	// bound Pola's own reads (RFC 5440 §7.3).
 	ss := &Session{
@@ -3187,21 +3638,19 @@ func TestReadDeadline_IgnoresLocalDeadTimer(t *testing.T) {
 }
 
 func TestEstablished_DoesNotTimeOutAPccThatSendsNoKeepalives(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
-	t.Cleanup(func() { assert.NoError(t, client.Close()) })
 
 	// RFC 5440 §6.3: a peer that advertises Keepalive=0 sends none, and the
 	// receiver MUST NOT declare the session inactive.
 	writeMessage(t, client, pcep.NewOpenMessage(1, 0, 0, nil))
 	writeMessage(t, client, pcep.NewKeepaliveMessage())
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 
-	done := make(chan struct{})
-	go func() {
-		_ = ss.Established()
-		close(done)
-	}()
+	errCh := make(chan error, 1)
+	go func() { errCh <- ss.Established() }()
 
 	require.NoError(t, readPCEPMessage(client), "failed to read Open reply")
 	require.NoError(t, readPCEPMessage(client), "failed to read initial Keepalive")
@@ -3210,13 +3659,26 @@ func TestEstablished_DoesNotTimeOutAPccThatSendsNoKeepalives(t *testing.T) {
 	assert.Zero(t, ss.readDeadline(), "a PCC advertising Keepalive=0 must never be timed out")
 
 	select {
-	case <-done:
-		require.Fail(t, "Established must not return while the silent peer is still connected")
+	case err := <-errCh:
+		require.Fail(t, "Established must not return while the silent peer is still connected", "err: %v", err)
 	case <-time.After(500 * time.Millisecond):
+	}
+
+	runtime.KeepAlive(ss) // ss.tcpConn (== server) must survive the wait above.
+
+	// Disconnect and wait for Established to return so no goroutine outlives the test.
+	require.NoError(t, client.Close())
+
+	select {
+	case <-errCh:
+	case <-time.After(2 * time.Second):
+		require.Fail(t, "Established did not return after the client disconnected")
 	}
 }
 
 func TestEstablished_SendsCloseWhenTheDeadTimerExpires(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() { assert.NoError(t, client.Close()) })
 
@@ -3224,11 +3686,15 @@ func TestEstablished_SendsCloseWhenTheDeadTimerExpires(t *testing.T) {
 	writeMessage(t, client, pcep.NewOpenMessage(1, 1, 2, nil))
 	writeMessage(t, client, pcep.NewKeepaliveMessage())
 
-	ss := NewSession(OpenParams{SessionID: 1, Keepalive: 0, DeadTimer: 0}, netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(OpenParams{SessionID: 1, Keepalive: 0, DeadTimer: 0}, netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 
 	done := make(chan struct{})
+
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
+
 		close(done)
 	}()
 
@@ -3247,16 +3713,20 @@ func TestEstablished_SendsCloseWhenTheDeadTimerExpires(t *testing.T) {
 }
 
 func TestReadFullWithDeadline_SetReadDeadlineErrorIsPropagated(t *testing.T) {
+	t.Parallel()
+
 	wantErr := errors.New("use of closed network connection")
 	conn := &fakeConn{r: bytes.NewReader(nil), setReadDeadlineErr: wantErr}
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
 	err := ss.readFullWithDeadline(make([]byte, pcep.CommonHeaderLength), ss.messageDeadline())
 	assert.ErrorIs(t, err, wantErr, "readFullWithDeadline must surface a failure to set the read deadline instead of attempting the read")
 }
 
 func TestReceivePCEPMessage_StateReportHandlingErrorIsLoggedNotFatal(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		assert.NoError(t, server.Close(), "failed to close server connection")
@@ -3265,13 +3735,14 @@ func TestReceivePCEPMessage_StateReportHandlingErrorIsLoggedNotFatal(t *testing.
 		assert.NoError(t, client.Close(), "failed to close client connection")
 	})
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 
 	sr := newTestStateReport(t, 7, 0)
 	byteSrp, err := sr.SrpObject.Serialize()
 	require.NoError(t, err, "failed to serialize SrpObject")
 	byteLsp, err := sr.LSPObject.Serialize()
 	require.NoError(t, err, "failed to serialize LSPObject")
+
 	body := slices.Concat(byteSrp, byteLsp) // no ERO object
 	writeRawPCEPMessage(t, client, pcep.MessageTypeReport, body)
 
@@ -3285,6 +3756,8 @@ func TestReceivePCEPMessage_StateReportHandlingErrorIsLoggedNotFatal(t *testing.
 }
 
 func TestReceivePCEPMessage_Errors(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name  string
 		setup func(t *testing.T, client *net.TCPConn) (clientClosed bool)
@@ -3292,59 +3765,77 @@ func TestReceivePCEPMessage_Errors(t *testing.T) {
 		{
 			name: "connection closed before a header is read",
 			setup: func(t *testing.T, client *net.TCPConn) bool {
+				t.Helper()
 				require.NoError(t, client.Close(), "failed to close client connection")
+
 				return true
 			},
 		},
 		{
 			name: "PCRpt with a malformed StateReport object",
 			setup: func(t *testing.T, client *net.TCPConn) bool {
+				t.Helper()
+
 				body := pcep.NewCommonObjectHeader(pcep.ObjectClassLSP, pcep.ObjectTypeLSPLSP, pcep.CommonHeaderLength).Serialize()
 				writeRawPCEPMessage(t, client, pcep.MessageTypeReport, body)
+
 				return false
 			},
 		},
 		{
 			name: "connection closed before a PCRpt body is read",
 			setup: func(t *testing.T, client *net.TCPConn) bool {
+				t.Helper()
+
 				header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeReport, MessageLength: pcep.CommonHeaderLength + 8}
 				_, err := client.Write(header.Serialize())
 				require.NoError(t, err, "failed to write header")
 				require.NoError(t, client.Close(), "failed to close client connection")
+
 				return true
 			},
 		},
 		{
 			name: "PCErr message with no PCEP-ERROR object",
 			setup: func(t *testing.T, client *net.TCPConn) bool {
+				t.Helper()
 				writeRawPCEPMessage(t, client, pcep.MessageTypeError, nil)
+
 				return false
 			},
 		},
 		{
 			name: "connection closed before a PCErr body is read",
 			setup: func(t *testing.T, client *net.TCPConn) bool {
+				t.Helper()
+
 				header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeError, MessageLength: pcep.CommonHeaderLength + 8}
 				_, err := client.Write(header.Serialize())
 				require.NoError(t, err, "failed to write header")
 				require.NoError(t, client.Close(), "failed to close client connection")
+
 				return true
 			},
 		},
 		{
 			name: "Close message body too short to decode",
 			setup: func(t *testing.T, client *net.TCPConn) bool {
+				t.Helper()
 				writeRawPCEPMessage(t, client, pcep.MessageTypeClose, nil)
+
 				return false
 			},
 		},
 		{
 			name: "connection closed before a Close body is read",
 			setup: func(t *testing.T, client *net.TCPConn) bool {
+				t.Helper()
+
 				header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageTypeClose, MessageLength: pcep.CommonHeaderLength + 8}
 				_, err := client.Write(header.Serialize())
 				require.NoError(t, err, "failed to write header")
 				require.NoError(t, client.Close(), "failed to close client connection")
+
 				return true
 			},
 		},
@@ -3352,6 +3843,7 @@ func TestReceivePCEPMessage_Errors(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			server, client := newTCPConnPair(t)
 			t.Cleanup(func() {
 				assert.NoError(t, server.Close(), "failed to close server connection")
@@ -3364,15 +3856,18 @@ func TestReceivePCEPMessage_Errors(t *testing.T) {
 				})
 			}
 
-			ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+			ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 			assert.Error(t, ss.ReceivePCEPMessage())
 		})
 	}
 }
 
 func TestReceivePCEPMessage_ShortMessageLengthIsRejected(t *testing.T) {
+	t.Parallel()
+
 	for length := range pcep.CommonHeaderLength {
 		t.Run(fmt.Sprintf("MessageLength=%d", length), func(t *testing.T) {
+			t.Parallel()
 			server, client := newTCPConnPair(t)
 			t.Cleanup(func() {
 				assert.NoError(t, server.Close(), "failed to close server connection")
@@ -3385,7 +3880,7 @@ func TestReceivePCEPMessage_ShortMessageLengthIsRejected(t *testing.T) {
 			_, err := client.Write(header.Serialize())
 			require.NoError(t, err, "failed to write header")
 
-			ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+			ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 			assert.Error(t, ss.ReceivePCEPMessage())
 		})
 	}
@@ -3393,6 +3888,8 @@ func TestReceivePCEPMessage_ShortMessageLengthIsRejected(t *testing.T) {
 
 // RFC 5440 §6.3: a Keepalive message consists of the common header only.
 func TestReceivePCEPMessage_KeepaliveWithBodyIsRejected(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		assert.NoError(t, server.Close(), "failed to close server connection")
@@ -3405,11 +3902,13 @@ func TestReceivePCEPMessage_KeepaliveWithBodyIsRejected(t *testing.T) {
 	_, err := client.Write(append(header.Serialize(), 0x00, 0x00, 0x00, 0x00))
 	require.NoError(t, err, "failed to write keepalive with body")
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 	assert.Error(t, ss.ReceivePCEPMessage())
 }
 
 func TestReceivePCEPMessage_UnsupportedMessageBodyIsConsumed(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		assert.NoError(t, server.Close(), "failed to close server connection")
@@ -3418,7 +3917,7 @@ func TestReceivePCEPMessage_UnsupportedMessageBodyIsConsumed(t *testing.T) {
 		assert.NoError(t, client.Close(), "failed to close client connection")
 	})
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 
 	// Use a valid Close message as the body to catch framing bugs: without consuming
 	// the body, it would be parsed as the next message and stop before the PCRpt.
@@ -3436,6 +3935,8 @@ func TestReceivePCEPMessage_UnsupportedMessageBodyIsConsumed(t *testing.T) {
 }
 
 func TestReceivePCEPMessage_NotificationBodyIsConsumed(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		assert.NoError(t, server.Close(), "failed to close server connection")
@@ -3444,7 +3945,7 @@ func TestReceivePCEPMessage_NotificationBodyIsConsumed(t *testing.T) {
 		assert.NoError(t, client.Close(), "failed to close client connection")
 	})
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 
 	trap, err := pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided).Serialize()
 	require.NoError(t, err, "failed to serialize the message body")
@@ -3461,6 +3962,8 @@ func TestReceivePCEPMessage_NotificationBodyIsConsumed(t *testing.T) {
 }
 
 func TestReceivePCEPMessage_NotificationTruncatedBodyReturnsError(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		assert.NoError(t, server.Close(), "failed to close server connection")
@@ -3471,21 +3974,25 @@ func TestReceivePCEPMessage_NotificationTruncatedBodyReturnsError(t *testing.T) 
 	require.NoError(t, err, "failed to write header")
 	require.NoError(t, client.Close(), "failed to close client connection")
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 	assert.Error(t, ss.ReceivePCEPMessage(), "a truncated Notification body must be reported")
 }
 
 func TestHandleUnsupportedMessage_ReadBodyErrorIsReturned(t *testing.T) {
+	t.Parallel()
+
 	conn := &fakeConn{r: bytes.NewReader(nil)}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
 	header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageType(0x63), MessageLength: pcep.CommonHeaderLength + 4}
 	assert.Error(t, ss.handleUnsupportedMessage(header, ss.messageDeadline()), "a truncated unsupported message body must be reported")
 }
 
 func TestHandleUnsupportedMessage_SendPCErrFailureIsLoggedNotFatal(t *testing.T) {
+	t.Parallel()
+
 	conn := &fakeConn{r: bytes.NewReader(nil), writeErr: errors.New("write: broken pipe")}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 
 	header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageType(0x63), MessageLength: pcep.CommonHeaderLength}
 	err := ss.handleUnsupportedMessage(header, ss.messageDeadline())
@@ -3493,8 +4000,10 @@ func TestHandleUnsupportedMessage_SendPCErrFailureIsLoggedNotFatal(t *testing.T)
 }
 
 func TestHandleUnsupportedMessage_SendCloseFailureStillReturnsError(t *testing.T) {
+	t.Parallel()
+
 	conn := &fakeConn{r: bytes.NewReader(nil), writeErr: errors.New("write: broken pipe")}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 	ss.maxUnknownMsgs = 0
 
 	header := &pcep.CommonHeader{Version: 1, MessageType: pcep.MessageType(0x63), MessageLength: pcep.CommonHeaderLength}
@@ -3504,6 +4013,8 @@ func TestHandleUnsupportedMessage_SendCloseFailureStillReturnsError(t *testing.T
 }
 
 func TestReceivePCEPMessage_OpenAfterSessionUpIsRejectedWithErrorValue1(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		assert.NoError(t, server.Close(), "failed to close server connection")
@@ -3512,9 +4023,9 @@ func TestReceivePCEPMessage_OpenAfterSessionUpIsRejectedWithErrorValue1(t *testi
 		assert.NoError(t, client.Close(), "failed to close client connection")
 	})
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 	ss.pccOpen = &OpenParams{SessionID: 1, Keepalive: 30, DeadTimer: 120}
-	ss.setState(sessionStateUp)
+	ss.setState(SessionStateUp)
 
 	writeMessage(t, client, pcep.NewOpenMessage(2, 60, 240, nil))
 	writeMessage(t, client, pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided))
@@ -3530,6 +4041,8 @@ func TestReceivePCEPMessage_OpenAfterSessionUpIsRejectedWithErrorValue1(t *testi
 }
 
 func TestReceivePCEPMessage_OpenAfterSessionUpDoesNotOverwriteNegotiatedOpen(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		assert.NoError(t, server.Close(), "failed to close server connection")
@@ -3538,9 +4051,9 @@ func TestReceivePCEPMessage_OpenAfterSessionUpDoesNotOverwriteNegotiatedOpen(t *
 		assert.NoError(t, client.Close(), "failed to close client connection")
 	})
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 	ss.pccOpen = &OpenParams{SessionID: 1, Keepalive: 30, DeadTimer: 120}
-	ss.setState(sessionStateUp)
+	ss.setState(SessionStateUp)
 
 	writeMessage(t, client, pcep.NewOpenMessage(2, 60, 240, nil))
 	writeMessage(t, client, pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided))
@@ -3555,6 +4068,8 @@ func TestReceivePCEPMessage_OpenAfterSessionUpDoesNotOverwriteNegotiatedOpen(t *
 }
 
 func TestReceivePCEPMessage_OpenAfterSessionUpDoesNotDisruptSubsequentMessageHandling(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		assert.NoError(t, server.Close(), "failed to close server connection")
@@ -3563,9 +4078,9 @@ func TestReceivePCEPMessage_OpenAfterSessionUpDoesNotDisruptSubsequentMessageHan
 		assert.NoError(t, client.Close(), "failed to close client connection")
 	})
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 	ss.pccOpen = &OpenParams{SessionID: 1, Keepalive: 30, DeadTimer: 120}
-	ss.setState(sessionStateUp)
+	ss.setState(SessionStateUp)
 
 	writeMessage(t, client, pcep.NewOpenMessage(2, 60, 240, nil))
 	writeStateReportMessage(t, client, newTestStateReport(t, 5, 0))
@@ -3579,6 +4094,8 @@ func TestReceivePCEPMessage_OpenAfterSessionUpDoesNotDisruptSubsequentMessageHan
 }
 
 func TestReceivePCEPMessage_UnexpectedOpenMessageBodyReadError(t *testing.T) {
+	t.Parallel()
+
 	openMsg := pcep.NewOpenMessage(2, 60, 240, nil)
 	msgBytes, err := openMsg.Serialize()
 	require.NoError(t, err)
@@ -3586,9 +4103,9 @@ func TestReceivePCEPMessage_UnexpectedOpenMessageBodyReadError(t *testing.T) {
 	headerOnly := msgBytes[:pcep.CommonHeaderLength]
 	conn := &fakeConn{r: bytes.NewReader(headerOnly)}
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
 	ss.pccOpen = &OpenParams{SessionID: 1, Keepalive: 30, DeadTimer: 120}
-	ss.setState(sessionStateUp)
+	ss.setState(SessionStateUp)
 
 	err = ss.ReceivePCEPMessage()
 	require.Error(t, err, "reading incomplete Open message body should return an error")
@@ -3597,6 +4114,8 @@ func TestReceivePCEPMessage_UnexpectedOpenMessageBodyReadError(t *testing.T) {
 
 // RFC 5440 §6.9: close the session when unrecognized messages exceed the allowed rate.
 func TestReceivePCEPMessage_TooManyUnknownMessagesClosesSession(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		assert.NoError(t, server.Close(), "failed to close server connection")
@@ -3605,7 +4124,7 @@ func TestReceivePCEPMessage_TooManyUnknownMessagesClosesSession(t *testing.T) {
 		assert.NoError(t, client.Close(), "failed to close client connection")
 	})
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 
 	for i := uint32(0); i <= ss.maxUnknownMsgs; i++ {
 		writeRawPCEPMessage(t, client, pcep.MessageType(0x63), nil)
@@ -3625,6 +4144,8 @@ func TestReceivePCEPMessage_TooManyUnknownMessagesClosesSession(t *testing.T) {
 }
 
 func TestReceivePCEPMessage_FewUnknownMessagesToleratedWithinWindow(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		assert.NoError(t, server.Close(), "failed to close server connection")
@@ -3633,11 +4154,12 @@ func TestReceivePCEPMessage_FewUnknownMessagesToleratedWithinWindow(t *testing.T
 		assert.NoError(t, client.Close(), "failed to close client connection")
 	})
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 
 	for range ss.maxUnknownMsgs {
 		writeRawPCEPMessage(t, client, pcep.MessageType(0x63), nil)
 	}
+
 	writeMessage(t, client, pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided))
 
 	require.NoError(t, ss.ReceivePCEPMessage(), "unrecognized messages within the threshold must not close the session")
@@ -3664,6 +4186,7 @@ func readPCErrMessage(t *testing.T, r io.Reader) *pcep.PCErrMessage {
 
 	pcerrMessage := &pcep.PCErrMessage{}
 	require.NoError(t, pcerrMessage.DecodeFromBytes(body), "failed to decode PCErr message")
+
 	return pcerrMessage
 }
 
@@ -3684,15 +4207,19 @@ func readCloseMessage(t *testing.T, r io.Reader) *pcep.CloseMessage {
 
 	closeMessage := &pcep.CloseMessage{}
 	require.NoError(t, closeMessage.DecodeFromBytes(body), "failed to decode close message")
+
 	return closeMessage
 }
 
-func TestIsSynced_ConcurrentAccess(_ *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+func TestIsSynced_ConcurrentAccess(t *testing.T) {
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
+
 		for range 100 {
 			ss.setSynced()
 		}
@@ -3701,13 +4228,16 @@ func TestIsSynced_ConcurrentAccess(_ *testing.T) {
 	for range 100 {
 		ss.IsSynced()
 	}
+
 	<-done
 }
 
 // RFC 8231 §5.6: an LSP report with the S-Flag is part of state synchronization
 // and is registered regardless of PLSP-ID or SRP-ID..
 func TestHandleStateReport_Synchronization(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	sr := newTestStateReport(t, 1, 0)
 	sr.LSPObject.SFlag = true
 
@@ -3719,7 +4249,9 @@ func TestHandleStateReport_Synchronization(t *testing.T) {
 }
 
 func TestHandleStateReport_SynchronizationRegistrationFailure(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	sr := newTestStateReport(t, 1, 0)
 	sr.LSPObject.SFlag = true
 	sr.EroObject = nil
@@ -3729,7 +4261,9 @@ func TestHandleStateReport_SynchronizationRegistrationFailure(t *testing.T) {
 
 // RFC 8231 §5.6: PLSP-ID 0 marks the end of state synchronization.
 func TestHandleStateReport_FinishSynchronization(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	require.False(t, ss.IsSynced())
 
 	sr := newTestStateReport(t, 0, 0)
@@ -3739,7 +4273,9 @@ func TestHandleStateReport_FinishSynchronization(t *testing.T) {
 }
 
 func TestHandleStateReport_StatefulPCERequestRegistrationFailure(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	sr := newTestStateReport(t, 1, 3) // non-zero SRP-ID uses handleStatefulPCERequest
 	sr.EroObject = nil
 
@@ -3750,7 +4286,9 @@ func TestHandleStateReport_StatefulPCERequestRegistrationFailure(t *testing.T) {
 }
 
 func TestHandleStateReport_ReportedSRPolicyRegistrationFailure(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	sr := newTestStateReport(t, 1, 0)
 	sr.EroObject = nil // no TED available and no explicit path reported
 
@@ -3758,22 +4296,28 @@ func TestHandleStateReport_ReportedSRPolicyRegistrationFailure(t *testing.T) {
 }
 
 func TestComputePathFromTED_NoTED(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	sr := newTestStateReport(t, 1, 0)
 
-	_, err := ss.computePathFromTED(*sr)
+	_, err := ss.computePathFromTED(sr)
 	assert.Error(t, err)
 }
 
 func TestHandleSRPolicyWithPLSPID_ExtractRouterIDsFails(t *testing.T) {
+	t.Parallel()
+
 	ted := &table.LsTED{Nodes: map[string]*table.LsNode{}}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), ted, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), ted, 0)
 	sr := newTestStateReport(t, 1, 0) // src/dst addresses are absent from the TED
 
 	assert.Error(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
 }
 
 func TestComputePathFromTED_CSPFFailsWithoutNodeSID(t *testing.T) {
+	t.Parallel()
+
 	ted := &table.LsTED{Nodes: map[string]*table.LsNode{}}
 	srcNode := table.NewLsNode(0, "src-router")
 	srcPrefix := table.NewLsPrefix(srcNode)
@@ -3784,10 +4328,10 @@ func TestComputePathFromTED_CSPFFailsWithoutNodeSID(t *testing.T) {
 	dstNode := table.NewLsNode(0, "10.255.0.2")
 	ted.Nodes[dstNode.RouterID] = dstNode
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), ted, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), ted, 0)
 	sr := newTestStateReport(t, 1, 0)
 
-	_, err := ss.computePathFromTED(*sr)
+	_, err := ss.computePathFromTED(sr)
 	assert.Error(t, err, "CSPF must fail when the headend advertises no Prefix-SID or SRv6 SID")
 }
 
@@ -3822,7 +4366,7 @@ func newLinkedSRv6Nodes(srcAddr, dstAddr netip.Addr, metric uint32) (src, dst *t
 	srcPrefix := table.NewLsPrefix(src)
 	srcPrefix.Prefix = netip.PrefixFrom(srcAddr, srcAddr.BitLen())
 	src.Prefixes = append(src.Prefixes, srcPrefix)
-	src.SRv6SIDs = []*table.LsSrv6SID{{Sids: []string{"2001:db8::1"}}}
+	src.SRv6SIDs = []*table.LsSrv6SID{{Sids: []string{testSRv6SID1}}}
 
 	dst = table.NewLsNode(65000, "PE2-v6")
 	dstPrefix := table.NewLsPrefix(dst)
@@ -3838,12 +4382,14 @@ func newLinkedSRv6Nodes(srcAddr, dstAddr netip.Addr, metric uint32) (src, dst *t
 }
 
 func TestHandleSRPolicyWithPLSPID_CreateEroFromSegmentListErrorIsPropagated(t *testing.T) {
+	t.Parallel()
+
 	srcAddr := netip.MustParseAddr("10.1.0.1")
 	dstAddr := netip.MustParseAddr("10.1.0.2")
 	srcNode, dstNode := newLinkedSRv6Nodes(srcAddr, dstAddr, 10)
 	ted := &table.LsTED{Nodes: map[string]*table.LsNode{srcNode.RouterID: srcNode, dstNode.RouterID: dstNode}}
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), ted, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), ted, 0)
 
 	sr := newTestStateReport(t, 1, 0)
 	sr.LSPObject.SrcAddr = srcAddr
@@ -3856,6 +4402,8 @@ func TestHandleSRPolicyWithPLSPID_CreateEroFromSegmentListErrorIsPropagated(t *t
 }
 
 func TestHandleSRPolicyWithPLSPID_ComputesPathFromTED(t *testing.T) {
+	t.Parallel()
+
 	srcAddr := netip.MustParseAddr("10.0.0.1")
 	dstAddr := netip.MustParseAddr("10.0.0.2")
 	srcNode, dstNode := newLinkedSRMPLSNodes(srcAddr, dstAddr, 10)
@@ -3869,7 +4417,7 @@ func TestHandleSRPolicyWithPLSPID_ComputesPathFromTED(t *testing.T) {
 		assert.NoError(t, client.Close(), "failed to close client connection")
 	})
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), ted, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), ted, 0)
 
 	sr := newTestStateReport(t, 1, 0)
 	sr.LSPObject.SrcAddr = srcAddr
@@ -3886,6 +4434,8 @@ func TestHandleSRPolicyWithPLSPID_ComputesPathFromTED(t *testing.T) {
 
 // A self-destination produces an empty CSPF path, which SR Policy validation must reject.
 func TestHandleSRPolicyWithPLSPID_EmptyComputedPathIsRejected(t *testing.T) {
+	t.Parallel()
+
 	selfAddr := netip.MustParseAddr("10.0.0.9")
 	node := table.NewLsNode(65000, "PE-self")
 	prefix := table.NewLsPrefix(node)
@@ -3896,7 +4446,7 @@ func TestHandleSRPolicyWithPLSPID_EmptyComputedPathIsRejected(t *testing.T) {
 	node.SrgbBegin, node.SrgbEnd = 16000, 23999
 	ted := &table.LsTED{Nodes: map[string]*table.LsNode{node.RouterID: node}}
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), ted, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), ted, 0)
 
 	sr := newTestStateReport(t, 1, 0)
 	sr.LSPObject.SrcAddr = selfAddr
@@ -3909,6 +4459,8 @@ func TestHandleSRPolicyWithPLSPID_EmptyComputedPathIsRejected(t *testing.T) {
 }
 
 func TestHandleSRPolicyWithPLSPID_SendPCUpdateFailureIsPropagated(t *testing.T) {
+	t.Parallel()
+
 	srcAddr := netip.MustParseAddr("10.0.0.1")
 	dstAddr := netip.MustParseAddr("10.0.0.2")
 	srcNode, dstNode := newLinkedSRMPLSNodes(srcAddr, dstAddr, 10)
@@ -3920,7 +4472,7 @@ func TestHandleSRPolicyWithPLSPID_SendPCUpdateFailureIsPropagated(t *testing.T) 
 	})
 	require.NoError(t, server.Close(), "failed to close server connection")
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), ted, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), ted, 0)
 
 	sr := newTestStateReport(t, 1, 0)
 	sr.LSPObject.SrcAddr = srcAddr
@@ -3934,6 +4486,8 @@ func TestHandleSRPolicyWithPLSPID_SendPCUpdateFailureIsPropagated(t *testing.T) 
 }
 
 func TestSelectMetricType(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name          string
 		pccType       pcep.PccType
@@ -3952,24 +4506,31 @@ func TestSelectMetricType(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+			t.Parallel()
+
+			ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 			ss.pccType = tc.pccType
-			sr := *newTestStateReport(t, 1, 0)
+
+			sr := newTestStateReport(t, 1, 0)
 			if tc.hasMetric {
 				sr.MetricObjects = []*pcep.MetricObject{{MetricType: tc.metricObjType}}
 			}
+
 			assert.Equal(t, tc.want, ss.selectMetricType(sr))
 		})
 	}
 }
 
 func TestResolveColorPreference_CiscoLegacy(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	ss.pccType = pcep.CiscoLegacy
 
 	sr := newTestStateReport(t, 1, 0)
 	vio, err := pcep.NewVendorInformationObject(pcep.CiscoLegacy, 42, 7)
 	require.NoError(t, err)
+
 	sr.VendorInformationObject = vio
 
 	color, preference := ss.resolveColorPreference(sr)
@@ -3978,12 +4539,15 @@ func TestResolveColorPreference_CiscoLegacy(t *testing.T) {
 }
 
 func TestResolveColorPreference_AssociationColorTakesPrecedence(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	ss.receivedPccCapabilities = []pcep.CapabilityInterface{&pcep.StatefulPCECapability{ColorCapability: true}}
 
 	sr := newTestStateReport(t, 1, 0)
 	sr.LSPObject.TLVs = append(sr.LSPObject.TLVs, &pcep.Color{Color: 999})
-	sr.AssociationObject.TLVs = append(sr.AssociationObject.TLVs,
+	sr.AssociationObject.TLVs = append(
+		sr.AssociationObject.TLVs,
 		pcep.NewExtendedAssociationID(55, netip.Addr{}),
 		&pcep.SRPolicyCandidatePathPreference{Preference: 33},
 	)
@@ -3994,6 +4558,8 @@ func TestResolveColorPreference_AssociationColorTakesPrecedence(t *testing.T) {
 }
 
 func TestResolvePolicyState(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name  string
 		oflag uint8
@@ -4008,13 +4574,16 @@ func TestResolvePolicyState(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tc.want, resolvePolicyState(tc.oflag))
 		})
 	}
 }
 
 func TestValidateSegmentList_NilEroObject(t *testing.T) {
-	sr := *newTestStateReport(t, 1, 0)
+	t.Parallel()
+
+	sr := newTestStateReport(t, 1, 0)
 	sr.EroObject = nil
 
 	_, err := validateSegmentList(sr)
@@ -4022,7 +4591,9 @@ func TestValidateSegmentList_NilEroObject(t *testing.T) {
 }
 
 func TestValidateSegmentList_EmptySegmentList(t *testing.T) {
-	sr := *newTestStateReport(t, 1, 0)
+	t.Parallel()
+
+	sr := newTestStateReport(t, 1, 0)
 	sr.EroObject.EroSubobjects = nil
 
 	_, err := validateSegmentList(sr)
@@ -4030,8 +4601,10 @@ func TestValidateSegmentList_EmptySegmentList(t *testing.T) {
 }
 
 func TestUpdateOrCreatePolicy_SrcAddrFallsBackToAssociationSrc(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
-	sr := *newTestStateReport(t, 1, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
+	sr := newTestStateReport(t, 1, 0)
 	sr.LSPObject.SrcAddr = netip.Addr{}
 	sr.AssociationObject.AssocSrc = netip.MustParseAddr("192.0.2.9")
 
@@ -4043,8 +4616,10 @@ func TestUpdateOrCreatePolicy_SrcAddrFallsBackToAssociationSrc(t *testing.T) {
 }
 
 func TestUpdateOrCreatePolicy_InvalidSrcAddr(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
-	sr := *newTestStateReport(t, 1, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
+	sr := newTestStateReport(t, 1, 0)
 	sr.LSPObject.SrcAddr = netip.Addr{}
 
 	err := ss.updateOrCreatePolicy(sr, sr.EroObject.ToSegmentList(), 0, 0, table.PolicyUp)
@@ -4052,8 +4627,10 @@ func TestUpdateOrCreatePolicy_InvalidSrcAddr(t *testing.T) {
 }
 
 func TestUpdateOrCreatePolicy_DstAddrFallsBackToAssociationEndpoint(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
-	sr := *newTestStateReport(t, 1, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
+	sr := newTestStateReport(t, 1, 0)
 	sr.LSPObject.DstAddr = netip.Addr{}
 	sr.AssociationObject.TLVs = append(sr.AssociationObject.TLVs,
 		pcep.NewExtendedAssociationID(0, netip.MustParseAddr("192.0.2.20")))
@@ -4066,8 +4643,10 @@ func TestUpdateOrCreatePolicy_DstAddrFallsBackToAssociationEndpoint(t *testing.T
 }
 
 func TestUpdateOrCreatePolicy_InvalidDstAddr(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
-	sr := *newTestStateReport(t, 1, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
+	sr := newTestStateReport(t, 1, 0)
 	sr.LSPObject.DstAddr = netip.Addr{}
 
 	err := ss.updateOrCreatePolicy(sr, sr.EroObject.ToSegmentList(), 0, 0, table.PolicyUp)
@@ -4076,8 +4655,10 @@ func TestUpdateOrCreatePolicy_InvalidDstAddr(t *testing.T) {
 
 // RFC 8231 §7.3: a stale LSP-ID must not overwrite newer state.
 func TestUpdateOrCreatePolicy_StaleLSPIDIsIgnored(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
-	sr := *newTestStateReport(t, 1, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
+	sr := newTestStateReport(t, 1, 0)
 	sr.LSPObject.LSPID = 5
 	require.NoError(t, ss.updateOrCreatePolicy(sr, sr.EroObject.ToSegmentList(), 10, 20, table.PolicyUp))
 
@@ -4094,6 +4675,8 @@ func TestUpdateOrCreatePolicy_StaleLSPIDIsIgnored(t *testing.T) {
 
 // RFC 9603 §4.3.1: F=1 indicates that the NAI is absent.
 func TestCreateEroFromSegmentList_SRv6(t *testing.T) {
+	t.Parallel()
+
 	seg := table.NewSegmentSRv6(netip.MustParseAddr("2001:db8:1::1"))
 
 	ero, err := createEroFromSegmentList([]table.Segment{seg})
@@ -4108,6 +4691,8 @@ func TestCreateEroFromSegmentList_SRv6(t *testing.T) {
 }
 
 func TestCreateEroFromSegmentList_InvalidSegmentReturnsError(t *testing.T) {
+	t.Parallel()
+
 	seg := table.NewSegmentSRMPLS(16002)
 	seg.RemoteAddr = netip.MustParseAddr("10.255.0.2") // RemoteAddr without LocalAddr is invalid.
 
@@ -4116,6 +4701,8 @@ func TestCreateEroFromSegmentList_InvalidSegmentReturnsError(t *testing.T) {
 }
 
 func TestCreateEroFromSegmentList_SRv6InvalidSegmentReturnsError(t *testing.T) {
+	t.Parallel()
+
 	seg := table.NewSegmentSRv6(netip.MustParseAddr("2001:db8:1::1"))
 	seg.LocalAddr = netip.MustParseAddr("fe80::1") // link-local adjacency NAI is unsupported.
 	seg.RemoteAddr = netip.MustParseAddr("fe80::2")
@@ -4131,7 +4718,9 @@ func (failingMessage) Serialize() ([]uint8, error) {
 }
 
 func TestSendPCEPMessage_SerializeErrorIsPropagated(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	assert.Error(t, ss.sendPCEPMessage(failingMessage{}))
 }
 
@@ -4140,7 +4729,9 @@ type unknownSegment struct{}
 func (unknownSegment) SidString() string { return "unknown" }
 
 func TestSendPCInitiate_InvalidSegmentTypeIsRejected(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	wantSRPID := ss.srpIDHead
 	srPolicy := table.SRPolicy{
 		Name:        "bad-segment",
@@ -4156,7 +4747,9 @@ func TestSendPCInitiate_InvalidSegmentTypeIsRejected(t *testing.T) {
 }
 
 func TestSendPCUpdate_InvalidSegmentTypeIsRejected(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	wantSRPID := ss.srpIDHead
 	srPolicy := table.SRPolicy{
 		Name:        "bad-segment",
@@ -4170,6 +4763,8 @@ func TestSendPCUpdate_InvalidSegmentTypeIsRejected(t *testing.T) {
 }
 
 func TestRequestAllSRPolicyDeleted(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		assert.NoError(t, server.Close(), "failed to close server connection")
@@ -4178,31 +4773,36 @@ func TestRequestAllSRPolicyDeleted(t *testing.T) {
 		assert.NoError(t, client.Close(), "failed to close client connection")
 	})
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 
 	require.NoError(t, ss.RequestAllSRPolicyDeleted())
 	require.NoError(t, readPCEPMessage(client))
 }
 
 func TestSelectMetricType_AlwaysUsableForCSPF(t *testing.T) {
+	t.Parallel()
+
 	for _, metricType := range []uint8{0, 1, 2, 3, 255} {
-		ss := &Session{logger: zap.NewNop()}
-		sr := pcep.StateReport{MetricObjects: []*pcep.MetricObject{{MetricType: metricType}}}
+		ss := &Session{logger: logger.NewNop()}
+		sr := &pcep.StateReport{MetricObjects: []*pcep.MetricObject{{MetricType: metricType}}}
 		got := ss.selectMetricType(sr)
 		assert.Truef(t, got.IsValid() && got != table.UnspecifiedMetric,
 			"PCEP metric type %d mapped to a metric CSPF rejects: %v", metricType, got)
 	}
+
 	for _, pccType := range []pcep.PccType{pcep.CiscoLegacy, pcep.JuniperLegacy, pcep.RFCCompliant} {
-		ss := &Session{logger: zap.NewNop(), pccType: pccType}
-		got := ss.selectMetricType(pcep.StateReport{})
+		ss := &Session{logger: logger.NewNop(), pccType: pccType}
+		got := ss.selectMetricType(&pcep.StateReport{})
 		assert.Truef(t, got.IsValid() && got != table.UnspecifiedMetric,
 			"pccType %v with no METRIC object mapped to a metric CSPF rejects: %v", pccType, got)
 	}
 }
 
 func TestSession_CreatedAtSetOnConstruction(t *testing.T) {
+	t.Parallel()
+
 	before := time.Now()
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	after := time.Now()
 
 	assert.False(t, ss.CreatedAt().Before(before))
@@ -4211,22 +4811,30 @@ func TestSession_CreatedAtSetOnConstruction(t *testing.T) {
 }
 
 func TestSession_InitiatorDefaultsToRemote(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
-	assert.Equal(t, sessionInitiatorRemote, ss.Initiator(), "Pola only accepts connections, so the initiator is always remote today")
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
+	assert.Equal(t, SessionInitiatorRemote, ss.Initiator(), "Pola only accepts connections, so the initiator is always remote today")
 }
 
 func TestEstablished_SetsEstablishedAtOnceUp(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() { assert.NoError(t, client.Close(), "failed to close client connection") })
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 	require.True(t, ss.EstablishedAt().IsZero())
 
 	writeMessage(t, client, pcep.NewOpenMessage(1, 30, 120, nil))
 
 	done := make(chan struct{})
+
 	go func() {
-		_ = ss.Established()
+		if err := ss.Established(); err != nil {
+			t.Logf("established: %v", err)
+		}
+
 		close(done)
 	}()
 
@@ -4238,6 +4846,7 @@ func TestEstablished_SetsEstablishedAtOnceUp(t *testing.T) {
 	assert.False(t, ss.EstablishedAt().IsZero(), "EstablishedAt must be set once the session is up")
 
 	writeMessage(t, client, pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided))
+
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
@@ -4246,48 +4855,56 @@ func TestEstablished_SetsEstablishedAtOnceUp(t *testing.T) {
 }
 
 func TestEstablished_ReturnsErrorOnlyWhenEstablishmentFails(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() { assert.NoError(t, server.Close(), "failed to close server connection") })
 	require.NoError(t, client.Close(), "failed to close client connection")
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 	assert.Error(t, ss.Established(), "Established must report an error when Open fails")
 }
 
 func TestSyncState_TransitionsPendingOngoingFinished(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
-	assert.Equal(t, lspDBSyncPending, ss.SyncState())
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
+	assert.Equal(t, SyncStatePending, ss.SyncState())
 
 	sr := newTestStateReport(t, 1, 0)
 	sr.LSPObject.SFlag = true
 	require.NoError(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
-	assert.Equal(t, lspDBSyncOngoing, ss.SyncState())
+	assert.Equal(t, SyncStateOngoing, ss.SyncState())
 
 	finish := newTestStateReport(t, 0, 0)
 	require.NoError(t, ss.handleStateReport(finish, pcep.NewPCRptMessage()))
-	assert.Equal(t, lspDBSyncFinished, ss.SyncState())
+	assert.Equal(t, SyncStateFinished, ss.SyncState())
 }
 
 func TestSyncState_DoesNotRegressAfterFinished(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	ss.setSynced()
-	require.Equal(t, lspDBSyncFinished, ss.SyncState())
+	require.Equal(t, SyncStateFinished, ss.SyncState())
 
 	sr := newTestStateReport(t, 1, 0)
 	sr.LSPObject.SFlag = true
 	require.NoError(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
 
-	assert.Equal(t, lspDBSyncFinished, ss.SyncState(), "sync state must not regress once finished")
+	assert.Equal(t, SyncStateFinished, ss.SyncState(), "sync state must not regress once finished")
 }
 
 func TestSessionStats_SendCountersIncrementOnSuccess(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		assert.NoError(t, server.Close(), "failed to close server connection")
 		assert.NoError(t, client.Close(), "failed to close client connection")
 	})
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 
 	require.NoError(t, ss.SendOpen())
 	require.NoError(t, readPCEPMessage(client))
@@ -4327,24 +4944,28 @@ func TestSessionStats_SendCountersIncrementOnSuccess(t *testing.T) {
 }
 
 func TestCountReceived_IncrementsExpectedCounter(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]struct {
 		messageType pcep.MessageType
-		get         func(sessionStatsSnapshot) uint64
+		get         func(SessionStats) uint64
 	}{
-		"Open":         {pcep.MessageTypeOpen, func(s sessionStatsSnapshot) uint64 { return s.OpenRcvd }},
-		"Keepalive":    {pcep.MessageTypeKeepalive, func(s sessionStatsSnapshot) uint64 { return s.KeepaliveRcvd }},
-		"Report":       {pcep.MessageTypeReport, func(s sessionStatsSnapshot) uint64 { return s.RptRcvd }},
-		"Error":        {pcep.MessageTypeError, func(s sessionStatsSnapshot) uint64 { return s.PCErrRcvd }},
-		"Notification": {pcep.MessageTypeNotification, func(s sessionStatsSnapshot) uint64 { return s.PCNtfRcvd }},
-		"Close":        {pcep.MessageTypeClose, func(s sessionStatsSnapshot) uint64 { return s.CloseRcvd }},
-		"Pcreq":        {pcep.MessageTypePcreq, func(s sessionStatsSnapshot) uint64 { return s.PCReqRcvd }},
-		"Pcrep":        {pcep.MessageTypePcrep, func(s sessionStatsSnapshot) uint64 { return s.PCRepRcvd }},
-		"Unknown":      {pcep.MessageTypeStartTLS, func(s sessionStatsSnapshot) uint64 { return s.UnknownRcvd }},
+		"Open":         {pcep.MessageTypeOpen, func(s SessionStats) uint64 { return s.OpenRcvd }},
+		"Keepalive":    {pcep.MessageTypeKeepalive, func(s SessionStats) uint64 { return s.KeepaliveRcvd }},
+		"Report":       {pcep.MessageTypeReport, func(s SessionStats) uint64 { return s.RptRcvd }},
+		"Error":        {pcep.MessageTypeError, func(s SessionStats) uint64 { return s.PCErrRcvd }},
+		"Notification": {pcep.MessageTypeNotification, func(s SessionStats) uint64 { return s.PCNtfRcvd }},
+		"Close":        {pcep.MessageTypeClose, func(s SessionStats) uint64 { return s.CloseRcvd }},
+		"Pcreq":        {pcep.MessageTypePcreq, func(s SessionStats) uint64 { return s.PCReqRcvd }},
+		"Pcrep":        {pcep.MessageTypePcrep, func(s SessionStats) uint64 { return s.PCRepRcvd }},
+		"Unknown":      {pcep.MessageTypeStartTLS, func(s SessionStats) uint64 { return s.UnknownRcvd }},
 	}
 
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
-			ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+			t.Parallel()
+
+			ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 			ss.countReceived(tt.messageType)
 			assert.Equal(t, uint64(1), tt.get(ss.Stats()), "unexpected counter value for message type %s", name)
 		})
@@ -4352,7 +4973,9 @@ func TestCountReceived_IncrementsExpectedCounter(t *testing.T) {
 }
 
 func TestCountReceived_CloseHasDedicatedCounter(t *testing.T) {
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, zap.NewNop(), nil, 0)
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	ss.countReceived(pcep.MessageTypeClose)
 	snap := ss.Stats()
 	assert.Equal(t, uint64(1), snap.CloseRcvd)
@@ -4364,13 +4987,15 @@ func TestCountReceived_CloseHasDedicatedCounter(t *testing.T) {
 }
 
 func TestSessionStats_CorruptRcvdOnMalformedPCErr(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		assert.NoError(t, server.Close(), "failed to close server connection")
 		assert.NoError(t, client.Close(), "failed to close client connection")
 	})
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 
 	// A truncated object header cannot form a valid PCEP-ERROR object.
 	malformedBody := []byte{0x00, 0x00}
@@ -4383,13 +5008,15 @@ func TestSessionStats_CorruptRcvdOnMalformedPCErr(t *testing.T) {
 }
 
 func TestSessionStats_CorruptRcvdOnMalformedPCRpt(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		assert.NoError(t, server.Close(), "failed to close server connection")
 		assert.NoError(t, client.Close(), "failed to close client connection")
 	})
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 
 	// A truncated object header cannot form a valid state report.
 	malformedBody := []byte{0x00, 0x00}
@@ -4402,13 +5029,15 @@ func TestSessionStats_CorruptRcvdOnMalformedPCRpt(t *testing.T) {
 }
 
 func TestSessionStats_CorruptRcvdOnMalformedCommonHeader(t *testing.T) {
+	t.Parallel()
+
 	server, client := newTCPConnPair(t)
 	t.Cleanup(func() {
 		assert.NoError(t, server.Close(), "failed to close server connection")
 		assert.NoError(t, client.Close(), "failed to close client connection")
 	})
 
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, zap.NewNop(), nil, 0)
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
 
 	// Version 0 is not a supported PCEP version.
 	_, err := client.Write([]byte{0x00, 0x00, 0x00, 0x04})
@@ -4420,28 +5049,33 @@ func TestSessionStats_CorruptRcvdOnMalformedCommonHeader(t *testing.T) {
 }
 
 func TestServer_PeerSetupStats_RecordsOkAndFail(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err, "failed to reserve a port")
-	addr, port, err := net.SplitHostPort(ln.Addr().String())
-	require.NoError(t, err)
-	require.NoError(t, ln.Close(), "failed to release the reserved port")
+	t.Parallel()
 
-	s := &Server{logger: zap.NewNop()}
-	go func() { _ = s.Serve(addr, port) }()
-	t.Cleanup(func() { assert.NoError(t, s.Shutdown()) })
+	ln, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err, "failed to open the PCEP listener")
 
-	var client net.Conn
-	require.Eventually(t, func() bool {
-		c, dialErr := net.DialTimeout("tcp", net.JoinHostPort(addr, port), 100*time.Millisecond)
-		if dialErr != nil {
-			return false
+	s := &Server{logger: logger.NewNop()}
+
+	serveErrCh := make(chan error, 1)
+	go func() { serveErrCh <- s.acceptLoop(ln) }()
+
+	t.Cleanup(func() {
+		assert.NoError(t, s.Shutdown())
+
+		select {
+		case err := <-serveErrCh:
+			assert.NoError(t, err)
+		case <-time.After(2 * time.Second):
+			t.Error("serve did not return after Shutdown")
 		}
-		client = c
-		return true
-	}, 2*time.Second, 10*time.Millisecond, "expected to dial the PCEP listener once it starts")
+	})
+
+	client, err := net.Dial("tcp", ln.Addr().String())
+	require.NoError(t, err)
 
 	clientAddr, err := netip.ParseAddrPort(client.LocalAddr().String())
 	require.NoError(t, err)
+
 	peerAddr := clientAddr.Addr()
 
 	// Establishment fails: the client disconnects before completing the Open handshake.
@@ -4458,29 +5092,37 @@ func TestServer_PeerSetupStats_RecordsOkAndFail(t *testing.T) {
 }
 
 func TestServer_PeerSetupStats_RecordsOkOnSuccessfulEstablishment(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err, "failed to reserve a port")
-	addr, port, err := net.SplitHostPort(ln.Addr().String())
-	require.NoError(t, err)
-	require.NoError(t, ln.Close(), "failed to release the reserved port")
+	t.Parallel()
 
-	s := &Server{logger: zap.NewNop(), localKeepalive: defaultLocalKeepalive, localDeadTimer: pcep.DeadTimerFor(defaultLocalKeepalive)}
-	go func() { _ = s.Serve(addr, port) }()
-	t.Cleanup(func() { assert.NoError(t, s.Shutdown()) })
+	ln, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err, "failed to open the PCEP listener")
 
-	var client net.Conn
-	require.Eventually(t, func() bool {
-		c, dialErr := net.DialTimeout("tcp", net.JoinHostPort(addr, port), 100*time.Millisecond)
-		if dialErr != nil {
-			return false
+	s := &Server{logger: logger.NewNop(), localKeepalive: defaultLocalKeepalive, localDeadTimer: pcep.DeadTimerFor(defaultLocalKeepalive)}
+
+	serveErrCh := make(chan error, 1)
+	go func() { serveErrCh <- s.acceptLoop(ln) }()
+
+	t.Cleanup(func() {
+		assert.NoError(t, s.Shutdown())
+
+		select {
+		case err := <-serveErrCh:
+			assert.NoError(t, err)
+		case <-time.After(2 * time.Second):
+			t.Error("serve did not return after Shutdown")
 		}
-		client = c
-		return true
-	}, 2*time.Second, 10*time.Millisecond, "expected to dial the PCEP listener once it starts")
-	t.Cleanup(func() { _ = client.Close() })
+	})
+
+	client, err := net.Dial("tcp", ln.Addr().String())
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		//nolint:errcheck // best-effort cleanup.
+		_ = client.Close()
+	})
 
 	clientAddr, err := netip.ParseAddrPort(client.LocalAddr().String())
 	require.NoError(t, err)
+
 	peerAddr := clientAddr.Addr()
 
 	writeMessage(t, client, pcep.NewOpenMessage(1, 30, 120, nil))

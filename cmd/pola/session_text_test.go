@@ -17,12 +17,13 @@ func fullSessionViewFixture() sessionView {
 	local, peer := uint32(1), uint32(7)
 	lk, pk, ld, pd := uint32(30), uint32(10), uint32(120), uint32(40)
 	ek, ed := uint32(10), uint32(40)
+
 	return sessionView{
-		PeerAddress: "192.0.2.1",
+		PeerAddress: testPeerAddr1,
 		State:       "up",
 		LSPDBSync:   "finished",
 		UpTime:      "00:12:22",
-		Role:        "active-stateful-pce",
+		Role:        roleActiveStatefulPCE,
 		SessionID:   sessionIDView{Local: &local, Peer: &peer},
 		Timers: timersView{
 			Keepalive: timerTriple{Local: &lk, Peer: &pk, Effective: &ek},
@@ -36,7 +37,7 @@ func fullSessionViewFixture() sessionView {
 			},
 			LocalOnly:    []capGroupView{{Capability: "SR", Items: []string{"MSD=10"}}},
 			PeerOnly:     []capGroupView{{Capability: "SR", Items: []string{"MSD=16"}}},
-			commonGroups: []capGroupView{{Capability: "STATEFUL", Items: []string{"Stateful", "Update"}}},
+			commonGroups: []capGroupView{{Capability: capGroupStateful, Items: []string{"Stateful", "Update"}}},
 		},
 		SessionCreation: "2026-08-19T09:30:00Z",
 		Initiator:       "remote",
@@ -49,6 +50,8 @@ func fullSessionViewFixture() sessionView {
 }
 
 func TestWriteSessionText_DetailWithNilStatsRendersWithoutError(t *testing.T) {
+	t.Parallel()
+
 	v := fullSessionViewFixture()
 	v.Stats = nil
 
@@ -57,22 +60,45 @@ func TestWriteSessionText_DetailWithNilStatsRendersWithoutError(t *testing.T) {
 	assert.NotContains(t, w.buf.String(), "Stats:")
 }
 
+func TestWriteSessionText_TablesAreTabAligned(t *testing.T) {
+	t.Parallel()
+
+	v := fullSessionViewFixture()
+
+	w := &condFailWriter{}
+	require.NoError(t, writeSessionText(w, []sessionView{v}))
+
+	out := w.buf.String()
+	assert.NotContains(t, out, "\t", "tabwriter output must not contain literal tabs")
+
+	for line := range strings.SplitSeq(out, "\n") {
+		if strings.Contains(line, "Keepalive") || strings.Contains(line, "PCErr") {
+			assert.Regexp(t, `\s{2,}`, line, "table row %q must be column-aligned", line)
+		}
+	}
+}
+
 // blankLineAfterFail matches the first bare newline after a write containing
 // sub. This avoids matching newlines emitted internally by tabwriter.Flush.
 func blankLineAfterFail(sub string) func(string) bool {
 	armed := false
+
 	return func(s string) bool {
 		if armed && s == "\n" {
 			return true
 		}
+
 		if strings.Contains(s, sub) {
 			armed = true
 		}
+
 		return false
 	}
 }
 
 func TestWriteSessionText_PropagatesWriteErrors(t *testing.T) {
+	t.Parallel()
+
 	v := fullSessionViewFixture()
 	views := []sessionView{v}
 	twoViews := []sessionView{v, v}
@@ -99,6 +125,8 @@ func TestWriteSessionText_PropagatesWriteErrors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			w := &condFailWriter{fail: tt.fail}
 			err := writeSessionText(w, tt.views)
 			require.Error(t, err)
@@ -107,38 +135,52 @@ func TestWriteSessionText_PropagatesWriteErrors(t *testing.T) {
 }
 
 func TestWriteGroupedLine_PropagatesWriteErrorOnNonFirstItem(t *testing.T) {
+	t.Parallel()
+
 	c := capabilitiesView{
-		LocalOnly: []capGroupView{{Capability: "ASSOC_TYPE_LIST", Items: []string{"6 SR Policy Association"}}},
+		LocalOnly: []capGroupView{{Capability: capGroupAssocTypeList, Items: []string{"SR Policy Association (0x0006) [RFC9862]"}}},
 	}
 
 	w := &condFailWriter{fail: containsFail("SR Policy Association")}
-	err := writeCapabilitySections(w, c)
-	require.Error(t, err)
+	ew := &errWriter{w: w}
+	writeCapabilitySectionsText(ew, c)
+	require.Error(t, ew.err)
 }
 
 func TestWriteCapabilityGroupSection_PropagatesGroupedLineWriteError(t *testing.T) {
+	t.Parallel()
+
 	c := capabilitiesView{
-		commonGroups: []capGroupView{{Capability: "ASSOC_TYPE_LIST", Items: []string{"6 SR Policy Association"}}},
+		commonGroups: []capGroupView{{Capability: capGroupAssocTypeList, Items: []string{"SR Policy Association (0x0006) [RFC9862]"}}},
 	}
 
 	w := &condFailWriter{fail: containsFail("ASSOC-TYPE-LIST")}
-	err := writeCapabilityGroupSection(w, "Common", c.commonLines())
-	require.Error(t, err)
+	ew := &errWriter{w: w}
+	writeCapabilityGroupSectionText(ew, "Common", c.commonLines())
+	require.Error(t, ew.err)
 }
 
 func TestWriteGroupedLine_EmptyItemsRendersDash(t *testing.T) {
+	t.Parallel()
+
 	c := capabilitiesView{
-		LocalOnly: []capGroupView{{Capability: "ASSOC_TYPE_LIST", Items: []string{}}},
+		LocalOnly: []capGroupView{{Capability: capGroupAssocTypeList, Items: []string{}}},
 	}
 
 	var buf strings.Builder
-	require.NoError(t, writeCapabilitySections(&buf, c))
+
+	ew := &errWriter{w: &buf}
+	writeCapabilitySectionsText(ew, c)
+	require.NoError(t, ew.err)
 	assert.Contains(t, buf.String(), "      ASSOC-TYPE-LIST [RFC8697]:\n        -\n")
 }
 
 func TestFormatTimerValue(t *testing.T) {
+	t.Parallel()
+
 	zero := uint32(0)
 	v := uint32(30)
+
 	assert.Equal(t, "-", formatTimerValue(nil))
 	assert.Equal(t, "disabled", formatTimerValue(&zero))
 	assert.Equal(t, "30", formatTimerValue(&v))

@@ -3,11 +3,11 @@
 // This software is released under the MIT License.
 // see https://github.com/nttcom/pola/blob/main/LICENSE
 
-package logger
+package logger_test
 
 import (
+	"bytes"
 	"encoding/json"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,42 +15,28 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/nttcom/pola/pkg/logger"
 )
 
-// captureStdout captures output written to os.Stdout while f runs.
-func captureStdout(t *testing.T, f func()) string {
-	t.Helper()
+func TestNew(t *testing.T) {
+	t.Parallel()
 
-	r, w, err := os.Pipe()
-	require.NoError(t, err)
-	orig := os.Stdout
-	os.Stdout = w
-	defer func() { os.Stdout = orig }()
-
-	f()
-
-	require.NoError(t, w.Close())
-	out, err := io.ReadAll(r)
-	require.NoError(t, err)
-	return string(out)
-}
-
-func TestLogInit(t *testing.T) {
 	tests := []struct {
 		name            string
-		dbg             bool
+		level           logger.Level
 		wantDebugLogged bool
 		wantInfoLogged  bool
 	}{
 		{
-			name:            "debug disabled logs only info and above",
-			dbg:             false,
+			name:            "info level logs only info and above",
+			level:           logger.LevelInfo,
 			wantDebugLogged: false,
 			wantInfoLogged:  true,
 		},
 		{
-			name:            "debug enabled logs debug and above",
-			dbg:             true,
+			name:            "debug level logs debug and above",
+			level:           logger.LevelDebug,
 			wantDebugLogged: true,
 			wantInfoLogged:  true,
 		},
@@ -58,18 +44,23 @@ func TestLogInit(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			logPath := filepath.Join(t.TempDir(), "pola.log")
 			fp, err := os.Create(logPath)
+
 			require.NoError(t, err)
 			defer func() {
 				require.NoError(t, fp.Close())
 			}()
 
-			stdout := captureStdout(t, func() {
-				l := LogInit(fp, tt.dbg)
-				l.Debug("debug message")
-				l.Info("info message")
-			})
+			var console bytes.Buffer
+
+			l := logger.New(fp, &console, tt.level)
+			l.Debug("debug message")
+			l.Info("info message")
+
+			stdout := console.String()
 
 			fileContent, err := os.ReadFile(logPath)
 			require.NoError(t, err)
@@ -110,4 +101,51 @@ func TestLogInit(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestParseLevel(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		name    string
+		want    logger.Level
+		wantErr bool
+	}{
+		"empty defaults to info": {name: "", want: logger.LevelInfo},
+		"info":                   {name: "info", want: logger.LevelInfo},
+		"debug":                  {name: "debug", want: logger.LevelDebug},
+		"warn":                   {name: "warn", want: logger.LevelWarn},
+		"error":                  {name: "error", want: logger.LevelError},
+		"unsupported": {
+			name:    "trace",
+			wantErr: true,
+		},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := logger.ParseLevel(tt.name)
+
+			if tt.wantErr {
+				require.ErrorContains(t, err, `log level "trace" is not supported`)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestNewNop(t *testing.T) {
+	t.Parallel()
+
+	l := logger.NewNop()
+	l.Debug("debug message")
+	l.Info("info message")
+	l.Warn("warn message")
+	l.Error("error message")
+	require.NoError(t, l.Sync())
 }
