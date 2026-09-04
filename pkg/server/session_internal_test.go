@@ -131,6 +131,7 @@ func newTestStateReport(t *testing.T, plspID, srpID uint32) *pcep.StateReport {
 	t.Helper()
 
 	sr := pcep.NewStateReport()
+	sr.AssociationObjects = []*pcep.AssociationObject{{AssocType: pcep.AssocTypeSRPolicyAssociation}}
 
 	sr.SrpObject.SrpID = srpID
 	sr.LSPObject.PlspID = plspID
@@ -1199,12 +1200,16 @@ func TestSendOpen_ErrorPropagatesFromSendFailure(t *testing.T) {
 	require.Error(t, ss.SendOpen())
 }
 
-// openMessageBody returns the body of a serialized Open message, ready to be
-// handed to handlePeerOpen.
 func openMessageBody(t *testing.T, sessionID, keepalive, deadTimer uint8) []uint8 {
 	t.Helper()
 
-	full, err := pcep.NewOpenMessage(sessionID, keepalive, deadTimer, nil).Serialize()
+	return openMessageBodyWithCaps(t, sessionID, keepalive, deadTimer, nil)
+}
+
+func openMessageBodyWithCaps(t *testing.T, sessionID, keepalive, deadTimer uint8, caps []pcep.CapabilityInterface) []uint8 {
+	t.Helper()
+
+	full, err := pcep.NewOpenMessage(sessionID, keepalive, deadTimer, caps).Serialize()
 	require.NoError(t, err, "failed to serialize Open message")
 
 	return full[pcep.CommonHeaderLength:]
@@ -1288,6 +1293,93 @@ func TestHandlePeerOpen_RejectedOpenDoesNotOverwriteNegotiatedTimers(t *testing.
 	require.NoError(t, header.DecodeFromBytes(writes[0]))
 	assert.Equal(t, pcep.MessageTypeKeepalive, header.MessageType)
 	assertPCErr(t, writes[1], pcepErrorValueInvalidOpenMessage)
+}
+
+func TestHandlePeerOpen_RejectsPathSetupTypeMismatch(t *testing.T) {
+	t.Parallel()
+
+	conn := &fakeConn{r: bytes.NewReader(nil)}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
+
+	caps := []pcep.CapabilityInterface{&pcep.PathSetupTypeCapability{
+		PathSetupTypes: pcep.Psts{pcep.PathSetupTypeRSVPTE},
+	}}
+
+	neg := &openNegotiation{}
+	require.ErrorContains(t, ss.handlePeerOpen(openMessageBodyWithCaps(t, 1, 30, 120, caps), neg),
+		"no path setup type in common")
+
+	assert.False(t, neg.remoteOK, "a mismatched Open must not be accepted")
+
+	_, ok := ss.PccOpen()
+	assert.False(t, ok, "a mismatched Open must not be published as the PCC's Open")
+
+	writes := conn.writes()
+	require.Len(t, writes, 1, "RFC 8408 §5 answers a path setup type mismatch with a PCErr, not a Keepalive")
+	assertTypedPCErr(t, writes[0], pcepErrorTypeInvalidPathSetupType, pcepErrorValueMismatchedPathSetupType)
+}
+
+func TestHandlePeerOpen_RejectsEmptyPathSetupTypeList(t *testing.T) {
+	t.Parallel()
+
+	conn := &fakeConn{r: bytes.NewReader(nil)}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
+
+	caps := []pcep.CapabilityInterface{&pcep.PathSetupTypeCapability{}}
+
+	neg := &openNegotiation{}
+	require.ErrorContains(t, ss.handlePeerOpen(openMessageBodyWithCaps(t, 1, 30, 120, caps), neg),
+		"empty path setup type list")
+
+	assert.False(t, neg.remoteOK)
+
+	writes := conn.writes()
+	require.Len(t, writes, 1, "RFC 8408 §3 requires Num of PSTs > 0 and closes the session otherwise")
+	assertTypedPCErr(t, writes[0], pcepErrorTypeInvalidObject, pcepErrorValueMalformedObject)
+}
+
+func TestHandlePeerOpen_AcceptsPartialPathSetupTypeOverlap(t *testing.T) {
+	t.Parallel()
+
+	conn := &fakeConn{r: bytes.NewReader(nil)}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
+
+	caps := []pcep.CapabilityInterface{&pcep.PathSetupTypeCapability{
+		PathSetupTypes: pcep.Psts{pcep.PathSetupTypeRSVPTE, pcep.PathSetupTypeSRTE},
+		SubTLVs:        []pcep.TLVInterface{pcep.NewSRPCECapability(true, false, 0)},
+	}}
+
+	neg := &openNegotiation{}
+	require.NoError(t, ss.handlePeerOpen(openMessageBodyWithCaps(t, 1, 30, 120, caps), neg))
+	assert.True(t, neg.remoteOK)
+}
+
+func TestRejectOnPathSetupTypeMismatch_SkippedWhenPolaAdvertisesNoPSTList(t *testing.T) {
+	t.Parallel()
+
+	conn := &fakeConn{r: bytes.NewReader(nil)}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
+	ss.advertisedCapabilities = nil
+
+	caps := []pcep.CapabilityInterface{&pcep.PathSetupTypeCapability{
+		PathSetupTypes: pcep.Psts{pcep.PathSetupTypeRSVPTE},
+	}}
+
+	require.NoError(t, ss.rejectOnPathSetupTypeMismatch(caps),
+		"with no PST list of its own, Pola has nothing to compare and must not tear the session down")
+	assert.Empty(t, conn.writes())
+}
+
+func TestHandlePeerOpen_AcceptsPeerWithoutPathSetupTypeCapability(t *testing.T) {
+	t.Parallel()
+
+	conn := &fakeConn{r: bytes.NewReader(nil)}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
+
+	// No PST list is accepted for legacy PCC compatibility (RFC 8408 §5).
+	neg := &openNegotiation{}
+	require.NoError(t, ss.handlePeerOpen(openMessageBody(t, 1, 30, 120), neg))
+	assert.True(t, neg.remoteOK)
 }
 
 func TestHandlePeerOpen_RejectedOpenIsNotPublishedAsSessionState(t *testing.T) {
@@ -2444,6 +2536,12 @@ func negotiatingSessionWithLogger(t *testing.T, conn net.Conn, lg *logger.Logger
 func assertPCErr(t *testing.T, write []byte, errorValue uint8) {
 	t.Helper()
 
+	assertTypedPCErr(t, write, pcepErrorTypeSessionEstablishmentFailure, errorValue)
+}
+
+func assertTypedPCErr(t *testing.T, write []byte, errorType, errorValue uint8) {
+	t.Helper()
+
 	var header pcep.CommonHeader
 	require.NoError(t, header.DecodeFromBytes(write))
 	require.Equal(t, pcep.MessageTypeError, header.MessageType, "expected a PCErr message")
@@ -2451,7 +2549,7 @@ func assertPCErr(t *testing.T, write []byte, errorValue uint8) {
 	pcerrMessage := &pcep.PCErrMessage{}
 	require.NoError(t, pcerrMessage.DecodeFromBytes(write[pcep.CommonHeaderLength:]))
 	require.Len(t, pcerrMessage.Errors, 1)
-	assert.Equal(t, pcepErrorTypeSessionEstablishmentFailure, pcerrMessage.Errors[0].ErrorType)
+	assert.Equal(t, errorType, pcerrMessage.Errors[0].ErrorType)
 	assert.Equal(t, errorValue, pcerrMessage.Errors[0].ErrorValue)
 }
 
@@ -4546,8 +4644,8 @@ func TestResolveColorPreference_AssociationColorTakesPrecedence(t *testing.T) {
 
 	sr := newTestStateReport(t, 1, 0)
 	sr.LSPObject.TLVs = append(sr.LSPObject.TLVs, &pcep.Color{Color: 999})
-	sr.AssociationObject.TLVs = append(
-		sr.AssociationObject.TLVs,
+	sr.AssociationObjects[0].TLVs = append(
+		sr.AssociationObjects[0].TLVs,
 		pcep.NewExtendedAssociationID(55, netip.Addr{}),
 		&pcep.SRPolicyCandidatePathPreference{Preference: 33},
 	)
@@ -4606,7 +4704,7 @@ func TestUpdateOrCreatePolicy_SrcAddrFallsBackToAssociationSrc(t *testing.T) {
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	sr := newTestStateReport(t, 1, 0)
 	sr.LSPObject.SrcAddr = netip.Addr{}
-	sr.AssociationObject.AssocSrc = netip.MustParseAddr("192.0.2.9")
+	sr.AssociationObjects[0].AssocSrc = netip.MustParseAddr("192.0.2.9")
 
 	require.NoError(t, ss.updateOrCreatePolicy(sr, sr.EroObject.ToSegmentList(), 0, 0, table.PolicyUp))
 
@@ -4632,7 +4730,7 @@ func TestUpdateOrCreatePolicy_DstAddrFallsBackToAssociationEndpoint(t *testing.T
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	sr := newTestStateReport(t, 1, 0)
 	sr.LSPObject.DstAddr = netip.Addr{}
-	sr.AssociationObject.TLVs = append(sr.AssociationObject.TLVs,
+	sr.AssociationObjects[0].TLVs = append(sr.AssociationObjects[0].TLVs,
 		pcep.NewExtendedAssociationID(0, netip.MustParseAddr("192.0.2.20")))
 
 	require.NoError(t, ss.updateOrCreatePolicy(sr, sr.EroObject.ToSegmentList(), 0, 0, table.PolicyUp))
@@ -5138,4 +5236,422 @@ func TestServer_PeerSetupStats_RecordsOkOnSuccessfulEstablishment(t *testing.T) 
 	ok, fail := s.PeerSetupStats(peerAddr)
 	assert.Equal(t, uint64(1), ok)
 	assert.Equal(t, uint64(0), fail)
+}
+
+func TestHandleStateReport_UnsupportedAssocTypeSendsPCErr(t *testing.T) {
+	t.Parallel()
+
+	server, client := newTCPConnPair(t)
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
+
+	sr := newTestStateReport(t, 1, 0)
+	sr.AssociationObjects[0].AssocType = pcep.AssocTypeDisjointAssociation
+
+	require.NoError(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
+
+	pcerr := readPCErrMessage(t, client)
+	require.Len(t, pcerr.Errors, 1)
+	assert.Equal(t, pcepErrorTypeAssociationError, pcerr.Errors[0].ErrorType)
+	assert.Equal(t, pcepErrorValueAssociationTypeNotSupported, pcerr.Errors[0].ErrorValue)
+
+	// RFC 8697 §6.4 requires the error without rejecting the report.
+	_, found := ss.SearchSRPolicy(sr.LSPObject.PlspID)
+	assert.True(t, found, "the LSP must still be registered")
+}
+
+func TestHandleStateReport_UnsupportedAssocTypeSendPCErrFailureReturnsError(t *testing.T) {
+	t.Parallel()
+
+	conn := &fakeConn{r: bytes.NewReader(nil), writeErr: errors.New("write: broken pipe")}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
+
+	sr := newTestStateReport(t, 1, 0)
+	sr.AssociationObjects[0].AssocType = pcep.AssocTypeDisjointAssociation
+
+	err := ss.handleStateReport(sr, pcep.NewPCRptMessage())
+	assert.ErrorContains(t, err, "broken pipe",
+		"a failure to send the PCErr reply for an unsupported ASSOCIATION type must be surfaced to the caller")
+}
+
+func TestHandleStateReport_AbsentAssociationObjectSendsNoPCErr(t *testing.T) {
+	t.Parallel()
+
+	server, _ := newTCPConnPair(t)
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
+
+	sr := newTestStateReport(t, 1, 0)
+	sr.AssociationObjects = nil
+
+	require.NoError(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
+	assert.Equal(t, uint64(0), ss.Stats().PCErrSent)
+}
+
+func TestHandleStateReport_ReservedAssocTypeZeroSendsPCErr(t *testing.T) {
+	t.Parallel()
+
+	server, client := newTCPConnPair(t)
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
+
+	sr := newTestStateReport(t, 1, 0)
+	sr.AssociationObjects[0].AssocType = 0
+
+	require.NoError(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
+
+	pcerr := readPCErrMessage(t, client)
+	require.Len(t, pcerr.Errors, 1)
+	assert.Equal(t, pcepErrorTypeAssociationError, pcerr.Errors[0].ErrorType)
+	assert.Equal(t, pcepErrorValueAssociationTypeNotSupported, pcerr.Errors[0].ErrorValue)
+}
+
+func TestHandleStateReport_UnsupportedAssocTypeIsIgnoredForSRPolicySemantics(t *testing.T) {
+	t.Parallel()
+
+	server, client := newTCPConnPair(t)
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
+
+	sr := newTestStateReport(t, 1, 0)
+	sr.LSPObject.SrcAddr = netip.Addr{}
+	sr.LSPObject.DstAddr = netip.Addr{}
+	sr.AssociationObjects = []*pcep.AssociationObject{
+		{
+			AssocType: pcep.AssocTypeDisjointAssociation,
+			AssocSrc:  netip.MustParseAddr("192.0.2.99"),
+			TLVs: []pcep.TLVInterface{
+				pcep.NewExtendedAssociationID(999, netip.MustParseAddr("192.0.2.98")),
+				&pcep.SRPolicyCandidatePathPreference{Preference: 99},
+			},
+		},
+		{
+			AssocType: pcep.AssocTypeSRPolicyAssociation,
+			AssocSrc:  netip.MustParseAddr("192.0.2.1"),
+			TLVs: []pcep.TLVInterface{
+				pcep.NewExtendedAssociationID(55, netip.MustParseAddr("192.0.2.2")),
+				&pcep.SRPolicyCandidatePathPreference{Preference: 33},
+			},
+		},
+	}
+
+	require.NoError(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
+
+	pcerr := readPCErrMessage(t, client)
+	require.Len(t, pcerr.Errors, 1)
+	assert.Equal(t, pcepErrorTypeAssociationError, pcerr.Errors[0].ErrorType)
+
+	policy, found := ss.SearchSRPolicy(sr.LSPObject.PlspID)
+	require.True(t, found)
+	assert.Equal(t, uint32(55), policy.Color)
+	assert.Equal(t, uint32(33), policy.Preference)
+	assert.Equal(t, netip.MustParseAddr("192.0.2.1"), policy.SrcAddr)
+	assert.Equal(t, netip.MustParseAddr("192.0.2.2"), policy.DstAddr)
+}
+
+func TestHandleStateReport_EveryUnsupportedAssocTypeIsReported(t *testing.T) {
+	t.Parallel()
+
+	server, _ := newTCPConnPair(t)
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
+
+	sr := newTestStateReport(t, 1, 0)
+	sr.AssociationObjects = []*pcep.AssociationObject{
+		{AssocType: pcep.AssocTypeDisjointAssociation},
+		{AssocType: pcep.AssocTypeSRPolicyAssociation},
+		{AssocType: pcep.AssocTypePolicyAssociation},
+	}
+
+	require.NoError(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
+	assert.Equal(t, uint64(2), ss.Stats().PCErrSent)
+}
+
+func TestHandleStateReport_SupportedAssocTypesSendNoPCErr(t *testing.T) {
+	t.Parallel()
+
+	for name, assocType := range map[string]pcep.AssocType{
+		"RFC":     pcep.AssocTypeSRPolicyAssociation,
+		"Cisco":   pcep.AssocTypeSRPolicyAssociationCisco,
+		"Juniper": pcep.AssocTypeSRPolicyAssociationJuniper,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			server, _ := newTCPConnPair(t)
+
+			ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
+
+			sr := newTestStateReport(t, 1, 0)
+			sr.AssociationObjects[0].AssocType = assocType
+
+			require.NoError(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
+			assert.Equal(t, uint64(0), ss.Stats().PCErrSent)
+		})
+	}
+}
+
+func TestValidateSegmentListForPeer(t *testing.T) {
+	t.Parallel()
+
+	srMPLS := []table.Segment{
+		table.NewSegmentSRMPLS(16001),
+		table.NewSegmentSRMPLS(16002),
+		table.NewSegmentSRMPLS(16003),
+	}
+
+	srv6Segment := table.NewSegmentSRv6(netip.MustParseAddr("2001:db8::1"))
+	srv6 := []table.Segment{srv6Segment, srv6Segment, srv6Segment}
+
+	cases := map[string]struct {
+		caps        []pcep.CapabilityInterface
+		segmentList []table.Segment
+		wantErr     bool
+	}{
+		"NoCapabilityAdvertised": {nil, srMPLS, false},
+		"EmptySegmentList":       {[]pcep.CapabilityInterface{pcep.NewSRPCECapability(false, false, 1)}, nil, false},
+		"SRWithinMSD":            {[]pcep.CapabilityInterface{pcep.NewSRPCECapability(false, false, 3)}, srMPLS, false},
+		"SRExceedsMSD":           {[]pcep.CapabilityInterface{pcep.NewSRPCECapability(false, false, 2)}, srMPLS, true},
+		"SRUnlimitedMSD":         {[]pcep.CapabilityInterface{pcep.NewSRPCECapability(true, false, 0)}, srMPLS, false},
+		"SRZeroMSDNotEnforced":   {[]pcep.CapabilityInterface{pcep.NewSRPCECapability(false, false, 0)}, srMPLS, false},
+		"SRLimitIgnoredForSRv6": {
+			[]pcep.CapabilityInterface{&pcep.PathSetupTypeCapability{
+				PathSetupTypes: pcep.Psts{pcep.PathSetupTypeSRTE, pcep.PathSetupTypeSRv6TE},
+				SubTLVs:        []pcep.TLVInterface{pcep.NewSRPCECapability(false, false, 1)},
+			}},
+			srv6, false,
+		},
+		"SRv6WithinHEncapsMSD": {
+			[]pcep.CapabilityInterface{pcep.NewSRv6PCECapability(false, pcep.MSD{Type: pcep.MSDTypeSRHMaxHEncaps, Value: 3})},
+			srv6, false,
+		},
+		"SRv6ExceedsHEncapsMSD": {
+			[]pcep.CapabilityInterface{pcep.NewSRv6PCECapability(false, pcep.MSD{Type: pcep.MSDTypeSRHMaxHEncaps, Value: 2})},
+			srv6, true,
+		},
+		"SRv6OtherMSDTypeIsNotALimit": {
+			[]pcep.CapabilityInterface{pcep.NewSRv6PCECapability(false, pcep.MSD{Type: pcep.MSDTypeSRHMaxSL, Value: 1})},
+			srv6, false,
+		},
+		"NestedInPathSetupTypeCapability": {
+			[]pcep.CapabilityInterface{&pcep.PathSetupTypeCapability{
+				PathSetupTypes: pcep.Psts{pcep.PathSetupTypeSRTE},
+				SubTLVs:        []pcep.TLVInterface{pcep.NewSRPCECapability(false, false, 2)},
+			}},
+			srMPLS, true,
+		},
+		// RFC 8664 Appendix A: PATH-SETUP-TYPE-CAPABILITY takes precedence over
+		// the top-level SR-CAPABILITY-TLV.
+		"SubTLVEnforcedOverPermissiveTopLevelSRCap": {
+			[]pcep.CapabilityInterface{
+				pcep.NewSRPCECapability(true, false, 0),
+				&pcep.PathSetupTypeCapability{
+					PathSetupTypes: pcep.Psts{pcep.PathSetupTypeSRTE},
+					SubTLVs:        []pcep.TLVInterface{pcep.NewSRPCECapability(false, false, 2)},
+				},
+			},
+			srMPLS, true,
+		},
+		"RestrictiveTopLevelSRCapIgnoredWhenSubTLVPresent": {
+			[]pcep.CapabilityInterface{
+				pcep.NewSRPCECapability(false, false, 2),
+				&pcep.PathSetupTypeCapability{
+					PathSetupTypes: pcep.Psts{pcep.PathSetupTypeSRTE},
+					SubTLVs:        []pcep.TLVInterface{pcep.NewSRPCECapability(true, false, 0)},
+				},
+			},
+			srMPLS, false,
+		},
+		"TopLevelSRCapIgnoredWhenPSTCapCarriesNoSubTLV": {
+			[]pcep.CapabilityInterface{
+				pcep.NewSRPCECapability(false, false, 2),
+				&pcep.PathSetupTypeCapability{PathSetupTypes: pcep.Psts{pcep.PathSetupTypeSRTE}},
+			},
+			srMPLS, false,
+		},
+		// RFC 8664 §5.1 and RFC 9603 §5.1: only the first sub-TLV is processed.
+		"OnlyFirstSRSubTLVProcessed": {
+			[]pcep.CapabilityInterface{&pcep.PathSetupTypeCapability{
+				PathSetupTypes: pcep.Psts{pcep.PathSetupTypeSRTE},
+				SubTLVs: []pcep.TLVInterface{
+					pcep.NewSRPCECapability(true, false, 0),
+					pcep.NewSRPCECapability(false, false, 2),
+				},
+			}},
+			srMPLS, false,
+		},
+		"OnlyFirstSRv6SubTLVProcessed": {
+			[]pcep.CapabilityInterface{&pcep.PathSetupTypeCapability{
+				PathSetupTypes: pcep.Psts{pcep.PathSetupTypeSRv6TE},
+				SubTLVs: []pcep.TLVInterface{
+					pcep.NewSRv6PCECapability(false),
+					pcep.NewSRv6PCECapability(false, pcep.MSD{Type: pcep.MSDTypeSRHMaxHEncaps, Value: 2}),
+				},
+			}},
+			srv6, false,
+		},
+		"SRv6SubTLVEnforced": {
+			[]pcep.CapabilityInterface{&pcep.PathSetupTypeCapability{
+				PathSetupTypes: pcep.Psts{pcep.PathSetupTypeSRv6TE},
+				SubTLVs:        []pcep.TLVInterface{pcep.NewSRv6PCECapability(false, pcep.MSD{Type: pcep.MSDTypeSRHMaxHEncaps, Value: 2})},
+			}},
+			srv6, true,
+		},
+		// RFC 8408 §3: only the first PATH-SETUP-TYPE-CAPABILITY is processed.
+		"SecondPathSetupTypeCapabilityIgnored": {
+			[]pcep.CapabilityInterface{
+				&pcep.PathSetupTypeCapability{
+					PathSetupTypes: pcep.Psts{pcep.PathSetupTypeSRTE},
+					SubTLVs:        []pcep.TLVInterface{pcep.NewSRPCECapability(true, false, 0)},
+				},
+				&pcep.PathSetupTypeCapability{
+					PathSetupTypes: pcep.Psts{pcep.PathSetupTypeSRTE},
+					SubTLVs:        []pcep.TLVInterface{pcep.NewSRPCECapability(false, false, 2)},
+				},
+			},
+			srMPLS, false,
+		},
+		"SecondPathSetupTypeCapabilityCannotAddPST": {
+			[]pcep.CapabilityInterface{
+				&pcep.PathSetupTypeCapability{
+					PathSetupTypes: pcep.Psts{pcep.PathSetupTypeSRTE},
+					SubTLVs:        []pcep.TLVInterface{pcep.NewSRPCECapability(true, false, 0)},
+				},
+				&pcep.PathSetupTypeCapability{
+					PathSetupTypes: pcep.Psts{pcep.PathSetupTypeSRv6TE},
+					SubTLVs:        []pcep.TLVInterface{pcep.NewSRv6PCECapability(false)},
+				},
+			},
+			srv6, true,
+		},
+		// RFC 8408 §5: only PSTs in the peer's PST list are supported.
+		"UnadvertisedSRTERejected": {
+			[]pcep.CapabilityInterface{&pcep.PathSetupTypeCapability{
+				PathSetupTypes: pcep.Psts{pcep.PathSetupTypeRSVPTE},
+			}},
+			srMPLS, true,
+		},
+		"UnadvertisedSRv6TERejected": {
+			[]pcep.CapabilityInterface{&pcep.PathSetupTypeCapability{
+				PathSetupTypes: pcep.Psts{pcep.PathSetupTypeSRTE},
+				SubTLVs:        []pcep.TLVInterface{pcep.NewSRPCECapability(true, false, 0)},
+			}},
+			srv6, true,
+		},
+		// RFC 8664 §5.1 and RFC 9603 §5.1: a sub-TLV for an unlisted PST is ignored.
+		"SubTLVMSDIgnoredWhenPSTOmitted": {
+			[]pcep.CapabilityInterface{&pcep.PathSetupTypeCapability{
+				PathSetupTypes: pcep.Psts{pcep.PathSetupTypeSRTE},
+				SubTLVs: []pcep.TLVInterface{
+					pcep.NewSRPCECapability(true, false, 0),
+					pcep.NewSRv6PCECapability(false, pcep.MSD{Type: pcep.MSDTypeSRHMaxHEncaps, Value: 2}),
+				},
+			}},
+			srMPLS, false,
+		},
+		// RFC 8664 Appendix A: a lone top-level SR-CAPABILITY-TLV implies PSTs 0 and 1.
+		"LegacyTopLevelSRCapRejectsSRv6": {
+			[]pcep.CapabilityInterface{pcep.NewSRPCECapability(true, false, 0)},
+			srv6, true,
+		},
+		// RFC 8408 §5 leaves the behavior unspecified when no PST list is sent.
+		"NoPSTInformationStaysPermissive": {nil, srv6, false},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			server, _ := newTCPConnPair(t)
+
+			ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
+			ss.commitPeerOpen(OpenParams{SessionID: 1, Keepalive: 30, DeadTimer: 120}, pcep.RFCCompliant, tc.caps)
+
+			err := ss.validateSegmentListForPeer(tc.segmentList)
+			if tc.wantErr {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestPeerMaxSIDs_PSTNotInPathSetupTypeListIsUnbounded(t *testing.T) {
+	t.Parallel()
+
+	caps := []pcep.CapabilityInterface{&pcep.PathSetupTypeCapability{
+		PathSetupTypes: pcep.Psts{pcep.PathSetupTypeRSVPTE},
+		SubTLVs:        []pcep.TLVInterface{pcep.NewSRPCECapability(false, false, 2)},
+	}}
+
+	maxSIDs, ok := peerMaxSIDs(caps, pcep.PathSetupTypeSRTE)
+
+	require.False(t, ok)
+	require.Zero(t, maxSIDs)
+}
+
+func TestPeerSupportsPST_LegacyTopLevelSRCapAcceptsRSVPTE(t *testing.T) {
+	t.Parallel()
+
+	caps := []pcep.CapabilityInterface{pcep.NewSRPCECapability(true, false, 0)}
+
+	assert.True(t, peerSupportsPST(caps, pcep.PathSetupTypeRSVPTE))
+}
+
+func TestSendPCUpdateAndPCInitiate_RejectSegmentListDeeperThanPeerMSD(t *testing.T) {
+	t.Parallel()
+
+	server, _ := newTCPConnPair(t)
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
+	ss.commitPeerOpen(OpenParams{SessionID: 1, Keepalive: 30, DeadTimer: 120}, pcep.RFCCompliant,
+		[]pcep.CapabilityInterface{pcep.NewSRPCECapability(false, false, 1)})
+
+	srPolicy := table.SRPolicy{
+		Name:        "too-deep",
+		SrcAddr:     netip.MustParseAddr("10.255.0.1"),
+		DstAddr:     netip.MustParseAddr("10.255.0.2"),
+		Type:        table.PolicyTypeDynamic,
+		Metric:      table.TEMetric,
+		SegmentList: []table.Segment{table.NewSegmentSRMPLS(16001), table.NewSegmentSRMPLS(16002)},
+	}
+
+	require.ErrorContains(t, ss.SendPCUpdate(srPolicy), "maximum SID depth")
+	require.ErrorContains(t, ss.SendPCInitiate(srPolicy, false), "maximum SID depth")
+
+	// Delete is not subject to the SID depth limit.
+	require.NoError(t, ss.SendPCInitiate(srPolicy, true))
+	assert.Equal(t, uint64(0), ss.Stats().UpdSent)
+}
+
+func TestSendPCUpdateAndPCInitiate_RejectUnadvertisedPathSetupType(t *testing.T) {
+	t.Parallel()
+
+	server, _ := newTCPConnPair(t)
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
+	ss.commitPeerOpen(OpenParams{SessionID: 1, Keepalive: 30, DeadTimer: 120}, pcep.RFCCompliant,
+		[]pcep.CapabilityInterface{&pcep.PathSetupTypeCapability{
+			PathSetupTypes: pcep.Psts{pcep.PathSetupTypeSRTE},
+			SubTLVs:        []pcep.TLVInterface{pcep.NewSRPCECapability(true, false, 0)},
+		}})
+
+	srPolicy := table.SRPolicy{
+		Name:        "srv6-to-sr-mpls-only-pcc",
+		SrcAddr:     netip.MustParseAddr("2001:db8::1"),
+		DstAddr:     netip.MustParseAddr("2001:db8::2"),
+		Type:        table.PolicyTypeDynamic,
+		Metric:      table.TEMetric,
+		SegmentList: []table.Segment{table.NewSegmentSRv6(netip.MustParseAddr("2001:db8::100"))},
+	}
+
+	require.ErrorContains(t, ss.SendPCUpdate(srPolicy), "path setup type")
+	require.ErrorContains(t, ss.SendPCInitiate(srPolicy, false), "path setup type")
+
+	// Deletion uses the same PATH-SETUP-TYPE TLV and is rejected too.
+	require.ErrorContains(t, ss.SendPCInitiate(srPolicy, true), "path setup type")
+	assert.Equal(t, uint64(0), ss.Stats().UpdSent)
+	assert.Equal(t, uint64(0), ss.Stats().PCInitiateSent)
 }

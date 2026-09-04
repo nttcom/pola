@@ -134,8 +134,14 @@ message SrCapability {
   optional uint32 msd = 3;
 }
 
+message Msd {
+  uint32 type = 1;
+  uint32 value = 2;
+}
+
 message Srv6Capability {
   bool nai_supported = 1;
+  repeated Msd msds = 2;
 }
 
 message PathSetupTypeCapability {

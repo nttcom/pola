@@ -211,20 +211,6 @@ func TestUnrecognizedTLVItem_OutOfRange(t *testing.T) {
 	assert.Equal(t, "type=65536: out of TLV registry range, no RFC", unrecognizedTLVItem(0x10000))
 }
 
-func TestParseTokenUint32_NonNumericSuffixReturnsFalse(t *testing.T) {
-	t.Parallel()
-
-	_, ok := parseTokenUint32("MSD=notanumber", "MSD=")
-	assert.False(t, ok)
-}
-
-func TestParseTokenUint32_PrefixMismatchReturnsFalse(t *testing.T) {
-	t.Parallel()
-
-	_, ok := parseTokenUint32("AssocType:6", "MSD=")
-	assert.False(t, ok)
-}
-
 func TestBuildCapabilitiesView_CommonPathSetupTypesAreCollected(t *testing.T) {
 	t.Parallel()
 
@@ -248,9 +234,9 @@ func TestCommonCapabilityLines_GroupsByTLVExceptAssocTypeAndUnknown(t *testing.T
 	common := []capFeature{
 		{group: capGroupStateful, token: "Stateful"},
 		{group: capGroupStateful, token: "Update"},
-		{group: capGroupAssocTypeList, token: "AssocType:6"},
-		{group: capGroupAssocTypeList, token: "AssocType:9"},
-		{group: capGroupUnknown, token: "unknown_type_73"},
+		{group: capGroupAssocTypeList, token: "AssocType:6", num: 6, hasNum: true},
+		{group: capGroupAssocTypeList, token: "AssocType:9", num: 9, hasNum: true},
+		{group: capGroupUnknown, token: "unknown_type_73", num: 73, hasNum: true},
 	}
 
 	lines := capabilityLines(capabilityGroups(common))
@@ -311,7 +297,7 @@ func TestBuildCapabilitiesView_UntypedCommonCapabilitiesLandInOther(t *testing.T
 		{Type: capGroupVendorInformation, Detail: grpc.VendorInformationCapability{EnterpriseNumber: uint32(pcep.EnterpriseNumberJuniper)}},
 		{Type: capGroupMultipath, Detail: grpc.MultipathCapability{MaxMultipaths: 4, Weighted: true}},
 		{Type: capGroupLSPDBVersion, Detail: grpc.LSPDBVersionCapability{VersionNumber: 1}},
-		{Type: capGroupSRv6, Detail: grpc.SRv6Capability{NAISupported: true}},
+		{Type: capGroupSRv6, Detail: grpc.SRv6Capability{NAISupported: true, MSDs: []grpc.MSD{{Type: 44, Value: 6}}}},
 		{Type: capGroupStateful, Detail: grpc.StatefulCapability{TriggeredResync: true}},
 	}
 
@@ -328,6 +314,7 @@ func TestBuildCapabilitiesView_UntypedCommonCapabilitiesLandInOther(t *testing.T
 	assert.Contains(t, otherByGroup[capGroupMultipath], "Weighted")
 	assert.Contains(t, otherByGroup[capGroupLSPDBVersion], "LSP-DB-VERSION")
 	assert.Contains(t, otherByGroup[capGroupSRv6], "SRv6-NAI-Supported")
+	assert.Contains(t, otherByGroup[capGroupSRv6], "SRH-Max-H-Encaps=6")
 	assert.Contains(t, otherByGroup[capGroupStateful], "Triggered-Resync")
 	assert.True(t, view.Common.Stateful)
 	assert.NotContains(t, otherByGroup[capGroupStateful], "Stateful")
@@ -385,7 +372,7 @@ func TestCommonCapabilityLines_SingleAssocTypeStillUsesHeadingForm(t *testing.T)
 	t.Parallel()
 
 	common := []capFeature{
-		{group: capGroupAssocTypeList, token: "AssocType:6"},
+		{group: capGroupAssocTypeList, token: "AssocType:6", num: 6, hasNum: true},
 	}
 
 	lines := capabilityLines(capabilityGroups(common))

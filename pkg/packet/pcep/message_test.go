@@ -507,6 +507,55 @@ func TestPCRptMessage_DecodeFromBytes_MalformedObjectLength(t *testing.T) {
 	}
 }
 
+func TestPCRptMessage_DecodeFromBytes_KeepsEveryAssociationObject(t *testing.T) {
+	t.Parallel()
+
+	srp := &pcep.SrpObject{}
+	srpBytes, err := srp.Serialize()
+	require.NoError(t, err)
+
+	lsp := &pcep.LSPObject{}
+	lspBytes, err := lsp.Serialize()
+	require.NoError(t, err)
+
+	disjoint := &pcep.AssociationObject{
+		ObjectType: pcep.ObjectTypeAssociationIPv4, AssocType: pcep.AssocTypeDisjointAssociation,
+		AssocID: 1, AssocSrc: netip.MustParseAddr("192.0.2.1"),
+	}
+	disjointBytes, err := disjoint.Serialize()
+	require.NoError(t, err)
+
+	srPolicy := &pcep.AssociationObject{
+		ObjectType: pcep.ObjectTypeAssociationIPv4, AssocType: pcep.AssocTypeSRPolicyAssociation,
+		AssocID: 2, AssocSrc: netip.MustParseAddr("192.0.2.2"),
+	}
+	srPolicyBytes, err := srPolicy.Serialize()
+	require.NoError(t, err)
+
+	body := pcep.AppendByteSlices(srpBytes, lspBytes, disjointBytes, srPolicyBytes)
+
+	var m pcep.PCRptMessage
+	require.NoError(t, m.DecodeFromBytes(body))
+	require.Len(t, m.StateReports, 1)
+	assert.Equal(t, []*pcep.AssociationObject{disjoint, srPolicy}, m.StateReports[0].AssociationObjects,
+		"an LSP may join multiple association groups (RFC 8697 §6.4)")
+}
+
+func TestPCRptMessage_DecodeFromBytes_MalformedAssociationObject(t *testing.T) {
+	t.Parallel()
+
+	srp := &pcep.SrpObject{}
+	srpBytes, err := srp.Serialize()
+	require.NoError(t, err)
+
+	body := append([]uint8{}, srpBytes...)
+	body = append(body, pcep.NewCommonObjectHeader(pcep.ObjectClassAssociation, pcep.ObjectTypeAssociationIPv4, 8).Serialize()...)
+	body = append(body, make([]uint8, 4)...) // ASSOCIATION body shorter than the required 8 bytes
+
+	var m pcep.PCRptMessage
+	require.ErrorContains(t, m.DecodeFromBytes(body), "ASSOCIATION")
+}
+
 func TestPCRptMessage_DecodeFromBytes_ObjectBeforeSRPLSP(t *testing.T) {
 	t.Parallel()
 

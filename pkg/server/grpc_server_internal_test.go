@@ -2920,6 +2920,20 @@ func TestBuildCapability(t *testing.T) {
 			},
 		},
 		{
+			name: "srv6 with MSDs",
+			cap: &pcep.SRv6PCECapability{IsNAISupported: true, MSDs: []pcep.MSD{
+				{Type: pcep.MSDTypeSRHMaxSL, Value: 8},
+				{Type: pcep.MSDTypeSRHMaxHEncaps, Value: 6},
+			}},
+			want: &pb.Capability{
+				Type: pb.CapabilityType_CAPABILITY_TYPE_SRV6,
+				Detail: &pb.Capability_Srv6{Srv6: &pb.Srv6Capability{
+					NaiSupported: true,
+					Msds:         []*pb.Msd{{Type: 41, Value: 8}, {Type: 44, Value: 6}},
+				}},
+			},
+		},
+		{
 			name: "path setup type",
 			cap:  &pcep.PathSetupTypeCapability{PathSetupTypes: pcep.Psts{1, 3}},
 			want: &pb.Capability{

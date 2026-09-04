@@ -666,6 +666,11 @@ func TestCapabilityDetail_Strings(t *testing.T) {
 		{name: "SR MSD not advertised", detail: SRCapability{}, want: []string{"SR"}},
 		{name: "SRv6 with NAI support", detail: SRv6Capability{NAISupported: true}, want: []string{"SRv6", "SRv6-NAI-Supported"}},
 		{name: "SRv6 without NAI support", detail: SRv6Capability{}, want: []string{"SRv6"}},
+		{
+			name:   "SRv6 with IANA-named and unassigned MSD types",
+			detail: SRv6Capability{MSDs: []MSD{{Type: 41, Value: 8}, {Type: 42, Value: 4}, {Type: 44, Value: 6}, {Type: 45, Value: 2}, {Type: 43, Value: 1}}},
+			want:   []string{"SRv6", "SRH-Max-SL=8", "SRH-Max-End-Pop=4", "SRH-Max-H-Encaps=6", "SRH-Max-End-D=2", "MSD-Type-43=1"},
+		},
 		{name: "PathSetupType SR-TE (1) and SRv6-TE (3)", detail: PathSetupTypeCapability{PathSetupTypes: []uint32{1, 3}}, want: []string{"SR-TE", "SRv6-TE"}},
 		{name: "PathSetupType unrecognized value is omitted", detail: PathSetupTypeCapability{PathSetupTypes: []uint32{99}}, want: nil},
 		{name: "AssocTypeList", detail: AssocTypeListCapability{AssocTypes: []uint32{6, 7}}, want: []string{"AssocType:6", "AssocType:7"}},
@@ -728,6 +733,13 @@ func TestCapabilityFromPB(t *testing.T) {
 			name:  "SRv6",
 			pbCap: &pb.Capability{Type: pb.CapabilityType_CAPABILITY_TYPE_SRV6, Detail: &pb.Capability_Srv6{Srv6: &pb.Srv6Capability{NaiSupported: true}}},
 			want:  Capability{Type: "SRV6", Detail: SRv6Capability{NAISupported: true}},
+		},
+		{
+			name: "SRv6 with MSDs",
+			pbCap: &pb.Capability{Type: pb.CapabilityType_CAPABILITY_TYPE_SRV6, Detail: &pb.Capability_Srv6{Srv6: &pb.Srv6Capability{
+				Msds: []*pb.Msd{{Type: 44, Value: 6}},
+			}}},
+			want: Capability{Type: "SRV6", Detail: SRv6Capability{MSDs: []MSD{{Type: 44, Value: 6}}}},
 		},
 		{
 			name:  "PathSetupType",

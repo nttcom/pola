@@ -27,6 +27,23 @@ func withTimeout() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), time.Second)
 }
 
+// Capability tokens.
+const (
+	CapTokenStateful      = "Stateful"
+	CapTokenUpdate        = "Update"
+	CapTokenInstantiation = "Instantiation"
+)
+
+// AssocTypeToken returns the capability token for an association type.
+func AssocTypeToken(assocType uint32) string {
+	return fmt.Sprintf("AssocType:%d", assocType)
+}
+
+// UnknownTLVToken returns the capability token for an unknown TLV type.
+func UnknownTLVToken(tlvType uint32) string {
+	return fmt.Sprintf("unknown_type_%d", tlvType)
+}
+
 // StatefulCapability holds the RFC 8231/8232 Stateful PCE capability flags.
 type StatefulCapability struct {
 	LSPUpdate            bool `json:"LSPUpdate"`
@@ -40,9 +57,9 @@ type StatefulCapability struct {
 
 // Strings returns the human-readable flags for this capability.
 func (c StatefulCapability) Strings() []string {
-	ret := []string{"Stateful"}
+	ret := []string{CapTokenStateful}
 	if c.LSPUpdate {
-		ret = append(ret, "Update")
+		ret = append(ret, CapTokenUpdate)
 	}
 
 	if c.IncludeDBVersion {
@@ -50,7 +67,7 @@ func (c StatefulCapability) Strings() []string {
 	}
 
 	if c.LSPInstantiation {
-		ret = append(ret, "Instantiation")
+		ret = append(ret, CapTokenInstantiation)
 	}
 
 	if c.TriggeredResync {
@@ -97,9 +114,33 @@ func (c SRCapability) Strings() []string {
 	return ret
 }
 
+// MSD is an MSD-Type and MSD-Value pair.
+type MSD struct {
+	Type  uint32 `json:"Type"`
+	Value uint32 `json:"Value"`
+}
+
+// msdTypeNames maps SRv6 MSD types to their IANA names.
+var msdTypeNames = map[uint32]string{
+	41: "SRH-Max-SL",
+	42: "SRH-Max-End-Pop",
+	44: "SRH-Max-H-Encaps",
+	45: "SRH-Max-End-D",
+}
+
+// MSDToken returns a human-readable token for an MSD pair.
+func MSDToken(msdType, value uint32) string {
+	if name, ok := msdTypeNames[msdType]; ok {
+		return fmt.Sprintf("%s=%d", name, value)
+	}
+
+	return fmt.Sprintf("MSD-Type-%d=%d", msdType, value)
+}
+
 // SRv6Capability holds the RFC 9603 SRv6-PCE capability flags.
 type SRv6Capability struct {
-	NAISupported bool `json:"NAISupported"`
+	NAISupported bool  `json:"NAISupported"`
+	MSDs         []MSD `json:"MSDs"`
 }
 
 // Strings returns the human-readable flags for this capability.
@@ -109,11 +150,14 @@ func (c SRv6Capability) Strings() []string {
 		ret = append(ret, "SRv6-NAI-Supported")
 	}
 
+	for _, msd := range c.MSDs {
+		ret = append(ret, MSDToken(msd.Type, msd.Value))
+	}
+
 	return ret
 }
 
-// PathSetupTypeCapability holds the raw PathSetupType values advertised by the peer,
-// along with any per-PST capability sub-TLVs (RFC 8408).
+// PathSetupTypeCapability holds advertised Path Setup Types and their capabilities.
 type PathSetupTypeCapability struct {
 	PathSetupTypes  []uint32     `json:"PathSetupTypes"`
 	SubCapabilities []Capability `json:"SubCapabilities"`
@@ -144,7 +188,7 @@ type AssocTypeListCapability struct {
 func (c AssocTypeListCapability) Strings() []string {
 	ret := make([]string, 0, len(c.AssocTypes))
 	for _, at := range c.AssocTypes {
-		ret = append(ret, fmt.Sprintf("AssocType:%d", at))
+		ret = append(ret, AssocTypeToken(at))
 	}
 
 	return ret
@@ -209,7 +253,7 @@ type UnknownCapability struct {
 
 // Strings returns a human-readable representation of this capability.
 func (c UnknownCapability) Strings() []string {
-	return []string{fmt.Sprintf("unknown_type_%d", c.TLVType)}
+	return []string{UnknownTLVToken(c.TLVType)}
 }
 
 // capabilityDetail is implemented by every typed capability detail above.
@@ -318,7 +362,12 @@ func capabilityFromPB(c *pb.Capability) Capability {
 			MSD:          detail.Sr.Msd,
 		}
 	case *pb.Capability_Srv6:
-		capability.Detail = SRv6Capability{NAISupported: detail.Srv6.GetNaiSupported()}
+		srv6 := SRv6Capability{NAISupported: detail.Srv6.GetNaiSupported()}
+		for _, msd := range detail.Srv6.GetMsds() {
+			srv6.MSDs = append(srv6.MSDs, MSD{Type: msd.GetType(), Value: msd.GetValue()})
+		}
+
+		capability.Detail = srv6
 	case *pb.Capability_PathSetupType:
 		pst := PathSetupTypeCapability{PathSetupTypes: detail.PathSetupType.GetPathSetupTypes()}
 		for _, sub := range detail.PathSetupType.GetSubCapabilities() {
