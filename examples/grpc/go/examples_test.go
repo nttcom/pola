@@ -133,13 +133,11 @@ var (
 )
 
 func TestMain(m *testing.M) {
-	code, err := setupAndRun(m)
+	_, err := setupAndRun(m)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1) //nolint:revive,forbidigo // required for TestMain setup failure.
+		os.Exit(1) //nolint:forbidigo // required for TestMain setup failure.
 	}
-
-	os.Exit(code) //nolint:revive,forbidigo // includes post-run coverage failures.
 }
 
 func setupAndRun(m *testing.M) (int, error) {

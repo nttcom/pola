@@ -161,6 +161,8 @@ linters:
           disabled: true
         - name: redefines-builtin-id
           disabled: true
+        - name: redundant-test-main-exit
+          disabled: true
         - name: unchecked-type-assertion
           disabled: true
         - name: unhandled-error
