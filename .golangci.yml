@@ -215,6 +215,11 @@ linters:
       - path: ^(cmd/pola|cmd/polad|tools/coverage-diff)/main\.go$
         linters:
           - forbidigo
+      # Examples are standalone demos and intentionally use stdout directly.
+      - path: ^examples/.*/main\.go$
+        linters:
+          - depguard
+          - forbidigo
 formatters:
   enable:
     - gofumpt

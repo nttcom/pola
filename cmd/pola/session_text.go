@@ -103,6 +103,7 @@ func writeTimerTableText(ew *errWriter, timers timersView) {
 	if ew.err != nil {
 		return
 	}
+
 	ew.println("  Timers:")
 
 	tw := tabwriter.NewWriter(ew.w, 0, 0, 2, ' ', 0)
@@ -166,6 +167,7 @@ func writeStatsTableText(ew *errWriter, s statsView) {
 	if ew.err != nil {
 		return
 	}
+
 	ew.println("  Stats:")
 
 	tw := tabwriter.NewWriter(ew.w, 0, 0, 2, ' ', 0)

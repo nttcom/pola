@@ -852,7 +852,7 @@ func TestParseRemoteAddr(t *testing.T) {
 			setup: func() *net.TCPConn {
 				server, client := newTCPConnPair(t)
 				t.Cleanup(func() {
-					//nolint:errcheck // test cleanup connection close errors are not critical
+					//nolint:errcheck // best-effort cleanup.
 					_ = client.Close()
 				})
 
@@ -867,7 +867,7 @@ func TestParseRemoteAddr(t *testing.T) {
 			t.Parallel()
 
 			tcpConn := tt.setup()
-			//nolint:errcheck // test cleanup connection close errors are not critical
+			//nolint:errcheck // best-effort cleanup.
 			defer tcpConn.Close()
 
 			addr, err := parseRemoteAddr(tcpConn)

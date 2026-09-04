@@ -98,7 +98,7 @@ func run(ctx context.Context, cfg config, out io.Writer) error {
 		return fmt.Errorf("open coverage profile %q: %w", cfg.profile, err)
 	}
 	defer func() {
-		//nolint:errcheck // read-only input; close failure does not affect the result
+		//nolint:errcheck // best-effort cleanup.
 		_ = f.Close()
 	}()
 
@@ -489,7 +489,7 @@ func (idx *sourceIndex) ensure(file string) {
 		if tok == token.EOF {
 			break
 		}
-		//nolint:exhaustive // only COMMENT, LBRACE, and RBRACE need special handling
+		//nolint:exhaustive // only these tokens require special handling.
 		switch tok {
 		case token.COMMENT:
 			if isLineDirective(lit) {

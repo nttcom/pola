@@ -80,6 +80,11 @@ func run(args []string, deps runDeps) error {
 		return err
 	}
 
+	level, err := parseLogLevel(c.Global.Log.Level)
+	if err != nil {
+		return fmt.Errorf("invalid config file: %w", err)
+	}
+
 	fp, err := openLogFile(&c)
 	if err != nil {
 		return err
@@ -89,11 +94,6 @@ func run(args []string, deps runDeps) error {
 			fmt.Fprintf(os.Stderr, "warning: failed to close log file \"%s\": %v\n", c.Global.Log.Path+c.Global.Log.Name, err)
 		}
 	}()
-
-	level, err := parseLogLevel(c.Global.Log.Level)
-	if err != nil {
-		return fmt.Errorf("invalid config file: %w", err)
-	}
 
 	lg := logger.New(fp, os.Stdout, level)
 	defer func() {
@@ -134,20 +134,13 @@ func run(args []string, deps runDeps) error {
 }
 
 // parseLogLevel converts a config-file log level into a logger.Level.
-// An empty string is treated as info.
 func parseLogLevel(level string) (logger.Level, error) {
-	switch level {
-	case "", "info":
-		return logger.LevelInfo, nil
-	case "debug":
-		return logger.LevelDebug, nil
-	case "warn":
-		return logger.LevelWarn, nil
-	case "error":
-		return logger.LevelError, nil
-	default:
-		return 0, fmt.Errorf("global.log.level %q is not supported", level)
+	l, err := logger.ParseLevel(level)
+	if err != nil {
+		return 0, fmt.Errorf("global.log.level: %w", err)
 	}
+
+	return l, nil
 }
 
 func loadConfig(configFile string) (config.Config, error) {

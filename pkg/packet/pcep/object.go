@@ -1275,7 +1275,7 @@ func (o *SREroSubobject) decodeNAI(subobject []uint8, off int) (int, error) {
 	if naiLength > 0 && len(subobject) < off+int(naiLength) {
 		return 0, fmt.Errorf("SREroSubobject: truncated NAI (%s)", o.NAIType)
 	}
-	//nolint:exhaustive // unsupported NAI types are rejected by naiLength above
+	//nolint:exhaustive // unsupported NAI types are rejected above.
 	switch o.NAIType {
 	case NAITypeSRIPv4Node, NAITypeSRIPv6Node:
 		o.Segment.LocalAddr, _ = netip.AddrFromSlice(subobject[off : off+int(naiLength)])

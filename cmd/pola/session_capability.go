@@ -22,7 +22,7 @@ const (
 	capGroupStateful          = "STATEFUL"
 	capGroupSRv6              = "SRV6"
 	capGroupPathSetupType     = "PATH_SETUP_TYPE"
-	capGroupAssocTypeList     = "ASSOC_TYPE_LIST" //nolint:gosec // G101: capability group identifier, not a credential
+	capGroupAssocTypeList     = "ASSOC_TYPE_LIST" //nolint:gosec // capability identifier, not a credential.
 	capGroupLSPDBVersion      = "LSP_DB_VERSION"
 	capGroupMultipath         = "MULTIPATH"
 	capGroupVendorInformation = "VENDOR_INFORMATION"

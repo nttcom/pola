@@ -32,7 +32,7 @@ func newSRPolicyDeleteCmd(c *cli) *cobra.Command {
 				return errors.New("file path option \"-f filepath\" is mandatory")
 			}
 
-			//nolint:gosec // G304: the file path comes from the operator's -f flag.
+			//nolint:gosec // path is provided by the operator.
 			f, err := os.Open(filepath)
 			if err != nil {
 				return fmt.Errorf("failed to open file \"%s\": %w", filepath, err)

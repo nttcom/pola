@@ -25,6 +25,7 @@ const requestTimeout = 30 * time.Second
 
 func main() {
 	serverAddr := flag.String("server", "localhost:50051", "address of the polad gRPC server")
+
 	flag.Parse()
 
 	conn, err := grpc.NewClient(
@@ -34,7 +35,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("unable to connect to %s: %v", *serverAddr, err)
 	}
-	defer func() { _ = conn.Close() }()
+	defer func() { _ = conn.Close() }() //nolint:errcheck // best-effort cleanup
 
 	c := pb.NewPCEServiceClient(conn)
 
@@ -43,7 +44,7 @@ func main() {
 
 	ret, err := c.GetTED(ctx, &pb.GetTEDRequest{})
 	if err != nil {
-		log.Fatalf("unable to get TED info: %v", err)
+		log.Fatalf("unable to get TED info: %v", err) //nolint:gocritic // main exits immediately.
 	}
 
 	// A disabled TED returns an empty node list instead of an error.

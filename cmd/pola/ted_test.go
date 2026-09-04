@@ -127,7 +127,7 @@ func TestShowTED(t *testing.T) {
 		require.Len(t, nodes, 1)
 		nodeMap := nodes[0]
 		assert.Equal(t, "routerA", nodeMap["hostname"])
-		//nolint:testifylint // float-compare: JSON decodes numbers to float64, and these are exact small integers.
+		//nolint:testifylint // exact integer values after JSON float64 decoding.
 		assert.Equal(t, float64(65000), nodeMap["asn"])
 
 		links, ok := nodeMap["links"].([]any)
@@ -151,7 +151,7 @@ func TestShowTED(t *testing.T) {
 		require.Len(t, prefixes, 2)
 		prefixMap, ok := prefixes[0].(map[string]any)
 		require.True(t, ok)
-		//nolint:testifylint // float-compare: JSON decodes numbers to float64, and this is an exact small integer.
+		//nolint:testifylint // exact integer values after JSON float64 decoding.
 		assert.Equal(t, float64(1), prefixMap["sidIndex"])
 
 		_, hasSidIndex := prefixes[1].(map[string]any)["sidIndex"]

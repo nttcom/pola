@@ -7,6 +7,7 @@
 package logger
 
 import (
+	"fmt"
 	"io"
 
 	"go.uber.org/zap"
@@ -23,6 +24,22 @@ const (
 	LevelWarn
 	LevelError
 )
+
+// ParseLevel converts a level name into a Level.
+func ParseLevel(name string) (Level, error) {
+	switch name {
+	case "", "info":
+		return LevelInfo, nil
+	case "debug":
+		return LevelDebug, nil
+	case "warn":
+		return LevelWarn, nil
+	case "error":
+		return LevelError, nil
+	default:
+		return 0, fmt.Errorf("log level %q is not supported", name)
+	}
+}
 
 func (l Level) zapLevel() zapcore.Level {
 	switch l {

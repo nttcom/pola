@@ -13,6 +13,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/nttcom/pola/pkg/logger"
 	"github.com/nttcom/pola/pkg/packet/pcep"
 )
 
@@ -77,7 +78,7 @@ type Config struct {
 func ReadConfigFile(configFile string) (Config, error) {
 	c := &Config{}
 
-	//nolint:gosec // G304: configFile is chosen by the operator.
+	//nolint:gosec // path is explicitly provided by the operator.
 	f, err := os.Open(configFile)
 	if err != nil {
 		return *c, fmt.Errorf("failed to open config file %q: %w", configFile, err)
@@ -184,6 +185,10 @@ func (c *Config) Validate() error {
 
 	if c.Global.Log.Name == "" {
 		errs = append(errs, errors.New("global.log.name is required"))
+	}
+
+	if _, err := logger.ParseLevel(c.Global.Log.Level); err != nil {
+		errs = append(errs, fmt.Errorf("global.log.level: %w", err))
 	}
 
 	errs = append(errs, c.Global.validateTED()...)

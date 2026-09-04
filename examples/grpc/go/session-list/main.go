@@ -26,6 +26,7 @@ const requestTimeout = 10 * time.Second
 
 func main() {
 	serverAddr := flag.String("server", "localhost:50051", "address of the polad gRPC server")
+
 	flag.Parse()
 
 	conn, err := grpc.NewClient(
@@ -35,7 +36,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("unable to connect to %s: %v", *serverAddr, err)
 	}
-	defer func() { _ = conn.Close() }()
+	defer func() { _ = conn.Close() }() //nolint:errcheck // best-effort cleanup
 
 	c := pb.NewPCEServiceClient(conn)
 
@@ -44,7 +45,7 @@ func main() {
 
 	ret, err := c.GetSessionList(ctx, &pb.GetSessionListRequest{IncludeStats: true})
 	if err != nil {
-		log.Fatalf("unable to get session list from server: %v", err)
+		log.Fatalf("unable to get session list from server: %v", err) //nolint:gocritic // main exits immediately.
 	}
 
 	for i, ss := range ret.GetSessions() {
@@ -53,6 +54,7 @@ func main() {
 			log.Printf("invalid address for session %d: %v", i, ss.GetPeerAddr())
 			continue
 		}
+
 		fmt.Printf("peerAddr(%d): %v\n", i, addr)
 		fmt.Printf("  sessionID (Pola): %s, sessionID (peer): %s\n",
 			optionalUint32(ss.LocalSessionId), optionalUint32(ss.PeerSessionId))
@@ -77,6 +79,7 @@ func unixNanoString(n int64) string {
 	if n == 0 {
 		return "-"
 	}
+
 	return time.Unix(0, n).UTC().Format(time.RFC3339)
 }
 
@@ -84,6 +87,7 @@ func optionalUint32(v *uint32) string {
 	if v == nil {
 		return "-"
 	}
+
 	return strconv.FormatUint(uint64(*v), 10)
 }
 
@@ -91,6 +95,7 @@ func effectiveTimerString(v uint32, ok bool) string {
 	if !ok {
 		return "-"
 	}
+
 	return strconv.FormatUint(uint64(v), 10)
 }
 
@@ -98,14 +103,16 @@ func timersString(timers *pb.SessionTimers) string {
 	if timers == nil {
 		return "-"
 	}
+
 	return fmt.Sprintf("keepalive: %d, deadTimer: %d", timers.GetKeepalive(), timers.GetDeadTimer())
 }
 
 func capStrings(capabilities []*pb.Capability) []string {
-	var caps []string
+	caps := make([]string, 0, len(capabilities))
 	for _, c := range capabilities {
 		caps = append(caps, capString(c))
 	}
+
 	return caps
 }
 

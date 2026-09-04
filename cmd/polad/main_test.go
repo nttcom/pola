@@ -354,12 +354,17 @@ func TestRun(t *testing.T) {
 		t.Parallel()
 		c := validConfig(t)
 		c.Global.Log.Level = "trace"
+		nestedLogDir := filepath.Join(c.Global.Log.Path, "nested")
+		c.Global.Log.Path = nestedLogDir + string(filepath.Separator)
 		path := writeConfigFile(t, c)
 
 		err := run([]string{"-f", path}, defaultRunDeps())
 
 		require.ErrorContains(t, err, "invalid config file")
 		require.ErrorContains(t, err, "global.log.level")
+
+		_, statErr := os.Stat(nestedLogDir)
+		require.ErrorIs(t, statErr, os.ErrNotExist, "run must validate the log level before any log directory is created")
 	})
 
 	t.Run("returns an error when TED is misconfigured", func(t *testing.T) {

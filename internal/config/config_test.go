@@ -303,6 +303,26 @@ global:
 			wantErr:     true,
 			errContains: `global.ted.source "bmp" is not supported`,
 		},
+		{
+			name: "unsupported log.level",
+			config: `
+global:
+  pcep:
+    address: "127.0.0.1"
+    port: 4189
+  grpcServer:
+    address: "127.0.0.1"
+    port: 50052
+  log:
+    path: "/var/log/pola/"
+    name: "polad.log"
+    level: "trace"
+  ted:
+    enable: false
+`,
+			wantErr:     true,
+			errContains: `global.log.level: log level "trace" is not supported`,
+		},
 	}
 
 	for _, tt := range tests {

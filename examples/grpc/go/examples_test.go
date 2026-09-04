@@ -3,7 +3,7 @@
 // This software is released under the MIT License.
 // see https://github.com/nttcom/pola/blob/main/LICENSE
 
-package examples_test
+package go_test
 
 import (
 	"context"
@@ -49,9 +49,11 @@ func (f *fakeServer) CreateSRPolicy(_ context.Context, req *pb.CreateSRPolicyReq
 	f.mu.Lock()
 	f.createReq = req
 	f.mu.Unlock()
+
 	if f.fail {
 		return nil, errFake
 	}
+
 	return &pb.CreateSRPolicyResponse{}, nil
 }
 
@@ -59,9 +61,11 @@ func (f *fakeServer) DeleteSRPolicy(_ context.Context, req *pb.DeleteSRPolicyReq
 	f.mu.Lock()
 	f.deleteReq = req
 	f.mu.Unlock()
+
 	if f.fail {
 		return nil, errFake
 	}
+
 	return &pb.DeleteSRPolicyResponse{}, nil
 }
 
@@ -69,9 +73,11 @@ func (f *fakeServer) DeleteSession(_ context.Context, req *pb.DeleteSessionReque
 	f.mu.Lock()
 	f.sessionReq = req
 	f.mu.Unlock()
+
 	if f.fail {
 		return nil, errFake
 	}
+
 	return &pb.DeleteSessionResponse{}, nil
 }
 
@@ -79,6 +85,7 @@ func (f *fakeServer) GetSessionList(_ context.Context, _ *pb.GetSessionListReque
 	if f.fail {
 		return nil, errFake
 	}
+
 	return &pb.GetSessionListResponse{Sessions: f.sessions}, nil
 }
 
@@ -86,6 +93,7 @@ func (f *fakeServer) GetSRPolicyList(_ context.Context, _ *pb.GetSRPolicyListReq
 	if f.fail {
 		return nil, errFake
 	}
+
 	return &pb.GetSRPolicyListResponse{Sessions: f.srPolicySessions}, nil
 }
 
@@ -93,6 +101,7 @@ func (f *fakeServer) GetTED(_ context.Context, _ *pb.GetTEDRequest) (*pb.GetTEDR
 	if f.fail {
 		return nil, errFake
 	}
+
 	return f.ted, nil
 }
 
@@ -101,11 +110,14 @@ func serve(t *testing.T, f *fakeServer) string {
 
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
+
 	s := grpc.NewServer()
+
 	pb.RegisterPCEServiceServer(s, f)
 	go func() {
-		_ = s.Serve(lis)
+		_ = s.Serve(lis) //nolint:errcheck // expected error when the test server stops.
 	}()
+
 	t.Cleanup(s.Stop)
 
 	return lis.Addr().String()
@@ -124,9 +136,10 @@ func TestMain(m *testing.M) {
 	code, err := setupAndRun(m)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		os.Exit(1) //nolint:revive,forbidigo // required for TestMain setup failure.
 	}
-	os.Exit(code)
+
+	os.Exit(code) //nolint:revive,forbidigo // includes post-run coverage failures.
 }
 
 func setupAndRun(m *testing.M) (int, error) {
@@ -134,9 +147,11 @@ func setupAndRun(m *testing.M) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+
 	if len(mains) == 0 {
 		return 0, errors.New("no examples found next to this test")
 	}
+
 	for _, p := range mains {
 		exampleDirs = append(exampleDirs, filepath.Dir(p))
 	}
@@ -145,13 +160,13 @@ func setupAndRun(m *testing.M) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer func() { _ = os.RemoveAll(binDir) }()
+	defer func() { _ = os.RemoveAll(binDir) }() //nolint:errcheck // best-effort cleanup.
 
 	if covDir = os.Getenv("EXAMPLES_COVERDIR"); covDir == "" {
 		if covDir, err = os.MkdirTemp("", "pola-examples-cov"); err != nil {
 			return 0, err
 		}
-		defer func() { _ = os.RemoveAll(covDir) }()
+		defer func() { _ = os.RemoveAll(covDir) }() //nolint:errcheck // best-effort cleanup.
 	} else if err := os.MkdirAll(covDir, 0o755); err != nil {
 		return 0, err
 	}
@@ -166,6 +181,7 @@ func setupAndRun(m *testing.M) (int, error) {
 			return 1, err
 		}
 	}
+
 	return code, nil
 }
 
@@ -178,29 +194,36 @@ func reportCoverage() error {
 	}
 
 	pcts := map[string]float64{}
+
 	for line := range strings.Lines(string(out)) {
 		// e.g. "<pkg> coverage: 92.3% of statements"
 		fields := strings.Fields(line)
 		if len(fields) < 3 || fields[1] != "coverage:" {
 			continue
 		}
+
 		if pct, err := strconv.ParseFloat(strings.TrimSuffix(fields[2], "%"), 64); err == nil {
 			pcts[fields[0]] = pct
 		}
 	}
 
 	filtered := flag.Lookup("test.run").Value.String() != ""
+
 	var missing []string
+
 	for _, dir := range exampleDirs {
 		pct := pcts[modulePath+"/"+dir]
 		fmt.Fprintf(os.Stderr, "coverage: %-34s %5.1f%%\n", dir, pct)
+
 		if pct == 0 && !filtered {
 			missing = append(missing, dir)
 		}
 	}
+
 	if len(missing) > 0 {
 		return fmt.Errorf("no test drives these examples: %s", strings.Join(missing, ", "))
 	}
+
 	return nil
 }
 
@@ -213,28 +236,33 @@ func buildExamples() error {
 	for _, dir := range exampleDirs {
 		wg.Go(func() {
 			pkg := modulePath + "/" + dir
+
 			out, err := exec.Command("go", "build",
 				"-cover", "-coverpkg="+pkg,
 				"-o", filepath.Join(binDir, dir), pkg).CombinedOutput()
 			if err != nil {
 				mu.Lock()
+
 				errs = append(errs, fmt.Errorf("build %s: %w\n%s", dir, err, out))
 				mu.Unlock()
 			}
 		})
 	}
+
 	wg.Wait()
 
 	return errors.Join(errs...)
 }
 
-func run(t *testing.T, name, addr string) (string, int) {
+func run(t *testing.T, name, addr string) (output string, exitCode int) {
 	t.Helper()
 
 	cmd := exec.Command(filepath.Join(binDir, name), "-server", addr)
+
 	cmd.Env = append(os.Environ(), "GOCOVERDIR="+covDir)
 
 	out, err := cmd.CombinedOutput()
+
 	var exitErr *exec.ExitError
 	switch {
 	case err == nil:
@@ -251,6 +279,7 @@ func wantOutput(t *testing.T, out string, code int, want ...string) {
 	t.Helper()
 
 	assert.Equal(t, 0, code, "output:\n%s", out)
+
 	for _, w := range want {
 		assert.Contains(t, out, w)
 	}
@@ -269,17 +298,23 @@ func addrBytes(t *testing.T, s string) []byte {
 
 	ip := net.ParseIP(s)
 	require.NotNil(t, ip, "bad test address %q", s)
+
 	if v4 := ip.To4(); v4 != nil {
 		return v4
 	}
+
 	return ip
 }
 
 // grpc.NewClient resolves targets lazily, so "%%" is rejected immediately,
 // exercising the dial-time failure path.
 func TestInvalidServerAddress(t *testing.T) {
+	t.Parallel()
+
 	for _, dir := range exampleDirs {
 		t.Run(dir, func(t *testing.T) {
+			t.Parallel()
+
 			out, code := run(t, dir, "%%")
 			assert.NotEqual(t, 0, code, "output:\n%s", out)
 			assert.Contains(t, out, "unable to connect to %%")
@@ -288,7 +323,11 @@ func TestInvalidServerAddress(t *testing.T) {
 }
 
 func TestSRPolicyCreateDynamic(t *testing.T) {
+	t.Parallel()
+
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+
 		f := &fakeServer{}
 		out, code := run(t, "sr-policy-create-dynamic", serve(t, f))
 		wantOutput(t, out, code, "success")
@@ -306,13 +345,19 @@ func TestSRPolicyCreateDynamic(t *testing.T) {
 	})
 
 	t.Run("rpc error", func(t *testing.T) {
+		t.Parallel()
+
 		out, code := run(t, "sr-policy-create-dynamic", serve(t, &fakeServer{fail: true}))
 		wantFailure(t, out, code, "c.CreateSRPolicy error")
 	})
 }
 
 func TestSRPolicyCreateExplicit(t *testing.T) {
+	t.Parallel()
+
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+
 		f := &fakeServer{}
 		out, code := run(t, "sr-policy-create-explicit", serve(t, f))
 		wantOutput(t, out, code, "success")
@@ -326,13 +371,19 @@ func TestSRPolicyCreateExplicit(t *testing.T) {
 	})
 
 	t.Run("rpc error", func(t *testing.T) {
+		t.Parallel()
+
 		out, code := run(t, "sr-policy-create-explicit", serve(t, &fakeServer{fail: true}))
 		wantFailure(t, out, code, "c.CreateSRPolicy error")
 	})
 }
 
 func TestSRPolicyCreateNoSIDValidate(t *testing.T) {
+	t.Parallel()
+
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+
 		f := &fakeServer{}
 		out, code := run(t, "sr-policy-create-no-sid-validate", serve(t, f))
 		wantOutput(t, out, code, "success")
@@ -348,13 +399,19 @@ func TestSRPolicyCreateNoSIDValidate(t *testing.T) {
 	})
 
 	t.Run("rpc error", func(t *testing.T) {
+		t.Parallel()
+
 		out, code := run(t, "sr-policy-create-no-sid-validate", serve(t, &fakeServer{fail: true}))
 		wantFailure(t, out, code, "c.CreateSRPolicy error")
 	})
 }
 
 func TestSRPolicyCreateSRv6(t *testing.T) {
+	t.Parallel()
+
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+
 		f := &fakeServer{}
 		out, code := run(t, "sr-policy-create-srv6", serve(t, f))
 		wantOutput(t, out, code, "success")
@@ -366,17 +423,24 @@ func TestSRPolicyCreateSRv6(t *testing.T) {
 			assert.NotEmpty(t, seg.GetLocalAddr(), "segment %s", seg.GetSid())
 			assert.NotEmpty(t, seg.GetSidStructure(), "segment %s", seg.GetSid())
 		}
+
 		assert.True(t, req.GetNoSidValidate())
 	})
 
 	t.Run("rpc error", func(t *testing.T) {
+		t.Parallel()
+
 		out, code := run(t, "sr-policy-create-srv6", serve(t, &fakeServer{fail: true}))
 		wantFailure(t, out, code, "c.CreateSRPolicy error")
 	})
 }
 
 func TestSRPolicyDelete(t *testing.T) {
+	t.Parallel()
+
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+
 		f := &fakeServer{}
 		out, code := run(t, "sr-policy-delete", serve(t, f))
 		wantOutput(t, out, code, "success")
@@ -391,13 +455,19 @@ func TestSRPolicyDelete(t *testing.T) {
 	})
 
 	t.Run("rpc error", func(t *testing.T) {
+		t.Parallel()
+
 		out, code := run(t, "sr-policy-delete", serve(t, &fakeServer{fail: true}))
 		wantFailure(t, out, code, "c.DeleteSRPolicy error")
 	})
 }
 
 func TestSessionDelete(t *testing.T) {
+	t.Parallel()
+
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+
 		f := &fakeServer{}
 		out, code := run(t, "session-delete", serve(t, f))
 		wantOutput(t, out, code, "success")
@@ -407,13 +477,19 @@ func TestSessionDelete(t *testing.T) {
 	})
 
 	t.Run("rpc error", func(t *testing.T) {
+		t.Parallel()
+
 		out, code := run(t, "session-delete", serve(t, &fakeServer{fail: true}))
 		wantFailure(t, out, code, "c.DeleteSession error")
 	})
 }
 
 func TestSessionList(t *testing.T) {
+	t.Parallel()
+
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+
 		f := &fakeServer{sessions: []*pb.Session{
 			{
 				PeerAddr: addrBytes(t, "192.0.2.1"),
@@ -439,13 +515,19 @@ func TestSessionList(t *testing.T) {
 	})
 
 	t.Run("rpc error", func(t *testing.T) {
+		t.Parallel()
+
 		out, code := run(t, "session-list", serve(t, &fakeServer{fail: true}))
 		wantFailure(t, out, code, "unable to get session list from server")
 	})
 }
 
 func TestSRPolicyList(t *testing.T) {
+	t.Parallel()
+
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+
 		f := &fakeServer{srPolicySessions: []*pb.SRPolicySession{
 			{
 				PeerAddr: addrBytes(t, "192.0.2.1"),
@@ -481,13 +563,19 @@ func TestSRPolicyList(t *testing.T) {
 	})
 
 	t.Run("rpc error", func(t *testing.T) {
+		t.Parallel()
+
 		out, code := run(t, "sr-policy-list", serve(t, &fakeServer{fail: true}))
 		wantFailure(t, out, code, "unable to get SR policy list from server")
 	})
 }
 
 func TestTEDGet(t *testing.T) {
+	t.Parallel()
+
 	t.Run("enabled", func(t *testing.T) {
+		t.Parallel()
+
 		f := &fakeServer{ted: &pb.GetTEDResponse{
 			Enabled: true,
 			Nodes: []*pb.LsNode{{
@@ -504,12 +592,16 @@ func TestTEDGet(t *testing.T) {
 	})
 
 	t.Run("disabled", func(t *testing.T) {
+		t.Parallel()
+
 		f := &fakeServer{ted: &pb.GetTEDResponse{Enabled: false}}
 		out, code := run(t, "ted-get", serve(t, f))
 		wantOutput(t, out, code, "TED is disabled")
 	})
 
 	t.Run("rpc error", func(t *testing.T) {
+		t.Parallel()
+
 		out, code := run(t, "ted-get", serve(t, &fakeServer{fail: true}))
 		wantFailure(t, out, code, "unable to get TED info")
 	})

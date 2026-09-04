@@ -333,7 +333,7 @@ func withSourceFile(t *testing.T, src string) {
 	t.Chdir(dir)
 }
 
-//nolint:paralleltest // withSourceFile calls t.Chdir, which cannot be combined with t.Parallel.
+//nolint:paralleltest // t.Chdir cannot be used with parallel tests.
 func TestParseProfileSkipsDeclarationAndClosingBraceLines(t *testing.T) {
 	src := "package p\n\nfunc Foo(x int) int {\n\tif x < 0 {\n\t\treturn 0\n\t}\n\treturn x\n}\n"
 	withSourceFile(t, src)
@@ -360,7 +360,7 @@ func TestParseProfileSkipsDeclarationAndClosingBraceLines(t *testing.T) {
 	}
 }
 
-//nolint:paralleltest // withSourceFile calls t.Chdir, which cannot be combined with t.Parallel.
+//nolint:paralleltest // t.Chdir cannot be used with parallel tests.
 func TestParseProfileSkipsCommentOnlyInteriorLines(t *testing.T) {
 	src := "package p\n\nfunc Foo(x int) int {\n\t// entry comment\n\tif x < 0 {\n\t\treturn 0\n\t}\n\treturn x\n}\n"
 	withSourceFile(t, src)
@@ -387,7 +387,7 @@ func TestParseProfileSkipsCommentOnlyInteriorLines(t *testing.T) {
 	}
 }
 
-//nolint:paralleltest // withSourceFile calls t.Chdir, which cannot be combined with t.Parallel.
+//nolint:paralleltest // t.Chdir cannot be used with parallel tests.
 func TestParseProfileHandlesMultilineRawString(t *testing.T) {
 	src := "package p\n\nfunc Foo() string {\n\ts := `\na\n`\n\treturn s\n}\n"
 	withSourceFile(t, src)
@@ -405,7 +405,7 @@ func TestParseProfileHandlesMultilineRawString(t *testing.T) {
 	}
 }
 
-//nolint:paralleltest // withSourceFile calls t.Chdir, which cannot be combined with t.Parallel.
+//nolint:paralleltest // t.Chdir cannot be used with parallel tests.
 func TestParseProfileHandlesMultilineRawStringCRLF(t *testing.T) {
 	src := "package p\r\n\r\nfunc Foo() string {\r\n\ts := `\r\na\r\n`\r\n\treturn s\r\n}\r\n"
 	withSourceFile(t, src)
@@ -439,7 +439,7 @@ func TestParseProfileFallsBackWhenSourceIsUnavailable(t *testing.T) {
 	}
 }
 
-//nolint:paralleltest // withSourceFile calls t.Chdir, which cannot be combined with t.Parallel.
+//nolint:paralleltest // t.Chdir cannot be used with parallel tests.
 func TestParseProfileFallsBackOnLineDirective(t *testing.T) {
 	src := "package p\n\n//line a.go:3\nfunc Foo(x int) int {\n\t// comment only\n\treturn x\n}\n"
 	withSourceFile(t, src)
