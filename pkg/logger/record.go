@@ -83,11 +83,12 @@ func cloneFields(fields map[string]any) map[string]any {
 		return nil
 	}
 
-	return cloneMapAny(fields, make(map[uintptr]struct{}))
+	return cloneMapAny(fields, make(map[uintptr]any))
 }
 
-// seen tracks references on the current recursion path to detect cycles.
-func cloneValue(v any, seen map[uintptr]struct{}) any {
+// seen maps source references to in-progress clones to preserve cycles
+// without aliasing the original.
+func cloneValue(v any, seen map[uintptr]any) any {
 	switch t := v.(type) {
 	case map[string]any:
 		return cloneMapAny(t, seen)
@@ -103,20 +104,22 @@ func cloneValue(v any, seen map[uintptr]struct{}) any {
 	}
 }
 
-func cloneMapAny(m map[string]any, seen map[uintptr]struct{}) map[string]any {
+func cloneMapAny(m map[string]any, seen map[uintptr]any) map[string]any {
 	if m == nil {
 		return nil
 	}
 
 	ptr := reflect.ValueOf(m).Pointer()
-	if _, ok := seen[ptr]; ok {
-		return m
+	if c, ok := seen[ptr]; ok {
+		clone, _ := c.(map[string]any)
+		return clone
 	}
 
-	seen[ptr] = struct{}{}
+	out := make(map[string]any, len(m))
+	seen[ptr] = out
+
 	defer delete(seen, ptr)
 
-	out := make(map[string]any, len(m))
 	for k, v := range m {
 		out[k] = cloneValue(v, seen)
 	}
@@ -124,20 +127,22 @@ func cloneMapAny(m map[string]any, seen map[uintptr]struct{}) map[string]any {
 	return out
 }
 
-func cloneSliceAny(s []any, seen map[uintptr]struct{}) []any {
+func cloneSliceAny(s []any, seen map[uintptr]any) []any {
 	if s == nil {
 		return nil
 	}
 
 	ptr := reflect.ValueOf(s).Pointer()
-	if _, ok := seen[ptr]; ok {
-		return s
+	if c, ok := seen[ptr]; ok {
+		clone, _ := c.([]any)
+		return clone
 	}
 
-	seen[ptr] = struct{}{}
+	out := make([]any, len(s))
+	seen[ptr] = out
+
 	defer delete(seen, ptr)
 
-	out := make([]any, len(s))
 	for i, e := range s {
 		out[i] = cloneValue(e, seen)
 	}
@@ -145,7 +150,7 @@ func cloneSliceAny(s []any, seen map[uintptr]struct{}) []any {
 	return out
 }
 
-func cloneReflectValue(rv reflect.Value, seen map[uintptr]struct{}) reflect.Value {
+func cloneReflectValue(rv reflect.Value, seen map[uintptr]any) reflect.Value {
 	switch rv.Kind() {
 	case reflect.Pointer:
 		return clonePointer(rv, seen)
@@ -164,39 +169,43 @@ func cloneReflectValue(rv reflect.Value, seen map[uintptr]struct{}) reflect.Valu
 	}
 }
 
-func clonePointer(rv reflect.Value, seen map[uintptr]struct{}) reflect.Value {
+func clonePointer(rv reflect.Value, seen map[uintptr]any) reflect.Value {
 	if rv.IsNil() {
 		return rv
 	}
 
 	ptr := rv.Pointer()
-	if _, ok := seen[ptr]; ok {
-		return rv
+	if c, ok := seen[ptr]; ok {
+		clone, _ := c.(reflect.Value)
+		return clone
 	}
 
-	seen[ptr] = struct{}{}
+	out := reflect.New(rv.Type().Elem())
+	seen[ptr] = out
+
 	defer delete(seen, ptr)
 
-	out := reflect.New(rv.Type().Elem())
 	out.Elem().Set(cloneReflectValue(rv.Elem(), seen))
 
 	return out
 }
 
-func cloneMap(rv reflect.Value, seen map[uintptr]struct{}) reflect.Value {
+func cloneMap(rv reflect.Value, seen map[uintptr]any) reflect.Value {
 	if rv.IsNil() {
 		return rv
 	}
 
 	ptr := rv.Pointer()
-	if _, ok := seen[ptr]; ok {
-		return rv
+	if c, ok := seen[ptr]; ok {
+		clone, _ := c.(reflect.Value)
+		return clone
 	}
 
-	seen[ptr] = struct{}{}
+	out := reflect.MakeMapWithSize(rv.Type(), rv.Len())
+	seen[ptr] = out
+
 	defer delete(seen, ptr)
 
-	out := reflect.MakeMapWithSize(rv.Type(), rv.Len())
 	for iter := rv.MapRange(); iter.Next(); {
 		out.SetMapIndex(iter.Key(), cloneReflectValue(iter.Value(), seen))
 	}
@@ -204,20 +213,22 @@ func cloneMap(rv reflect.Value, seen map[uintptr]struct{}) reflect.Value {
 	return out
 }
 
-func cloneSlice(rv reflect.Value, seen map[uintptr]struct{}) reflect.Value {
+func cloneSlice(rv reflect.Value, seen map[uintptr]any) reflect.Value {
 	if rv.IsNil() {
 		return rv
 	}
 
 	ptr := rv.Pointer()
-	if _, ok := seen[ptr]; ok {
-		return rv
+	if c, ok := seen[ptr]; ok {
+		clone, _ := c.(reflect.Value)
+		return clone
 	}
 
-	seen[ptr] = struct{}{}
+	out := reflect.MakeSlice(rv.Type(), rv.Len(), rv.Len())
+	seen[ptr] = out
+
 	defer delete(seen, ptr)
 
-	out := reflect.MakeSlice(rv.Type(), rv.Len(), rv.Len())
 	for i := range rv.Len() {
 		out.Index(i).Set(cloneReflectValue(rv.Index(i), seen))
 	}
@@ -225,7 +236,7 @@ func cloneSlice(rv reflect.Value, seen map[uintptr]struct{}) reflect.Value {
 	return out
 }
 
-func cloneArray(rv reflect.Value, seen map[uintptr]struct{}) reflect.Value {
+func cloneArray(rv reflect.Value, seen map[uintptr]any) reflect.Value {
 	out := reflect.New(rv.Type()).Elem()
 	for i := range rv.Len() {
 		out.Index(i).Set(cloneReflectValue(rv.Index(i), seen))
@@ -234,7 +245,7 @@ func cloneArray(rv reflect.Value, seen map[uintptr]struct{}) reflect.Value {
 	return out
 }
 
-func cloneInterface(rv reflect.Value, seen map[uintptr]struct{}) reflect.Value {
+func cloneInterface(rv reflect.Value, seen map[uintptr]any) reflect.Value {
 	if rv.IsNil() {
 		return rv
 	}
@@ -246,7 +257,7 @@ func cloneInterface(rv reflect.Value, seen map[uintptr]struct{}) reflect.Value {
 }
 
 // Copy first because unexported fields cannot be set individually.
-func cloneStruct(rv reflect.Value, seen map[uintptr]struct{}) reflect.Value {
+func cloneStruct(rv reflect.Value, seen map[uintptr]any) reflect.Value {
 	out := reflect.New(rv.Type()).Elem()
 	out.Set(rv)
 

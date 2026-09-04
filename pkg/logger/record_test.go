@@ -271,8 +271,9 @@ func TestRecorderAllCyclicMapFieldLeftUnshared(t *testing.T) {
 	got, ok := entries[0].Fields["m"].(map[string]any)
 	require.True(t, ok)
 	assert.NotEqual(t, reflect.ValueOf(cyclic).Pointer(), reflect.ValueOf(got).Pointer())
-	_, ok = got["self"].(map[string]any)
-	assert.True(t, ok, "cyclic map field should still be a map after cloning")
+	self, ok := got["self"].(map[string]any)
+	require.True(t, ok, "cyclic map field should still be a map after cloning")
+	assert.Equal(t, reflect.ValueOf(got).Pointer(), reflect.ValueOf(self).Pointer(), "back-edge should point at the clone, not the original")
 }
 
 func TestRecorderAllNilAnySliceField(t *testing.T) {
@@ -299,8 +300,9 @@ func TestRecorderAllCyclicAnySliceFieldLeftUnshared(t *testing.T) {
 	require.True(t, ok)
 	assert.NotEqual(t, reflect.ValueOf(cyclic).Pointer(), reflect.ValueOf(got).Pointer())
 	require.Len(t, got, 1)
-	_, ok = got[0].([]any)
-	assert.True(t, ok, "cyclic slice field should still be a slice after cloning")
+	self, ok := got[0].([]any)
+	require.True(t, ok, "cyclic slice field should still be a slice after cloning")
+	assert.Equal(t, reflect.ValueOf(got).Pointer(), reflect.ValueOf(self).Pointer(), "back-edge should point at the clone, not the original")
 }
 
 type selfNode struct{ Self *selfNode }
@@ -318,7 +320,8 @@ func TestRecorderAllCyclicPointerFieldLeftUnshared(t *testing.T) {
 	got, ok := entries[0].Fields["n"].(*selfNode)
 	require.True(t, ok)
 	assert.NotSame(t, n, got)
-	assert.NotNil(t, got.Self)
+	require.NotNil(t, got.Self)
+	assert.Same(t, got, got.Self, "back-edge should point at the clone, not the original")
 }
 
 type recMap map[string]recMap
@@ -336,8 +339,9 @@ func TestRecorderAllCyclicTypedMapFieldLeftUnshared(t *testing.T) {
 	got, ok := entries[0].Fields["rm"].(recMap)
 	require.True(t, ok)
 	assert.NotEqual(t, reflect.ValueOf(rm).Pointer(), reflect.ValueOf(got).Pointer())
-	_, ok = got["self"]
-	assert.True(t, ok, "cyclic typed map field should retain its self entry after cloning")
+	self, ok := got["self"]
+	require.True(t, ok, "cyclic typed map field should retain its self entry after cloning")
+	assert.Equal(t, reflect.ValueOf(got).Pointer(), reflect.ValueOf(self).Pointer(), "back-edge should point at the clone, not the original")
 }
 
 type recSlice []recSlice
@@ -356,6 +360,7 @@ func TestRecorderAllCyclicTypedSliceFieldLeftUnshared(t *testing.T) {
 	require.True(t, ok)
 	assert.NotEqual(t, reflect.ValueOf(rs).Pointer(), reflect.ValueOf(got).Pointer())
 	require.Len(t, got, 1)
+	assert.Equal(t, reflect.ValueOf(got).Pointer(), reflect.ValueOf(got[0]).Pointer(), "back-edge should point at the clone, not the original")
 }
 
 func TestRecorderConcurrentAccess(t *testing.T) {
