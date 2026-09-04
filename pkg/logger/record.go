@@ -6,6 +6,7 @@
 package logger
 
 import (
+	"maps"
 	"reflect"
 	"sync"
 
@@ -82,119 +83,176 @@ func cloneFields(fields map[string]any) map[string]any {
 		return nil
 	}
 
-	out := make(map[string]any, len(fields))
-	for k, v := range fields {
-		out[k] = cloneValue(v)
-	}
-
-	return out
+	return cloneMapAny(fields, make(map[uintptr]struct{}))
 }
 
-func cloneValue(v any) any {
+// seen tracks references on the current recursion path to detect cycles.
+func cloneValue(v any, seen map[uintptr]struct{}) any {
 	switch t := v.(type) {
 	case map[string]any:
-		return cloneFields(t)
+		return cloneMapAny(t, seen)
 	case []any:
-		out := make([]any, len(t))
-		for i, e := range t {
-			out[i] = cloneValue(e)
-		}
-
-		return out
+		return cloneSliceAny(t, seen)
 	}
 
 	switch rv := reflect.ValueOf(v); rv.Kind() {
 	case reflect.Map, reflect.Slice, reflect.Array, reflect.Pointer:
-		return cloneReflectValue(rv).Interface()
+		return cloneReflectValue(rv, seen).Interface()
 	default:
 		return v
 	}
 }
 
-func cloneReflectValue(rv reflect.Value) reflect.Value {
+func cloneMapAny(m map[string]any, seen map[uintptr]struct{}) map[string]any {
+	if m == nil {
+		return nil
+	}
+
+	ptr := reflect.ValueOf(m).Pointer()
+	if _, ok := seen[ptr]; ok {
+		return m
+	}
+
+	seen[ptr] = struct{}{}
+	defer delete(seen, ptr)
+
+	out := make(map[string]any, len(m))
+	for k, v := range m {
+		out[k] = cloneValue(v, seen)
+	}
+
+	return out
+}
+
+func cloneSliceAny(s []any, seen map[uintptr]struct{}) []any {
+	if s == nil {
+		return nil
+	}
+
+	ptr := reflect.ValueOf(s).Pointer()
+	if _, ok := seen[ptr]; ok {
+		return s
+	}
+
+	seen[ptr] = struct{}{}
+	defer delete(seen, ptr)
+
+	out := make([]any, len(s))
+	for i, e := range s {
+		out[i] = cloneValue(e, seen)
+	}
+
+	return out
+}
+
+func cloneReflectValue(rv reflect.Value, seen map[uintptr]struct{}) reflect.Value {
 	switch rv.Kind() {
 	case reflect.Pointer:
-		return clonePointer(rv)
+		return clonePointer(rv, seen)
 	case reflect.Map:
-		return cloneMap(rv)
+		return cloneMap(rv, seen)
 	case reflect.Slice:
-		return cloneSlice(rv)
+		return cloneSlice(rv, seen)
 	case reflect.Array:
-		return cloneArray(rv)
+		return cloneArray(rv, seen)
 	case reflect.Interface:
-		return cloneInterface(rv)
+		return cloneInterface(rv, seen)
 	case reflect.Struct:
-		return cloneStruct(rv)
+		return cloneStruct(rv, seen)
 	default:
 		return rv
 	}
 }
 
-func clonePointer(rv reflect.Value) reflect.Value {
+func clonePointer(rv reflect.Value, seen map[uintptr]struct{}) reflect.Value {
 	if rv.IsNil() {
 		return rv
 	}
 
+	ptr := rv.Pointer()
+	if _, ok := seen[ptr]; ok {
+		return rv
+	}
+
+	seen[ptr] = struct{}{}
+	defer delete(seen, ptr)
+
 	out := reflect.New(rv.Type().Elem())
-	out.Elem().Set(cloneReflectValue(rv.Elem()))
+	out.Elem().Set(cloneReflectValue(rv.Elem(), seen))
 
 	return out
 }
 
-func cloneMap(rv reflect.Value) reflect.Value {
+func cloneMap(rv reflect.Value, seen map[uintptr]struct{}) reflect.Value {
 	if rv.IsNil() {
 		return rv
 	}
+
+	ptr := rv.Pointer()
+	if _, ok := seen[ptr]; ok {
+		return rv
+	}
+
+	seen[ptr] = struct{}{}
+	defer delete(seen, ptr)
 
 	out := reflect.MakeMapWithSize(rv.Type(), rv.Len())
 	for iter := rv.MapRange(); iter.Next(); {
-		out.SetMapIndex(iter.Key(), cloneReflectValue(iter.Value()))
+		out.SetMapIndex(iter.Key(), cloneReflectValue(iter.Value(), seen))
 	}
 
 	return out
 }
 
-func cloneSlice(rv reflect.Value) reflect.Value {
+func cloneSlice(rv reflect.Value, seen map[uintptr]struct{}) reflect.Value {
 	if rv.IsNil() {
 		return rv
 	}
+
+	ptr := rv.Pointer()
+	if _, ok := seen[ptr]; ok {
+		return rv
+	}
+
+	seen[ptr] = struct{}{}
+	defer delete(seen, ptr)
 
 	out := reflect.MakeSlice(rv.Type(), rv.Len(), rv.Len())
 	for i := range rv.Len() {
-		out.Index(i).Set(cloneReflectValue(rv.Index(i)))
+		out.Index(i).Set(cloneReflectValue(rv.Index(i), seen))
 	}
 
 	return out
 }
 
-func cloneArray(rv reflect.Value) reflect.Value {
+func cloneArray(rv reflect.Value, seen map[uintptr]struct{}) reflect.Value {
 	out := reflect.New(rv.Type()).Elem()
 	for i := range rv.Len() {
-		out.Index(i).Set(cloneReflectValue(rv.Index(i)))
+		out.Index(i).Set(cloneReflectValue(rv.Index(i), seen))
 	}
 
 	return out
 }
 
-func cloneInterface(rv reflect.Value) reflect.Value {
+func cloneInterface(rv reflect.Value, seen map[uintptr]struct{}) reflect.Value {
 	if rv.IsNil() {
 		return rv
 	}
 
 	out := reflect.New(rv.Type()).Elem()
-	out.Set(reflect.ValueOf(cloneValue(rv.Interface())))
+	out.Set(reflect.ValueOf(cloneValue(rv.Interface(), seen)))
 
 	return out
 }
 
 // Copy first because unexported fields cannot be set individually.
-func cloneStruct(rv reflect.Value) reflect.Value {
+func cloneStruct(rv reflect.Value, seen map[uintptr]struct{}) reflect.Value {
 	out := reflect.New(rv.Type()).Elem()
 	out.Set(rv)
 
 	for i := range rv.NumField() {
 		if rv.Type().Field(i).IsExported() {
-			out.Field(i).Set(cloneReflectValue(rv.Field(i)))
+			out.Field(i).Set(cloneReflectValue(rv.Field(i), seen))
 		}
 	}
 
@@ -211,17 +269,21 @@ func (r *Recorder) add(e Entry) {
 type recordCore struct {
 	min zapcore.Level
 	rec *Recorder
-	ctx []zapcore.Field
+	ctx map[string]any
 }
 
 func (c *recordCore) Enabled(l zapcore.Level) bool { return l >= c.min }
 
+// With snapshots fields at call time.
 func (c *recordCore) With(fields []zapcore.Field) zapcore.Core {
-	ctx := make([]zapcore.Field, 0, len(c.ctx)+len(fields))
-	ctx = append(ctx, c.ctx...)
-	ctx = append(ctx, fields...)
+	enc := zapcore.NewMapObjectEncoder()
+	maps.Copy(enc.Fields, c.ctx)
 
-	return &recordCore{min: c.min, rec: c.rec, ctx: ctx}
+	for _, f := range fields {
+		f.AddTo(enc)
+	}
+
+	return &recordCore{min: c.min, rec: c.rec, ctx: cloneFields(enc.Fields)}
 }
 
 func (c *recordCore) Check(e zapcore.Entry, ce *zapcore.CheckedEntry) *zapcore.CheckedEntry {
@@ -234,9 +296,7 @@ func (c *recordCore) Check(e zapcore.Entry, ce *zapcore.CheckedEntry) *zapcore.C
 
 func (c *recordCore) Write(e zapcore.Entry, fields []zapcore.Field) error {
 	enc := zapcore.NewMapObjectEncoder()
-	for _, f := range c.ctx {
-		f.AddTo(enc)
-	}
+	maps.Copy(enc.Fields, c.ctx)
 
 	for _, f := range fields {
 		f.AddTo(enc)

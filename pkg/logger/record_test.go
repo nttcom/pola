@@ -6,6 +6,7 @@
 package logger_test
 
 import (
+	"reflect"
 	"sync"
 	"testing"
 
@@ -255,6 +256,106 @@ func TestRecorderAllArrayOfAnyFieldWithNilElement(t *testing.T) {
 
 	entries := rec.All()
 	assert.Equal(t, [2]any{nil, "value"}, entries[0].Fields["mix"])
+}
+
+func TestRecorderAllCyclicMapFieldLeftUnshared(t *testing.T) {
+	t.Parallel()
+
+	lg, rec := logger.NewRecorder(logger.LevelDebug)
+
+	cyclic := map[string]any{}
+	cyclic["self"] = cyclic
+	lg.Info("first", logger.Any("m", cyclic))
+
+	entries := rec.All()
+	got, ok := entries[0].Fields["m"].(map[string]any)
+	require.True(t, ok)
+	assert.NotEqual(t, reflect.ValueOf(cyclic).Pointer(), reflect.ValueOf(got).Pointer())
+	_, ok = got["self"].(map[string]any)
+	assert.True(t, ok, "cyclic map field should still be a map after cloning")
+}
+
+func TestRecorderAllNilAnySliceField(t *testing.T) {
+	t.Parallel()
+
+	lg, rec := logger.NewRecorder(logger.LevelDebug)
+	lg.Info("first", logger.Any("items", []any(nil)))
+
+	entries := rec.All()
+	assert.Nil(t, entries[0].Fields["items"])
+}
+
+func TestRecorderAllCyclicAnySliceFieldLeftUnshared(t *testing.T) {
+	t.Parallel()
+
+	lg, rec := logger.NewRecorder(logger.LevelDebug)
+
+	cyclic := make([]any, 1)
+	cyclic[0] = cyclic
+	lg.Info("first", logger.Any("s", cyclic))
+
+	entries := rec.All()
+	got, ok := entries[0].Fields["s"].([]any)
+	require.True(t, ok)
+	assert.NotEqual(t, reflect.ValueOf(cyclic).Pointer(), reflect.ValueOf(got).Pointer())
+	require.Len(t, got, 1)
+	_, ok = got[0].([]any)
+	assert.True(t, ok, "cyclic slice field should still be a slice after cloning")
+}
+
+type selfNode struct{ Self *selfNode }
+
+func TestRecorderAllCyclicPointerFieldLeftUnshared(t *testing.T) {
+	t.Parallel()
+
+	lg, rec := logger.NewRecorder(logger.LevelDebug)
+
+	n := &selfNode{}
+	n.Self = n
+	lg.Info("first", logger.Any("n", n))
+
+	entries := rec.All()
+	got, ok := entries[0].Fields["n"].(*selfNode)
+	require.True(t, ok)
+	assert.NotSame(t, n, got)
+	assert.NotNil(t, got.Self)
+}
+
+type recMap map[string]recMap
+
+func TestRecorderAllCyclicTypedMapFieldLeftUnshared(t *testing.T) {
+	t.Parallel()
+
+	lg, rec := logger.NewRecorder(logger.LevelDebug)
+
+	rm := recMap{}
+	rm["self"] = rm
+	lg.Info("first", logger.Any("rm", rm))
+
+	entries := rec.All()
+	got, ok := entries[0].Fields["rm"].(recMap)
+	require.True(t, ok)
+	assert.NotEqual(t, reflect.ValueOf(rm).Pointer(), reflect.ValueOf(got).Pointer())
+	_, ok = got["self"]
+	assert.True(t, ok, "cyclic typed map field should retain its self entry after cloning")
+}
+
+type recSlice []recSlice
+
+func TestRecorderAllCyclicTypedSliceFieldLeftUnshared(t *testing.T) {
+	t.Parallel()
+
+	lg, rec := logger.NewRecorder(logger.LevelDebug)
+
+	rs := make(recSlice, 1)
+	rs[0] = rs
+	lg.Info("first", logger.Any("rs", rs))
+
+	entries := rec.All()
+	got, ok := entries[0].Fields["rs"].(recSlice)
+	require.True(t, ok)
+	assert.NotEqual(t, reflect.ValueOf(rs).Pointer(), reflect.ValueOf(got).Pointer())
+	require.Len(t, got, 1)
 }
 
 func TestRecorderConcurrentAccess(t *testing.T) {
