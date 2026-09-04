@@ -28,4 +28,11 @@ func TestMainRun(t *testing.T) {
 		var out, errOut bytes.Buffer
 		require.Equal(t, 1, mainRun([]string{"no-such-command"}, &out, &errOut))
 	})
+
+	t.Run("no args prints help and exits successfully", func(t *testing.T) {
+		t.Parallel()
+
+		var out, errOut bytes.Buffer
+		require.Equal(t, 0, mainRun(nil, &out, &errOut))
+	})
 }

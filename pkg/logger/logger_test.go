@@ -103,6 +103,42 @@ func TestNew(t *testing.T) {
 	}
 }
 
+func TestParseLevel(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		name    string
+		want    logger.Level
+		wantErr bool
+	}{
+		"empty defaults to info": {name: "", want: logger.LevelInfo},
+		"info":                   {name: "info", want: logger.LevelInfo},
+		"debug":                  {name: "debug", want: logger.LevelDebug},
+		"warn":                   {name: "warn", want: logger.LevelWarn},
+		"error":                  {name: "error", want: logger.LevelError},
+		"unsupported": {
+			name:    "trace",
+			wantErr: true,
+		},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := logger.ParseLevel(tt.name)
+
+			if tt.wantErr {
+				require.ErrorContains(t, err, `log level "trace" is not supported`)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func TestNewNop(t *testing.T) {
 	t.Parallel()
 
