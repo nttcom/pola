@@ -100,7 +100,7 @@ lint-go: ## Lint Go code
 	go tool golangci-lint run --config=.golangci.yml
 
 lint-proto: ## Lint protobuf definitions
-	buf lint
+	go tool buf lint
 
 lint-python: ## Lint and format-check Python code
 	ruff check $(PYTHON_DIRS)
@@ -117,7 +117,7 @@ vuln: ## Report known vulnerabilities in dependencies
 	go tool govulncheck ./...
 
 proto: ## Generate protobuf code
-	buf generate
+	go tool buf generate
 
 check-proto: proto ## Verify generated protobuf code is up to date
 	git diff --exit-code -- '*.pb.go' '*_grpc.pb.go'
