@@ -6,7 +6,6 @@
 package logger
 
 import (
-	"maps"
 	"sync"
 
 	"go.uber.org/zap"
@@ -72,9 +71,39 @@ func (r *Recorder) FilterByMessage(msg string) []Entry {
 	return out
 }
 
+// cloneEntry deep-copies nested map and slice containers.
 func cloneEntry(e Entry) Entry {
-	e.Fields = maps.Clone(e.Fields)
+	e.Fields = cloneFields(e.Fields)
 	return e
+}
+
+func cloneFields(fields map[string]any) map[string]any {
+	if fields == nil {
+		return nil
+	}
+
+	out := make(map[string]any, len(fields))
+	for k, v := range fields {
+		out[k] = cloneValue(v)
+	}
+
+	return out
+}
+
+func cloneValue(v any) any {
+	switch t := v.(type) {
+	case map[string]any:
+		return cloneFields(t)
+	case []any:
+		out := make([]any, len(t))
+		for i, e := range t {
+			out[i] = cloneValue(e)
+		}
+
+		return out
+	default:
+		return v
+	}
 }
 
 func (r *Recorder) add(e Entry) {

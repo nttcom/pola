@@ -101,6 +101,42 @@ func TestRecorderAllFieldsNotShared(t *testing.T) {
 	assert.Equal(t, map[string]any{"key": "orig"}, again[0].Fields)
 }
 
+func TestRecorderAllFieldSlicesNotShared(t *testing.T) {
+	t.Parallel()
+
+	lg, rec := logger.NewRecorder(logger.LevelDebug)
+	lg.Info("first", logger.Uint32s("uint32s", []uint32{1, 2, 3}))
+
+	entries := rec.All()
+	entries[0].Fields["uint32s"].([]any)[0] = uint32(99)
+
+	again := rec.All()
+	assert.Equal(t, []any{uint32(1), uint32(2), uint32(3)}, again[0].Fields["uint32s"])
+}
+
+func TestRecorderAllNestedMapFieldsNotShared(t *testing.T) {
+	t.Parallel()
+
+	lg, rec := logger.NewRecorder(logger.LevelDebug)
+	lg.Info("first", logger.Any("nested", map[string]any{"inner": "orig"}))
+
+	entries := rec.All()
+	entries[0].Fields["nested"].(map[string]any)["inner"] = "mutated"
+
+	again := rec.All()
+	assert.Equal(t, map[string]any{"inner": "orig"}, again[0].Fields["nested"])
+}
+
+func TestRecorderAllNilNestedMapField(t *testing.T) {
+	t.Parallel()
+
+	lg, rec := logger.NewRecorder(logger.LevelDebug)
+	lg.Info("first", logger.Any("nested", map[string]any(nil)))
+
+	entries := rec.All()
+	assert.Nil(t, entries[0].Fields["nested"])
+}
+
 func TestRecorderFilterByMessageFieldsNotShared(t *testing.T) {
 	t.Parallel()
 

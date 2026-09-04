@@ -204,7 +204,7 @@ func TestVendorInformation_Serialize_LengthBoundary(t *testing.T) {
 
 		tlv := &pcep.VendorInformation{EnterpriseSpecificInformation: make([]byte, 65532)}
 		_, err := tlv.Serialize()
-		assert.ErrorContains(t, err, "exceeds")
+		assert.ErrorContains(t, err, "is outside the range")
 	})
 }
 
@@ -363,7 +363,7 @@ func TestSymbolicPathName_Serialize_LengthBoundary(t *testing.T) {
 
 		tlv := &pcep.SymbolicPathName{Name: strings.Repeat("a", 65536)}
 		_, err := tlv.Serialize()
-		assert.ErrorContains(t, err, "exceeds")
+		assert.ErrorContains(t, err, "is outside the range")
 	})
 }
 
@@ -995,7 +995,7 @@ func TestPathSetupTypeCapability_Serialize_SubTLVLengthBoundary(t *testing.T) {
 
 		tlv := &pcep.PathSetupTypeCapability{SubTLVs: newSubTLVs(8192)}
 		_, err := tlv.Serialize()
-		assert.ErrorContains(t, err, "exceeds")
+		assert.ErrorContains(t, err, "is outside the range")
 	})
 }
 
@@ -1004,7 +1004,7 @@ func TestPathSetupTypeCapability_Serialize_SubTLVError(t *testing.T) {
 
 	tlv := &pcep.PathSetupTypeCapability{SubTLVs: []pcep.TLVInterface{&pcep.UnknownTLV{Value: make([]byte, 65536)}}}
 	_, err := tlv.Serialize()
-	assert.ErrorContains(t, err, "exceeds")
+	assert.ErrorContains(t, err, "is outside the range")
 }
 
 func TestPathSetupTypeCapability_SubCapabilities(t *testing.T) {
@@ -1337,7 +1337,7 @@ func TestAssocTypeList_Serialize_LengthBoundary(t *testing.T) {
 
 		tlv := &pcep.AssocTypeList{AssocTypes: make([]pcep.AssocType, 32768)}
 		_, err := tlv.Serialize()
-		assert.ErrorContains(t, err, "exceeds")
+		assert.ErrorContains(t, err, "is outside the range")
 	})
 }
 
@@ -1735,7 +1735,7 @@ func TestUnknownTLV_Serialize_LengthBoundary(t *testing.T) {
 
 		tlv := &pcep.UnknownTLV{Value: make([]byte, 65536)}
 		_, err := tlv.Serialize()
-		assert.ErrorContains(t, err, "exceeds")
+		assert.ErrorContains(t, err, "is outside the range")
 	})
 }
 
