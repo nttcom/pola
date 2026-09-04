@@ -6,6 +6,7 @@
 package logger
 
 import (
+	"reflect"
 	"sync"
 
 	"go.uber.org/zap"
@@ -71,7 +72,6 @@ func (r *Recorder) FilterByMessage(msg string) []Entry {
 	return out
 }
 
-// cloneEntry deep-copies nested map and slice containers.
 func cloneEntry(e Entry) Entry {
 	e.Fields = cloneFields(e.Fields)
 	return e
@@ -101,8 +101,67 @@ func cloneValue(v any) any {
 		}
 
 		return out
+	}
+
+	switch rv := reflect.ValueOf(v); rv.Kind() {
+	case reflect.Map, reflect.Slice, reflect.Array, reflect.Pointer:
+		return cloneReflectValue(rv).Interface()
 	default:
 		return v
+	}
+}
+
+func cloneReflectValue(rv reflect.Value) reflect.Value {
+	switch rv.Kind() {
+	case reflect.Pointer:
+		if rv.IsNil() {
+			return rv
+		}
+
+		out := reflect.New(rv.Type().Elem())
+		out.Elem().Set(cloneReflectValue(rv.Elem()))
+
+		return out
+	case reflect.Map:
+		if rv.IsNil() {
+			return rv
+		}
+
+		out := reflect.MakeMapWithSize(rv.Type(), rv.Len())
+		for iter := rv.MapRange(); iter.Next(); {
+			out.SetMapIndex(iter.Key(), cloneReflectValue(iter.Value()))
+		}
+
+		return out
+	case reflect.Slice:
+		if rv.IsNil() {
+			return rv
+		}
+
+		out := reflect.MakeSlice(rv.Type(), rv.Len(), rv.Len())
+		for i := range rv.Len() {
+			out.Index(i).Set(cloneReflectValue(rv.Index(i)))
+		}
+
+		return out
+	case reflect.Array:
+		out := reflect.New(rv.Type()).Elem()
+		for i := range rv.Len() {
+			out.Index(i).Set(cloneReflectValue(rv.Index(i)))
+		}
+
+		return out
+	case reflect.Interface:
+		if rv.IsNil() {
+			return rv
+		}
+
+		out := reflect.New(rv.Type()).Elem()
+		out.Set(reflect.ValueOf(cloneValue(rv.Interface())))
+
+		return out
+	default:
+		return rv
 	}
 }
 
@@ -147,11 +206,11 @@ func (c *recordCore) Write(e zapcore.Entry, fields []zapcore.Field) error {
 		f.AddTo(enc)
 	}
 
-	c.rec.add(Entry{
+	c.rec.add(cloneEntry(Entry{
 		Level:   levelFromZap(e.Level),
 		Message: e.Message,
 		Fields:  enc.Fields,
-	})
+	}))
 
 	return nil
 }

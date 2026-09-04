@@ -108,7 +108,10 @@ func TestRecorderAllFieldSlicesNotShared(t *testing.T) {
 	lg.Info("first", logger.Uint32s("uint32s", []uint32{1, 2, 3}))
 
 	entries := rec.All()
-	entries[0].Fields["uint32s"].([]any)[0] = uint32(99)
+	uint32s, ok := entries[0].Fields["uint32s"].([]any)
+	require.True(t, ok)
+
+	uint32s[0] = uint32(99)
 
 	again := rec.All()
 	assert.Equal(t, []any{uint32(1), uint32(2), uint32(3)}, again[0].Fields["uint32s"])
@@ -121,7 +124,10 @@ func TestRecorderAllNestedMapFieldsNotShared(t *testing.T) {
 	lg.Info("first", logger.Any("nested", map[string]any{"inner": "orig"}))
 
 	entries := rec.All()
-	entries[0].Fields["nested"].(map[string]any)["inner"] = "mutated"
+	nested, ok := entries[0].Fields["nested"].(map[string]any)
+	require.True(t, ok)
+
+	nested["inner"] = "mutated"
 
 	again := rec.All()
 	assert.Equal(t, map[string]any{"inner": "orig"}, again[0].Fields["nested"])
@@ -137,6 +143,33 @@ func TestRecorderAllNilNestedMapField(t *testing.T) {
 	assert.Nil(t, entries[0].Fields["nested"])
 }
 
+func TestRecorderAllTypedMapFieldNotShared(t *testing.T) {
+	t.Parallel()
+
+	lg, rec := logger.NewRecorder(logger.LevelDebug)
+	labels := map[string]string{"env": "prod"}
+	lg.Info("first", logger.Any("labels", labels))
+
+	labels["env"] = "mutated"
+	labels["extra"] = "added"
+
+	entries := rec.All()
+	assert.Equal(t, map[string]string{"env": "prod"}, entries[0].Fields["labels"])
+}
+
+func TestRecorderAllTypedSliceFieldNotShared(t *testing.T) {
+	t.Parallel()
+
+	lg, rec := logger.NewRecorder(logger.LevelDebug)
+	items := [][]string{{"a", "b"}}
+	lg.Info("first", logger.Any("items", items))
+
+	items[0][0] = "mutated"
+
+	entries := rec.All()
+	assert.Equal(t, [][]string{{"a", "b"}}, entries[0].Fields["items"])
+}
+
 func TestRecorderFilterByMessageFieldsNotShared(t *testing.T) {
 	t.Parallel()
 
@@ -148,6 +181,80 @@ func TestRecorderFilterByMessageFieldsNotShared(t *testing.T) {
 
 	again := rec.FilterByMessage("hello")
 	assert.Equal(t, map[string]any{"key": "orig"}, again[0].Fields)
+}
+
+type point struct{ X int }
+
+func TestRecorderAllNilPointerField(t *testing.T) {
+	t.Parallel()
+
+	lg, rec := logger.NewRecorder(logger.LevelDebug)
+
+	var p *point
+	lg.Info("first", logger.Any("ptr", p))
+
+	entries := rec.All()
+	assert.Nil(t, entries[0].Fields["ptr"])
+}
+
+func TestRecorderAllPointerFieldNotShared(t *testing.T) {
+	t.Parallel()
+
+	lg, rec := logger.NewRecorder(logger.LevelDebug)
+	val := &point{X: 5}
+	lg.Info("first", logger.Any("ptr", val))
+	val.X = 99
+
+	entries := rec.All()
+	ptr, ok := entries[0].Fields["ptr"].(*point)
+	require.True(t, ok)
+	assert.Equal(t, 5, ptr.X)
+}
+
+func TestRecorderAllNilTypedMapField(t *testing.T) {
+	t.Parallel()
+
+	lg, rec := logger.NewRecorder(logger.LevelDebug)
+
+	var labels map[string]string
+	lg.Info("first", logger.Any("labels", labels))
+
+	entries := rec.All()
+	assert.Nil(t, entries[0].Fields["labels"])
+}
+
+func TestRecorderAllNilTypedSliceField(t *testing.T) {
+	t.Parallel()
+
+	lg, rec := logger.NewRecorder(logger.LevelDebug)
+
+	var items [][]string
+	lg.Info("first", logger.Any("items", items))
+
+	entries := rec.All()
+	assert.Nil(t, entries[0].Fields["items"])
+}
+
+func TestRecorderAllArrayFieldNotShared(t *testing.T) {
+	t.Parallel()
+
+	lg, rec := logger.NewRecorder(logger.LevelDebug)
+	arr := [3]int{1, 2, 3}
+	lg.Info("first", logger.Any("arr", arr))
+
+	entries := rec.All()
+	assert.Equal(t, [3]int{1, 2, 3}, entries[0].Fields["arr"])
+}
+
+func TestRecorderAllArrayOfAnyFieldWithNilElement(t *testing.T) {
+	t.Parallel()
+
+	lg, rec := logger.NewRecorder(logger.LevelDebug)
+	arr := [2]any{nil, "value"}
+	lg.Info("first", logger.Any("mix", arr))
+
+	entries := rec.All()
+	assert.Equal(t, [2]any{nil, "value"}, entries[0].Fields["mix"])
 }
 
 func TestRecorderConcurrentAccess(t *testing.T) {
