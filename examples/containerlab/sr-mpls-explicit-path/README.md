@@ -34,7 +34,7 @@ Wait for vJunos-router startup after `sudo containerlab deploy` (it takes severa
 ```bash
 $ docker logs clab-sr-mpls-explicit-path-pe02 -f
 <snip.>
-2026-08-27 01:07:57,095: launch     INFO Startup complete in: 0:01:44.709074
+2026-09-04 02:39:47,060: launch     INFO Startup complete in: 0:01:44.963738
 ```
 
 ### Apply SR Policy
@@ -49,7 +49,7 @@ Session #0: 10.0.255.1
   State:             up
   LSP-DB Sync:       finished
   Role:              active-stateful-pce
-  Up Time:           00:10:18
+  Up Time:           00:02:51
   Session ID:        Local=0, Peer=1
   Transport:         tcp, auth=none
   Timers:
@@ -63,7 +63,7 @@ Session #0: 10.0.255.1
       SRv6-PCE-CAPABILITY [RFC9603]: SRv6
       PATH-SETUP-TYPE-CAPABILITY [RFC8408]: SR-TE, SRv6-TE
       ASSOC-TYPE-LIST [RFC8697]:
-        6 SR Policy Association
+        SR Policy Association (0x0006) [RFC9862]
     Local only:
       STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Color
       SR-PCE-CAPABILITY [RFC8664]: Unlimited-SID-Depth
@@ -71,10 +71,10 @@ Session #0: 10.0.255.1
     Peer only:
       SR-PCE-CAPABILITY [RFC8664]: MSD=10
       ASSOC-TYPE-LIST [RFC8697]:
-        2 Disjoint Association
-        3 Policy Association
-        5 Double Sided Bidirectional LSP Association
-        9 P2MP SR Policy Association (draft)
+        Disjoint Association (0x0002) [RFC8800]
+        Policy Association (0x0003) [RFC9005]
+        Double Sided Bidirectional LSP Association (0x0005) [RFC9059]
+        P2MP SR Policy Association (0x0009) [draft-ietf-pce-sr-p2mp-policy-11]
       Unrecognized TLVs:
         type=73: SR-P2MP-POLICY-CAPABILITY (draft-ietf-pce-sr-p2mp-policy-11)
 
@@ -82,7 +82,7 @@ Session #1: 10.0.255.2
   State:             up
   LSP-DB Sync:       finished
   Role:              active-stateful-pce
-  Up Time:           00:00:21
+  Up Time:           00:00:58
   Session ID:        Local=0, Peer=1
   Transport:         tcp, auth=none
   Timers:
@@ -95,7 +95,7 @@ Session #1: 10.0.255.2
       SR-PCE-CAPABILITY [RFC8664]: SR
       PATH-SETUP-TYPE-CAPABILITY [RFC8408]: SR-TE
       ASSOC-TYPE-LIST [RFC8697]:
-        6 SR Policy Association
+        SR Policy Association (0x0006) [RFC9862]
       MULTIPATH-CAP [draft-ietf-pce-multipath]: Multipath
     Local only:
       STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Color
@@ -107,15 +107,15 @@ Session #1: 10.0.255.2
       VENDOR-INFORMATION [RFC7470]: 2636 (Juniper Networks, Inc.)
       SR-PCE-CAPABILITY [RFC8664]: MSD=5
       ASSOC-TYPE-LIST [RFC8697]:
-        1 Path Protection Association
+        Path Protection Association (0x0001) [RFC8745]
       MULTIPATH-CAP [draft-ietf-pce-multipath]: MaxMultipaths=128, Weighted
 
 Session #2: 10.0.255.3
   State:             up
   LSP-DB Sync:       finished
   Role:              active-stateful-pce
-  Up Time:           00:10:53
-  Session ID:        Local=0, Peer=1
+  Up Time:           00:03:28
+  Session ID:        Local=0, Peer=0
   Transport:         tcp, auth=none
   Timers:
                Local  Peer  Effective
@@ -132,7 +132,7 @@ Session #2: 10.0.255.3
       SRv6-PCE-CAPABILITY [RFC9603]: SRv6
       PATH-SETUP-TYPE-CAPABILITY [RFC8408]: SRv6-TE
       ASSOC-TYPE-LIST [RFC8697]:
-        6 SR Policy Association
+        SR Policy Association (0x0006) [RFC9862]
       MULTIPATH-CAP [draft-ietf-pce-multipath]: Multipath, MaxMultipaths=1
     Peer only:
       SR-PCE-CAPABILITY [RFC8664]: MSD=4
@@ -198,7 +198,7 @@ Session: 10.0.255.3 (State: up, LSP-DB Sync: finished)
   PolicyName: pe03-policy1
     PlspID: 1
     LSPID: 0
-    State: active
+    State: unknown
     Type: explicit
     SrcAddr: 10.0.255.3
     DstAddr: 10.255.0.1
@@ -222,7 +222,7 @@ root@pola:/pola# exit
 $ ssh clab-sr-mpls-explicit-path-pe01 -l admin
 
 RP/0/RP0/CPU0:pe01#show segment-routing traffic-eng policy
-Thu Aug 27 01:12:33.948 UTC
+Fri Sep  4 02:43:05.239 UTC
 
 SR-TE policy database
 ---------------------
@@ -230,7 +230,7 @@ SR-TE policy database
 Color: 1, End-point: 10.255.0.2
   Name: srte_c_1_ep_10.255.0.2
   Status:
-    Admin: up  Operational: up for 00:00:52 (since Aug 27 01:11:41.192)
+    Admin: up  Operational: up for 00:00:52 (since Sep  4 02:42:12.916)
   Candidate-paths:
     Preference: 100 (PCEP) (active)
       Name: pe01-policy1

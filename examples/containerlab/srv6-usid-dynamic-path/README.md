@@ -43,7 +43,7 @@ Wait for vJunos-router startup after `sudo containerlab deploy` (it takes severa
 ```bash
 $ docker logs clab-srv6-usid-dynamic-path-pe02 -f
 <snip.>
-2026-08-27 04:16:29,763: launch     INFO Startup complete in: 0:07:40.825956
+2026-09-04 04:42:05,596: launch     INFO Startup complete in: 0:01:46.738087
 ```
 
 ### Show TED
@@ -61,15 +61,6 @@ Node #0: 0000.0001.0001
     fd00:ffff::1/128
   Links:
     Local: None Remote: None
-      RemoteRouterID: 0000.0001.0003
-      Metrics:
-        igp: 10
-      Adj-SID: 0
-      SRv6 End.X SID:
-        EndpointBehavior: UA
-        SIDs: [fcbb:bb00:1001:e000::]
-        SID Structure: Block: 32, Node: 16, Func: 16, Arg: 64
-    Local: None Remote: None
       RemoteRouterID: 0000.0001.0004
       Metrics:
         igp: 100
@@ -78,13 +69,22 @@ Node #0: 0000.0001.0001
         EndpointBehavior: UA
         SIDs: [fcbb:bb00:1001:e001::]
         SID Structure: Block: 32, Node: 16, Func: 16, Arg: 64
+    Local: None Remote: None
+      RemoteRouterID: 0000.0001.0003
+      Metrics:
+        igp: 10
+      Adj-SID: 0
+      SRv6 End.X SID:
+        EndpointBehavior: UA
+        SIDs: [fcbb:bb00:1001:e000::]
+        SID Structure: Block: 32, Node: 16, Func: 16, Arg: 64
   SRv6 SIDs:
     SIDs: [fcbb:bb00:1001::]
     Block: 32, Node: 16, Func: 0, Arg: 80
     EndpointBehavior: UN, Flags: 0, Algorithm: 0
     MultiTopoIDs: [2]
 
-Node #1: 0000.0001.0003
+Node #1: 0000.0001.0002
 <snip.>
 ```
 
@@ -98,7 +98,7 @@ Session #0: fd00::2
   State:             up
   LSP-DB Sync:       finished
   Role:              active-stateful-pce
-  Up Time:           00:00:06
+  Up Time:           00:01:50
   Session ID:        Local=0, Peer=2
   Transport:         tcp, auth=none
   Timers:
@@ -112,7 +112,7 @@ Session #0: fd00::2
       SRv6-PCE-CAPABILITY [RFC9603]: SRv6
       PATH-SETUP-TYPE-CAPABILITY [RFC8408]: SR-TE, SRv6-TE
       ASSOC-TYPE-LIST [RFC8697]:
-        6 SR Policy Association
+        SR Policy Association (0x0006) [RFC9862]
       MULTIPATH-CAP [draft-ietf-pce-multipath]: Multipath
     Local only:
       STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Color
@@ -122,7 +122,7 @@ Session #0: fd00::2
       VENDOR-INFORMATION [RFC7470]: 2636 (Juniper Networks, Inc.)
       SR-PCE-CAPABILITY [RFC8664]: MSD=5
       ASSOC-TYPE-LIST [RFC8697]:
-        1 Path Protection Association
+        Path Protection Association (0x0001) [RFC8745]
       MULTIPATH-CAP [draft-ietf-pce-multipath]: MaxMultipaths=128, Weighted
 root@pola:/pola# pola sr-policy list -p 50052
 Session: fd00::2 (State: up, LSP-DB Sync: finished)
