@@ -100,6 +100,9 @@ func formatTimerValue(v *uint32) string {
 }
 
 func writeTimerTableText(ew *errWriter, timers timersView) {
+	if ew.err != nil {
+		return
+	}
 	ew.println("  Timers:")
 
 	tw := tabwriter.NewWriter(ew.w, 0, 0, 2, ' ', 0)
@@ -160,6 +163,9 @@ func writeGroupedLineText(ew *errWriter, indent int, header string, items []stri
 }
 
 func writeStatsTableText(ew *errWriter, s statsView) {
+	if ew.err != nil {
+		return
+	}
 	ew.println("  Stats:")
 
 	tw := tabwriter.NewWriter(ew.w, 0, 0, 2, ' ', 0)
