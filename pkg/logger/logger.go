@@ -76,9 +76,9 @@ type Logger struct {
 // entries to console. Entries below level are discarded.
 func New(w, console io.Writer, level Level) *Logger {
 	ec := zap.NewProductionEncoderConfig()
-	ec.EncodeTime = zapcore.ISO8601TimeEncoder
-
 	jsonEncoder := zapcore.NewJSONEncoder(ec)
+
+	ec.EncodeTime = zapcore.ISO8601TimeEncoder
 	consoleEncoder := zapcore.NewConsoleEncoder(ec)
 
 	zl := level.zapLevel()

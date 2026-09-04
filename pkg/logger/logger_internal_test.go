@@ -49,3 +49,9 @@ func TestZapFieldsNil(t *testing.T) {
 	assert.Nil(t, zapFields(nil))
 	assert.Nil(t, zapFields([]Field{}))
 }
+
+func TestCloneFieldsNil(t *testing.T) {
+	t.Parallel()
+
+	assert.Nil(t, cloneFields(nil))
+}

@@ -96,7 +96,7 @@ func cloneValue(v any, seen map[uintptr]struct{}) any {
 	}
 
 	switch rv := reflect.ValueOf(v); rv.Kind() {
-	case reflect.Map, reflect.Slice, reflect.Array, reflect.Pointer:
+	case reflect.Map, reflect.Slice, reflect.Array, reflect.Pointer, reflect.Struct:
 		return cloneReflectValue(rv, seen).Interface()
 	default:
 		return v
