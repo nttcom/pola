@@ -114,55 +114,91 @@ func cloneValue(v any) any {
 func cloneReflectValue(rv reflect.Value) reflect.Value {
 	switch rv.Kind() {
 	case reflect.Pointer:
-		if rv.IsNil() {
-			return rv
-		}
-
-		out := reflect.New(rv.Type().Elem())
-		out.Elem().Set(cloneReflectValue(rv.Elem()))
-
-		return out
+		return clonePointer(rv)
 	case reflect.Map:
-		if rv.IsNil() {
-			return rv
-		}
-
-		out := reflect.MakeMapWithSize(rv.Type(), rv.Len())
-		for iter := rv.MapRange(); iter.Next(); {
-			out.SetMapIndex(iter.Key(), cloneReflectValue(iter.Value()))
-		}
-
-		return out
+		return cloneMap(rv)
 	case reflect.Slice:
-		if rv.IsNil() {
-			return rv
-		}
-
-		out := reflect.MakeSlice(rv.Type(), rv.Len(), rv.Len())
-		for i := range rv.Len() {
-			out.Index(i).Set(cloneReflectValue(rv.Index(i)))
-		}
-
-		return out
+		return cloneSlice(rv)
 	case reflect.Array:
-		out := reflect.New(rv.Type()).Elem()
-		for i := range rv.Len() {
-			out.Index(i).Set(cloneReflectValue(rv.Index(i)))
-		}
-
-		return out
+		return cloneArray(rv)
 	case reflect.Interface:
-		if rv.IsNil() {
-			return rv
-		}
-
-		out := reflect.New(rv.Type()).Elem()
-		out.Set(reflect.ValueOf(cloneValue(rv.Interface())))
-
-		return out
+		return cloneInterface(rv)
+	case reflect.Struct:
+		return cloneStruct(rv)
 	default:
 		return rv
 	}
+}
+
+func clonePointer(rv reflect.Value) reflect.Value {
+	if rv.IsNil() {
+		return rv
+	}
+
+	out := reflect.New(rv.Type().Elem())
+	out.Elem().Set(cloneReflectValue(rv.Elem()))
+
+	return out
+}
+
+func cloneMap(rv reflect.Value) reflect.Value {
+	if rv.IsNil() {
+		return rv
+	}
+
+	out := reflect.MakeMapWithSize(rv.Type(), rv.Len())
+	for iter := rv.MapRange(); iter.Next(); {
+		out.SetMapIndex(iter.Key(), cloneReflectValue(iter.Value()))
+	}
+
+	return out
+}
+
+func cloneSlice(rv reflect.Value) reflect.Value {
+	if rv.IsNil() {
+		return rv
+	}
+
+	out := reflect.MakeSlice(rv.Type(), rv.Len(), rv.Len())
+	for i := range rv.Len() {
+		out.Index(i).Set(cloneReflectValue(rv.Index(i)))
+	}
+
+	return out
+}
+
+func cloneArray(rv reflect.Value) reflect.Value {
+	out := reflect.New(rv.Type()).Elem()
+	for i := range rv.Len() {
+		out.Index(i).Set(cloneReflectValue(rv.Index(i)))
+	}
+
+	return out
+}
+
+func cloneInterface(rv reflect.Value) reflect.Value {
+	if rv.IsNil() {
+		return rv
+	}
+
+	out := reflect.New(rv.Type()).Elem()
+	out.Set(reflect.ValueOf(cloneValue(rv.Interface())))
+
+	return out
+}
+
+// Copy first because unexported fields cannot be set individually.
+func cloneStruct(rv reflect.Value) reflect.Value {
+	out := reflect.New(rv.Type()).Elem()
+	out.Set(rv)
+
+	for i := range rv.NumField() {
+		if rv.Type().Field(i).IsExported() {
+			out.Field(i).Set(cloneReflectValue(rv.Field(i)))
+		}
+	}
+
+	return out
 }
 
 func (r *Recorder) add(e Entry) {
