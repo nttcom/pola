@@ -145,16 +145,15 @@ func (idx *SIDIndex) addEndXSID(node *LsNode, l *LsLink) {
 		return
 	}
 
-	idx.addSRv6(l.Srv6EndXSID.Sids, l.Srv6EndXSID.Srv6SIDStructure)
+	addrs := parseSRv6Addrs(l.Srv6EndXSID.Sids)
+	idx.addSRv6(addrs, l.Srv6EndXSID.Srv6SIDStructure)
 
 	if l.RemoteNode == nil {
 		return
 	}
 
-	for _, s := range l.Srv6EndXSID.Sids {
-		if addr, err := netip.ParseAddr(s); err == nil {
-			idx.srv6AdjSIDNextHop[adjKeySRv6{node.RouterID, addr}] = l.RemoteNode.RouterID
-		}
+	for _, addr := range addrs {
+		idx.srv6AdjSIDNextHop[adjKeySRv6{node.RouterID, addr}] = l.RemoteNode.RouterID
 	}
 }
 
@@ -162,27 +161,34 @@ func (idx *SIDIndex) addEndXSID(node *LsNode, l *LsLink) {
 func (idx *SIDIndex) addSRv6NodeSIDs(node *LsNode) {
 	for _, s := range node.SRv6SIDs {
 		if s != nil {
-			idx.addSRv6(s.Sids, s.SIDStructure)
+			addrs := parseSRv6Addrs(s.Sids)
+			idx.addSRv6(addrs, s.SIDStructure)
 
-			for _, sidStr := range s.Sids {
-				if addr, err := netip.ParseAddr(sidStr); err == nil {
-					idx.srv6NodeSIDOwner[addr] = node.RouterID
-				}
+			for _, addr := range addrs {
+				idx.srv6NodeSIDOwner[addr] = node.RouterID
 			}
 		}
 	}
 }
 
-// addSRv6 registers exact SIDs and their locator prefixes.
-func (idx *SIDIndex) addSRv6(sids []string, st SIDStructure) {
+// parseSRv6Addrs keeps only valid IPv6 addresses.
+func parseSRv6Addrs(sids []string) []netip.Addr {
+	addrs := make([]netip.Addr, 0, len(sids))
+
+	for _, sid := range sids {
+		if addr, err := netip.ParseAddr(sid); err == nil && addr.Is6() {
+			addrs = append(addrs, addr)
+		}
+	}
+
+	return addrs
+}
+
+// addSRv6 registers SIDs and their locator prefixes.
+func (idx *SIDIndex) addSRv6(addrs []netip.Addr, st SIDStructure) {
 	locBits := int(st.LocalBlock) + int(st.LocalNode)
 
-	for _, s := range sids {
-		addr, err := netip.ParseAddr(s)
-		if err != nil || !addr.Is6() {
-			continue
-		}
-
+	for _, addr := range addrs {
 		idx.srv6SIDs[addr] = struct{}{}
 
 		if locBits <= 0 || locBits > SRv6SIDBitLength {
