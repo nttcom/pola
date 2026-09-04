@@ -399,6 +399,39 @@ func TestSIDIndexAddSRv6_EdgeCases(t *testing.T) {
 		other.USid = true
 		assert.False(t, idx.Has(other), "expected no locator fallback registered when LocalBlock+LocalNode exceeds 128 bits")
 	})
+
+	t.Run("non-IPv6 node SID is not reachable via NextHop either", func(t *testing.T) {
+		t.Parallel()
+
+		node := &table.LsNode{
+			RouterID: testRouterID1,
+			SRv6SIDs: []*table.LsSrv6SID{{Sids: []string{"10.0.0.1"}}},
+		}
+		idx := table.NewSIDIndex(newTestTED(node))
+
+		seg := table.NewSegmentSRv6(netip.MustParseAddr("10.0.0.1"))
+		assert.False(t, idx.Has(seg))
+		_, err := idx.NextHop(testRouterID1, seg)
+		assert.Error(t, err, "expected NextHop to agree with Has() for a non-IPv6 advertised SID")
+	})
+
+	t.Run("non-IPv6 End.X SID is not reachable via NextHop either", func(t *testing.T) {
+		t.Parallel()
+
+		nodeA := &table.LsNode{RouterID: testRouterIDA}
+		nodeB := &table.LsNode{RouterID: testRouterIDB}
+		nodeA.Links = []*table.LsLink{{
+			LocalNode:   nodeA,
+			RemoteNode:  nodeB,
+			Srv6EndXSID: &table.Srv6EndXSID{Sids: []string{"10.0.0.1"}},
+		}}
+		idx := table.NewSIDIndex(newTestTED(nodeA, nodeB))
+
+		seg := table.NewSegmentSRv6(netip.MustParseAddr("10.0.0.1"))
+		assert.False(t, idx.Has(seg))
+		_, err := idx.NextHop(testRouterIDA, seg)
+		assert.Error(t, err, "expected NextHop to agree with Has() for a non-IPv6 advertised End.X SID")
+	})
 }
 
 func TestSIDIndexHas_EmptyTED(t *testing.T) {

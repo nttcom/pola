@@ -255,7 +255,7 @@ func TestValidateSIDs_NoSidValidateSkipsCheck(t *testing.T) {
 	req := explicitPolicyRequest(true, "16099")
 	segmentList := []table.Segment{table.NewSegmentSRMPLS(16099)}
 
-	err := s.validateSIDs(req, segmentList)
+	err := s.validateSIDs(req, resolvedPath{SegmentList: segmentList})
 	assert.NoError(t, err, "expected no_sid_validate to skip the check even with no TED")
 }
 
@@ -266,7 +266,7 @@ func TestValidateSIDs_DynamicPathSkipsCheck(t *testing.T) {
 	req := dynamicPolicyRequest()
 	segmentList := []table.Segment{table.NewSegmentSRMPLS(16099)}
 
-	err := s.validateSIDs(req, segmentList)
+	err := s.validateSIDs(req, resolvedPath{SegmentList: segmentList})
 	assert.NoError(t, err, "expected a dynamic path to skip the check")
 }
 
@@ -290,7 +290,7 @@ func TestValidateSIDs_DynamicWithDisablePathComputeIsStillValidated(t *testing.T
 	req.SrPolicy.DstAddr = netip.MustParseAddr("10.0.0.2").AsSlice()
 	segmentList := []table.Segment{table.NewSegmentSRMPLS(16099)}
 
-	err := s.validateSIDs(req, segmentList)
+	err := s.validateSIDs(req, resolvedPath{SegmentList: segmentList, SrcAddr: netip.MustParseAddr("10.0.0.1")})
 	st, ok := status.FromError(err)
 	require.True(t, ok)
 	assert.Equal(t, codes.FailedPrecondition, st.Code())
@@ -303,7 +303,7 @@ func TestValidateSIDs_NoTED(t *testing.T) {
 	req := explicitPolicyRequest(false, "16003")
 	segmentList := []table.Segment{table.NewSegmentSRMPLS(16003)}
 
-	err := s.validateSIDs(req, segmentList)
+	err := s.validateSIDs(req, resolvedPath{SegmentList: segmentList, SrcRouterID: testRouterID1})
 	st, ok := status.FromError(err)
 	require.True(t, ok)
 	assert.Equal(t, codes.FailedPrecondition, st.Code())
@@ -317,7 +317,7 @@ func TestValidateSIDs_TEDEmpty(t *testing.T) {
 	req := explicitPolicyRequest(false, "16003")
 	segmentList := []table.Segment{table.NewSegmentSRMPLS(16003)}
 
-	err := s.validateSIDs(req, segmentList)
+	err := s.validateSIDs(req, resolvedPath{SegmentList: segmentList, SrcRouterID: testRouterID1})
 	st, ok := status.FromError(err)
 	require.True(t, ok)
 	assert.Equal(t, codes.FailedPrecondition, st.Code())
@@ -340,7 +340,7 @@ func TestValidateSIDs_MissingSID(t *testing.T) {
 	req := explicitPolicyRequest(false, "16099")
 	segmentList := []table.Segment{table.NewSegmentSRMPLS(16099)}
 
-	err := s.validateSIDs(req, segmentList)
+	err := s.validateSIDs(req, resolvedPath{SegmentList: segmentList, SrcRouterID: testRouterID1})
 	st, ok := status.FromError(err)
 	require.True(t, ok)
 	assert.Equal(t, codes.FailedPrecondition, st.Code())
@@ -366,37 +366,11 @@ func TestValidateSIDs_EndpointFormIsStillValidated(t *testing.T) {
 	req.SrPolicy.DstAddr = netip.MustParseAddr("10.0.0.2").AsSlice()
 	segmentList := []table.Segment{table.NewSegmentSRMPLS(16099)}
 
-	err := s.validateSIDs(req, segmentList)
+	err := s.validateSIDs(req, resolvedPath{SegmentList: segmentList, SrcAddr: netip.MustParseAddr("10.0.0.1")})
 	st, ok := status.FromError(err)
 	require.True(t, ok)
 	assert.Equal(t, codes.FailedPrecondition, st.Code())
 	assert.Contains(t, st.Message(), "hop 1", "expected the missing hop to be listed")
-}
-
-func TestValidateSIDs_DisablePathComputeInvalidSourceAddress(t *testing.T) {
-	t.Parallel()
-
-	node := &table.LsNode{
-		RouterID:  testRouterID1,
-		SrgbBegin: 16000,
-		Prefixes: []*table.LsPrefix{
-			{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 3, HasSidIndex: true},
-		},
-	}
-	ted := &table.LsTED{Nodes: map[string]*table.LsNode{node.RouterID: node}}
-	s := newTestAPIServer(ted)
-
-	req := explicitPolicyRequest(false, "16003")
-	req.DisablePathCompute = true
-	req.SrPolicy.SrcAddr = []byte{1, 2, 3}
-	req.SrPolicy.DstAddr = netip.MustParseAddr("10.0.0.2").AsSlice()
-	segmentList := []table.Segment{table.NewSegmentSRMPLS(16003)}
-
-	err := s.validateSIDs(req, segmentList)
-	st, ok := status.FromError(err)
-	require.True(t, ok)
-	assert.Equal(t, codes.InvalidArgument, st.Code())
-	assert.Contains(t, st.Message(), "invalid source address in request")
 }
 
 func TestValidateSIDs_DisablePathComputeSourceAddressNotFound(t *testing.T) {
@@ -418,7 +392,7 @@ func TestValidateSIDs_DisablePathComputeSourceAddressNotFound(t *testing.T) {
 	req.SrPolicy.DstAddr = netip.MustParseAddr("10.0.0.2").AsSlice()
 	segmentList := []table.Segment{table.NewSegmentSRMPLS(16003)}
 
-	err := s.validateSIDs(req, segmentList)
+	err := s.validateSIDs(req, resolvedPath{SegmentList: segmentList, SrcAddr: netip.MustParseAddr("10.0.0.9")})
 	st, ok := status.FromError(err)
 	require.True(t, ok)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
@@ -432,7 +406,7 @@ func TestValidateSIDs_LabelOutOfRangeIsRejectedEvenWithNoSidValidate(t *testing.
 	req := explicitPolicyRequest(true, "1048576")
 	segmentList := []table.Segment{table.NewSegmentSRMPLS(1048576)}
 
-	err := s.validateSIDs(req, segmentList)
+	err := s.validateSIDs(req, resolvedPath{SegmentList: segmentList})
 	st, ok := status.FromError(err)
 	require.True(t, ok)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
@@ -449,7 +423,7 @@ func TestValidateSIDs_LabelBoundsAreAccepted(t *testing.T) {
 		req := explicitPolicyRequest(true, strconv.FormatUint(uint64(label), 10))
 		segmentList := []table.Segment{table.NewSegmentSRMPLS(label)}
 
-		assert.NoErrorf(t, s.validateSIDs(req, segmentList), "expected label %d to be in range", label)
+		assert.NoErrorf(t, s.validateSIDs(req, resolvedPath{SegmentList: segmentList}), "expected label %d to be in range", label)
 	}
 }
 
@@ -469,7 +443,7 @@ func TestValidateSIDs_AllKnownSucceeds(t *testing.T) {
 	req := explicitPolicyRequest(false, "16003")
 	segmentList := []table.Segment{table.NewSegmentSRMPLS(16003)}
 
-	err := s.validateSIDs(req, segmentList)
+	err := s.validateSIDs(req, resolvedPath{SegmentList: segmentList, SrcRouterID: testRouterID1})
 	assert.NoError(t, err)
 }
 
@@ -480,7 +454,7 @@ func TestValidateSIDs_UnknownSegmentTypeIsRejected(t *testing.T) {
 	req := explicitPolicyRequest(true, "16099")
 	segmentList := []table.Segment{unknownSegment{}}
 
-	err := s.validateSIDs(req, segmentList)
+	err := s.validateSIDs(req, resolvedPath{SegmentList: segmentList})
 	st, ok := status.FromError(err)
 	require.True(t, ok)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
@@ -497,7 +471,7 @@ func TestValidateSIDs_MixedSegmentTypesAreRejected(t *testing.T) {
 		table.SegmentSRv6{Sid: netip.MustParseAddr("2001:db8::1")},
 	}
 
-	err := s.validateSIDs(req, segmentList)
+	err := s.validateSIDs(req, resolvedPath{SegmentList: segmentList})
 	st, ok := status.FromError(err)
 	require.True(t, ok)
 	assert.Equal(t, codes.InvalidArgument, st.Code())

@@ -280,6 +280,7 @@ type resolvedPath struct {
 	SegmentList []table.Segment
 	SrcAddr     netip.Addr
 	DstAddr     netip.Addr
+	SrcRouterID string
 	Metric      table.MetricType
 }
 
@@ -331,7 +332,13 @@ func resolvePathViaTED(s *APIServer, input *pb.CreateSRPolicyRequest) (resolvedP
 		return resolvedPath{}, err
 	}
 
-	return resolvedPath{SegmentList: segmentList, SrcAddr: srcAddr, DstAddr: dstAddr, Metric: metricType}, nil
+	return resolvedPath{
+		SegmentList: segmentList,
+		SrcAddr:     srcAddr,
+		DstAddr:     dstAddr,
+		SrcRouterID: inputSRPolicy.GetSrcRouterId(),
+		Metric:      metricType,
+	}, nil
 }
 
 // resolvePathFromRequest takes the SR Policy path directly from the request,
@@ -440,7 +447,7 @@ func (s *APIServer) CreateSRPolicy(_ context.Context, req *pb.CreateSRPolicyRequ
 		return nil, wrapStatusError(err, "failed to resolve SR policy path")
 	}
 
-	if err := s.validateSIDs(req, path.SegmentList); err != nil {
+	if err := s.validateSIDs(req, path); err != nil {
 		return nil, err
 	}
 
@@ -451,8 +458,9 @@ func (s *APIServer) CreateSRPolicy(_ context.Context, req *pb.CreateSRPolicyRequ
 	return &pb.CreateSRPolicyResponse{}, nil
 }
 
-func (s *APIServer) validateSIDs(req *pb.CreateSRPolicyRequest, segmentList []table.Segment) error {
+func (s *APIServer) validateSIDs(req *pb.CreateSRPolicyRequest, path resolvedPath) error {
 	policy := req.GetSrPolicy()
+	segmentList := path.SegmentList
 
 	// Reject out-of-range labels before the validation skip paths.
 	if invalid := table.OutOfRangeSRMPLSLabels(segmentList); len(invalid) > 0 {
@@ -500,21 +508,16 @@ func (s *APIServer) validateSIDs(req *pb.CreateSRPolicyRequest, segmentList []ta
 	}
 
 	// Resolve source router ID for path traversal.
-	var srcRouterID string
+	srcRouterID := path.SrcRouterID
 
 	if req.GetDisablePathCompute() {
-		srcAddr, ok := netip.AddrFromSlice(req.GetSrPolicy().GetSrcAddr())
-		if !ok {
-			return newStatus(codes.InvalidArgument, ReasonInvalidRequest, "invalid source address in request")
-		}
+		var ok bool
 
-		srcRouterID, ok = ted.FindRouterIDByLoopback(srcAddr)
+		srcRouterID, ok = ted.FindRouterIDByLoopback(path.SrcAddr)
 		if !ok {
 			return newStatus(codes.InvalidArgument, ReasonInvalidRequest,
-				"source address %s not found in TED", srcAddr)
+				"source address %s not found in TED", path.SrcAddr)
 		}
-	} else {
-		srcRouterID = req.GetSrPolicy().GetSrcRouterId()
 	}
 
 	if err := table.ValidateExplicitPath(ted, srcRouterID, segmentList); err != nil {
