@@ -74,13 +74,14 @@ const (
 	pcepErrorValueAssociationTypeNotSupported uint8 = 1
 )
 
-// acceptedAssocTypes lists Association Types accepted from received messages.
-// Legacy vendor-specific types are accepted for interoperability but not advertised.
-var acceptedAssocTypes = []pcep.AssocType{
-	pcep.AssocTypeSRPolicyAssociation,
+// legacyAcceptedAssocTypes lists vendor-specific Association Types that are
+// accepted but not advertised.
+var legacyAcceptedAssocTypes = []pcep.AssocType{
 	pcep.AssocTypeSRPolicyAssociationCisco,
 	pcep.AssocTypeSRPolicyAssociationJuniper,
 }
+
+var acceptedAssocTypes = append(pcep.PolaAssocTypes(), legacyAcceptedAssocTypes...)
 
 // SessionState represents the PCEP session state (RFC 5440 Appendix A).
 type SessionState uint8

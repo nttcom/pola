@@ -34,10 +34,10 @@ func fullSessionViewFixture() sessionView {
 			Common: commonCapView{
 				Stateful: true, Update: true,
 				PathSetupTypes: []string{}, AssociationTypes: []uint32{}, UnrecognizedTLVTypes: []uint32{},
+				Capabilities: []capGroupView{{Capability: capGroupStateful, Items: []string{"Stateful", "Update"}}},
 			},
-			LocalOnly:    []capGroupView{{Capability: "SR", Items: []string{"MSD=10"}}},
-			PeerOnly:     []capGroupView{{Capability: "SR", Items: []string{"MSD=16"}}},
-			commonGroups: []capGroupView{{Capability: capGroupStateful, Items: []string{"Stateful", "Update"}}},
+			LocalOnly: []capGroupView{{Capability: "SR", Items: []string{"MSD=10"}}},
+			PeerOnly:  []capGroupView{{Capability: "SR", Items: []string{"MSD=16"}}},
 		},
 		SessionCreation: "2026-08-19T09:30:00Z",
 		Initiator:       "remote",
@@ -151,7 +151,9 @@ func TestWriteCapabilityGroupSection_PropagatesGroupedLineWriteError(t *testing.
 	t.Parallel()
 
 	c := capabilitiesView{
-		commonGroups: []capGroupView{{Capability: capGroupAssocTypeList, Items: []string{"SR Policy Association (0x0006) [RFC9862]"}}},
+		Common: commonCapView{
+			Capabilities: []capGroupView{{Capability: capGroupAssocTypeList, Items: []string{"SR Policy Association (0x0006) [RFC9862]"}}},
+		},
 	}
 
 	w := &condFailWriter{fail: containsFail("ASSOC-TYPE-LIST")}

@@ -4,7 +4,7 @@ This page explains how to use Pola PCE.
 
 ## Installation
 
-### From Go Package
+### From Go
 
 ```bash
 go install github.com/nttcom/pola/cmd/polad@latest
@@ -12,20 +12,13 @@ go install github.com/nttcom/pola/cmd/polad@latest
 
 ### From Source
 
-#### Getting the Source
-
 ```bash
 git clone https://github.com/nttcom/pola.git
-```
-
-#### Build & install
-
-```bash
-$ cd pola
-$ go install ./cmd/polad
+cd pola
+go install ./cmd/polad
 
 # or, install with cli command
-$ go install ./...
+go install ./...
 ```
 
 ### From Container Image
@@ -34,7 +27,7 @@ See the [Docker page](../../build/package/README.md).
 
 ## Configuration
 
-Specify the IP address and port number for each PCEP and gRPC.
+Configure the IP address and port for PCEP and gRPC.
 `address` must be a literal IPv4 or IPv6 address; hostnames are not resolved.
 See [JSON schema](../schemas/server/polad_config.json) for config details.
 
@@ -103,7 +96,7 @@ global:
 To manage SR Policy using TED, enable TED as follows.
 This also enables dynamic path calculation.
 
-A specific tool for updating TED is required to use this feature.
+TED updates require a supported BGP-LS source.
 Currently, only GoBGP is supported.
 
 **Not currently available for IPv6 underlay (IPv6 SR-MPLS / SRv6).**
@@ -148,7 +141,7 @@ neighbors:
       afi-safi-name: ls
 ```
 
-## Run Pola PCE using polad
+## Run Polad
 
 Start polad. Specify the created configuration file with the -f option.
 
@@ -158,5 +151,5 @@ $ sudo polad -f polad.yaml
 2022-06-05T22:57:59.823Z        info    PCEP listen     {"listenInfo": "192.0.2.254:4189"}
 ```
 
-After Polad is running, use [pola cmd](../../cmd/pola/README.md) or the
-[gRPC client](../../api/grpc/) for daemon operations
+After Polad is running, use the [pola CLI](../../cmd/pola/README.md) or
+[gRPC client](../../api/grpc/) to manage the daemon.

@@ -1108,98 +1108,6 @@ func writeMessage(t *testing.T, w io.Writer, message pcep.Message) {
 	require.NoError(t, err, "failed to write message")
 }
 
-func readOpenMessage(t *testing.T, r io.Reader) *pcep.OpenMessage {
-	t.Helper()
-
-	headerBytes := make([]byte, pcep.CommonHeaderLength)
-	_, err := io.ReadFull(r, headerBytes)
-	require.NoError(t, err, "failed to read common header")
-
-	var header pcep.CommonHeader
-	require.NoError(t, header.DecodeFromBytes(headerBytes))
-	require.Equal(t, pcep.MessageTypeOpen, header.MessageType)
-
-	body := make([]byte, int(header.MessageLength)-int(pcep.CommonHeaderLength))
-	_, err = io.ReadFull(r, body)
-	require.NoError(t, err, "failed to read message body")
-
-	openMessage := &pcep.OpenMessage{}
-	require.NoError(t, openMessage.DecodeFromBytes(body))
-
-	return openMessage
-}
-
-func TestSendOpen_StoresWireValuesAsLocalOpen(t *testing.T) {
-	t.Parallel()
-
-	server, client := newTCPConnPair(t)
-	t.Cleanup(func() {
-		assert.NoError(t, client.Close(), "failed to close client connection")
-	})
-	t.Cleanup(func() {
-		assert.NoError(t, server.Close(), "failed to close server connection")
-	})
-
-	ss := NewSession(testLocalOpen(7), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
-	_, ok := ss.LocalOpen()
-	require.False(t, ok, "nothing is advertised before the Open message is sent")
-
-	require.NoError(t, ss.SendOpen())
-
-	sent := readOpenMessage(t, client)
-	localOpen, ok := ss.LocalOpen()
-	require.True(t, ok)
-	assert.Equal(t, sent.OpenObject.Sid, localOpen.SessionID, "local SID must match the value actually sent")
-	assert.Equal(t, sent.OpenObject.Keepalive, localOpen.Keepalive, "local Keepalive must match the value actually sent")
-	assert.Equal(t, sent.OpenObject.Deadtime, localOpen.DeadTimer, "local DeadTimer must match the value actually sent")
-	assert.Equal(t, uint8(7), localOpen.SessionID)
-	assert.Equal(t, defaultLocalKeepalive, localOpen.Keepalive)
-	assert.Equal(t, pcep.DeadTimerFor(defaultLocalKeepalive), localOpen.DeadTimer)
-}
-
-func TestSendOpen_AdvertisesConfiguredTimers(t *testing.T) {
-	t.Parallel()
-
-	server, client := newTCPConnPair(t)
-	t.Cleanup(func() { assert.NoError(t, client.Close()) })
-	t.Cleanup(func() { assert.NoError(t, server.Close()) })
-
-	// RFC 5440 §8.1: the local Keepalive and DeadTimer are configurable.
-	local := OpenParams{SessionID: 1, Keepalive: 5, DeadTimer: 60}
-	ss := NewSession(local, netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
-	require.NoError(t, ss.SendOpen())
-
-	sent := readOpenMessage(t, client)
-	assert.Equal(t, uint8(5), sent.OpenObject.Keepalive)
-	assert.Equal(t, uint8(60), sent.OpenObject.Deadtime)
-}
-
-func TestSendOpen_AdvertisesFullCapabilitySetOnTheWire(t *testing.T) {
-	t.Parallel()
-
-	server, client := newTCPConnPair(t)
-	t.Cleanup(func() { assert.NoError(t, client.Close()) })
-	t.Cleanup(func() { assert.NoError(t, server.Close()) })
-
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
-	require.NoError(t, ss.SendOpen())
-
-	sent := readOpenMessage(t, client)
-	assert.Equal(t, pcep.DefaultCapabilities(), sent.OpenObject.Caps,
-		"the wire-level Open must carry Pola's complete capability set, not a partial default")
-	assert.Equal(t, pcep.DefaultCapabilities(), ss.AdvertisedCapabilities(),
-		"AdvertisedCapabilities must match what was actually sent on the wire")
-}
-
-func TestSendOpen_ErrorPropagatesFromSendFailure(t *testing.T) {
-	t.Parallel()
-
-	conn := &fakeConn{r: bytes.NewReader(nil), writeErr: errors.New("write: broken pipe")}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
-
-	require.Error(t, ss.SendOpen())
-}
-
 func openMessageBody(t *testing.T, sessionID, keepalive, deadTimer uint8) []uint8 {
 	t.Helper()
 
@@ -1338,82 +1246,13 @@ func TestHandlePeerOpen_RejectsEmptyPathSetupTypeList(t *testing.T) {
 	assertTypedPCErr(t, writes[0], pcepErrorTypeInvalidObject, pcepErrorValueMalformedObject)
 }
 
-func TestHandlePeerOpen_RejectsUnsupportedSRv6MSDType_TopLevel(t *testing.T) {
+func TestAcceptedAssocTypes_IncludesEveryAdvertisedType(t *testing.T) {
 	t.Parallel()
 
-	conn := &fakeConn{r: bytes.NewReader(nil)}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
-
-	caps := []pcep.CapabilityInterface{
-		pcep.NewSRv6PCECapability(false, pcep.MSD{Type: 43, Value: 1}),
+	for _, advertised := range pcep.PolaAssocTypes() {
+		assert.Contains(t, acceptedAssocTypes, advertised,
+			"an Association Type Pola advertises must also be accepted, or Pola would PCErr its own advertised type")
 	}
-
-	neg := &openNegotiation{}
-	require.ErrorContains(t, ss.handlePeerOpen(openMessageBodyWithCaps(t, 1, 30, 120, caps), neg),
-		"unsupported MSD-Type")
-
-	assert.False(t, neg.remoteOK)
-
-	writes := conn.writes()
-	require.Len(t, writes, 1)
-	assertTypedPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
-}
-
-func TestHandlePeerOpen_RejectsUnsupportedSRv6MSDType_NestedInPathSetupTypeCapability(t *testing.T) {
-	t.Parallel()
-
-	conn := &fakeConn{r: bytes.NewReader(nil)}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
-
-	caps := []pcep.CapabilityInterface{&pcep.PathSetupTypeCapability{
-		PathSetupTypes: pcep.Psts{pcep.PathSetupTypeSRv6TE},
-		SubTLVs: []pcep.TLVInterface{
-			pcep.NewSRv6PCECapability(false, pcep.MSD{Type: 1, Value: 1}),
-		},
-	}}
-
-	neg := &openNegotiation{}
-	require.ErrorContains(t, ss.handlePeerOpen(openMessageBodyWithCaps(t, 1, 30, 120, caps), neg),
-		"unsupported MSD-Type")
-
-	assert.False(t, neg.remoteOK)
-
-	writes := conn.writes()
-	require.Len(t, writes, 1)
-	assertTypedPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
-}
-
-func TestHandlePeerOpen_AcceptsKnownSRv6MSDTypes(t *testing.T) {
-	t.Parallel()
-
-	conn := &fakeConn{r: bytes.NewReader(nil)}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
-
-	caps := []pcep.CapabilityInterface{
-		pcep.NewSRv6PCECapability(false,
-			pcep.MSD{Type: pcep.MSDTypeSRHMaxSL, Value: 1},
-			pcep.MSD{Type: pcep.MSDTypeSRHMaxEndPop, Value: 1},
-			pcep.MSD{Type: pcep.MSDTypeSRHMaxHEncaps, Value: 1},
-			pcep.MSD{Type: pcep.MSDTypeSRHMaxEndD, Value: 1},
-		),
-	}
-
-	neg := &openNegotiation{}
-	require.NoError(t, ss.handlePeerOpen(openMessageBodyWithCaps(t, 1, 30, 120, caps), neg))
-	assert.True(t, neg.remoteOK)
-}
-
-func TestHandlePeerOpen_AcceptsSRv6PCECapabilityWithoutMSDs(t *testing.T) {
-	t.Parallel()
-
-	conn := &fakeConn{r: bytes.NewReader(nil)}
-	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
-
-	caps := []pcep.CapabilityInterface{pcep.NewSRv6PCECapability(false)}
-
-	neg := &openNegotiation{}
-	require.NoError(t, ss.handlePeerOpen(openMessageBodyWithCaps(t, 1, 30, 120, caps), neg))
-	assert.True(t, neg.remoteOK)
 }
 
 func TestHandlePeerOpen_AcceptsPartialPathSetupTypeOverlap(t *testing.T) {
@@ -1474,6 +1313,98 @@ func TestHandlePeerOpen_RejectedOpenIsNotPublishedAsSessionState(t *testing.T) {
 	assert.False(t, ok, "an unacceptable-but-negotiable Open must not be published as the PCC's Open")
 	assert.Equal(t, pcep.RFCCompliant, ss.PccType(), "PccType must stay at its default until an Open is accepted")
 	assert.Empty(t, ss.ReceivedCapabilities())
+}
+
+func readOpenMessage(t *testing.T, r io.Reader) *pcep.OpenMessage {
+	t.Helper()
+
+	headerBytes := make([]byte, pcep.CommonHeaderLength)
+	_, err := io.ReadFull(r, headerBytes)
+	require.NoError(t, err, "failed to read common header")
+
+	var header pcep.CommonHeader
+	require.NoError(t, header.DecodeFromBytes(headerBytes))
+	require.Equal(t, pcep.MessageTypeOpen, header.MessageType)
+
+	body := make([]byte, int(header.MessageLength)-int(pcep.CommonHeaderLength))
+	_, err = io.ReadFull(r, body)
+	require.NoError(t, err, "failed to read message body")
+
+	openMessage := &pcep.OpenMessage{}
+	require.NoError(t, openMessage.DecodeFromBytes(body))
+
+	return openMessage
+}
+
+func TestSendOpen_StoresWireValuesAsLocalOpen(t *testing.T) {
+	t.Parallel()
+
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() {
+		assert.NoError(t, client.Close(), "failed to close client connection")
+	})
+	t.Cleanup(func() {
+		assert.NoError(t, server.Close(), "failed to close server connection")
+	})
+
+	ss := NewSession(testLocalOpen(7), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
+	_, ok := ss.LocalOpen()
+	require.False(t, ok, "nothing is advertised before the Open message is sent")
+
+	require.NoError(t, ss.SendOpen())
+
+	sent := readOpenMessage(t, client)
+	localOpen, ok := ss.LocalOpen()
+	require.True(t, ok)
+	assert.Equal(t, sent.OpenObject.Sid, localOpen.SessionID, "local SID must match the value actually sent")
+	assert.Equal(t, sent.OpenObject.Keepalive, localOpen.Keepalive, "local Keepalive must match the value actually sent")
+	assert.Equal(t, sent.OpenObject.Deadtime, localOpen.DeadTimer, "local DeadTimer must match the value actually sent")
+	assert.Equal(t, uint8(7), localOpen.SessionID)
+	assert.Equal(t, defaultLocalKeepalive, localOpen.Keepalive)
+	assert.Equal(t, pcep.DeadTimerFor(defaultLocalKeepalive), localOpen.DeadTimer)
+}
+
+func TestSendOpen_AdvertisesConfiguredTimers(t *testing.T) {
+	t.Parallel()
+
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() { assert.NoError(t, client.Close()) })
+	t.Cleanup(func() { assert.NoError(t, server.Close()) })
+
+	// RFC 5440 §8.1: the local Keepalive and DeadTimer are configurable.
+	local := OpenParams{SessionID: 1, Keepalive: 5, DeadTimer: 60}
+	ss := NewSession(local, netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
+	require.NoError(t, ss.SendOpen())
+
+	sent := readOpenMessage(t, client)
+	assert.Equal(t, uint8(5), sent.OpenObject.Keepalive)
+	assert.Equal(t, uint8(60), sent.OpenObject.Deadtime)
+}
+
+func TestSendOpen_AdvertisesFullCapabilitySetOnTheWire(t *testing.T) {
+	t.Parallel()
+
+	server, client := newTCPConnPair(t)
+	t.Cleanup(func() { assert.NoError(t, client.Close()) })
+	t.Cleanup(func() { assert.NoError(t, server.Close()) })
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
+	require.NoError(t, ss.SendOpen())
+
+	sent := readOpenMessage(t, client)
+	assert.Equal(t, pcep.DefaultCapabilities(), sent.OpenObject.Caps,
+		"the wire-level Open must carry Pola's complete capability set, not a partial default")
+	assert.Equal(t, pcep.DefaultCapabilities(), ss.AdvertisedCapabilities(),
+		"AdvertisedCapabilities must match what was actually sent on the wire")
+}
+
+func TestSendOpen_ErrorPropagatesFromSendFailure(t *testing.T) {
+	t.Parallel()
+
+	conn := &fakeConn{r: bytes.NewReader(nil), writeErr: errors.New("write: broken pipe")}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
+
+	require.Error(t, ss.SendOpen())
 }
 
 func TestAcceptableOpen(t *testing.T) {

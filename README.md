@@ -15,7 +15,7 @@ and a PCEP Library in Go.
 
 ## Features
 
-* Support for SRv6(full-SID/uSID) and SR-MPLS
+* Support for SRv6 (full-SID/uSID) and SR-MPLS
 * Implementation of active stateful PCE functionality (PCInitiate, PCUpdate, etc.)
 * Dynamic and explicit SR policy definition using YAML
   * Dynamic path: Utilizes CSPF with GoBGP BGP-LS TED
@@ -63,7 +63,4 @@ Your contributions are highly appreciated.
 
 ## Licensing
 
-Pola PCE is licensed under the
-[MIT license](https://en.wikipedia.org/wiki/MIT_License).  
-For the full license text, see
-[LICENSE](https://github.com/nttcom/pola/blob/master/LICENSE).
+Pola PCE is licensed under the [MIT License](LICENSE).
