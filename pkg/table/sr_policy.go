@@ -293,7 +293,7 @@ type SegmentSRMPLS struct {
 
 // SidString returns the SR-MPLS SID as a string.
 func (seg SegmentSRMPLS) SidString() string {
-	return strconv.Itoa(int(seg.Sid))
+	return strconv.FormatUint(uint64(seg.Sid), 10)
 }
 
 // HasMPLSStackEntryAttrs reports whether the SR-MPLS segment has any MPLS stack entry attributes set.
