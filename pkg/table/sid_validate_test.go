@@ -217,13 +217,13 @@ func TestSIDIndexHas_SRv6Exact(t *testing.T) {
 	node := &table.LsNode{
 		RouterID: testRouterID1,
 		SRv6SIDs: []*table.LsSrv6SID{
-			{Sids: []string{testSRv6ExactSID}, SIDStructure: table.SIDStructure{}},
+			{Sids: []string{testSRv6ExactSID}, SIDStructure: &table.SIDStructure{}},
 		},
 		Links: []*table.LsLink{
 			{
 				Srv6EndXSID: &table.Srv6EndXSID{
 					Sids:             []string{"2001:db8:1::1"},
-					Srv6SIDStructure: table.SIDStructure{},
+					Srv6SIDStructure: &table.SIDStructure{},
 				},
 			},
 		},
@@ -258,7 +258,7 @@ func TestSIDIndexHas_USID(t *testing.T) {
 		SRv6SIDs: []*table.LsSrv6SID{
 			{
 				Sids:         []string{"fcbb:bb00:0100::"},
-				SIDStructure: table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16},
+				SIDStructure: &table.SIDStructure{LocalBlock: 32, LocalNode: 16},
 			},
 		},
 	}
@@ -271,7 +271,7 @@ func TestSIDIndexHas_USID(t *testing.T) {
 
 		seg := table.NewSegmentSRv6(container)
 		seg.USid = true
-		seg.Structure = []uint8{32, 16, 16, 0}
+		seg.Structure = []uint8{32, 16, 0, 0}
 		assert.True(t, table.NewSIDIndex(ted).Has(seg), "expected uSID container to be accepted via locator containment")
 	})
 
@@ -292,6 +292,15 @@ func TestSIDIndexHas_USID(t *testing.T) {
 		// the TED actually advertises.
 		seg.Structure = []uint8{24, 8, 16, 0}
 		assert.False(t, table.NewSIDIndex(ted).Has(seg), "expected mismatch when declared locator is shorter than TED advertised")
+	})
+
+	t.Run("declared zero-width locator does not match an unrelated enclosing TED locator", func(t *testing.T) {
+		t.Parallel()
+
+		seg := table.NewSegmentSRv6(container)
+		seg.USid = true
+		seg.Structure = []uint8{0, 0, 48, 0}
+		assert.False(t, table.NewSIDIndex(ted).Has(seg), "expected declared zero-width locator not to match an unrelated enclosing TED locator")
 	})
 
 	t.Run("outside any known locator", func(t *testing.T) {
@@ -374,7 +383,7 @@ func TestSIDIndexAddSRv6_EdgeCases(t *testing.T) {
 		sid := netip.MustParseAddr("fc00:0:1::")
 		node := &table.LsNode{
 			RouterID: testRouterID1,
-			SRv6SIDs: []*table.LsSrv6SID{{Sids: []string{sid.String()}, SIDStructure: table.SIDStructure{}}},
+			SRv6SIDs: []*table.LsSrv6SID{{Sids: []string{sid.String()}, SIDStructure: &table.SIDStructure{}}},
 		}
 		idx := table.NewSIDIndex(newTestTED(node))
 		assert.True(t, idx.Has(table.NewSegmentSRv6(sid)), "expected exact match regardless of locator length")
@@ -390,7 +399,7 @@ func TestSIDIndexAddSRv6_EdgeCases(t *testing.T) {
 		sid := netip.MustParseAddr("fc00:0:1::")
 		node := &table.LsNode{
 			RouterID: testRouterID1,
-			SRv6SIDs: []*table.LsSrv6SID{{Sids: []string{sid.String()}, SIDStructure: table.SIDStructure{LocalBlock: 200, LocalNode: 200}}},
+			SRv6SIDs: []*table.LsSrv6SID{{Sids: []string{sid.String()}, SIDStructure: &table.SIDStructure{LocalBlock: 200, LocalNode: 200}}},
 		}
 		idx := table.NewSIDIndex(newTestTED(node))
 		assert.True(t, idx.Has(table.NewSegmentSRv6(sid)), "expected exact match regardless of locator length")
@@ -398,6 +407,30 @@ func TestSIDIndexAddSRv6_EdgeCases(t *testing.T) {
 		other := table.NewSegmentSRv6(netip.MustParseAddr("fc00:0:1::1234"))
 		other.USid = true
 		assert.False(t, idx.Has(other), "expected no locator fallback registered when LocalBlock+LocalNode exceeds 128 bits")
+	})
+
+	t.Run("total structure width exceeds 128 bits is not registered", func(t *testing.T) {
+		t.Parallel()
+
+		sid := netip.MustParseAddr("fc00:0:1::")
+		node := &table.LsNode{
+			RouterID: testRouterID1,
+			SRv6SIDs: []*table.LsSrv6SID{{
+				Sids: []string{sid.String()},
+				SIDStructure: &table.SIDStructure{
+					LocalBlock: 32,
+					LocalNode:  16,
+					LocalFunc:  50,
+					LocalArg:   31,
+				},
+			}},
+		}
+		idx := table.NewSIDIndex(newTestTED(node))
+		assert.True(t, idx.Has(table.NewSegmentSRv6(sid)), "expected exact match regardless of total width")
+
+		other := table.NewSegmentSRv6(netip.MustParseAddr("fc00:0:1::1234"))
+		other.USid = true
+		assert.False(t, idx.Has(other), "expected no locator fallback registered when LocalBlock+LocalNode+LocalFunc+LocalArg exceeds 128 bits")
 	})
 
 	t.Run("non-IPv6 node SID is not reachable via NextHop either", func(t *testing.T) {
@@ -828,7 +861,7 @@ func usidLocatorNode(routerID, sid string, remote *table.LsNode, endXSid string)
 		RouterID: routerID,
 		SRv6SIDs: []*table.LsSrv6SID{{
 			Sids:         []string{sid},
-			SIDStructure: table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16},
+			SIDStructure: &table.SIDStructure{LocalBlock: 32, LocalNode: 16},
 		}},
 	}
 	if remote != nil {
@@ -863,7 +896,7 @@ func TestValidateExplicitPathUSID(t *testing.T) {
 		ted := newTestTED(nodeW, nodeX)
 
 		err := table.ValidateExplicitPath(ted, "X", []table.Segment{
-			usidContainerSeg(container, []uint8{32, 16, 16, 0}),
+			usidContainerSeg(container, []uint8{32, 16, 0, 0}),
 			table.NewSegmentSRv6(netip.MustParseAddr(endXToW1)),
 		})
 		require.NoError(t, err)
@@ -877,7 +910,7 @@ func TestValidateExplicitPathUSID(t *testing.T) {
 		ted := newTestTED(nodeW, nodeX)
 
 		err := table.ValidateExplicitPath(ted, "X", []table.Segment{
-			usidContainerSeg("fcbb:bb00:0100::", []uint8{32, 16, 16, 0}),
+			usidContainerSeg("fcbb:bb00:0100::", []uint8{32, 16, 0, 0}),
 			table.NewSegmentSRv6(netip.MustParseAddr(endXToW1)),
 		})
 		require.NoError(t, err)
@@ -893,7 +926,7 @@ func TestValidateExplicitPathUSID(t *testing.T) {
 		ted := newTestTED(nodeW, nodeX, nodeY, nodeZ)
 
 		err := table.ValidateExplicitPath(ted, "X", []table.Segment{
-			usidContainerSeg(container, []uint8{32, 16, 16, 0}),
+			usidContainerSeg(container, []uint8{32, 16, 0, 0}),
 			table.NewSegmentSRv6(netip.MustParseAddr(endXToW3)),
 		})
 		require.NoError(t, err)
@@ -909,7 +942,7 @@ func TestValidateExplicitPathUSID(t *testing.T) {
 		ted := newTestTED(nodeW, nodeX, nodeY, nodeZ)
 
 		err := table.ValidateExplicitPath(ted, "X", []table.Segment{
-			usidContainerSeg(container, []uint8{32, 16, 16, 0}),
+			usidContainerSeg(container, []uint8{32, 16, 0, 0}),
 			table.NewSegmentSRv6(netip.MustParseAddr(endXToW1)),
 		})
 		require.Error(t, err)
@@ -926,7 +959,7 @@ func TestValidateExplicitPathUSID(t *testing.T) {
 		ted := newTestTED(nodeW, nodeX, nodeZ)
 
 		err := table.ValidateExplicitPath(ted, "X", []table.Segment{
-			usidContainerSeg(container, []uint8{32, 16, 16, 0}),
+			usidContainerSeg(container, []uint8{32, 16, 0, 0}),
 			table.NewSegmentSRv6(netip.MustParseAddr(endXToW3)),
 		})
 		require.NoError(t, err)
@@ -940,7 +973,7 @@ func TestValidateExplicitPathUSID(t *testing.T) {
 		ted := newTestTED(nodeX, nodeZ)
 
 		err := table.ValidateExplicitPath(ted, "X", []table.Segment{
-			usidContainerSeg(container, []uint8{32, 16, 16, 0}),
+			usidContainerSeg(container, []uint8{32, 16, 0, 0}),
 			table.NewSegmentSRv6(netip.MustParseAddr("fd00::dead:beef")),
 		})
 		require.Error(t, err)
@@ -954,7 +987,7 @@ func TestValidateExplicitPathUSID(t *testing.T) {
 		ted := newTestTED(nodeX)
 
 		err := table.ValidateExplicitPath(ted, "X", []table.Segment{
-			usidContainerSeg("fd00:bb00:0100:0200:0300::", []uint8{32, 16, 16, 0}),
+			usidContainerSeg("fd00:bb00:0100:0200:0300::", []uint8{32, 16, 0, 0}),
 		})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "not found in TED")
@@ -1020,14 +1053,15 @@ func TestValidateExplicitPathUSID(t *testing.T) {
 		assert.Contains(t, err.Error(), "not found in TED")
 	})
 
-	t.Run("LocalNode unset does not bypass owner validation", func(t *testing.T) {
+	t.Run("LocalNode unset registers a real locator, not a wildcard match", func(t *testing.T) {
 		t.Parallel()
 
+		// LocalBlock=32, LocalNode=0 is a valid structure with no node bits.
 		nodeA := &table.LsNode{
 			RouterID: testRouterIDA,
 			SRv6SIDs: []*table.LsSrv6SID{{
 				Sids:         []string{"fc00::a:1"},
-				SIDStructure: table.SIDStructure{LocalBlock: 32},
+				SIDStructure: &table.SIDStructure{LocalBlock: 32},
 			}},
 		}
 		nodeB := &table.LsNode{
@@ -1037,6 +1071,8 @@ func TestValidateExplicitPathUSID(t *testing.T) {
 		nodeA.Links = []*table.LsLink{{LocalNode: nodeA, RemoteNode: nodeB, Srv6EndXSID: &table.Srv6EndXSID{Sids: []string{"fc00::a:b"}}}}
 		ted := newTestTED(nodeA, nodeB)
 
+		// A /32 locator has no node bits, so uSID matching is not authoritative.
+		// Fall back to exact-SID ownership.
 		err := table.ValidateExplicitPath(ted, testRouterIDB, []table.Segment{
 			usidContainerSeg("fc00::a:b", nil),
 		})

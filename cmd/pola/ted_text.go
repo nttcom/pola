@@ -87,6 +87,12 @@ func writeTEDSrv6EndXSIDText(ew *errWriter, sid tedSrv6EndXSIDView) {
 	ew.println("      SRv6 End.X SID:")
 	ew.printf("        EndpointBehavior: %s\n", sid.EndpointBehavior.Name)
 	ew.printf("        SIDs: %v\n", sid.Sids)
+
+	if sid.SidStructure == nil {
+		ew.println("        SID Structure: (not advertised)")
+		return
+	}
+
 	ew.printf("        SID Structure: Block: %d, Node: %d, Func: %d, Arg: %d\n",
 		sid.SidStructure.LocalBlock, sid.SidStructure.LocalNode, sid.SidStructure.LocalFunc, sid.SidStructure.LocalArg)
 }
@@ -101,8 +107,13 @@ func writeTEDNodeSrv6SIDsText(ew *errWriter, node tedNodeView) {
 
 func writeTEDSrv6SIDText(ew *errWriter, sid tedSrv6SIDView) {
 	ew.printf("    SIDs: %v\n", sid.Sids)
-	ew.printf("    Block: %d, Node: %d, Func: %d, Arg: %d\n",
-		sid.SidStructure.LocalBlock, sid.SidStructure.LocalNode, sid.SidStructure.LocalFunc, sid.SidStructure.LocalArg)
+
+	if sid.SidStructure == nil {
+		ew.println("    SID Structure: (not advertised)")
+	} else {
+		ew.printf("    Block: %d, Node: %d, Func: %d, Arg: %d\n",
+			sid.SidStructure.LocalBlock, sid.SidStructure.LocalNode, sid.SidStructure.LocalFunc, sid.SidStructure.LocalArg)
+	}
 
 	var flags, algorithm uint8
 	if sid.EndpointBehavior.Flags != nil {

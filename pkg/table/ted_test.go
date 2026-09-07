@@ -695,6 +695,28 @@ func TestLsTEDPrint(t *testing.T) {
 		assert.Contains(t, buf.String(), "router1")
 	})
 
+	t.Run("SRv6 End.X SID structure not advertised", func(t *testing.T) {
+		t.Parallel()
+
+		ted := &table.LsTED{Nodes: map[string]*table.LsNode{
+			"R1": {
+				RouterID: "R1",
+				Links: []*table.LsLink{
+					{
+						RemoteNode: &table.LsNode{RouterID: "R2"},
+						Srv6EndXSID: &table.Srv6EndXSID{
+							Sids: []string{"fcbb:bb00:0100::"},
+						},
+					},
+				},
+			},
+		}}
+
+		var buf bytes.Buffer
+		require.NoError(t, ted.Print(&buf))
+		assert.Contains(t, buf.String(), "SID Structure: (not advertised)")
+	})
+
 	t.Run("print returns error when writer fails", func(t *testing.T) {
 		t.Parallel()
 

@@ -85,7 +85,7 @@ func TestNewTEDLinkView_IncludesSrv6EndXSID(t *testing.T) {
 		Srv6EndXSID: &table.Srv6EndXSID{
 			EndpointBehavior: table.BehaviorENDX,
 			Sids:             []string{testSrv6EndXSID},
-			Srv6SIDStructure: table.SIDStructure{LocalBlock: 1, LocalNode: 2, LocalFunc: 3, LocalArg: 4},
+			Srv6SIDStructure: &table.SIDStructure{LocalBlock: 1, LocalNode: 2, LocalFunc: 3, LocalArg: 4},
 		},
 	}
 
@@ -113,4 +113,12 @@ func TestNewTEDSrv6SIDViews_SkipsNilEntries(t *testing.T) {
 	views := newTEDSrv6SIDViews([]*table.LsSrv6SID{nil, s})
 	require.Len(t, views, 1)
 	assert.Equal(t, []string{"fc00:0:1::"}, views[0].Sids)
+	assert.Nil(t, views[0].SidStructure, "no SID Structure TLV was advertised")
+}
+
+func TestSidStructureViewFrom_DistinguishesAbsentFromPresentZero(t *testing.T) {
+	t.Parallel()
+
+	assert.Nil(t, sidStructureViewFrom(nil), "absent structure must not render as present-zero")
+	assert.Equal(t, &sidStructureView{}, sidStructureViewFrom(&table.SIDStructure{}), "present-but-zero structure must still render")
 }

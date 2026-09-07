@@ -948,6 +948,14 @@ func TestConvertSRPolicy(t *testing.T) {
 func TestSidStructureFromPB(t *testing.T) {
 	t.Parallel()
 
+	t.Run("nil input returns nil without error", func(t *testing.T) {
+		t.Parallel()
+
+		got, err := sidStructureFromPB(nil)
+		require.NoError(t, err)
+		assert.Nil(t, got)
+	})
+
 	tests := []struct {
 		name string
 		s    *pb.SidStructure
@@ -1149,7 +1157,7 @@ func TestGetTED_Success(t *testing.T) {
 	require.NotNil(t, link0.Srv6EndXSID)
 	assert.Equal(t, table.BehaviorENDX, link0.Srv6EndXSID.EndpointBehavior)
 	assert.Equal(t, []string{"2001:db8:1::"}, link0.Srv6EndXSID.Sids)
-	assert.Equal(t, table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 0, LocalArg: 80}, link0.Srv6EndXSID.Srv6SIDStructure)
+	assert.Equal(t, &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 0, LocalArg: 80}, link0.Srv6EndXSID.Srv6SIDStructure)
 
 	link1 := a.Links[1]
 	assert.False(t, link1.LocalIP.IsValid())
@@ -1165,7 +1173,7 @@ func TestGetTED_Success(t *testing.T) {
 	assert.Equal(t, []string{"2001:db8:1::"}, sid.Sids)
 	assert.Equal(t, []uint32{1}, sid.MultiTopoIDs)
 	assert.Equal(t, table.EndpointBehavior{Behavior: table.BehaviorEND, Flags: 1, Algorithm: 0}, sid.EndpointBehavior)
-	assert.Equal(t, table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 0, LocalArg: 80}, sid.SIDStructure)
+	assert.Equal(t, &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 0, LocalArg: 80}, sid.SIDStructure)
 }
 
 func TestGetTED_PropagatesConversionErrors(t *testing.T) {
@@ -1300,7 +1308,7 @@ func TestCreateSrv6EndXSID(t *testing.T) {
 		assert.Equal(t, &table.Srv6EndXSID{
 			EndpointBehavior: table.BehaviorENDX,
 			Sids:             []string{"2001:db8::1:0"},
-			Srv6SIDStructure: table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
+			Srv6SIDStructure: &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
 		}, got)
 	})
 
@@ -1341,7 +1349,7 @@ func TestCreateSrv6SID(t *testing.T) {
 		want.Sids = []string{"2001:db8:1::"}
 		want.MultiTopoIDs = []uint32{0}
 		want.EndpointBehavior = table.EndpointBehavior{Behavior: table.BehaviorEND}
-		want.SIDStructure = table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0}
+		want.SIDStructure = &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0}
 		assert.Equal(t, want, got)
 	})
 

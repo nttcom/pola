@@ -654,28 +654,32 @@ func convertSRPolicy(p *pb.SRPolicy) (table.SRPolicy, error) {
 	}, nil
 }
 
-func sidStructureFromPB(s *pb.SidStructure) (table.SIDStructure, error) {
+func sidStructureFromPB(s *pb.SidStructure) (*table.SIDStructure, error) {
+	if s == nil {
+		return nil, nil
+	}
+
 	localBlock, err := safecast.Uint8(s.GetLocalBlock(), "SID structure LocalBlock")
 	if err != nil {
-		return table.SIDStructure{}, err
+		return nil, err
 	}
 
 	localNode, err := safecast.Uint8(s.GetLocalNode(), "SID structure LocalNode")
 	if err != nil {
-		return table.SIDStructure{}, err
+		return nil, err
 	}
 
 	localFunc, err := safecast.Uint8(s.GetLocalFunc(), "SID structure LocalFunc")
 	if err != nil {
-		return table.SIDStructure{}, err
+		return nil, err
 	}
 
 	localArg, err := safecast.Uint8(s.GetLocalArg(), "SID structure LocalArg")
 	if err != nil {
-		return table.SIDStructure{}, err
+		return nil, err
 	}
 
-	return table.SIDStructure{
+	return &table.SIDStructure{
 		LocalBlock: localBlock,
 		LocalNode:  localNode,
 		LocalFunc:  localFunc,

@@ -429,7 +429,7 @@ func TestNewSegmentSRv6WithNodeInfo(t *testing.T) {
 				SRv6SIDs: []*table.LsSrv6SID{
 					{
 						Sids:             []string{testSRv6Addr},
-						SIDStructure:     table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
+						SIDStructure:     &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
 						EndpointBehavior: table.EndpointBehavior{Behavior: table.BehaviorEND},
 					},
 				},
@@ -447,7 +447,7 @@ func TestNewSegmentSRv6WithNodeInfo(t *testing.T) {
 				SRv6SIDs: []*table.LsSrv6SID{
 					{
 						Sids:             []string{"fcbb:bb00:0100::"},
-						SIDStructure:     table.SIDStructure{LocalBlock: 32, LocalNode: 16},
+						SIDStructure:     &table.SIDStructure{LocalBlock: 32, LocalNode: 16},
 						EndpointBehavior: table.EndpointBehavior{Behavior: table.BehaviorUN},
 					},
 				},
@@ -470,7 +470,6 @@ func TestNewSegmentSRv6WithNodeInfo(t *testing.T) {
 			want: table.SegmentSRv6{
 				Sid:       netip.MustParseAddr("2001:db8::1"),
 				LocalAddr: netip.MustParseAddr(testSRv6Addr),
-				Structure: table.SIDStructureBytes{0, 0, 0, 0},
 			},
 		},
 		{
@@ -484,7 +483,6 @@ func TestNewSegmentSRv6WithNodeInfo(t *testing.T) {
 			want: table.SegmentSRv6{
 				Sid:       netip.MustParseAddr("2001:db8::1"),
 				LocalAddr: netip.MustParseAddr(testSRv6Addr),
-				Structure: table.SIDStructureBytes{0, 0, 0, 0},
 			},
 		},
 		{

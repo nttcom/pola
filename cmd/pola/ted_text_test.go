@@ -40,7 +40,7 @@ func fullTEDNodeViewFixture() tedNodeView {
 				Srv6EndXSID: &tedSrv6EndXSIDView{
 					EndpointBehavior: endpointBehaviorView{Name: "END-X-BEHAVIOR"},
 					Sids:             []string{testSrv6EndXSID},
-					SidStructure:     sidStructureView{LocalBlock: 21, LocalNode: 22, LocalFunc: 23, LocalArg: 24},
+					SidStructure:     &sidStructureView{LocalBlock: 21, LocalNode: 22, LocalFunc: 23, LocalArg: 24},
 				},
 			},
 		},
@@ -48,13 +48,13 @@ func fullTEDNodeViewFixture() tedNodeView {
 			{
 				Sids:             []string{"fc00:0:2:node1::"},
 				EndpointBehavior: endpointBehaviorView{Name: "NODE-SID-BEHAVIOR-1"},
-				SidStructure:     sidStructureView{LocalBlock: 31, LocalNode: 32, LocalFunc: 33, LocalArg: 34},
+				SidStructure:     &sidStructureView{LocalBlock: 31, LocalNode: 32, LocalFunc: 33, LocalArg: 34},
 				MultiTopoIDs:     []uint32{1},
 			},
 			{
 				Sids:             []string{"fc00:0:2:node2::"},
 				EndpointBehavior: endpointBehaviorView{Name: "NODE-SID-BEHAVIOR-2", Flags: &flags, Algorithm: &algorithm},
-				SidStructure:     sidStructureView{LocalBlock: 41, LocalNode: 42, LocalFunc: 43, LocalArg: 44},
+				SidStructure:     &sidStructureView{LocalBlock: 41, LocalNode: 42, LocalFunc: 43, LocalArg: 44},
 				MultiTopoIDs:     []uint32{2, 3},
 			},
 		},
@@ -74,6 +74,33 @@ func TestWriteTEDText_FullRenderSucceeds(t *testing.T) {
 
 	w := &condFailWriter{}
 	require.NoError(t, writeTEDText(w, []tedNodeView{fullTEDNodeViewFixture()}))
+}
+
+func TestWriteTEDText_SidStructureNotAdvertised(t *testing.T) {
+	t.Parallel()
+
+	node := tedNodeView{
+		RouterID: testRouterID1,
+		Links: []tedLinkView{
+			{
+				RemoteRouterID: testRouterID2,
+				Srv6EndXSID: &tedSrv6EndXSIDView{
+					EndpointBehavior: endpointBehaviorView{Name: "END-X-BEHAVIOR"},
+					Sids:             []string{testSrv6EndXSID},
+				},
+			},
+		},
+		SRv6SIDs: []tedSrv6SIDView{
+			{
+				Sids:             []string{"fc00:0:2:node1::"},
+				EndpointBehavior: endpointBehaviorView{Name: "NODE-SID-BEHAVIOR-1"},
+			},
+		},
+	}
+
+	w := &condFailWriter{}
+	require.NoError(t, writeTEDText(w, []tedNodeView{node}))
+	require.Equal(t, 2, strings.Count(w.buf.String(), "SID Structure: (not advertised)"))
 }
 
 func TestWriteTEDText_PropagatesWriteErrors(t *testing.T) {

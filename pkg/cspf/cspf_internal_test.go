@@ -42,7 +42,7 @@ func cspfInternalTestSRv6Node() *table.LsNode {
 			{
 				Sids:             []string{"2001:db8::a"},
 				EndpointBehavior: table.EndpointBehavior{Behavior: table.BehaviorEND},
-				SIDStructure:     table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
+				SIDStructure:     &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
 			},
 		},
 	}
@@ -300,7 +300,7 @@ func TestBuildWaypointSegment(t *testing.T) {
 					{
 						Sids:             []string{"2001:db8::a"},
 						EndpointBehavior: table.EndpointBehavior{Behavior: table.BehaviorUN},
-						SIDStructure:     table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
+						SIDStructure:     &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
 					},
 				},
 			},

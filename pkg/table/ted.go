@@ -217,12 +217,19 @@ func printLink(ew *errWriter, link *LsLink) {
 		ew.println("      SRv6 End.X SID:")
 		ew.printf("        EndpointBehavior: %s\n", BehaviorToString(link.Srv6EndXSID.EndpointBehavior))
 		ew.printf("        SIDs: %v\n", link.Srv6EndXSID.Sids)
-		ew.printf("        SID Structure: Block: %d, Node: %d, Func: %d, Arg: %d\n",
-			link.Srv6EndXSID.Srv6SIDStructure.LocalBlock,
-			link.Srv6EndXSID.Srv6SIDStructure.LocalNode,
-			link.Srv6EndXSID.Srv6SIDStructure.LocalFunc,
-			link.Srv6EndXSID.Srv6SIDStructure.LocalArg)
+		printSIDStructure(ew, "        ", link.Srv6EndXSID.Srv6SIDStructure)
 	}
+}
+
+// printSIDStructure prints an SID Structure or "(not advertised)".
+func printSIDStructure(ew *errWriter, indent string, s *SIDStructure) {
+	if s == nil {
+		ew.printf("%sSID Structure: (not advertised)\n", indent)
+		return
+	}
+
+	ew.printf("%sSID Structure: Block: %d, Node: %d, Func: %d, Arg: %d\n",
+		indent, s.LocalBlock, s.LocalNode, s.LocalFunc, s.LocalArg)
 }
 
 // printNodeSRv6SIDs prints the SRv6 SIDs associated with a node.
@@ -239,11 +246,17 @@ func printNodeSRv6SIDs(ew *errWriter, node *LsNode) {
 		}
 
 		ew.printf("    SIDs: %v\n", srv6SID.Sids)
-		ew.printf("    Block: %d, Node: %d, Func: %d, Arg: %d\n",
-			srv6SID.SIDStructure.LocalBlock,
-			srv6SID.SIDStructure.LocalNode,
-			srv6SID.SIDStructure.LocalFunc,
-			srv6SID.SIDStructure.LocalArg)
+
+		if srv6SID.SIDStructure == nil {
+			ew.println("    SID Structure: (not advertised)")
+		} else {
+			ew.printf("    Block: %d, Node: %d, Func: %d, Arg: %d\n",
+				srv6SID.SIDStructure.LocalBlock,
+				srv6SID.SIDStructure.LocalNode,
+				srv6SID.SIDStructure.LocalFunc,
+				srv6SID.SIDStructure.LocalArg)
+		}
+
 		ew.printf("    EndpointBehavior: %s, Flags: %d, Algorithm: %d\n",
 			BehaviorToString(srv6SID.EndpointBehavior.Behavior),
 			srv6SID.EndpointBehavior.Flags,
@@ -473,7 +486,7 @@ type LsSrv6SID struct {
 	LocalNode        *LsNode          // primary key, in MP_REACH_NLRI Attr
 	Sids             []string         // in LsSrv6SID Attr
 	EndpointBehavior EndpointBehavior // in BGP-LS Attr
-	SIDStructure     SIDStructure     // in BGP-LS Attr
+	SIDStructure     *SIDStructure    // nil when the SID Structure TLV was not advertised
 	MultiTopoIDs     []uint32         // in LsSrv6SID Attr
 }
 
@@ -589,5 +602,5 @@ func (m MetricType) MarshalJSON() ([]byte, error) {
 type Srv6EndXSID struct {
 	EndpointBehavior uint16
 	Sids             []string
-	Srv6SIDStructure SIDStructure
+	Srv6SIDStructure *SIDStructure // nil when the SID Structure TLV was not advertised
 }
