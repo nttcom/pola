@@ -1071,13 +1071,11 @@ func TestValidateExplicitPathUSID(t *testing.T) {
 		nodeA.Links = []*table.LsLink{{LocalNode: nodeA, RemoteNode: nodeB, Srv6EndXSID: &table.Srv6EndXSID{Sids: []string{"fc00::a:b"}}}}
 		ted := newTestTED(nodeA, nodeB)
 
-		// A /32 locator has no node bits, so uSID matching is not authoritative.
-		// Fall back to exact-SID ownership.
+		// A /32 locator has no node bits and resolves directly to its owner.
 		err := table.ValidateExplicitPath(ted, testRouterIDB, []table.Segment{
 			usidContainerSeg("fc00::a:b", nil),
 		})
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "does not have adjacency SID")
+		require.NoError(t, err)
 	})
 }
 

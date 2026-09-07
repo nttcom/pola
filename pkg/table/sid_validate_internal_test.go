@@ -611,4 +611,93 @@ func TestUSIDContainerOwner(t *testing.T) {
 		require.True(t, matched)
 		assert.Equal(t, "specific", owner)
 	})
+
+	t.Run("node-bits=0 locator resolves directly to its sole owner, not decomposed", func(t *testing.T) {
+		t.Parallel()
+
+		nodeX := &LsNode{RouterID: "X", SRv6SIDs: []*LsSrv6SID{{
+			Sids: []string{"fc00:1::1"}, SIDStructure: &SIDStructure{LocalBlock: 32},
+		}}}
+		idx := NewSIDIndex(newSIDValidateInternalTestTED(nodeX))
+
+		seg := NewSegmentSRv6(netip.MustParseAddr("fc00:1::1"))
+		seg.USid = true
+
+		owner, matched := idx.usidContainerOwner(seg)
+		require.True(t, matched, "a node-bits=0 locator is a known, if non-decomposable, match")
+		assert.Equal(t, "X", owner)
+	})
+
+	t.Run("node-bits=0 locator advertised by two nodes degrades to owner unknown", func(t *testing.T) {
+		t.Parallel()
+
+		nodeX := &LsNode{RouterID: "X", SRv6SIDs: []*LsSrv6SID{{
+			Sids: []string{"fc00:1::1"}, SIDStructure: &SIDStructure{LocalBlock: 32},
+		}}}
+		nodeY := &LsNode{RouterID: "Y", SRv6SIDs: []*LsSrv6SID{{
+			Sids: []string{"fc00:1::2"}, SIDStructure: &SIDStructure{LocalBlock: 32},
+		}}}
+		idx := NewSIDIndex(newSIDValidateInternalTestTED(nodeX, nodeY))
+
+		seg := NewSegmentSRv6(netip.MustParseAddr("fc00:1::1"))
+		seg.USid = true
+
+		owner, matched := idx.usidContainerOwner(seg)
+		require.True(t, matched)
+		assert.Equal(t, ownerUnknown, owner, "conflicting owners for the same node-bits=0 locator must not be guessed")
+	})
+
+	t.Run("declared structure with node-bits=0 resolves to the matched locator's owner", func(t *testing.T) {
+		t.Parallel()
+
+		nodeX := &LsNode{RouterID: "X", SRv6SIDs: []*LsSrv6SID{{
+			Sids: []string{"fc00:1::1"}, SIDStructure: &SIDStructure{LocalBlock: 32},
+		}}}
+		idx := NewSIDIndex(newSIDValidateInternalTestTED(nodeX))
+
+		seg := NewSegmentSRv6(netip.MustParseAddr("fc00:1::1"))
+		seg.USid = true
+		seg.Structure = SIDStructureBytes{32, 0, 16, 0}
+
+		owner, matched := idx.usidContainerOwner(seg)
+		require.True(t, matched)
+		assert.Equal(t, "X", owner)
+	})
+
+	t.Run("nested locator: a node-bits=0 umbrella and a more specific node-bits>0 locator resolve independently", func(t *testing.T) {
+		t.Parallel()
+
+		nodeUmbrella := &LsNode{RouterID: "umbrella", SRv6SIDs: []*LsSrv6SID{{
+			Sids: []string{"fcbb::1"}, SIDStructure: &SIDStructure{LocalBlock: 16},
+		}}}
+		nodeA := &LsNode{RouterID: "A", SRv6SIDs: []*LsSrv6SID{{
+			Sids: []string{"fcbb:bb00:0100::"}, SIDStructure: &SIDStructure{LocalBlock: 32, LocalNode: 16},
+		}}}
+		nodeB := &LsNode{RouterID: "B", SRv6SIDs: []*LsSrv6SID{{
+			Sids: []string{"fcbb:bb00:0200::"}, SIDStructure: &SIDStructure{LocalBlock: 32, LocalNode: 16},
+		}}}
+		idx := NewSIDIndex(newSIDValidateInternalTestTED(nodeUmbrella, nodeA, nodeB))
+
+		t.Run("address outside the nested locator falls back to the flat umbrella owner", func(t *testing.T) {
+			t.Parallel()
+
+			seg := NewSegmentSRv6(netip.MustParseAddr("fcbb::1"))
+			seg.USid = true
+
+			owner, matched := idx.usidContainerOwner(seg)
+			require.True(t, matched)
+			assert.Equal(t, "umbrella", owner)
+		})
+
+		t.Run("address within the nested locator still decomposes through the uSID chain", func(t *testing.T) {
+			t.Parallel()
+
+			seg := NewSegmentSRv6(netip.MustParseAddr("fcbb:bb00:0100:0200::"))
+			seg.USid = true
+
+			owner, matched := idx.usidContainerOwner(seg)
+			require.True(t, matched)
+			assert.Equal(t, "B", owner)
+		})
+	})
 }
