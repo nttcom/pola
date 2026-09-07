@@ -63,7 +63,7 @@ func TestPrintLink(t *testing.T) {
 			Srv6EndXSID: &Srv6EndXSID{
 				EndpointBehavior: 5,
 				Sids:             []string{tedInternalTestSRv6SID1},
-				Srv6SIDStructure: SIDStructure{LocalBlock: 1, LocalNode: 2, LocalFunc: 3, LocalArg: 4},
+				Srv6SIDStructure: &SIDStructure{LocalBlock: 1, LocalNode: 2, LocalFunc: 3, LocalArg: 4},
 			},
 		}
 
@@ -164,7 +164,7 @@ func TestPrintNodeSRv6SIDs(t *testing.T) {
 			SRv6SIDs: []*LsSrv6SID{
 				{
 					Sids:             []string{tedInternalTestSRv6SID1},
-					SIDStructure:     SIDStructure{LocalBlock: 1, LocalNode: 2, LocalFunc: 3, LocalArg: 4},
+					SIDStructure:     &SIDStructure{LocalBlock: 1, LocalNode: 2, LocalFunc: 3, LocalArg: 4},
 					EndpointBehavior: EndpointBehavior{Behavior: 5, Flags: 6, Algorithm: 7},
 					MultiTopoIDs:     []uint32{0, 1},
 				},

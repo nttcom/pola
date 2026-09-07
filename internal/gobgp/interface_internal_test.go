@@ -445,7 +445,7 @@ func TestGetLsLink(t *testing.T) {
 					Srv6EndXSID: &table.Srv6EndXSID{
 						EndpointBehavior: table.BehaviorENDX,
 						Sids:             []string{testSrv6EndXSID},
-						Srv6SIDStructure: table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
+						Srv6SIDStructure: &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
 					},
 				},
 			},
@@ -543,7 +543,7 @@ func TestSrv6EndXSIDFromAPI(t *testing.T) {
 		assert.Equal(t, &table.Srv6EndXSID{
 			EndpointBehavior: table.BehaviorENDX,
 			Sids:             []string{testSrv6EndXSID},
-			Srv6SIDStructure: table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
+			Srv6SIDStructure: &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
 		}, got)
 	})
 
@@ -566,12 +566,50 @@ func TestSrv6EndXSIDFromAPI(t *testing.T) {
 		})
 		require.Error(t, err)
 	})
+
+	t.Run("absent SID Structure sub-TLV converts to a nil structure", func(t *testing.T) {
+		t.Parallel()
+
+		got, err := srv6EndXSIDFromAPI(&api.LsSrv6EndXSID{
+			EndpointBehavior: uint32(table.BehaviorENDX),
+			Sids:             []string{testSrv6EndXSID},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, &table.Srv6EndXSID{
+			EndpointBehavior: table.BehaviorENDX,
+			Sids:             []string{testSrv6EndXSID},
+		}, got)
+	})
 }
 
 func TestSrv6SIDStructureFromAPI(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
+	t.Run("nil sub-TLV converts to a nil structure, not a zero-value one", func(t *testing.T) {
+		t.Parallel()
+
+		got, err := srv6SIDStructureFromAPI(nil)
+		require.NoError(t, err)
+		assert.Nil(t, got)
+	})
+
+	t.Run("sub-TLV present with all-zero fields converts to a non-nil zero-value structure", func(t *testing.T) {
+		t.Parallel()
+
+		got, err := srv6SIDStructureFromAPI(&api.LsSrv6SIDStructure{})
+		require.NoError(t, err)
+		assert.Equal(t, &table.SIDStructure{}, got)
+	})
+
+	t.Run("LIB C-SID shape: LocalBlock and LocalNode zero, LocalFunc set", func(t *testing.T) {
+		t.Parallel()
+
+		got, err := srv6SIDStructureFromAPI(&api.LsSrv6SIDStructure{LocalFunc: 16})
+		require.NoError(t, err)
+		assert.Equal(t, &table.SIDStructure{LocalFunc: 16}, got)
+	})
+
+	errTests := []struct {
 		name string
 		s    *api.LsSrv6SIDStructure
 	}{
@@ -581,7 +619,7 @@ func TestSrv6SIDStructureFromAPI(t *testing.T) {
 		{"LocalArg overflow", &api.LsSrv6SIDStructure{LocalArg: math.MaxUint8 + 1}},
 	}
 
-	for _, tt := range tests {
+	for _, tt := range errTests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -620,9 +658,30 @@ func TestGetLsSrv6SID(t *testing.T) {
 		want := table.NewLsSrv6SID(table.NewLsNode(65000, testRouterID1))
 		want.Sids = []string{testSrv6SID}
 		want.MultiTopoIDs = []uint32{0}
-		want.SIDStructure = table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0}
+		want.SIDStructure = &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0}
 		want.EndpointBehavior = table.EndpointBehavior{Behavior: table.BehaviorEND}
 		assert.Equal(t, want, got)
+	})
+
+	t.Run("absent SID Structure sub-TLV converts to a nil structure, end to end", func(t *testing.T) {
+		t.Parallel()
+
+		nlri := &api.LsAddrPrefix{
+			Nlri: &api.LsAddrPrefix_LsNLRI{
+				Nlri: &api.LsAddrPrefix_LsNLRI_Srv6Sid{
+					Srv6Sid: &api.LsSrv6SIDNLRI{
+						LocalNode:          &api.LsNodeDescriptor{Asn: 65000, IgpRouterId: testRouterID1},
+						Srv6SidInformation: &api.LsSrv6SIDInformation{Sids: []string{testSrv6SID}},
+					},
+				},
+			},
+		}
+
+		got, err := getLsSrv6SID(nlri, &api.LsAttributeSrv6SID{
+			Srv6EndpointBehavior: &api.LsSrv6EndpointBehavior{EndpointBehavior: uint32(table.BehaviorEND)},
+		})
+		require.NoError(t, err)
+		assert.Nil(t, got.SIDStructure, "no SID Structure sub-TLV was advertised")
 	})
 
 	t.Run("invalid NLRI", func(t *testing.T) {
@@ -712,6 +771,40 @@ func TestGetLsSrv6SID(t *testing.T) {
 			})
 		}
 	})
+}
+
+// TestGetLsSrv6SID_LocatorRegistrationEndToEnd verifies BGP-LS to SRv6
+// locator registration, including the valid LocalBlock=32/LocalNode=0 case,
+// where the locator occupies the entire block.
+func TestGetLsSrv6SID_LocatorRegistrationEndToEnd(t *testing.T) {
+	t.Parallel()
+
+	nlri := &api.LsAddrPrefix{
+		Nlri: &api.LsAddrPrefix_LsNLRI{
+			Nlri: &api.LsAddrPrefix_LsNLRI_Srv6Sid{
+				Srv6Sid: &api.LsSrv6SIDNLRI{
+					LocalNode:          &api.LsNodeDescriptor{Asn: 65000, IgpRouterId: testRouterID1},
+					Srv6SidInformation: &api.LsSrv6SIDInformation{Sids: []string{"fc00:1::"}},
+				},
+			},
+		},
+	}
+	attr := &api.LsAttributeSrv6SID{
+		Srv6EndpointBehavior: &api.LsSrv6EndpointBehavior{EndpointBehavior: uint32(table.BehaviorEND)},
+		Srv6SidStructure:     &api.LsSrv6SIDStructure{LocalBlock: 32},
+	}
+
+	lsSrv6SID, err := getLsSrv6SID(nlri, attr)
+	require.NoError(t, err)
+
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{}}
+	lsSrv6SID.UpdateTED(ted, 65000)
+
+	idx := table.NewSIDIndex(ted)
+
+	container := table.NewSegmentSRv6(netip.MustParseAddr("fc00:1::99"))
+	container.USid = true
+	assert.True(t, idx.Has(container), "expected the /32 locator to be registered despite LocalNode being 0")
 }
 
 func TestGetLsSrv6SIDList(t *testing.T) {

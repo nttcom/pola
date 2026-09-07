@@ -3033,7 +3033,7 @@ func TestGetTED_ConvertsFullNode(t *testing.T) {
 	link.Srv6EndXSID = &table.Srv6EndXSID{
 		EndpointBehavior: table.BehaviorENDX,
 		Sids:             []string{testSRv6SID1, ""},
-		Srv6SIDStructure: table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
+		Srv6SIDStructure: &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
 	}
 	node.Links = []*table.LsLink{
 		link,
@@ -3051,7 +3051,7 @@ func TestGetTED_ConvertsFullNode(t *testing.T) {
 		{
 			Sids:             []string{"2001:db8:1::1", ""},
 			EndpointBehavior: table.EndpointBehavior{Behavior: table.BehaviorEND, Flags: 0x40, Algorithm: 0},
-			SIDStructure:     table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
+			SIDStructure:     &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
 			MultiTopoIDs:     []uint32{0, 1},
 		},
 		{Sids: []string{"2001:db8:2::1"}},
@@ -3119,7 +3119,6 @@ func TestGetTED_ConvertsFullNode(t *testing.T) {
 			{
 				Sids:         []*pb.SID{{Sid: "2001:db8:2::1"}},
 				MultiTopoIds: []*pb.MultiTopoID{},
-				SidStructure: &pb.SidStructure{},
 			},
 		},
 	}

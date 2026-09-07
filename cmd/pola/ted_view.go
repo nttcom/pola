@@ -49,14 +49,14 @@ type tedMetricView struct {
 type tedSrv6SIDView struct {
 	Sids             []string             `json:"sids"`
 	EndpointBehavior endpointBehaviorView `json:"endpointBehavior"`
-	SidStructure     sidStructureView     `json:"sidStructure"`
+	SidStructure     *sidStructureView    `json:"sidStructure,omitempty"`
 	MultiTopoIDs     []uint32             `json:"multiTopoIds"`
 }
 
 type tedSrv6EndXSIDView struct {
 	EndpointBehavior endpointBehaviorView `json:"endpointBehavior"`
 	Sids             []string             `json:"sids"`
-	SidStructure     sidStructureView     `json:"sidStructure"`
+	SidStructure     *sidStructureView    `json:"sidStructure,omitempty"`
 }
 
 // endpointBehaviorView omits Flags and Algorithm for End.X SIDs, which carry only the behavior.
@@ -74,8 +74,7 @@ type sidStructureView struct {
 	LocalArg   uint8 `json:"localArg"`
 }
 
-// newTEDNodeViews derives CLI/JSON views from a TED in router ID order
-// for deterministic output.
+// newTEDNodeViews returns views in router ID order for deterministic output.
 func newTEDNodeViews(nodes map[string]*table.LsNode) []tedNodeView {
 	routerIDs := make([]string, 0, len(nodes))
 	for routerID := range nodes {
@@ -222,8 +221,12 @@ func endpointBehaviorViewFromBehavior(behavior uint16) endpointBehaviorView {
 	}
 }
 
-func sidStructureViewFrom(s table.SIDStructure) sidStructureView {
-	return sidStructureView{
+func sidStructureViewFrom(s *table.SIDStructure) *sidStructureView {
+	if s == nil {
+		return nil
+	}
+
+	return &sidStructureView{
 		LocalBlock: s.LocalBlock,
 		LocalNode:  s.LocalNode,
 		LocalFunc:  s.LocalFunc,

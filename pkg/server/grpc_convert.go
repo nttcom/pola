@@ -518,12 +518,7 @@ func buildLsSrv6SID(s *table.LsSrv6SID) *pb.LsSrv6SID {
 	pbSID := &pb.LsSrv6SID{
 		Sids:         make([]*pb.SID, 0, len(s.Sids)),
 		MultiTopoIds: make([]*pb.MultiTopoID, 0, len(s.MultiTopoIDs)),
-		SidStructure: &pb.SidStructure{
-			LocalBlock: uint32(s.SIDStructure.LocalBlock),
-			LocalNode:  uint32(s.SIDStructure.LocalNode),
-			LocalFunc:  uint32(s.SIDStructure.LocalFunc),
-			LocalArg:   uint32(s.SIDStructure.LocalArg),
-		},
+		SidStructure: buildSidStructure(s.SIDStructure),
 	}
 
 	for _, sid := range s.Sids {
@@ -547,17 +542,25 @@ func buildLsSrv6SID(s *table.LsSrv6SID) *pb.LsSrv6SID {
 	return pbSID
 }
 
-// convertSrv6EndXSID converts table.Srv6EndXSID to protobuf Srv6EndXSID.
+// buildSidStructure preserves SID Structure presence.
+func buildSidStructure(s *table.SIDStructure) *pb.SidStructure {
+	if s == nil {
+		return nil
+	}
+
+	return &pb.SidStructure{
+		LocalBlock: uint32(s.LocalBlock),
+		LocalNode:  uint32(s.LocalNode),
+		LocalFunc:  uint32(s.LocalFunc),
+		LocalArg:   uint32(s.LocalArg),
+	}
+}
+
 func convertSrv6EndXSID(sid *table.Srv6EndXSID) *pb.Srv6EndXSID {
 	pbSID := &pb.Srv6EndXSID{
 		EndpointBehavior: uint32(sid.EndpointBehavior),
 		Sids:             make([]*pb.SID, 0, len(sid.Sids)),
-		SidStructure: &pb.SidStructure{
-			LocalBlock: uint32(sid.Srv6SIDStructure.LocalBlock),
-			LocalNode:  uint32(sid.Srv6SIDStructure.LocalNode),
-			LocalFunc:  uint32(sid.Srv6SIDStructure.LocalFunc),
-			LocalArg:   uint32(sid.Srv6SIDStructure.LocalArg),
-		},
+		SidStructure:     buildSidStructure(sid.Srv6SIDStructure),
 	}
 
 	for _, s := range sid.Sids {

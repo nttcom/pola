@@ -299,12 +299,15 @@ func NewSegmentSRv6WithNodeInfo(sid netip.Addr, n *LsNode) (SegmentSRv6, error) 
 
 		seg.LocalAddr = addr
 
-		seg.Structure = SIDStructureBytes{
-			srv6SID.SIDStructure.LocalBlock,
-			srv6SID.SIDStructure.LocalNode,
-			srv6SID.SIDStructure.LocalFunc,
-			srv6SID.SIDStructure.LocalArg,
+		if srv6SID.SIDStructure != nil {
+			seg.Structure = SIDStructureBytes{
+				srv6SID.SIDStructure.LocalBlock,
+				srv6SID.SIDStructure.LocalNode,
+				srv6SID.SIDStructure.LocalFunc,
+				srv6SID.SIDStructure.LocalArg,
+			}
 		}
+
 		if IsUSidBehavior(srv6SID.EndpointBehavior.Behavior) {
 			seg.USid = true
 		}

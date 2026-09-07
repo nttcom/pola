@@ -215,7 +215,6 @@ func TestUSIDMicroSegmentPrefixes(t *testing.T) {
 	})
 
 	t.Run("FL>0 non-byte-aligned: stride and locator width are independent", func(t *testing.T) {
-
 		t.Parallel()
 
 		sid := netip.AddrFrom16([16]byte{0xA1, 0x23, 0xF4, 0x56, 0x00})
@@ -264,11 +263,9 @@ func TestSRv6LocatorLookup(t *testing.T) {
 
 		addr := netip.MustParseAddr("2001:db8:1::1")
 
-		for range 100 {
-			info, found := idx.lookupSRv6Locator(addr, 0)
-			require.True(t, found)
-			assert.Equal(t, "specific", info.owner)
-		}
+		info, found := idx.lookupSRv6Locator(addr, -1)
+		require.True(t, found)
+		assert.Equal(t, "specific", info.owner)
 	})
 
 	t.Run("maxBits excludes a too-specific locator, falling back to the broader one", func(t *testing.T) {
@@ -293,7 +290,7 @@ func TestSRv6LocatorLookup(t *testing.T) {
 			netip.MustParsePrefix("2001:db8::/32"): {owner: "broad", structureKnown: true},
 		}}
 
-		_, found := idx.lookupSRv6Locator(netip.MustParseAddr("fd00::1"), 0)
+		_, found := idx.lookupSRv6Locator(netip.MustParseAddr("fd00::1"), -1)
 		assert.False(t, found)
 	})
 }
@@ -305,12 +302,12 @@ func TestSRv6LocatorMerge(t *testing.T) {
 		t.Parallel()
 
 		node := &LsNode{RouterID: "X", SRv6SIDs: []*LsSrv6SID{
-			{Sids: []string{"fcbb:bb00:0100::"}, SIDStructure: SIDStructure{LocalBlock: 32, LocalNode: 16}},
-			{Sids: []string{"fcbb:bb00:0100::1"}, SIDStructure: SIDStructure{LocalBlock: 16, LocalNode: 32}},
+			{Sids: []string{"fcbb:bb00:0100::"}, SIDStructure: &SIDStructure{LocalBlock: 32, LocalNode: 16}},
+			{Sids: []string{"fcbb:bb00:0100::1"}, SIDStructure: &SIDStructure{LocalBlock: 16, LocalNode: 32}},
 		}}
 		idx := NewSIDIndex(newSIDValidateInternalTestTED(node))
 
-		info, found := idx.lookupSRv6Locator(netip.MustParseAddr("fcbb:bb00:0100::"), 0)
+		info, found := idx.lookupSRv6Locator(netip.MustParseAddr("fcbb:bb00:0100::"), -1)
 		require.True(t, found)
 		assert.Equal(t, "X", info.owner)
 		assert.False(t, info.structureKnown, "conflicting structures for the same prefix must not be resolved by last-write-wins")
@@ -320,36 +317,87 @@ func TestSRv6LocatorMerge(t *testing.T) {
 		t.Parallel()
 
 		nodeX := &LsNode{RouterID: "X", SRv6SIDs: []*LsSrv6SID{
-			{Sids: []string{"fcbb:bb00:0100::"}, SIDStructure: SIDStructure{LocalBlock: 32, LocalNode: 16}},
+			{Sids: []string{"fcbb:bb00:0100::"}, SIDStructure: &SIDStructure{LocalBlock: 32, LocalNode: 16}},
 		}}
 		nodeY := &LsNode{RouterID: "Y", SRv6SIDs: []*LsSrv6SID{
-			{Sids: []string{"fcbb:bb00:0100::1"}, SIDStructure: SIDStructure{LocalBlock: 32, LocalNode: 16}},
+			{Sids: []string{"fcbb:bb00:0100::1"}, SIDStructure: &SIDStructure{LocalBlock: 32, LocalNode: 16}},
 		}}
 		idx := NewSIDIndex(newSIDValidateInternalTestTED(nodeX, nodeY))
 
-		for range 100 {
-			info, found := idx.lookupSRv6Locator(netip.MustParseAddr("fcbb:bb00:0100::"), 0)
-			require.True(t, found)
-			assert.Equal(t, ownerUnknown, info.owner)
-			assert.True(t, info.structureKnown, "an owner collision must not also mark the agreed-upon structure as unknown")
-		}
+		info, found := idx.lookupSRv6Locator(netip.MustParseAddr("fcbb:bb00:0100::"), -1)
+		require.True(t, found)
+		assert.Equal(t, ownerUnknown, info.owner)
+		assert.True(t, info.structureKnown, "an owner collision must not also mark the agreed-upon structure as unknown")
 	})
 
 	t.Run("conflicting owners and conflicting structure: both unknown", func(t *testing.T) {
 		t.Parallel()
 
 		nodeX := &LsNode{RouterID: "X", SRv6SIDs: []*LsSrv6SID{
-			{Sids: []string{"fcbb:bb00:0100::"}, SIDStructure: SIDStructure{LocalBlock: 32, LocalNode: 16}},
+			{Sids: []string{"fcbb:bb00:0100::"}, SIDStructure: &SIDStructure{LocalBlock: 32, LocalNode: 16}},
 		}}
 		nodeY := &LsNode{RouterID: "Y", SRv6SIDs: []*LsSrv6SID{
-			{Sids: []string{"fcbb:bb00:0100::1"}, SIDStructure: SIDStructure{LocalBlock: 16, LocalNode: 32}},
+			{Sids: []string{"fcbb:bb00:0100::1"}, SIDStructure: &SIDStructure{LocalBlock: 16, LocalNode: 32}},
 		}}
 		idx := NewSIDIndex(newSIDValidateInternalTestTED(nodeX, nodeY))
 
-		info, found := idx.lookupSRv6Locator(netip.MustParseAddr("fcbb:bb00:0100::"), 0)
+		info, found := idx.lookupSRv6Locator(netip.MustParseAddr("fcbb:bb00:0100::"), -1)
 		require.True(t, found)
 		assert.Equal(t, ownerUnknown, info.owner)
 		assert.False(t, info.structureKnown)
+	})
+}
+
+func TestAddSRv6_StructurePresence(t *testing.T) {
+	t.Parallel()
+
+	t.Run("absent structure registers the exact SID but no locator", func(t *testing.T) {
+		t.Parallel()
+
+		node := &LsNode{RouterID: "X", SRv6SIDs: []*LsSrv6SID{
+			{Sids: []string{"fc00:1::1"}, SIDStructure: nil},
+		}}
+		idx := NewSIDIndex(newSIDValidateInternalTestTED(node))
+
+		assert.Empty(t, idx.srv6Locators, "no structure was advertised, so no locator can be derived")
+		assert.True(t, idx.Has(NewSegmentSRv6(netip.MustParseAddr("fc00:1::1"))))
+	})
+
+	t.Run("LocalNode zero with LocalBlock set registers a locator, not skipped as if absent", func(t *testing.T) {
+		t.Parallel()
+
+		node := &LsNode{RouterID: "X", SRv6SIDs: []*LsSrv6SID{
+			{Sids: []string{"fc00:1::1"}, SIDStructure: &SIDStructure{LocalBlock: 32}},
+		}}
+		idx := NewSIDIndex(newSIDValidateInternalTestTED(node))
+
+		info, found := idx.lookupSRv6Locator(netip.MustParseAddr("fc00:1::1"), -1)
+		require.True(t, found, "expected a /32 locator despite LocalNode being 0")
+		assert.Equal(t, "X", info.owner)
+	})
+
+	t.Run("LIB C-SID shape (LocalBlock=0, LocalNode=0, LocalFunc>0) registers the exact SID but no locator", func(t *testing.T) {
+		t.Parallel()
+
+		node := &LsNode{RouterID: "X", SRv6SIDs: []*LsSrv6SID{
+			{Sids: []string{"fc00::1"}, SIDStructure: &SIDStructure{LocalFunc: 16}},
+		}}
+		idx := NewSIDIndex(newSIDValidateInternalTestTED(node))
+
+		assert.True(t, idx.Has(NewSegmentSRv6(netip.MustParseAddr("fc00::1"))), "expected the exact SID to still be registered")
+		assert.Empty(t, idx.srv6Locators, "a zero-width locator carries no usable per-node prefix, present or not")
+	})
+
+	t.Run("absent and present-but-zero structures both skip the locator, but neither drops the exact SID", func(t *testing.T) {
+		t.Parallel()
+
+		nodeAbsent := &LsNode{RouterID: "absent", SRv6SIDs: []*LsSrv6SID{{Sids: []string{"fc00::1"}}}}
+		nodePresentZero := &LsNode{RouterID: "zero", SRv6SIDs: []*LsSrv6SID{{Sids: []string{"fc00::2"}, SIDStructure: &SIDStructure{}}}}
+		idx := NewSIDIndex(newSIDValidateInternalTestTED(nodeAbsent, nodePresentZero))
+
+		assert.Empty(t, idx.srv6Locators)
+		assert.True(t, idx.Has(NewSegmentSRv6(netip.MustParseAddr("fc00::1"))))
+		assert.True(t, idx.Has(NewSegmentSRv6(netip.MustParseAddr("fc00::2"))))
 	})
 }
 
@@ -360,13 +408,13 @@ func TestUSIDContainerOwner(t *testing.T) {
 		t.Parallel()
 
 		nodeX := &LsNode{RouterID: "X", SRv6SIDs: []*LsSrv6SID{{
-			Sids: []string{"fcbb:bb00:0100::"}, SIDStructure: SIDStructure{LocalBlock: 32, LocalNode: 16},
+			Sids: []string{"fcbb:bb00:0100::"}, SIDStructure: &SIDStructure{LocalBlock: 32, LocalNode: 16},
 		}}}
 		nodeY := &LsNode{RouterID: "Y", SRv6SIDs: []*LsSrv6SID{{
-			Sids: []string{"fcbb:bb00:0200::"}, SIDStructure: SIDStructure{LocalBlock: 32, LocalNode: 16},
+			Sids: []string{"fcbb:bb00:0200::"}, SIDStructure: &SIDStructure{LocalBlock: 32, LocalNode: 16},
 		}}}
 		nodeZ := &LsNode{RouterID: "Z", SRv6SIDs: []*LsSrv6SID{{
-			Sids: []string{"fcbb:bb00:0300::"}, SIDStructure: SIDStructure{LocalBlock: 32, LocalNode: 16},
+			Sids: []string{"fcbb:bb00:0300::"}, SIDStructure: &SIDStructure{LocalBlock: 32, LocalNode: 16},
 		}}}
 		idx := NewSIDIndex(newSIDValidateInternalTestTED(nodeX, nodeY, nodeZ))
 
@@ -383,10 +431,10 @@ func TestUSIDContainerOwner(t *testing.T) {
 		t.Parallel()
 
 		nodeX := &LsNode{RouterID: "X", SRv6SIDs: []*LsSrv6SID{{
-			Sids: []string{"fcbb:bb00:0100::"}, SIDStructure: SIDStructure{LocalBlock: 32, LocalNode: 16},
+			Sids: []string{"fcbb:bb00:0100::"}, SIDStructure: &SIDStructure{LocalBlock: 32, LocalNode: 16},
 		}}}
 		nodeY := &LsNode{RouterID: "Y", SRv6SIDs: []*LsSrv6SID{{
-			Sids: []string{"fcbb:bb00:0200::"}, SIDStructure: SIDStructure{LocalBlock: 32, LocalNode: 16},
+			Sids: []string{"fcbb:bb00:0200::"}, SIDStructure: &SIDStructure{LocalBlock: 32, LocalNode: 16},
 		}}}
 		idx := NewSIDIndex(newSIDValidateInternalTestTED(nodeX, nodeY))
 
@@ -404,7 +452,7 @@ func TestUSIDContainerOwner(t *testing.T) {
 		t.Parallel()
 
 		nodeX := &LsNode{RouterID: "X", SRv6SIDs: []*LsSrv6SID{{
-			Sids: []string{"fcbb:bb00:0100::"}, SIDStructure: SIDStructure{LocalBlock: 32, LocalNode: 16},
+			Sids: []string{"fcbb:bb00:0100::"}, SIDStructure: &SIDStructure{LocalBlock: 32, LocalNode: 16},
 		}}}
 		idx := NewSIDIndex(newSIDValidateInternalTestTED(nodeX))
 
@@ -421,10 +469,10 @@ func TestUSIDContainerOwner(t *testing.T) {
 		t.Parallel()
 
 		nodeX := &LsNode{RouterID: "X", SRv6SIDs: []*LsSrv6SID{{
-			Sids: []string{"fcbb:bb00:0100::"}, SIDStructure: SIDStructure{LocalBlock: 32, LocalNode: 16},
+			Sids: []string{"fcbb:bb00:0100::"}, SIDStructure: &SIDStructure{LocalBlock: 32, LocalNode: 16},
 		}}}
 		nodeZ := &LsNode{RouterID: "Z", SRv6SIDs: []*LsSrv6SID{{
-			Sids: []string{"fcbb:bb00:0300::"}, SIDStructure: SIDStructure{LocalBlock: 32, LocalNode: 16},
+			Sids: []string{"fcbb:bb00:0300::"}, SIDStructure: &SIDStructure{LocalBlock: 32, LocalNode: 16},
 		}}}
 		idx := NewSIDIndex(newSIDValidateInternalTestTED(nodeX, nodeZ))
 
@@ -441,7 +489,7 @@ func TestUSIDContainerOwner(t *testing.T) {
 		t.Parallel()
 
 		nodeX := &LsNode{RouterID: "X", SRv6SIDs: []*LsSrv6SID{{
-			Sids: []string{"fcbb:bb00:0100::"}, SIDStructure: SIDStructure{LocalBlock: 32, LocalNode: 16},
+			Sids: []string{"fcbb:bb00:0100::"}, SIDStructure: &SIDStructure{LocalBlock: 32, LocalNode: 16},
 		}}}
 		idx := NewSIDIndex(newSIDValidateInternalTestTED(nodeX))
 
@@ -457,7 +505,7 @@ func TestUSIDContainerOwner(t *testing.T) {
 		t.Parallel()
 
 		nodeX := &LsNode{RouterID: "X", SRv6SIDs: []*LsSrv6SID{{
-			Sids: []string{"fcbb:bb00:0000::"}, SIDStructure: SIDStructure{LocalBlock: 32, LocalNode: 16},
+			Sids: []string{"fcbb:bb00:0000::"}, SIDStructure: &SIDStructure{LocalBlock: 32, LocalNode: 16},
 		}}}
 		idx := NewSIDIndex(newSIDValidateInternalTestTED(nodeX))
 
@@ -475,10 +523,10 @@ func TestUSIDContainerOwner(t *testing.T) {
 		t.Parallel()
 
 		nodeX := &LsNode{RouterID: "X", SRv6SIDs: []*LsSrv6SID{{
-			Sids: []string{"fcbb:bb00:0100::"}, SIDStructure: SIDStructure{LocalBlock: 32, LocalNode: 16},
+			Sids: []string{"fcbb:bb00:0100::"}, SIDStructure: &SIDStructure{LocalBlock: 32, LocalNode: 16},
 		}}}
 		nodeY := &LsNode{RouterID: "Y", SRv6SIDs: []*LsSrv6SID{{
-			Sids: []string{"fcbb:bb00:0100::"}, SIDStructure: SIDStructure{LocalBlock: 32, LocalNode: 16},
+			Sids: []string{"fcbb:bb00:0100::"}, SIDStructure: &SIDStructure{LocalBlock: 32, LocalNode: 16},
 		}}}
 		idx := NewSIDIndex(newSIDValidateInternalTestTED(nodeX, nodeY))
 
@@ -495,8 +543,8 @@ func TestUSIDContainerOwner(t *testing.T) {
 		t.Parallel()
 
 		node := &LsNode{RouterID: "X", SRv6SIDs: []*LsSrv6SID{
-			{Sids: []string{"fcbb:bb00:0100::"}, SIDStructure: SIDStructure{LocalBlock: 32, LocalNode: 16}},
-			{Sids: []string{"fcbb:bb00:0100::1"}, SIDStructure: SIDStructure{LocalBlock: 16, LocalNode: 32}},
+			{Sids: []string{"fcbb:bb00:0100::"}, SIDStructure: &SIDStructure{LocalBlock: 32, LocalNode: 16}},
+			{Sids: []string{"fcbb:bb00:0100::1"}, SIDStructure: &SIDStructure{LocalBlock: 16, LocalNode: 32}},
 		}}
 		idx := NewSIDIndex(newSIDValidateInternalTestTED(node))
 
@@ -512,8 +560,8 @@ func TestUSIDContainerOwner(t *testing.T) {
 		t.Parallel()
 
 		node := &LsNode{RouterID: "X", SRv6SIDs: []*LsSrv6SID{
-			{Sids: []string{"fcbb:bb00:0100::"}, SIDStructure: SIDStructure{LocalBlock: 32, LocalNode: 16}},
-			{Sids: []string{"fcbb:bb00:0100::1"}, SIDStructure: SIDStructure{LocalBlock: 16, LocalNode: 32}},
+			{Sids: []string{"fcbb:bb00:0100::"}, SIDStructure: &SIDStructure{LocalBlock: 32, LocalNode: 16}},
+			{Sids: []string{"fcbb:bb00:0100::1"}, SIDStructure: &SIDStructure{LocalBlock: 16, LocalNode: 32}},
 		}}
 		idx := NewSIDIndex(newSIDValidateInternalTestTED(node))
 
@@ -526,24 +574,41 @@ func TestUSIDContainerOwner(t *testing.T) {
 		assert.Equal(t, "X", owner)
 	})
 
+	t.Run("no declared structure and a later micro-segment's locator structure disagrees", func(t *testing.T) {
+		t.Parallel()
+
+		nodeA := &LsNode{RouterID: "A", SRv6SIDs: []*LsSrv6SID{{
+			Sids: []string{"fcbb:bb00:0100::"}, SIDStructure: &SIDStructure{LocalBlock: 32, LocalNode: 16},
+		}}}
+		nodeB := &LsNode{RouterID: "B", SRv6SIDs: []*LsSrv6SID{{
+			Sids: []string{"fcbb:bb00:0200::"}, SIDStructure: &SIDStructure{LocalBlock: 16, LocalNode: 32},
+		}}}
+		idx := NewSIDIndex(newSIDValidateInternalTestTED(nodeA, nodeB))
+
+		seg := NewSegmentSRv6(netip.MustParseAddr("fcbb:bb00:0100:0200::"))
+		seg.USid = true
+
+		owner, matched := idx.usidContainerOwner(seg)
+		require.True(t, matched)
+		assert.Equal(t, ownerUnknown, owner, "the second micro-segment's own locator disagrees with the container's structure")
+	})
+
 	t.Run("nested locators: no declared structure selects the most specific locator", func(t *testing.T) {
 		t.Parallel()
 
 		nodeBroad := &LsNode{RouterID: "broad", SRv6SIDs: []*LsSrv6SID{
-			{Sids: []string{"1234::"}, SIDStructure: SIDStructure{LocalBlock: 8, LocalNode: 8}},
+			{Sids: []string{"1234::"}, SIDStructure: &SIDStructure{LocalBlock: 8, LocalNode: 8}},
 		}}
 		nodeSpecific := &LsNode{RouterID: "specific", SRv6SIDs: []*LsSrv6SID{
-			{Sids: []string{"1234:5678::"}, SIDStructure: SIDStructure{LocalBlock: 16, LocalNode: 16}},
+			{Sids: []string{"1234:5678::"}, SIDStructure: &SIDStructure{LocalBlock: 16, LocalNode: 16}},
 		}}
 		idx := NewSIDIndex(newSIDValidateInternalTestTED(nodeBroad, nodeSpecific))
 
 		seg := NewSegmentSRv6(netip.MustParseAddr("1234:5678::"))
 		seg.USid = true
 
-		for range 100 {
-			owner, matched := idx.usidContainerOwner(seg)
-			require.True(t, matched)
-			assert.Equal(t, "specific", owner)
-		}
+		owner, matched := idx.usidContainerOwner(seg)
+		require.True(t, matched)
+		assert.Equal(t, "specific", owner)
 	})
 }

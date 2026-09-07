@@ -46,7 +46,7 @@ func srv6Node(routerID, sid string) *table.LsNode {
 			{
 				Sids:             []string{sid},
 				EndpointBehavior: table.EndpointBehavior{Behavior: table.BehaviorEND},
-				SIDStructure:     table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
+				SIDStructure:     &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
 			},
 		},
 	}

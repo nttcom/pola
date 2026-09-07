@@ -646,28 +646,32 @@ func srv6EndXSIDFromAPI(srv6EndXSID *api.LsSrv6EndXSID) (*table.Srv6EndXSID, err
 	}, nil
 }
 
-func srv6SIDStructureFromAPI(s *api.LsSrv6SIDStructure) (table.SIDStructure, error) {
+func srv6SIDStructureFromAPI(s *api.LsSrv6SIDStructure) (*table.SIDStructure, error) {
+	if s == nil {
+		return nil, nil
+	}
+
 	localBlock, err := safecast.Uint8(s.GetLocalBlock(), "SRv6 SID structure LocalBlock")
 	if err != nil {
-		return table.SIDStructure{}, err
+		return nil, err
 	}
 
 	localNode, err := safecast.Uint8(s.GetLocalNode(), "SRv6 SID structure LocalNode")
 	if err != nil {
-		return table.SIDStructure{}, err
+		return nil, err
 	}
 
 	localFunc, err := safecast.Uint8(s.GetLocalFunc(), "SRv6 SID structure LocalFunc")
 	if err != nil {
-		return table.SIDStructure{}, err
+		return nil, err
 	}
 
 	localArg, err := safecast.Uint8(s.GetLocalArg(), "SRv6 SID structure LocalArg")
 	if err != nil {
-		return table.SIDStructure{}, err
+		return nil, err
 	}
 
-	return table.SIDStructure{
+	return &table.SIDStructure{
 		LocalBlock: localBlock,
 		LocalNode:  localNode,
 		LocalFunc:  localFunc,

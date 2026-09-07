@@ -206,23 +206,32 @@ func parseSRv6Addrs(sids []string) []netip.Addr {
 }
 
 // Conflicting locator advertisements are merged as unknown/ambiguous
-// instead of letting the latest advertisement win.
-func (idx *SIDIndex) addSRv6(owner string, addrs []netip.Addr, st SIDStructure) {
+// rather than letting the latest advertisement win.
+//
+// A nil SID Structure means it was not advertised, which is distinct
+// from an advertised zero-valued structure.
+func (idx *SIDIndex) addSRv6(owner string, addrs []netip.Addr, st *SIDStructure) {
+	for _, addr := range addrs {
+		idx.srv6SIDs[addr] = struct{}{}
+	}
+
+	if st == nil {
+		return
+	}
+
 	structure := srv6Structure{
 		blockBits: int(st.LocalBlock),
 		nodeBits:  int(st.LocalNode),
 		funcBits:  int(st.LocalFunc),
 	}
 	locBits := structure.locatorBits()
+	structureBits := locBits + structure.funcBits + int(st.LocalArg)
+
+	if locBits <= 0 || structureBits > SRv6SIDBitLength {
+		return
+	}
 
 	for _, addr := range addrs {
-		idx.srv6SIDs[addr] = struct{}{}
-
-		// RFC 9800 allows a zero-length Locator-Node, which this index does not decompose.
-		if structure.nodeBits <= 0 || locBits > SRv6SIDBitLength {
-			continue
-		}
-
 		p, err := addr.Prefix(locBits)
 		if err != nil {
 			continue
@@ -272,7 +281,7 @@ func (idx *SIDIndex) hasSRv6(s SegmentSRv6) bool {
 		return false
 	}
 
-	declaredLocBits := 0
+	declaredLocBits := -1
 	if len(s.Structure) == 4 {
 		declaredLocBits = int(s.Structure[0]) + int(s.Structure[1])
 	}
@@ -282,9 +291,7 @@ func (idx *SIDIndex) hasSRv6(s SegmentSRv6) bool {
 	return found
 }
 
-// lookupSRv6Locator returns the most specific locator containing addr,
-// restricted to locators no more specific than maxBits.
-// maxBits <= 0 means unrestricted.
+// maxBits < 0 means unrestricted; maxBits == 0 only matches /0 locators.
 func (idx *SIDIndex) lookupSRv6Locator(addr netip.Addr, maxBits int) (srv6LocatorInfo, bool) {
 	var (
 		best  netip.Prefix
@@ -297,7 +304,7 @@ func (idx *SIDIndex) lookupSRv6Locator(addr netip.Addr, maxBits int) (srv6Locato
 			continue
 		}
 
-		if maxBits > 0 && p.Bits() > maxBits {
+		if maxBits >= 0 && p.Bits() > maxBits {
 			continue
 		}
 
@@ -452,7 +459,7 @@ func usidSetBit(b *[16]byte, pos int, v bool) {
 // When matched is true, ownerUnknown means the container is known but its
 // terminating owner cannot be determined unambiguously.
 func (idx *SIDIndex) usidContainerOwner(s SegmentSRv6) (owner string, matched bool) {
-	declaredLocBits := 0
+	declaredLocBits := -1
 	hasDeclared := len(s.Structure) == 4
 
 	if hasDeclared {
@@ -489,7 +496,6 @@ func (idx *SIDIndex) usidContainerOwner(s SegmentSRv6) (owner string, matched bo
 
 	resolved := ownerUnknown
 
-	// Resolve each micro-segment independently to support nested locators.
 	for _, seg := range segments {
 		segInfo, ok := idx.srv6Locators[seg]
 		if !ok {
