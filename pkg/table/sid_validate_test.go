@@ -822,6 +822,229 @@ func TestValidateExplicitPathSRv6(t *testing.T) {
 	}
 }
 
+// usidLocatorNode builds a node advertising an SRv6 locator and optional End.X SID.
+func usidLocatorNode(routerID, sid string, remote *table.LsNode, endXSid string) *table.LsNode {
+	node := &table.LsNode{
+		RouterID: routerID,
+		SRv6SIDs: []*table.LsSrv6SID{{
+			Sids:         []string{sid},
+			SIDStructure: table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16},
+		}},
+	}
+	if remote != nil {
+		node.Links = []*table.LsLink{{RemoteNode: remote, Srv6EndXSID: &table.Srv6EndXSID{Sids: []string{endXSid}}}}
+	}
+
+	return node
+}
+
+func usidContainerSeg(addr string, structure []uint8) table.Segment {
+	seg := table.NewSegmentSRv6(netip.MustParseAddr(addr))
+	seg.USid = true
+	seg.Structure = structure
+
+	return seg
+}
+
+func TestValidateExplicitPathUSID(t *testing.T) {
+	t.Parallel()
+
+	const (
+		container = "fcbb:bb00:0100:0200:0300::"
+		endXToW1  = "fc00::1:2" // owned by the node advertising locator ::0100::
+		endXToW3  = "fc00::3:4" // owned by the node advertising locator ::0300::
+	)
+
+	t.Run("regression: single-locator container from existing fixture, one hop", func(t *testing.T) {
+		t.Parallel()
+
+		nodeW := &table.LsNode{RouterID: "W"}
+		nodeX := usidLocatorNode("X", "fcbb:bb00:0100::", nodeW, endXToW1)
+		ted := newTestTED(nodeW, nodeX)
+
+		err := table.ValidateExplicitPath(ted, "X", []table.Segment{
+			usidContainerSeg(container, []uint8{32, 16, 16, 0}),
+			table.NewSegmentSRv6(netip.MustParseAddr(endXToW1)),
+		})
+		require.NoError(t, err)
+	})
+
+	t.Run("single micro-segment container equal to locator, then owner's End.X", func(t *testing.T) {
+		t.Parallel()
+
+		nodeW := &table.LsNode{RouterID: "W"}
+		nodeX := usidLocatorNode("X", "fcbb:bb00:0100::", nodeW, endXToW1)
+		ted := newTestTED(nodeW, nodeX)
+
+		err := table.ValidateExplicitPath(ted, "X", []table.Segment{
+			usidContainerSeg("fcbb:bb00:0100::", []uint8{32, 16, 16, 0}),
+			table.NewSegmentSRv6(netip.MustParseAddr(endXToW1)),
+		})
+		require.NoError(t, err)
+	})
+
+	t.Run("all micro-segments resolve, then last micro-segment owner's End.X", func(t *testing.T) {
+		t.Parallel()
+
+		nodeW := &table.LsNode{RouterID: "W"}
+		nodeX := usidLocatorNode("X", "fcbb:bb00:0100::", nil, "")
+		nodeY := usidLocatorNode("Y", "fcbb:bb00:0200::", nil, "")
+		nodeZ := usidLocatorNode("Z", "fcbb:bb00:0300::", nodeW, endXToW3)
+		ted := newTestTED(nodeW, nodeX, nodeY, nodeZ)
+
+		err := table.ValidateExplicitPath(ted, "X", []table.Segment{
+			usidContainerSeg(container, []uint8{32, 16, 16, 0}),
+			table.NewSegmentSRv6(netip.MustParseAddr(endXToW3)),
+		})
+		require.NoError(t, err)
+	})
+
+	t.Run("all micro-segments resolve, then first micro-segment owner's End.X fails", func(t *testing.T) {
+		t.Parallel()
+
+		nodeW := &table.LsNode{RouterID: "W"}
+		nodeX := usidLocatorNode("X", "fcbb:bb00:0100::", nodeW, endXToW1)
+		nodeY := usidLocatorNode("Y", "fcbb:bb00:0200::", nil, "")
+		nodeZ := usidLocatorNode("Z", "fcbb:bb00:0300::", nil, "")
+		ted := newTestTED(nodeW, nodeX, nodeY, nodeZ)
+
+		err := table.ValidateExplicitPath(ted, "X", []table.Segment{
+			usidContainerSeg(container, []uint8{32, 16, 16, 0}),
+			table.NewSegmentSRv6(netip.MustParseAddr(endXToW1)),
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "does not have adjacency SID")
+	})
+
+	t.Run("unresolved micro-segment degrades to owner unknown, known End.X still validates", func(t *testing.T) {
+		t.Parallel()
+
+		nodeW := &table.LsNode{RouterID: "W"}
+		nodeX := usidLocatorNode("X", "fcbb:bb00:0100::", nil, "")
+		nodeZ := usidLocatorNode("Z", "fcbb:bb00:0300::", nodeW, endXToW3)
+		// Y's locator is intentionally absent from the TED.
+		ted := newTestTED(nodeW, nodeX, nodeZ)
+
+		err := table.ValidateExplicitPath(ted, "X", []table.Segment{
+			usidContainerSeg(container, []uint8{32, 16, 16, 0}),
+			table.NewSegmentSRv6(netip.MustParseAddr(endXToW3)),
+		})
+		require.NoError(t, err)
+	})
+
+	t.Run("unresolved micro-segment degrades to owner unknown, unknown SID after still fails", func(t *testing.T) {
+		t.Parallel()
+
+		nodeX := usidLocatorNode("X", "fcbb:bb00:0100::", nil, "")
+		nodeZ := usidLocatorNode("Z", "fcbb:bb00:0300::", nil, "")
+		ted := newTestTED(nodeX, nodeZ)
+
+		err := table.ValidateExplicitPath(ted, "X", []table.Segment{
+			usidContainerSeg(container, []uint8{32, 16, 16, 0}),
+			table.NewSegmentSRv6(netip.MustParseAddr("fd00::dead:beef")),
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not found in TED")
+	})
+
+	t.Run("container outside any known locator", func(t *testing.T) {
+		t.Parallel()
+
+		nodeX := usidLocatorNode("X", "fcbb:bb00:0100::", nil, "")
+		ted := newTestTED(nodeX)
+
+		err := table.ValidateExplicitPath(ted, "X", []table.Segment{
+			usidContainerSeg("fd00:bb00:0100:0200:0300::", []uint8{32, 16, 16, 0}),
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not found in TED")
+	})
+
+	t.Run("declared locator shorter than TED's", func(t *testing.T) {
+		t.Parallel()
+
+		nodeX := usidLocatorNode("X", "fcbb:bb00:0100::", nil, "")
+		ted := newTestTED(nodeX)
+
+		err := table.ValidateExplicitPath(ted, "X", []table.Segment{
+			usidContainerSeg(container, []uint8{24, 8, 16, 0}),
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not found in TED")
+	})
+
+	t.Run("uSID false is not treated as a container", func(t *testing.T) {
+		t.Parallel()
+
+		nodeX := usidLocatorNode("X", "fcbb:bb00:0100::", nil, "")
+		ted := newTestTED(nodeX)
+
+		err := table.ValidateExplicitPath(ted, "X", []table.Segment{
+			table.NewSegmentSRv6(netip.MustParseAddr(container)),
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not found in TED")
+	})
+
+	t.Run("exact End.X SID from wrong owner still errors with uSID enabled", func(t *testing.T) {
+		t.Parallel()
+
+		nodeA := &table.LsNode{
+			RouterID: testRouterIDA,
+			SRv6SIDs: []*table.LsSrv6SID{{Sids: []string{"fc00::a:1"}}},
+		}
+		nodeB := &table.LsNode{
+			RouterID: testRouterIDB,
+			SRv6SIDs: []*table.LsSrv6SID{{Sids: []string{"fc00::b:1"}}},
+		}
+		nodeA.Links = []*table.LsLink{{LocalNode: nodeA, RemoteNode: nodeB, Srv6EndXSID: &table.Srv6EndXSID{Sids: []string{"fc00::a:b"}}}}
+		ted := newTestTED(nodeA, nodeB)
+
+		err := table.ValidateExplicitPath(ted, testRouterIDB, []table.Segment{
+			usidContainerSeg("fc00::a:b", nil),
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "does not have adjacency SID")
+	})
+
+	t.Run("nodeBits zero does not hang and falls back to not found", func(t *testing.T) {
+		t.Parallel()
+
+		nodeX := usidLocatorNode("X", "fcbb:bb00:0100::", nil, "")
+		ted := newTestTED(nodeX)
+
+		err := table.ValidateExplicitPath(ted, "X", []table.Segment{
+			usidContainerSeg("fd00:bb00:0100::", []uint8{32, 0, 16, 0}),
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not found in TED")
+	})
+
+	t.Run("LocalNode unset does not bypass owner validation", func(t *testing.T) {
+		t.Parallel()
+
+		nodeA := &table.LsNode{
+			RouterID: testRouterIDA,
+			SRv6SIDs: []*table.LsSrv6SID{{
+				Sids:         []string{"fc00::a:1"},
+				SIDStructure: table.SIDStructure{LocalBlock: 32},
+			}},
+		}
+		nodeB := &table.LsNode{
+			RouterID: testRouterIDB,
+			SRv6SIDs: []*table.LsSrv6SID{{Sids: []string{"fc00::b:1"}}},
+		}
+		nodeA.Links = []*table.LsLink{{LocalNode: nodeA, RemoteNode: nodeB, Srv6EndXSID: &table.Srv6EndXSID{Sids: []string{"fc00::a:b"}}}}
+		ted := newTestTED(nodeA, nodeB)
+
+		err := table.ValidateExplicitPath(ted, testRouterIDB, []table.Segment{
+			usidContainerSeg("fc00::a:b", nil),
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "does not have adjacency SID")
+	})
+}
+
 func TestSIDIndexNextHop_UnknownSegmentFamily(t *testing.T) {
 	t.Parallel()
 
