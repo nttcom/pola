@@ -990,6 +990,25 @@ func (tlv *SRv6PCECapability) MaxSIDs() (maxSIDs uint8, ok bool) {
 	return 0, false
 }
 
+// srv6MSDTypes lists the SRv6 MSD types defined in RFC 9352.
+var srv6MSDTypes = map[uint8]struct{}{
+	MSDTypeSRHMaxSL:      {},
+	MSDTypeSRHMaxEndPop:  {},
+	MSDTypeSRHMaxHEncaps: {},
+	MSDTypeSRHMaxEndD:    {},
+}
+
+// UnsupportedMSDType returns the first unrecognized MSD-Type.
+func (tlv *SRv6PCECapability) UnsupportedMSDType() (msdType uint8, ok bool) {
+	for _, msd := range tlv.MSDs {
+		if _, known := srv6MSDTypes[msd.Type]; !known {
+			return msd.Type, true
+		}
+	}
+
+	return 0, false
+}
+
 // NewSRv6PCECapability creates an SRv6-PCE-CAPABILITY TLV.
 func NewSRv6PCECapability(isNAISupported bool, msds ...MSD) *SRv6PCECapability {
 	return &SRv6PCECapability{

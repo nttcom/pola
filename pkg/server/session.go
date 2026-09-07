@@ -705,6 +705,10 @@ func (ss *Session) handlePeerOpen(body []uint8, neg *openNegotiation) error {
 
 	peerOpen, pccType, caps := ss.decodePeerOpen(openMessage)
 
+	if err := ss.rejectOnUnsupportedSRv6MSDType(caps); err != nil {
+		return err
+	}
+
 	if err := ss.rejectOnEmptyPathSetupTypeList(caps); err != nil {
 		return err
 	}
@@ -913,6 +917,24 @@ func (ss *Session) rejectOnPathSetupTypeMismatch(caps []pcep.CapabilityInterface
 	ss.sendTypedPCErrBestEffort(pcepErrorTypeInvalidPathSetupType, pcepErrorValueMismatchedPathSetupType)
 
 	return fmt.Errorf("peer advertised no path setup type in common with Pola (peer: %v, Pola: %v)", peerPSTs, localPSTs)
+}
+
+// rejectOnUnsupportedSRv6MSDType rejects unsupported SRv6 MSD-Types (RFC 9603 §5.1).
+func (ss *Session) rejectOnUnsupportedSRv6MSDType(caps []pcep.CapabilityInterface) error {
+	for _, capability := range pcep.FlattenCapabilities(caps) {
+		srv6Cap, ok := capability.(*pcep.SRv6PCECapability)
+		if !ok {
+			continue
+		}
+
+		if msdType, unsupported := srv6Cap.UnsupportedMSDType(); unsupported {
+			ss.sendPCErrBestEffort(pcepErrorValueInvalidOpenMessage)
+
+			return fmt.Errorf("peer advertised SRv6-PCE-CAPABILITY with unsupported MSD-Type %d (RFC 9603 §5.1)", msdType)
+		}
+	}
+
+	return nil
 }
 
 // validateCapabilities validates peer capabilities and logs known RFC deviations.

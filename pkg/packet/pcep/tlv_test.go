@@ -2162,3 +2162,53 @@ func TestSRv6PCECapability_MaxSIDs(t *testing.T) {
 		})
 	}
 }
+
+func TestSRv6PCECapability_UnsupportedMSDType(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		tlv      *pcep.SRv6PCECapability
+		wantType uint8
+		wantOK   bool
+	}{
+		"NoMSDs": {pcep.NewSRv6PCECapability(true), 0, false},
+		"AllSRv6Types": {
+			pcep.NewSRv6PCECapability(true,
+				pcep.MSD{Type: pcep.MSDTypeSRHMaxSL, Value: 1},
+				pcep.MSD{Type: pcep.MSDTypeSRHMaxEndPop, Value: 1},
+				pcep.MSD{Type: pcep.MSDTypeSRHMaxHEncaps, Value: 1},
+				pcep.MSD{Type: pcep.MSDTypeSRHMaxEndD, Value: 1},
+			),
+			0, false,
+		},
+		"UnknownType": {
+			pcep.NewSRv6PCECapability(true, pcep.MSD{Type: 43, Value: 1}),
+			43, true,
+		},
+		"UnknownTypeOne": {
+			pcep.NewSRv6PCECapability(true, pcep.MSD{Type: 1, Value: 1}),
+			1, true,
+		},
+		"KnownTypeThenUnassigned": {
+			pcep.NewSRv6PCECapability(true,
+				pcep.MSD{Type: pcep.MSDTypeSRHMaxSL, Value: 1},
+				pcep.MSD{Type: 43, Value: 1},
+			),
+			43, true,
+		},
+		"ZeroValueKnownType": {
+			pcep.NewSRv6PCECapability(true, pcep.MSD{Type: pcep.MSDTypeSRHMaxHEncaps, Value: 0}),
+			0, false,
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			msdType, ok := tc.tlv.UnsupportedMSDType()
+			assert.Equal(t, tc.wantOK, ok)
+			assert.Equal(t, tc.wantType, msdType)
+		})
+	}
+}

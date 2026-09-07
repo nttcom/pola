@@ -1338,6 +1338,84 @@ func TestHandlePeerOpen_RejectsEmptyPathSetupTypeList(t *testing.T) {
 	assertTypedPCErr(t, writes[0], pcepErrorTypeInvalidObject, pcepErrorValueMalformedObject)
 }
 
+func TestHandlePeerOpen_RejectsUnsupportedSRv6MSDType_TopLevel(t *testing.T) {
+	t.Parallel()
+
+	conn := &fakeConn{r: bytes.NewReader(nil)}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
+
+	caps := []pcep.CapabilityInterface{
+		pcep.NewSRv6PCECapability(false, pcep.MSD{Type: 43, Value: 1}),
+	}
+
+	neg := &openNegotiation{}
+	require.ErrorContains(t, ss.handlePeerOpen(openMessageBodyWithCaps(t, 1, 30, 120, caps), neg),
+		"unsupported MSD-Type")
+
+	assert.False(t, neg.remoteOK)
+
+	writes := conn.writes()
+	require.Len(t, writes, 1)
+	assertTypedPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
+}
+
+func TestHandlePeerOpen_RejectsUnsupportedSRv6MSDType_NestedInPathSetupTypeCapability(t *testing.T) {
+	t.Parallel()
+
+	conn := &fakeConn{r: bytes.NewReader(nil)}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
+
+	caps := []pcep.CapabilityInterface{&pcep.PathSetupTypeCapability{
+		PathSetupTypes: pcep.Psts{pcep.PathSetupTypeSRv6TE},
+		SubTLVs: []pcep.TLVInterface{
+			pcep.NewSRv6PCECapability(false, pcep.MSD{Type: 1, Value: 1}),
+		},
+	}}
+
+	neg := &openNegotiation{}
+	require.ErrorContains(t, ss.handlePeerOpen(openMessageBodyWithCaps(t, 1, 30, 120, caps), neg),
+		"unsupported MSD-Type")
+
+	assert.False(t, neg.remoteOK)
+
+	writes := conn.writes()
+	require.Len(t, writes, 1)
+	assertTypedPCErr(t, writes[0], pcepErrorTypeSessionEstablishmentFailure, pcepErrorValueInvalidOpenMessage)
+}
+
+func TestHandlePeerOpen_AcceptsKnownSRv6MSDTypes(t *testing.T) {
+	t.Parallel()
+
+	conn := &fakeConn{r: bytes.NewReader(nil)}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
+
+	caps := []pcep.CapabilityInterface{
+		pcep.NewSRv6PCECapability(false,
+			pcep.MSD{Type: pcep.MSDTypeSRHMaxSL, Value: 1},
+			pcep.MSD{Type: pcep.MSDTypeSRHMaxEndPop, Value: 1},
+			pcep.MSD{Type: pcep.MSDTypeSRHMaxHEncaps, Value: 1},
+			pcep.MSD{Type: pcep.MSDTypeSRHMaxEndD, Value: 1},
+		),
+	}
+
+	neg := &openNegotiation{}
+	require.NoError(t, ss.handlePeerOpen(openMessageBodyWithCaps(t, 1, 30, 120, caps), neg))
+	assert.True(t, neg.remoteOK)
+}
+
+func TestHandlePeerOpen_AcceptsSRv6PCECapabilityWithoutMSDs(t *testing.T) {
+	t.Parallel()
+
+	conn := &fakeConn{r: bytes.NewReader(nil)}
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
+
+	caps := []pcep.CapabilityInterface{pcep.NewSRv6PCECapability(false)}
+
+	neg := &openNegotiation{}
+	require.NoError(t, ss.handlePeerOpen(openMessageBodyWithCaps(t, 1, 30, 120, caps), neg))
+	assert.True(t, neg.remoteOK)
+}
+
 func TestHandlePeerOpen_AcceptsPartialPathSetupTypeOverlap(t *testing.T) {
 	t.Parallel()
 
