@@ -981,10 +981,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ---
 
-## google.golang.org/grpc v1.82.1
+## google.golang.org/grpc v1.83.2
 
 - License: Apache-2.0
-- Source: <https://github.com/grpc/grpc-go/blob/v1.82.1/LICENSE>
+- Source: <https://github.com/grpc/grpc-go/blob/v1.83.2/LICENSE>
 
 ```text
 
