@@ -42,11 +42,26 @@ type SIDIndex struct {
 	srv6AdjSIDNextHop map[adjKeySRv6]string
 }
 
-// srv6LocatorInfo describes an SRv6 locator advertised into the TED.
-type srv6LocatorInfo struct {
-	owner     string // ownerUnknown when advertised by multiple nodes
+// srv6Structure is the [Locator-Block, Locator-Node, Function] bit-length
+// split of an SRv6 SID.
+type srv6Structure struct {
 	blockBits int
 	nodeBits  int
+	funcBits  int
+}
+
+// locatorBits returns the node-identifying locator width (LBL + LNL).
+func (s srv6Structure) locatorBits() int { return s.blockBits + s.nodeBits }
+
+// stride returns the width of one micro-segment slot (LNL + FL).
+func (s srv6Structure) stride() int { return s.nodeBits + s.funcBits }
+
+// srv6LocatorInfo describes an SRv6 locator advertised into the TED.
+// Conflicting advertisements make owner/structure explicitly unknown.
+type srv6LocatorInfo struct {
+	owner          string // ownerUnknown when owners conflict
+	structure      srv6Structure
+	structureKnown bool // false when SID Structures conflict
 }
 
 // MissingSegment identifies a rejected segment.
@@ -101,7 +116,7 @@ func (idx *SIDIndex) addNodePrefixSIDs(node *LsNode) {
 
 		if label, ok := srgbLabel(node, p.SidIndex); ok {
 			idx.mplsSIDs[label] = struct{}{}
-			idx.mplsNodeSIDOwner[label] = node.RouterID
+			mergeSIDOwner(idx.mplsNodeSIDOwner, label, node.RouterID)
 		}
 	}
 }
@@ -171,7 +186,7 @@ func (idx *SIDIndex) addSRv6NodeSIDs(node *LsNode) {
 			idx.addSRv6(node.RouterID, addrs, s.SIDStructure)
 
 			for _, addr := range addrs {
-				idx.srv6NodeSIDOwner[addr] = node.RouterID
+				mergeSIDOwner(idx.srv6NodeSIDOwner, addr, node.RouterID)
 			}
 		}
 	}
@@ -190,16 +205,21 @@ func parseSRv6Addrs(sids []string) []netip.Addr {
 	return addrs
 }
 
-// addSRv6 registers SIDs and their locator prefixes.
-// Conflicting locator owners are recorded as ownerUnknown.
+// Conflicting locator advertisements are merged as unknown/ambiguous
+// instead of letting the latest advertisement win.
 func (idx *SIDIndex) addSRv6(owner string, addrs []netip.Addr, st SIDStructure) {
-	blockBits, nodeBits := int(st.LocalBlock), int(st.LocalNode)
-	locBits := blockBits + nodeBits
+	structure := srv6Structure{
+		blockBits: int(st.LocalBlock),
+		nodeBits:  int(st.LocalNode),
+		funcBits:  int(st.LocalFunc),
+	}
+	locBits := structure.locatorBits()
 
 	for _, addr := range addrs {
 		idx.srv6SIDs[addr] = struct{}{}
 
-		if nodeBits <= 0 || locBits > SRv6SIDBitLength {
+		// RFC 9800 allows a zero-length Locator-Node, which this index does not decompose.
+		if structure.nodeBits <= 0 || locBits > SRv6SIDBitLength {
 			continue
 		}
 
@@ -208,13 +228,26 @@ func (idx *SIDIndex) addSRv6(owner string, addrs []netip.Addr, st SIDStructure) 
 			continue
 		}
 
-		info := srv6LocatorInfo{owner: owner, blockBits: blockBits, nodeBits: nodeBits}
-		if existing, ok := idx.srv6Locators[p]; ok && existing.owner != owner {
-			info.owner = ownerUnknown
-		}
-
-		idx.srv6Locators[p] = info
+		idx.mergeSRv6Locator(p, owner, structure)
 	}
+}
+
+// mergeSRv6Locator merges a locator advertisement for prefix p.
+// Owner and structure conflicts are tracked independently.
+func (idx *SIDIndex) mergeSRv6Locator(p netip.Prefix, owner string, structure srv6Structure) {
+	existing, ok := idx.srv6Locators[p]
+	if !ok {
+		idx.srv6Locators[p] = srv6LocatorInfo{owner: owner, structure: structure, structureKnown: true}
+		return
+	}
+
+	if existing.owner != owner {
+		existing.owner = ownerUnknown
+	}
+
+	existing.structureKnown = existing.structureKnown && existing.structure == structure
+
+	idx.srv6Locators[p] = existing
 }
 
 // Has reports whether the TED knows about seg.
@@ -231,7 +264,6 @@ func (idx *SIDIndex) Has(seg Segment) bool {
 }
 
 func (idx *SIDIndex) hasSRv6(s SegmentSRv6) bool {
-	// End / End.X SIDs are advertised verbatim, so prefer the exact match.
 	if _, ok := idx.srv6SIDs[s.Sid]; ok {
 		return true
 	}
@@ -239,31 +271,46 @@ func (idx *SIDIndex) hasSRv6(s SegmentSRv6) bool {
 	if !s.USid {
 		return false
 	}
-	// Fall back to locator containment for uSID containers.
-	locBits := 0
+
+	declaredLocBits := 0
 	if len(s.Structure) == 4 {
-		locBits = int(s.Structure[0]) + int(s.Structure[1])
+		declaredLocBits = int(s.Structure[0]) + int(s.Structure[1])
 	}
 
-	for loc := range idx.srv6Locators {
-		if !loc.Contains(s.Sid) {
-			continue
-		}
-		// Reject a request whose declared locator is shorter than the TED's.
-		if locBits > 0 && loc.Bits() > locBits {
+	_, found := idx.lookupSRv6Locator(s.Sid, declaredLocBits)
+
+	return found
+}
+
+// lookupSRv6Locator returns the most specific locator containing addr,
+// restricted to locators no more specific than maxBits.
+// maxBits <= 0 means unrestricted.
+func (idx *SIDIndex) lookupSRv6Locator(addr netip.Addr, maxBits int) (srv6LocatorInfo, bool) {
+	var (
+		best  netip.Prefix
+		info  srv6LocatorInfo
+		found bool
+	)
+
+	for p, i := range idx.srv6Locators {
+		if !p.Contains(addr) {
 			continue
 		}
 
-		return true
+		if maxBits > 0 && p.Bits() > maxBits {
+			continue
+		}
+
+		if !found || p.Bits() > best.Bits() {
+			best, info, found = p, i, true
+		}
 	}
 
-	return false
+	return info, found
 }
 
 // NextHop returns the next-hop router ID after traversing seg from owner.
-// For node SIDs it returns the SID's owning router ID (valid from any owner).
-// For adjacency SIDs it verifies the SID is local to owner, then returns the remote router ID.
-// Returns an error if the SID is unknown or does not belong to owner.
+// Node SIDs resolve to their owning router; adjacency SIDs must belong to owner.
 func (idx *SIDIndex) NextHop(owner string, seg Segment) (string, error) {
 	switch s := seg.(type) {
 	case SegmentSRMPLS:
@@ -278,8 +325,17 @@ func (idx *SIDIndex) NextHop(owner string, seg Segment) (string, error) {
 // ownerUnknown indicates that the current router is unknown.
 const ownerUnknown = ""
 
+// Multiple owners for the same SID make ownership ambiguous.
+func mergeSIDOwner[K comparable](owners map[K]string, sid K, owner string) {
+	if existing, ok := owners[sid]; ok && existing != owner {
+		owners[sid] = ownerUnknown
+		return
+	}
+
+	owners[sid] = owner
+}
+
 func (idx *SIDIndex) nextHopMPLS(owner string, s SegmentSRMPLS) (string, error) {
-	// Node SID (prefix SID)?
 	if next, ok := idx.mplsNodeSIDOwner[s.Sid]; ok {
 		return next, nil
 	}
@@ -291,7 +347,7 @@ func (idx *SIDIndex) nextHopMPLS(owner string, s SegmentSRMPLS) (string, error) 
 
 		return "", fmt.Errorf("SID %s not found in TED", s.SidString())
 	}
-	// Adjacency SID — must be on owner.
+
 	if next, ok := idx.mplsAdjSIDNextHop[adjKeyMPLS{owner, s.Sid}]; ok {
 		return next, nil
 	}
@@ -334,27 +390,28 @@ func (idx *SIDIndex) nextHopSRv6(owner string, s SegmentSRv6) (string, error) {
 	return "", fmt.Errorf("SID %s not found in TED", s.SidString())
 }
 
-// uSIDMicroSegmentPrefixes returns the locator prefixes of a uSID container.
-// An all-zero micro-segment marks the end of the container (RFC 9800 §5).
-func uSIDMicroSegmentPrefixes(sid netip.Addr, blockBits, nodeBits int) []netip.Prefix {
-	if nodeBits <= 0 || blockBits < 0 || blockBits+nodeBits > SRv6SIDBitLength {
+// uSIDMicroSegmentPrefixes returns the locator prefix for each micro-segment.
+// Each slot is stride() bits wide, but only its nodeBits identify the node.
+func uSIDMicroSegmentPrefixes(sid netip.Addr, s srv6Structure) []netip.Prefix {
+	if s.nodeBits <= 0 || s.blockBits < 0 || s.funcBits < 0 || s.locatorBits() > SRv6SIDBitLength {
 		return nil
 	}
 
+	stride := s.stride()
 	src := sid.As16()
 
 	var prefixes []netip.Prefix
 
-	for start := blockBits; start+nodeBits <= SRv6SIDBitLength; start += nodeBits {
-		if usidBitsAllZero(&src, start, nodeBits) {
+	for start := s.blockBits; start+stride <= SRv6SIDBitLength; start += stride {
+		if usidBitsAllZero(&src, start, stride) {
 			break
 		}
 
 		var dst [16]byte
-		usidCopyBits(&dst, &src, 0, 0, blockBits)
-		usidCopyBits(&dst, &src, start, blockBits, nodeBits)
+		usidCopyBits(&dst, &src, 0, 0, s.blockBits)
+		usidCopyBits(&dst, &src, start, s.blockBits, s.nodeBits)
 
-		prefixes = append(prefixes, netip.PrefixFrom(netip.AddrFrom16(dst), blockBits+nodeBits))
+		prefixes = append(prefixes, netip.PrefixFrom(netip.AddrFrom16(dst), s.locatorBits()))
 	}
 
 	return prefixes
@@ -389,48 +446,64 @@ func usidSetBit(b *[16]byte, pos int, v bool) {
 	}
 }
 
-// usidContainerOwner resolves the owner of a uSID container.
-// matched is false when the container is outside all known locators.
+// usidContainerOwner resolves the owner of a uSID/C-SID container.
+//
+// matched is false when the SID has no compatible known locator.
+// When matched is true, ownerUnknown means the container is known but its
+// terminating owner cannot be determined unambiguously.
 func (idx *SIDIndex) usidContainerOwner(s SegmentSRv6) (owner string, matched bool) {
 	declaredLocBits := 0
-	if len(s.Structure) == 4 {
+	hasDeclared := len(s.Structure) == 4
+
+	if hasDeclared {
 		declaredLocBits = int(s.Structure[0]) + int(s.Structure[1])
 	}
 
-	for loc, info := range idx.srv6Locators {
-		if !loc.Contains(s.Sid) {
-			continue
-		}
-		// Reject a request whose declared locator is shorter than the TED's.
-		if declaredLocBits > 0 && loc.Bits() > declaredLocBits {
-			continue
-		}
+	locInfo, found := idx.lookupSRv6Locator(s.Sid, declaredLocBits)
+	if !found {
+		return ownerUnknown, false
+	}
 
-		blockBits, nodeBits := info.blockBits, info.nodeBits
-		if len(s.Structure) == 4 {
-			blockBits, nodeBits = int(s.Structure[0]), int(s.Structure[1])
-		}
+	structure := locInfo.structure
 
-		segments := uSIDMicroSegmentPrefixes(s.Sid, blockBits, nodeBits)
-		if len(segments) == 0 {
+	switch {
+	case hasDeclared:
+		// The SID's declared structure takes precedence over the locator's.
+		structure = srv6Structure{
+			blockBits: int(s.Structure[0]),
+			nodeBits:  int(s.Structure[1]),
+			funcBits:  int(s.Structure[2]),
+		}
+	case !locInfo.structureKnown:
+		return ownerUnknown, true
+	}
+
+	if structure.nodeBits <= 0 {
+		return ownerUnknown, false
+	}
+
+	segments := uSIDMicroSegmentPrefixes(s.Sid, structure)
+	if len(segments) == 0 {
+		return ownerUnknown, true
+	}
+
+	resolved := ownerUnknown
+
+	// Resolve each micro-segment independently to support nested locators.
+	for _, seg := range segments {
+		segInfo, ok := idx.srv6Locators[seg]
+		if !ok {
 			return ownerUnknown, true
 		}
 
-		resolved := ownerUnknown
-
-		for _, seg := range segments {
-			segInfo, ok := idx.srv6Locators[seg]
-			if !ok {
-				return ownerUnknown, true
-			}
-
-			resolved = segInfo.owner
+		if !hasDeclared && (!segInfo.structureKnown || segInfo.structure != structure) {
+			return ownerUnknown, true
 		}
 
-		return resolved, true
+		resolved = segInfo.owner
 	}
 
-	return "", false
+	return resolved, true
 }
 
 // ValidateExplicitPath validates an explicit segment list from srcRouterID.
