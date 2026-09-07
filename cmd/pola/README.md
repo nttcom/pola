@@ -2,7 +2,7 @@
 
 ## Installation
 
-### From Go Package
+### From Go
 
 ```bash
 go install github.com/nttcom/pola/cmd/pola@latest
@@ -10,15 +10,8 @@ go install github.com/nttcom/pola/cmd/pola@latest
 
 ### From Source
 
-#### Getting the Source
-
 ```bash
 git clone https://github.com/nttcom/pola.git
-```
-
-#### Build & install
-
-```bash
 cd pola
 go install ./cmd/pola
 
@@ -36,9 +29,7 @@ Displays PCEP sessions, sorted by peer address.
 - `detail` includes additional session information and message statistics.
 - `-j` outputs JSON.
 
-Without arguments, all sessions are shown in summary form.
-
-Text formatted response (`pola session detail`)
+Text output (`pola session detail`)
 
 ```text
 Session #0: 192.0.2.1
@@ -57,14 +48,16 @@ Session #0: 192.0.2.1
       STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Stateful, Update, Instantiation
       SR-PCE-CAPABILITY [RFC8664]: SR, SR-NAI-Supported
       ASSOC-TYPE-LIST [RFC8697]:
-        6 SR Policy Association
+        SR Policy Association (0x0006) [RFC9862]
+      Unrecognized TLVs:
+        type=73: SR-P2MP-POLICY-CAPABILITY (draft-ietf-pce-sr-p2mp-policy-11) [sub-TLV of PATH-SETUP-TYPE-CAPABILITY]
     Local only:
       SR-PCE-CAPABILITY [RFC8664]: MSD=10
     Peer only:
       STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Color
       SR-PCE-CAPABILITY [RFC8664]: MSD=16
       ASSOC-TYPE-LIST [RFC8697]:
-        9 P2MP SR Policy Association (draft)
+        P2MP SR Policy Association (0x0009) [draft-ietf-pce-sr-p2mp-policy-11]
   Session Creation:  2026-08-19T09:30:05Z
   Initiator:         remote
   Stats:
@@ -84,7 +77,7 @@ Session #0: 192.0.2.1
     Session Setup:     ok=1, fail=0
 ```
 
-JSON formatted response (`pola session detail -j`)
+JSON output (`pola session detail -j`)
 
 ```json
 [
@@ -107,14 +100,25 @@ JSON formatted response (`pola session detail -j`)
         "instantiation": true,
         "pathSetupTypes": [],
         "associationTypes": [6],
-        "unrecognizedTlvTypes": [],
+        "unrecognizedTlvTypes": [73],
+        "capabilities": [
+          { "capability": "STATEFUL", "items": ["Stateful", "Update", "Instantiation"] },
+          { "capability": "SR", "items": ["SR", "SR-NAI-Supported"] },
+          { "capability": "ASSOC_TYPE_LIST", "items": ["SR Policy Association (0x0006) [RFC9862]"] },
+          {
+            "capability": "UNKNOWN",
+            "items": [
+              "type=73: SR-P2MP-POLICY-CAPABILITY (draft-ietf-pce-sr-p2mp-policy-11) [sub-TLV of PATH-SETUP-TYPE-CAPABILITY]"
+            ]
+          }
+        ],
         "other": []
       },
       "localOnly": [{ "capability": "SR", "items": ["MSD=10"] }],
       "peerOnly": [
         { "capability": "STATEFUL", "items": ["Color"] },
         { "capability": "SR", "items": ["MSD=16"] },
-        { "capability": "ASSOC_TYPE_LIST", "items": ["9 P2MP SR Policy Association (draft)"] }
+        { "capability": "ASSOC_TYPE_LIST", "items": ["P2MP SR Policy Association (0x0009) [draft-ietf-pce-sr-p2mp-policy-11]"] }
       ]
     },
     "sessionCreation": "2026-08-19T09:30:05Z",
@@ -138,20 +142,23 @@ JSON formatted response (`pola session detail -j`)
 ]
 ```
 
-Field reference:
+Fields:
 
-- `sessionId.local`/`peer` are omitted until the corresponding Open
-  message has been exchanged.
-- `lspDbSync` indicates the LSP-DB synchronization state and uses the
-  same vocabulary as `pola sr-policy list`.
-- `stats` contains RFC 9826 message counters. Session setup counters
-  persist across reconnects.
+- `lspDbSync` indicates the LSP-DB synchronization state, using the same
+  vocabulary as `pola sr-policy list`.
+- `stats` contains RFC 9826 message counters.
+- `capabilities.common.capabilities` lists all capabilities shared by
+  both sides, grouped by TLV. Other fields provide views of commonly used
+  capabilities. `other` is deprecated and retained for backward compatibility.
+- `[sub-TLV of PATH-SETUP-TYPE-CAPABILITY]` indicates a capability
+  advertised only as a PATH-SETUP-TYPE-CAPABILITY sub-TLV and included
+  in `unrecognizedTlvTypes`.
 
 ### pola session delete *Address* [-j]
 
 Deletes the session with the specified peer address.
 
-JSON formatted response
+JSON output
 
 ```json
 {
@@ -164,11 +171,10 @@ JSON formatted response
 Displays SR Policies managed by polad, grouped by PCEP peer and sorted by
 peer address. `--peer` filters by peer address.
 
-All connected sessions are included. Use `lspDbSync` to distinguish an
-unsynchronized session (`pending` or `ongoing`) from a synced session
-(`finished`) with no SR Policies.
+All connected sessions are included. `lspDbSync` indicates whether the
+session is synchronized (`finished`) or not (`pending` or `ongoing`).
 
-Text formatted response
+Text output
 
 ```text
 Session: 192.0.2.2 (State: up, LSP-DB Sync: finished)
@@ -187,7 +193,7 @@ Session: 2001:db8::1 (State: keep-wait, LSP-DB Sync: pending)
   No SR Policies: session is not established.
 ```
 
-JSON formatted response
+JSON output
 
 ```json
 [
@@ -230,12 +236,11 @@ Notes:
 - Policies appear after the first PCRpt is received.
 - `lspId` is omitted when zero.
 - `srcRouterId`/`dstRouterId` are resolved from TED.
-- `type` and `metric` are available for policies created by
-  `pola sr-policy add`.
+- `metric` is included for policies created with `type: dynamic`.
 
 ### pola sr-policy add -f `filepath`
 
-Create a new SR Policy **using TED**.
+Creates a new SR Policy.
 
 #### Dynamic path
 
@@ -255,7 +260,7 @@ srPolicy:
 
 `metric` can be `igp`, `te`, or `delay`.
 
-JSON formatted response
+JSON output
 
 ```json
 {
@@ -264,8 +269,6 @@ JSON formatted response
 ```
 
 #### Explicit path
-
-Each SID may include address information for the NAI.
 
 YAML input format
 
@@ -284,7 +287,7 @@ srPolicy:
     - sid: 16004
 ```
 
-JSON formatted response
+JSON output
 
 ```json
 {
@@ -302,8 +305,7 @@ segment list verbatim.
 Each SID is still validated against the TED, so with `ted.enable: false` this
 form additionally requires `--no-sid-validate`.
 
-For each SID, specify the address information required to construct the NAI.
-`localAddr` is required for SRv6 SIDs but optional for SR-MPLS labels.
+`localAddr` is required for SRv6 SIDs and optional for SR-MPLS labels.
 
 See [JSON schema](../../docs/schemas/cli/policy.json) for input details.
 
@@ -326,7 +328,7 @@ srPolicy:
       sidStructure: "32,16,0,80"
 ```
 
-JSON formatted response
+JSON output
 
 ```json
 {
@@ -338,18 +340,13 @@ JSON formatted response
 
 Skips validation of explicit SIDs against the TED.
 
-> [!NOTE]
-> SID validation depends on the asynchronously populated BGP-LS TED and may
-> not reflect the current network topology. Use this option for SIDs that
-> cannot be represented in the TED.
-
 ### pola ted [-j]
 
 Displays the TED managed by polad, sorted by router ID. If TED is disabled by
 polad, the command returns a non-zero exit status with an error message on
 stderr, in both text and `-j` mode.
 
-Text formatted response
+Text output
 
 ```text
 Node #0: 0000.0aff.0001
@@ -388,9 +385,9 @@ Node #1: 0000.0aff.0002
   SRv6 SIDs:
 ```
 
-JSON formatted response. The top level is an array of nodes, matching the
-other commands' output; there is no wrapping `ted` object. A link's `localIp`/`remoteIp` is omitted when the BGP-LS descriptor
-does not contain an interface address.
+JSON output. The top level is an array of nodes; there is no wrapping
+`ted` object. `localIp`/`remoteIp` are omitted when no interface address
+is present in the BGP-LS descriptor.
 
 ```json
 [
