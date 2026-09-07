@@ -211,7 +211,7 @@ func TestSegmentFromPB_SRv6(t *testing.T) {
 	assert.Equal(t, "2001:db8:1005::", srv6Seg.SidString())
 	assert.Equal(t, "2001:db8::5", srv6Seg.LocalAddr.String())
 	assert.Equal(t, "2001:db8::6", srv6Seg.RemoteAddr.String())
-	assert.Equal(t, table.SIDStructureBytes{32, 16, 0, 80}, srv6Seg.Structure)
+	assert.Equal(t, &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalArg: 80}, srv6Seg.Structure)
 }
 
 func TestSegmentFromPB_InvalidSID(t *testing.T) {
@@ -252,39 +252,6 @@ func TestSegmentFromPB_InvalidAddr(t *testing.T) {
 
 			_, err := segmentFromPB(tt.segment)
 			require.Error(t, err)
-		})
-	}
-}
-
-func TestParseSidStructure(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name    string
-		in      string
-		want    []uint8
-		wantErr bool
-	}{
-		{name: "empty returns nil", in: "", want: nil},
-		{name: "valid", in: "32,16,0,80", want: []uint8{32, 16, 0, 80}},
-		{name: "wrong part count", in: "32,16,0", wantErr: true},
-		{name: "non-numeric part", in: "32,16,0,xx", wantErr: true},
-		{name: "value out of uint8 range", in: "32,16,0,256", wantErr: true},
-		{name: "sum exceeds 128 bits", in: "128,128,0,0", wantErr: true},
-		{name: "whitespace around parts is trimmed", in: " 32 , 16 , 0 , 80 ", want: []uint8{32, 16, 0, 80}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			got, err := parseSidStructure(tt.in)
-			if tt.wantErr {
-				require.Error(t, err)
-				return
-			}
-
-			require.NoError(t, err)
-			assert.Equal(t, tt.want, got)
 		})
 	}
 }

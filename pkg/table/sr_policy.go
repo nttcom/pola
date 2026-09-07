@@ -6,13 +6,10 @@
 package table
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/netip"
-	"slices"
 	"strconv"
-	"strings"
 )
 
 // PolicyState represents the state of an SR Policy.
@@ -201,49 +198,13 @@ func BehaviorToString(behavior uint16) string {
 // FirstSIDIndex is the index for the first SID in the SRv6 SID array.
 const FirstSIDIndex = 0
 
-// SIDStructureBytes is the [LocalBlock, LocalNode, LocalFunc, LocalArg] length split of an SRv6 SID.
-// It marshals as a comma-separated string (e.g. "32,16,0,80").
-type SIDStructureBytes []uint8
-
-// MarshalJSON returns the JSON representation of SIDStructureBytes as a comma-separated string.
-func (s SIDStructureBytes) MarshalJSON() ([]byte, error) {
-	if len(s) == 0 {
-		return json.Marshal(nil)
-	}
-
-	parts := make([]string, len(s))
-	for i, v := range s {
-		parts[i] = strconv.Itoa(int(v))
-	}
-
-	return json.Marshal(strings.Join(parts, ","))
-}
-
-// Validate checks the SID structure lengths.
-func (s SIDStructureBytes) Validate() error {
-	if len(s) == 0 {
-		return nil
-	}
-
-	if len(s) != 4 {
-		return fmt.Errorf("SID structure must have 4 elements, got %d", len(s))
-	}
-
-	sum := int(s[0]) + int(s[1]) + int(s[2]) + int(s[3])
-	if sum > SRv6SIDBitLength {
-		return fmt.Errorf("SID structure sum %d exceeds %d bits", sum, SRv6SIDBitLength)
-	}
-
-	return nil
-}
-
 // SegmentSRv6 represents an SRv6 segment.
 type SegmentSRv6 struct {
-	Sid        netip.Addr        `json:"sid"`
-	LocalAddr  netip.Addr        `json:"localAddr,omitzero"`
-	RemoteAddr netip.Addr        `json:"remoteAddr,omitzero"`
-	Structure  SIDStructureBytes `json:"sidStructure,omitempty"`
-	USid       bool              `json:"uSid,omitempty"`
+	Sid        netip.Addr    `json:"sid"`
+	LocalAddr  netip.Addr    `json:"localAddr,omitzero"`
+	RemoteAddr netip.Addr    `json:"remoteAddr,omitzero"`
+	Structure  *SIDStructure `json:"sidStructure,omitempty"`
+	USid       bool          `json:"uSid,omitempty"`
 }
 
 // SidString returns the SRv6 SID as a string.
@@ -299,14 +260,7 @@ func NewSegmentSRv6WithNodeInfo(sid netip.Addr, n *LsNode) (SegmentSRv6, error) 
 
 		seg.LocalAddr = addr
 
-		if srv6SID.SIDStructure != nil {
-			seg.Structure = SIDStructureBytes{
-				srv6SID.SIDStructure.LocalBlock,
-				srv6SID.SIDStructure.LocalNode,
-				srv6SID.SIDStructure.LocalFunc,
-				srv6SID.SIDStructure.LocalArg,
-			}
-		}
+		seg.Structure = srv6SID.SIDStructure.Clone()
 
 		if IsUSidBehavior(srv6SID.EndpointBehavior.Behavior) {
 			seg.USid = true
@@ -360,7 +314,7 @@ func (seg SegmentSRv6) Equal(other SegmentSRv6) bool {
 		seg.LocalAddr == other.LocalAddr &&
 		seg.RemoteAddr == other.RemoteAddr &&
 		seg.USid == other.USid &&
-		slices.Equal(seg.Structure, other.Structure)
+		seg.Structure.Equal(other.Structure)
 }
 
 // Equal reports whether this SR-MPLS segment is equal to another.

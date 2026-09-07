@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
-	"strconv"
 	"strings"
 	"time"
 
@@ -746,14 +745,12 @@ func segmentFromPB(s *pb.Segment) (table.Segment, error) {
 			return nil, err
 		}
 
-		structure, err := parseSidStructure(s.GetSidStructure())
+		structure, err := table.ParseSIDStructure(s.GetSidStructure())
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("invalid SID structure for SID %q: %w", s.GetSid(), err)
 		}
 
-		if structure != nil {
-			v.Structure = table.SIDStructureBytes(structure)
-		}
+		v.Structure = structure
 
 		return v, nil
 	case table.SegmentSRMPLS:
@@ -787,35 +784,6 @@ func parseOptionalAddr(field, s string) (netip.Addr, error) {
 	}
 
 	return addr, nil
-}
-
-// parseSidStructure parses a comma-separated SID structure string and treats an empty string as unset.
-func parseSidStructure(s string) ([]uint8, error) {
-	if s == "" {
-		return nil, nil
-	}
-
-	parts := strings.Split(s, ",")
-	if len(parts) != 4 {
-		return nil, fmt.Errorf("expected 4 comma-separated values, got %d", len(parts))
-	}
-
-	result := make([]uint8, 4)
-
-	for i, p := range parts {
-		v, err := strconv.ParseUint(strings.TrimSpace(p), 10, 8)
-		if err != nil {
-			return nil, fmt.Errorf("part %d: %w", i, err)
-		}
-
-		result[i] = uint8(v)
-	}
-
-	if err := table.SIDStructureBytes(result).Validate(); err != nil {
-		return nil, fmt.Errorf("invalid SID structure %q: %w", s, err)
-	}
-
-	return result, nil
 }
 
 // CreateSRPolicy sends a create SR policy request to the PCE server.

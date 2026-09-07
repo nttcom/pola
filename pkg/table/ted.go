@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"io"
 	"net/netip"
+	"strconv"
+	"strings"
 )
 
 // LsTED represents a Traffic Engineering Database built from BGP-LS data.
@@ -466,12 +468,81 @@ func (lp *LsPrefix) UpdateTED(ted *LsTED, cfgASN uint32) {
 	localNode.Prefixes = append(localNode.Prefixes, lp)
 }
 
-// SIDStructure represents the structure breakdown of an SRv6 SID.
+// SIDStructure is the LocalBlock, LocalNode, LocalFunc, LocalArg length split
+// of an SRv6 SID (RFC 9603 §4.1).
+//
+// A nil value indicates that no structure was advertised or declared;
+// an all-zero value is a valid, explicitly declared structure.
 type SIDStructure struct {
-	LocalBlock uint8
-	LocalNode  uint8
-	LocalFunc  uint8
-	LocalArg   uint8
+	LocalBlock uint8 `json:"localBlock"`
+	LocalNode  uint8 `json:"localNode"`
+	LocalFunc  uint8 `json:"localFunc"`
+	LocalArg   uint8 `json:"localArg"`
+}
+
+// Validate checks that the structure fits within an SRv6 SID.
+func (s *SIDStructure) Validate() error {
+	if s == nil {
+		return nil
+	}
+
+	if sum := int(s.LocalBlock) + int(s.LocalNode) + int(s.LocalFunc) + int(s.LocalArg); sum > SRv6SIDBitLength {
+		return fmt.Errorf("SID structure sum %d exceeds %d bits", sum, SRv6SIDBitLength)
+	}
+
+	return nil
+}
+
+// Clone returns a copy of s.
+func (s *SIDStructure) Clone() *SIDStructure {
+	if s == nil {
+		return nil
+	}
+
+	c := *s
+
+	return &c
+}
+
+// Equal reports whether s and other represent the same SID structure.
+// A nil value is distinct from a zero-valued structure.
+func (s *SIDStructure) Equal(other *SIDStructure) bool {
+	if s == nil || other == nil {
+		return s == other
+	}
+
+	return *s == *other
+}
+
+// ParseSIDStructure parses a comma-separated SID structure
+// (e.g. "32,16,0,80"). An empty string returns nil.
+func ParseSIDStructure(s string) (*SIDStructure, error) {
+	if s == "" {
+		return nil, nil
+	}
+
+	parts := strings.Split(s, ",")
+	if len(parts) != 4 {
+		return nil, fmt.Errorf("SID structure %q must have 4 comma-separated elements, got %d", s, len(parts))
+	}
+
+	var vals [4]uint8
+
+	for i, p := range parts {
+		v, err := strconv.ParseUint(strings.TrimSpace(p), 10, 8)
+		if err != nil {
+			return nil, fmt.Errorf("invalid SID structure %q: %w", s, err)
+		}
+
+		vals[i] = uint8(v)
+	}
+
+	st := &SIDStructure{LocalBlock: vals[0], LocalNode: vals[1], LocalFunc: vals[2], LocalArg: vals[3]}
+	if err := st.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid SID structure %q: %w", s, err)
+	}
+
+	return st, nil
 }
 
 // EndpointBehavior represents the endpoint behavior attributes of an SRv6 SID.
@@ -575,8 +646,7 @@ func (m MetricType) String() string {
 	}
 }
 
-// DisplayString renders the metric as a short lowercase token (e.g. "igp"), used
-// for human-facing CLI output (unlike String()'s "METRIC_TYPE_..." form).
+// DisplayString returns the metric type as a lowercase string for display.
 func (m MetricType) DisplayString() string {
 	switch m {
 	case IGPMetric:
@@ -592,8 +662,7 @@ func (m MetricType) DisplayString() string {
 	}
 }
 
-// MarshalJSON renders the metric as a short lowercase token (e.g. "igp"), consistent
-// with the other lowercase enum-like fields on SRPolicy (e.g. State).
+// MarshalJSON returns the metric type as a lowercase JSON string.
 func (m MetricType) MarshalJSON() ([]byte, error) {
 	return json.Marshal(m.DisplayString())
 }

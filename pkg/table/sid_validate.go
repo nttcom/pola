@@ -282,8 +282,8 @@ func (idx *SIDIndex) hasSRv6(s SegmentSRv6) bool {
 	}
 
 	declaredLocBits := -1
-	if len(s.Structure) == 4 {
-		declaredLocBits = int(s.Structure[0]) + int(s.Structure[1])
+	if s.Structure != nil {
+		declaredLocBits = int(s.Structure.LocalBlock) + int(s.Structure.LocalNode)
 	}
 
 	_, found := idx.lookupSRv6Locator(s.Sid, declaredLocBits)
@@ -460,10 +460,10 @@ func usidSetBit(b *[16]byte, pos int, v bool) {
 // terminating owner cannot be determined unambiguously.
 func (idx *SIDIndex) usidContainerOwner(s SegmentSRv6) (owner string, matched bool) {
 	declaredLocBits := -1
-	hasDeclared := len(s.Structure) == 4
+	hasDeclared := s.Structure != nil
 
 	if hasDeclared {
-		declaredLocBits = int(s.Structure[0]) + int(s.Structure[1])
+		declaredLocBits = int(s.Structure.LocalBlock) + int(s.Structure.LocalNode)
 	}
 
 	locInfo, found := idx.lookupSRv6Locator(s.Sid, declaredLocBits)
@@ -477,9 +477,9 @@ func (idx *SIDIndex) usidContainerOwner(s SegmentSRv6) (owner string, matched bo
 	case hasDeclared:
 		// The SID's declared structure takes precedence over the locator's.
 		structure = srv6Structure{
-			blockBits: int(s.Structure[0]),
-			nodeBits:  int(s.Structure[1]),
-			funcBits:  int(s.Structure[2]),
+			blockBits: int(s.Structure.LocalBlock),
+			nodeBits:  int(s.Structure.LocalNode),
+			funcBits:  int(s.Structure.LocalFunc),
 		}
 	case !locInfo.structureKnown:
 		return ownerUnknown, true

@@ -6,6 +6,7 @@
 package table_test
 
 import (
+	"encoding/json"
 	"net/netip"
 	"testing"
 
@@ -122,13 +123,13 @@ func TestSegmentsEqual(t *testing.T) {
 			name: "SRv6 same SID with different Structure",
 			a: func() table.SegmentSRv6 {
 				s := newTestSegmentSRv6("", "")
-				s.Structure = table.SIDStructureBytes{1, 2, 3, 4}
+				s.Structure = &table.SIDStructure{LocalBlock: 1, LocalNode: 2, LocalFunc: 3, LocalArg: 4}
 
 				return s
 			}(),
 			b: func() table.SegmentSRv6 {
 				s := newTestSegmentSRv6("", "")
-				s.Structure = table.SIDStructureBytes{5, 6, 7, 8}
+				s.Structure = &table.SIDStructure{LocalBlock: 5, LocalNode: 6, LocalFunc: 7, LocalArg: 8}
 
 				return s
 			}(),
@@ -284,25 +285,33 @@ func TestBehaviorToString(t *testing.T) {
 	}
 }
 
-func TestSIDStructureBytesMarshalJSON(t *testing.T) {
+func TestSegmentSRv6_StructureMarshalJSON(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name string
-		s    table.SIDStructureBytes
+		s    *table.SIDStructure
 		want string
 	}{
-		{"nil structure", nil, "null"},
-		{"empty structure", table.SIDStructureBytes{}, "null"},
-		{"populated structure", table.SIDStructureBytes{32, 16, 0, 80}, `"32,16,0,80"`},
+		{"not declared", nil, ""},
+		{"declared, all zero", &table.SIDStructure{}, `{"localBlock":0,"localNode":0,"localFunc":0,"localArg":0}`},
+		{"declared", &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalArg: 80}, `{"localBlock":32,"localNode":16,"localFunc":0,"localArg":80}`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			b, err := tt.s.MarshalJSON()
+			seg := newTestSegmentSRv6(testSRv6Addr, "")
+			seg.Structure = tt.s
+
+			b, err := json.Marshal(seg)
 			require.NoError(t, err)
-			assert.Equal(t, tt.want, string(b))
+
+			var got struct {
+				SidStructure json.RawMessage `json:"sidStructure"`
+			}
+			require.NoError(t, json.Unmarshal(b, &got))
+			assert.Equal(t, tt.want, string(got.SidStructure))
 		})
 	}
 }
@@ -386,18 +395,17 @@ func TestIsUSidBehavior(t *testing.T) {
 	}
 }
 
-func TestSIDStructureBytes_Validate(t *testing.T) {
+func TestSIDStructure_Validate(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name    string
-		s       table.SIDStructureBytes
+		s       *table.SIDStructure
 		wantErr bool
 	}{
-		{name: "nil structure", s: nil},
-		{name: "sum is 128", s: table.SIDStructureBytes{32, 32, 32, 32}},
-		{name: "sum exceeds 128", s: table.SIDStructureBytes{32, 32, 32, 33}, wantErr: true},
-		{name: "wrong element count", s: table.SIDStructureBytes{32, 32, 32}, wantErr: true},
+		{name: "nil (not advertised/declared)", s: nil},
+		{name: "sum is 128", s: &table.SIDStructure{LocalBlock: 32, LocalNode: 32, LocalFunc: 32, LocalArg: 32}},
+		{name: "sum exceeds 128", s: &table.SIDStructure{LocalBlock: 32, LocalNode: 32, LocalFunc: 32, LocalArg: 33}, wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -437,7 +445,7 @@ func TestNewSegmentSRv6WithNodeInfo(t *testing.T) {
 			want: table.SegmentSRv6{
 				Sid:       netip.MustParseAddr("2001:db8::1"),
 				LocalAddr: netip.MustParseAddr(testSRv6Addr),
-				Structure: table.SIDStructureBytes{32, 16, 16, 0},
+				Structure: &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16},
 				USid:      false,
 			},
 		},
@@ -455,7 +463,7 @@ func TestNewSegmentSRv6WithNodeInfo(t *testing.T) {
 			want: table.SegmentSRv6{
 				Sid:       netip.MustParseAddr("2001:db8::1"),
 				LocalAddr: netip.MustParseAddr("fcbb:bb00:0100::"),
-				Structure: table.SIDStructureBytes{32, 16, 0, 0},
+				Structure: &table.SIDStructure{LocalBlock: 32, LocalNode: 16},
 				USid:      true,
 			},
 		},

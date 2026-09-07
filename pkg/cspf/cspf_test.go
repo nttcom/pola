@@ -58,7 +58,7 @@ func srv6DefaultSeg(sid string) table.SegmentSRv6 {
 	return table.SegmentSRv6{
 		Sid:       addr,
 		LocalAddr: addr,
-		Structure: table.SIDStructureBytes{32, 16, 16, 0},
+		Structure: &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16},
 	}
 }
 
@@ -387,7 +387,7 @@ func TestWithLooseSourceRouting(t *testing.T) {
 			table.SegmentSRv6{
 				Sid:       netip.MustParseAddr("2001:db8::2ff"),
 				LocalAddr: netip.MustParseAddr("2001:db8::2"),
-				Structure: table.SIDStructureBytes{32, 16, 16, 0},
+				Structure: &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16},
 			},
 			srv6DefaultSeg("2001:db8::3"),
 		}

@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/nttcom/pola/pkg/table"
 )
 
 // fullTEDNodeViewFixture exercises the rendering branches in ted_text.go.
@@ -40,7 +42,7 @@ func fullTEDNodeViewFixture() tedNodeView {
 				Srv6EndXSID: &tedSrv6EndXSIDView{
 					EndpointBehavior: endpointBehaviorView{Name: "END-X-BEHAVIOR"},
 					Sids:             []string{testSrv6EndXSID},
-					SidStructure:     &sidStructureView{LocalBlock: 21, LocalNode: 22, LocalFunc: 23, LocalArg: 24},
+					SidStructure:     &table.SIDStructure{LocalBlock: 21, LocalNode: 22, LocalFunc: 23, LocalArg: 24},
 				},
 			},
 		},
@@ -48,13 +50,13 @@ func fullTEDNodeViewFixture() tedNodeView {
 			{
 				Sids:             []string{"fc00:0:2:node1::"},
 				EndpointBehavior: endpointBehaviorView{Name: "NODE-SID-BEHAVIOR-1"},
-				SidStructure:     &sidStructureView{LocalBlock: 31, LocalNode: 32, LocalFunc: 33, LocalArg: 34},
+				SidStructure:     &table.SIDStructure{LocalBlock: 31, LocalNode: 32, LocalFunc: 33, LocalArg: 34},
 				MultiTopoIDs:     []uint32{1},
 			},
 			{
 				Sids:             []string{"fc00:0:2:node2::"},
 				EndpointBehavior: endpointBehaviorView{Name: "NODE-SID-BEHAVIOR-2", Flags: &flags, Algorithm: &algorithm},
-				SidStructure:     &sidStructureView{LocalBlock: 41, LocalNode: 42, LocalFunc: 43, LocalArg: 44},
+				SidStructure:     &table.SIDStructure{LocalBlock: 41, LocalNode: 42, LocalFunc: 43, LocalArg: 44},
 				MultiTopoIDs:     []uint32{2, 3},
 			},
 		},

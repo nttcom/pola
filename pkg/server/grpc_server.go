@@ -155,32 +155,13 @@ func validateCreateSRPolicy(req *pb.CreateSRPolicyRequest, disablePathCompute bo
 
 // parseSidStructure parses a comma-separated SID structure (e.g. "32,16,0,80").
 // It returns nil for empty input.
-func parseSidStructure(s string) ([]uint8, error) {
-	if s == "" {
-		return nil, nil
+func parseSidStructure(s string) (*table.SIDStructure, error) {
+	structure, err := table.ParseSIDStructure(s)
+	if err != nil {
+		return nil, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "%s", err.Error())
 	}
 
-	parts := strings.Split(s, ",")
-	if len(parts) != 4 {
-		return nil, fmt.Errorf("invalid SID structure %q", s)
-	}
-
-	result := make([]uint8, 4)
-
-	for i, p := range parts {
-		v, err := strconv.ParseUint(strings.TrimSpace(p), 10, 8)
-		if err != nil {
-			return nil, fmt.Errorf("invalid SID structure %q: %w", s, err)
-		}
-
-		result[i] = uint8(v)
-	}
-
-	if err := table.SIDStructureBytes(result).Validate(); err != nil {
-		return nil, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "invalid SID structure %q: %s", s, err.Error())
-	}
-
-	return result, nil
+	return structure, nil
 }
 
 // enrichSRv6Segment applies gRPC overrides to an SRv6 segment.
@@ -192,7 +173,7 @@ func enrichSRv6Segment(srv6Seg table.SegmentSRv6, segment *pb.Segment, usidMode 
 	if structure, err := parseSidStructure(segment.GetSidStructure()); err != nil {
 		return srv6Seg, err
 	} else if structure != nil {
-		srv6Seg.Structure = table.SIDStructureBytes(structure)
+		srv6Seg.Structure = structure
 	}
 
 	if s := segment.GetLocalAddr(); s != "" {

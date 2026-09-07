@@ -485,7 +485,7 @@ func TestSRv6EroSubobject_RoundTrip(t *testing.T) {
 			TFlag:         true,
 			Segment: table.SegmentSRv6{
 				Sid: sid, LocalAddr: local, USid: true,
-				Structure: []uint8{32, 16, 16, 0},
+				Structure: &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16},
 			},
 		},
 		"LFlag_IPv6Node": {
@@ -2094,7 +2094,7 @@ func TestNewSRv6EroSubobject_NAIFromSegment(t *testing.T) {
 			wantNAIType: pcep.NAITypeSRv6IPv6AdjacencyGlobal,
 		},
 		"WithStructure": {
-			seg:         table.SegmentSRv6{Sid: sid, LocalAddr: local, Structure: []uint8{32, 16, 16, 0}},
+			seg:         table.SegmentSRv6{Sid: sid, LocalAddr: local, Structure: &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16}},
 			wantNAIType: pcep.NAITypeSRv6IPv6Node, wantTFlag: true,
 		},
 	}
@@ -2169,18 +2169,18 @@ func TestNewSRv6EroSubobject_StructureValidation(t *testing.T) {
 	sid := netip.MustParseAddr("fc00:0:1::")
 	local := netip.MustParseAddr(testIPv6Addr1)
 
-	t.Run("EmptyStructureIsAbsent", func(t *testing.T) {
+	t.Run("NilStructureIsAbsent", func(t *testing.T) {
 		t.Parallel()
 
-		subo, err := pcep.NewSRv6EroSubobject(table.SegmentSRv6{Sid: sid, LocalAddr: local, Structure: []uint8{}})
+		subo, err := pcep.NewSRv6EroSubobject(table.SegmentSRv6{Sid: sid, LocalAddr: local})
 		require.NoError(t, err)
 		assert.False(t, subo.TFlag)
 	})
 
-	t.Run("InvalidLengthRejected", func(t *testing.T) {
+	t.Run("SumExceeding128BitsRejected", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := pcep.NewSRv6EroSubobject(table.SegmentSRv6{Sid: sid, LocalAddr: local, Structure: []uint8{32, 16, 16}})
+		_, err := pcep.NewSRv6EroSubobject(table.SegmentSRv6{Sid: sid, LocalAddr: local, Structure: &table.SIDStructure{LocalBlock: 64, LocalNode: 64, LocalFunc: 1}})
 		assert.Error(t, err)
 	})
 }

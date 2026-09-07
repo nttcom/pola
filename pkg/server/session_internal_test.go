@@ -191,7 +191,7 @@ func TestSRPolicies_SnapshotSRv6StructureIsIndependent(t *testing.T) {
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 
 	srv6Seg := table.NewSegmentSRv6(netip.MustParseAddr("2001:db8:1005::"))
-	srv6Seg.Structure = table.SIDStructureBytes{32, 16, 0, 80}
+	srv6Seg.Structure = &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalArg: 80}
 	ss.srPolicies = append(ss.srPolicies, table.NewSRPolicy(1, "pe01-policy1", []table.Segment{srv6Seg}, netip.MustParseAddr("10.255.0.1"), netip.MustParseAddr("10.255.0.2"), 0, 0, 0, table.PolicyUp))
 
 	policies := ss.SRPolicies()
@@ -201,14 +201,14 @@ func TestSRPolicies_SnapshotSRv6StructureIsIndependent(t *testing.T) {
 	snapshotSeg, ok := policies[0].SegmentList[0].(table.SegmentSRv6)
 	require.Truef(t, ok, "segment type: got %T, want table.SegmentSRv6", policies[0].SegmentList[0])
 
-	snapshotSeg.Structure[0] = 99
+	snapshotSeg.Structure.LocalBlock = 99
 
 	got, found := ss.SearchSRPolicy(1)
 	require.True(t, found, "SR Policy was not registered")
 
 	gotSeg, ok := got.SegmentList[0].(table.SegmentSRv6)
 	require.Truef(t, ok, "segment type: got %T, want table.SegmentSRv6", got.SegmentList[0])
-	assert.Equal(t, table.SIDStructureBytes{32, 16, 0, 80}, gotSeg.Structure,
+	assert.Equal(t, &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalArg: 80}, gotSeg.Structure,
 		"mutating the snapshot's SegmentSRv6.Structure changed the session's SR Policy")
 }
 
