@@ -14,6 +14,20 @@ import (
 	"github.com/nttcom/pola/pkg/packet/pcep"
 )
 
+func findAssocTypeList(t *testing.T, caps []pcep.CapabilityInterface) *pcep.AssocTypeList {
+	t.Helper()
+
+	for _, cap := range caps {
+		if v, ok := cap.(*pcep.AssocTypeList); ok {
+			return v
+		}
+	}
+
+	require.Fail(t, "expected DefaultCapabilities to include an AssocTypeList")
+
+	return nil
+}
+
 func TestDefaultCapabilities(t *testing.T) {
 	t.Parallel()
 
@@ -57,6 +71,21 @@ func TestDefaultCapabilities(t *testing.T) {
 	assert.False(t, multipathCap.IsOppositeDirSupported)
 	assert.False(t, multipathCap.IsForwardClassSupported)
 	assert.False(t, multipathCap.IsCompositePathSupported)
+}
+
+func TestPolaAssocTypes(t *testing.T) {
+	t.Parallel()
+
+	assocCap := findAssocTypeList(t, pcep.DefaultCapabilities())
+
+	assert.Equal(t, assocCap.AssocTypes, pcep.PolaAssocTypes())
+
+	// Ensure the returned slice is a copy and cannot mutate the defaults.
+	got := pcep.PolaAssocTypes()
+	got[0] = pcep.AssocTypeSRPolicyAssociationCisco
+
+	rebuiltAssocCap := findAssocTypeList(t, pcep.DefaultCapabilities())
+	assert.Equal(t, []pcep.AssocType{pcep.AssocTypeSRPolicyAssociation}, rebuiltAssocCap.AssocTypes)
 }
 
 func TestFlattenCapabilities(t *testing.T) {

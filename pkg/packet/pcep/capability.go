@@ -53,6 +53,13 @@ func polaAssocTypeList() *AssocTypeList {
 	}
 }
 
+// PolaAssocTypes returns the Association Types Pola advertises in its OPEN.
+func PolaAssocTypes() []AssocType {
+	types := polaAssocTypeList().AssocTypes
+
+	return append([]AssocType(nil), types...)
+}
+
 // polaMultipathCapability advertises support for a single path per request.
 func polaMultipathCapability() *MultipathCapability {
 	return NewMultipathCapability(1, false, false, false, false)

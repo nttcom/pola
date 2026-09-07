@@ -147,7 +147,7 @@ func TestCapabilitiesFeatures_DeduplicatesByGroupAndToken(t *testing.T) {
 		{Type: "SR", Detail: grpc.SRCapability{UnlimitedMSD: true}},
 	}
 
-	got := capabilitiesFeatures(caps)
+	got, _ := capabilitiesFeatures(caps)
 	assert.Equal(t, []capFeature{{group: "SR", token: "SR"}, {group: "SR", token: "Unlimited-SID-Depth"}}, got)
 }
 
@@ -239,7 +239,7 @@ func TestCommonCapabilityLines_GroupsByTLVExceptAssocTypeAndUnknown(t *testing.T
 		{group: capGroupUnknown, token: "unknown_type_73", num: 73, hasNum: true},
 	}
 
-	lines := capabilityLines(capabilityGroups(common))
+	lines := capabilityLines(capabilityGroups(common, nil))
 	assert.Equal(t, []capDisplayLine{
 		{Header: "STATEFUL-PCE-CAPABILITY [RFC8231/8281]: Stateful, Update"},
 		{Header: assocTypeListLabel, Items: []string{
@@ -262,7 +262,7 @@ func TestCommonCapabilityLines_OrdersByTLVTypeRegardlessOfInputOrder(t *testing.
 		{group: capGroupStateful, token: "Stateful"},
 	}
 
-	lines := capabilityLines(capabilityGroups(common))
+	lines := capabilityLines(capabilityGroups(common, nil))
 
 	headers := make([]string, 0, len(lines))
 	for _, line := range lines {
@@ -285,7 +285,7 @@ func TestCommonCapabilityLines_UnknownGroupSortsLast(t *testing.T) {
 		{group: capGroupMultipath, token: "Multipath"},
 	}
 
-	lines := capabilityLines(capabilityGroups(common))
+	lines := capabilityLines(capabilityGroups(common, nil))
 	assert.Equal(t, "MULTIPATH-CAP [draft-ietf-pce-multipath]: Multipath", lines[0].Header)
 	assert.Equal(t, "Unrecognized TLVs", lines[1].Header)
 }
@@ -375,7 +375,7 @@ func TestCommonCapabilityLines_SingleAssocTypeStillUsesHeadingForm(t *testing.T)
 		{group: capGroupAssocTypeList, token: "AssocType:6", num: 6, hasNum: true},
 	}
 
-	lines := capabilityLines(capabilityGroups(common))
+	lines := capabilityLines(capabilityGroups(common, nil))
 	assert.Equal(t, []capDisplayLine{
 		{Header: assocTypeListLabel, Items: []string{"SR Policy Association (0x0006) [RFC9862]"}},
 	}, lines)
@@ -409,6 +409,134 @@ func TestBuildCapabilitiesView_LocalOnlyAssocTypeUsesRegistryLabel(t *testing.T)
 		Capability: capGroupAssocTypeList,
 		Items:      []string{"SR Policy Association (0x0006) [RFC9862]"},
 	}}, view.LocalOnly)
+}
+
+func unrecognizedTLVGroup(view capabilitiesView) (capGroupView, bool) {
+	for _, g := range view.Common.Capabilities {
+		if g.Capability == capGroupUnknown {
+			return g, true
+		}
+	}
+
+	return capGroupView{}, false
+}
+
+func TestBuildCapabilitiesView_UnknownSubTLVProvenanceSuffix(t *testing.T) {
+	t.Parallel()
+
+	pstWith := func(sub grpc.Capability) grpc.Capability {
+		return grpc.Capability{Type: capGroupPathSetupType, Detail: grpc.PathSetupTypeCapability{
+			PathSetupTypes:  []uint32{1},
+			SubCapabilities: []grpc.Capability{sub},
+		}}
+	}
+	topLevelUnknown := grpc.Capability{Type: capGroupUnknown, Detail: grpc.UnknownCapability{TLVType: 73}}
+	nestedUnknown := grpc.Capability{Type: capGroupUnknown, Detail: grpc.UnknownCapability{TLVType: 73}}
+
+	nestedOnlyCaps := []grpc.Capability{pstWith(nestedUnknown)}
+	topLevelOnlyCaps := []grpc.Capability{topLevelUnknown}
+	bothCaps := []grpc.Capability{topLevelUnknown, pstWith(nestedUnknown)}
+
+	nestedOnlyView := buildCapabilitiesView(nestedOnlyCaps, nestedOnlyCaps)
+	topLevelOnlyView := buildCapabilitiesView(topLevelOnlyCaps, topLevelOnlyCaps)
+	bothView := buildCapabilitiesView(bothCaps, bothCaps)
+
+	nestedGroup, ok := unrecognizedTLVGroup(nestedOnlyView)
+	require.True(t, ok)
+	require.Len(t, nestedGroup.Items, 1)
+	assert.Contains(t, nestedGroup.Items[0], nestedSubTLVSuffix, "a sub-TLV-only unknown type must be annotated")
+
+	topLevelGroup, ok := unrecognizedTLVGroup(topLevelOnlyView)
+	require.True(t, ok)
+	require.Len(t, topLevelGroup.Items, 1)
+	assert.NotContains(t, topLevelGroup.Items[0], nestedSubTLVSuffix, "a top-level-only unknown type must not be annotated")
+
+	bothGroup, ok := unrecognizedTLVGroup(bothView)
+	require.True(t, ok)
+	require.Len(t, bothGroup.Items, 1)
+	assert.NotContains(t, bothGroup.Items[0], nestedSubTLVSuffix, "a type seen both top-level and nested must not be annotated")
+
+	assert.Equal(t, []uint32{73}, nestedOnlyView.Common.UnrecognizedTLVTypes)
+	assert.Equal(t, nestedOnlyView.Common.UnrecognizedTLVTypes, topLevelOnlyView.Common.UnrecognizedTLVTypes)
+	assert.Equal(t, nestedOnlyView.Common.UnrecognizedTLVTypes, bothView.Common.UnrecognizedTLVTypes)
+}
+
+func TestBuildCapabilitiesView_CapabilitiesIsCanonicalAndIncludesOther(t *testing.T) {
+	t.Parallel()
+
+	caps := []grpc.Capability{
+		{Type: capGroupStateful, Detail: grpc.StatefulCapability{LSPUpdate: true}},
+		{Type: capGroupMultipath, Detail: grpc.MultipathCapability{MaxMultipaths: 4}},
+	}
+
+	view := buildCapabilitiesView(caps, caps)
+
+	byGroup := make(map[string]capGroupView, len(view.Common.Capabilities))
+	for _, g := range view.Common.Capabilities {
+		byGroup[g.Capability] = g
+	}
+
+	for _, g := range view.Common.Other {
+		assert.Equal(t, g, byGroup[g.Capability], "Other group %q must also appear in Capabilities", g.Capability)
+	}
+
+	require.Contains(t, byGroup, capGroupStateful, "a typed-field-consumed group must still appear in Capabilities")
+	assert.NotContains(t, view.Common.Other, capGroupView{Capability: capGroupStateful})
+}
+
+func TestBuildCapabilitiesView_CapabilitiesMatchesCommonLinesOutput(t *testing.T) {
+	t.Parallel()
+
+	caps := []grpc.Capability{
+		{Type: capGroupStateful, Detail: grpc.StatefulCapability{LSPUpdate: true}},
+		{Type: capGroupAssocTypeList, Detail: grpc.AssocTypeListCapability{AssocTypes: []uint32{6}}},
+		{Type: capGroupUnknown, Detail: grpc.UnknownCapability{TLVType: 73}},
+	}
+
+	view := buildCapabilitiesView(caps, caps)
+
+	assert.Equal(t, capabilityLines(view.Common.Capabilities), view.commonLines(),
+		"text and JSON output must read from the same canonical data")
+}
+
+func TestBuildCapabilitiesView_EmptyBothSidesCapabilitiesIsEmptyNotNil(t *testing.T) {
+	t.Parallel()
+
+	view := buildCapabilitiesView(nil, nil)
+
+	assert.NotNil(t, view.Common.Capabilities)
+	assert.Empty(t, view.Common.Capabilities)
+}
+
+func TestBuildCapabilitiesView_PeerOnlyNestedUnknownGetsSuffix(t *testing.T) {
+	t.Parallel()
+
+	peer := []grpc.Capability{
+		{Type: capGroupPathSetupType, Detail: grpc.PathSetupTypeCapability{
+			PathSetupTypes: []uint32{1},
+			SubCapabilities: []grpc.Capability{
+				{Type: capGroupUnknown, Detail: grpc.UnknownCapability{TLVType: 73}},
+			},
+		}},
+	}
+
+	view := buildCapabilitiesView(nil, peer)
+
+	var unknownGroup capGroupView
+
+	found := false
+
+	for _, g := range view.PeerOnly {
+		if g.Capability == capGroupUnknown {
+			unknownGroup = g
+			found = true
+		}
+	}
+
+	require.True(t, found, "peer-only unknown TLV must appear in PeerOnly")
+	require.Len(t, unknownGroup.Items, 1)
+	assert.Contains(t, unknownGroup.Items[0], nestedSubTLVSuffix,
+		"a peer-only unknown TLV seen only as a PATH-SETUP-TYPE-CAPABILITY sub-capability must be annotated")
 }
 
 func TestBuildCapabilitiesView_VendorInformationTokenIsNotLowercased(t *testing.T) {

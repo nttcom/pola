@@ -38,16 +38,32 @@ type capFeature struct {
 	hasNum bool
 }
 
-// capabilitiesFeatures flattens capabilities into deduplicated features.
-func capabilitiesFeatures(caps []grpc.Capability) []capFeature {
+// capabilitiesFeatures flattens capabilities and identifies nested-only features.
+func capabilitiesFeatures(caps []grpc.Capability) (features []capFeature, nestedOnly map[capFeature]struct{}) {
 	seen := make(map[capFeature]struct{})
 
-	features := make([]capFeature, 0, len(caps))
+	features = make([]capFeature, 0, len(caps))
 	for _, c := range caps {
 		features = appendCapabilityFeatures(features, seen, c)
 	}
 
-	return features
+	topLevel := make(map[capFeature]struct{}, len(features))
+
+	for _, c := range caps {
+		for _, f := range capabilityFeatures(c) {
+			topLevel[f] = struct{}{}
+		}
+	}
+
+	nestedOnly = make(map[capFeature]struct{})
+
+	for _, f := range features {
+		if _, ok := topLevel[f]; !ok {
+			nestedOnly[f] = struct{}{}
+		}
+	}
+
+	return features, nestedOnly
 }
 
 // capabilityFeatures turns c into its features.
@@ -106,14 +122,17 @@ func appendCapabilityFeatures(features []capFeature, seen map[capFeature]struct{
 }
 
 type capabilitySets struct {
-	common    []capFeature
-	localOnly []capFeature
-	peerOnly  []capFeature
+	common          []capFeature
+	localOnly       []capFeature
+	peerOnly        []capFeature
+	commonNested    map[capFeature]struct{}
+	localOnlyNested map[capFeature]struct{}
+	peerOnlyNested  map[capFeature]struct{}
 }
 
 func splitCapabilities(localCaps, peerCaps []grpc.Capability) capabilitySets {
-	local := capabilitiesFeatures(localCaps)
-	peer := capabilitiesFeatures(peerCaps)
+	local, localNested := capabilitiesFeatures(localCaps)
+	peer, peerNested := capabilitiesFeatures(peerCaps)
 
 	peerSet := make(map[capFeature]struct{}, len(peer))
 	for _, f := range peer {
@@ -125,19 +144,38 @@ func splitCapabilities(localCaps, peerCaps []grpc.Capability) capabilitySets {
 		localSet[f] = struct{}{}
 	}
 
-	var sets capabilitySets
+	sets := capabilitySets{
+		commonNested:    make(map[capFeature]struct{}),
+		localOnlyNested: make(map[capFeature]struct{}),
+		peerOnlyNested:  make(map[capFeature]struct{}),
+	}
 
 	for _, f := range local {
 		if _, ok := peerSet[f]; ok {
 			sets.common = append(sets.common, f)
+
+			_, localSaysNested := localNested[f]
+			_, peerSaysNested := peerNested[f]
+
+			if localSaysNested && peerSaysNested {
+				sets.commonNested[f] = struct{}{}
+			}
 		} else {
 			sets.localOnly = append(sets.localOnly, f)
+
+			if _, ok := localNested[f]; ok {
+				sets.localOnlyNested[f] = struct{}{}
+			}
 		}
 	}
 
 	for _, f := range peer {
 		if _, ok := localSet[f]; !ok {
 			sets.peerOnly = append(sets.peerOnly, f)
+
+			if _, ok := peerNested[f]; ok {
+				sets.peerOnlyNested[f] = struct{}{}
+			}
 		}
 	}
 
@@ -154,13 +192,10 @@ type capabilitiesView struct {
 	Common    commonCapView  `json:"common"`
 	LocalOnly []capGroupView `json:"localOnly"`
 	PeerOnly  []capGroupView `json:"peerOnly"`
-
-	// commonGroups holds grouped common capabilities for text output.
-	commonGroups []capGroupView
 }
 
 func (c capabilitiesView) commonLines() []capDisplayLine {
-	return capabilityLines(c.commonGroups)
+	return capabilityLines(c.Common.Capabilities)
 }
 
 // commonCapView exposes capabilities shared by both sides.
@@ -171,6 +206,7 @@ type commonCapView struct {
 	PathSetupTypes       []string       `json:"pathSetupTypes"`
 	AssociationTypes     []uint32       `json:"associationTypes"`
 	UnrecognizedTLVTypes []uint32       `json:"unrecognizedTlvTypes"`
+	Capabilities         []capGroupView `json:"capabilities"`
 	Other                []capGroupView `json:"other"`
 }
 
@@ -182,10 +218,10 @@ func buildCapabilitiesView(localCaps, peerCaps []grpc.Capability) capabilitiesVi
 			PathSetupTypes:       []string{},
 			AssociationTypes:     []uint32{},
 			UnrecognizedTLVTypes: []uint32{},
+			Capabilities:         capabilityGroups(sets.common, sets.commonNested),
 		},
-		LocalOnly:    capabilityGroups(sets.localOnly),
-		PeerOnly:     capabilityGroups(sets.peerOnly),
-		commonGroups: capabilityGroups(sets.common),
+		LocalOnly: capabilityGroups(sets.localOnly, sets.localOnlyNested),
+		PeerOnly:  capabilityGroups(sets.peerOnly, sets.peerOnlyNested),
 	}
 
 	var otherFeatures []capFeature
@@ -196,7 +232,7 @@ func buildCapabilitiesView(localCaps, peerCaps []grpc.Capability) capabilitiesVi
 		}
 	}
 
-	view.Common.Other = capabilityGroups(otherFeatures)
+	view.Common.Other = capabilityGroups(otherFeatures, sets.commonNested)
 
 	slices.Sort(view.Common.PathSetupTypes)
 	slices.Sort(view.Common.AssociationTypes)
@@ -243,8 +279,7 @@ func applyCommonFeature(common *commonCapView, f capFeature) bool {
 	return false
 }
 
-// capabilityGroups groups features by capability.
-func capabilityGroups(features []capFeature) []capGroupView {
+func capabilityGroups(features []capFeature, nestedOnly map[capFeature]struct{}) []capGroupView {
 	order := make([]string, 0)
 
 	byGroup := make(map[string][]capFeature)
@@ -262,18 +297,20 @@ func capabilityGroups(features []capFeature) []capGroupView {
 
 	groups := make([]capGroupView, 0, len(order))
 	for _, group := range order {
-		groups = append(groups, capGroupView{Capability: group, Items: groupItems(group, byGroup[group])})
+		groups = append(groups, capGroupView{Capability: group, Items: groupItems(group, byGroup[group], nestedOnly)})
 	}
 
 	return groups
 }
 
-func groupItems(group string, features []capFeature) []string {
+const nestedSubTLVSuffix = " [sub-TLV of PATH-SETUP-TYPE-CAPABILITY]"
+
+func groupItems(group string, features []capFeature, nestedOnly map[capFeature]struct{}) []string {
 	switch group {
 	case capGroupAssocTypeList:
-		return sortedNumericLabels(features, assocTypeLabel)
+		return sortedNumericLabels(features, assocTypeLabel, nil)
 	case capGroupUnknown:
-		return sortedNumericLabels(features, unrecognizedTLVItem)
+		return sortedNumericLabels(features, unrecognizedTLVItem, nestedOnly)
 	default:
 		items := make([]string, len(features))
 		for i, f := range features {
@@ -284,19 +321,26 @@ func groupItems(group string, features []capFeature) []string {
 	}
 }
 
-func sortedNumericLabels(features []capFeature, label func(uint32) string) []string {
-	ns := make([]uint32, 0, len(features))
+func sortedNumericLabels(features []capFeature, label func(uint32) string, nestedOnly map[capFeature]struct{}) []string {
+	numbered := make([]capFeature, 0, len(features))
 	for _, f := range features {
 		if f.hasNum {
-			ns = append(ns, f.num)
+			numbered = append(numbered, f)
 		}
 	}
 
-	slices.Sort(ns)
+	slices.SortFunc(numbered, func(a, b capFeature) int {
+		return cmp.Compare(a.num, b.num)
+	})
 
-	items := make([]string, len(ns))
-	for i, n := range ns {
-		items[i] = label(n)
+	items := make([]string, len(numbered))
+	for i, f := range numbered {
+		item := label(f.num)
+		if _, ok := nestedOnly[f]; ok {
+			item += nestedSubTLVSuffix
+		}
+
+		items[i] = item
 	}
 
 	return items
