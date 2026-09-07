@@ -485,8 +485,9 @@ func (idx *SIDIndex) usidContainerOwner(s SegmentSRv6) (owner string, matched bo
 		return ownerUnknown, true
 	}
 
+	// A node-bits=0 locator cannot encode further hops (LIB C-SID semantics).
 	if structure.nodeBits <= 0 {
-		return ownerUnknown, false
+		return locInfo.owner, true
 	}
 
 	segments := uSIDMicroSegmentPrefixes(s.Sid, structure)
