@@ -2267,7 +2267,7 @@ func (ss *Session) SRPolicies() []*table.SRPolicy {
 		clone.SegmentList = slices.Clone(p.SegmentList)
 		for j, seg := range clone.SegmentList {
 			if srv6, ok := seg.(table.SegmentSRv6); ok {
-				srv6.Structure = slices.Clone(srv6.Structure)
+				srv6.Structure = srv6.Structure.Clone()
 				clone.SegmentList[j] = srv6
 			}
 		}

@@ -420,7 +420,7 @@ func TestUSIDContainerOwner(t *testing.T) {
 
 		seg := NewSegmentSRv6(netip.MustParseAddr("fcbb:bb00:0100:0200:0300::"))
 		seg.USid = true
-		seg.Structure = SIDStructureBytes{32, 16, 0, 0}
+		seg.Structure = &SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 0, LocalArg: 0}
 
 		owner, matched := idx.usidContainerOwner(seg)
 		require.True(t, matched)
@@ -440,7 +440,7 @@ func TestUSIDContainerOwner(t *testing.T) {
 
 		seg := NewSegmentSRv6(netip.MustParseAddr("fcbb:bb00:0100:0200::"))
 		seg.USid = true
-		seg.Structure = SIDStructureBytes{32, 16, 0, 0}
+		seg.Structure = &SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 0, LocalArg: 0}
 
 		owner, matched := idx.usidContainerOwner(seg)
 		require.True(t, matched)
@@ -458,7 +458,7 @@ func TestUSIDContainerOwner(t *testing.T) {
 
 		seg := NewSegmentSRv6(netip.MustParseAddr("fcbb:bb00:0100::"))
 		seg.USid = true
-		seg.Structure = SIDStructureBytes{32, 16, 0, 0}
+		seg.Structure = &SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 0, LocalArg: 0}
 
 		owner, matched := idx.usidContainerOwner(seg)
 		require.True(t, matched)
@@ -478,7 +478,7 @@ func TestUSIDContainerOwner(t *testing.T) {
 
 		seg := NewSegmentSRv6(netip.MustParseAddr("fcbb:bb00:0100:0200:0300::"))
 		seg.USid = true
-		seg.Structure = SIDStructureBytes{32, 16, 0, 0}
+		seg.Structure = &SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 0, LocalArg: 0}
 
 		owner, matched := idx.usidContainerOwner(seg)
 		require.True(t, matched)
@@ -495,7 +495,7 @@ func TestUSIDContainerOwner(t *testing.T) {
 
 		seg := NewSegmentSRv6(netip.MustParseAddr("fd00:bb00:0100:0200:0300::"))
 		seg.USid = true
-		seg.Structure = SIDStructureBytes{32, 16, 0, 0}
+		seg.Structure = &SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 0, LocalArg: 0}
 
 		_, matched := idx.usidContainerOwner(seg)
 		assert.False(t, matched)
@@ -512,7 +512,7 @@ func TestUSIDContainerOwner(t *testing.T) {
 		// The first micro-segment is all zero, marking the container end (RFC 9800 §5).
 		seg := NewSegmentSRv6(netip.MustParseAddr("fcbb:bb00:0000::"))
 		seg.USid = true
-		seg.Structure = SIDStructureBytes{32, 16, 0, 0}
+		seg.Structure = &SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 0, LocalArg: 0}
 
 		owner, matched := idx.usidContainerOwner(seg)
 		require.True(t, matched)
@@ -532,7 +532,7 @@ func TestUSIDContainerOwner(t *testing.T) {
 
 		seg := NewSegmentSRv6(netip.MustParseAddr("fcbb:bb00:0100::"))
 		seg.USid = true
-		seg.Structure = SIDStructureBytes{32, 16, 0, 0}
+		seg.Structure = &SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 0, LocalArg: 0}
 
 		owner, matched := idx.usidContainerOwner(seg)
 		require.True(t, matched)
@@ -567,7 +567,7 @@ func TestUSIDContainerOwner(t *testing.T) {
 
 		seg := NewSegmentSRv6(netip.MustParseAddr("fcbb:bb00:0100::"))
 		seg.USid = true
-		seg.Structure = SIDStructureBytes{32, 16, 0, 0}
+		seg.Structure = &SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 0, LocalArg: 0}
 
 		owner, matched := idx.usidContainerOwner(seg)
 		require.True(t, matched)
@@ -657,7 +657,7 @@ func TestUSIDContainerOwner(t *testing.T) {
 
 		seg := NewSegmentSRv6(netip.MustParseAddr("fc00:1::1"))
 		seg.USid = true
-		seg.Structure = SIDStructureBytes{32, 0, 16, 0}
+		seg.Structure = &SIDStructure{LocalBlock: 32, LocalNode: 0, LocalFunc: 16, LocalArg: 0}
 
 		owner, matched := idx.usidContainerOwner(seg)
 		require.True(t, matched)

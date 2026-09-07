@@ -49,14 +49,14 @@ type tedMetricView struct {
 type tedSrv6SIDView struct {
 	Sids             []string             `json:"sids"`
 	EndpointBehavior endpointBehaviorView `json:"endpointBehavior"`
-	SidStructure     *sidStructureView    `json:"sidStructure,omitempty"`
+	SidStructure     *table.SIDStructure  `json:"sidStructure,omitempty"`
 	MultiTopoIDs     []uint32             `json:"multiTopoIds"`
 }
 
 type tedSrv6EndXSIDView struct {
 	EndpointBehavior endpointBehaviorView `json:"endpointBehavior"`
 	Sids             []string             `json:"sids"`
-	SidStructure     *sidStructureView    `json:"sidStructure,omitempty"`
+	SidStructure     *table.SIDStructure  `json:"sidStructure,omitempty"`
 }
 
 // endpointBehaviorView omits Flags and Algorithm for End.X SIDs, which carry only the behavior.
@@ -65,13 +65,6 @@ type endpointBehaviorView struct {
 	Name      string `json:"name"` // table.BehaviorToString
 	Flags     *uint8 `json:"flags,omitempty"`
 	Algorithm *uint8 `json:"algorithm,omitempty"`
-}
-
-type sidStructureView struct {
-	LocalBlock uint8 `json:"localBlock"`
-	LocalNode  uint8 `json:"localNode"`
-	LocalFunc  uint8 `json:"localFunc"`
-	LocalArg   uint8 `json:"localArg"`
 }
 
 // newTEDNodeViews returns views in router ID order for deterministic output.
@@ -186,7 +179,7 @@ func newTEDSrv6SIDViews(sids []*table.LsSrv6SID) []tedSrv6SIDView {
 		views = append(views, tedSrv6SIDView{
 			Sids:             s.Sids,
 			EndpointBehavior: endpointBehaviorViewFrom(s.EndpointBehavior),
-			SidStructure:     sidStructureViewFrom(s.SIDStructure),
+			SidStructure:     s.SIDStructure,
 			MultiTopoIDs:     s.MultiTopoIDs,
 		})
 	}
@@ -198,7 +191,7 @@ func newTEDSrv6EndXSIDView(s *table.Srv6EndXSID) tedSrv6EndXSIDView {
 	return tedSrv6EndXSIDView{
 		EndpointBehavior: endpointBehaviorViewFromBehavior(s.EndpointBehavior),
 		Sids:             s.Sids,
-		SidStructure:     sidStructureViewFrom(s.Srv6SIDStructure),
+		SidStructure:     s.Srv6SIDStructure,
 	}
 }
 
@@ -218,18 +211,5 @@ func endpointBehaviorViewFromBehavior(behavior uint16) endpointBehaviorView {
 	return endpointBehaviorView{
 		Behavior: behavior,
 		Name:     table.BehaviorToString(behavior),
-	}
-}
-
-func sidStructureViewFrom(s *table.SIDStructure) *sidStructureView {
-	if s == nil {
-		return nil
-	}
-
-	return &sidStructureView{
-		LocalBlock: s.LocalBlock,
-		LocalNode:  s.LocalNode,
-		LocalFunc:  s.LocalFunc,
-		LocalArg:   s.LocalArg,
 	}
 }

@@ -177,7 +177,7 @@ func TestNewEnrichedSegmentSRv6(t *testing.T) {
 		assert.Equal(t, "2001:db8:1005::", srv6Seg.Sid.String(), "Sid")
 		assert.Equal(t, "2001:db8::5", addrString(srv6Seg.LocalAddr), "LocalAddr")
 		assert.Equal(t, "2001:db8::6", addrString(srv6Seg.RemoteAddr), "RemoteAddr")
-		assert.Equal(t, table.SIDStructureBytes{32, 16, 0, 80}, srv6Seg.Structure, "Structure")
+		assert.Equal(t, &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalArg: 80}, srv6Seg.Structure, "Structure")
 		assert.Equalf(t, usidMode, srv6Seg.USid, "USid with usidMode=%v", usidMode)
 	}
 }
@@ -1121,7 +1121,7 @@ func TestConvertSegment_CarriesSRv6NAIAndStructure(t *testing.T) {
 		Sid:        sid,
 		LocalAddr:  netip.MustParseAddr("2001:db8::5"),
 		RemoteAddr: netip.MustParseAddr("2001:db8::6"),
-		Structure:  table.SIDStructureBytes{32, 16, 0, 80},
+		Structure:  &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalArg: 80},
 	}
 
 	pbSeg := convertSegment(seg)
@@ -1774,11 +1774,11 @@ func TestParseSidStructure(t *testing.T) {
 	tests := []struct {
 		name    string
 		in      string
-		want    []uint8
+		want    *table.SIDStructure
 		wantErr bool
 	}{
 		{name: "empty string", in: "", want: nil},
-		{name: "valid", in: "32,16,0,80", want: []uint8{32, 16, 0, 80}},
+		{name: "valid", in: "32,16,0,80", want: &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalArg: 80}},
 		{name: "wrong part count", in: "1,2,3", wantErr: true},
 		{name: "non-numeric part", in: "1,2,3,x", wantErr: true},
 		{name: "value out of uint8 range", in: "1,2,3,256", wantErr: true},

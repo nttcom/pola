@@ -271,7 +271,7 @@ func TestSIDIndexHas_USID(t *testing.T) {
 
 		seg := table.NewSegmentSRv6(container)
 		seg.USid = true
-		seg.Structure = []uint8{32, 16, 0, 0}
+		seg.Structure = &table.SIDStructure{LocalBlock: 32, LocalNode: 16}
 		assert.True(t, table.NewSIDIndex(ted).Has(seg), "expected uSID container to be accepted via locator containment")
 	})
 
@@ -290,7 +290,7 @@ func TestSIDIndexHas_USID(t *testing.T) {
 		seg.USid = true
 		// Declares a /32 locator (block=24,node=8), which contradicts the /48
 		// the TED actually advertises.
-		seg.Structure = []uint8{24, 8, 16, 0}
+		seg.Structure = &table.SIDStructure{LocalBlock: 24, LocalNode: 8, LocalFunc: 16}
 		assert.False(t, table.NewSIDIndex(ted).Has(seg), "expected mismatch when declared locator is shorter than TED advertised")
 	})
 
@@ -299,7 +299,7 @@ func TestSIDIndexHas_USID(t *testing.T) {
 
 		seg := table.NewSegmentSRv6(container)
 		seg.USid = true
-		seg.Structure = []uint8{0, 0, 48, 0}
+		seg.Structure = &table.SIDStructure{LocalFunc: 48}
 		assert.False(t, table.NewSIDIndex(ted).Has(seg), "expected declared zero-width locator not to match an unrelated enclosing TED locator")
 	})
 
@@ -871,7 +871,7 @@ func usidLocatorNode(routerID, sid string, remote *table.LsNode, endXSid string)
 	return node
 }
 
-func usidContainerSeg(addr string, structure []uint8) table.Segment {
+func usidContainerSeg(addr string, structure *table.SIDStructure) table.Segment {
 	seg := table.NewSegmentSRv6(netip.MustParseAddr(addr))
 	seg.USid = true
 	seg.Structure = structure
@@ -896,7 +896,7 @@ func TestValidateExplicitPathUSID(t *testing.T) {
 		ted := newTestTED(nodeW, nodeX)
 
 		err := table.ValidateExplicitPath(ted, "X", []table.Segment{
-			usidContainerSeg(container, []uint8{32, 16, 0, 0}),
+			usidContainerSeg(container, &table.SIDStructure{LocalBlock: 32, LocalNode: 16}),
 			table.NewSegmentSRv6(netip.MustParseAddr(endXToW1)),
 		})
 		require.NoError(t, err)
@@ -910,7 +910,7 @@ func TestValidateExplicitPathUSID(t *testing.T) {
 		ted := newTestTED(nodeW, nodeX)
 
 		err := table.ValidateExplicitPath(ted, "X", []table.Segment{
-			usidContainerSeg("fcbb:bb00:0100::", []uint8{32, 16, 0, 0}),
+			usidContainerSeg("fcbb:bb00:0100::", &table.SIDStructure{LocalBlock: 32, LocalNode: 16}),
 			table.NewSegmentSRv6(netip.MustParseAddr(endXToW1)),
 		})
 		require.NoError(t, err)
@@ -926,7 +926,7 @@ func TestValidateExplicitPathUSID(t *testing.T) {
 		ted := newTestTED(nodeW, nodeX, nodeY, nodeZ)
 
 		err := table.ValidateExplicitPath(ted, "X", []table.Segment{
-			usidContainerSeg(container, []uint8{32, 16, 0, 0}),
+			usidContainerSeg(container, &table.SIDStructure{LocalBlock: 32, LocalNode: 16}),
 			table.NewSegmentSRv6(netip.MustParseAddr(endXToW3)),
 		})
 		require.NoError(t, err)
@@ -942,7 +942,7 @@ func TestValidateExplicitPathUSID(t *testing.T) {
 		ted := newTestTED(nodeW, nodeX, nodeY, nodeZ)
 
 		err := table.ValidateExplicitPath(ted, "X", []table.Segment{
-			usidContainerSeg(container, []uint8{32, 16, 0, 0}),
+			usidContainerSeg(container, &table.SIDStructure{LocalBlock: 32, LocalNode: 16}),
 			table.NewSegmentSRv6(netip.MustParseAddr(endXToW1)),
 		})
 		require.Error(t, err)
@@ -959,7 +959,7 @@ func TestValidateExplicitPathUSID(t *testing.T) {
 		ted := newTestTED(nodeW, nodeX, nodeZ)
 
 		err := table.ValidateExplicitPath(ted, "X", []table.Segment{
-			usidContainerSeg(container, []uint8{32, 16, 0, 0}),
+			usidContainerSeg(container, &table.SIDStructure{LocalBlock: 32, LocalNode: 16}),
 			table.NewSegmentSRv6(netip.MustParseAddr(endXToW3)),
 		})
 		require.NoError(t, err)
@@ -973,7 +973,7 @@ func TestValidateExplicitPathUSID(t *testing.T) {
 		ted := newTestTED(nodeX, nodeZ)
 
 		err := table.ValidateExplicitPath(ted, "X", []table.Segment{
-			usidContainerSeg(container, []uint8{32, 16, 0, 0}),
+			usidContainerSeg(container, &table.SIDStructure{LocalBlock: 32, LocalNode: 16}),
 			table.NewSegmentSRv6(netip.MustParseAddr("fd00::dead:beef")),
 		})
 		require.Error(t, err)
@@ -987,7 +987,7 @@ func TestValidateExplicitPathUSID(t *testing.T) {
 		ted := newTestTED(nodeX)
 
 		err := table.ValidateExplicitPath(ted, "X", []table.Segment{
-			usidContainerSeg("fd00:bb00:0100:0200:0300::", []uint8{32, 16, 0, 0}),
+			usidContainerSeg("fd00:bb00:0100:0200:0300::", &table.SIDStructure{LocalBlock: 32, LocalNode: 16}),
 		})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "not found in TED")
@@ -1000,7 +1000,7 @@ func TestValidateExplicitPathUSID(t *testing.T) {
 		ted := newTestTED(nodeX)
 
 		err := table.ValidateExplicitPath(ted, "X", []table.Segment{
-			usidContainerSeg(container, []uint8{24, 8, 16, 0}),
+			usidContainerSeg(container, &table.SIDStructure{LocalBlock: 24, LocalNode: 8, LocalFunc: 16}),
 		})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "not found in TED")
@@ -1047,7 +1047,7 @@ func TestValidateExplicitPathUSID(t *testing.T) {
 		ted := newTestTED(nodeX)
 
 		err := table.ValidateExplicitPath(ted, "X", []table.Segment{
-			usidContainerSeg("fd00:bb00:0100::", []uint8{32, 0, 16, 0}),
+			usidContainerSeg("fd00:bb00:0100::", &table.SIDStructure{LocalBlock: 32, LocalFunc: 16}),
 		})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "not found in TED")

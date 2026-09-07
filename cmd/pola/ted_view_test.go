@@ -116,9 +116,14 @@ func TestNewTEDSrv6SIDViews_SkipsNilEntries(t *testing.T) {
 	assert.Nil(t, views[0].SidStructure, "no SID Structure TLV was advertised")
 }
 
-func TestSidStructureViewFrom_DistinguishesAbsentFromPresentZero(t *testing.T) {
+func TestNewTEDSrv6SIDViews_DistinguishesAbsentFromPresentZero(t *testing.T) {
 	t.Parallel()
 
-	assert.Nil(t, sidStructureViewFrom(nil), "absent structure must not render as present-zero")
-	assert.Equal(t, &sidStructureView{}, sidStructureViewFrom(&table.SIDStructure{}), "present-but-zero structure must still render")
+	views := newTEDSrv6SIDViews([]*table.LsSrv6SID{
+		{Sids: []string{"fc00:0:1::"}},
+		{Sids: []string{"fc00:0:2::"}, SIDStructure: &table.SIDStructure{}},
+	})
+	require.Len(t, views, 2)
+	assert.Nil(t, views[0].SidStructure, "absent structure must not render as present-zero")
+	assert.Equal(t, &table.SIDStructure{}, views[1].SidStructure, "present-but-zero structure must still render")
 }

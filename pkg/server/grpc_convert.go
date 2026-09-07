@@ -371,8 +371,8 @@ func convertSegment(seg table.Segment) *pb.Segment {
 			pbSeg.RemoteAddr = v.RemoteAddr.String()
 		}
 
-		if len(v.Structure) == 4 {
-			pbSeg.SidStructure = fmt.Sprintf("%d,%d,%d,%d", v.Structure[0], v.Structure[1], v.Structure[2], v.Structure[3])
+		if s := v.Structure; s != nil {
+			pbSeg.SidStructure = fmt.Sprintf("%d,%d,%d,%d", s.LocalBlock, s.LocalNode, s.LocalFunc, s.LocalArg)
 		}
 	case table.SegmentSRMPLS:
 		if v.LocalAddr.IsValid() {

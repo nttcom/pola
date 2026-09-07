@@ -1617,15 +1617,17 @@ func (o *SRv6EroSubobject) DecodeFromBytes(subobject []uint8) error {
 			return errors.New("SRv6EroSubobject: truncated SID-Structure")
 		}
 
-		o.Segment.Structure = []uint8{
-			subobject[off+0],
-			subobject[off+1],
-			subobject[off+2],
-			subobject[off+3],
+		structure := &table.SIDStructure{
+			LocalBlock: subobject[off+0],
+			LocalNode:  subobject[off+1],
+			LocalFunc:  subobject[off+2],
+			LocalArg:   subobject[off+3],
 		}
-		if err := o.Segment.Structure.Validate(); err != nil {
+		if err := structure.Validate(); err != nil {
 			return fmt.Errorf("SRv6EroSubobject: invalid SID structure: %w", err)
 		}
+
+		o.Segment.Structure = structure
 
 		off += 8
 	}
@@ -1731,8 +1733,8 @@ func (o *SRv6EroSubobject) Serialize() ([]uint8, error) {
 	}
 
 	byteSidStructure := []uint8{}
-	if o.Segment.Structure != nil {
-		byteSidStructure = append(byteSidStructure, o.Segment.Structure...)
+	if s := o.Segment.Structure; s != nil {
+		byteSidStructure = append(byteSidStructure, s.LocalBlock, s.LocalNode, s.LocalFunc, s.LocalArg)
 		byteSidStructure = append(byteSidStructure, make([]uint8, 4)...)
 	}
 
@@ -1786,11 +1788,7 @@ func NewSRv6EroSubobject(seg table.SegmentSRv6) (*SRv6EroSubobject, error) {
 		return nil, fmt.Errorf("SegmentSRv6: invalid SID structure: %w", err)
 	}
 
-	if len(seg.Structure) == 0 {
-		subo.Segment.Structure = nil
-	}
-
-	subo.TFlag = len(subo.Segment.Structure) > 0
+	subo.TFlag = subo.Segment.Structure != nil
 
 	local, remote := seg.LocalAddr.Unmap(), seg.RemoteAddr.Unmap()
 	switch {

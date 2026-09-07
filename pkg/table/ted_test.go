@@ -738,3 +738,54 @@ type errorWriter struct{}
 func (errorWriter) Write([]byte) (int, error) {
 	return 0, assert.AnError
 }
+
+func TestParseSIDStructure(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		in      string
+		want    *table.SIDStructure
+		wantErr bool
+	}{
+		{name: "empty string means not declared", in: "", want: nil},
+		{name: "valid", in: "32,16,0,80", want: &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalArg: 80}},
+		{name: "wrong part count", in: "32,16,0", wantErr: true},
+		{name: "non-numeric part", in: "32,16,0,xx", wantErr: true},
+		{name: "value out of uint8 range", in: "32,16,0,256", wantErr: true},
+		{name: "sum exceeds 128 bits", in: "128,128,0,0", wantErr: true},
+		{name: "whitespace around parts is trimmed", in: " 32 , 16 , 0 , 80 ", want: &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalArg: 80}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := table.ParseSIDStructure(tt.in)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestSIDStructure_CloneAndEqual(t *testing.T) {
+	t.Parallel()
+
+	assert.Nil(t, (*table.SIDStructure)(nil).Clone())
+
+	st := &table.SIDStructure{LocalBlock: 32, LocalNode: 16}
+	clone := st.Clone()
+	require.NotNil(t, clone)
+	assert.NotSame(t, st, clone)
+	assert.Equal(t, st, clone)
+
+	assert.True(t, st.Equal(clone))
+	assert.False(t, st.Equal(nil))
+	assert.False(t, (*table.SIDStructure)(nil).Equal(st))
+	assert.True(t, (*table.SIDStructure)(nil).Equal(nil))
+	assert.False(t, st.Equal(&table.SIDStructure{LocalBlock: 1}))
+}
