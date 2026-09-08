@@ -1707,7 +1707,18 @@ func (ss *Session) computePathFromTED(sr *pcep.StateReport) ([]table.Segment, er
 		logger.String("dstRouterID", dstRouterID),
 		logger.String("metricType", metricType.String()))
 
-	segmentList, err := cspf.CSPF(srcRouterID, dstRouterID, metricType, ss.ted)
+	// The API does not yet accept an explicit underlay plane for path computation.
+	srcNode, ok := tedNode(ss.ted, srcRouterID)
+	if !ok {
+		return nil, fmt.Errorf("no node with router ID %s", srcRouterID)
+	}
+
+	plane, err := srcNode.DefaultPlane()
+	if err != nil {
+		return nil, fmt.Errorf("get default plane: %w", err)
+	}
+
+	segmentList, err := cspf.CSPF(srcRouterID, dstRouterID, metricType, cspf.PathScope{Plane: plane}, ss.ted)
 	if err != nil {
 		return nil, fmt.Errorf("CSPF computation failed: %w", err)
 	}

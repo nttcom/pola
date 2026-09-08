@@ -4442,8 +4442,23 @@ func TestComputePathFromTED_CSPFFailsWithoutNodeSID(t *testing.T) {
 	assert.Error(t, err, "CSPF must fail when the headend advertises no Prefix-SID or SRv6 SID")
 }
 
-// newLinkedSRMPLSNodes builds two SR-MPLS nodes connected by a link with the given TE metric.
-// Each node has a Prefix-SID bound to its address.
+func TestComputePathFromTED_SrcRouterIDNotInTED(t *testing.T) {
+	t.Parallel()
+
+	srcNode := table.NewLsNode(0, "src-alias")
+	dstNode := table.NewLsNode(0, "10.255.0.2")
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{
+		"10.255.0.1": srcNode, // keyed by address, not by srcNode.RouterID
+		"10.255.0.2": dstNode,
+	}}
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), ted, 0)
+	sr := newTestStateReport(t, 1, 0)
+
+	_, err := ss.computePathFromTED(sr)
+	assert.Error(t, err, "must fail when the resolved router ID no longer keys a node in the TED")
+}
+
 func newLinkedSRMPLSNodes(srcAddr, dstAddr netip.Addr, metric uint32) (src, dst *table.LsNode) {
 	src = table.NewLsNode(65000, "PE1")
 	srcPrefix := table.NewLsPrefix(src)
@@ -4462,6 +4477,7 @@ func newLinkedSRMPLSNodes(srcAddr, dstAddr netip.Addr, metric uint32) (src, dst 
 	dst.SrgbBegin, dst.SrgbEnd = 16000, 23999
 
 	link := table.NewLsLink(src, dst)
+	link.Local.IPv4, link.Remote.IPv4 = srcAddr, dstAddr
 	link.Metrics = []*table.Metric{table.NewMetric(table.TEMetric, metric)}
 	src.AddLink(link)
 
@@ -4482,6 +4498,7 @@ func newLinkedSRv6Nodes(srcAddr, dstAddr netip.Addr, metric uint32) (src, dst *t
 	dst.SRv6SIDs = []*table.LsSrv6SID{{Sids: []string{"fe80::2"}}}
 
 	link := table.NewLsLink(src, dst)
+	link.Local.IPv6, link.Remote.IPv6 = netip.MustParseAddr("2001:db8:f::1"), netip.MustParseAddr("2001:db8:f::2")
 	link.Metrics = []*table.Metric{table.NewMetric(table.TEMetric, metric)}
 	src.AddLink(link)
 

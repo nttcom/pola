@@ -218,6 +218,14 @@ func TestCreateEroFromSegmentListWithNAI(t *testing.T) {
 	assert.Equal(t, seg.LocalAddr.AsSlice(), raw[8:12], "NAI")
 }
 
+func testIPv4Link(local, remote *table.LsNode) *table.LsLink {
+	link := table.NewLsLink(local, remote)
+	link.Local.IPv4 = netip.MustParseAddr("192.0.2.101")
+	link.Remote.IPv4 = netip.MustParseAddr("192.0.2.102")
+
+	return link
+}
+
 func newTestAPIServer(ted *table.LsTED) *APIServer {
 	return &APIServer{
 		pce:    &Server{ted: ted},
@@ -1310,8 +1318,8 @@ func TestGetSegmentList_DynamicHopcountPrefersFewerHops(t *testing.T) {
 	nodeA := mkNode("A", 1)
 	nodeB := mkNode("B", 2)
 	nodeD := mkNode("D", 4)
-	nodeA.Links = []*table.LsLink{table.NewLsLink(nodeA, nodeD), table.NewLsLink(nodeA, nodeB)}
-	nodeB.Links = []*table.LsLink{table.NewLsLink(nodeB, nodeD)}
+	nodeA.Links = []*table.LsLink{testIPv4Link(nodeA, nodeD), testIPv4Link(nodeA, nodeB)}
+	nodeB.Links = []*table.LsLink{testIPv4Link(nodeB, nodeD)}
 
 	ted := &table.LsTED{Nodes: map[string]*table.LsNode{"A": nodeA, "B": nodeB, "D": nodeD}}
 
@@ -1348,8 +1356,8 @@ func TestGetSegmentList_DynamicWithWaypointsForcesTransit(t *testing.T) {
 	nodeA := mkNode("A", 1)
 	nodeB := mkNode("B", 2)
 	nodeD := mkNode("D", 4)
-	nodeA.Links = []*table.LsLink{table.NewLsLink(nodeA, nodeD), table.NewLsLink(nodeA, nodeB)}
-	nodeB.Links = []*table.LsLink{table.NewLsLink(nodeB, nodeD)}
+	nodeA.Links = []*table.LsLink{testIPv4Link(nodeA, nodeD), testIPv4Link(nodeA, nodeB)}
+	nodeB.Links = []*table.LsLink{testIPv4Link(nodeB, nodeD)}
 	ted := &table.LsTED{Nodes: map[string]*table.LsNode{"A": nodeA, "B": nodeB, "D": nodeD}}
 
 	srPolicy := &pb.SRPolicy{
@@ -1430,6 +1438,37 @@ func TestGetSegmentList_UndefinedType(t *testing.T) {
 
 	_, _, err := getSegmentList(&pb.SRPolicy{}, &table.LsTED{}, false)
 	assert.Error(t, err)
+}
+
+func TestGetSegmentList_DynamicUnknownSrcRouterID(t *testing.T) {
+	t.Parallel()
+
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{}}
+	srPolicy := &pb.SRPolicy{
+		Type:        pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC,
+		SrcRouterId: "unknown",
+		DstRouterId: "D",
+		Metric:      pb.MetricType_METRIC_TYPE_HOPCOUNT,
+	}
+
+	_, _, err := getSegmentList(srPolicy, ted, false)
+	assert.Error(t, err, "expected an unresolvable SrcRouterId to be rejected before CSPF runs")
+}
+
+func TestGetSegmentList_DynamicSrcNodeWithoutViablePlane(t *testing.T) {
+	t.Parallel()
+
+	nodeA := &table.LsNode{RouterID: "A"} // no Prefixes and no SRv6SIDs: no candidate plane
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{"A": nodeA}}
+	srPolicy := &pb.SRPolicy{
+		Type:        pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC,
+		SrcRouterId: "A",
+		DstRouterId: "D",
+		Metric:      pb.MetricType_METRIC_TYPE_HOPCOUNT,
+	}
+
+	_, _, err := getSegmentList(srPolicy, ted, false)
+	assert.Error(t, err, "expected a source node without a Node SID to be rejected before CSPF runs")
 }
 
 func TestGetMetricType(t *testing.T) {
@@ -2213,10 +2252,10 @@ func TestCreateSRPolicy_StatusCodes(t *testing.T) {
 			}
 		}
 		r1, r2, r3 := mk("r1", "10.0.0.1", 1), mk("r2", "10.0.0.2", 2), mk("r3", "10.0.0.3", 3)
-		link := table.NewLsLink(r1, r2)
+		link := testIPv4Link(r1, r2)
 		link.Metrics = []*table.Metric{table.NewMetric(table.IGPMetric, 10)}
 		r1.Links = append(r1.Links, link)
-		reverseLink := table.NewLsLink(r2, r1)
+		reverseLink := testIPv4Link(r2, r1)
 		reverseLink.Metrics = []*table.Metric{table.NewMetric(table.IGPMetric, 10)}
 		r2.Links = append(r2.Links, reverseLink)
 

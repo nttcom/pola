@@ -291,8 +291,6 @@ func TestUpdateNeighborCosts_UnknownCalcNode(t *testing.T) {
 	assert.EqualError(t, err, "router Z not found in TED")
 }
 
-// TestLinkUsable covers U9: linkUsable is the sole edge filter, gating strictly
-// on whether the link carries the scope's address family on both endpoints.
 func TestLinkUsable(t *testing.T) {
 	t.Parallel()
 
@@ -342,6 +340,12 @@ func TestLinkUsable(t *testing.T) {
 			link:  &table.LsLink{Local: table.LinkEndpoint{Node: a, IPv4: cspfInternalTestLocalIPv4}, Remote: table.LinkEndpoint{Node: b}},
 			scope: cspfInternalTestScopeV4SRMPLS,
 			want:  false,
+		},
+		{
+			name:  "an unnumbered link with no address in either family is usable under any scope",
+			link:  &table.LsLink{Local: table.LinkEndpoint{Node: a}, Remote: table.LinkEndpoint{Node: b}},
+			scope: cspfInternalTestScopeV6SRv6,
+			want:  true,
 		},
 	}
 
@@ -463,6 +467,13 @@ func TestBuildWaypointSegment(t *testing.T) {
 			explicitSID: "::ffff:10.0.0.1",
 			scope:       cspfInternalTestScopeV6SRv6,
 			wantErr:     `explicit SID "::ffff:10.0.0.1" must be an IPv6 SRv6 SID`,
+		},
+		{
+			name:        "explicit SID with an unspecified data plane is rejected",
+			node:        cspfInternalTestSRv6Node(),
+			explicitSID: cspfInternalTestOverrideSID,
+			scope:       PathScope{Plane: table.Plane{Family: table.AFIPv6}},
+			wantErr:     "data plane must be specified to build a waypoint segment",
 		},
 	}
 
