@@ -49,7 +49,7 @@ func (ted *LsTED) RouterIDIndex() map[netip.Addr]string {
 	return index
 }
 
-// AddressRouterIDIndex builds an index from prefix addresses to router IDs.
+// AddressRouterIDIndex marks addresses advertised by multiple routers as ambiguous.
 func (ted *LsTED) AddressRouterIDIndex() map[netip.Addr]string {
 	if ted == nil {
 		return nil
@@ -63,7 +63,7 @@ func (ted *LsTED) AddressRouterIDIndex() map[netip.Addr]string {
 		}
 
 		for _, prefix := range node.Prefixes {
-			index[prefix.Prefix.Addr()] = routerID
+			mergeSIDOwner(index, prefix.Prefix.Addr(), routerID)
 		}
 	}
 
@@ -184,19 +184,23 @@ func printLink(ew *errWriter, link *LsLink) {
 	localIP := displayNone
 	remoteIP := displayNone
 
-	if link.LocalIP.IsValid() {
-		localIP = link.LocalIP.String()
+	if link.Local.IPv4.IsValid() {
+		localIP = link.Local.IPv4.String()
+	} else if link.Local.IPv6.IsValid() {
+		localIP = link.Local.IPv6.String()
 	}
 
-	if link.RemoteIP.IsValid() {
-		remoteIP = link.RemoteIP.String()
+	if link.Remote.IPv4.IsValid() {
+		remoteIP = link.Remote.IPv4.String()
+	} else if link.Remote.IPv6.IsValid() {
+		remoteIP = link.Remote.IPv6.String()
 	}
 
 	ew.printf("    Local: %s Remote: %s\n", localIP, remoteIP)
 
 	remoteNodeID := displayNone
-	if link.RemoteNode != nil {
-		remoteNodeID = link.RemoteNode.RouterID
+	if link.Remote.Node != nil {
+		remoteNodeID = link.Remote.Node.RouterID
 	}
 
 	ew.printf("      RemoteNode: %s\n", remoteNodeID)
@@ -213,13 +217,19 @@ func printLink(ew *errWriter, link *LsLink) {
 		}
 	}
 
-	ew.printf("      Adj-SID: %d\n", link.AdjSid)
+	for _, adjSID := range link.AdjSids {
+		ew.printf("      Adj-SID: %d\n", adjSID.Sid)
+	}
 
-	if link.Srv6EndXSID != nil {
+	for _, endXSID := range link.Srv6EndXSIDs {
+		if endXSID == nil {
+			continue
+		}
+
 		ew.println("      SRv6 End.X SID:")
-		ew.printf("        EndpointBehavior: %s\n", BehaviorToString(link.Srv6EndXSID.EndpointBehavior))
-		ew.printf("        SIDs: %v\n", link.Srv6EndXSID.Sids)
-		printSIDStructure(ew, "        ", link.Srv6EndXSID.Srv6SIDStructure)
+		ew.printf("        EndpointBehavior: %s\n", BehaviorToString(endXSID.EndpointBehavior))
+		ew.printf("        SIDs: %v\n", endXSID.Sids)
+		printSIDStructure(ew, "        ", endXSID.Srv6SIDStructure)
 	}
 }
 
@@ -274,12 +284,12 @@ type TEDElem interface {
 
 // LsNode represents a node in the BGP-LS TED.
 type LsNode struct {
-	ASN        uint32 // primary key, in MP_REACH_NLRI Attr
-	RouterID   string // primary key, in MP_REACH_NLRI Attr
-	IsisAreaID string // in BGP-LS Attr
-	Hostname   string // in BGP-LS Attr
-	SrgbBegin  uint32 // in BGP-LS Attr
-	SrgbEnd    uint32 // in BGP-LS Attr
+	ASN        uint32
+	RouterID   string
+	IsisAreaID string
+	Hostname   string
+	SrgbBegin  uint32
+	SrgbEnd    uint32
 	Links      []*LsLink
 	Prefixes   []*LsPrefix
 	SRv6SIDs   []*LsSrv6SID
@@ -293,57 +303,130 @@ func NewLsNode(asn uint32, nodeID string) *LsNode {
 	}
 }
 
-// NodeSegment returns a Segment for this node (either SR-MPLS or SRv6).
-func (n *LsNode) NodeSegment() (Segment, error) {
-	// for SR-MPLS Segment
-	for _, prefix := range n.Prefixes {
-		if prefix.HasPrefixSID() {
-			if n.SrgbBegin == 0 {
-				return nil, fmt.Errorf("cannot resolve prefix-SID index %d without an SRGB", prefix.SidIndex)
-			}
-
-			label, ok := srgbLabel(n, prefix.SidIndex)
-			if !ok {
-				return nil, fmt.Errorf("prefix-SID index %d is out of range for SRGB [%d, %d)", prefix.SidIndex, n.SrgbBegin, n.SrgbEnd)
-			}
-
-			return NewSegmentSRMPLS(label), nil
-		}
+// NodeSegment returns a Segment for the given Plane.
+// The Plane must be fully specified; no implicit defaults are used.
+func (n *LsNode) NodeSegment(plane Plane) (Segment, error) {
+	if err := plane.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid plane: %w", err)
 	}
-	// for SRv6 Segment
-	for _, srv6SID := range n.SRv6SIDs {
-		if len(srv6SID.Sids) > FirstSIDIndex {
-			addr, err := netip.ParseAddr(srv6SID.Sids[FirstSIDIndex])
-			if err != nil {
-				return nil, fmt.Errorf("SRv6 SID %q is invalid: %w", srv6SID.Sids[FirstSIDIndex], err)
-			}
 
-			if !addr.Is6() || addr.Is4In6() {
-				return nil, fmt.Errorf("SRv6 SID %q is not a valid IPv6 address", srv6SID.Sids[FirstSIDIndex])
-			}
+	switch plane.DataPlane {
+	case DPSRMPLS:
+		return n.nodeSegmentSRMPLS(plane.Family)
+	case DPSRv6:
+		return n.nodeSegmentSRv6()
+	default:
+		return nil, errors.New("data plane must be specified")
+	}
+}
 
-			return NewSegmentSRv6WithNodeInfo(addr, n)
+func (n *LsNode) nodeSegmentSRMPLS(af AddressFamily) (Segment, error) {
+	for _, prefix := range n.Prefixes {
+		if !prefix.HasPrefixSID() || FamilyOfAddr(prefix.Prefix.Addr()) != af {
+			continue
 		}
+
+		if n.SrgbBegin == 0 {
+			return nil, fmt.Errorf("cannot resolve prefix-SID index %d without an SRGB", prefix.SidIndex)
+		}
+
+		label, ok := srgbLabel(n, prefix.SidIndex)
+		if !ok {
+			return nil, fmt.Errorf("prefix-SID index %d is out of range for SRGB [%d, %d)", prefix.SidIndex, n.SrgbBegin, n.SrgbEnd)
+		}
+
+		return NewSegmentSRMPLS(label), nil
+	}
+
+	return nil, fmt.Errorf("node doesn't have a %s Prefix-SID", af)
+}
+
+func (n *LsNode) nodeSegmentSRv6() (Segment, error) {
+	for _, srv6SID := range n.SRv6SIDs {
+		if len(srv6SID.Sids) <= FirstSIDIndex {
+			continue
+		}
+
+		sid, err := ParseSRv6SID(srv6SID.Sids[FirstSIDIndex])
+		if err != nil {
+			return nil, fmt.Errorf("SRv6 SID %q is invalid: %w", srv6SID.Sids[FirstSIDIndex], err)
+		}
+
+		return NewSegmentSRv6WithNodeInfo(sid, n)
 	}
 
 	return nil, errors.New("node doesn't have a Node SID")
 }
 
-// LoopbackAddr returns the loopback address of the node.
-func (n *LsNode) LoopbackAddr() (netip.Addr, error) {
-	for _, prefix := range n.Prefixes {
-		if prefix.Prefix.Addr().Is4() {
-			if prefix.Prefix.Bits() == 32 {
-				return prefix.Prefix.Addr(), nil
-			}
-		} else if prefix.Prefix.Addr().Is6() {
-			if prefix.Prefix.Bits() == 128 {
-				return prefix.Prefix.Addr(), nil
-			}
+// candidatePlanes lists the valid (family, data plane) combinations.
+// The order is not significant; DefaultPlane requires exactly one to be viable.
+var candidatePlanes = []Plane{
+	{Family: AFIPv4, DataPlane: DPSRMPLS},
+	{Family: AFIPv6, DataPlane: DPSRMPLS},
+	{Family: AFIPv6, DataPlane: DPSRv6},
+}
+
+// DefaultPlane returns the node's unique viable Plane.
+// An explicit plane is required when the node supports multiple planes.
+func (n *LsNode) DefaultPlane() (Plane, error) {
+	var candidates []Plane
+
+	for _, p := range candidatePlanes {
+		if _, err := n.NodeSegment(p); err == nil {
+			candidates = append(candidates, p)
 		}
 	}
 
-	return netip.Addr{}, errors.New("node doesn't have a loopback address")
+	switch len(candidates) {
+	case 0:
+		return Plane{}, errors.New("node doesn't have a Node SID")
+	case 1:
+		return candidates[0], nil
+	default:
+		return Plane{}, fmt.Errorf("node advertises multiple planes %v; an explicit plane is required", candidates)
+	}
+}
+
+// DefaultLoopbackFamily returns the node's unique viable address family.
+// An explicit family is required when the node has loopbacks in multiple families.
+func (n *LsNode) DefaultLoopbackFamily() (AddressFamily, error) {
+	var candidates []AddressFamily
+
+	for _, af := range []AddressFamily{AFIPv4, AFIPv6} {
+		if _, err := n.LoopbackAddr(af); err == nil {
+			candidates = append(candidates, af)
+		}
+	}
+
+	switch len(candidates) {
+	case 0:
+		return AFUnspecified, errors.New("node doesn't have a loopback address")
+	case 1:
+		return candidates[0], nil
+	default:
+		return AFUnspecified, fmt.Errorf("node has loopback addresses in multiple families %v; an explicit family is required", candidates)
+	}
+}
+
+// LoopbackAddr returns the node's loopback address in the given address family.
+// An explicit family is required; there is no implicit default.
+func (n *LsNode) LoopbackAddr(af AddressFamily) (netip.Addr, error) {
+	if !af.IsValid() {
+		return netip.Addr{}, errors.New("address family must be specified")
+	}
+
+	for _, prefix := range n.Prefixes {
+		addr := prefix.Prefix.Addr()
+		if prefix.Prefix.Bits() != addr.BitLen() {
+			continue
+		}
+
+		if FamilyOfAddr(addr) == af {
+			return addr, nil
+		}
+	}
+
+	return netip.Addr{}, fmt.Errorf("node doesn't have a %s loopback address", af)
 }
 
 // UpdateTED updates the TED with this node's information.
@@ -364,28 +447,142 @@ func (n *LsNode) UpdateTED(ted *LsTED, cfgASN uint32) {
 	}
 }
 
-// AddLink adds a link to this node.
+// AddLink replaces an existing link with the same Key() instead of
+// creating a duplicate.
 func (n *LsNode) AddLink(link *LsLink) {
+	key := link.Key()
+
+	for i, existing := range n.Links {
+		if existing != nil && existing.Key() == key {
+			n.Links[i] = link
+			return
+		}
+	}
+
 	n.Links = append(n.Links, link)
+}
+
+// LinkEndpoint contains the node, addresses, and interface ID for one side of an LsLink.
+// InterfaceID scopes a link-local IPv6 address; nil means not advertised and differs from 0.
+type LinkEndpoint struct {
+	Node        *LsNode
+	InterfaceID *uint32
+	IPv4        netip.Addr
+	IPv6        netip.Addr
+}
+
+// Addr returns the endpoint's address in the given family, or the zero address if none was advertised.
+func (e LinkEndpoint) Addr(af AddressFamily) netip.Addr {
+	switch af {
+	case AFIPv4:
+		return e.IPv4
+	case AFIPv6:
+		return e.IPv6
+	default:
+		return netip.Addr{}
+	}
+}
+
+// AdjSID is a link Adjacency-SID tagged with its address family.
+// Family is AFUnspecified when GoBGP cannot distinguish IPv4 and IPv6 Adj-SIDs.
+type AdjSID struct {
+	Family AddressFamily
+	Sid    uint32
+}
+
+// endpointKey defines the endpoint identity used by LinkKey.
+// Interface ID takes precedence; otherwise the address is used.
+// An endpoint with neither has no identity of its own.
+type endpointKey struct {
+	hasIfaceID bool
+	ifaceID    uint32
+	addr       netip.Addr
+}
+
+func newEndpointKey(e LinkEndpoint) endpointKey {
+	if e.InterfaceID != nil {
+		return endpointKey{hasIfaceID: true, ifaceID: *e.InterfaceID}
+	}
+
+	switch {
+	case e.IPv4.IsValid():
+		return endpointKey{addr: e.IPv4}
+	case e.IPv6.IsValid():
+		return endpointKey{addr: e.IPv6}
+	default:
+		return endpointKey{}
+	}
+}
+
+// LinkKey identifies an LsLink across TED updates and re-advertisements.
+type LinkKey struct {
+	LocalRouterID  string
+	RemoteRouterID string
+	local          endpointKey
+	remote         endpointKey
 }
 
 // LsLink represents a link in the BGP-LS TED.
 type LsLink struct {
-	LocalNode   *LsNode      // Primary key, in MP_REACH_NLRI Attr
-	RemoteNode  *LsNode      // Primary key, in MP_REACH_NLRI Attr
-	LocalIP     netip.Addr   // In MP_REACH_NLRI Attr
-	RemoteIP    netip.Addr   // In MP_REACH_NLRI Attr
-	Metrics     []*Metric    // In BGP-LS Attr
-	AdjSid      uint32       // In BGP-LS Attr
-	Srv6EndXSID *Srv6EndXSID // In BGP-LS Attr
+	Local, Remote LinkEndpoint
+	Metrics       []*Metric
+	AdjSids       []AdjSID
+	Srv6EndXSIDs  []*Srv6EndXSID
 }
 
 // NewLsLink creates a new BGP-LS link between two nodes.
 func NewLsLink(localNode, remoteNode *LsNode) *LsLink {
 	return &LsLink{
-		LocalNode:  localNode,
-		RemoteNode: remoteNode,
+		Local:  LinkEndpoint{Node: localNode},
+		Remote: LinkEndpoint{Node: remoteNode},
 	}
+}
+
+// Families reports the address families for which both endpoints have an address.
+func (l *LsLink) Families() AddressFamilySet {
+	var s AddressFamilySet
+
+	if l.Local.IPv4.IsValid() && l.Remote.IPv4.IsValid() {
+		s |= AddressFamilySetIPv4
+	}
+
+	if l.Local.IPv6.IsValid() && l.Remote.IPv6.IsValid() {
+		s |= AddressFamilySetIPv6
+	}
+
+	return s
+}
+
+// Key returns l's link identity for TED update dedup/merge.
+func (l *LsLink) Key() LinkKey {
+	return LinkKey{
+		LocalRouterID:  nodeRouterID(l.Local.Node),
+		RemoteRouterID: nodeRouterID(l.Remote.Node),
+		local:          newEndpointKey(l.Local),
+		remote:         newEndpointKey(l.Remote),
+	}
+}
+
+func nodeRouterID(n *LsNode) string {
+	if n == nil {
+		return ""
+	}
+
+	return n.RouterID
+}
+
+// Validate reports an error if a link-local IPv6 address lacks the
+// interface ID required to scope it in NAI type 6 (RFC 8664/9603).
+func (l *LsLink) Validate() error {
+	if l.Local.IPv6.IsValid() && l.Local.IPv6.IsLinkLocalUnicast() && l.Local.InterfaceID == nil {
+		return errors.New("local link-local IPv6 address requires an interface ID")
+	}
+
+	if l.Remote.IPv6.IsValid() && l.Remote.IPv6.IsLinkLocalUnicast() && l.Remote.InterfaceID == nil {
+		return errors.New("remote link-local IPv6 address requires an interface ID")
+	}
+
+	return nil
 }
 
 // Metric returns the metric value of the given type for this link.
@@ -408,28 +605,28 @@ func (l *LsLink) Metric(metricType MetricType) (uint32, error) {
 func (l *LsLink) UpdateTED(ted *LsTED, cfgASN uint32) {
 	nodes := ted.Nodes
 
-	if l.LocalNode.ASN != cfgASN || l.RemoteNode.ASN != cfgASN {
+	if l.Local.Node.ASN != cfgASN || l.Remote.Node.ASN != cfgASN {
 		return
 	}
 
-	if _, ok := nodes[l.LocalNode.RouterID]; !ok {
-		nodes[l.LocalNode.RouterID] = NewLsNode(l.LocalNode.ASN, l.LocalNode.RouterID)
+	if _, ok := nodes[l.Local.Node.RouterID]; !ok {
+		nodes[l.Local.Node.RouterID] = NewLsNode(l.Local.Node.ASN, l.Local.Node.RouterID)
 	}
 
-	if _, ok := nodes[l.RemoteNode.RouterID]; !ok {
-		nodes[l.RemoteNode.RouterID] = NewLsNode(l.RemoteNode.ASN, l.RemoteNode.RouterID)
+	if _, ok := nodes[l.Remote.Node.RouterID]; !ok {
+		nodes[l.Remote.Node.RouterID] = NewLsNode(l.Remote.Node.ASN, l.Remote.Node.RouterID)
 	}
 
-	l.LocalNode, l.RemoteNode = nodes[l.LocalNode.RouterID], nodes[l.RemoteNode.RouterID]
+	l.Local.Node, l.Remote.Node = nodes[l.Local.Node.RouterID], nodes[l.Remote.Node.RouterID]
 
-	l.LocalNode.AddLink(l)
+	l.Local.Node.AddLink(l)
 }
 
 // LsPrefix represents a prefix in the BGP-LS TED.
 type LsPrefix struct {
-	LocalNode *LsNode      // primary key, in MP_REACH_NLRI Attr
-	Prefix    netip.Prefix // in MP_REACH_NLRI Attr
-	SidIndex  uint32       // in BGP-LS Attr (only for Lo Address Prefix)
+	LocalNode *LsNode
+	Prefix    netip.Prefix
+	SidIndex  uint32
 	// HasSidIndex reports whether a Prefix-SID TLV is present.
 	HasSidIndex bool
 }
@@ -460,7 +657,7 @@ func (lp *LsPrefix) UpdateTED(ted *LsTED, cfgASN uint32) {
 
 	localNode := nodes[lp.LocalNode.RouterID]
 	for _, pref := range localNode.Prefixes {
-		if pref.Prefix.String() == lp.Prefix.String() {
+		if pref.Prefix == lp.Prefix {
 			return
 		}
 	}
@@ -468,11 +665,10 @@ func (lp *LsPrefix) UpdateTED(ted *LsTED, cfgASN uint32) {
 	localNode.Prefixes = append(localNode.Prefixes, lp)
 }
 
-// SIDStructure is the LocalBlock, LocalNode, LocalFunc, LocalArg length split
-// of an SRv6 SID (RFC 9603 §4.1).
+// SIDStructure is the length split of an SRv6 SID (RFC 9603 §4.1).
 //
-// A nil value indicates that no structure was advertised or declared;
-// an all-zero value is a valid, explicitly declared structure.
+// A nil value means no structure was advertised or declared; an all-zero
+// value is a valid, explicitly declared structure.
 type SIDStructure struct {
 	LocalBlock uint8 `json:"localBlock"`
 	LocalNode  uint8 `json:"localNode"`
@@ -585,9 +781,33 @@ func (s *LsSrv6SID) UpdateTED(ted *LsTED, cfgASN uint32) {
 	s.LocalNode.AddSrv6SID(s)
 }
 
-// AddSrv6SID adds an SRv6 SID to this node.
+// AddSrv6SID replaces a re-advertisement of the same SID.
+// Entries without a SID have no dedup key and are always appended.
 func (n *LsNode) AddSrv6SID(s *LsSrv6SID) {
+	key, ok := srv6SIDKey(s)
+	if !ok {
+		n.SRv6SIDs = append(n.SRv6SIDs, s)
+		return
+	}
+
+	for i, existing := range n.SRv6SIDs {
+		if existingKey, ok := srv6SIDKey(existing); ok && existingKey == key {
+			n.SRv6SIDs[i] = s
+			return
+		}
+	}
+
 	n.SRv6SIDs = append(n.SRv6SIDs, s)
+}
+
+// srv6SIDKey identifies an LsSrv6SID by its first SID value.
+// It returns no key when the SID list is empty.
+func srv6SIDKey(s *LsSrv6SID) (key string, ok bool) {
+	if s == nil || len(s.Sids) <= FirstSIDIndex {
+		return "", false
+	}
+
+	return s.Sids[FirstSIDIndex], true
 }
 
 // Metric represents a link metric with its type and value.

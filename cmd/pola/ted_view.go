@@ -134,22 +134,30 @@ func newTEDLinkViews(links []*table.LsLink) []tedLinkView {
 func newTEDLinkView(l *table.LsLink) tedLinkView {
 	v := tedLinkView{
 		Metrics: newTEDMetricViews(l.Metrics),
-		AdjSid:  l.AdjSid,
-	}
-	if l.LocalIP.IsValid() {
-		v.LocalIP = l.LocalIP.String()
 	}
 
-	if l.RemoteIP.IsValid() {
-		v.RemoteIP = l.RemoteIP.String()
+	if len(l.AdjSids) > 0 {
+		v.AdjSid = l.AdjSids[0].Sid
 	}
 
-	if l.RemoteNode != nil {
-		v.RemoteRouterID = l.RemoteNode.RouterID
+	if l.Local.IPv4.IsValid() {
+		v.LocalIP = l.Local.IPv4.String()
+	} else if l.Local.IPv6.IsValid() {
+		v.LocalIP = l.Local.IPv6.String()
 	}
 
-	if l.Srv6EndXSID != nil {
-		sid := newTEDSrv6EndXSIDView(l.Srv6EndXSID)
+	if l.Remote.IPv4.IsValid() {
+		v.RemoteIP = l.Remote.IPv4.String()
+	} else if l.Remote.IPv6.IsValid() {
+		v.RemoteIP = l.Remote.IPv6.String()
+	}
+
+	if l.Remote.Node != nil {
+		v.RemoteRouterID = l.Remote.Node.RouterID
+	}
+
+	if len(l.Srv6EndXSIDs) > 0 && l.Srv6EndXSIDs[0] != nil {
+		sid := newTEDSrv6EndXSIDView(l.Srv6EndXSIDs[0])
 		v.Srv6EndXSID = &sid
 	}
 

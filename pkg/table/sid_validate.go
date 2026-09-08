@@ -148,33 +148,37 @@ func (idx *SIDIndex) addLinkSIDs(node *LsNode) {
 	}
 }
 
-// addAdjSID registers a link's SR-MPLS adjacency SID and its next hop.
+// addAdjSID registers a link's SR-MPLS adjacency SIDs and their next hop.
 func (idx *SIDIndex) addAdjSID(node *LsNode, l *LsLink) {
-	if l.AdjSid == 0 {
-		return
-	}
+	for _, adjSID := range l.AdjSids {
+		if adjSID.Sid == 0 {
+			continue
+		}
 
-	idx.mplsSIDs[l.AdjSid] = struct{}{}
-	if l.RemoteNode != nil {
-		idx.mplsAdjSIDNextHop[adjKeyMPLS{node.RouterID, l.AdjSid}] = l.RemoteNode.RouterID
+		idx.mplsSIDs[adjSID.Sid] = struct{}{}
+		if l.Remote.Node != nil {
+			idx.mplsAdjSIDNextHop[adjKeyMPLS{node.RouterID, adjSID.Sid}] = l.Remote.Node.RouterID
+		}
 	}
 }
 
 // addEndXSID registers a link's SRv6 End.X SIDs and their next hop.
 func (idx *SIDIndex) addEndXSID(node *LsNode, l *LsLink) {
-	if l.Srv6EndXSID == nil {
-		return
-	}
+	for _, endXSID := range l.Srv6EndXSIDs {
+		if endXSID == nil {
+			continue
+		}
 
-	addrs := parseSRv6Addrs(l.Srv6EndXSID.Sids)
-	idx.addSRv6(node.RouterID, addrs, l.Srv6EndXSID.Srv6SIDStructure)
+		addrs := parseSRv6Addrs(endXSID.Sids)
+		idx.addSRv6(node.RouterID, addrs, endXSID.Srv6SIDStructure)
 
-	if l.RemoteNode == nil {
-		return
-	}
+		if l.Remote.Node == nil {
+			continue
+		}
 
-	for _, addr := range addrs {
-		idx.srv6AdjSIDNextHop[adjKeySRv6{node.RouterID, addr}] = l.RemoteNode.RouterID
+		for _, addr := range addrs {
+			idx.srv6AdjSIDNextHop[adjKeySRv6{node.RouterID, addr}] = l.Remote.Node.RouterID
+		}
 	}
 }
 
@@ -197,7 +201,7 @@ func parseSRv6Addrs(sids []string) []netip.Addr {
 	addrs := make([]netip.Addr, 0, len(sids))
 
 	for _, sid := range sids {
-		if addr, err := netip.ParseAddr(sid); err == nil && addr.Is6() {
+		if addr, err := netip.ParseAddr(sid); err == nil && addr.Is6() && !addr.Is4In6() {
 			addrs = append(addrs, addr)
 		}
 	}
@@ -273,7 +277,7 @@ func (idx *SIDIndex) Has(seg Segment) bool {
 }
 
 func (idx *SIDIndex) hasSRv6(s SegmentSRv6) bool {
-	if _, ok := idx.srv6SIDs[s.Sid]; ok {
+	if _, ok := idx.srv6SIDs[s.Sid.Addr()]; ok {
 		return true
 	}
 
@@ -286,7 +290,7 @@ func (idx *SIDIndex) hasSRv6(s SegmentSRv6) bool {
 		declaredLocBits = int(s.Structure.LocalBlock) + int(s.Structure.LocalNode)
 	}
 
-	_, found := idx.lookupSRv6Locator(s.Sid, declaredLocBits)
+	_, found := idx.lookupSRv6Locator(s.Sid.Addr(), declaredLocBits)
 
 	return found
 }
@@ -367,7 +371,7 @@ func (idx *SIDIndex) nextHopMPLS(owner string, s SegmentSRMPLS) (string, error) 
 }
 
 func (idx *SIDIndex) nextHopSRv6(owner string, s SegmentSRv6) (string, error) {
-	if next, ok := idx.srv6NodeSIDOwner[s.Sid]; ok {
+	if next, ok := idx.srv6NodeSIDOwner[s.Sid.Addr()]; ok {
 		return next, nil
 	}
 
@@ -379,7 +383,7 @@ func (idx *SIDIndex) nextHopSRv6(owner string, s SegmentSRv6) (string, error) {
 		return "", fmt.Errorf("SID %s not found in TED", s.SidString())
 	}
 
-	if next, ok := idx.srv6AdjSIDNextHop[adjKeySRv6{owner, s.Sid}]; ok {
+	if next, ok := idx.srv6AdjSIDNextHop[adjKeySRv6{owner, s.Sid.Addr()}]; ok {
 		return next, nil
 	}
 
@@ -390,7 +394,7 @@ func (idx *SIDIndex) nextHopSRv6(owner string, s SegmentSRv6) (string, error) {
 		}
 	}
 
-	if _, ok := idx.srv6SIDs[s.Sid]; ok {
+	if _, ok := idx.srv6SIDs[s.Sid.Addr()]; ok {
 		return "", fmt.Errorf("%s does not have adjacency SID %s", owner, s.SidString())
 	}
 
@@ -466,7 +470,7 @@ func (idx *SIDIndex) usidContainerOwner(s SegmentSRv6) (owner string, matched bo
 		declaredLocBits = int(s.Structure.LocalBlock) + int(s.Structure.LocalNode)
 	}
 
-	locInfo, found := idx.lookupSRv6Locator(s.Sid, declaredLocBits)
+	locInfo, found := idx.lookupSRv6Locator(s.Sid.Addr(), declaredLocBits)
 	if !found {
 		return ownerUnknown, false
 	}
@@ -490,7 +494,7 @@ func (idx *SIDIndex) usidContainerOwner(s SegmentSRv6) (owner string, matched bo
 		return locInfo.owner, true
 	}
 
-	segments := uSIDMicroSegmentPrefixes(s.Sid, structure)
+	segments := uSIDMicroSegmentPrefixes(s.Sid.Addr(), structure)
 	if len(segments) == 0 {
 		return ownerUnknown, true
 	}

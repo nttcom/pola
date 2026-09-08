@@ -29,7 +29,7 @@ func srMPLSNode(routerID string, sidIndex uint32) *table.LsNode {
 		RouterID:  routerID,
 		SrgbBegin: 16000,
 		Prefixes: []*table.LsPrefix{
-			{SidIndex: sidIndex, HasSidIndex: true},
+			{Prefix: netip.MustParsePrefix("192.0.2.1/32"), SidIndex: sidIndex, HasSidIndex: true},
 		},
 	}
 }
@@ -56,8 +56,9 @@ func srv6DefaultSeg(sid string) table.SegmentSRv6 {
 	addr := netip.MustParseAddr(sid)
 
 	return table.SegmentSRv6{
-		Sid:       addr,
+		Sid:       table.SRv6SID(addr),
 		LocalAddr: addr,
+		Behavior:  table.BehaviorEND,
 		Structure: &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16},
 	}
 }
@@ -68,9 +69,9 @@ func nodeWithoutSID(routerID string) *table.LsNode {
 
 func connect(local, remote *table.LsNode, igpCost uint32) {
 	local.Links = append(local.Links, &table.LsLink{
-		LocalNode:  local,
-		RemoteNode: remote,
-		Metrics:    []*table.Metric{table.NewMetric(table.IGPMetric, igpCost)},
+		Local:   table.LinkEndpoint{Node: local},
+		Remote:  table.LinkEndpoint{Node: remote},
+		Metrics: []*table.Metric{table.NewMetric(table.IGPMetric, igpCost)},
 	})
 }
 
@@ -385,8 +386,9 @@ func TestWithLooseSourceRouting(t *testing.T) {
 		want := []table.Segment{
 			srv6DefaultSeg("2001:db8::2"),
 			table.SegmentSRv6{
-				Sid:       netip.MustParseAddr("2001:db8::2ff"),
+				Sid:       table.SRv6SID(netip.MustParseAddr("2001:db8::2ff")),
 				LocalAddr: netip.MustParseAddr("2001:db8::2"),
+				Behavior:  table.BehaviorEND,
 				Structure: &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16},
 			},
 			srv6DefaultSeg("2001:db8::3"),

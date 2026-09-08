@@ -1653,8 +1653,8 @@ func (o *SRv6EroSubobject) decodeSID(subobject []uint8, off int) (int, error) {
 		return off, errors.New("SRv6EroSubobject: truncated SID")
 	}
 
-	sid, _ := netip.AddrFromSlice(subobject[off : off+16])
-	o.Segment = table.NewSegmentSRv6(sid)
+	addr, _ := netip.AddrFromSlice(subobject[off : off+16])
+	o.Segment = table.NewSegmentSRv6(table.SRv6SID(addr))
 
 	return off + 16, nil
 }
@@ -1723,9 +1723,9 @@ func (o *SRv6EroSubobject) Serialize() ([]uint8, error) {
 
 	reserved := make([]uint8, 2)
 
-	behaviorBytes := Uint16ToByteSlice(o.Segment.Behavior())
+	behaviorBytes := Uint16ToByteSlice(o.Segment.BehaviorOrDerived())
 
-	byteSid := o.Segment.Sid.AsSlice()
+	byteSid := o.Segment.Sid.Addr().AsSlice()
 
 	byteNAI := o.Segment.LocalAddr.AsSlice()
 	if o.Segment.RemoteAddr.IsValid() {

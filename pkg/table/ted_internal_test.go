@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const tedInternalTestSRv6SID1 = "2001:db8::1"
@@ -33,9 +34,8 @@ func TestPrintLink(t *testing.T) {
 		t.Parallel()
 
 		link := &LsLink{
-			LocalIP:    netip.MustParseAddr("192.0.2.1"),
-			RemoteIP:   netip.MustParseAddr("192.0.2.2"),
-			RemoteNode: &LsNode{RouterID: "R2"},
+			Local:  LinkEndpoint{IPv4: netip.MustParseAddr("192.0.2.1")},
+			Remote: LinkEndpoint{IPv4: netip.MustParseAddr("192.0.2.2"), Node: &LsNode{RouterID: "R2"}},
 		}
 
 		var buf bytes.Buffer
@@ -43,6 +43,42 @@ func TestPrintLink(t *testing.T) {
 
 		assert.Contains(t, buf.String(), "Local: 192.0.2.1 Remote: 192.0.2.2")
 		assert.Contains(t, buf.String(), "RemoteNode: R2")
+	})
+
+	t.Run("IPv6-only endpoints are printed", func(t *testing.T) {
+		t.Parallel()
+
+		link := &LsLink{
+			Local:  LinkEndpoint{IPv6: netip.MustParseAddr("2001:db8::1")},
+			Remote: LinkEndpoint{IPv6: netip.MustParseAddr("2001:db8::2")},
+		}
+
+		var buf bytes.Buffer
+		printLink(&errWriter{w: &buf}, link)
+
+		assert.Contains(t, buf.String(), "Local: 2001:db8::1 Remote: 2001:db8::2")
+	})
+
+	t.Run("Adj-SID is printed", func(t *testing.T) {
+		t.Parallel()
+
+		link := &LsLink{AdjSids: []AdjSID{{Sid: 24001}}}
+
+		var buf bytes.Buffer
+		printLink(&errWriter{w: &buf}, link)
+
+		assert.Contains(t, buf.String(), "Adj-SID: 24001")
+	})
+
+	t.Run("a nil SRv6 End.X SID entry is skipped", func(t *testing.T) {
+		t.Parallel()
+
+		link := &LsLink{Srv6EndXSIDs: []*Srv6EndXSID{nil, {Sids: []string{tedInternalTestSRv6SID1}}}}
+
+		var buf bytes.Buffer
+		printLink(&errWriter{w: &buf}, link)
+
+		assert.Contains(t, buf.String(), fmt.Sprintf("SIDs: [%s]", tedInternalTestSRv6SID1))
 	})
 
 	t.Run("metrics are printed", func(t *testing.T) {
@@ -60,11 +96,11 @@ func TestPrintLink(t *testing.T) {
 		t.Parallel()
 
 		link := &LsLink{
-			Srv6EndXSID: &Srv6EndXSID{
+			Srv6EndXSIDs: []*Srv6EndXSID{{
 				EndpointBehavior: 5,
 				Sids:             []string{tedInternalTestSRv6SID1},
 				Srv6SIDStructure: &SIDStructure{LocalBlock: 1, LocalNode: 2, LocalFunc: 3, LocalArg: 4},
-			},
+			}},
 		}
 
 		var buf bytes.Buffer
@@ -83,7 +119,7 @@ func TestPrintNodeLinks(t *testing.T) {
 	t.Run("node with links", func(t *testing.T) {
 		t.Parallel()
 
-		node := &LsNode{Links: []*LsLink{nil, {RemoteNode: &LsNode{RouterID: "R2"}}}}
+		node := &LsNode{Links: []*LsLink{nil, {Remote: LinkEndpoint{Node: &LsNode{RouterID: "R2"}}}}}
 
 		var buf bytes.Buffer
 		printNodeLinks(&errWriter{w: &buf}, node)
@@ -203,7 +239,7 @@ func TestPrintNodes(t *testing.T) {
 		RouterID: "R1",
 		Hostname: "router1",
 		Links: []*LsLink{
-			{RemoteNode: &LsNode{RouterID: "R2"}},
+			{Remote: LinkEndpoint{Node: &LsNode{RouterID: "R2"}}},
 		},
 	}
 	nodes := map[string]*LsNode{"R1": node}
@@ -222,4 +258,155 @@ func TestPrintNodes_WithNilNode(t *testing.T) {
 	var buf bytes.Buffer
 	printNodes(&errWriter{w: &buf}, nodes)
 	assert.Empty(t, buf.String())
+}
+
+func TestLsLink_Families(t *testing.T) {
+	t.Parallel()
+
+	v4 := netip.MustParseAddr("192.0.2.1")
+	v6 := netip.MustParseAddr("2001:db8::1")
+
+	tests := []struct {
+		name string
+		link *LsLink
+		want AddressFamilySet
+	}{
+		{
+			name: "v4-only",
+			link: &LsLink{Local: LinkEndpoint{IPv4: v4}, Remote: LinkEndpoint{IPv4: v4}},
+			want: AddressFamilySetIPv4,
+		},
+		{
+			name: "v6-only",
+			link: &LsLink{Local: LinkEndpoint{IPv6: v6}, Remote: LinkEndpoint{IPv6: v6}},
+			want: AddressFamilySetIPv6,
+		},
+		{
+			name: "dual-stack",
+			link: &LsLink{
+				Local:  LinkEndpoint{IPv4: v4, IPv6: v6},
+				Remote: LinkEndpoint{IPv4: v4, IPv6: v6},
+			},
+			want: AddressFamilySetIPv4 | AddressFamilySetIPv6,
+		},
+		{
+			name: "one side missing the address excludes that family",
+			link: &LsLink{
+				Local:  LinkEndpoint{IPv4: v4, IPv6: v6},
+				Remote: LinkEndpoint{IPv4: v4},
+			},
+			want: AddressFamilySetIPv4,
+		},
+		{
+			name: "neither side has an address",
+			link: &LsLink{},
+			want: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, tt.link.Families())
+		})
+	}
+}
+
+func TestLsLink_KeyAndUpdateTED(t *testing.T) {
+	t.Parallel()
+
+	t.Run("re-advertising the same (nodes, interface IDs) merges into one link", func(t *testing.T) {
+		t.Parallel()
+
+		ted := &LsTED{Nodes: map[string]*LsNode{}}
+		ifaceID := uint32(5)
+
+		link1 := &LsLink{
+			Local:   LinkEndpoint{Node: NewLsNode(1, "A"), InterfaceID: &ifaceID},
+			Remote:  LinkEndpoint{Node: NewLsNode(1, "B")},
+			Metrics: []*Metric{NewMetric(IGPMetric, 10)},
+		}
+		link1.UpdateTED(ted, 1)
+
+		link2 := &LsLink{
+			Local:   LinkEndpoint{Node: NewLsNode(1, "A"), InterfaceID: &ifaceID},
+			Remote:  LinkEndpoint{Node: NewLsNode(1, "B")},
+			Metrics: []*Metric{NewMetric(IGPMetric, 20)},
+		}
+		link2.UpdateTED(ted, 1)
+
+		require.Len(t, ted.Nodes["A"].Links, 1)
+		metric, err := ted.Nodes["A"].Links[0].Metric(IGPMetric)
+		require.NoError(t, err)
+		assert.Equal(t, uint32(20), metric, "the later advertisement should replace the earlier one")
+	})
+
+	t.Run("a different interface ID produces a distinct parallel link", func(t *testing.T) {
+		t.Parallel()
+
+		ted := &LsTED{Nodes: map[string]*LsNode{}}
+		ifaceID1, ifaceID2 := uint32(5), uint32(6)
+
+		link1 := &LsLink{
+			Local:  LinkEndpoint{Node: NewLsNode(1, "A"), InterfaceID: &ifaceID1},
+			Remote: LinkEndpoint{Node: NewLsNode(1, "B")},
+		}
+		link1.UpdateTED(ted, 1)
+
+		link2 := &LsLink{
+			Local:  LinkEndpoint{Node: NewLsNode(1, "A"), InterfaceID: &ifaceID2},
+			Remote: LinkEndpoint{Node: NewLsNode(1, "B")},
+		}
+		link2.UpdateTED(ted, 1)
+
+		assert.Len(t, ted.Nodes["A"].Links, 2)
+	})
+}
+
+func TestLsLink_Validate(t *testing.T) {
+	t.Parallel()
+
+	linkLocal := netip.MustParseAddr("fe80::1")
+	global := netip.MustParseAddr("2001:db8::1")
+	ifaceID := uint32(3)
+
+	tests := []struct {
+		name    string
+		link    *LsLink
+		wantErr bool
+	}{
+		{
+			name:    "local link-local IPv6 without an interface ID is rejected",
+			link:    &LsLink{Local: LinkEndpoint{IPv6: linkLocal}},
+			wantErr: true,
+		},
+		{
+			name:    "local link-local IPv6 with an interface ID is accepted",
+			link:    &LsLink{Local: LinkEndpoint{IPv6: linkLocal, InterfaceID: &ifaceID}},
+			wantErr: false,
+		},
+		{
+			name:    "remote link-local IPv6 without an interface ID is rejected",
+			link:    &LsLink{Remote: LinkEndpoint{IPv6: linkLocal}},
+			wantErr: true,
+		},
+		{
+			name:    "a global IPv6 address needs no interface ID",
+			link:    &LsLink{Local: LinkEndpoint{IPv6: global}},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := tt.link.Validate()
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
 }

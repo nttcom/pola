@@ -26,7 +26,7 @@ func cspfInternalTestSRMPLSNode(routerID string, sidIndex uint32) *table.LsNode 
 		RouterID:  routerID,
 		SrgbBegin: 16000,
 		Prefixes: []*table.LsPrefix{
-			{SidIndex: sidIndex, HasSidIndex: true},
+			{Prefix: netip.MustParsePrefix("192.0.2.1/32"), SidIndex: sidIndex, HasSidIndex: true},
 		},
 	}
 }
@@ -52,8 +52,9 @@ func cspfInternalTestSRv6DefaultSeg(sid string) table.SegmentSRv6 {
 	addr := netip.MustParseAddr(sid)
 
 	return table.SegmentSRv6{
-		Sid:       addr,
+		Sid:       table.SRv6SID(addr),
 		LocalAddr: addr,
+		Behavior:  table.BehaviorEND,
 		Structure: &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16},
 	}
 }
@@ -64,9 +65,9 @@ func cspfInternalTestNodeWithoutSID(routerID string) *table.LsNode {
 
 func cspfInternalTestConnect(local, remote *table.LsNode) {
 	local.Links = append(local.Links, &table.LsLink{
-		LocalNode:  local,
-		RemoteNode: remote,
-		Metrics:    []*table.Metric{table.NewMetric(table.IGPMetric, 1)},
+		Local:   table.LinkEndpoint{Node: local},
+		Remote:  table.LinkEndpoint{Node: remote},
+		Metrics: []*table.Metric{table.NewMetric(table.IGPMetric, 1)},
 	})
 }
 
@@ -109,7 +110,7 @@ func TestCSPF_Errors(t *testing.T) {
 				return cspfInternalTestBuildTED(a, b)
 			},
 			src: "A", dst: "B", metric: table.IGPMetric,
-			wantErr: "node doesn't have a Node SID",
+			wantErr: "get default plane: node doesn't have a Node SID",
 		},
 		{
 			name: "a newly discovered neighbor has no Node SID",
@@ -120,7 +121,7 @@ func TestCSPF_Errors(t *testing.T) {
 				return cspfInternalTestBuildTED(a, b)
 			},
 			src: "A", dst: "B", metric: table.IGPMetric,
-			wantErr: "node doesn't have a Node SID",
+			wantErr: "get default plane: node doesn't have a Node SID",
 		},
 		{
 			name: "destination router is absent from the TED",
@@ -180,7 +181,7 @@ func TestCSPF_Errors(t *testing.T) {
 			name: "a link with a nil remote node is skipped instead of panicking",
 			buildTED: func() *table.LsTED {
 				a, d := cspfInternalTestSRMPLSNode("A", 0), cspfInternalTestSRMPLSNode("D", 3)
-				a.Links = append(a.Links, &table.LsLink{LocalNode: a, RemoteNode: nil})
+				a.Links = append(a.Links, &table.LsLink{Local: table.LinkEndpoint{Node: a}})
 
 				return cspfInternalTestBuildTED(a, d)
 			},
@@ -286,8 +287,9 @@ func TestBuildWaypointSegment(t *testing.T) {
 			node:        cspfInternalTestSRv6Node(),
 			explicitSID: cspfInternalTestOverrideSID,
 			want: table.SegmentSRv6{
-				Sid:       netip.MustParseAddr(cspfInternalTestOverrideSID),
+				Sid:       table.SRv6SID(netip.MustParseAddr(cspfInternalTestOverrideSID)),
 				LocalAddr: netip.MustParseAddr("2001:db8::a"),
+				Behavior:  table.BehaviorEND,
 				Structure: &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16},
 			},
 		},
@@ -306,8 +308,9 @@ func TestBuildWaypointSegment(t *testing.T) {
 			},
 			explicitSID: cspfInternalTestOverrideSID,
 			want: table.SegmentSRv6{
-				Sid:       netip.MustParseAddr(cspfInternalTestOverrideSID),
+				Sid:       table.SRv6SID(netip.MustParseAddr(cspfInternalTestOverrideSID)),
 				LocalAddr: netip.MustParseAddr("2001:db8::a"),
+				Behavior:  table.BehaviorUN,
 				Structure: &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16},
 				USid:      true,
 			},

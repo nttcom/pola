@@ -797,13 +797,19 @@ func tedNode(ted *table.LsTED, routerID string) (*table.LsNode, bool) {
 	return node, true
 }
 
+// The API does not yet accept an explicit address family for endpoint resolution.
 func getLoopbackAddr(ted *table.LsTED, routerID string) (netip.Addr, error) {
 	node, ok := tedNode(ted, routerID)
 	if !ok {
 		return netip.Addr{}, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "no node with router ID %s", routerID)
 	}
 
-	addr, err := node.LoopbackAddr()
+	af, err := node.DefaultLoopbackFamily()
+	if err != nil {
+		return netip.Addr{}, newStatus(codes.FailedPrecondition, ReasonTEDDataIncomplete, "%s", err.Error())
+	}
+
+	addr, err := node.LoopbackAddr(af)
 	if err != nil {
 		return netip.Addr{}, newStatus(codes.FailedPrecondition, ReasonTEDDataIncomplete, "%s", err.Error())
 	}
@@ -811,7 +817,6 @@ func getLoopbackAddr(ted *table.LsTED, routerID string) (netip.Addr, error) {
 	return addr, nil
 }
 
-// getSegmentList returns the segment list and resolved metric type.
 func getSegmentList(inputSRPolicy *pb.SRPolicy, ted *table.LsTED, usidMode bool) ([]table.Segment, table.MetricType, error) {
 	var segmentList []table.Segment
 
@@ -837,7 +842,6 @@ func getSegmentList(inputSRPolicy *pb.SRPolicy, ted *table.LsTED, usidMode bool)
 
 		pbWPs := inputSRPolicy.GetWaypoints()
 		if len(pbWPs) > 0 {
-			// Convert to table.Waypoint
 			waypoints := make([]table.Waypoint, 0, len(pbWPs))
 			for _, w := range pbWPs {
 				waypoints = append(waypoints, table.Waypoint{

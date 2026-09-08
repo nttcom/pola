@@ -169,13 +169,13 @@ func buildWaypointSegment(node *table.LsNode, explicitSID string) (table.Segment
 		if err != nil {
 			return nil, invalidInputf("invalid explicit SID %q: %w", explicitSID, err)
 		}
-		// Explicit SID must be an IPv6 address.
-		addr = addr.Unmap()
-		if !addr.Is6() {
+		// Explicit SID must be an IPv6 SRv6 SID.
+		sid, err := table.ParseSRv6SID(addr.Unmap().String())
+		if err != nil {
 			return nil, invalidInputf("explicit SID %q must be an IPv6 SRv6 SID", explicitSID)
 		}
 
-		seg, err := table.NewSegmentSRv6WithNodeInfo(addr, node)
+		seg, err := table.NewSegmentSRv6WithNodeInfo(sid, node)
 		if err != nil {
 			return nil, topologyLimitationf(reasonTEDDataIncomplete, "%w", err)
 		}
@@ -183,9 +183,25 @@ func buildWaypointSegment(node *table.LsNode, explicitSID string) (table.Segment
 		return seg, nil
 	}
 
-	seg, err := node.NodeSegment()
+	seg, err := nodeSegment(node)
 	if err != nil {
 		return nil, topologyLimitationf(reasonTEDDataIncomplete, "%w", err)
+	}
+
+	return seg, nil
+}
+
+// nodeSegment builds a Segment using the node's unambiguous default plane.
+// CSPF does not yet accept an explicit plane from its caller.
+func nodeSegment(node *table.LsNode) (table.Segment, error) {
+	plane, err := node.DefaultPlane()
+	if err != nil {
+		return nil, fmt.Errorf("get default plane: %w", err)
+	}
+
+	seg, err := node.NodeSegment(plane)
+	if err != nil {
+		return nil, fmt.Errorf("build node segment: %w", err)
 	}
 
 	return seg, nil
@@ -257,7 +273,7 @@ func initNodeMap(srcRouterID string, network map[string]*table.LsNode) (map[stri
 		return nil, invalidInputf("source router %s not found in TED", srcRouterID)
 	}
 
-	startNodeSeg, err := srcNode.NodeSegment()
+	startNodeSeg, err := nodeSegment(srcNode)
 	if err != nil {
 		return nil, topologyLimitationf(reasonTEDDataIncomplete, "%w", err)
 	}
@@ -276,11 +292,13 @@ func updateNeighborCosts(calcNodeID string, calculatingNodes map[string]*node, n
 	}
 
 	for _, link := range calcNode.Links {
-		if link == nil || link.RemoteNode == nil {
+		if link == nil || link.Remote.Node == nil {
 			continue
 		}
 
-		if _, ok := nodeInTED(network, link.RemoteNode.RouterID); !ok {
+		remoteRouterID := link.Remote.Node.RouterID
+
+		if _, ok := nodeInTED(network, remoteRouterID); !ok {
 			continue
 		}
 
@@ -289,20 +307,20 @@ func updateNeighborCosts(calcNodeID string, calculatingNodes map[string]*node, n
 			return topologyLimitationf(reasonMetricNotCarried, "%w", err)
 		}
 
-		if remoteNode, exists := calculatingNodes[link.RemoteNode.RouterID]; exists {
+		if remoteNode, exists := calculatingNodes[remoteRouterID]; exists {
 			if calculatingNodes[calcNodeID].cost+metric < remoteNode.cost {
 				remoteNode.cost = calculatingNodes[calcNodeID].cost + metric
 				remoteNode.prevNode = calcNodeID
 			}
 		} else {
-			remoteNodeSeg, err := link.RemoteNode.NodeSegment()
+			remoteNodeSeg, err := nodeSegment(link.Remote.Node)
 			if err != nil {
 				return topologyLimitationf(reasonTEDDataIncomplete, "%w", err)
 			}
 
-			remoteNode := newNode(link.RemoteNode.RouterID, calculatingNodes[calcNodeID].cost+metric, remoteNodeSeg)
+			remoteNode := newNode(remoteRouterID, calculatingNodes[calcNodeID].cost+metric, remoteNodeSeg)
 			remoteNode.prevNode = calcNodeID
-			calculatingNodes[link.RemoteNode.RouterID] = remoteNode
+			calculatingNodes[remoteRouterID] = remoteNode
 		}
 	}
 
