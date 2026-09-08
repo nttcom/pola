@@ -66,7 +66,7 @@ func TestNAITypeSR_naiLength(t *testing.T) {
 		"IPv4Adjacency":          {nt: NAITypeSRIPv4Adjacency, want: 8},
 		"IPv6AdjacencyGlobal":    {nt: NAITypeSRIPv6AdjacencyGlobal, want: 32},
 		"UnnumberedAdjacency":    {nt: NAITypeSRUnnumberedAdjacency, wantErr: true},
-		"IPv6AdjacencyLinkLocal": {nt: NAITypeSRIPv6AdjacencyLinkLocal, wantErr: true},
+		"IPv6AdjacencyLinkLocal": {nt: NAITypeSRIPv6AdjacencyLinkLocal, want: 40},
 		"Unknown":                {nt: NAITypeSR(0x07), wantErr: true},
 	}
 

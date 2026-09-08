@@ -50,6 +50,16 @@ func TestSREroSubobject_RoundTrip(t *testing.T) {
 
 		return seg
 	}
+	mkSRMPLSWithLinkLocalNAI := func(sid uint32, local, remote string, localIfaceID, remoteIfaceID uint32) table.SegmentSRMPLS {
+		seg := table.NewSegmentSRMPLS(sid)
+
+		seg.LocalAddr = netip.MustParseAddr(local)
+		seg.RemoteAddr = netip.MustParseAddr(remote)
+		seg.LocalIfaceID = &localIfaceID
+		seg.RemoteIfaceID = &remoteIfaceID
+
+		return seg
+	}
 
 	cases := map[string]pcep.SREroSubobject{
 		"NAIAbsent_LabelOnly": {
@@ -94,6 +104,12 @@ func TestSREroSubobject_RoundTrip(t *testing.T) {
 			NAIType:       pcep.NAITypeSRIPv6AdjacencyGlobal,
 			MFlag:         true,
 			Segment:       mkSRMPLSWithNAI(24002, testIPv6Addr1, testIPv6Addr2),
+		},
+		"IPv6AdjacencyLinkLocal": {
+			SubobjectType: pcep.SubobjectTypeEROSR,
+			NAIType:       pcep.NAITypeSRIPv6AdjacencyLinkLocal,
+			MFlag:         true,
+			Segment:       mkSRMPLSWithLinkLocalNAI(24003, "fe80::1", "fe80::2", 5, 7),
 		},
 		"IPv4Node_CFlag_MPLSStackAttrs": {
 			SubobjectType: pcep.SubobjectTypeEROSR,
@@ -181,6 +197,16 @@ func TestNewSREroSubobject_NAIFromSegment(t *testing.T) {
 		},
 		"LinkLocalRemoteOnly": {
 			seg: mk(testIPv6Addr1, "fe80::2"), wantErr: true,
+		},
+		"LinkLocalAdjacencyWithIfaceID": {
+			seg: func() table.SegmentSRMPLS {
+				seg := mk("fe80::1", "fe80::2")
+				localIfaceID, remoteIfaceID := uint32(1), uint32(2)
+				seg.LocalIfaceID, seg.RemoteIfaceID = &localIfaceID, &remoteIfaceID
+
+				return seg
+			}(),
+			wantNAIType: pcep.NAITypeSRIPv6AdjacencyLinkLocal, wantLength: 4 + 4 + 40,
 		},
 	}
 
@@ -278,6 +304,12 @@ func TestSREroSubobject_SerializeRejectsNAIMismatch(t *testing.T) {
 			pcep.NAITypeSRIPv6AdjacencyGlobal, testIPv4Addr1, testIPv4Addr2,
 		),
 		"UnsupportedNAIType": mkSubo(pcep.NAITypeSRUnnumberedAdjacency, testIPv4Addr1, testIPv4Addr2),
+		"LinkLocalAdjacencyWithIPv4Addrs": mkSubo(
+			pcep.NAITypeSRIPv6AdjacencyLinkLocal, testIPv4Addr1, testIPv4Addr2,
+		),
+		"LinkLocalAdjacencyWithoutIfaceIDs": mkSubo(
+			pcep.NAITypeSRIPv6AdjacencyLinkLocal, testIPv6Addr1, testIPv6Addr2,
+		),
 	}
 
 	for name, subo := range cases {
@@ -468,8 +500,18 @@ func TestSRv6EroSubobject_RoundTrip(t *testing.T) {
 	sid := table.SRv6SID(netip.MustParseAddr("fc00:0:1::"))
 	local := netip.MustParseAddr(testIPv6Addr1)
 	remote := netip.MustParseAddr(testIPv6Addr2)
+	linkLocalIfaceID := uint32(5)
+	linkLocalRemoteIfaceID := uint32(7)
 
 	cases := map[string]pcep.SRv6EroSubobject{
+		"IPv6AdjLinkLocal_ENDX": {
+			SubobjectType: pcep.SubobjectTypeEROSRv6,
+			NAIType:       pcep.NAITypeSRv6IPv6AdjacencyLinkLocal,
+			Segment: table.SegmentSRv6{
+				Sid: sid, LocalAddr: netip.MustParseAddr("fe80::1"), RemoteAddr: netip.MustParseAddr("fe80::2"),
+				LocalIfaceID: &linkLocalIfaceID, RemoteIfaceID: &linkLocalRemoteIfaceID,
+			},
+		},
 		"IPv6Node_END": {
 			SubobjectType: pcep.SubobjectTypeEROSRv6,
 			NAIType:       pcep.NAITypeSRv6IPv6Node,
@@ -1653,7 +1695,6 @@ func TestSRv6EroSubobject_Len_Errors(t *testing.T) {
 	}
 }
 
-// Serialize still requires LocalAddr even when the NAI is absent (F=1).
 func TestSRv6EroSubobject_Serialize_UnknownBehavior(t *testing.T) {
 	t.Parallel()
 
@@ -1668,6 +1709,53 @@ func TestSRv6EroSubobject_Serialize_UnknownBehavior(t *testing.T) {
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, len(b), 8)
 	assert.Equal(t, table.BehaviorOpaque, binary.BigEndian.Uint16(b[6:8]))
+}
+
+func TestSRv6EroSubobject_Serialize_LinkLocalAdjacency(t *testing.T) {
+	t.Parallel()
+
+	local, remote := netip.MustParseAddr("fe80::1"), netip.MustParseAddr("fe80::2")
+	localIfaceID, remoteIfaceID := uint32(5), uint32(7)
+
+	seg := table.SegmentSRv6{
+		Sid:           table.SRv6SID(netip.MustParseAddr("fc00:0:1::")),
+		LocalAddr:     local,
+		RemoteAddr:    remote,
+		LocalIfaceID:  &localIfaceID,
+		RemoteIfaceID: &remoteIfaceID,
+	}
+
+	subo, err := pcep.NewSRv6EroSubobject(seg)
+	require.NoError(t, err)
+
+	b, err := subo.Serialize()
+	require.NoError(t, err)
+
+	var decoded pcep.SRv6EroSubobject
+	require.NoError(t, decoded.DecodeFromBytes(b))
+	assert.Equal(t, local, decoded.Segment.LocalAddr)
+	assert.Equal(t, remote, decoded.Segment.RemoteAddr)
+	require.NotNil(t, decoded.Segment.LocalIfaceID)
+	assert.Equal(t, localIfaceID, *decoded.Segment.LocalIfaceID)
+	require.NotNil(t, decoded.Segment.RemoteIfaceID)
+	assert.Equal(t, remoteIfaceID, *decoded.Segment.RemoteIfaceID)
+}
+
+func TestSRv6EroSubobject_Serialize_LinkLocalMissingIfaceIDs(t *testing.T) {
+	t.Parallel()
+
+	o := &pcep.SRv6EroSubobject{
+		SubobjectType: pcep.SubobjectTypeEROSRv6,
+		NAIType:       pcep.NAITypeSRv6IPv6AdjacencyLinkLocal,
+		Segment: table.SegmentSRv6{
+			Sid:        table.SRv6SID(netip.MustParseAddr("fc00:0:1::")),
+			LocalAddr:  netip.MustParseAddr("fe80::1"),
+			RemoteAddr: netip.MustParseAddr("fe80::2"),
+		},
+	}
+
+	_, err := o.Serialize()
+	assert.Error(t, err)
 }
 
 func TestEndpointsObject_Len_Error(t *testing.T) {
@@ -1981,6 +2069,10 @@ func TestSRv6EroSubobject_DecodeFromBytes_LinkLocalAdjacency(t *testing.T) {
 	require.NoError(t, o.DecodeFromBytes(raw))
 	assert.Equal(t, local, o.Segment.LocalAddr)
 	assert.Equal(t, remote, o.Segment.RemoteAddr)
+	require.NotNil(t, o.Segment.LocalIfaceID)
+	assert.Equal(t, uint32(0), *o.Segment.LocalIfaceID)
+	require.NotNil(t, o.Segment.RemoteIfaceID)
+	assert.Equal(t, uint32(0), *o.Segment.RemoteIfaceID)
 
 	l, err := o.Len()
 	require.NoError(t, err)
@@ -2098,6 +2190,17 @@ func TestNewSRv6EroSubobject_NAIFromSegment(t *testing.T) {
 			seg:         table.SegmentSRv6{Sid: sid, LocalAddr: local, Structure: &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16}},
 			wantNAIType: pcep.NAITypeSRv6IPv6Node, wantTFlag: true,
 		},
+		"LinkLocalAdjacencyWithIfaceID": {
+			seg: func() table.SegmentSRv6 {
+				localIfaceID, remoteIfaceID := uint32(1), uint32(2)
+
+				return table.SegmentSRv6{
+					Sid: sid, LocalAddr: netip.MustParseAddr("fe80::1"), RemoteAddr: netip.MustParseAddr("fe80::2"),
+					LocalIfaceID: &localIfaceID, RemoteIfaceID: &remoteIfaceID,
+				}
+			}(),
+			wantNAIType: pcep.NAITypeSRv6IPv6AdjacencyLinkLocal,
+		},
 	}
 
 	for name, tt := range cases {
@@ -2151,6 +2254,12 @@ func TestNewSRv6EroSubobject_AddressFamilyRejected(t *testing.T) {
 		},
 		"RemoteAddrWithoutLocalAddr": {
 			Sid: sid, RemoteAddr: netip.MustParseAddr(testIPv6Addr2),
+		},
+		"IPv4MappedSid": {
+			Sid: table.SRv6SID(netip.MustParseAddr("::ffff:192.0.2.1")), LocalAddr: netip.MustParseAddr(testIPv6Addr1),
+		},
+		"IPv4Sid": {
+			Sid: table.SRv6SID(netip.MustParseAddr(testIPv4Addr1)), LocalAddr: netip.MustParseAddr(testIPv6Addr1),
 		},
 	}
 

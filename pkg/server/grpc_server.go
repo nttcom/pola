@@ -817,6 +817,21 @@ func getLoopbackAddr(ted *table.LsTED, routerID string) (netip.Addr, error) {
 	return addr, nil
 }
 
+// The API does not yet accept an explicit underlay plane for path computation.
+func defaultPathScope(ted *table.LsTED, routerID string) (cspf.PathScope, error) {
+	node, ok := tedNode(ted, routerID)
+	if !ok {
+		return cspf.PathScope{}, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "no node with router ID %s", routerID)
+	}
+
+	plane, err := node.DefaultPlane()
+	if err != nil {
+		return cspf.PathScope{}, newStatus(codes.FailedPrecondition, ReasonTEDDataIncomplete, "%s", err.Error())
+	}
+
+	return cspf.PathScope{Plane: plane}, nil
+}
+
 func getSegmentList(inputSRPolicy *pb.SRPolicy, ted *table.LsTED, usidMode bool) ([]table.Segment, table.MetricType, error) {
 	var segmentList []table.Segment
 
@@ -835,39 +850,41 @@ func getSegmentList(inputSRPolicy *pb.SRPolicy, ted *table.LsTED, usidMode bool)
 			segmentList = append(segmentList, sid)
 		}
 	case pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC:
-		metricType, err := getMetricType(inputSRPolicy.GetMetric())
-		if err != nil {
-			return nil, table.UnspecifiedMetric, err
+		return getDynamicSegmentList(inputSRPolicy, ted)
+	default:
+		return nil, table.UnspecifiedMetric, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "undefined SR Policy type")
+	}
+
+	return segmentList, table.UnspecifiedMetric, nil
+}
+
+func getDynamicSegmentList(inputSRPolicy *pb.SRPolicy, ted *table.LsTED) ([]table.Segment, table.MetricType, error) {
+	metricType, err := getMetricType(inputSRPolicy.GetMetric())
+	if err != nil {
+		return nil, table.UnspecifiedMetric, err
+	}
+
+	scope, err := defaultPathScope(ted, inputSRPolicy.GetSrcRouterId())
+	if err != nil {
+		return nil, table.UnspecifiedMetric, err
+	}
+
+	pbWPs := inputSRPolicy.GetWaypoints()
+	if len(pbWPs) > 0 {
+		waypoints := make([]table.Waypoint, 0, len(pbWPs))
+		for _, w := range pbWPs {
+			waypoints = append(waypoints, table.Waypoint{
+				RouterID: w.GetRouterId(),
+				SID:      w.GetSid(), // optional
+			})
 		}
 
-		pbWPs := inputSRPolicy.GetWaypoints()
-		if len(pbWPs) > 0 {
-			waypoints := make([]table.Waypoint, 0, len(pbWPs))
-			for _, w := range pbWPs {
-				waypoints = append(waypoints, table.Waypoint{
-					RouterID: w.GetRouterId(),
-					SID:      w.GetSid(), // optional
-				})
-			}
-
-			segs, err := cspf.WithLooseSourceRouting(
-				inputSRPolicy.GetSrcRouterId(),
-				inputSRPolicy.GetDstRouterId(),
-				waypoints,
-				metricType,
-				ted,
-			)
-			if err != nil {
-				return nil, table.UnspecifiedMetric, statusFromCSPFError(err)
-			}
-
-			return segs, metricType, nil
-		}
-
-		segs, err := cspf.CSPF(
+		segs, err := cspf.WithLooseSourceRouting(
 			inputSRPolicy.GetSrcRouterId(),
 			inputSRPolicy.GetDstRouterId(),
+			waypoints,
 			metricType,
+			scope,
 			ted,
 		)
 		if err != nil {
@@ -875,11 +892,20 @@ func getSegmentList(inputSRPolicy *pb.SRPolicy, ted *table.LsTED, usidMode bool)
 		}
 
 		return segs, metricType, nil
-	default:
-		return nil, table.UnspecifiedMetric, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "undefined SR Policy type")
 	}
 
-	return segmentList, table.UnspecifiedMetric, nil
+	segs, err := cspf.CSPF(
+		inputSRPolicy.GetSrcRouterId(),
+		inputSRPolicy.GetDstRouterId(),
+		metricType,
+		scope,
+		ted,
+	)
+	if err != nil {
+		return nil, table.UnspecifiedMetric, statusFromCSPFError(err)
+	}
+
+	return segs, metricType, nil
 }
 
 func getMetricType(metricType pb.MetricType) (table.MetricType, error) {

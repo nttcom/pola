@@ -1302,6 +1302,13 @@ func (o *SREroSubobject) decodeNAI(subobject []uint8, off int) (int, error) {
 		half := off + int(naiLength)/2
 		o.Segment.LocalAddr, _ = netip.AddrFromSlice(subobject[off:half])
 		o.Segment.RemoteAddr, _ = netip.AddrFromSlice(subobject[half : off+int(naiLength)])
+	case NAITypeSRIPv6AdjacencyLinkLocal:
+		o.Segment.LocalAddr, _ = netip.AddrFromSlice(subobject[off : off+16])
+		localIfaceID := binary.BigEndian.Uint32(subobject[off+16 : off+20])
+		o.Segment.LocalIfaceID = &localIfaceID
+		o.Segment.RemoteAddr, _ = netip.AddrFromSlice(subobject[off+20 : off+36])
+		remoteIfaceID := binary.BigEndian.Uint32(subobject[off+36 : off+40])
+		o.Segment.RemoteIfaceID = &remoteIfaceID
 	}
 
 	return off + int(naiLength), nil
@@ -1341,9 +1348,29 @@ func (o *SREroSubobject) serializeNAI() ([]uint8, error) {
 		}
 
 		return AppendByteSlices(local.AsSlice(), remote.AsSlice()), nil
+	case NAITypeSRIPv6AdjacencyLinkLocal:
+		return serializeIPv6LinkLocalNAI(local, remote, o.Segment.LocalIfaceID, o.Segment.RemoteIfaceID)
 	default:
 		return nil, errors.New("unsupported naitype")
 	}
+}
+
+func serializeIPv6LinkLocalNAI(local, remote netip.Addr, localIfaceID, remoteIfaceID *uint32) ([]uint8, error) {
+	if !local.Is6() || !remote.Is6() {
+		return nil, errors.New("IPv6 link-local adjacency NAI requires IPv6 LocalAddr and RemoteAddr")
+	}
+
+	if localIfaceID == nil || remoteIfaceID == nil {
+		return nil, errors.New("IPv6 link-local adjacency NAI requires LocalIfaceID and RemoteIfaceID")
+	}
+
+	localIfaceIDBytes := make([]uint8, 4)
+	binary.BigEndian.PutUint32(localIfaceIDBytes, *localIfaceID)
+
+	remoteIfaceIDBytes := make([]uint8, 4)
+	binary.BigEndian.PutUint32(remoteIfaceIDBytes, *remoteIfaceID)
+
+	return AppendByteSlices(local.AsSlice(), localIfaceIDBytes, remote.AsSlice(), remoteIfaceIDBytes), nil
 }
 
 // Serialize encodes the receiver into bytes.
@@ -1411,8 +1438,10 @@ func (nt NAITypeSR) naiLength() (uint16, error) {
 		return 8, nil
 	case NAITypeSRIPv6AdjacencyGlobal:
 		return 32, nil
+	case NAITypeSRIPv6AdjacencyLinkLocal:
+		return 40, nil
 	default:
-		// Unnumbered and link-local adjacency NAIs are not supported by the decoder.
+		// Unnumbered adjacency NAIs are not supported by the decoder.
 		return 0, errors.New("unsupported naitype")
 	}
 }
@@ -1465,7 +1494,11 @@ func naiTypeSRFor(seg table.SegmentSRMPLS) (NAITypeSR, error) {
 	}
 
 	if local.IsLinkLocalUnicast() || remote.IsLinkLocalUnicast() {
-		return NAITypeSRAbsent, errors.New("SegmentSRMPLS: link-local IPv6 adjacency NAI is unsupported")
+		if seg.LocalIfaceID == nil || seg.RemoteIfaceID == nil {
+			return NAITypeSRAbsent, errors.New("SegmentSRMPLS: link-local IPv6 adjacency NAI requires LocalIfaceID and RemoteIfaceID")
+		}
+
+		return NAITypeSRIPv6AdjacencyLinkLocal, nil
 	}
 
 	return NAITypeSRIPv6AdjacencyGlobal, nil
@@ -1684,9 +1717,12 @@ func (o *SRv6EroSubobject) decodeNAI(subobject []uint8, off int) (int, error) {
 		}
 
 		o.Segment.LocalAddr, _ = netip.AddrFromSlice(subobject[off : off+16])
-		// subobject[off+16 : off+20] — Local Interface ID (not parsed)
+		localIfaceID := binary.BigEndian.Uint32(subobject[off+16 : off+20])
+		o.Segment.LocalIfaceID = &localIfaceID
 		o.Segment.RemoteAddr, _ = netip.AddrFromSlice(subobject[off+20 : off+36])
-		// subobject[off+36 : off+40] — Remote Interface ID (not parsed)
+		remoteIfaceID := binary.BigEndian.Uint32(subobject[off+36 : off+40])
+		o.Segment.RemoteIfaceID = &remoteIfaceID
+
 		return off + 40, nil
 	default:
 		return off, nil
@@ -1727,9 +1763,22 @@ func (o *SRv6EroSubobject) Serialize() ([]uint8, error) {
 
 	byteSid := o.Segment.Sid.Addr().AsSlice()
 
-	byteNAI := o.Segment.LocalAddr.AsSlice()
-	if o.Segment.RemoteAddr.IsValid() {
-		byteNAI = append(byteNAI, o.Segment.RemoteAddr.AsSlice()...)
+	var byteNAI []uint8
+
+	if o.NAIType == NAITypeSRv6IPv6AdjacencyLinkLocal {
+		nai, err := serializeIPv6LinkLocalNAI(
+			o.Segment.LocalAddr, o.Segment.RemoteAddr, o.Segment.LocalIfaceID, o.Segment.RemoteIfaceID,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("SRv6EroSubobject: %w", err)
+		}
+
+		byteNAI = nai
+	} else {
+		byteNAI = o.Segment.LocalAddr.AsSlice()
+		if o.Segment.RemoteAddr.IsValid() {
+			byteNAI = append(byteNAI, o.Segment.RemoteAddr.AsSlice()...)
+		}
 	}
 
 	byteSidStructure := []uint8{}
@@ -1777,6 +1826,35 @@ func (o *SRv6EroSubobject) Len() (uint16, error) {
 	return length, nil
 }
 
+// naiTypeSRv6For derives the NAI type and F flag from the segment addresses.
+func naiTypeSRv6For(seg table.SegmentSRv6) (NAITypeSRv6, bool, error) {
+	local, remote := seg.LocalAddr.Unmap(), seg.RemoteAddr.Unmap()
+
+	switch {
+	case !local.IsValid():
+		if remote.IsValid() {
+			return NAITypeSRv6Absent, false, errors.New("SegmentSRv6: RemoteAddr requires LocalAddr")
+		}
+
+		return NAITypeSRv6Absent, true, nil
+	case !local.Is6():
+		return NAITypeSRv6Absent, false, errors.New("SegmentSRv6: NAI LocalAddr must be IPv6")
+	case remote.IsValid() && !remote.Is6():
+		return NAITypeSRv6Absent, false, errors.New("SegmentSRv6: NAI RemoteAddr must be IPv6")
+	case local.IsLinkLocalUnicast() || remote.IsLinkLocalUnicast():
+		// Link-local adjacencies require interface IDs to scope the addresses (RFC 8664/9603 §4.3.1).
+		if seg.LocalIfaceID == nil || seg.RemoteIfaceID == nil {
+			return NAITypeSRv6Absent, false, errors.New("SegmentSRv6: link-local IPv6 adjacency NAI requires LocalIfaceID and RemoteIfaceID")
+		}
+
+		return NAITypeSRv6IPv6AdjacencyLinkLocal, false, nil
+	case remote.IsValid():
+		return NAITypeSRv6IPv6AdjacencyGlobal, false, nil
+	default:
+		return NAITypeSRv6IPv6Node, false, nil
+	}
+}
+
 // NewSRv6EroSubobject creates and returns a new SRv6EroSubobject.
 func NewSRv6EroSubobject(seg table.SegmentSRv6) (*SRv6EroSubobject, error) {
 	subo := &SRv6EroSubobject{
@@ -1790,30 +1868,17 @@ func NewSRv6EroSubobject(seg table.SegmentSRv6) (*SRv6EroSubobject, error) {
 
 	subo.TFlag = subo.Segment.Structure != nil
 
-	local, remote := seg.LocalAddr.Unmap(), seg.RemoteAddr.Unmap()
-	switch {
-	case !local.IsValid():
-		if remote.IsValid() {
-			return nil, errors.New("SegmentSRv6: RemoteAddr requires LocalAddr")
-		}
-
-		subo.FFlag = true
-		subo.NAIType = NAITypeSRv6Absent
-	case !local.Is6():
-		return nil, errors.New("SegmentSRv6: NAI LocalAddr must be IPv6")
-	case remote.IsValid() && !remote.Is6():
-		return nil, errors.New("SegmentSRv6: NAI RemoteAddr must be IPv6")
-	case local.IsLinkLocalUnicast() || remote.IsLinkLocalUnicast():
-		// Link-local adjacencies require NAITypeSRv6IPv6AdjacencyLinkLocal
-		// (RFC 9603 §4.3.1), which is not yet supported for encoding.
-		return nil, errors.New("SegmentSRv6: link-local IPv6 adjacency NAI is unsupported")
-	case remote.IsValid():
-		subo.FFlag = false
-		subo.NAIType = NAITypeSRv6IPv6AdjacencyGlobal
-	default:
-		subo.FFlag = false
-		subo.NAIType = NAITypeSRv6IPv6Node
+	sidAddr := seg.Sid.Addr()
+	if !sidAddr.IsValid() || !sidAddr.Is6() || sidAddr.Is4In6() {
+		return nil, errors.New("SegmentSRv6: Sid must be an IPv6 address")
 	}
+
+	naiType, fFlag, err := naiTypeSRv6For(seg)
+	if err != nil {
+		return nil, err
+	}
+
+	subo.NAIType, subo.FFlag = naiType, fFlag
 
 	length, err := subo.Len()
 	if err != nil {
