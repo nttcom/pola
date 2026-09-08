@@ -328,6 +328,16 @@ func TestAddSRPolicyWithEndpointAddr(t *testing.T) {
 		assert.Contains(t, err.Error(), "dynamic path")
 	})
 
+	t.Run("underlayFamily and dataPlane require TED-based computation", func(t *testing.T) {
+		t.Parallel()
+
+		p := base()
+		p.UnderlayFamily = underlayFamilyIPv6
+		err := addSRPolicyWithEndpointAddr(inputFormat{SRPolicy: p}, false, nil)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "underlayFamily")
+	})
+
 	t.Run("missing mandatory fields", func(t *testing.T) {
 		t.Parallel()
 
@@ -414,6 +424,61 @@ func TestAddSRPolicyWithRouterID(t *testing.T) {
 		assert.Equal(t, uint32(65000), fake.createSRPolicyReq.GetAsn())
 		assert.True(t, fake.createSRPolicyReq.GetNoSidValidate())
 		assert.False(t, fake.createSRPolicyReq.GetDisablePathCompute())
+	})
+
+	t.Run("dynamic path with underlayFamily=ipv6 and dataPlane=srv6", func(t *testing.T) {
+		t.Parallel()
+
+		fake := &fakePCEServiceClient{}
+		input := inputFormat{ASN: 65000, SRPolicy: srPolicy{
+			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
+			SrcRouterID:     testRouterID1,
+			DstRouterID:     testRouterID2,
+			Color:           100,
+			Type:            srPolicyTypeDynamic,
+			Metric:          metricTypeIGP,
+			UnderlayFamily:  underlayFamilyIPv6,
+			DataPlane:       dataPlaneSRv6,
+		}}
+		require.NoError(t, addSRPolicyWithRouterID(input, false, fake))
+
+		require.NotNil(t, fake.createSRPolicyReq)
+		assert.Equal(t, pb.AddressFamily_ADDRESS_FAMILY_IPV6, fake.createSRPolicyReq.GetSrPolicy().GetUnderlayFamily())
+		assert.Equal(t, pb.DataPlane_DATA_PLANE_SRV6, fake.createSRPolicyReq.GetSrPolicy().GetDataPlane())
+	})
+
+	t.Run("invalid underlayFamily is rejected", func(t *testing.T) {
+		t.Parallel()
+
+		input := inputFormat{ASN: 65000, SRPolicy: srPolicy{
+			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
+			SrcRouterID:     testRouterID1,
+			DstRouterID:     testRouterID2,
+			Color:           100,
+			Type:            srPolicyTypeDynamic,
+			Metric:          metricTypeIGP,
+			UnderlayFamily:  "ipv5",
+		}}
+		err := addSRPolicyWithRouterID(input, false, nil)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "underlayFamily")
+	})
+
+	t.Run("invalid dataPlane is rejected", func(t *testing.T) {
+		t.Parallel()
+
+		input := inputFormat{ASN: 65000, SRPolicy: srPolicy{
+			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
+			SrcRouterID:     testRouterID1,
+			DstRouterID:     testRouterID2,
+			Color:           100,
+			Type:            srPolicyTypeDynamic,
+			Metric:          metricTypeIGP,
+			DataPlane:       "srv7",
+		}}
+		err := addSRPolicyWithRouterID(input, false, nil)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "dataPlane")
 	})
 
 	t.Run("explicit path builds the request", func(t *testing.T) {
@@ -565,6 +630,90 @@ func TestBuildPolicyByType(t *testing.T) {
 		t.Parallel()
 
 		_, err := buildPolicyByType(inputFormat{SRPolicy: srPolicy{Type: srPolicyTypeDynamic, Metric: "bandwidth"}}, "d", "e")
+		require.Error(t, err)
+	})
+}
+
+func TestToPBSegment(t *testing.T) {
+	t.Parallel()
+
+	localIfaceID, remoteIfaceID := uint32(5), uint32(6)
+	got := toPBSegment(segment{
+		SID:               "16003",
+		LocalAddr:         testPeerAddr1,
+		RemoteAddr:        testPeerAddr2,
+		SIDStructure:      "32,16,0,80",
+		LocalInterfaceID:  &localIfaceID,
+		RemoteInterfaceID: &remoteIfaceID,
+	})
+
+	want := &pb.Segment{
+		Sid:           "16003",
+		LocalAddr:     testPeerAddr1,
+		RemoteAddr:    testPeerAddr2,
+		SidStructure:  "32,16,0,80",
+		LocalIfaceId:  &localIfaceID,
+		RemoteIfaceId: &remoteIfaceID,
+	}
+	assert.Equal(t, want, got)
+}
+
+func TestParseUnderlayFamily(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		in   string
+		want pb.AddressFamily
+	}{
+		{"unset", "", pb.AddressFamily_ADDRESS_FAMILY_UNSPECIFIED},
+		{underlayFamilyIPv4, underlayFamilyIPv4, pb.AddressFamily_ADDRESS_FAMILY_IPV4},
+		{underlayFamilyIPv6, underlayFamilyIPv6, pb.AddressFamily_ADDRESS_FAMILY_IPV6},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := parseUnderlayFamily(tt.in)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+
+	t.Run("unrecognized value is rejected", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := parseUnderlayFamily("ipv5")
+		require.Error(t, err)
+	})
+}
+
+func TestParseDataPlane(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		in   string
+		want pb.DataPlane
+	}{
+		{"unset", "", pb.DataPlane_DATA_PLANE_UNSPECIFIED},
+		{dataPlaneSRMPLS, dataPlaneSRMPLS, pb.DataPlane_DATA_PLANE_SR_MPLS},
+		{dataPlaneSRv6, dataPlaneSRv6, pb.DataPlane_DATA_PLANE_SRV6},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := parseDataPlane(tt.in)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+
+	t.Run("unrecognized value is rejected", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := parseDataPlane("srv7")
 		require.Error(t, err)
 	})
 }

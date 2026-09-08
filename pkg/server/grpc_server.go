@@ -153,8 +153,6 @@ func validateCreateSRPolicy(req *pb.CreateSRPolicyRequest, disablePathCompute bo
 	return validate(req.GetSrPolicy(), req.GetAsn(), ValidationAdd)
 }
 
-// parseSidStructure parses a comma-separated SID structure (e.g. "32,16,0,80").
-// It returns nil for empty input.
 func parseSidStructure(s string) (*table.SIDStructure, error) {
 	structure, err := table.ParseSIDStructure(s)
 	if err != nil {
@@ -164,7 +162,25 @@ func parseSidStructure(s string) (*table.SIDStructure, error) {
 	return structure, nil
 }
 
-// enrichSRv6Segment applies gRPC overrides to an SRv6 segment.
+// segmentIfaceIDs preserves "not advertised" (nil) versus "advertised as 0".
+func segmentIfaceIDs(segment *pb.Segment) (local, remote *uint32) {
+	if segment == nil {
+		return nil, nil
+	}
+
+	if segment.LocalIfaceId != nil {
+		v := segment.GetLocalIfaceId()
+		local = &v
+	}
+
+	if segment.RemoteIfaceId != nil {
+		v := segment.GetRemoteIfaceId()
+		remote = &v
+	}
+
+	return local, remote
+}
+
 func enrichSRv6Segment(srv6Seg table.SegmentSRv6, segment *pb.Segment, usidMode bool) (table.SegmentSRv6, error) {
 	if usidMode {
 		srv6Seg.USid = true
@@ -194,10 +210,19 @@ func enrichSRv6Segment(srv6Seg table.SegmentSRv6, segment *pb.Segment, usidMode 
 		srv6Seg.RemoteAddr = ra
 	}
 
+	if b := segment.GetBehavior(); b != 0 {
+		if b > math.MaxUint16 {
+			return srv6Seg, fmt.Errorf("invalid behavior %d for SID %s: exceeds a 16-bit endpoint behavior code", b, segment.GetSid())
+		}
+
+		srv6Seg.Behavior = uint16(b)
+	}
+
+	srv6Seg.LocalIfaceID, srv6Seg.RemoteIfaceID = segmentIfaceIDs(segment)
+
 	return srv6Seg, nil
 }
 
-// enrichSRMPLSSegment applies gRPC NAI information to an SR-MPLS segment.
 func enrichSRMPLSSegment(mplsSeg table.SegmentSRMPLS, segment *pb.Segment) (table.SegmentSRMPLS, error) {
 	if s := segment.GetLocalAddr(); s != "" {
 		la, err := netip.ParseAddr(s)
@@ -218,11 +243,11 @@ func enrichSRMPLSSegment(mplsSeg table.SegmentSRMPLS, segment *pb.Segment) (tabl
 	}
 
 	mplsSeg.SidAbsent = segment.GetSidAbsent()
+	mplsSeg.LocalIfaceID, mplsSeg.RemoteIfaceID = segmentIfaceIDs(segment)
 
 	return mplsSeg, nil
 }
 
-// newEnrichedSegment converts a gRPC Segment to a table.Segment.
 func newEnrichedSegment(segment *pb.Segment, usidMode bool) (table.Segment, error) {
 	seg, err := table.NewSegment(segment.GetSid())
 	if err != nil {

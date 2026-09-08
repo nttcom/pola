@@ -35,12 +35,14 @@ func TestNewTEDLinkView_OmitsUnsetIPs(t *testing.T) {
 
 	link := &table.LsLink{Remote: table.LinkEndpoint{Node: &table.LsNode{RouterID: testRouterID2}}}
 	v := newTEDLinkView(link)
-	assert.Empty(t, v.LocalIP)
-	assert.Empty(t, v.RemoteIP)
-	assert.Equal(t, testRouterID2, v.RemoteRouterID)
+	assert.Empty(t, v.Local.IPv4)
+	assert.Empty(t, v.Local.IPv6)
+	assert.Empty(t, v.Remote.IPv4)
+	assert.Empty(t, v.Remote.IPv6)
+	assert.Equal(t, testRouterID2, v.Remote.RouterID)
 }
 
-func TestNewTEDLinkView_FallsBackToIPv6(t *testing.T) {
+func TestNewTEDLinkView_IPv6Only(t *testing.T) {
 	t.Parallel()
 
 	link := &table.LsLink{
@@ -48,8 +50,48 @@ func TestNewTEDLinkView_FallsBackToIPv6(t *testing.T) {
 		Remote: table.LinkEndpoint{IPv6: netip.MustParseAddr("2001:db8::2")},
 	}
 	v := newTEDLinkView(link)
-	assert.Equal(t, "2001:db8::1", v.LocalIP)
-	assert.Equal(t, "2001:db8::2", v.RemoteIP)
+	assert.Empty(t, v.Local.IPv4)
+	assert.Equal(t, "2001:db8::1", v.Local.IPv6)
+	assert.Empty(t, v.Remote.IPv4)
+	assert.Equal(t, "2001:db8::2", v.Remote.IPv6)
+}
+
+func TestNewTEDLinkView_DualStack(t *testing.T) {
+	t.Parallel()
+
+	ifaceID := uint32(7)
+	link := &table.LsLink{
+		Local: table.LinkEndpoint{
+			IPv4:        netip.MustParseAddr(testPeerAddr1),
+			IPv6:        netip.MustParseAddr("2001:db8::1"),
+			InterfaceID: &ifaceID,
+		},
+		Remote: table.LinkEndpoint{
+			IPv4: netip.MustParseAddr(testPeerAddr2),
+			IPv6: netip.MustParseAddr("2001:db8::2"),
+		},
+	}
+	v := newTEDLinkView(link)
+	assert.Equal(t, testPeerAddr1, v.Local.IPv4)
+	assert.Equal(t, "2001:db8::1", v.Local.IPv6)
+	require.NotNil(t, v.Local.InterfaceID)
+	assert.Equal(t, ifaceID, *v.Local.InterfaceID)
+	assert.Equal(t, testPeerAddr2, v.Remote.IPv4)
+	assert.Equal(t, "2001:db8::2", v.Remote.IPv6)
+}
+
+func TestNewTEDAdjSidViews(t *testing.T) {
+	t.Parallel()
+
+	views := newTEDAdjSidViews([]table.AdjSID{
+		{Family: table.AFIPv4, Sid: 100},
+		{Family: table.AFIPv6, Sid: 200},
+		{Sid: 300},
+	})
+	require.Len(t, views, 3)
+	assert.Equal(t, tedAdjSidView{Family: "ipv4", Sid: 100}, views[0])
+	assert.Equal(t, tedAdjSidView{Family: "ipv6", Sid: 200}, views[1])
+	assert.Equal(t, tedAdjSidView{Family: "unspecified", Sid: 300}, views[2])
 }
 
 func TestEndpointBehaviorViewFrom_IncludesFlagsAndAlgorithm(t *testing.T) {
@@ -87,7 +129,7 @@ func TestNewTEDLinkViews_SkipsNilEntries(t *testing.T) {
 	l := &table.LsLink{Remote: table.LinkEndpoint{Node: &table.LsNode{RouterID: testRouterID2}}}
 	views := newTEDLinkViews([]*table.LsLink{nil, l})
 	require.Len(t, views, 1)
-	assert.Equal(t, testRouterID2, views[0].RemoteRouterID)
+	assert.Equal(t, testRouterID2, views[0].Remote.RouterID)
 }
 
 func TestNewTEDLinkView_IncludesSrv6EndXSID(t *testing.T) {
@@ -102,10 +144,27 @@ func TestNewTEDLinkView_IncludesSrv6EndXSID(t *testing.T) {
 	}
 
 	v := newTEDLinkView(link)
-	require.NotNil(t, v.Srv6EndXSID)
-	assert.Equal(t, []string{testSrv6EndXSID}, v.Srv6EndXSID.Sids)
-	assert.Equal(t, table.BehaviorENDX, v.Srv6EndXSID.EndpointBehavior.Behavior)
-	assert.Equal(t, uint8(1), v.Srv6EndXSID.SidStructure.LocalBlock)
+	require.Len(t, v.Srv6EndXSIDs, 1)
+	assert.Equal(t, []string{testSrv6EndXSID}, v.Srv6EndXSIDs[0].Sids)
+	assert.Equal(t, table.BehaviorENDX, v.Srv6EndXSIDs[0].EndpointBehavior.Behavior)
+	assert.Equal(t, uint8(1), v.Srv6EndXSIDs[0].SidStructure.LocalBlock)
+}
+
+func TestNewTEDLinkView_MultipleSrv6EndXSIDs(t *testing.T) {
+	t.Parallel()
+
+	link := &table.LsLink{
+		Srv6EndXSIDs: []*table.Srv6EndXSID{
+			{EndpointBehavior: table.BehaviorENDX, Sids: []string{"fc00:0:1:1::"}},
+			{EndpointBehavior: table.BehaviorENDX, Sids: []string{"fc00:0:1:2::"}},
+			nil,
+		},
+	}
+
+	v := newTEDLinkView(link)
+	require.Len(t, v.Srv6EndXSIDs, 2)
+	assert.Equal(t, []string{"fc00:0:1:1::"}, v.Srv6EndXSIDs[0].Sids)
+	assert.Equal(t, []string{"fc00:0:1:2::"}, v.Srv6EndXSIDs[1].Sids)
 }
 
 func TestNewTEDMetricViews_SkipsNilEntries(t *testing.T) {

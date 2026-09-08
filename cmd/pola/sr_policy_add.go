@@ -71,10 +71,23 @@ func newSRPolicyAddCmd(c *cli) *cobra.Command {
 }
 
 type segment struct {
-	SID          string `yaml:"sid"`
-	LocalAddr    string `yaml:"localAddr"`
-	RemoteAddr   string `yaml:"remoteAddr"`
-	SIDStructure string `yaml:"sidStructure"`
+	SID               string  `yaml:"sid"`
+	LocalAddr         string  `yaml:"localAddr"`
+	RemoteAddr        string  `yaml:"remoteAddr"`
+	SIDStructure      string  `yaml:"sidStructure"`
+	LocalInterfaceID  *uint32 `yaml:"localInterfaceId"`
+	RemoteInterfaceID *uint32 `yaml:"remoteInterfaceId"`
+}
+
+func toPBSegment(s segment) *pb.Segment {
+	return &pb.Segment{
+		Sid:           s.SID,
+		LocalAddr:     s.LocalAddr,
+		RemoteAddr:    s.RemoteAddr,
+		SidStructure:  s.SIDStructure,
+		LocalIfaceId:  s.LocalInterfaceID,
+		RemoteIfaceId: s.RemoteInterfaceID,
+	}
 }
 
 type waypoint struct {
@@ -94,6 +107,8 @@ type srPolicy struct {
 	Type            string     `yaml:"type"`
 	Metric          string     `yaml:"metric"`
 	Waypoints       []waypoint `yaml:"waypoints"`
+	UnderlayFamily  string     `yaml:"underlayFamily"`
+	DataPlane       string     `yaml:"dataPlane"`
 }
 
 type inputFormat struct {
@@ -112,6 +127,44 @@ const (
 	metricTypeTE       = "te"
 	metricTypeHopcount = "hopcount"
 )
+
+const (
+	underlayFamilyIPv4 = "ipv4"
+	underlayFamilyIPv6 = "ipv6"
+)
+
+const (
+	dataPlaneSRMPLS = "sr-mpls"
+	dataPlaneSRv6   = "srv6"
+)
+
+// Empty input leaves the choice to the server's resolvePlane default.
+func parseUnderlayFamily(s string) (pb.AddressFamily, error) {
+	switch s {
+	case "":
+		return pb.AddressFamily_ADDRESS_FAMILY_UNSPECIFIED, nil
+	case underlayFamilyIPv4:
+		return pb.AddressFamily_ADDRESS_FAMILY_IPV4, nil
+	case underlayFamilyIPv6:
+		return pb.AddressFamily_ADDRESS_FAMILY_IPV6, nil
+	default:
+		return 0, fmt.Errorf("invalid input `underlayFamily`: %q", s)
+	}
+}
+
+// Empty input leaves the choice to the server's resolvePlane default.
+func parseDataPlane(s string) (pb.DataPlane, error) {
+	switch s {
+	case "":
+		return pb.DataPlane_DATA_PLANE_UNSPECIFIED, nil
+	case dataPlaneSRMPLS:
+		return pb.DataPlane_DATA_PLANE_SR_MPLS, nil
+	case dataPlaneSRv6:
+		return pb.DataPlane_DATA_PLANE_SRV6, nil
+	default:
+		return 0, fmt.Errorf("invalid input `dataPlane`: %q", s)
+	}
+}
 
 func addSRPolicy(out, errOut io.Writer, input inputFormat, jsonFlag, noSIDValidate bool, client pb.PCEServiceClient) error {
 	if noSIDValidate {
@@ -190,6 +243,10 @@ func addSRPolicyWithEndpointAddr(input inputFormat, noSIDValidate bool, client p
 		return errors.New("`metric` and `waypoints` require a dynamic path, which the srcAddr / dstAddr form does not support")
 	}
 
+	if input.SRPolicy.UnderlayFamily != "" || input.SRPolicy.DataPlane != "" {
+		return errors.New("`underlayFamily` and `dataPlane` scope TED-based path computation, which the srcAddr / dstAddr form does not support")
+	}
+
 	if !input.SRPolicy.PCEPSessionAddr.IsValid() || input.SRPolicy.Color == 0 || !input.SRPolicy.SrcAddr.IsValid() || !input.SRPolicy.DstAddr.IsValid() || len(input.SRPolicy.SegmentList) == 0 {
 		sampleInput := "srPolicy:\n" +
 			"  pcepSessionAddr: 192.0.2.1\n" +
@@ -212,14 +269,8 @@ func addSRPolicyWithEndpointAddr(input inputFormat, noSIDValidate bool, client p
 
 	segmentList := []*pb.Segment{}
 
-	for _, segment := range input.SRPolicy.SegmentList {
-		pbSeg := &pb.Segment{
-			Sid:          segment.SID,
-			LocalAddr:    segment.LocalAddr,
-			RemoteAddr:   segment.RemoteAddr,
-			SidStructure: segment.SIDStructure,
-		}
-		segmentList = append(segmentList, pbSeg)
+	for _, seg := range input.SRPolicy.SegmentList {
+		segmentList = append(segmentList, toPBSegment(seg))
 	}
 
 	srPolicy := &pb.SRPolicy{
@@ -258,16 +309,28 @@ func addSRPolicyWithRouterID(input inputFormat, noSIDValidate bool, client pb.PC
 		return err
 	}
 
+	underlayFamily, err := parseUnderlayFamily(input.SRPolicy.UnderlayFamily)
+	if err != nil {
+		return err
+	}
+
+	dataPlane, err := parseDataPlane(input.SRPolicy.DataPlane)
+	if err != nil {
+		return err
+	}
+
 	srPolicy := &pb.SRPolicy{
-		PeerAddr:    input.SRPolicy.PCEPSessionAddr.AsSlice(),
-		SrcRouterId: input.SRPolicy.SrcRouterID,
-		DstRouterId: input.SRPolicy.DstRouterID,
-		Color:       input.SRPolicy.Color,
-		PolicyName:  input.SRPolicy.Name,
-		Type:        spec.Type,
-		SegmentList: spec.Segments,
-		Metric:      spec.Metric,
-		Waypoints:   spec.Waypoints,
+		PeerAddr:       input.SRPolicy.PCEPSessionAddr.AsSlice(),
+		SrcRouterId:    input.SRPolicy.SrcRouterID,
+		DstRouterId:    input.SRPolicy.DstRouterID,
+		Color:          input.SRPolicy.Color,
+		PolicyName:     input.SRPolicy.Name,
+		Type:           spec.Type,
+		SegmentList:    spec.Segments,
+		Metric:         spec.Metric,
+		Waypoints:      spec.Waypoints,
+		UnderlayFamily: underlayFamily,
+		DataPlane:      dataPlane,
 	}
 
 	req := &pb.CreateSRPolicyRequest{
@@ -361,12 +424,7 @@ func buildExplicitPolicy(input inputFormat, sampleExplicit string) (policySpec, 
 
 	var segments []*pb.Segment
 	for _, s := range input.SRPolicy.SegmentList {
-		segments = append(segments, &pb.Segment{
-			Sid:          s.SID,
-			LocalAddr:    s.LocalAddr,
-			RemoteAddr:   s.RemoteAddr,
-			SidStructure: s.SIDStructure,
-		})
+		segments = append(segments, toPBSegment(s))
 	}
 
 	return policySpec{Type: pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT, Segments: segments}, nil

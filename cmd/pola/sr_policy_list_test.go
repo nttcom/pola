@@ -150,6 +150,21 @@ func TestSegmentDisplayString_SRv6(t *testing.T) {
 	}
 }
 
+func TestSegmentDisplayString_BehaviorAndIfaceIDs(t *testing.T) {
+	t.Parallel()
+
+	localIfaceID, remoteIfaceID := uint32(5), uint32(6)
+	sid := table.SRv6SID(netip.MustParseAddr("2001:db8:1005::"))
+
+	got := segmentDisplayString(table.SegmentSRv6{
+		Sid:           sid,
+		Behavior:      table.BehaviorEND,
+		LocalIfaceID:  &localIfaceID,
+		RemoteIfaceID: &remoteIfaceID,
+	})
+	assert.Equal(t, "2001:db8:1005:: (localIface=5, remoteIface=6, behavior="+table.BehaviorToString(table.BehaviorEND)+")", got)
+}
+
 func TestSrcDstDisplay(t *testing.T) {
 	t.Parallel()
 
@@ -245,6 +260,34 @@ func TestShowSRPolicyList(t *testing.T) {
 			"    Preference: 0\n" +
 			"    SegmentList: None\n"
 		assert.Equal(t, want, out.String())
+	})
+
+	t.Run("plain text output shows the underlay plane", func(t *testing.T) {
+		t.Parallel()
+
+		client := &fakePCEServiceClient{srPolicyListResp: &pb.GetSRPolicyListResponse{
+			Sessions: []*pb.SRPolicySession{{
+				PeerAddr:  netip.MustParseAddr(testPeerAddr1).AsSlice(),
+				State:     pb.SessionState_SESSION_STATE_UP,
+				SyncState: pb.LspDbSyncState_LSP_DB_SYNC_STATE_FINISHED,
+				SrPolicies: []*pb.SRPolicy{{
+					PolicyName:     testPolicyName,
+					Type:           pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC,
+					UnderlayFamily: pb.AddressFamily_ADDRESS_FAMILY_IPV6,
+					DataPlane:      pb.DataPlane_DATA_PLANE_SRV6,
+					SrcAddr:        netip.MustParseAddr("2001:db8::1").AsSlice(),
+					DstAddr:        netip.MustParseAddr("2001:db8::2").AsSlice(),
+				}},
+			}},
+		}}
+
+		cmd := newTestSRPolicyListCmd(client, false)
+
+		var out bytes.Buffer
+		cmd.SetOut(&out)
+		require.NoError(t, showSRPolicyList(cmd, []string{}, client, false))
+		assert.Contains(t, out.String(), "UnderlayFamily: ipv6")
+		assert.Contains(t, out.String(), "DataPlane: srv6")
 	})
 
 	t.Run("synced session with no policies", func(t *testing.T) {

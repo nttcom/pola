@@ -17,6 +17,7 @@
                 },
                 {
                     "title": "SRv6 SID, IPv6 only",
+                    "description": "IPv4-mapped IPv6 addresses (e.g. ::ffff:192.0.2.1) are not allowed.",
                     "type": "string",
                     "format": "ipv6"
                 }
@@ -32,6 +33,18 @@
             "type": "string",
             "pattern": "^[0-9]+,[0-9]+,[0-9]+,[0-9]+$",
             "description": "<locator-block>,<locator-node>,<function>,<argument>"
+        },
+        "localInterfaceId": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295,
+            "description": "Local interface ID for link-local IPv6 NAI scoping (RFC 8664/9603 §4.3.1)."
+        },
+        "remoteInterfaceId": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295,
+            "description": "Remote interface ID for link-local IPv6 NAI scoping (RFC 8664/9603 §4.3.1)."
         }
     },
     "required": [

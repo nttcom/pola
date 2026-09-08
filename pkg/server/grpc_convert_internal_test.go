@@ -274,8 +274,8 @@ func TestSetPBIfaceIDs(t *testing.T) {
 
 	require.NotNil(t, pbSeg.LocalIfaceId)
 	require.NotNil(t, pbSeg.RemoteIfaceId)
-	assert.Equal(t, local, *pbSeg.LocalIfaceId)
-	assert.Equal(t, remote, *pbSeg.RemoteIfaceId)
+	assert.Equal(t, local, pbSeg.GetLocalIfaceId())
+	assert.Equal(t, remote, pbSeg.GetRemoteIfaceId())
 }
 
 func TestBuildLsLinkEndpoint_InterfaceID(t *testing.T) {
@@ -288,7 +288,7 @@ func TestBuildLsLinkEndpoint_InterfaceID(t *testing.T) {
 	pbEndpoint := buildLsLinkEndpoint(endpoint)
 
 	require.NotNil(t, pbEndpoint.InterfaceId)
-	assert.Equal(t, ifaceID, *pbEndpoint.InterfaceId)
+	assert.Equal(t, ifaceID, pbEndpoint.GetInterfaceId())
 }
 
 type tedOnlyClient struct {

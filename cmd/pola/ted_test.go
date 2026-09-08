@@ -133,16 +133,29 @@ func TestShowTED(t *testing.T) {
 		require.Len(t, links, 2)
 		linkMap, ok := links[0].(map[string]any)
 		require.True(t, ok)
-		assert.Equal(t, testPeerAddr1, linkMap["localIp"])
-		_, hasRemoteIP := linkMap["remoteIp"]
-		assert.False(t, hasRemoteIP, "unset remoteIp must be omitted, not a \"None\" sentinel")
+
+		localMap, ok := linkMap["local"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, testPeerAddr1, localMap["ipv4"])
+
+		remoteMap, ok := linkMap["remote"].(map[string]any)
+		require.True(t, ok)
+
+		_, hasRemoteIPv4 := remoteMap["ipv4"]
+		assert.False(t, hasRemoteIPv4, "unset remote ipv4 must be omitted, not a \"None\" sentinel")
 
 		linkMap2, ok := links[1].(map[string]any)
 		require.True(t, ok)
 
-		_, hasLocalIP := linkMap2["localIp"]
-		assert.False(t, hasLocalIP)
-		assert.Equal(t, testPeerAddr2, linkMap2["remoteIp"])
+		localMap2, ok := linkMap2["local"].(map[string]any)
+		require.True(t, ok)
+
+		_, hasLocalIPv4 := localMap2["ipv4"]
+		assert.False(t, hasLocalIPv4)
+
+		remoteMap2, ok := linkMap2["remote"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, testPeerAddr2, remoteMap2["ipv4"])
 
 		prefixes, ok := nodeMap["prefixes"].([]any)
 		require.True(t, ok)
@@ -158,5 +171,86 @@ func TestShowTED(t *testing.T) {
 		srv6SIDs, ok := nodeMap["srv6Sids"].([]any)
 		require.True(t, ok)
 		assert.Len(t, srv6SIDs, 1)
+	})
+
+	t.Run("dual-stack link shows both IPv4 and IPv6 addresses", func(t *testing.T) {
+		t.Parallel()
+
+		ifaceID := uint32(9)
+		node := &pb.LsNode{
+			Asn:      65000,
+			RouterId: testRouterID1,
+			Links: []*pb.LsLink{
+				{
+					Local: &pb.LsLinkEndpoint{
+						RouterId:    testRouterID1,
+						Ipv4:        testPeerAddr1,
+						Ipv6:        "2001:db8::1",
+						InterfaceId: new(ifaceID),
+					},
+					Remote: &pb.LsLinkEndpoint{
+						RouterId: testRouterID2,
+						Ipv4:     testPeerAddr2,
+						Ipv6:     "2001:db8::2",
+					},
+				},
+			},
+		}
+		client := &fakePCEServiceClient{tedResp: &pb.GetTEDResponse{
+			Enabled: true,
+			Nodes:   []*pb.LsNode{node, {RouterId: testRouterID2}},
+		}}
+
+		t.Run("json", func(t *testing.T) {
+			t.Parallel()
+
+			var buf bytes.Buffer
+			require.NoError(t, showTED(&buf, outputJSON, client))
+
+			var nodes []map[string]any
+			require.NoError(t, json.Unmarshal(buf.Bytes(), &nodes))
+
+			var link map[string]any
+
+			for _, n := range nodes {
+				if n["routerId"] != testRouterID1 {
+					continue
+				}
+
+				links, ok := n["links"].([]any)
+				require.True(t, ok)
+				require.Len(t, links, 1)
+				link, ok = links[0].(map[string]any)
+				require.True(t, ok)
+			}
+
+			require.NotNil(t, link)
+
+			local, ok := link["local"].(map[string]any)
+			require.True(t, ok)
+			assert.Equal(t, testPeerAddr1, local["ipv4"])
+			assert.Equal(t, "2001:db8::1", local["ipv6"])
+			//nolint:testifylint // exact integer value after JSON float64 decoding.
+			assert.Equal(t, float64(ifaceID), local["interfaceId"])
+
+			remote, ok := link["remote"].(map[string]any)
+			require.True(t, ok)
+			assert.Equal(t, testPeerAddr2, remote["ipv4"])
+			assert.Equal(t, "2001:db8::2", remote["ipv6"])
+		})
+
+		t.Run("text", func(t *testing.T) {
+			t.Parallel()
+
+			var buf bytes.Buffer
+			require.NoError(t, showTED(&buf, outputText, client))
+
+			out := buf.String()
+			assert.Contains(t, out, testPeerAddr1)
+			assert.Contains(t, out, "2001:db8::1")
+			assert.Contains(t, out, testPeerAddr2)
+			assert.Contains(t, out, "2001:db8::2")
+			assert.Contains(t, out, "interface 9")
+		})
 	})
 }

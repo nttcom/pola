@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/netip"
 	"strconv"
@@ -104,12 +105,16 @@ func TestStatusFromCSPFError(t *testing.T) {
 func TestNewEnrichedSegmentSRMPLS(t *testing.T) {
 	t.Parallel()
 
+	linkLocalIfaceID, linkRemoteIfaceID := uint32(5), uint32(9)
+
 	tests := []struct {
-		name       string
-		segment    *pb.Segment
-		wantLocal  string
-		wantRemote string
-		wantErr    bool
+		name              string
+		segment           *pb.Segment
+		wantLocal         string
+		wantRemote        string
+		wantLocalIfaceID  *uint32
+		wantRemoteIfaceID *uint32
+		wantErr           bool
 	}{
 		{
 			name:    "no addresses",
@@ -125,6 +130,20 @@ func TestNewEnrichedSegmentSRMPLS(t *testing.T) {
 			segment:    &pb.Segment{Sid: "24001", LocalAddr: testAddrA, RemoteAddr: testAddrB},
 			wantLocal:  testAddrA,
 			wantRemote: testAddrB,
+		},
+		{
+			name: "link-local adjacency NAI with interface IDs",
+			segment: &pb.Segment{
+				Sid:           "24002",
+				LocalAddr:     "fe80::1",
+				RemoteAddr:    "fe80::2",
+				LocalIfaceId:  &linkLocalIfaceID,
+				RemoteIfaceId: &linkRemoteIfaceID,
+			},
+			wantLocal:         "fe80::1",
+			wantRemote:        "fe80::2",
+			wantLocalIfaceID:  &linkLocalIfaceID,
+			wantRemoteIfaceID: &linkRemoteIfaceID,
 		},
 		{
 			name:    "malformed localAddr",
@@ -154,6 +173,8 @@ func TestNewEnrichedSegmentSRMPLS(t *testing.T) {
 			require.Truef(t, ok, "segment type: got %T, want table.SegmentSRMPLS", seg)
 			assert.Equal(t, tt.wantLocal, addrString(mplsSeg.LocalAddr), "LocalAddr")
 			assert.Equal(t, tt.wantRemote, addrString(mplsSeg.RemoteAddr), "RemoteAddr")
+			assert.Equal(t, tt.wantLocalIfaceID, mplsSeg.LocalIfaceID, "LocalIfaceID")
+			assert.Equal(t, tt.wantRemoteIfaceID, mplsSeg.RemoteIfaceID, "RemoteIfaceID")
 		})
 	}
 }
@@ -161,11 +182,15 @@ func TestNewEnrichedSegmentSRMPLS(t *testing.T) {
 func TestNewEnrichedSegmentSRv6(t *testing.T) {
 	t.Parallel()
 
+	localIfaceID, remoteIfaceID := uint32(3), uint32(4)
 	segment := &pb.Segment{
-		Sid:          testSRv6SID2,
-		LocalAddr:    "2001:db8::5",
-		RemoteAddr:   "2001:db8::6",
-		SidStructure: "32,16,0,80",
+		Sid:           testSRv6SID2,
+		LocalAddr:     "2001:db8::5",
+		RemoteAddr:    "2001:db8::6",
+		SidStructure:  "32,16,0,80",
+		Behavior:      uint32(table.BehaviorENDX),
+		LocalIfaceId:  &localIfaceID,
+		RemoteIfaceId: &remoteIfaceID,
 	}
 
 	for _, usidMode := range []bool{false, true} {
@@ -179,7 +204,19 @@ func TestNewEnrichedSegmentSRv6(t *testing.T) {
 		assert.Equal(t, "2001:db8::6", addrString(srv6Seg.RemoteAddr), "RemoteAddr")
 		assert.Equal(t, &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalArg: 80}, srv6Seg.Structure, "Structure")
 		assert.Equalf(t, usidMode, srv6Seg.USid, "USid with usidMode=%v", usidMode)
+		assert.Equal(t, table.BehaviorENDX, srv6Seg.Behavior, "Behavior")
+		assert.Equal(t, &localIfaceID, srv6Seg.LocalIfaceID, "LocalIfaceID")
+		assert.Equal(t, &remoteIfaceID, srv6Seg.RemoteIfaceID, "RemoteIfaceID")
 	}
+}
+
+func TestNewEnrichedSegmentSRv6_BehaviorOutOfRange(t *testing.T) {
+	t.Parallel()
+
+	segment := &pb.Segment{Sid: testSRv6SID1, Behavior: uint32(math.MaxUint16) + 1}
+
+	_, err := newEnrichedSegment(segment, false)
+	assert.Error(t, err, "expected an error for a behavior code that does not fit in 16 bits")
 }
 
 func TestNewEnrichedSegmentInvalidSID(t *testing.T) {
@@ -216,6 +253,66 @@ func TestCreateEroFromSegmentListWithNAI(t *testing.T) {
 	assert.Equalf(t, uint8(0x01), nt, "NAI type: got 0x%02x, want 0x01 (IPv4 node ID)", nt)
 	assert.Zero(t, raw[3]&0x08, "F flag is set even though the NAI is present")
 	assert.Equal(t, seg.LocalAddr.AsSlice(), raw[8:12], "NAI")
+}
+
+func TestNewEnrichedSegmentToEro_SRMPLSLinkLocalNAI(t *testing.T) {
+	t.Parallel()
+
+	localIfaceID, remoteIfaceID := uint32(5), uint32(9)
+	seg, err := newEnrichedSegment(&pb.Segment{
+		Sid:           "24003",
+		LocalAddr:     "fe80::1",
+		RemoteAddr:    "fe80::2",
+		LocalIfaceId:  &localIfaceID,
+		RemoteIfaceId: &remoteIfaceID,
+	}, false)
+	require.NoError(t, err)
+
+	ero, err := createEroFromSegmentList([]table.Segment{seg})
+	require.NoError(t, err)
+	require.Len(t, ero.EroSubobjects, 1)
+
+	raw, err := ero.EroSubobjects[0].Serialize()
+	require.NoError(t, err)
+
+	nt := raw[2] >> 4
+	assert.Equalf(t, uint8(0x06), nt, "NAI type: got 0x%02x, want 0x06 (IPv6 link-local adjacency)", nt)
+
+	require.Len(t, raw, 48)
+	assert.Equal(t, netip.MustParseAddr("fe80::1").AsSlice(), raw[8:24], "local NAI address")
+	assert.Equal(t, localIfaceID, binary.BigEndian.Uint32(raw[24:28]), "local interface ID")
+	assert.Equal(t, netip.MustParseAddr("fe80::2").AsSlice(), raw[28:44], "remote NAI address")
+	assert.Equal(t, remoteIfaceID, binary.BigEndian.Uint32(raw[44:48]), "remote interface ID")
+}
+
+func TestNewEnrichedSegmentToEro_SRv6LinkLocalNAI(t *testing.T) {
+	t.Parallel()
+
+	localIfaceID, remoteIfaceID := uint32(3), uint32(4)
+	seg, err := newEnrichedSegment(&pb.Segment{
+		Sid:           testSRv6SID1,
+		LocalAddr:     "fe80::1",
+		RemoteAddr:    "fe80::2",
+		LocalIfaceId:  &localIfaceID,
+		RemoteIfaceId: &remoteIfaceID,
+	}, false)
+	require.NoError(t, err)
+
+	ero, err := createEroFromSegmentList([]table.Segment{seg})
+	require.NoError(t, err)
+	require.Len(t, ero.EroSubobjects, 1)
+
+	raw, err := ero.EroSubobjects[0].Serialize()
+	require.NoError(t, err)
+
+	nt := raw[2] >> 4
+	assert.Equalf(t, uint8(0x06), nt, "NAI type: got 0x%02x, want 0x06 (IPv6 link-local adjacency)", nt)
+
+	require.Len(t, raw, 64)
+	assert.Equal(t, netip.MustParseAddr("fe80::1").AsSlice(), raw[24:40], "local NAI address")
+	assert.Equal(t, localIfaceID, binary.BigEndian.Uint32(raw[40:44]), "local interface ID")
+	assert.Equal(t, netip.MustParseAddr("fe80::2").AsSlice(), raw[44:60], "remote NAI address")
+	assert.Equal(t, remoteIfaceID, binary.BigEndian.Uint32(raw[60:64]), "remote interface ID")
 }
 
 func testIPv4Link(local, remote *table.LsNode) *table.LsLink {
