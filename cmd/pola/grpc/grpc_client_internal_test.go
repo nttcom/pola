@@ -1060,26 +1060,28 @@ func TestGetTED_Success(t *testing.T) {
 		SrgbEnd:    23999,
 		Links: []*pb.LsLink{
 			{
-				LocalRouterId:  testRouterID1,
-				RemoteRouterId: testRouterID2,
-				LocalIp:        testIPv4Addr1,
-				RemoteIp:       testIPv4Addr2,
-				AdjSid:         24001,
+				Local:  &pb.LsLinkEndpoint{RouterId: testRouterID1, Ipv4: testIPv4Addr1},
+				Remote: &pb.LsLinkEndpoint{RouterId: testRouterID2, Ipv4: testIPv4Addr2},
+				AdjSids: []*pb.AdjSid{
+					{Family: pb.AddressFamily_ADDRESS_FAMILY_IPV4, Sid: 24001},
+				},
 				Metrics: []*pb.Metric{
 					{Type: pb.MetricType_METRIC_TYPE_IGP, Value: 10},
 					{Type: pb.MetricType_METRIC_TYPE_TE, Value: 20},
 					{Type: pb.MetricType_METRIC_TYPE_DELAY, Value: 30},
 					{Type: pb.MetricType_METRIC_TYPE_HOPCOUNT, Value: 1},
 				},
-				Srv6EndXSid: &pb.Srv6EndXSID{
-					EndpointBehavior: uint32(table.BehaviorENDX),
-					Sids:             []*pb.SID{{Sid: "2001:db8:1::"}},
-					SidStructure:     &pb.SidStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 0, LocalArg: 80},
+				Srv6EndXSids: []*pb.Srv6EndXSID{
+					{
+						EndpointBehavior: uint32(table.BehaviorENDX),
+						Sids:             []*pb.SID{{Sid: "2001:db8:1::"}},
+						SidStructure:     &pb.SidStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 0, LocalArg: 80},
+					},
 				},
 			},
 			{
-				LocalRouterId:  testRouterID1,
-				RemoteRouterId: testRouterID2,
+				Local:  &pb.LsLinkEndpoint{RouterId: testRouterID1},
+				Remote: &pb.LsLinkEndpoint{RouterId: testRouterID2},
 			},
 		},
 		Prefixes: []*pb.LsPrefix{
@@ -1153,7 +1155,10 @@ func TestGetTED_PropagatesConversionErrors(t *testing.T) {
 		t.Parallel()
 
 		node := &pb.LsNode{RouterId: testRouterID1, Links: []*pb.LsLink{
-			{LocalRouterId: testRouterID1, RemoteRouterId: testRouterID1, LocalIp: "not-an-ip"},
+			{
+				Local:  &pb.LsLinkEndpoint{RouterId: testRouterID1, Ipv4: "not-an-ip"},
+				Remote: &pb.LsLinkEndpoint{RouterId: testRouterID1},
+			},
 		}}
 		_, err := GetTED(&fakeClient{tedResp: &pb.GetTEDResponse{Enabled: true, Nodes: []*pb.LsNode{node}}})
 		require.Error(t, err)
@@ -1185,17 +1190,17 @@ func TestCreateLsLink(t *testing.T) {
 		assert.False(t, link.Remote.IPv6.IsValid())
 	})
 
-	t.Run("invalid localIp", func(t *testing.T) {
+	t.Run("invalid local IPv4", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := createLsLink(localNode, remoteNode, &pb.LsLink{LocalIp: "not-an-ip"})
+		_, err := createLsLink(localNode, remoteNode, &pb.LsLink{Local: &pb.LsLinkEndpoint{Ipv4: "not-an-ip"}})
 		require.Error(t, err)
 	})
 
-	t.Run("invalid remoteIp", func(t *testing.T) {
+	t.Run("invalid remote IPv4", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := createLsLink(localNode, remoteNode, &pb.LsLink{RemoteIp: "not-an-ip"})
+		_, err := createLsLink(localNode, remoteNode, &pb.LsLink{Remote: &pb.LsLinkEndpoint{Ipv4: "not-an-ip"}})
 		require.Error(t, err)
 	})
 
@@ -1212,9 +1217,55 @@ func TestCreateLsLink(t *testing.T) {
 		t.Parallel()
 
 		_, err := createLsLink(localNode, remoteNode, &pb.LsLink{
-			Srv6EndXSid: &pb.Srv6EndXSID{EndpointBehavior: math.MaxUint16 + 1},
+			Srv6EndXSids: []*pb.Srv6EndXSID{{EndpointBehavior: math.MaxUint16 + 1}},
 		})
 		require.Error(t, err)
+	})
+
+	t.Run("valid local and remote IPv6", func(t *testing.T) {
+		t.Parallel()
+
+		link, err := createLsLink(localNode, remoteNode, &pb.LsLink{
+			Local:  &pb.LsLinkEndpoint{Ipv6: "2001:db8::1"},
+			Remote: &pb.LsLinkEndpoint{Ipv6: "2001:db8::2"},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, "2001:db8::1", link.Local.IPv6.String())
+		assert.Equal(t, "2001:db8::2", link.Remote.IPv6.String())
+	})
+
+	t.Run("invalid local IPv6", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := createLsLink(localNode, remoteNode, &pb.LsLink{Local: &pb.LsLinkEndpoint{Ipv6: "not-an-ip"}})
+		require.Error(t, err)
+	})
+
+	t.Run("interface ID is carried through", func(t *testing.T) {
+		t.Parallel()
+
+		ifaceID := uint32(7)
+		link, err := createLsLink(localNode, remoteNode, &pb.LsLink{
+			Local: &pb.LsLinkEndpoint{InterfaceId: &ifaceID},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, link.Local.InterfaceID)
+		assert.Equal(t, ifaceID, *link.Local.InterfaceID)
+	})
+
+	t.Run("AdjSid address family is converted", func(t *testing.T) {
+		t.Parallel()
+
+		link, err := createLsLink(localNode, remoteNode, &pb.LsLink{
+			AdjSids: []*pb.AdjSid{
+				{Family: pb.AddressFamily_ADDRESS_FAMILY_IPV6, Sid: 100},
+				{Family: pb.AddressFamily_ADDRESS_FAMILY_UNSPECIFIED, Sid: 200},
+			},
+		})
+		require.NoError(t, err)
+		require.Len(t, link.AdjSids, 2)
+		assert.Equal(t, table.AFIPv6, link.AdjSids[0].Family)
+		assert.Equal(t, table.AFUnspecified, link.AdjSids[1].Family)
 	})
 }
 

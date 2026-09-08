@@ -263,6 +263,8 @@ type resolvedPath struct {
 	DstAddr     netip.Addr
 	SrcRouterID string
 	Metric      table.MetricType
+	// Plane is zero for explicit paths, which have no underlay plane.
+	Plane table.Plane
 }
 
 func resolvePath(s *APIServer, input *pb.CreateSRPolicyRequest, disablePathCompute bool) (resolvedPath, error) {
@@ -298,32 +300,41 @@ func resolvePathViaTED(s *APIServer, input *pb.CreateSRPolicyRequest) (resolvedP
 		break
 	}
 
-	srcAddr, err := getLoopbackAddr(ted, inputSRPolicy.GetSrcRouterId())
+	srcAF, err := defaultLoopbackFamily(ted, inputSRPolicy.GetSrcRouterId())
 	if err != nil {
 		return resolvedPath{}, err
 	}
 
-	dstAddr, err := getLoopbackAddr(ted, inputSRPolicy.GetDstRouterId())
+	srcAddr, err := getLoopbackAddr(ted, inputSRPolicy.GetSrcRouterId(), srcAF)
 	if err != nil {
 		return resolvedPath{}, err
 	}
 
-	segmentList, metricType, err := getSegmentList(inputSRPolicy, ted, s.usidMode)
+	dstAF, err := defaultLoopbackFamily(ted, inputSRPolicy.GetDstRouterId())
+	if err != nil {
+		return resolvedPath{}, err
+	}
+
+	dstAddr, err := getLoopbackAddr(ted, inputSRPolicy.GetDstRouterId(), dstAF)
+	if err != nil {
+		return resolvedPath{}, err
+	}
+
+	result, err := getSegmentList(inputSRPolicy, ted, s.usidMode)
 	if err != nil {
 		return resolvedPath{}, err
 	}
 
 	return resolvedPath{
-		SegmentList: segmentList,
+		SegmentList: result.SegmentList,
 		SrcAddr:     srcAddr,
 		DstAddr:     dstAddr,
 		SrcRouterID: inputSRPolicy.GetSrcRouterId(),
-		Metric:      metricType,
+		Metric:      result.Metric,
+		Plane:       result.Plane,
 	}, nil
 }
 
-// resolvePathFromRequest takes the SR Policy path directly from the request,
-// without consulting the TED.
 func resolvePathFromRequest(s *APIServer, input *pb.CreateSRPolicyRequest) (resolvedPath, error) {
 	inputSRPolicy := input.GetSrPolicy()
 
@@ -335,6 +346,8 @@ func resolvePathFromRequest(s *APIServer, input *pb.CreateSRPolicyRequest) (reso
 		)
 	}
 
+	srcAddr = srcAddr.Unmap()
+
 	dstAddr, ok := netip.AddrFromSlice(inputSRPolicy.GetDstAddr())
 	if !ok {
 		return resolvedPath{}, newStatus(codes.InvalidArgument, ReasonInvalidRequest,
@@ -342,6 +355,8 @@ func resolvePathFromRequest(s *APIServer, input *pb.CreateSRPolicyRequest) (reso
 			inputSRPolicy.GetDstAddr(),
 		)
 	}
+
+	dstAddr = dstAddr.Unmap()
 
 	var segmentList []table.Segment
 
@@ -360,7 +375,6 @@ func resolvePathFromRequest(s *APIServer, input *pb.CreateSRPolicyRequest) (reso
 // resolveSRPolicyIntent resolves the candidate-path type and metric per RFC 9256 §2.4.2.
 func resolveSRPolicyIntent(inputSRPolicy *pb.SRPolicy, disablePathCompute bool, metricType table.MetricType) (table.PolicyType, table.MetricType, error) {
 	if disablePathCompute {
-		// disable_path_compute treats the given SegmentList as an explicit path.
 		return table.PolicyTypeExplicit, table.UnspecifiedMetric, nil
 	}
 
@@ -396,6 +410,7 @@ func sendSRPolicyRequest(s *APIServer, input *pb.CreateSRPolicyRequest, path res
 		Preference:  100,
 		Type:        policyType,
 		Metric:      metricType,
+		Plane:       path.Plane,
 	}
 
 	if id, exists := pcepSession.SearchPlspID(inputSRPolicy.GetColor(), path.DstAddr); exists {
@@ -439,6 +454,27 @@ func (s *APIServer) CreateSRPolicy(_ context.Context, req *pb.CreateSRPolicyRequ
 	return &pb.CreateSRPolicyResponse{}, nil
 }
 
+func validateEndpointFamilies(path resolvedPath) error {
+	srcFamily := table.FamilyOfAddr(path.SrcAddr)
+	dstFamily := table.FamilyOfAddr(path.DstAddr)
+
+	if path.SrcAddr.IsValid() && path.DstAddr.IsValid() && srcFamily != dstFamily {
+		return fmt.Errorf("source and destination addresses must share an address family (src=%s dst=%s)", path.SrcAddr, path.DstAddr)
+	}
+
+	if srcFamily == table.AFIPv6 {
+		return nil
+	}
+
+	for _, seg := range path.SegmentList {
+		if _, ok := seg.(table.SegmentSRv6); ok {
+			return errors.New("an SRv6 segment list requires IPv6 endpoints")
+		}
+	}
+
+	return nil
+}
+
 func (s *APIServer) validateSIDs(req *pb.CreateSRPolicyRequest, path resolvedPath) error {
 	policy := req.GetSrPolicy()
 	segmentList := path.SegmentList
@@ -461,6 +497,10 @@ func (s *APIServer) validateSIDs(req *pb.CreateSRPolicyRequest, path resolvedPat
 
 	if table.HasMixedSegmentTypes(segmentList) {
 		return newStatus(codes.InvalidArgument, ReasonInvalidRequest, "segment list contains mixed SR-MPLS and SRv6 SIDs")
+	}
+
+	if err := validateEndpointFamilies(path); err != nil {
+		return newStatus(codes.InvalidArgument, ReasonInvalidRequest, "%s", err.Error())
 	}
 
 	// Skip TED lookup for dynamically computed paths.
@@ -577,7 +617,6 @@ func (s *APIServer) DeleteSRPolicy(_ context.Context, input *pb.DeleteSRPolicyRe
 	return &pb.DeleteSRPolicyResponse{}, nil
 }
 
-// srPolicyListFilter validates and parses the session filter.
 func srPolicyListFilter(req *pb.GetSRPolicyListRequest) (netip.Addr, error) {
 	var filterAddr netip.Addr
 
@@ -749,14 +788,12 @@ var validator = map[ValidationKind]func(policy *pb.SRPolicy, asn uint32) error{
 	},
 }
 
-// sortSessionsByAddr orders sessions by peer address.
 func sortSessionsByAddr(sessions []*Session) {
 	slices.SortFunc(sessions, func(a, b *Session) int {
 		return a.peerAddr.Compare(b.peerAddr)
 	})
 }
 
-// resolveSession resolves the PCEP session a request targets.
 // RFC 5440 §7.15 allows at most one session per peer.
 func resolveSession(pce *Server, addr []byte, requireSynced bool) (*Session, error) {
 	peerAddr, ok := netip.AddrFromSlice(addr)
@@ -778,12 +815,10 @@ func resolveSession(pce *Server, addr []byte, requireSynced bool) (*Session, err
 	return pcepSession, nil
 }
 
-// getSyncedPCEPSession resolves the synced PCEP session a write request targets.
 func getSyncedPCEPSession(pce *Server, addr []byte) (*Session, error) {
 	return resolveSession(pce, addr, true)
 }
 
-// tedNode returns the non-nil node for routerID.
 func tedNode(ted *table.LsTED, routerID string) (*table.LsNode, bool) {
 	if ted == nil {
 		return nil, false
@@ -797,16 +832,24 @@ func tedNode(ted *table.LsTED, routerID string) (*table.LsNode, bool) {
 	return node, true
 }
 
-// The API does not yet accept an explicit address family for endpoint resolution.
-func getLoopbackAddr(ted *table.LsTED, routerID string) (netip.Addr, error) {
+func defaultLoopbackFamily(ted *table.LsTED, routerID string) (table.AddressFamily, error) {
 	node, ok := tedNode(ted, routerID)
 	if !ok {
-		return netip.Addr{}, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "no node with router ID %s", routerID)
+		return table.AFUnspecified, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "no node with router ID %s", routerID)
 	}
 
 	af, err := node.DefaultLoopbackFamily()
 	if err != nil {
-		return netip.Addr{}, newStatus(codes.FailedPrecondition, ReasonTEDDataIncomplete, "%s", err.Error())
+		return table.AFUnspecified, newStatus(codes.FailedPrecondition, ReasonTEDDataIncomplete, "%s", err.Error())
+	}
+
+	return af, nil
+}
+
+func getLoopbackAddr(ted *table.LsTED, routerID string, af table.AddressFamily) (netip.Addr, error) {
+	node, ok := tedNode(ted, routerID)
+	if !ok {
+		return netip.Addr{}, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "no node with router ID %s", routerID)
 	}
 
 	addr, err := node.LoopbackAddr(af)
@@ -817,34 +860,73 @@ func getLoopbackAddr(ted *table.LsTED, routerID string) (netip.Addr, error) {
 	return addr, nil
 }
 
-// The API does not yet accept an explicit underlay plane for path computation.
-func defaultPathScope(ted *table.LsTED, routerID string) (cspf.PathScope, error) {
+// resolvePlane resolves the requested underlay plane, defaulting to the
+// node's unique viable plane when unspecified.
+func resolvePlane(node *table.LsNode, pbFamily pb.AddressFamily, pbDataPlane pb.DataPlane) (table.Plane, error) {
+	family := fromPBAddressFamily(pbFamily)
+	dataPlane := fromPBDataPlane(pbDataPlane)
+
+	if family.IsValid() && dataPlane != table.DPUnspecified {
+		plane := table.Plane{Family: family, DataPlane: dataPlane}
+		if err := plane.Validate(); err != nil {
+			return table.Plane{}, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "%s", err.Error())
+		}
+
+		return plane, nil
+	}
+
+	plane, err := node.DefaultPlane()
+	if err != nil {
+		return table.Plane{}, newStatus(codes.FailedPrecondition, ReasonTEDDataIncomplete, "%s", err.Error())
+	}
+
+	if family.IsValid() && plane.Family != family {
+		return table.Plane{}, newStatus(codes.InvalidArgument, ReasonInvalidRequest,
+			"node's unique viable plane uses address family %s, which does not match the requested underlay family %s", plane.Family, family)
+	}
+
+	if dataPlane != table.DPUnspecified && plane.DataPlane != dataPlane {
+		return table.Plane{}, newStatus(codes.InvalidArgument, ReasonInvalidRequest,
+			"node's unique viable plane uses data plane %s, which does not match the requested data plane %s", plane.DataPlane, dataPlane)
+	}
+
+	return plane, nil
+}
+
+func resolvePathScope(ted *table.LsTED, routerID string, pbFamily pb.AddressFamily, pbDataPlane pb.DataPlane) (cspf.PathScope, error) {
 	node, ok := tedNode(ted, routerID)
 	if !ok {
 		return cspf.PathScope{}, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "no node with router ID %s", routerID)
 	}
 
-	plane, err := node.DefaultPlane()
+	plane, err := resolvePlane(node, pbFamily, pbDataPlane)
 	if err != nil {
-		return cspf.PathScope{}, newStatus(codes.FailedPrecondition, ReasonTEDDataIncomplete, "%s", err.Error())
+		return cspf.PathScope{}, err
 	}
 
 	return cspf.PathScope{Plane: plane}, nil
 }
 
-func getSegmentList(inputSRPolicy *pb.SRPolicy, ted *table.LsTED, usidMode bool) ([]table.Segment, table.MetricType, error) {
+// Plane is the zero value for explicit paths, which have no underlay plane.
+type segmentListResult struct {
+	SegmentList []table.Segment
+	Metric      table.MetricType
+	Plane       table.Plane
+}
+
+func getSegmentList(inputSRPolicy *pb.SRPolicy, ted *table.LsTED, usidMode bool) (segmentListResult, error) {
 	var segmentList []table.Segment
 
 	switch inputSRPolicy.GetType() {
 	case pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT:
 		if len(inputSRPolicy.GetSegmentList()) == 0 {
-			return nil, table.UnspecifiedMetric, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "no segments in SRPolicy input")
+			return segmentListResult{}, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "no segments in SRPolicy input")
 		}
 
 		for _, segment := range inputSRPolicy.GetSegmentList() {
 			sid, err := newEnrichedSegment(segment, usidMode)
 			if err != nil {
-				return nil, table.UnspecifiedMetric, err
+				return segmentListResult{}, err
 			}
 
 			segmentList = append(segmentList, sid)
@@ -852,21 +934,21 @@ func getSegmentList(inputSRPolicy *pb.SRPolicy, ted *table.LsTED, usidMode bool)
 	case pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC:
 		return getDynamicSegmentList(inputSRPolicy, ted)
 	default:
-		return nil, table.UnspecifiedMetric, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "undefined SR Policy type")
+		return segmentListResult{}, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "undefined SR Policy type")
 	}
 
-	return segmentList, table.UnspecifiedMetric, nil
+	return segmentListResult{SegmentList: segmentList, Metric: table.UnspecifiedMetric}, nil
 }
 
-func getDynamicSegmentList(inputSRPolicy *pb.SRPolicy, ted *table.LsTED) ([]table.Segment, table.MetricType, error) {
+func getDynamicSegmentList(inputSRPolicy *pb.SRPolicy, ted *table.LsTED) (segmentListResult, error) {
 	metricType, err := getMetricType(inputSRPolicy.GetMetric())
 	if err != nil {
-		return nil, table.UnspecifiedMetric, err
+		return segmentListResult{}, err
 	}
 
-	scope, err := defaultPathScope(ted, inputSRPolicy.GetSrcRouterId())
+	scope, err := resolvePathScope(ted, inputSRPolicy.GetSrcRouterId(), inputSRPolicy.GetUnderlayFamily(), inputSRPolicy.GetDataPlane())
 	if err != nil {
-		return nil, table.UnspecifiedMetric, err
+		return segmentListResult{}, err
 	}
 
 	pbWPs := inputSRPolicy.GetWaypoints()
@@ -888,10 +970,10 @@ func getDynamicSegmentList(inputSRPolicy *pb.SRPolicy, ted *table.LsTED) ([]tabl
 			ted,
 		)
 		if err != nil {
-			return nil, table.UnspecifiedMetric, statusFromCSPFError(err)
+			return segmentListResult{}, statusFromCSPFError(err)
 		}
 
-		return segs, metricType, nil
+		return segmentListResult{SegmentList: segs, Metric: metricType, Plane: scope.Plane}, nil
 	}
 
 	segs, err := cspf.CSPF(
@@ -902,10 +984,10 @@ func getDynamicSegmentList(inputSRPolicy *pb.SRPolicy, ted *table.LsTED) ([]tabl
 		ted,
 	)
 	if err != nil {
-		return nil, table.UnspecifiedMetric, statusFromCSPFError(err)
+		return segmentListResult{}, statusFromCSPFError(err)
 	}
 
-	return segs, metricType, nil
+	return segmentListResult{SegmentList: segs, Metric: metricType, Plane: scope.Plane}, nil
 }
 
 func getMetricType(metricType pb.MetricType) (table.MetricType, error) {
@@ -923,7 +1005,6 @@ func getMetricType(metricType pb.MetricType) (table.MetricType, error) {
 	}
 }
 
-// sessionListFilter validates and parses the peer address filter.
 func sessionListFilter(req *pb.GetSessionListRequest) (netip.Addr, error) {
 	var filterAddr netip.Addr
 

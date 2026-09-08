@@ -94,17 +94,15 @@ func TestShowTED(t *testing.T) {
 			Hostname: "routerA",
 			Links: []*pb.LsLink{
 				{
-					LocalRouterId:  testRouterID1,
-					RemoteRouterId: testRouterID1,
-					LocalIp:        testPeerAddr1,
-					Metrics:        []*pb.Metric{{Type: pb.MetricType_METRIC_TYPE_IGP, Value: 10}},
-					AdjSid:         24001,
+					Local:   &pb.LsLinkEndpoint{RouterId: testRouterID1, Ipv4: testPeerAddr1},
+					Remote:  &pb.LsLinkEndpoint{RouterId: testRouterID1},
+					Metrics: []*pb.Metric{{Type: pb.MetricType_METRIC_TYPE_IGP, Value: 10}},
+					AdjSids: []*pb.AdjSid{{Family: pb.AddressFamily_ADDRESS_FAMILY_IPV4, Sid: 24001}},
 				},
 				{
-					LocalRouterId:  testRouterID1,
-					RemoteRouterId: testRouterID1,
-					RemoteIp:       testPeerAddr2,
-					AdjSid:         24002,
+					Local:   &pb.LsLinkEndpoint{RouterId: testRouterID1},
+					Remote:  &pb.LsLinkEndpoint{RouterId: testRouterID1, Ipv4: testPeerAddr2},
+					AdjSids: []*pb.AdjSid{{Family: pb.AddressFamily_ADDRESS_FAMILY_IPV4, Sid: 24002}},
 				},
 			},
 			Prefixes: []*pb.LsPrefix{

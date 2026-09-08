@@ -24,6 +24,23 @@ message Segment {
   string local_addr = 3;
   string remote_addr = 4;
   bool sid_absent = 5;
+  // SRv6 endpoint behavior advertised by the TED (RFC 9603 §4.3.1).
+  uint32 behavior = 6;
+  // Interface ID for link-local NAI scoping (RFC 8664/9603 §4.3.1).
+  optional uint32 local_iface_id = 7;
+  optional uint32 remote_iface_id = 8;
+}
+
+enum AddressFamily {
+  ADDRESS_FAMILY_UNSPECIFIED = 0;
+  ADDRESS_FAMILY_IPV4 = 1;
+  ADDRESS_FAMILY_IPV6 = 2;
+}
+
+enum DataPlane {
+  DATA_PLANE_UNSPECIFIED = 0;
+  DATA_PLANE_SR_MPLS = 1;
+  DATA_PLANE_SRV6 = 2;
 }
 
 enum SRPolicyType {
@@ -61,6 +78,10 @@ message SRPolicy {
   uint32 plsp_id = 13;
   uint32 lsp_id = 14;
   SRPolicyState state = 15;
+  // Underlay plane for dynamic path computation.
+  // Unspecified uses the TED node's unique viable plane and is rejected if ambiguous.
+  AddressFamily underlay_family = 16;
+  DataPlane data_plane = 17;
 }
 
 message CreateSRPolicyRequest {
@@ -324,16 +345,30 @@ message Srv6EndXSID {
   SidStructure sid_structure = 3;
 }
 
+message LsLinkEndpoint {
+  string router_id = 1;
+  uint32 asn = 2;
+  // Interface ID (BGP-LS TLV 258/259) for link-local IPv6 address scoping.
+  optional uint32 interface_id = 3;
+  string ipv4 = 4;
+  string ipv6 = 5;
+}
+
+message AdjSid {
+  // Unspecified when GoBGP cannot distinguish IPv4 and IPv6 Adjacency-SIDs.
+  AddressFamily family = 1;
+  uint32 sid = 2;
+}
+
 message LsLink {
-  string local_router_id = 1;
-  uint32 local_asn = 2;
-  string local_ip = 3;
-  string remote_router_id = 4;
-  uint32 remote_asn = 5;
-  string remote_ip = 6;
-  repeated Metric metrics = 7;
-  uint32 adj_sid = 8;
-  Srv6EndXSID srv6_end_x_sid = 9;
+  LsLinkEndpoint local = 1;
+  LsLinkEndpoint remote = 2;
+  repeated Metric metrics = 3;
+  repeated AdjSid adj_sids = 4;
+  repeated Srv6EndXSID srv6_end_x_sids = 5;
+  // Replaced by local, remote, adj_sids, and srv6_end_x_sids.
+  reserved 6 to 9;
+  reserved "local_router_id", "local_asn", "local_ip", "remote_router_id", "remote_asn", "remote_ip", "adj_sid", "srv6_end_x_sid";
 }
 
 message LsNode {

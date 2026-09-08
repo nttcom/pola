@@ -1006,6 +1006,7 @@ func TestFindRouterIDFromAddress(t *testing.T) {
 	ted.Nodes["198.51.100.2"] = nil
 
 	ss := &Session{ted: ted}
+	routerIDIndex := ted.RouterIDIndex()
 	addrIndex := ted.AddressRouterIDIndex()
 
 	cases := []struct {
@@ -1017,7 +1018,7 @@ func TestFindRouterIDFromAddress(t *testing.T) {
 		{"ipv4 prefix", netip.MustParseAddr("192.0.2.10"), "router-v4", false},
 		{"ipv6 prefix", netip.MustParseAddr("2001:db8::1"), "router-v6", false},
 		{"non-host prefix network address", netip.MustParseAddr("192.0.2.0"), "router-subnet", false},
-		{"router id match", netip.MustParseAddr("198.51.100.1"), "198.51.100.1", false},
+		{"router id string coincidentally matching the address, but no prefix advertised", netip.MustParseAddr("198.51.100.1"), "", true},
 		{"nil node entry", netip.MustParseAddr("198.51.100.2"), "", true},
 		{"not found", netip.MustParseAddr("203.0.113.5"), "", true},
 	}
@@ -1025,7 +1026,7 @@ func TestFindRouterIDFromAddress(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := ss.findRouterIDFromAddress(addrIndex, tc.addr)
+			got, err := ss.findRouterIDFromAddress(routerIDIndex, addrIndex, tc.addr)
 			if tc.wantErr {
 				require.Errorf(t, err, "expected error, got routerID %q", got)
 				return
@@ -1035,6 +1036,25 @@ func TestFindRouterIDFromAddress(t *testing.T) {
 			assert.Equal(t, tc.want, got)
 		})
 	}
+}
+
+func TestFindRouterIDFromAddress_AmbiguousFallsBackToNotFound(t *testing.T) {
+	t.Parallel()
+
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{}}
+
+	for _, routerID := range []string{"router-a", "router-b"} {
+		node := table.NewLsNode(0, routerID)
+		prefix := table.NewLsPrefix(node)
+		prefix.Prefix = netip.MustParsePrefix("192.0.2.0/24")
+		node.Prefixes = append(node.Prefixes, prefix)
+		ted.Nodes[node.RouterID] = node
+	}
+
+	ss := &Session{ted: ted}
+
+	_, err := ss.findRouterIDFromAddress(ted.RouterIDIndex(), ted.AddressRouterIDIndex(), netip.MustParseAddr("192.0.2.0"))
+	assert.Error(t, err, "expected an ambiguous address to be treated as not found")
 }
 
 func TestExtractSrcDstRouterIDs(t *testing.T) {
@@ -1048,7 +1068,10 @@ func TestExtractSrcDstRouterIDs(t *testing.T) {
 	srcNode.Prefixes = append(srcNode.Prefixes, srcPrefix)
 	ted.Nodes[srcNode.RouterID] = srcNode
 
-	dstNode := table.NewLsNode(0, "10.255.0.2")
+	dstNode := table.NewLsNode(0, "dst-router")
+	dstPrefix := table.NewLsPrefix(dstNode)
+	dstPrefix.Prefix = netip.MustParsePrefix("10.255.0.2/32")
+	dstNode.Prefixes = append(dstNode.Prefixes, dstPrefix)
 	ted.Nodes[dstNode.RouterID] = dstNode
 
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), ted, 0)
@@ -1057,7 +1080,7 @@ func TestExtractSrcDstRouterIDs(t *testing.T) {
 	srcRouterID, dstRouterID, err := ss.extractSrcDstRouterIDs(sr)
 	require.NoError(t, err, "extractSrcDstRouterIDs failed")
 	assert.Equal(t, "src-router", srcRouterID)
-	assert.Equal(t, "10.255.0.2", dstRouterID)
+	assert.Equal(t, "dst-router", dstRouterID)
 }
 
 func TestExtractSrcDstRouterIDs_AddressNotFound(t *testing.T) {
@@ -4508,12 +4531,14 @@ func newLinkedSRv6Nodes(srcAddr, dstAddr netip.Addr, metric uint32) (src, dst *t
 func TestHandleSRPolicyWithPLSPID_CreateEroFromSegmentListErrorIsPropagated(t *testing.T) {
 	t.Parallel()
 
-	srcAddr := netip.MustParseAddr("10.1.0.1")
-	dstAddr := netip.MustParseAddr("10.1.0.2")
+	srcAddr := netip.MustParseAddr("2001:db8:e::1")
+	dstAddr := netip.MustParseAddr("2001:db8:e::2")
 	srcNode, dstNode := newLinkedSRv6Nodes(srcAddr, dstAddr, 10)
 	ted := &table.LsTED{Nodes: map[string]*table.LsNode{srcNode.RouterID: srcNode, dstNode.RouterID: dstNode}}
 
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), ted, 0)
+	ss.commitPeerOpen(OpenParams{SessionID: 1, Keepalive: 30, DeadTimer: 120}, pcep.RFCCompliant,
+		[]pcep.CapabilityInterface{pcep.NewSRv6PCECapability(false)})
 
 	sr := newTestStateReport(t, 1, 0)
 	sr.LSPObject.SrcAddr = srcAddr
@@ -4599,6 +4624,8 @@ func TestHandleSRPolicyWithPLSPID_SendPCUpdateFailureIsPropagated(t *testing.T) 
 	require.NoError(t, server.Close(), "failed to close server connection")
 
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), ted, 0)
+	ss.commitPeerOpen(OpenParams{SessionID: 1, Keepalive: 30, DeadTimer: 120}, pcep.RFCCompliant,
+		[]pcep.CapabilityInterface{pcep.NewSRPCECapability(true, false, 0)})
 
 	sr := newTestStateReport(t, 1, 0)
 	sr.LSPObject.SrcAddr = srcAddr
@@ -4645,6 +4672,113 @@ func TestSelectMetricType(t *testing.T) {
 			assert.Equal(t, tc.want, ss.selectMetricType(sr))
 		})
 	}
+}
+
+func TestDataPlaneFromPeerCapabilities(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name    string
+		af      table.AddressFamily
+		caps    []pcep.CapabilityInterface
+		want    table.DataPlane
+		wantErr string
+	}{
+		{
+			name: "legacy SR-CAPABILITY implies SR-MPLS for IPv4",
+			af:   table.AFIPv4,
+			caps: []pcep.CapabilityInterface{pcep.NewSRPCECapability(true, false, 0)},
+			want: table.DPSRMPLS,
+		},
+		{
+			name: "legacy SR-CAPABILITY implies SR-MPLS for IPv6 too (no PST-CAP TLV to say otherwise)",
+			af:   table.AFIPv6,
+			caps: []pcep.CapabilityInterface{pcep.NewSRPCECapability(true, false, 0)},
+			want: table.DPSRMPLS,
+		},
+		{
+			name: "PST-CAP advertising only SRv6TE implies SRv6 for IPv6",
+			af:   table.AFIPv6,
+			caps: []pcep.CapabilityInterface{&pcep.PathSetupTypeCapability{PathSetupTypes: pcep.Psts{pcep.PathSetupTypeSRv6TE}}},
+			want: table.DPSRv6,
+		},
+		{
+			name:    "SRv6TE support is irrelevant for an IPv4 LSP",
+			af:      table.AFIPv4,
+			caps:    []pcep.CapabilityInterface{&pcep.PathSetupTypeCapability{PathSetupTypes: pcep.Psts{pcep.PathSetupTypeSRv6TE}}},
+			wantErr: "does not advertise",
+		},
+		{
+			name:    "PST-CAP advertising both SRTE and SRv6TE is ambiguous for IPv6",
+			af:      table.AFIPv6,
+			caps:    []pcep.CapabilityInterface{&pcep.PathSetupTypeCapability{PathSetupTypes: pcep.Psts{pcep.PathSetupTypeSRTE, pcep.PathSetupTypeSRv6TE}}},
+			wantErr: "ambiguous",
+		},
+		{
+			name:    "no capabilities at all",
+			af:      table.AFIPv4,
+			caps:    nil,
+			wantErr: "does not advertise",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
+			ss.commitPeerOpen(OpenParams{}, pcep.RFCCompliant, tc.caps)
+
+			got, err := ss.dataPlaneFromPeerCapabilities(tc.af)
+			if tc.wantErr != "" {
+				assert.ErrorContains(t, err, tc.wantErr)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestPlaneFromReport(t *testing.T) {
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
+	ss.commitPeerOpen(OpenParams{}, pcep.RFCCompliant, []pcep.CapabilityInterface{pcep.NewSRPCECapability(true, false, 0)})
+
+	t.Run("family comes from the LSP's own addresses", func(t *testing.T) {
+		t.Parallel()
+
+		sr := newTestStateReport(t, 1, 0)
+		sr.LSPObject.SrcAddr = netip.MustParseAddr("10.0.0.1")
+		sr.LSPObject.DstAddr = netip.MustParseAddr("10.0.0.2")
+
+		plane, err := ss.planeFromReport(sr)
+		require.NoError(t, err)
+		assert.Equal(t, table.Plane{Family: table.AFIPv4, DataPlane: table.DPSRMPLS}, plane)
+	})
+
+	t.Run("mismatched src/dst families are rejected", func(t *testing.T) {
+		t.Parallel()
+
+		sr := newTestStateReport(t, 1, 0)
+		sr.LSPObject.SrcAddr = netip.MustParseAddr("10.0.0.1")
+		sr.LSPObject.DstAddr = netip.MustParseAddr("2001:db8::1")
+
+		_, err := ss.planeFromReport(sr)
+		assert.ErrorContains(t, err, "share an address family")
+	})
+
+	t.Run("invalid addresses are rejected", func(t *testing.T) {
+		t.Parallel()
+
+		sr := newTestStateReport(t, 1, 0)
+		sr.LSPObject.SrcAddr = netip.Addr{}
+		sr.LSPObject.DstAddr = netip.Addr{}
+
+		_, err := ss.planeFromReport(sr)
+		assert.Error(t, err)
+	})
 }
 
 func TestResolveColorPreference_CiscoLegacy(t *testing.T) {
