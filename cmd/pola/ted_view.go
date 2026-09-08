@@ -33,12 +33,23 @@ type tedPrefixView struct {
 }
 
 type tedLinkView struct {
-	LocalIP        string              `json:"localIp,omitempty"`
-	RemoteIP       string              `json:"remoteIp,omitempty"`
-	RemoteRouterID string              `json:"remoteRouterId"`
-	Metrics        []tedMetricView     `json:"metrics"`
-	AdjSid         uint32              `json:"adjSid"`
-	Srv6EndXSID    *tedSrv6EndXSIDView `json:"srv6EndXSid,omitempty"`
+	Local        tedLinkEndpointView  `json:"local"`
+	Remote       tedLinkEndpointView  `json:"remote"`
+	Metrics      []tedMetricView      `json:"metrics"`
+	AdjSids      []tedAdjSidView      `json:"adjSids"`
+	Srv6EndXSIDs []tedSrv6EndXSIDView `json:"srv6EndXSids,omitempty"`
+}
+
+type tedLinkEndpointView struct {
+	RouterID    string  `json:"routerId,omitempty"`
+	IPv4        string  `json:"ipv4,omitempty"`
+	IPv6        string  `json:"ipv6,omitempty"`
+	InterfaceID *uint32 `json:"interfaceId,omitempty"`
+}
+
+type tedAdjSidView struct {
+	Family string `json:"family"` // ipv4 | ipv6 | unspecified
+	Sid    uint32 `json:"sid"`
 }
 
 type tedMetricView struct {
@@ -133,35 +144,53 @@ func newTEDLinkViews(links []*table.LsLink) []tedLinkView {
 
 func newTEDLinkView(l *table.LsLink) tedLinkView {
 	v := tedLinkView{
+		Local:   newTEDLinkEndpointView(l.Local),
+		Remote:  newTEDLinkEndpointView(l.Remote),
 		Metrics: newTEDMetricViews(l.Metrics),
+		AdjSids: newTEDAdjSidViews(l.AdjSids),
 	}
 
-	if len(l.AdjSids) > 0 {
-		v.AdjSid = l.AdjSids[0].Sid
-	}
+	for _, sid := range l.Srv6EndXSIDs {
+		if sid == nil {
+			continue
+		}
 
-	if l.Local.IPv4.IsValid() {
-		v.LocalIP = l.Local.IPv4.String()
-	} else if l.Local.IPv6.IsValid() {
-		v.LocalIP = l.Local.IPv6.String()
-	}
-
-	if l.Remote.IPv4.IsValid() {
-		v.RemoteIP = l.Remote.IPv4.String()
-	} else if l.Remote.IPv6.IsValid() {
-		v.RemoteIP = l.Remote.IPv6.String()
-	}
-
-	if l.Remote.Node != nil {
-		v.RemoteRouterID = l.Remote.Node.RouterID
-	}
-
-	if len(l.Srv6EndXSIDs) > 0 && l.Srv6EndXSIDs[0] != nil {
-		sid := newTEDSrv6EndXSIDView(l.Srv6EndXSIDs[0])
-		v.Srv6EndXSID = &sid
+		v.Srv6EndXSIDs = append(v.Srv6EndXSIDs, newTEDSrv6EndXSIDView(sid))
 	}
 
 	return v
+}
+
+func newTEDLinkEndpointView(e table.LinkEndpoint) tedLinkEndpointView {
+	v := tedLinkEndpointView{}
+
+	if e.Node != nil {
+		v.RouterID = e.Node.RouterID
+	}
+
+	if e.IPv4.IsValid() {
+		v.IPv4 = e.IPv4.String()
+	}
+
+	if e.IPv6.IsValid() {
+		v.IPv6 = e.IPv6.String()
+	}
+
+	if e.InterfaceID != nil {
+		ifaceID := *e.InterfaceID
+		v.InterfaceID = &ifaceID
+	}
+
+	return v
+}
+
+func newTEDAdjSidViews(adjSids []table.AdjSID) []tedAdjSidView {
+	views := make([]tedAdjSidView, 0, len(adjSids))
+	for _, a := range adjSids {
+		views = append(views, tedAdjSidView{Family: a.Family.String(), Sid: a.Sid})
+	}
+
+	return views
 }
 
 func newTEDMetricViews(metrics []*table.Metric) []tedMetricView {

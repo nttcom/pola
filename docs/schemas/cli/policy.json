@@ -37,7 +37,15 @@
                 },
                 "metric": {
                     "type": "string",
-                    "enum": ["igp", "te", "delay"]
+                    "enum": ["igp", "te", "delay", "hopcount"]
+                },
+                "underlayFamily": {
+                    "type": "string",
+                    "enum": ["ipv4", "ipv6"]
+                },
+                "dataPlane": {
+                    "type": "string",
+                    "enum": ["sr-mpls", "srv6"]
                 },
                 "segmentList": {
                     "type": "array",
@@ -103,7 +111,9 @@
                             { "required": ["srcRouterID"] },
                             { "required": ["dstRouterID"] },
                             { "required": ["metric"] },
-                            { "required": ["waypoints"] }
+                            { "required": ["waypoints"] },
+                            { "required": ["underlayFamily"] },
+                            { "required": ["dataPlane"] }
                         ]
                     }
                 }

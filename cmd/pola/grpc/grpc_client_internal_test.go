@@ -179,6 +179,26 @@ func TestSegmentFromPB_SRMPLS(t *testing.T) {
 	}
 }
 
+func TestSegmentFromPB_SRMPLS_IfaceIDs(t *testing.T) {
+	t.Parallel()
+
+	localIfaceID, remoteIfaceID := uint32(5), uint32(6)
+
+	seg, err := segmentFromPB(&pb.Segment{
+		Sid:           "16003",
+		LocalIfaceId:  &localIfaceID,
+		RemoteIfaceId: &remoteIfaceID,
+	})
+	require.NoError(t, err)
+
+	mplsSeg, ok := seg.(table.SegmentSRMPLS)
+	require.Truef(t, ok, "segment type: got %T, want table.SegmentSRMPLS", seg)
+	require.NotNil(t, mplsSeg.LocalIfaceID)
+	assert.Equal(t, localIfaceID, *mplsSeg.LocalIfaceID)
+	require.NotNil(t, mplsSeg.RemoteIfaceID)
+	assert.Equal(t, remoteIfaceID, *mplsSeg.RemoteIfaceID)
+}
+
 func TestSegmentFromPB_SRMPLS_SidAbsent(t *testing.T) {
 	t.Parallel()
 
@@ -198,11 +218,16 @@ func TestSegmentFromPB_SRMPLS_SidAbsent(t *testing.T) {
 func TestSegmentFromPB_SRv6(t *testing.T) {
 	t.Parallel()
 
+	localIfaceID, remoteIfaceID := uint32(5), uint32(6)
+
 	seg, err := segmentFromPB(&pb.Segment{
-		Sid:          "2001:db8:1005::",
-		LocalAddr:    "2001:db8::5",
-		RemoteAddr:   "2001:db8::6",
-		SidStructure: "32,16,0,80",
+		Sid:           "2001:db8:1005::",
+		LocalAddr:     "2001:db8::5",
+		RemoteAddr:    "2001:db8::6",
+		SidStructure:  "32,16,0,80",
+		Behavior:      uint32(table.BehaviorEND),
+		LocalIfaceId:  &localIfaceID,
+		RemoteIfaceId: &remoteIfaceID,
 	})
 	require.NoError(t, err)
 
@@ -212,6 +237,18 @@ func TestSegmentFromPB_SRv6(t *testing.T) {
 	assert.Equal(t, "2001:db8::5", srv6Seg.LocalAddr.String())
 	assert.Equal(t, "2001:db8::6", srv6Seg.RemoteAddr.String())
 	assert.Equal(t, &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalArg: 80}, srv6Seg.Structure)
+	assert.Equal(t, table.BehaviorEND, srv6Seg.Behavior)
+	require.NotNil(t, srv6Seg.LocalIfaceID)
+	assert.Equal(t, localIfaceID, *srv6Seg.LocalIfaceID)
+	require.NotNil(t, srv6Seg.RemoteIfaceID)
+	assert.Equal(t, remoteIfaceID, *srv6Seg.RemoteIfaceID)
+}
+
+func TestSegmentFromPB_SRv6_BehaviorOverflow(t *testing.T) {
+	t.Parallel()
+
+	_, err := segmentFromPB(&pb.Segment{Sid: "2001:db8:1005::", Behavior: math.MaxUint16 + 1})
+	require.Error(t, err)
 }
 
 func TestSegmentFromPB_InvalidSID(t *testing.T) {
@@ -873,6 +910,20 @@ func TestConvertSRPolicy(t *testing.T) {
 			Metric:      table.UnspecifiedMetric,
 		}
 		assert.Equal(t, want, got)
+	})
+
+	t.Run("underlay plane", func(t *testing.T) {
+		t.Parallel()
+
+		p := &pb.SRPolicy{
+			SrcAddr:        netip.MustParseAddr(testIPv4Addr1).AsSlice(),
+			DstAddr:        netip.MustParseAddr(testIPv4Addr2).AsSlice(),
+			UnderlayFamily: pb.AddressFamily_ADDRESS_FAMILY_IPV6,
+			DataPlane:      pb.DataPlane_DATA_PLANE_SRV6,
+		}
+		got, err := convertSRPolicy(p)
+		require.NoError(t, err)
+		assert.Equal(t, table.Plane{Family: table.AFIPv6, DataPlane: table.DPSRv6}, got.Plane)
 	})
 
 	t.Run("invalid source address", func(t *testing.T) {

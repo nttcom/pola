@@ -650,7 +650,22 @@ func convertSRPolicy(p *pb.SRPolicy) (table.SRPolicy, error) {
 		State:       policyStateFromPB(p.GetState()),
 		Type:        policyTypeFromPB(p.GetType()),
 		Metric:      metricTypeFromPB(p.GetMetric()),
+		Plane: table.Plane{
+			Family:    fromPBAddressFamily(p.GetUnderlayFamily()),
+			DataPlane: fromPBDataPlane(p.GetDataPlane()),
+		},
 	}, nil
+}
+
+func fromPBDataPlane(dp pb.DataPlane) table.DataPlane {
+	switch dp {
+	case pb.DataPlane_DATA_PLANE_SR_MPLS:
+		return table.DPSRMPLS
+	case pb.DataPlane_DATA_PLANE_SRV6:
+		return table.DPSRv6
+	default:
+		return table.DPUnspecified
+	}
 }
 
 func sidStructureFromPB(s *pb.SidStructure) (*table.SIDStructure, error) {
@@ -752,6 +767,14 @@ func segmentFromPB(s *pb.Segment) (table.Segment, error) {
 
 		v.Structure = structure
 
+		behavior, err := safecast.Uint16(s.GetBehavior(), "segment behavior")
+		if err != nil {
+			return nil, err
+		}
+
+		v.Behavior = behavior
+		v.LocalIfaceID, v.RemoteIfaceID = s.LocalIfaceId, s.RemoteIfaceId
+
 		return v, nil
 	case table.SegmentSRMPLS:
 		v.LocalAddr, err = parseOptionalAddr("SR-MPLS local address", s.GetLocalAddr())
@@ -765,6 +788,7 @@ func segmentFromPB(s *pb.Segment) (table.Segment, error) {
 		}
 
 		v.SidAbsent = s.GetSidAbsent()
+		v.LocalIfaceID, v.RemoteIfaceID = s.LocalIfaceId, s.RemoteIfaceId
 
 		return v, nil
 	default:

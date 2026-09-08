@@ -18,6 +18,7 @@ import (
 func fullTEDNodeViewFixture() tedNodeView {
 	sidIdx := uint32(7)
 	flags, algorithm := uint8(1), uint8(2)
+	ifaceID := uint32(5)
 
 	return tedNodeView{
 		RouterID:   testRouterID1,
@@ -30,19 +31,19 @@ func fullTEDNodeViewFixture() tedNodeView {
 		},
 		Links: []tedLinkView{
 			{
-				RemoteRouterID: "",
-				AdjSid:         100,
+				AdjSids: []tedAdjSidView{{Family: "ipv4", Sid: 100}},
 			},
 			{
-				LocalIP:        testPeerAddr2,
-				RemoteIP:       "192.0.2.3",
-				RemoteRouterID: testRouterID2,
-				Metrics:        []tedMetricView{{Type: metricTypeIGP, Value: 10}},
-				AdjSid:         200,
-				Srv6EndXSID: &tedSrv6EndXSIDView{
-					EndpointBehavior: endpointBehaviorView{Name: "END-X-BEHAVIOR"},
-					Sids:             []string{testSrv6EndXSID},
-					SidStructure:     &table.SIDStructure{LocalBlock: 21, LocalNode: 22, LocalFunc: 23, LocalArg: 24},
+				Local:   tedLinkEndpointView{IPv4: testPeerAddr2, IPv6: "2001:db8::2", InterfaceID: &ifaceID},
+				Remote:  tedLinkEndpointView{IPv4: "192.0.2.3", IPv6: "2001:db8::3", RouterID: testRouterID2},
+				Metrics: []tedMetricView{{Type: metricTypeIGP, Value: 10}},
+				AdjSids: []tedAdjSidView{{Family: "ipv6", Sid: 200}},
+				Srv6EndXSIDs: []tedSrv6EndXSIDView{
+					{
+						EndpointBehavior: endpointBehaviorView{Name: "END-X-BEHAVIOR"},
+						Sids:             []string{testSrv6EndXSID},
+						SidStructure:     &table.SIDStructure{LocalBlock: 21, LocalNode: 22, LocalFunc: 23, LocalArg: 24},
+					},
 				},
 			},
 		},
@@ -85,10 +86,12 @@ func TestWriteTEDText_SidStructureNotAdvertised(t *testing.T) {
 		RouterID: testRouterID1,
 		Links: []tedLinkView{
 			{
-				RemoteRouterID: testRouterID2,
-				Srv6EndXSID: &tedSrv6EndXSIDView{
-					EndpointBehavior: endpointBehaviorView{Name: "END-X-BEHAVIOR"},
-					Sids:             []string{testSrv6EndXSID},
+				Remote: tedLinkEndpointView{RouterID: testRouterID2},
+				Srv6EndXSIDs: []tedSrv6EndXSIDView{
+					{
+						EndpointBehavior: endpointBehaviorView{Name: "END-X-BEHAVIOR"},
+						Sids:             []string{testSrv6EndXSID},
+					},
 				},
 			},
 		},
@@ -123,7 +126,9 @@ func TestWriteTEDText_PropagatesWriteErrors(t *testing.T) {
 		{"link remote router id", containsFail("RemoteRouterID: None")},
 		{"link metrics header", containsFail("      Metrics:")},
 		{"link metric line", containsFail("igp: 10")},
-		{"link adj-sid", containsFail("Adj-SID: 100")},
+		{"link adj-sids header", containsFail("Adj-SIDs:")},
+		{"link adj-sid line", containsFail("ipv4: 100")},
+		{"link interface id", containsFail("interface 5")},
 		{"srv6 end.x sid header", containsFail("SRv6 End.X SID:")},
 		{"srv6 end.x endpoint behavior", containsFail("EndpointBehavior: END-X-BEHAVIOR")},
 		{"srv6 end.x sids", containsFail(testSrv6EndXSID)},

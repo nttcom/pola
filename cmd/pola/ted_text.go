@@ -6,7 +6,9 @@
 package main
 
 import (
+	"fmt"
 	"io"
+	"strings"
 )
 
 // writeTEDText expects nodes to be sorted by router ID for deterministic output.
@@ -58,17 +60,19 @@ func writeTEDNodeLinksText(ew *errWriter, node tedNodeView) {
 	}
 }
 
+const displayNone = "None"
+
 func orNone(s string) string {
 	if s == "" {
-		return "None"
+		return displayNone
 	}
 
 	return s
 }
 
 func writeTEDLinkText(ew *errWriter, link tedLinkView) {
-	ew.printf("    Local: %s Remote: %s\n", orNone(link.LocalIP), orNone(link.RemoteIP))
-	ew.printf("      RemoteRouterID: %s\n", orNone(link.RemoteRouterID))
+	ew.printf("    Local: %s Remote: %s\n", linkEndpointDisplay(link.Local), linkEndpointDisplay(link.Remote))
+	ew.printf("      RemoteRouterID: %s\n", orNone(link.Remote.RouterID))
 
 	ew.println("      Metrics:")
 
@@ -76,11 +80,38 @@ func writeTEDLinkText(ew *errWriter, link tedLinkView) {
 		ew.printf("        %s: %d\n", m.Type, m.Value)
 	}
 
-	ew.printf("      Adj-SID: %d\n", link.AdjSid)
+	ew.println("      Adj-SIDs:")
 
-	if link.Srv6EndXSID != nil {
-		writeTEDSrv6EndXSIDText(ew, *link.Srv6EndXSID)
+	for _, a := range link.AdjSids {
+		ew.printf("        %s: %d\n", a.Family, a.Sid)
 	}
+
+	for _, sid := range link.Srv6EndXSIDs {
+		writeTEDSrv6EndXSIDText(ew, sid)
+	}
+}
+
+func linkEndpointDisplay(e tedLinkEndpointView) string {
+	var addrs []string
+
+	if e.IPv4 != "" {
+		addrs = append(addrs, e.IPv4)
+	}
+
+	if e.IPv6 != "" {
+		addrs = append(addrs, e.IPv6)
+	}
+
+	if len(addrs) == 0 {
+		return displayNone
+	}
+
+	s := strings.Join(addrs, ", ")
+	if e.InterfaceID != nil {
+		s += fmt.Sprintf(" (interface %d)", *e.InterfaceID)
+	}
+
+	return s
 }
 
 func writeTEDSrv6EndXSIDText(ew *errWriter, sid tedSrv6EndXSIDView) {
