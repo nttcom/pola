@@ -229,8 +229,17 @@ func TestBuildLsLink_LinkIPs(t *testing.T) {
 			t.Parallel()
 
 			link := table.NewLsLink(localNode, remoteNode)
-			link.LocalIP = tt.localIP
-			link.RemoteIP = tt.remoteIP
+			if tt.localIP.Is4() {
+				link.Local.IPv4 = tt.localIP
+			} else {
+				link.Local.IPv6 = tt.localIP
+			}
+
+			if tt.remoteIP.Is4() {
+				link.Remote.IPv4 = tt.remoteIP
+			} else {
+				link.Remote.IPv6 = tt.remoteIP
+			}
 
 			got := buildLsLink(link)
 
@@ -297,7 +306,9 @@ func TestGetTED_LinksWithoutIPsRoundTripToCLI(t *testing.T) {
 
 	for _, gotNode := range got.Nodes {
 		require.Len(t, gotNode.Links, 1)
-		assert.False(t, gotNode.Links[0].LocalIP.IsValid())
-		assert.False(t, gotNode.Links[0].RemoteIP.IsValid())
+		assert.False(t, gotNode.Links[0].Local.IPv4.IsValid())
+		assert.False(t, gotNode.Links[0].Local.IPv6.IsValid())
+		assert.False(t, gotNode.Links[0].Remote.IPv4.IsValid())
+		assert.False(t, gotNode.Links[0].Remote.IPv6.IsValid())
 	}
 }

@@ -32,7 +32,7 @@ func newTestSegmentSRMPLS(sid uint32, local, remote string) table.SegmentSRMPLS 
 }
 
 func newTestSegmentSRv6(local, remote string) table.SegmentSRv6 {
-	seg := table.NewSegmentSRv6(netip.MustParseAddr(testSRv6Addr))
+	seg := table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr(testSRv6Addr)))
 	if local != "" {
 		seg.LocalAddr = netip.MustParseAddr(local)
 	}
@@ -153,7 +153,8 @@ func TestSegmentsEqual(t *testing.T) {
 
 type fakeUnknownSidSegment struct{}
 
-func (fakeUnknownSidSegment) SidString() string { return "unknown" }
+func (fakeUnknownSidSegment) SidString() string       { return "unknown" }
+func (fakeUnknownSidSegment) Family() table.DataPlane { return table.DPUnspecified }
 
 func TestSegmentsEqual_UnknownType(t *testing.T) {
 	t.Parallel()
@@ -241,7 +242,7 @@ func TestNewSegment(t *testing.T) {
 		want    table.Segment
 		wantErr bool
 	}{
-		{"SRv6 address", testSRv6Addr, table.NewSegmentSRv6(netip.MustParseAddr(testSRv6Addr)), false},
+		{"SRv6 address", testSRv6Addr, table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr(testSRv6Addr))), false},
 		{"SR-MPLS label", "16001", table.NewSegmentSRMPLS(16001), false},
 		{"IPv4 address is not a valid SID", "10.0.0.1", nil, true},
 		{"non-numeric, non-IP string", "not-a-sid", nil, true},
@@ -260,6 +261,62 @@ func TestNewSegment(t *testing.T) {
 			assert.Equal(t, tt.want, seg)
 		})
 	}
+}
+
+func TestParseSRv6SID_And_NewSegment_RejectsFourInSix(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		sid     string
+		wantErr bool
+	}{
+		{"IPv4-mapped IPv6 address is rejected", "::ffff:192.0.2.1", true},
+		{"ordinary SRv6 SID is accepted", "2001:db8::1", false},
+		{"link-local IPv6 address is accepted", "fe80::1", false},
+		{"SR-MPLS label is not an SRv6 SID", "16000", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := table.ParseSRv6SID(tt.sid)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+
+	t.Run("NewSegment rejects an IPv4-mapped IPv6 SID", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := table.NewSegment("::ffff:192.0.2.1")
+		assert.Error(t, err)
+	})
+
+	t.Run("NewSegment accepts an SR-MPLS label", func(t *testing.T) {
+		t.Parallel()
+
+		seg, err := table.NewSegment("16000")
+		require.NoError(t, err)
+		assert.Equal(t, table.NewSegmentSRMPLS(16000), seg)
+	})
+}
+
+func TestSRv6SID_IsValid(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, table.SRv6SID(netip.MustParseAddr(testSRv6Addr)).IsValid())
+	assert.False(t, table.SRv6SID{}.IsValid())
+}
+
+func TestSegment_Family(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, table.DPSRv6, table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr(testSRv6Addr))).Family())
+	assert.Equal(t, table.DPSRMPLS, table.NewSegmentSRMPLS(16000).Family())
 }
 
 func TestBehaviorToString(t *testing.T) {
@@ -363,9 +420,17 @@ func TestSegmentSRv6_Behavior(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tt.want, tt.seg.Behavior())
+			assert.Equal(t, tt.want, tt.seg.BehaviorOrDerived())
 		})
 	}
+}
+
+func TestSegmentSRv6_BehaviorOrDerived_PrefersTEDValue(t *testing.T) {
+	t.Parallel()
+
+	seg := newTestSegmentSRv6("2001:db8::1", "")
+	seg.Behavior = table.BehaviorENDX
+	assert.Equal(t, table.BehaviorENDX, seg.BehaviorOrDerived())
 }
 
 func TestIsUSidBehavior(t *testing.T) {
@@ -443,8 +508,9 @@ func TestNewSegmentSRv6WithNodeInfo(t *testing.T) {
 				},
 			},
 			want: table.SegmentSRv6{
-				Sid:       netip.MustParseAddr("2001:db8::1"),
+				Sid:       table.SRv6SID(netip.MustParseAddr("2001:db8::1")),
 				LocalAddr: netip.MustParseAddr(testSRv6Addr),
+				Behavior:  table.BehaviorEND,
 				Structure: &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16},
 				USid:      false,
 			},
@@ -461,8 +527,9 @@ func TestNewSegmentSRv6WithNodeInfo(t *testing.T) {
 				},
 			},
 			want: table.SegmentSRv6{
-				Sid:       netip.MustParseAddr("2001:db8::1"),
+				Sid:       table.SRv6SID(netip.MustParseAddr("2001:db8::1")),
 				LocalAddr: netip.MustParseAddr("fcbb:bb00:0100::"),
+				Behavior:  table.BehaviorUN,
 				Structure: &table.SIDStructure{LocalBlock: 32, LocalNode: 16},
 				USid:      true,
 			},
@@ -476,8 +543,9 @@ func TestNewSegmentSRv6WithNodeInfo(t *testing.T) {
 				},
 			},
 			want: table.SegmentSRv6{
-				Sid:       netip.MustParseAddr("2001:db8::1"),
+				Sid:       table.SRv6SID(netip.MustParseAddr("2001:db8::1")),
 				LocalAddr: netip.MustParseAddr(testSRv6Addr),
+				Behavior:  table.BehaviorEND,
 			},
 		},
 		{
@@ -489,8 +557,9 @@ func TestNewSegmentSRv6WithNodeInfo(t *testing.T) {
 				},
 			},
 			want: table.SegmentSRv6{
-				Sid:       netip.MustParseAddr("2001:db8::1"),
+				Sid:       table.SRv6SID(netip.MustParseAddr("2001:db8::1")),
 				LocalAddr: netip.MustParseAddr(testSRv6Addr),
+				Behavior:  table.BehaviorEND,
 			},
 		},
 		{
@@ -510,7 +579,7 @@ func TestNewSegmentSRv6WithNodeInfo(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := table.NewSegmentSRv6WithNodeInfo(netip.MustParseAddr("2001:db8::1"), tt.node)
+			got, err := table.NewSegmentSRv6WithNodeInfo(table.SRv6SID(netip.MustParseAddr("2001:db8::1")), tt.node)
 			if tt.wantErr {
 				assert.Error(t, err)
 				return

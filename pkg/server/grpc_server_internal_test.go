@@ -468,7 +468,7 @@ func TestValidateSIDs_MixedSegmentTypesAreRejected(t *testing.T) {
 	req := explicitPolicyRequest(true, "16099")
 	segmentList := []table.Segment{
 		table.NewSegmentSRMPLS(16099),
-		table.SegmentSRv6{Sid: netip.MustParseAddr("2001:db8::1")},
+		table.SegmentSRv6{Sid: table.SRv6SID(netip.MustParseAddr("2001:db8::1"))},
 	}
 
 	err := s.validateSIDs(req, resolvedPath{SegmentList: segmentList})
@@ -1118,7 +1118,7 @@ func TestConvertSegment_CarriesSRv6NAIAndStructure(t *testing.T) {
 
 	sid := netip.MustParseAddr("2001:db8:1005::")
 	seg := table.SegmentSRv6{
-		Sid:        sid,
+		Sid:        table.SRv6SID(sid),
 		LocalAddr:  netip.MustParseAddr("2001:db8::5"),
 		RemoteAddr: netip.MustParseAddr("2001:db8::6"),
 		Structure:  &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalArg: 80},
@@ -3022,22 +3022,22 @@ func TestGetTED_ConvertsFullNode(t *testing.T) {
 	remote := &table.LsNode{ASN: 65000, RouterID: testRouterID2}
 
 	link := table.NewLsLink(node, remote)
-	link.LocalIP = netip.MustParseAddr("192.0.2.1")
-	link.RemoteIP = netip.MustParseAddr("192.0.2.2")
-	link.AdjSid = 24001
+	link.Local.IPv4 = netip.MustParseAddr("192.0.2.1")
+	link.Remote.IPv4 = netip.MustParseAddr("192.0.2.2")
+	link.AdjSids = []table.AdjSID{{Family: table.AFUnspecified, Sid: 24001}}
 	link.Metrics = []*table.Metric{
 		nil,
 		table.NewMetric(table.IGPMetric, 10),
 		table.NewMetric(table.TEMetric, 20),
 	}
-	link.Srv6EndXSID = &table.Srv6EndXSID{
+	link.Srv6EndXSIDs = []*table.Srv6EndXSID{{
 		EndpointBehavior: table.BehaviorENDX,
 		Sids:             []string{testSRv6SID1, ""},
 		Srv6SIDStructure: &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
-	}
+	}}
 	node.Links = []*table.LsLink{
 		link,
-		{LocalNode: node, RemoteNode: nil},
+		{Local: table.LinkEndpoint{Node: node}},
 		nil,
 	}
 

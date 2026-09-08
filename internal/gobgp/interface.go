@@ -559,46 +559,33 @@ func getLsLink(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrLink *api.LsAttribute
 	localNode := table.NewLsNode(lsLinkNLRI.GetLocalNode().GetAsn(), lsLinkNLRI.GetLocalNode().GetIgpRouterId())
 	remoteNode := table.NewLsNode(lsLinkNLRI.GetRemoteNode().GetAsn(), lsLinkNLRI.GetRemoteNode().GetIgpRouterId())
 
-	var (
-		err     error
-		localIP netip.Addr
-	)
+	linkDescriptor := lsLinkNLRI.GetLinkDescriptor()
 
-	switch {
-	case lsLinkNLRI.GetLinkDescriptor().GetInterfaceAddrIpv4() != "":
-		localIP, err = netip.ParseAddr(lsLinkNLRI.GetLinkDescriptor().GetInterfaceAddrIpv4())
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse local IPv4 address: %w", err)
-		}
-	case lsLinkNLRI.GetLinkDescriptor().GetInterfaceAddrIpv6() != "":
-		localIP, err = netip.ParseAddr(lsLinkNLRI.GetLinkDescriptor().GetInterfaceAddrIpv6())
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse local IPv6 address: %w", err)
-		}
-	default:
-		localIP = netip.Addr{}
+	localIPv4, err := parseOptionalAddr(linkDescriptor.GetInterfaceAddrIpv4())
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse local IPv4 address: %w", err)
 	}
 
-	var remoteIP netip.Addr
+	localIPv6, err := parseOptionalAddr(linkDescriptor.GetInterfaceAddrIpv6())
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse local IPv6 address: %w", err)
+	}
 
-	switch {
-	case lsLinkNLRI.GetLinkDescriptor().GetNeighborAddrIpv4() != "":
-		remoteIP, err = netip.ParseAddr(lsLinkNLRI.GetLinkDescriptor().GetNeighborAddrIpv4())
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse remote IPv4 address: %w", err)
-		}
-	case lsLinkNLRI.GetLinkDescriptor().GetNeighborAddrIpv6() != "":
-		remoteIP, err = netip.ParseAddr(lsLinkNLRI.GetLinkDescriptor().GetNeighborAddrIpv6())
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse remote IPv6 address: %w", err)
-		}
-	default:
-		remoteIP = netip.Addr{}
+	remoteIPv4, err := parseOptionalAddr(linkDescriptor.GetNeighborAddrIpv4())
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse remote IPv4 address: %w", err)
+	}
+
+	remoteIPv6, err := parseOptionalAddr(linkDescriptor.GetNeighborAddrIpv6())
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse remote IPv6 address: %w", err)
 	}
 
 	lsLink := table.NewLsLink(localNode, remoteNode)
-	lsLink.LocalIP = localIP
-	lsLink.RemoteIP = remoteIP
+	lsLink.Local.IPv4, lsLink.Local.IPv6 = localIPv4, localIPv6
+	lsLink.Remote.IPv4, lsLink.Remote.IPv6 = remoteIPv4, remoteIPv6
+	lsLink.Local.InterfaceID = linkDescriptor.LinkLocalId
+	lsLink.Remote.InterfaceID = linkDescriptor.LinkRemoteId
 
 	lsLink.Metrics = append(lsLink.Metrics, table.NewMetric(table.IGPMetric, lsAttrLink.GetIgpMetric()))
 
@@ -614,7 +601,10 @@ func getLsLink(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrLink *api.LsAttribute
 		)
 	}
 
-	lsLink.AdjSid = lsAttrLink.GetSrAdjacencySid()
+	// GoBGP does not distinguish IPv4 and IPv6 Adj-SIDs, so leave the family unspecified.
+	if adjSid := lsAttrLink.GetSrAdjacencySid(); adjSid != 0 {
+		lsLink.AdjSids = append(lsLink.AdjSids, table.AdjSID{Family: table.AFUnspecified, Sid: adjSid})
+	}
 
 	if srv6EndXSID := lsAttrLink.GetSrv6EndXSid(); srv6EndXSID != nil {
 		converted, err := srv6EndXSIDFromAPI(srv6EndXSID)
@@ -622,10 +612,24 @@ func getLsLink(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrLink *api.LsAttribute
 			return nil, err
 		}
 
-		lsLink.Srv6EndXSID = converted
+		lsLink.Srv6EndXSIDs = append(lsLink.Srv6EndXSIDs, converted)
 	}
 
 	return lsLink, nil
+}
+
+// parseOptionalAddr returns the zero address for an empty string.
+func parseOptionalAddr(s string) (netip.Addr, error) {
+	if s == "" {
+		return netip.Addr{}, nil
+	}
+
+	addr, err := netip.ParseAddr(s)
+	if err != nil {
+		return netip.Addr{}, fmt.Errorf("parse address %q: %w", s, err)
+	}
+
+	return addr, nil
 }
 
 func srv6EndXSIDFromAPI(srv6EndXSID *api.LsSrv6EndXSID) (*table.Srv6EndXSID, error) {

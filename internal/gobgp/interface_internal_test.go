@@ -25,6 +25,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -396,11 +397,9 @@ func TestGetLsLink(t *testing.T) {
 				desc: &api.LsLinkDescriptor{InterfaceAddrIpv4: "10.0.0.1", NeighborAddrIpv4: "10.0.0.2"},
 				attr: &api.LsAttributeLink{IgpMetric: 10},
 				want: &table.LsLink{
-					LocalNode:  expectedLocal,
-					RemoteNode: expectedRemote,
-					LocalIP:    netip.MustParseAddr("10.0.0.1"),
-					RemoteIP:   netip.MustParseAddr("10.0.0.2"),
-					Metrics:    []*table.Metric{table.NewMetric(table.IGPMetric, 10)},
+					Local:   table.LinkEndpoint{Node: expectedLocal, IPv4: netip.MustParseAddr("10.0.0.1")},
+					Remote:  table.LinkEndpoint{Node: expectedRemote, IPv4: netip.MustParseAddr("10.0.0.2")},
+					Metrics: []*table.Metric{table.NewMetric(table.IGPMetric, 10)},
 				},
 			},
 			{
@@ -413,16 +412,50 @@ func TestGetLsLink(t *testing.T) {
 					SrAdjacencySid:          12345,
 				},
 				want: &table.LsLink{
-					LocalNode:  expectedLocal,
-					RemoteNode: expectedRemote,
-					LocalIP:    netip.MustParseAddr("2001:db8::1"),
-					RemoteIP:   netip.MustParseAddr("2001:db8::2"),
+					Local:  table.LinkEndpoint{Node: expectedLocal, IPv6: netip.MustParseAddr("2001:db8::1")},
+					Remote: table.LinkEndpoint{Node: expectedRemote, IPv6: netip.MustParseAddr("2001:db8::2")},
 					Metrics: []*table.Metric{
 						table.NewMetric(table.IGPMetric, 10),
 						table.NewMetric(table.TEMetric, 20),
 						table.NewMetric(table.DelayMetric, 30),
 					},
-					AdjSid: 12345,
+					AdjSids: []table.AdjSID{{Family: table.AFUnspecified, Sid: 12345}},
+				},
+			},
+			{
+				name: "dual-stack link keeps both IPv4 and IPv6 addresses",
+				desc: &api.LsLinkDescriptor{
+					InterfaceAddrIpv4: "10.0.0.1", NeighborAddrIpv4: "10.0.0.2",
+					InterfaceAddrIpv6: "2001:db8::1", NeighborAddrIpv6: "2001:db8::2",
+				},
+				attr: &api.LsAttributeLink{IgpMetric: 10},
+				want: &table.LsLink{
+					Local: table.LinkEndpoint{
+						Node: expectedLocal,
+						IPv4: netip.MustParseAddr("10.0.0.1"), IPv6: netip.MustParseAddr("2001:db8::1"),
+					},
+					Remote: table.LinkEndpoint{
+						Node: expectedRemote,
+						IPv4: netip.MustParseAddr("10.0.0.2"), IPv6: netip.MustParseAddr("2001:db8::2"),
+					},
+					Metrics: []*table.Metric{table.NewMetric(table.IGPMetric, 10)},
+				},
+			},
+			{
+				name: "link-local IDs are preserved",
+				desc: &api.LsLinkDescriptor{
+					InterfaceAddrIpv6: "fe80::1", NeighborAddrIpv6: "fe80::2",
+					LinkLocalId: proto.Uint32(7), LinkRemoteId: proto.Uint32(8),
+				},
+				attr: &api.LsAttributeLink{IgpMetric: 10},
+				want: &table.LsLink{
+					Local: table.LinkEndpoint{
+						Node: expectedLocal, IPv6: netip.MustParseAddr("fe80::1"), InterfaceID: proto.Uint32(7),
+					},
+					Remote: table.LinkEndpoint{
+						Node: expectedRemote, IPv6: netip.MustParseAddr("fe80::2"), InterfaceID: proto.Uint32(8),
+					},
+					Metrics: []*table.Metric{table.NewMetric(table.IGPMetric, 10)},
 				},
 			},
 			{
@@ -437,16 +470,14 @@ func TestGetLsLink(t *testing.T) {
 					},
 				},
 				want: &table.LsLink{
-					LocalNode:  expectedLocal,
-					RemoteNode: expectedRemote,
-					LocalIP:    netip.Addr{},
-					RemoteIP:   netip.Addr{},
-					Metrics:    []*table.Metric{table.NewMetric(table.IGPMetric, 5)},
-					Srv6EndXSID: &table.Srv6EndXSID{
+					Local:   table.LinkEndpoint{Node: expectedLocal},
+					Remote:  table.LinkEndpoint{Node: expectedRemote},
+					Metrics: []*table.Metric{table.NewMetric(table.IGPMetric, 5)},
+					Srv6EndXSIDs: []*table.Srv6EndXSID{{
 						EndpointBehavior: table.BehaviorENDX,
 						Sids:             []string{testSrv6EndXSID},
 						Srv6SIDStructure: &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
-					},
+					}},
 				},
 			},
 		}
@@ -802,7 +833,7 @@ func TestGetLsSrv6SID_LocatorRegistrationEndToEnd(t *testing.T) {
 
 	idx := table.NewSIDIndex(ted)
 
-	container := table.NewSegmentSRv6(netip.MustParseAddr("fc00:1::99"))
+	container := table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr("fc00:1::99")))
 	container.USid = true
 	assert.True(t, idx.Has(container), "expected the /32 locator to be registered despite LocalNode being 0")
 }

@@ -1111,24 +1111,27 @@ func TestGetTED_Success(t *testing.T) {
 	require.Len(t, a.Links, 2)
 
 	link0 := a.Links[0]
-	assert.Equal(t, testIPv4Addr1, link0.LocalIP.String())
-	assert.Equal(t, testIPv4Addr2, link0.RemoteIP.String())
-	assert.Same(t, ted.Nodes[testRouterID2], link0.RemoteNode)
-	assert.Equal(t, uint32(24001), link0.AdjSid)
+	assert.Equal(t, testIPv4Addr1, link0.Local.IPv4.String())
+	assert.Equal(t, testIPv4Addr2, link0.Remote.IPv4.String())
+	assert.Same(t, ted.Nodes[testRouterID2], link0.Remote.Node)
+	require.Len(t, link0.AdjSids, 1)
+	assert.Equal(t, uint32(24001), link0.AdjSids[0].Sid)
 	assert.Equal(t, []*table.Metric{
 		table.NewMetric(table.IGPMetric, 10),
 		table.NewMetric(table.TEMetric, 20),
 		table.NewMetric(table.DelayMetric, 30),
 		table.NewMetric(table.HopcountMetric, 1),
 	}, link0.Metrics)
-	require.NotNil(t, link0.Srv6EndXSID)
-	assert.Equal(t, table.BehaviorENDX, link0.Srv6EndXSID.EndpointBehavior)
-	assert.Equal(t, []string{"2001:db8:1::"}, link0.Srv6EndXSID.Sids)
-	assert.Equal(t, &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 0, LocalArg: 80}, link0.Srv6EndXSID.Srv6SIDStructure)
+	require.Len(t, link0.Srv6EndXSIDs, 1)
+	assert.Equal(t, table.BehaviorENDX, link0.Srv6EndXSIDs[0].EndpointBehavior)
+	assert.Equal(t, []string{"2001:db8:1::"}, link0.Srv6EndXSIDs[0].Sids)
+	assert.Equal(t, &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 0, LocalArg: 80}, link0.Srv6EndXSIDs[0].Srv6SIDStructure)
 
 	link1 := a.Links[1]
-	assert.False(t, link1.LocalIP.IsValid())
-	assert.False(t, link1.RemoteIP.IsValid())
+	assert.False(t, link1.Local.IPv4.IsValid())
+	assert.False(t, link1.Local.IPv6.IsValid())
+	assert.False(t, link1.Remote.IPv4.IsValid())
+	assert.False(t, link1.Remote.IPv6.IsValid())
 
 	require.Len(t, a.Prefixes, 2)
 	assert.True(t, a.Prefixes[0].HasPrefixSID())
@@ -1176,8 +1179,10 @@ func TestCreateLsLink(t *testing.T) {
 
 		link, err := createLsLink(localNode, remoteNode, &pb.LsLink{})
 		require.NoError(t, err)
-		assert.False(t, link.LocalIP.IsValid())
-		assert.False(t, link.RemoteIP.IsValid())
+		assert.False(t, link.Local.IPv4.IsValid())
+		assert.False(t, link.Local.IPv6.IsValid())
+		assert.False(t, link.Remote.IPv4.IsValid())
+		assert.False(t, link.Remote.IPv6.IsValid())
 	})
 
 	t.Run("invalid localIp", func(t *testing.T) {

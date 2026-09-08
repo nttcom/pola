@@ -33,11 +33,23 @@ func TestNewTEDNodeViews_SortedByRouterID(t *testing.T) {
 func TestNewTEDLinkView_OmitsUnsetIPs(t *testing.T) {
 	t.Parallel()
 
-	link := &table.LsLink{RemoteNode: &table.LsNode{RouterID: testRouterID2}}
+	link := &table.LsLink{Remote: table.LinkEndpoint{Node: &table.LsNode{RouterID: testRouterID2}}}
 	v := newTEDLinkView(link)
 	assert.Empty(t, v.LocalIP)
 	assert.Empty(t, v.RemoteIP)
 	assert.Equal(t, testRouterID2, v.RemoteRouterID)
+}
+
+func TestNewTEDLinkView_FallsBackToIPv6(t *testing.T) {
+	t.Parallel()
+
+	link := &table.LsLink{
+		Local:  table.LinkEndpoint{IPv6: netip.MustParseAddr("2001:db8::1")},
+		Remote: table.LinkEndpoint{IPv6: netip.MustParseAddr("2001:db8::2")},
+	}
+	v := newTEDLinkView(link)
+	assert.Equal(t, "2001:db8::1", v.LocalIP)
+	assert.Equal(t, "2001:db8::2", v.RemoteIP)
 }
 
 func TestEndpointBehaviorViewFrom_IncludesFlagsAndAlgorithm(t *testing.T) {
@@ -72,7 +84,7 @@ func TestNewTEDPrefixViews_SkipsNilEntries(t *testing.T) {
 func TestNewTEDLinkViews_SkipsNilEntries(t *testing.T) {
 	t.Parallel()
 
-	l := &table.LsLink{RemoteNode: &table.LsNode{RouterID: testRouterID2}}
+	l := &table.LsLink{Remote: table.LinkEndpoint{Node: &table.LsNode{RouterID: testRouterID2}}}
 	views := newTEDLinkViews([]*table.LsLink{nil, l})
 	require.Len(t, views, 1)
 	assert.Equal(t, testRouterID2, views[0].RemoteRouterID)
@@ -82,11 +94,11 @@ func TestNewTEDLinkView_IncludesSrv6EndXSID(t *testing.T) {
 	t.Parallel()
 
 	link := &table.LsLink{
-		Srv6EndXSID: &table.Srv6EndXSID{
+		Srv6EndXSIDs: []*table.Srv6EndXSID{{
 			EndpointBehavior: table.BehaviorENDX,
 			Sids:             []string{testSrv6EndXSID},
 			Srv6SIDStructure: &table.SIDStructure{LocalBlock: 1, LocalNode: 2, LocalFunc: 3, LocalArg: 4},
-		},
+		}},
 	}
 
 	v := newTEDLinkView(link)

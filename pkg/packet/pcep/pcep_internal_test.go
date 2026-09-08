@@ -459,7 +459,7 @@ func TestEroObject_RoundTrip(t *testing.T) {
 		return subo
 	}
 	mkSRv6Ero := func(sidStr, localStr string) *SRv6EroSubobject {
-		seg := table.NewSegmentSRv6(netip.MustParseAddr(sidStr))
+		seg := table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr(sidStr)))
 		seg.LocalAddr = netip.MustParseAddr(localStr)
 		subo, err := NewSRv6EroSubobject(seg)
 		require.NoError(t, err)

@@ -190,7 +190,7 @@ func TestSRPolicies_SnapshotSRv6StructureIsIndependent(t *testing.T) {
 
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 
-	srv6Seg := table.NewSegmentSRv6(netip.MustParseAddr("2001:db8:1005::"))
+	srv6Seg := table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr("2001:db8:1005::")))
 	srv6Seg.Structure = &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalArg: 80}
 	ss.srPolicies = append(ss.srPolicies, table.NewSRPolicy(1, "pe01-policy1", []table.Segment{srv6Seg}, netip.MustParseAddr("10.255.0.1"), netip.MustParseAddr("10.255.0.2"), 0, 0, 0, table.PolicyUp))
 
@@ -4786,7 +4786,7 @@ func TestUpdateOrCreatePolicy_StaleLSPIDIsIgnored(t *testing.T) {
 func TestCreateEroFromSegmentList_SRv6(t *testing.T) {
 	t.Parallel()
 
-	seg := table.NewSegmentSRv6(netip.MustParseAddr("2001:db8:1::1"))
+	seg := table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr("2001:db8:1::1")))
 
 	ero, err := createEroFromSegmentList([]table.Segment{seg})
 	require.NoError(t, err)
@@ -4812,7 +4812,7 @@ func TestCreateEroFromSegmentList_InvalidSegmentReturnsError(t *testing.T) {
 func TestCreateEroFromSegmentList_SRv6InvalidSegmentReturnsError(t *testing.T) {
 	t.Parallel()
 
-	seg := table.NewSegmentSRv6(netip.MustParseAddr("2001:db8:1::1"))
+	seg := table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr("2001:db8:1::1")))
 	seg.LocalAddr = netip.MustParseAddr("fe80::1") // link-local adjacency NAI is unsupported.
 	seg.RemoteAddr = netip.MustParseAddr("fe80::2")
 
@@ -4835,7 +4835,8 @@ func TestSendPCEPMessage_SerializeErrorIsPropagated(t *testing.T) {
 
 type unknownSegment struct{}
 
-func (unknownSegment) SidString() string { return "unknown" }
+func (unknownSegment) SidString() string       { return "unknown" }
+func (unknownSegment) Family() table.DataPlane { return table.DPUnspecified }
 
 func TestSendPCInitiate_InvalidSegmentTypeIsRejected(t *testing.T) {
 	t.Parallel()
@@ -5411,7 +5412,7 @@ func TestValidateSegmentListForPeer(t *testing.T) {
 		table.NewSegmentSRMPLS(16003),
 	}
 
-	srv6Segment := table.NewSegmentSRv6(netip.MustParseAddr("2001:db8::1"))
+	srv6Segment := table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr("2001:db8::1")))
 	srv6 := []table.Segment{srv6Segment, srv6Segment, srv6Segment}
 
 	cases := map[string]struct {
@@ -5670,7 +5671,7 @@ func TestSendPCUpdateAndPCInitiate_RejectUnadvertisedPathSetupType(t *testing.T)
 		DstAddr:     netip.MustParseAddr("2001:db8::2"),
 		Type:        table.PolicyTypeDynamic,
 		Metric:      table.TEMetric,
-		SegmentList: []table.Segment{table.NewSegmentSRv6(netip.MustParseAddr("2001:db8::100"))},
+		SegmentList: []table.Segment{table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr("2001:db8::100")))},
 	}
 
 	require.ErrorContains(t, ss.SendPCUpdate(srPolicy), "path setup type")

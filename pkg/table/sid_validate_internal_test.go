@@ -30,7 +30,10 @@ func TestSIDIndexNextHop_OwnerUnknownBranches(t *testing.T) {
 	node := &LsNode{
 		RouterID: sidValidateInternalTestRouterID1,
 		Links: []*LsLink{
-			{AdjSid: 24001, Srv6EndXSID: &Srv6EndXSID{Sids: []string{"2001:db8::a"}}},
+			{
+				AdjSids:      []AdjSID{{Sid: 24001}},
+				Srv6EndXSIDs: []*Srv6EndXSID{{Sids: []string{"2001:db8::a"}}},
+			},
 		},
 		SRv6SIDs: []*LsSrv6SID{
 			{Sids: []string{"2001:db8::1"}},
@@ -57,7 +60,7 @@ func TestSIDIndexNextHop_OwnerUnknownBranches(t *testing.T) {
 	t.Run("owner unknown with known SRv6 adjacency SID", func(t *testing.T) {
 		t.Parallel()
 
-		next, err := idx.NextHop(ownerUnknown, NewSegmentSRv6(netip.MustParseAddr("2001:db8::a")))
+		next, err := idx.NextHop(ownerUnknown, NewSegmentSRv6(SRv6SID(netip.MustParseAddr("2001:db8::a"))))
 		require.NoError(t, err)
 		assert.Equal(t, ownerUnknown, next)
 	})
@@ -65,10 +68,29 @@ func TestSIDIndexNextHop_OwnerUnknownBranches(t *testing.T) {
 	t.Run("owner unknown with unknown SRv6 SID", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := idx.NextHop(ownerUnknown, NewSegmentSRv6(netip.MustParseAddr("2001:db8::99")))
+		_, err := idx.NextHop(ownerUnknown, NewSegmentSRv6(SRv6SID(netip.MustParseAddr("2001:db8::99"))))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "not found in TED")
 	})
+}
+
+func TestAddLinkSIDs_SkipsZeroAdjSIDAndNilEndXSID(t *testing.T) {
+	t.Parallel()
+
+	node := &LsNode{
+		RouterID: sidValidateInternalTestRouterID1,
+		Links: []*LsLink{
+			{
+				AdjSids:      []AdjSID{{Sid: 0}, {Sid: 24001}},
+				Srv6EndXSIDs: []*Srv6EndXSID{nil, {Sids: []string{"2001:db8::a"}}},
+			},
+		},
+	}
+	idx := NewSIDIndex(newSIDValidateInternalTestTED(node))
+
+	assert.False(t, idx.Has(NewSegmentSRMPLS(0)), "a zero Adj-SID must not be registered")
+	assert.True(t, idx.Has(NewSegmentSRMPLS(24001)))
+	assert.True(t, idx.Has(NewSegmentSRv6(SRv6SID(netip.MustParseAddr("2001:db8::a")))))
 }
 
 func TestSIDIndexNextHop_ConflictingExactOwnerIsDeterministic(t *testing.T) {
@@ -83,7 +105,7 @@ func TestSIDIndexNextHop_ConflictingExactOwnerIsDeterministic(t *testing.T) {
 		for range 20 {
 			idx := NewSIDIndex(newSIDValidateInternalTestTED(nodeX, nodeY))
 
-			next, err := idx.NextHop(ownerUnknown, NewSegmentSRv6(netip.MustParseAddr("2001:db8::1")))
+			next, err := idx.NextHop(ownerUnknown, NewSegmentSRv6(SRv6SID(netip.MustParseAddr("2001:db8::1"))))
 			require.NoError(t, err)
 			assert.Equal(t, ownerUnknown, next, "conflicting owners must never resolve to whichever node was visited last")
 		}
@@ -360,7 +382,7 @@ func TestAddSRv6_StructurePresence(t *testing.T) {
 		idx := NewSIDIndex(newSIDValidateInternalTestTED(node))
 
 		assert.Empty(t, idx.srv6Locators, "no structure was advertised, so no locator can be derived")
-		assert.True(t, idx.Has(NewSegmentSRv6(netip.MustParseAddr("fc00:1::1"))))
+		assert.True(t, idx.Has(NewSegmentSRv6(SRv6SID(netip.MustParseAddr("fc00:1::1")))))
 	})
 
 	t.Run("LocalNode zero with LocalBlock set registers a locator, not skipped as if absent", func(t *testing.T) {
@@ -384,7 +406,7 @@ func TestAddSRv6_StructurePresence(t *testing.T) {
 		}}
 		idx := NewSIDIndex(newSIDValidateInternalTestTED(node))
 
-		assert.True(t, idx.Has(NewSegmentSRv6(netip.MustParseAddr("fc00::1"))), "expected the exact SID to still be registered")
+		assert.True(t, idx.Has(NewSegmentSRv6(SRv6SID(netip.MustParseAddr("fc00::1")))), "expected the exact SID to still be registered")
 		assert.Empty(t, idx.srv6Locators, "a zero-width locator carries no usable per-node prefix, present or not")
 	})
 
@@ -396,8 +418,8 @@ func TestAddSRv6_StructurePresence(t *testing.T) {
 		idx := NewSIDIndex(newSIDValidateInternalTestTED(nodeAbsent, nodePresentZero))
 
 		assert.Empty(t, idx.srv6Locators)
-		assert.True(t, idx.Has(NewSegmentSRv6(netip.MustParseAddr("fc00::1"))))
-		assert.True(t, idx.Has(NewSegmentSRv6(netip.MustParseAddr("fc00::2"))))
+		assert.True(t, idx.Has(NewSegmentSRv6(SRv6SID(netip.MustParseAddr("fc00::1")))))
+		assert.True(t, idx.Has(NewSegmentSRv6(SRv6SID(netip.MustParseAddr("fc00::2")))))
 	})
 }
 
@@ -418,7 +440,7 @@ func TestUSIDContainerOwner(t *testing.T) {
 		}}}
 		idx := NewSIDIndex(newSIDValidateInternalTestTED(nodeX, nodeY, nodeZ))
 
-		seg := NewSegmentSRv6(netip.MustParseAddr("fcbb:bb00:0100:0200:0300::"))
+		seg := NewSegmentSRv6(SRv6SID(netip.MustParseAddr("fcbb:bb00:0100:0200:0300::")))
 		seg.USid = true
 		seg.Structure = &SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 0, LocalArg: 0}
 
@@ -438,7 +460,7 @@ func TestUSIDContainerOwner(t *testing.T) {
 		}}}
 		idx := NewSIDIndex(newSIDValidateInternalTestTED(nodeX, nodeY))
 
-		seg := NewSegmentSRv6(netip.MustParseAddr("fcbb:bb00:0100:0200::"))
+		seg := NewSegmentSRv6(SRv6SID(netip.MustParseAddr("fcbb:bb00:0100:0200::")))
 		seg.USid = true
 		seg.Structure = &SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 0, LocalArg: 0}
 
@@ -456,7 +478,7 @@ func TestUSIDContainerOwner(t *testing.T) {
 		}}}
 		idx := NewSIDIndex(newSIDValidateInternalTestTED(nodeX))
 
-		seg := NewSegmentSRv6(netip.MustParseAddr("fcbb:bb00:0100::"))
+		seg := NewSegmentSRv6(SRv6SID(netip.MustParseAddr("fcbb:bb00:0100::")))
 		seg.USid = true
 		seg.Structure = &SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 0, LocalArg: 0}
 
@@ -476,7 +498,7 @@ func TestUSIDContainerOwner(t *testing.T) {
 		}}}
 		idx := NewSIDIndex(newSIDValidateInternalTestTED(nodeX, nodeZ))
 
-		seg := NewSegmentSRv6(netip.MustParseAddr("fcbb:bb00:0100:0200:0300::"))
+		seg := NewSegmentSRv6(SRv6SID(netip.MustParseAddr("fcbb:bb00:0100:0200:0300::")))
 		seg.USid = true
 		seg.Structure = &SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 0, LocalArg: 0}
 
@@ -493,7 +515,7 @@ func TestUSIDContainerOwner(t *testing.T) {
 		}}}
 		idx := NewSIDIndex(newSIDValidateInternalTestTED(nodeX))
 
-		seg := NewSegmentSRv6(netip.MustParseAddr("fd00:bb00:0100:0200:0300::"))
+		seg := NewSegmentSRv6(SRv6SID(netip.MustParseAddr("fd00:bb00:0100:0200:0300::")))
 		seg.USid = true
 		seg.Structure = &SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 0, LocalArg: 0}
 
@@ -510,7 +532,7 @@ func TestUSIDContainerOwner(t *testing.T) {
 		idx := NewSIDIndex(newSIDValidateInternalTestTED(nodeX))
 
 		// The first micro-segment is all zero, marking the container end (RFC 9800 §5).
-		seg := NewSegmentSRv6(netip.MustParseAddr("fcbb:bb00:0000::"))
+		seg := NewSegmentSRv6(SRv6SID(netip.MustParseAddr("fcbb:bb00:0000::")))
 		seg.USid = true
 		seg.Structure = &SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 0, LocalArg: 0}
 
@@ -530,7 +552,7 @@ func TestUSIDContainerOwner(t *testing.T) {
 		}}}
 		idx := NewSIDIndex(newSIDValidateInternalTestTED(nodeX, nodeY))
 
-		seg := NewSegmentSRv6(netip.MustParseAddr("fcbb:bb00:0100::"))
+		seg := NewSegmentSRv6(SRv6SID(netip.MustParseAddr("fcbb:bb00:0100::")))
 		seg.USid = true
 		seg.Structure = &SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 0, LocalArg: 0}
 
@@ -548,7 +570,7 @@ func TestUSIDContainerOwner(t *testing.T) {
 		}}
 		idx := NewSIDIndex(newSIDValidateInternalTestTED(node))
 
-		seg := NewSegmentSRv6(netip.MustParseAddr("fcbb:bb00:0100::"))
+		seg := NewSegmentSRv6(SRv6SID(netip.MustParseAddr("fcbb:bb00:0100::")))
 		seg.USid = true
 
 		owner, matched := idx.usidContainerOwner(seg)
@@ -565,7 +587,7 @@ func TestUSIDContainerOwner(t *testing.T) {
 		}}
 		idx := NewSIDIndex(newSIDValidateInternalTestTED(node))
 
-		seg := NewSegmentSRv6(netip.MustParseAddr("fcbb:bb00:0100::"))
+		seg := NewSegmentSRv6(SRv6SID(netip.MustParseAddr("fcbb:bb00:0100::")))
 		seg.USid = true
 		seg.Structure = &SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 0, LocalArg: 0}
 
@@ -585,7 +607,7 @@ func TestUSIDContainerOwner(t *testing.T) {
 		}}}
 		idx := NewSIDIndex(newSIDValidateInternalTestTED(nodeA, nodeB))
 
-		seg := NewSegmentSRv6(netip.MustParseAddr("fcbb:bb00:0100:0200::"))
+		seg := NewSegmentSRv6(SRv6SID(netip.MustParseAddr("fcbb:bb00:0100:0200::")))
 		seg.USid = true
 
 		owner, matched := idx.usidContainerOwner(seg)
@@ -604,7 +626,7 @@ func TestUSIDContainerOwner(t *testing.T) {
 		}}
 		idx := NewSIDIndex(newSIDValidateInternalTestTED(nodeBroad, nodeSpecific))
 
-		seg := NewSegmentSRv6(netip.MustParseAddr("1234:5678::"))
+		seg := NewSegmentSRv6(SRv6SID(netip.MustParseAddr("1234:5678::")))
 		seg.USid = true
 
 		owner, matched := idx.usidContainerOwner(seg)
@@ -620,7 +642,7 @@ func TestUSIDContainerOwner(t *testing.T) {
 		}}}
 		idx := NewSIDIndex(newSIDValidateInternalTestTED(nodeX))
 
-		seg := NewSegmentSRv6(netip.MustParseAddr("fc00:1::1"))
+		seg := NewSegmentSRv6(SRv6SID(netip.MustParseAddr("fc00:1::1")))
 		seg.USid = true
 
 		owner, matched := idx.usidContainerOwner(seg)
@@ -639,7 +661,7 @@ func TestUSIDContainerOwner(t *testing.T) {
 		}}}
 		idx := NewSIDIndex(newSIDValidateInternalTestTED(nodeX, nodeY))
 
-		seg := NewSegmentSRv6(netip.MustParseAddr("fc00:1::1"))
+		seg := NewSegmentSRv6(SRv6SID(netip.MustParseAddr("fc00:1::1")))
 		seg.USid = true
 
 		owner, matched := idx.usidContainerOwner(seg)
@@ -655,7 +677,7 @@ func TestUSIDContainerOwner(t *testing.T) {
 		}}}
 		idx := NewSIDIndex(newSIDValidateInternalTestTED(nodeX))
 
-		seg := NewSegmentSRv6(netip.MustParseAddr("fc00:1::1"))
+		seg := NewSegmentSRv6(SRv6SID(netip.MustParseAddr("fc00:1::1")))
 		seg.USid = true
 		seg.Structure = &SIDStructure{LocalBlock: 32, LocalNode: 0, LocalFunc: 16, LocalArg: 0}
 
@@ -681,7 +703,7 @@ func TestUSIDContainerOwner(t *testing.T) {
 		t.Run("address outside the nested locator falls back to the flat umbrella owner", func(t *testing.T) {
 			t.Parallel()
 
-			seg := NewSegmentSRv6(netip.MustParseAddr("fcbb::1"))
+			seg := NewSegmentSRv6(SRv6SID(netip.MustParseAddr("fcbb::1")))
 			seg.USid = true
 
 			owner, matched := idx.usidContainerOwner(seg)
@@ -692,7 +714,7 @@ func TestUSIDContainerOwner(t *testing.T) {
 		t.Run("address within the nested locator still decomposes through the uSID chain", func(t *testing.T) {
 			t.Parallel()
 
-			seg := NewSegmentSRv6(netip.MustParseAddr("fcbb:bb00:0100:0200::"))
+			seg := NewSegmentSRv6(SRv6SID(netip.MustParseAddr("fcbb:bb00:0100:0200::")))
 			seg.USid = true
 
 			owner, matched := idx.usidContainerOwner(seg)

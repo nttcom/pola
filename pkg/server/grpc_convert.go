@@ -416,7 +416,7 @@ func convertLsLinks(links []*table.LsLink, lg *logger.Logger) []*pb.LsLink {
 
 	result := make([]*pb.LsLink, 0, len(links))
 	for _, link := range links {
-		if link == nil || link.LocalNode == nil || link.RemoteNode == nil {
+		if link == nil || link.Local.Node == nil || link.Remote.Node == nil {
 			lg.Debug("skip link with nil node", logger.Any("link", link))
 			continue
 		}
@@ -427,34 +427,43 @@ func convertLsLinks(links []*table.LsLink, lg *logger.Logger) []*pb.LsLink {
 	return result
 }
 
-// buildLsLink converts a single table.LsLink to protobuf LsLink.
+// The protobuf has no per-family address fields, so dual-stack links
+// report whichever address is available, preferring IPv4.
 func buildLsLink(link *table.LsLink) *pb.LsLink {
-	var localIP, remoteIP string
-
-	if link.LocalIP.IsValid() {
-		localIP = link.LocalIP.String()
-	}
-
-	if link.RemoteIP.IsValid() {
-		remoteIP = link.RemoteIP.String()
-	}
+	localIP := firstValidAddrString(link.Local.IPv4, link.Local.IPv6)
+	remoteIP := firstValidAddrString(link.Remote.IPv4, link.Remote.IPv6)
 
 	pbLink := &pb.LsLink{
-		LocalRouterId:  link.LocalNode.RouterID,
-		LocalAsn:       link.LocalNode.ASN,
+		LocalRouterId:  link.Local.Node.RouterID,
+		LocalAsn:       link.Local.Node.ASN,
 		LocalIp:        localIP,
-		RemoteRouterId: link.RemoteNode.RouterID,
-		RemoteAsn:      link.RemoteNode.ASN,
+		RemoteRouterId: link.Remote.Node.RouterID,
+		RemoteAsn:      link.Remote.Node.ASN,
 		RemoteIp:       remoteIP,
 		Metrics:        convertMetrics(link.Metrics),
-		AdjSid:         link.AdjSid,
 	}
 
-	if link.Srv6EndXSID != nil {
-		pbLink.Srv6EndXSid = convertSrv6EndXSID(link.Srv6EndXSID)
+	if len(link.AdjSids) > 0 {
+		pbLink.AdjSid = link.AdjSids[0].Sid
+	}
+
+	if len(link.Srv6EndXSIDs) > 0 && link.Srv6EndXSIDs[0] != nil {
+		pbLink.Srv6EndXSid = convertSrv6EndXSID(link.Srv6EndXSIDs[0])
 	}
 
 	return pbLink
+}
+
+func firstValidAddrString(v4, v6 netip.Addr) string {
+	if v4.IsValid() {
+		return v4.String()
+	}
+
+	if v6.IsValid() {
+		return v6.String()
+	}
+
+	return ""
 }
 
 // convertMetrics converts a slice of table.Metric to protobuf Metric.

@@ -111,7 +111,7 @@ func TestSegmentDisplayString(t *testing.T) {
 func TestSegmentDisplayString_SRv6(t *testing.T) {
 	t.Parallel()
 
-	sid := netip.MustParseAddr("2001:db8:1005::")
+	sid := table.SRv6SID(netip.MustParseAddr("2001:db8:1005::"))
 	local := netip.MustParseAddr("2001:db8::5")
 	remote := netip.MustParseAddr("2001:db8::6")
 
