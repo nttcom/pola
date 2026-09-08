@@ -850,8 +850,8 @@ func initializeLsNodes(ted *table.LsTED, nodes []*pb.LsNode) {
 
 func addLsNode(ted *table.LsTED, node *pb.LsNode) error {
 	for _, link := range node.GetLinks() {
-		localNode := ted.Nodes[link.GetLocalRouterId()]
-		remoteNode := ted.Nodes[link.GetRemoteRouterId()]
+		localNode := ted.Nodes[link.GetLocal().GetRouterId()]
+		remoteNode := ted.Nodes[link.GetRemote().GetRouterId()]
 
 		lsLink, err := createLsLink(localNode, remoteNode, link)
 		if err != nil {
@@ -903,23 +903,26 @@ func createLsPrefix(lsNode *table.LsNode, prefix *pb.LsPrefix) (*table.LsPrefix,
 func createLsLink(localNode, remoteNode *table.LsNode, link *pb.LsLink) (*table.LsLink, error) {
 	lsLink := table.NewLsLink(localNode, remoteNode)
 
-	if adjSid := link.GetAdjSid(); adjSid != 0 {
-		lsLink.AdjSids = append(lsLink.AdjSids, table.AdjSID{Family: table.AFUnspecified, Sid: adjSid})
+	local, err := createLinkEndpoint(localNode, link.GetLocal())
+	if err != nil {
+		return nil, fmt.Errorf("invalid local link endpoint: %w", err)
 	}
 
-	var localAddr, remoteAddr netip.Addr
+	lsLink.Local = local
 
-	if err := localAddr.UnmarshalText([]byte(link.GetLocalIp())); err != nil {
-		return nil, fmt.Errorf("invalid link local IP %q: %w", link.GetLocalIp(), err)
+	remote, err := createLinkEndpoint(remoteNode, link.GetRemote())
+	if err != nil {
+		return nil, fmt.Errorf("invalid remote link endpoint: %w", err)
 	}
 
-	setLinkEndpointAddr(&lsLink.Local, localAddr)
+	lsLink.Remote = remote
 
-	if err := remoteAddr.UnmarshalText([]byte(link.GetRemoteIp())); err != nil {
-		return nil, fmt.Errorf("invalid link remote IP %q: %w", link.GetRemoteIp(), err)
+	for _, adjSid := range link.GetAdjSids() {
+		lsLink.AdjSids = append(lsLink.AdjSids, table.AdjSID{
+			Family: fromPBAddressFamily(adjSid.GetFamily()),
+			Sid:    adjSid.GetSid(),
+		})
 	}
-
-	setLinkEndpointAddr(&lsLink.Remote, remoteAddr)
 
 	for _, metricInfo := range link.GetMetrics() {
 		metric, err := createMetric(metricInfo)
@@ -930,8 +933,8 @@ func createLsLink(localNode, remoteNode *table.LsNode, link *pb.LsLink) (*table.
 		lsLink.Metrics = append(lsLink.Metrics, metric)
 	}
 
-	if link.GetSrv6EndXSid() != nil {
-		srv6EndXSID, err := createSrv6EndXSID(link.GetSrv6EndXSid())
+	for _, pbEndXSID := range link.GetSrv6EndXSids() {
+		srv6EndXSID, err := createSrv6EndXSID(pbEndXSID)
 		if err != nil {
 			return nil, err
 		}
@@ -942,12 +945,37 @@ func createLsLink(localNode, remoteNode *table.LsNode, link *pb.LsLink) (*table.
 	return lsLink, nil
 }
 
-// setLinkEndpointAddr stores addr in the IPv4 or IPv6 field matching its family.
-func setLinkEndpointAddr(e *table.LinkEndpoint, addr netip.Addr) {
-	if addr.Is4() {
-		e.IPv4 = addr
-	} else {
-		e.IPv6 = addr
+func createLinkEndpoint(node *table.LsNode, pbEndpoint *pb.LsLinkEndpoint) (table.LinkEndpoint, error) {
+	e := table.LinkEndpoint{Node: node}
+
+	if s := pbEndpoint.GetIpv4(); s != "" {
+		if err := e.IPv4.UnmarshalText([]byte(s)); err != nil {
+			return table.LinkEndpoint{}, fmt.Errorf("invalid IPv4 address %q: %w", s, err)
+		}
+	}
+
+	if s := pbEndpoint.GetIpv6(); s != "" {
+		if err := e.IPv6.UnmarshalText([]byte(s)); err != nil {
+			return table.LinkEndpoint{}, fmt.Errorf("invalid IPv6 address %q: %w", s, err)
+		}
+	}
+
+	if pbEndpoint != nil && pbEndpoint.InterfaceId != nil {
+		ifaceID := pbEndpoint.GetInterfaceId()
+		e.InterfaceID = &ifaceID
+	}
+
+	return e, nil
+}
+
+func fromPBAddressFamily(af pb.AddressFamily) table.AddressFamily {
+	switch af {
+	case pb.AddressFamily_ADDRESS_FAMILY_IPV4:
+		return table.AFIPv4
+	case pb.AddressFamily_ADDRESS_FAMILY_IPV6:
+		return table.AFIPv6
+	default:
+		return table.AFUnspecified
 	}
 }
 

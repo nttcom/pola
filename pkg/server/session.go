@@ -1702,21 +1702,17 @@ func (ss *Session) computePathFromTED(sr *pcep.StateReport) ([]table.Segment, er
 
 	metricType := ss.selectMetricType(sr)
 
+	plane, err := ss.planeFromReport(sr)
+	if err != nil {
+		return nil, fmt.Errorf("resolve underlay plane: %w", err)
+	}
+
 	ss.logger.Debug("Computed CSPF parameters",
 		logger.String("srcRouterID", srcRouterID),
 		logger.String("dstRouterID", dstRouterID),
-		logger.String("metricType", metricType.String()))
-
-	// The API does not yet accept an explicit underlay plane for path computation.
-	srcNode, ok := tedNode(ss.ted, srcRouterID)
-	if !ok {
-		return nil, fmt.Errorf("no node with router ID %s", srcRouterID)
-	}
-
-	plane, err := srcNode.DefaultPlane()
-	if err != nil {
-		return nil, fmt.Errorf("get default plane: %w", err)
-	}
+		logger.String("metricType", metricType.String()),
+		logger.String("family", plane.Family.String()),
+		logger.String("dataPlane", plane.DataPlane.String()))
 
 	segmentList, err := cspf.CSPF(srcRouterID, dstRouterID, metricType, cspf.PathScope{Plane: plane}, ss.ted)
 	if err != nil {
@@ -1724,6 +1720,38 @@ func (ss *Session) computePathFromTED(sr *pcep.StateReport) ([]table.Segment, er
 	}
 
 	return segmentList, nil
+}
+
+func (ss *Session) planeFromReport(sr *pcep.StateReport) (table.Plane, error) {
+	family := table.FamilyOfAddr(sr.LSPObject.SrcAddr)
+	if family == table.AFUnspecified || family != table.FamilyOfAddr(sr.LSPObject.DstAddr) {
+		return table.Plane{}, errors.New("LSP source and destination addresses must be valid and share an address family")
+	}
+
+	dataPlane, err := ss.dataPlaneFromPeerCapabilities(family)
+	if err != nil {
+		return table.Plane{}, err
+	}
+
+	return table.Plane{Family: family, DataPlane: dataPlane}, nil
+}
+
+func (ss *Session) dataPlaneFromPeerCapabilities(af table.AddressFamily) (table.DataPlane, error) {
+	caps := ss.ReceivedCapabilities()
+
+	srv6 := af == table.AFIPv6 && peerSupportsPST(caps, pcep.PathSetupTypeSRv6TE)
+	srmpls := peerSupportsPST(caps, pcep.PathSetupTypeSRTE)
+
+	switch {
+	case srv6 && !srmpls:
+		return table.DPSRv6, nil
+	case srmpls && !srv6:
+		return table.DPSRMPLS, nil
+	case srv6 && srmpls:
+		return table.DPUnspecified, errors.New("PCC advertises both SR-MPLS and SRv6 path setup types; the data plane is ambiguous")
+	default:
+		return table.DPUnspecified, errors.New("PCC does not advertise a Segment Routing path setup type")
+	}
 }
 
 func (ss *Session) extractSrcDstRouterIDs(sr *pcep.StateReport) (srcRouterID, dstRouterID string, err error) {
@@ -1741,14 +1769,15 @@ func (ss *Session) extractSrcDstRouterIDs(sr *pcep.StateReport) (srcRouterID, ds
 		return "", "", errors.New("could not extract valid source and destination addresses")
 	}
 
+	routerIDIndex := ss.ted.RouterIDIndex()
 	addrIndex := ss.ted.AddressRouterIDIndex()
 
-	srcRouterID, err = ss.findRouterIDFromAddress(addrIndex, srcAddr)
+	srcRouterID, err = ss.findRouterIDFromAddress(routerIDIndex, addrIndex, srcAddr)
 	if err != nil {
 		return "", "", fmt.Errorf("cannot find source router ID for %s: %w", srcAddr, err)
 	}
 
-	dstRouterID, err = ss.findRouterIDFromAddress(addrIndex, dstAddr)
+	dstRouterID, err = ss.findRouterIDFromAddress(routerIDIndex, addrIndex, dstAddr)
 	if err != nil {
 		return "", "", fmt.Errorf("cannot find destination router ID for %s: %w", dstAddr, err)
 	}
@@ -1756,12 +1785,14 @@ func (ss *Session) extractSrcDstRouterIDs(sr *pcep.StateReport) (srcRouterID, ds
 	return srcRouterID, dstRouterID, nil
 }
 
-func (ss *Session) findRouterIDFromAddress(addrIndex map[netip.Addr]string, addr netip.Addr) (string, error) {
-	if node, ok := tedNode(ss.ted, addr.String()); ok {
-		return node.RouterID, nil
+// RouterIDIndex is authoritative; AddressRouterIDIndex is a fallback for
+// non-loopback addresses and uses "" for ambiguous advertisements.
+func (ss *Session) findRouterIDFromAddress(routerIDIndex, addrIndex map[netip.Addr]string, addr netip.Addr) (string, error) {
+	if routerID, ok := routerIDIndex[addr]; ok {
+		return routerID, nil
 	}
 
-	if routerID, ok := addrIndex[addr]; ok {
+	if routerID, ok := addrIndex[addr]; ok && routerID != "" {
 		return routerID, nil
 	}
 

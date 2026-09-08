@@ -81,7 +81,6 @@ func toPBSyncState(state SyncState) pb.LspDbSyncState {
 	}
 }
 
-// toPBSessionStats converts session counters and setup counters to protobuf.
 // Counters not applicable to Pola's PCE role are reported as 0.
 func toPBSessionStats(stats SessionStats, setupOK, setupFail uint64) *pb.SessionStats {
 	return &pb.SessionStats{
@@ -214,7 +213,6 @@ func capabilityType(t pcep.TLVType) pb.CapabilityType {
 	}
 }
 
-// buildPBSession converts a Session to its protobuf representation.
 // Stats is included only when requested.
 func (s *APIServer) buildPBSession(pcepSession *Session, includeStats bool) *pb.Session {
 	snap := pcepSession.snapshot()
@@ -297,6 +295,8 @@ func (s *APIServer) buildPBSRPolicy(pcepSession *Session, policy *table.SRPolicy
 
 	srPolicy.SrcRouterId = routerIDIndex[policy.SrcAddr]
 	srPolicy.DstRouterId = routerIDIndex[policy.DstAddr]
+	srPolicy.UnderlayFamily = toPBAddressFamily(policy.Plane.Family)
+	srPolicy.DataPlane = toPBDataPlane(policy.Plane.DataPlane)
 
 	for _, segment := range policy.SegmentList {
 		srPolicy.SegmentList = append(srPolicy.SegmentList, convertSegment(segment))
@@ -305,8 +305,6 @@ func (s *APIServer) buildPBSRPolicy(pcepSession *Session, policy *table.SRPolicy
 	return srPolicy
 }
 
-// buildPBSRPolicySession converts a Session and its SR Policies into the
-// lightweight SRPolicySession representation returned by GetSRPolicyList.
 func buildPBSRPolicySession(pcepSession *Session, policies []*pb.SRPolicy) *pb.SRPolicySession {
 	snap := pcepSession.snapshot()
 
@@ -315,6 +313,50 @@ func buildPBSRPolicySession(pcepSession *Session, policies []*pb.SRPolicy) *pb.S
 		State:      toPBSessionState(snap.state),
 		SyncState:  toPBSyncState(snap.syncState),
 		SrPolicies: policies,
+	}
+}
+
+func toPBAddressFamily(af table.AddressFamily) pb.AddressFamily {
+	switch af {
+	case table.AFIPv4:
+		return pb.AddressFamily_ADDRESS_FAMILY_IPV4
+	case table.AFIPv6:
+		return pb.AddressFamily_ADDRESS_FAMILY_IPV6
+	default:
+		return pb.AddressFamily_ADDRESS_FAMILY_UNSPECIFIED
+	}
+}
+
+func fromPBAddressFamily(af pb.AddressFamily) table.AddressFamily {
+	switch af {
+	case pb.AddressFamily_ADDRESS_FAMILY_IPV4:
+		return table.AFIPv4
+	case pb.AddressFamily_ADDRESS_FAMILY_IPV6:
+		return table.AFIPv6
+	default:
+		return table.AFUnspecified
+	}
+}
+
+func toPBDataPlane(dp table.DataPlane) pb.DataPlane {
+	switch dp {
+	case table.DPSRMPLS:
+		return pb.DataPlane_DATA_PLANE_SR_MPLS
+	case table.DPSRv6:
+		return pb.DataPlane_DATA_PLANE_SRV6
+	default:
+		return pb.DataPlane_DATA_PLANE_UNSPECIFIED
+	}
+}
+
+func fromPBDataPlane(dp pb.DataPlane) table.DataPlane {
+	switch dp {
+	case pb.DataPlane_DATA_PLANE_SR_MPLS:
+		return table.DPSRMPLS
+	case pb.DataPlane_DATA_PLANE_SRV6:
+		return table.DPSRv6
+	default:
+		return table.DPUnspecified
 	}
 }
 
@@ -374,6 +416,9 @@ func convertSegment(seg table.Segment) *pb.Segment {
 		if s := v.Structure; s != nil {
 			pbSeg.SidStructure = fmt.Sprintf("%d,%d,%d,%d", s.LocalBlock, s.LocalNode, s.LocalFunc, s.LocalArg)
 		}
+
+		pbSeg.Behavior = uint32(v.Behavior)
+		setPBIfaceIDs(pbSeg, v.LocalIfaceID, v.RemoteIfaceID)
 	case table.SegmentSRMPLS:
 		if v.LocalAddr.IsValid() {
 			pbSeg.LocalAddr = v.LocalAddr.String()
@@ -384,12 +429,22 @@ func convertSegment(seg table.Segment) *pb.Segment {
 		}
 
 		pbSeg.SidAbsent = v.SidAbsent
+		setPBIfaceIDs(pbSeg, v.LocalIfaceID, v.RemoteIfaceID)
 	}
 
 	return pbSeg
 }
 
-// convertLsNode converts a table.LsNode to a protobuf LsNode.
+func setPBIfaceIDs(pbSeg *pb.Segment, localIfaceID, remoteIfaceID *uint32) {
+	if localIfaceID != nil {
+		pbSeg.LocalIfaceId = new(*localIfaceID)
+	}
+
+	if remoteIfaceID != nil {
+		pbSeg.RemoteIfaceId = new(*remoteIfaceID)
+	}
+}
+
 func convertLsNode(lsNode *table.LsNode, lg *logger.Logger) *pb.LsNode {
 	if lsNode == nil {
 		return nil
@@ -408,7 +463,6 @@ func convertLsNode(lsNode *table.LsNode, lg *logger.Logger) *pb.LsNode {
 	}
 }
 
-// convertLsLinks converts a slice of table.LsLink to protobuf LsLink.
 func convertLsLinks(links []*table.LsLink, lg *logger.Logger) []*pb.LsLink {
 	if links == nil {
 		return nil
@@ -427,46 +481,51 @@ func convertLsLinks(links []*table.LsLink, lg *logger.Logger) []*pb.LsLink {
 	return result
 }
 
-// The protobuf has no per-family address fields, so dual-stack links
-// report whichever address is available, preferring IPv4.
 func buildLsLink(link *table.LsLink) *pb.LsLink {
-	localIP := firstValidAddrString(link.Local.IPv4, link.Local.IPv6)
-	remoteIP := firstValidAddrString(link.Remote.IPv4, link.Remote.IPv6)
-
 	pbLink := &pb.LsLink{
-		LocalRouterId:  link.Local.Node.RouterID,
-		LocalAsn:       link.Local.Node.ASN,
-		LocalIp:        localIP,
-		RemoteRouterId: link.Remote.Node.RouterID,
-		RemoteAsn:      link.Remote.Node.ASN,
-		RemoteIp:       remoteIP,
-		Metrics:        convertMetrics(link.Metrics),
+		Local:   buildLsLinkEndpoint(link.Local),
+		Remote:  buildLsLinkEndpoint(link.Remote),
+		Metrics: convertMetrics(link.Metrics),
 	}
 
-	if len(link.AdjSids) > 0 {
-		pbLink.AdjSid = link.AdjSids[0].Sid
+	for _, adjSID := range link.AdjSids {
+		pbLink.AdjSids = append(pbLink.AdjSids, &pb.AdjSid{
+			Family: toPBAddressFamily(adjSID.Family),
+			Sid:    adjSID.Sid,
+		})
 	}
 
-	if len(link.Srv6EndXSIDs) > 0 && link.Srv6EndXSIDs[0] != nil {
-		pbLink.Srv6EndXSid = convertSrv6EndXSID(link.Srv6EndXSIDs[0])
+	for _, endXSID := range link.Srv6EndXSIDs {
+		if endXSID != nil {
+			pbLink.Srv6EndXSids = append(pbLink.Srv6EndXSids, convertSrv6EndXSID(endXSID))
+		}
 	}
 
 	return pbLink
 }
 
-func firstValidAddrString(v4, v6 netip.Addr) string {
-	if v4.IsValid() {
-		return v4.String()
+// buildLsLinkEndpoint preserves each advertised address family independently.
+func buildLsLinkEndpoint(e table.LinkEndpoint) *pb.LsLinkEndpoint {
+	pbEndpoint := &pb.LsLinkEndpoint{
+		RouterId: e.Node.RouterID,
+		Asn:      e.Node.ASN,
 	}
 
-	if v6.IsValid() {
-		return v6.String()
+	if e.InterfaceID != nil {
+		pbEndpoint.InterfaceId = new(*e.InterfaceID)
 	}
 
-	return ""
+	if e.IPv4.IsValid() {
+		pbEndpoint.Ipv4 = e.IPv4.String()
+	}
+
+	if e.IPv6.IsValid() {
+		pbEndpoint.Ipv6 = e.IPv6.String()
+	}
+
+	return pbEndpoint
 }
 
-// convertMetrics converts a slice of table.Metric to protobuf Metric.
 func convertMetrics(metrics []*table.Metric) []*pb.Metric {
 	if metrics == nil {
 		return nil
@@ -484,7 +543,6 @@ func convertMetrics(metrics []*table.Metric) []*pb.Metric {
 	return result
 }
 
-// convertLsPrefixes converts a slice of table.LsPrefix to protobuf LsPrefix.
 func convertLsPrefixes(prefixes []*table.LsPrefix) []*pb.LsPrefix {
 	if prefixes == nil {
 		return nil
@@ -506,7 +564,6 @@ func convertLsPrefixes(prefixes []*table.LsPrefix) []*pb.LsPrefix {
 	return result
 }
 
-// convertLsSrv6SIDs converts a slice of table.LsSrv6SID to protobuf LsSrv6SID.
 func convertLsSrv6SIDs(sids []*table.LsSrv6SID) []*pb.LsSrv6SID {
 	if sids == nil {
 		return nil
@@ -522,7 +579,6 @@ func convertLsSrv6SIDs(sids []*table.LsSrv6SID) []*pb.LsSrv6SID {
 	return result
 }
 
-// buildLsSrv6SID converts a single table.LsSrv6SID to protobuf LsSrv6SID.
 func buildLsSrv6SID(s *table.LsSrv6SID) *pb.LsSrv6SID {
 	pbSID := &pb.LsSrv6SID{
 		Sids:         make([]*pb.SID, 0, len(s.Sids)),

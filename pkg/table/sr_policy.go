@@ -53,6 +53,9 @@ type SRPolicy struct {
 	// Type and Metric are only known for policies created by Pola.
 	Type   PolicyType `json:"type,omitempty"`
 	Metric MetricType `json:"metric,omitempty"`
+	// Plane is the underlay plane used for dynamic path computation.
+	// Zero for explicit paths, which have no underlay plane.
+	Plane Plane `json:"plane,omitzero"`
 }
 
 // NewSRPolicy creates a new SR Policy with the given attributes.

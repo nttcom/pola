@@ -203,25 +203,29 @@ func TestBuildLsLink_LinkIPs(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		localIP      netip.Addr
-		remoteIP     netip.Addr
-		wantLocalIP  string
-		wantRemoteIP string
+		localIPv4    netip.Addr
+		localIPv6    netip.Addr
+		remoteIPv4   netip.Addr
+		wantLocalV4  string
+		wantLocalV6  string
+		wantRemoteV4 string
 	}{
 		{
 			name:         "valid IPs are stringified",
-			localIP:      netip.MustParseAddr("192.0.2.1"),
-			remoteIP:     netip.MustParseAddr("192.0.2.2"),
-			wantLocalIP:  "192.0.2.1",
-			wantRemoteIP: "192.0.2.2",
+			localIPv4:    netip.MustParseAddr("192.0.2.1"),
+			remoteIPv4:   netip.MustParseAddr("192.0.2.2"),
+			wantLocalV4:  "192.0.2.1",
+			wantRemoteV4: "192.0.2.2",
 		},
 		{
 			name: "absent IPs stay empty",
 		},
 		{
-			name:        "only the valid side is stringified",
-			localIP:     netip.MustParseAddr("2001:db8::1"),
-			wantLocalIP: "2001:db8::1",
+			name:        "each family round-trips independently",
+			localIPv4:   netip.MustParseAddr("192.0.2.1"),
+			localIPv6:   netip.MustParseAddr("2001:db8::1"),
+			wantLocalV4: "192.0.2.1",
+			wantLocalV6: "2001:db8::1",
 		},
 	}
 	for _, tt := range tests {
@@ -229,24 +233,62 @@ func TestBuildLsLink_LinkIPs(t *testing.T) {
 			t.Parallel()
 
 			link := table.NewLsLink(localNode, remoteNode)
-			if tt.localIP.Is4() {
-				link.Local.IPv4 = tt.localIP
-			} else {
-				link.Local.IPv6 = tt.localIP
-			}
-
-			if tt.remoteIP.Is4() {
-				link.Remote.IPv4 = tt.remoteIP
-			} else {
-				link.Remote.IPv6 = tt.remoteIP
-			}
+			link.Local.IPv4 = tt.localIPv4
+			link.Local.IPv6 = tt.localIPv6
+			link.Remote.IPv4 = tt.remoteIPv4
 
 			got := buildLsLink(link)
 
-			assert.Equal(t, tt.wantLocalIP, got.GetLocalIp())
-			assert.Equal(t, tt.wantRemoteIP, got.GetRemoteIp())
+			assert.Equal(t, tt.wantLocalV4, got.GetLocal().GetIpv4())
+			assert.Equal(t, tt.wantLocalV6, got.GetLocal().GetIpv6())
+			assert.Equal(t, tt.wantRemoteV4, got.GetRemote().GetIpv4())
+			assert.Empty(t, got.GetRemote().GetIpv6())
 		})
 	}
+}
+
+func TestToPBAddressFamily(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, pb.AddressFamily_ADDRESS_FAMILY_IPV4, toPBAddressFamily(table.AFIPv4))
+	assert.Equal(t, pb.AddressFamily_ADDRESS_FAMILY_IPV6, toPBAddressFamily(table.AFIPv6))
+	assert.Equal(t, pb.AddressFamily_ADDRESS_FAMILY_UNSPECIFIED, toPBAddressFamily(table.AFUnspecified))
+}
+
+func TestToPBDataPlane(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, pb.DataPlane_DATA_PLANE_SR_MPLS, toPBDataPlane(table.DPSRMPLS))
+	assert.Equal(t, pb.DataPlane_DATA_PLANE_SRV6, toPBDataPlane(table.DPSRv6))
+	assert.Equal(t, pb.DataPlane_DATA_PLANE_UNSPECIFIED, toPBDataPlane(table.DPUnspecified))
+}
+
+func TestSetPBIfaceIDs(t *testing.T) {
+	t.Parallel()
+
+	local := uint32(1)
+	remote := uint32(2)
+	pbSeg := &pb.Segment{}
+
+	setPBIfaceIDs(pbSeg, &local, &remote)
+
+	require.NotNil(t, pbSeg.LocalIfaceId)
+	require.NotNil(t, pbSeg.RemoteIfaceId)
+	assert.Equal(t, local, *pbSeg.LocalIfaceId)
+	assert.Equal(t, remote, *pbSeg.RemoteIfaceId)
+}
+
+func TestBuildLsLinkEndpoint_InterfaceID(t *testing.T) {
+	t.Parallel()
+
+	node := table.NewLsNode(65000, testRouterID1)
+	ifaceID := uint32(42)
+	endpoint := table.LinkEndpoint{Node: node, InterfaceID: &ifaceID}
+
+	pbEndpoint := buildLsLinkEndpoint(endpoint)
+
+	require.NotNil(t, pbEndpoint.InterfaceId)
+	assert.Equal(t, ifaceID, *pbEndpoint.InterfaceId)
 }
 
 type tedOnlyClient struct {
@@ -295,8 +337,10 @@ func TestGetTED_LinksWithoutIPsRoundTripToCLI(t *testing.T) {
 
 	for _, pbNode := range resp.GetNodes() {
 		for _, pbLink := range pbNode.GetLinks() {
-			assert.Empty(t, pbLink.GetLocalIp())
-			assert.Empty(t, pbLink.GetRemoteIp())
+			assert.Empty(t, pbLink.GetLocal().GetIpv4())
+			assert.Empty(t, pbLink.GetLocal().GetIpv6())
+			assert.Empty(t, pbLink.GetRemote().GetIpv4())
+			assert.Empty(t, pbLink.GetRemote().GetIpv6())
 		}
 	}
 

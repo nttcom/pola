@@ -486,6 +486,81 @@ func TestValidateSIDs_MixedSegmentTypesAreRejected(t *testing.T) {
 	assert.Contains(t, st.Message(), "mixed SR-MPLS and SRv6 SIDs")
 }
 
+func TestValidateEndpointFamilies(t *testing.T) {
+	t.Parallel()
+
+	ipv4 := netip.MustParseAddr("10.0.0.1")
+	ipv4Other := netip.MustParseAddr("10.0.0.2")
+	ipv6 := netip.MustParseAddr("2001:db8::1")
+	srv6Segs := []table.Segment{table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr(testSRv6SID1)))}
+	srmplsSegs := []table.Segment{table.NewSegmentSRMPLS(16003)}
+
+	tests := []struct {
+		name    string
+		path    resolvedPath
+		wantErr bool
+	}{
+		{name: "both unset is not second-guessed", path: resolvedPath{}},
+		{name: "matching IPv4 endpoints", path: resolvedPath{SrcAddr: ipv4, DstAddr: ipv4Other}},
+		{name: "matching IPv6 endpoints", path: resolvedPath{SrcAddr: ipv6, DstAddr: ipv6}},
+		{
+			name:    "mismatched endpoint families",
+			path:    resolvedPath{SrcAddr: ipv4, DstAddr: ipv6},
+			wantErr: true,
+		},
+		{
+			name:    "SRv6 segment list with an IPv4 endpoint",
+			path:    resolvedPath{SrcAddr: ipv4, DstAddr: ipv4Other, SegmentList: srv6Segs},
+			wantErr: true,
+		},
+		{
+			name: "SRv6 segment list with an IPv6 endpoint",
+			path: resolvedPath{SrcAddr: ipv6, DstAddr: ipv6, SegmentList: srv6Segs},
+		},
+		{
+			name: "SR-MPLS segment list with an IPv4 endpoint",
+			path: resolvedPath{SrcAddr: ipv4, DstAddr: ipv4Other, SegmentList: srmplsSegs},
+		},
+		{
+			name:    "SRv6 segment past the first position with an IPv4 endpoint",
+			path:    resolvedPath{SrcAddr: ipv4, DstAddr: ipv4Other, SegmentList: append(append([]table.Segment{}, srmplsSegs...), srv6Segs...)},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := validateEndpointFamilies(tt.path)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+
+			assert.NoError(t, err)
+		})
+	}
+}
+
+func TestValidateSIDs_SRv6SegmentListWithIPv4EndpointIsRejected(t *testing.T) {
+	t.Parallel()
+
+	s := newTestAPIServer(nil)
+	req := explicitPolicyRequest(true, testSRv6SID1)
+	req.DisablePathCompute = true
+	path := resolvedPath{
+		SegmentList: []table.Segment{table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr(testSRv6SID1)))},
+		SrcAddr:     netip.MustParseAddr(testAddrA),
+		DstAddr:     netip.MustParseAddr(testAddrB),
+	}
+
+	err := s.validateSIDs(req, path)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.InvalidArgument, st.Code())
+	assert.Contains(t, st.Message(), "SRv6 segment list requires IPv6 endpoints")
+}
+
 func TestServe_InvalidAddress(t *testing.T) {
 	t.Parallel()
 
@@ -1330,13 +1405,13 @@ func TestGetSegmentList_DynamicHopcountPrefersFewerHops(t *testing.T) {
 		Metric:      pb.MetricType_METRIC_TYPE_HOPCOUNT,
 	}
 
-	segmentList, metricType, err := getSegmentList(srPolicy, ted, false)
+	result, err := getSegmentList(srPolicy, ted, false)
 	require.NoError(t, err)
-	assert.Equal(t, table.HopcountMetric, metricType)
-	require.Len(t, segmentList, 1, "expected the direct 1-hop path over the 2-hop detour")
+	assert.Equal(t, table.HopcountMetric, result.Metric)
+	require.Len(t, result.SegmentList, 1, "expected the direct 1-hop path over the 2-hop detour")
 
-	mplsSeg, ok := segmentList[0].(table.SegmentSRMPLS)
-	require.Truef(t, ok, "segment type: got %T, want table.SegmentSRMPLS", segmentList[0])
+	mplsSeg, ok := result.SegmentList[0].(table.SegmentSRMPLS)
+	require.Truef(t, ok, "segment type: got %T, want table.SegmentSRMPLS", result.SegmentList[0])
 	assert.Equal(t, uint32(16004), mplsSeg.Sid)
 }
 
@@ -1368,17 +1443,17 @@ func TestGetSegmentList_DynamicWithWaypointsForcesTransit(t *testing.T) {
 		Waypoints:   []*pb.Waypoint{{RouterId: "B"}},
 	}
 
-	segmentList, metricType, err := getSegmentList(srPolicy, ted, false)
+	result, err := getSegmentList(srPolicy, ted, false)
 	require.NoError(t, err)
-	assert.Equal(t, table.HopcountMetric, metricType)
-	require.Len(t, segmentList, 2, "expected the direct 1-hop A-D path to be overridden by the B waypoint")
+	assert.Equal(t, table.HopcountMetric, result.Metric)
+	require.Len(t, result.SegmentList, 2, "expected the direct 1-hop A-D path to be overridden by the B waypoint")
 
-	firstHop, ok := segmentList[0].(table.SegmentSRMPLS)
-	require.Truef(t, ok, "segment type: got %T, want table.SegmentSRMPLS", segmentList[0])
+	firstHop, ok := result.SegmentList[0].(table.SegmentSRMPLS)
+	require.Truef(t, ok, "segment type: got %T, want table.SegmentSRMPLS", result.SegmentList[0])
 	assert.Equal(t, uint32(16002), firstHop.Sid, "first hop must be the waypoint node B")
 
-	secondHop, ok := segmentList[1].(table.SegmentSRMPLS)
-	require.Truef(t, ok, "segment type: got %T, want table.SegmentSRMPLS", segmentList[1])
+	secondHop, ok := result.SegmentList[1].(table.SegmentSRMPLS)
+	require.Truef(t, ok, "segment type: got %T, want table.SegmentSRMPLS", result.SegmentList[1])
 	assert.Equal(t, uint32(16004), secondHop.Sid, "second hop must be the destination node D")
 }
 
@@ -1412,15 +1487,15 @@ func TestGetSegmentList_Explicit(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, metricType, err := getSegmentList(tt.policy, &table.LsTED{}, false)
+			result, err := getSegmentList(tt.policy, &table.LsTED{}, false)
 			if tt.wantErr {
 				assert.Error(t, err)
 				return
 			}
 
 			require.NoError(t, err)
-			assert.Equal(t, table.UnspecifiedMetric, metricType)
-			assert.Len(t, got, tt.wantLen)
+			assert.Equal(t, table.UnspecifiedMetric, result.Metric)
+			assert.Len(t, result.SegmentList, tt.wantLen)
 		})
 	}
 }
@@ -1429,14 +1504,14 @@ func TestGetSegmentList_DynamicMetricError(t *testing.T) {
 	t.Parallel()
 
 	policy := &pb.SRPolicy{Type: pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC, Metric: pb.MetricType_METRIC_TYPE_UNSPECIFIED}
-	_, _, err := getSegmentList(policy, &table.LsTED{Nodes: map[string]*table.LsNode{}}, false)
+	_, err := getSegmentList(policy, &table.LsTED{Nodes: map[string]*table.LsNode{}}, false)
 	assert.Error(t, err, "expected an unresolvable metric to be rejected before CSPF runs")
 }
 
 func TestGetSegmentList_UndefinedType(t *testing.T) {
 	t.Parallel()
 
-	_, _, err := getSegmentList(&pb.SRPolicy{}, &table.LsTED{}, false)
+	_, err := getSegmentList(&pb.SRPolicy{}, &table.LsTED{}, false)
 	assert.Error(t, err)
 }
 
@@ -1451,7 +1526,7 @@ func TestGetSegmentList_DynamicUnknownSrcRouterID(t *testing.T) {
 		Metric:      pb.MetricType_METRIC_TYPE_HOPCOUNT,
 	}
 
-	_, _, err := getSegmentList(srPolicy, ted, false)
+	_, err := getSegmentList(srPolicy, ted, false)
 	assert.Error(t, err, "expected an unresolvable SrcRouterId to be rejected before CSPF runs")
 }
 
@@ -1467,7 +1542,7 @@ func TestGetSegmentList_DynamicSrcNodeWithoutViablePlane(t *testing.T) {
 		Metric:      pb.MetricType_METRIC_TYPE_HOPCOUNT,
 	}
 
-	_, _, err := getSegmentList(srPolicy, ted, false)
+	_, err := getSegmentList(srPolicy, ted, false)
 	assert.Error(t, err, "expected a source node without a Node SID to be rejected before CSPF runs")
 }
 
@@ -1721,21 +1796,135 @@ func TestGetLoopbackAddr(t *testing.T) {
 	}
 	ted := &table.LsTED{Nodes: map[string]*table.LsNode{node.RouterID: node, noLoopbackNode.RouterID: noLoopbackNode, "r3": nil}}
 
-	addr, err := getLoopbackAddr(ted, "r1")
+	addr, err := getLoopbackAddr(ted, "r1", table.AFIPv4)
 	require.NoError(t, err)
 	assert.Equal(t, "10.0.0.1", addr.String())
 
-	_, err = getLoopbackAddr(ted, "missing")
+	_, err = getLoopbackAddr(ted, "missing", table.AFIPv4)
 	require.ErrorContains(t, err, "no node with router ID missing")
 
-	_, err = getLoopbackAddr(ted, "r2")
+	_, err = getLoopbackAddr(ted, "r2", table.AFIPv4)
 	require.Error(t, err, "expected an error for a node without a loopback address")
 
-	_, err = getLoopbackAddr(ted, "r3")
+	_, err = getLoopbackAddr(ted, "r3", table.AFIPv4)
 	require.ErrorContains(t, err, "no node with router ID r3")
 
-	_, err = getLoopbackAddr(nil, "r1")
+	_, err = getLoopbackAddr(nil, "r1", table.AFIPv4)
 	assert.ErrorContains(t, err, "no node with router ID r1")
+}
+
+func TestDefaultLoopbackFamily(t *testing.T) {
+	t.Parallel()
+
+	node := &table.LsNode{
+		RouterID: "r1",
+		Prefixes: []*table.LsPrefix{{Prefix: netip.MustParsePrefix("10.0.0.1/32")}},
+	}
+	dualStackNode := &table.LsNode{
+		RouterID: "r2",
+		Prefixes: []*table.LsPrefix{
+			{Prefix: netip.MustParsePrefix("10.0.0.2/32")},
+			{Prefix: netip.MustParsePrefix("2001:db8::2/128")},
+		},
+	}
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{node.RouterID: node, dualStackNode.RouterID: dualStackNode}}
+
+	af, err := defaultLoopbackFamily(ted, "r1")
+	require.NoError(t, err)
+	assert.Equal(t, table.AFIPv4, af)
+
+	_, err = defaultLoopbackFamily(ted, "r2")
+	require.Error(t, err, "expected a node with loopbacks in multiple families to require an explicit family")
+
+	_, err = defaultLoopbackFamily(ted, "missing")
+	require.ErrorContains(t, err, "no node with router ID missing")
+}
+
+func TestResolvePlane(t *testing.T) {
+	t.Parallel()
+
+	srMPLSNode := &table.LsNode{
+		RouterID: "r1", SrgbBegin: 16000, SrgbEnd: 17000,
+		Prefixes: []*table.LsPrefix{{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 1, HasSidIndex: true}},
+	}
+
+	dualPlaneNode := &table.LsNode{
+		RouterID: "r2", SrgbBegin: 16000, SrgbEnd: 17000,
+		Prefixes: []*table.LsPrefix{{Prefix: netip.MustParsePrefix("10.0.0.2/32"), SidIndex: 2, HasSidIndex: true}},
+		SRv6SIDs: []*table.LsSrv6SID{{Sids: []string{testSRv6SID1}}},
+	}
+
+	tests := []struct {
+		name      string
+		node      *table.LsNode
+		family    pb.AddressFamily
+		dataPlane pb.DataPlane
+		wantPlane table.Plane
+		wantErr   string
+	}{
+		{
+			name:      "both unspecified defaults to the node's unique viable plane",
+			node:      srMPLSNode,
+			wantPlane: table.Plane{Family: table.AFIPv4, DataPlane: table.DPSRMPLS},
+		},
+		{
+			name:      "explicit plane is used verbatim",
+			node:      dualPlaneNode,
+			family:    pb.AddressFamily_ADDRESS_FAMILY_IPV6,
+			dataPlane: pb.DataPlane_DATA_PLANE_SRV6,
+			wantPlane: table.Plane{Family: table.AFIPv6, DataPlane: table.DPSRv6},
+		},
+		{
+			name:      "explicit invalid combination is rejected",
+			node:      dualPlaneNode,
+			family:    pb.AddressFamily_ADDRESS_FAMILY_IPV4,
+			dataPlane: pb.DataPlane_DATA_PLANE_SRV6,
+			wantErr:   "SRv6 requires IPv6",
+		},
+		{
+			name:    "ambiguous node without an explicit plane is rejected",
+			node:    dualPlaneNode,
+			wantErr: "explicit plane is required",
+		},
+		{
+			name:      "family alone is cross-checked against the node's unique plane",
+			node:      srMPLSNode,
+			family:    pb.AddressFamily_ADDRESS_FAMILY_IPV4,
+			wantPlane: table.Plane{Family: table.AFIPv4, DataPlane: table.DPSRMPLS},
+		},
+		{
+			name:    "family alone mismatching the node's unique plane is rejected",
+			node:    srMPLSNode,
+			family:  pb.AddressFamily_ADDRESS_FAMILY_IPV6,
+			wantErr: "does not match the requested underlay family",
+		},
+		{
+			name:      "data plane alone is cross-checked against the node's unique plane",
+			node:      srMPLSNode,
+			dataPlane: pb.DataPlane_DATA_PLANE_SR_MPLS,
+			wantPlane: table.Plane{Family: table.AFIPv4, DataPlane: table.DPSRMPLS},
+		},
+		{
+			name:      "data plane alone mismatching the node's unique plane is rejected",
+			node:      srMPLSNode,
+			dataPlane: pb.DataPlane_DATA_PLANE_SRV6,
+			wantErr:   "does not match the requested data plane",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			plane, err := resolvePlane(tt.node, tt.family, tt.dataPlane)
+			if tt.wantErr != "" {
+				assert.ErrorContains(t, err, tt.wantErr)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantPlane, plane)
+		})
+	}
 }
 
 func TestGetSyncedPCEPSession(t *testing.T) {
@@ -2169,7 +2358,6 @@ func TestCreateSRPolicy(t *testing.T) {
 	})
 }
 
-// readEROBehavior reads a PCEP message and returns the behavior from its first ERO subobject.
 func readEROBehavior(t *testing.T, r io.Reader) uint16 {
 	t.Helper()
 
@@ -2204,6 +2392,188 @@ func readEROBehavior(t *testing.T, r io.Reader) uint16 {
 	return 0
 }
 
+// pcepWireObject represents a decoded PCEP object for wire-level test inspection.
+// It retains fields not represented by table.SRPolicy.
+type pcepWireObject struct {
+	Class pcep.ObjectClass
+	Type  uint8
+	Body  []byte
+}
+
+func readPCEPObjects(t *testing.T, r io.Reader) []pcepWireObject {
+	t.Helper()
+
+	headerBytes := make([]byte, pcep.CommonHeaderLength)
+	_, err := io.ReadFull(r, headerBytes)
+	require.NoError(t, err)
+
+	var header pcep.CommonHeader
+	require.NoError(t, header.DecodeFromBytes(headerBytes))
+
+	body := make([]byte, int(header.MessageLength)-int(pcep.CommonHeaderLength))
+	_, err = io.ReadFull(r, body)
+	require.NoError(t, err)
+
+	const objectHeaderLength = 4
+
+	var objs []pcepWireObject
+
+	for len(body) > 0 {
+		var objHeader pcep.CommonObjectHeader
+		require.NoError(t, objHeader.DecodeFromBytes(body))
+
+		objs = append(objs, pcepWireObject{
+			Class: objHeader.ObjectClass,
+			Type:  uint8(objHeader.ObjectType),
+			Body:  body[objectHeaderLength:objHeader.ObjectLength],
+		})
+		body = body[objHeader.ObjectLength:]
+	}
+
+	return objs
+}
+
+func findPCEPObject(t *testing.T, objs []pcepWireObject, class pcep.ObjectClass) pcepWireObject {
+	t.Helper()
+
+	for _, obj := range objs {
+		if obj.Class == class {
+			return obj
+		}
+	}
+
+	t.Fatalf("no object of class %v found in PCEP message", class)
+
+	return pcepWireObject{}
+}
+
+func TestCreateSRPolicy_EndpointFamilyIndependentOfUnderlayPlane(t *testing.T) {
+	t.Parallel()
+
+	t.Run("IPv4 endpoint over an IPv6 SR-MPLS underlay", func(t *testing.T) {
+		t.Parallel()
+
+		// Use a non-/128 IPv6 Prefix-SID so the loopback family remains unambiguous.
+		srcNode := &table.LsNode{
+			ASN: 1, RouterID: "A", SrgbBegin: 16000, SrgbEnd: 17000,
+			Prefixes: []*table.LsPrefix{
+				{Prefix: netip.MustParsePrefix("10.0.0.1/32")},
+				{Prefix: netip.MustParsePrefix("2001:db8:a::/64"), SidIndex: 1, HasSidIndex: true},
+			},
+		}
+		dstNode := &table.LsNode{
+			ASN: 1, RouterID: "B", SrgbBegin: 16000, SrgbEnd: 17000,
+			Prefixes: []*table.LsPrefix{
+				{Prefix: netip.MustParsePrefix("10.0.0.2/32")},
+				{Prefix: netip.MustParsePrefix("2001:db8:b::/64"), SidIndex: 2, HasSidIndex: true},
+			},
+		}
+		link := table.NewLsLink(srcNode, dstNode)
+		link.Local.IPv6, link.Remote.IPv6 = netip.MustParseAddr("2001:db8:ab::1"), netip.MustParseAddr("2001:db8:ab::2")
+		link.Metrics = []*table.Metric{table.NewMetric(table.TEMetric, 10)}
+		srcNode.AddLink(link)
+		ted := &table.LsTED{Nodes: map[string]*table.LsNode{"A": srcNode, "B": dstNode}}
+
+		server, client := newTCPConnPair(t)
+		t.Cleanup(func() { assert.NoError(t, client.Close()) })
+
+		peerAddr := netip.MustParseAddr("10.0.255.1")
+		ss := NewSession(testLocalOpen(1), peerAddr, server, logger.NewNop(), nil, 0)
+		ss.syncState = SyncStateFinished
+		ss.commitPeerOpen(OpenParams{SessionID: 1, Keepalive: 30, DeadTimer: 120}, pcep.RFCCompliant,
+			[]pcep.CapabilityInterface{pcep.NewSRPCECapability(true, false, 0)})
+
+		s := &APIServer{pce: &Server{ted: ted, sessionList: []*Session{ss}}, logger: logger.NewNop()}
+
+		req := &pb.CreateSRPolicyRequest{
+			Asn: 1,
+			SrPolicy: &pb.SRPolicy{
+				Type:           pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC,
+				PolicyName:     testSRPolicyName,
+				Color:          100,
+				PeerAddr:       peerAddr.AsSlice(),
+				SrcRouterId:    "A",
+				DstRouterId:    "B",
+				Metric:         pb.MetricType_METRIC_TYPE_TE,
+				UnderlayFamily: pb.AddressFamily_ADDRESS_FAMILY_IPV6,
+				DataPlane:      pb.DataPlane_DATA_PLANE_SR_MPLS,
+			},
+		}
+
+		_, err := s.CreateSRPolicy(context.Background(), req)
+		require.NoError(t, err)
+
+		objs := readPCEPObjects(t, client)
+		endpoints := findPCEPObject(t, objs, pcep.ObjectClassEndpoints)
+		assert.Equal(t, uint8(pcep.ObjectTypeEndpointIPv4), endpoints.Type)
+
+		ero := findPCEPObject(t, objs, pcep.ObjectClassERO)
+		require.NotEmpty(t, ero.Body)
+		assert.Equal(t, uint8(pcep.SubobjectTypeEROSR), ero.Body[0]&0x7f)
+	})
+
+	t.Run("IPv6 endpoint over an IPv4 SR-MPLS underlay", func(t *testing.T) {
+		t.Parallel()
+
+		srcNode := &table.LsNode{
+			ASN: 1, RouterID: "C", SrgbBegin: 16000, SrgbEnd: 17000,
+			Prefixes: []*table.LsPrefix{
+				{Prefix: netip.MustParsePrefix("2001:db8:c::1/128")},
+				{Prefix: netip.MustParsePrefix("10.0.1.0/24"), SidIndex: 1, HasSidIndex: true},
+			},
+		}
+		dstNode := &table.LsNode{
+			ASN: 1, RouterID: "D", SrgbBegin: 16000, SrgbEnd: 17000,
+			Prefixes: []*table.LsPrefix{
+				{Prefix: netip.MustParsePrefix("2001:db8:d::1/128")},
+				{Prefix: netip.MustParsePrefix("10.0.2.0/24"), SidIndex: 2, HasSidIndex: true},
+			},
+		}
+		link := table.NewLsLink(srcNode, dstNode)
+		link.Local.IPv4, link.Remote.IPv4 = netip.MustParseAddr("10.0.1.1"), netip.MustParseAddr("10.0.2.1")
+		link.Metrics = []*table.Metric{table.NewMetric(table.TEMetric, 10)}
+		srcNode.AddLink(link)
+		ted := &table.LsTED{Nodes: map[string]*table.LsNode{"C": srcNode, "D": dstNode}}
+
+		server, client := newTCPConnPair(t)
+		t.Cleanup(func() { assert.NoError(t, client.Close()) })
+
+		peerAddr := netip.MustParseAddr("10.0.255.1")
+		ss := NewSession(testLocalOpen(1), peerAddr, server, logger.NewNop(), nil, 0)
+		ss.syncState = SyncStateFinished
+		ss.commitPeerOpen(OpenParams{SessionID: 1, Keepalive: 30, DeadTimer: 120}, pcep.RFCCompliant,
+			[]pcep.CapabilityInterface{pcep.NewSRPCECapability(true, false, 0)})
+
+		s := &APIServer{pce: &Server{ted: ted, sessionList: []*Session{ss}}, logger: logger.NewNop()}
+
+		req := &pb.CreateSRPolicyRequest{
+			Asn: 1,
+			SrPolicy: &pb.SRPolicy{
+				Type:           pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC,
+				PolicyName:     testSRPolicyName,
+				Color:          100,
+				PeerAddr:       peerAddr.AsSlice(),
+				SrcRouterId:    "C",
+				DstRouterId:    "D",
+				Metric:         pb.MetricType_METRIC_TYPE_TE,
+				UnderlayFamily: pb.AddressFamily_ADDRESS_FAMILY_IPV4,
+				DataPlane:      pb.DataPlane_DATA_PLANE_SR_MPLS,
+			},
+		}
+
+		_, err := s.CreateSRPolicy(context.Background(), req)
+		require.NoError(t, err)
+
+		objs := readPCEPObjects(t, client)
+		endpoints := findPCEPObject(t, objs, pcep.ObjectClassEndpoints)
+		assert.Equal(t, uint8(pcep.ObjectTypeEndpointIPv6), endpoints.Type, "endpoint family must stay IPv6 even though the underlay plane is IPv4/SR-MPLS")
+
+		ero := findPCEPObject(t, objs, pcep.ObjectClassERO)
+		require.NotEmpty(t, ero.Body)
+		assert.Equal(t, uint8(pcep.SubobjectTypeEROSR), ero.Body[0]&0x7f, "ERO must carry the SR-MPLS segment CSPF computed")
+	})
+}
+
 func TestCreateSRPolicy_SRv6WithoutLocalAddr(t *testing.T) {
 	t.Parallel()
 
@@ -2226,8 +2596,8 @@ func TestCreateSRPolicy_SRv6WithoutLocalAddr(t *testing.T) {
 			PolicyName:  testSRPolicyName,
 			Color:       100,
 			PeerAddr:    netip.MustParseAddr("10.0.255.1").AsSlice(),
-			SrcAddr:     netip.MustParseAddr("10.0.0.1").AsSlice(),
-			DstAddr:     netip.MustParseAddr("10.0.0.2").AsSlice(),
+			SrcAddr:     netip.MustParseAddr("2001:db8:e::1").AsSlice(),
+			DstAddr:     netip.MustParseAddr("2001:db8:e::2").AsSlice(),
 			SegmentList: []*pb.Segment{{Sid: testSRv6SID1}},
 		},
 		NoSidValidate: true,
@@ -3123,21 +3493,19 @@ func TestGetTED_ConvertsFullNode(t *testing.T) {
 		SrgbEnd:    17000,
 		Links: []*pb.LsLink{
 			{
-				LocalRouterId:  testRouterID1,
-				LocalAsn:       65000,
-				LocalIp:        "192.0.2.1",
-				RemoteRouterId: testRouterID2,
-				RemoteAsn:      65000,
-				RemoteIp:       "192.0.2.2",
+				Local:  &pb.LsLinkEndpoint{RouterId: testRouterID1, Asn: 65000, Ipv4: "192.0.2.1"},
+				Remote: &pb.LsLinkEndpoint{RouterId: testRouterID2, Asn: 65000, Ipv4: "192.0.2.2"},
 				Metrics: []*pb.Metric{
 					{Type: pb.MetricType_METRIC_TYPE_IGP, Value: 10},
 					{Type: pb.MetricType_METRIC_TYPE_TE, Value: 20},
 				},
-				AdjSid: 24001,
-				Srv6EndXSid: &pb.Srv6EndXSID{
-					EndpointBehavior: uint32(table.BehaviorENDX),
-					Sids:             []*pb.SID{{Sid: testSRv6SID1}},
-					SidStructure:     &pb.SidStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
+				AdjSids: []*pb.AdjSid{{Family: pb.AddressFamily_ADDRESS_FAMILY_UNSPECIFIED, Sid: 24001}},
+				Srv6EndXSids: []*pb.Srv6EndXSID{
+					{
+						EndpointBehavior: uint32(table.BehaviorENDX),
+						Sids:             []*pb.SID{{Sid: testSRv6SID1}},
+						SidStructure:     &pb.SidStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
+					},
 				},
 			},
 		},
