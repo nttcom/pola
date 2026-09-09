@@ -218,14 +218,14 @@ func TestSRPolicyIntent_AttachedOnCreationBySRPID(t *testing.T) {
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	sr := newTestStateReport(t, 1, 7)
 
-	ss.rememberSRPolicyIntent(7, table.PolicyTypeDynamic, table.TEMetric)
+	ss.rememberSRPolicyIntent(7, table.CandidatePath{Dynamic: &table.DynamicPath{Metric: table.TEMetric}})
 
 	require.NoError(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
 
 	policy, found := ss.SearchSRPolicy(sr.LSPObject.PlspID)
 	require.True(t, found, "SR Policy reported by the PCC was not registered")
-	assert.Equal(t, table.PolicyTypeDynamic, policy.Type)
-	assert.Equal(t, table.TEMetric, policy.Metric)
+	require.NotNil(t, policy.CandidatePath.Dynamic)
+	assert.Equal(t, table.TEMetric, policy.CandidatePath.Dynamic.Metric)
 }
 
 func TestSRPolicyIntent_AttachedOnUpdateBySRPID(t *testing.T) {
@@ -233,26 +233,25 @@ func TestSRPolicyIntent_AttachedOnUpdateBySRPID(t *testing.T) {
 
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 
-	ss.rememberSRPolicyIntent(1, table.PolicyTypeExplicit, table.UnspecifiedMetric)
+	ss.rememberSRPolicyIntent(1, table.CandidatePath{Explicit: &table.ExplicitPath{}})
 
 	sr := newTestStateReport(t, 1, 1)
 	require.NoError(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
 
 	policy, found := ss.SearchSRPolicy(sr.LSPObject.PlspID)
 	require.True(t, found, "SR Policy reported by the PCC was not registered")
-	require.Equal(t, table.PolicyTypeExplicit, policy.Type, "initial policy intent")
-	require.Equal(t, table.UnspecifiedMetric, policy.Metric, "initial policy intent")
+	require.NotNil(t, policy.CandidatePath.Explicit, "initial policy intent")
 
 	// A PCRpt for the same PLSP-ID takes the update path and must pick up the new intent.
-	ss.rememberSRPolicyIntent(2, table.PolicyTypeDynamic, table.TEMetric)
+	ss.rememberSRPolicyIntent(2, table.CandidatePath{Dynamic: &table.DynamicPath{Metric: table.TEMetric}})
 
 	sr2 := newTestStateReport(t, 1, 2)
 	require.NoError(t, ss.handleStateReport(sr2, pcep.NewPCRptMessage()))
 
 	policy, found = ss.SearchSRPolicy(sr2.LSPObject.PlspID)
 	require.True(t, found, "SR Policy reported by the PCC was not registered")
-	assert.Equal(t, table.PolicyTypeDynamic, policy.Type, "policy type after update")
-	assert.Equal(t, table.TEMetric, policy.Metric, "policy metric after update")
+	require.NotNil(t, policy.CandidatePath.Dynamic, "policy type after update")
+	assert.Equal(t, table.TEMetric, policy.CandidatePath.Dynamic.Metric, "policy metric after update")
 }
 
 func TestSRPolicyIntent_UnknownWhenNeverRemembered(t *testing.T) {
@@ -265,8 +264,8 @@ func TestSRPolicyIntent_UnknownWhenNeverRemembered(t *testing.T) {
 
 	policy, found := ss.SearchSRPolicy(sr.LSPObject.PlspID)
 	require.True(t, found, "SR Policy reported by the PCC was not registered")
-	assert.Equal(t, table.PolicyType(""), policy.Type, "policy type should be unset")
-	assert.Equal(t, table.UnspecifiedMetric, policy.Metric)
+	assert.Nil(t, policy.CandidatePath.Dynamic, "policy type should be unset")
+	assert.Nil(t, policy.CandidatePath.Explicit, "policy type should be unset")
 }
 
 func TestSRPolicyIntent_IndependentPerSRPID(t *testing.T) {
@@ -274,16 +273,16 @@ func TestSRPolicyIntent_IndependentPerSRPID(t *testing.T) {
 
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 
-	ss.rememberSRPolicyIntent(1, table.PolicyTypeExplicit, table.UnspecifiedMetric)
-	ss.rememberSRPolicyIntent(2, table.PolicyTypeDynamic, table.TEMetric)
+	ss.rememberSRPolicyIntent(1, table.CandidatePath{Explicit: &table.ExplicitPath{}})
+	ss.rememberSRPolicyIntent(2, table.CandidatePath{Dynamic: &table.DynamicPath{Metric: table.TEMetric}})
 
 	// SRP-ID 2's PCRpt arrives first and must only consume intent 2.
 	srB := newTestStateReport(t, 20, 2)
 	require.NoError(t, ss.handleStateReport(srB, pcep.NewPCRptMessage()))
 	policyB, found := ss.SearchSRPolicy(srB.LSPObject.PlspID)
 	require.True(t, found, "SR Policy for SRP-ID 2 was not registered")
-	assert.Equal(t, table.PolicyTypeDynamic, policyB.Type, "policy for SRP-ID 2")
-	assert.Equal(t, table.TEMetric, policyB.Metric, "policy for SRP-ID 2")
+	require.NotNil(t, policyB.CandidatePath.Dynamic, "policy for SRP-ID 2")
+	assert.Equal(t, table.TEMetric, policyB.CandidatePath.Dynamic.Metric, "policy for SRP-ID 2")
 
 	ss.srPolicyIntentsMu.Lock()
 	_, ok := ss.srPolicyIntents[1]
@@ -295,22 +294,21 @@ func TestSRPolicyIntent_IndependentPerSRPID(t *testing.T) {
 	require.NoError(t, ss.handleStateReport(srA, pcep.NewPCRptMessage()))
 	policyA, found := ss.SearchSRPolicy(srA.LSPObject.PlspID)
 	require.True(t, found, "SR Policy for SRP-ID 1 was not registered")
-	assert.Equal(t, table.PolicyTypeExplicit, policyA.Type, "policy for SRP-ID 1")
-	assert.Equal(t, table.UnspecifiedMetric, policyA.Metric, "policy for SRP-ID 1")
+	assert.NotNil(t, policyA.CandidatePath.Explicit, "policy for SRP-ID 1")
 }
 
 func TestSRPolicyIntent_UnsolicitedPCRptDoesNotConsume(t *testing.T) {
 	t.Parallel()
 
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
-	ss.rememberSRPolicyIntent(1, table.PolicyTypeDynamic, table.TEMetric)
+	ss.rememberSRPolicyIntent(1, table.CandidatePath{Dynamic: &table.DynamicPath{Metric: table.TEMetric}})
 
 	sr := newTestStateReport(t, 1, 0)
 	require.NoError(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
 
 	policy, found := ss.SearchSRPolicy(sr.LSPObject.PlspID)
 	require.True(t, found, "SR Policy reported by the PCC was not registered")
-	assert.Equal(t, table.PolicyType(""), policy.Type, "unsolicited PCRpt must not consume an intent")
+	assert.Nil(t, policy.CandidatePath.Dynamic, "unsolicited PCRpt must not consume an intent")
 
 	_, ok := ss.takeSRPolicyIntent(1)
 	assert.True(t, ok, "intent for SRP-ID 1 must remain after an unrelated unsolicited PCRpt")
@@ -325,7 +323,7 @@ func TestSRPolicyIntent_ClearedOnRFlagDelete(t *testing.T) {
 	sr := newTestStateReport(t, 1, 0)
 	require.NoError(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
 
-	ss.rememberSRPolicyIntent(5, table.PolicyTypeDynamic, table.TEMetric)
+	ss.rememberSRPolicyIntent(5, table.CandidatePath{Dynamic: &table.DynamicPath{Metric: table.TEMetric}})
 
 	del := newTestStateReport(t, 1, 5)
 	del.LSPObject.RFlag = true
@@ -342,8 +340,8 @@ func TestHandlePCErr_ForgetsReportedSRPIDIntents(t *testing.T) {
 	t.Parallel()
 
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
-	ss.rememberSRPolicyIntent(1, table.PolicyTypeDynamic, table.TEMetric)
-	ss.rememberSRPolicyIntent(2, table.PolicyTypeExplicit, table.UnspecifiedMetric)
+	ss.rememberSRPolicyIntent(1, table.CandidatePath{Dynamic: &table.DynamicPath{Metric: table.TEMetric}})
+	ss.rememberSRPolicyIntent(2, table.CandidatePath{Explicit: &table.ExplicitPath{}})
 
 	pcerrMessage := pcep.NewPCErrMessage(1, 1, nil)
 	pcerrMessage.SRPs = []*pcep.SrpObject{{SrpID: 1}}
@@ -380,15 +378,13 @@ func TestSendSRPolicyRequest_ForgetsIntentOnSendFailure(t *testing.T) {
 	req := &pb.CreateSRPolicyRequest{
 		SrPolicy: &pb.SRPolicy{
 			PeerAddr:   ss.peerAddr.AsSlice(),
-			DstAddr:    dstAddr.AsSlice(),
+			Endpoint:   dstAddr.AsSlice(),
 			Color:      100,
 			PolicyName: testSRPolicyName,
-			Type:       pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT,
 		},
-		DisablePathCompute: true,
 	}
 
-	err := sendSRPolicyRequest(apiServer, req, resolvedPath{SrcAddr: netip.MustParseAddr("10.255.0.1"), DstAddr: dstAddr, Metric: table.UnspecifiedMetric}, true)
+	err := sendSRPolicyRequest(apiServer, req, resolvedPath{Headend: netip.MustParseAddr("10.255.0.1"), Endpoint: dstAddr})
 	require.Error(t, err, "expected sendSRPolicyRequest to fail once the connection is closed")
 
 	_, ok := ss.takeSRPolicyIntent(wantSRPID)
@@ -405,7 +401,7 @@ func TestCloseSession_ClearsSRPolicyIntents(t *testing.T) {
 	})
 
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
-	ss.rememberSRPolicyIntent(1, table.PolicyTypeDynamic, table.TEMetric)
+	ss.rememberSRPolicyIntent(1, table.CandidatePath{Dynamic: &table.DynamicPath{Metric: table.TEMetric}})
 
 	s := &Server{sessionList: []*Session{ss}, logger: logger.NewNop()}
 	s.closeSession(ss)
@@ -451,12 +447,11 @@ func TestConcurrentSRPolicyRequestsAllocateUniqueSRPIDs(t *testing.T) {
 	for i := range goroutines {
 		wg.Go(func() {
 			srPolicy := table.SRPolicy{
-				Name:    "concurrent-test",
-				SrcAddr: netip.MustParseAddr("10.255.0.1"),
-				DstAddr: netip.MustParseAddr("10.255.0.2"),
-				Color:   uint32(i),
-				Type:    table.PolicyTypeDynamic,
-				Metric:  table.TEMetric,
+				Name:          "concurrent-test",
+				Headend:       netip.MustParseAddr("10.255.0.1"),
+				Endpoint:      netip.MustParseAddr("10.255.0.2"),
+				Color:         uint32(i),
+				CandidatePath: table.CandidatePath{Dynamic: &table.DynamicPath{Metric: table.TEMetric}},
 			}
 
 			var err error
@@ -491,7 +486,7 @@ func TestAllocateSRPID_SkipsReservedValues(t *testing.T) {
 	ss.srpIDHead = math.MaxUint32 - 1
 
 	for i, want := range []uint32{math.MaxUint32 - 1, 1, 2} {
-		got, err := ss.allocateSRPID(table.PolicyTypeDynamic, table.TEMetric)
+		got, err := ss.allocateSRPID(table.CandidatePath{Dynamic: &table.DynamicPath{Metric: table.TEMetric}})
 		require.NoErrorf(t, err, "allocation %d", i)
 		require.NotContainsf(t, []uint32{0, math.MaxUint32}, got, "allocation %d: got reserved SRP-ID", i)
 		assert.Equalf(t, want, got, "allocation %d", i)
@@ -564,7 +559,7 @@ func TestSweepExpiredSRPolicyIntents_RemovesExpired(t *testing.T) {
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	ss.srPolicyIntentsMu.Lock()
 	ss.srPolicyIntents = map[uint32]srPolicyIntent{
-		1: {polType: table.PolicyTypeDynamic, metric: table.TEMetric, expiresAt: time.Now().Add(-time.Second)},
+		1: {candidatePath: table.CandidatePath{Dynamic: &table.DynamicPath{Metric: table.TEMetric}}, expiresAt: time.Now().Add(-time.Second)},
 	}
 	ss.srPolicyIntentsMu.Unlock()
 
@@ -580,7 +575,7 @@ func TestSweepExpiredSRPolicyIntents_KeepsUnexpired(t *testing.T) {
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	ss.srPolicyIntentsMu.Lock()
 	ss.srPolicyIntents = map[uint32]srPolicyIntent{
-		1: {polType: table.PolicyTypeDynamic, metric: table.TEMetric, expiresAt: time.Now().Add(time.Hour)},
+		1: {candidatePath: table.CandidatePath{Dynamic: &table.DynamicPath{Metric: table.TEMetric}}, expiresAt: time.Now().Add(time.Hour)},
 	}
 	ss.srPolicyIntentsMu.Unlock()
 
@@ -594,8 +589,8 @@ func TestSweepExpiredSRPolicyIntents_KeepsUnrelatedIntent(t *testing.T) {
 	t.Parallel()
 
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
-	ss.rememberSRPolicyIntent(1, table.PolicyTypeDynamic, table.TEMetric)
-	ss.rememberSRPolicyIntent(2, table.PolicyTypeExplicit, table.UnspecifiedMetric)
+	ss.rememberSRPolicyIntent(1, table.CandidatePath{Dynamic: &table.DynamicPath{Metric: table.TEMetric}})
+	ss.rememberSRPolicyIntent(2, table.CandidatePath{Explicit: &table.ExplicitPath{}})
 
 	_, ok := ss.takeSRPolicyIntent(1)
 	require.True(t, ok, "expected intent 1 to be present before consuming it")
@@ -616,7 +611,7 @@ func TestIntentSweep_RunsInBackgroundAndStopsCleanly(t *testing.T) {
 	ss.startIntentSweep()
 	defer ss.stopIntentSweep()
 
-	ss.rememberSRPolicyIntent(1, table.PolicyTypeDynamic, table.TEMetric)
+	ss.rememberSRPolicyIntent(1, table.CandidatePath{Dynamic: &table.DynamicPath{Metric: table.TEMetric}})
 
 	require.Eventually(t, func() bool {
 		return !ss.srPolicyIntentExists(1)
@@ -627,7 +622,7 @@ func TestRememberSRPolicyIntent_IgnoresReservedSRPID(t *testing.T) {
 	t.Parallel()
 
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
-	ss.rememberSRPolicyIntent(0, table.PolicyTypeDynamic, table.TEMetric)
+	ss.rememberSRPolicyIntent(0, table.CandidatePath{Dynamic: &table.DynamicPath{Metric: table.TEMetric}})
 	assert.False(t, ss.srPolicyIntentExists(0))
 }
 
@@ -684,7 +679,7 @@ func TestIntentSweep_ConcurrentWithIntentConsumption(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := uint32(1); i <= 20; i++ {
 		wg.Go(func() {
-			ss.rememberSRPolicyIntent(i, table.PolicyTypeDynamic, table.TEMetric)
+			ss.rememberSRPolicyIntent(i, table.CandidatePath{Dynamic: &table.DynamicPath{Metric: table.TEMetric}})
 			time.Sleep(time.Millisecond)
 			ss.takeSRPolicyIntent(i)
 		})
@@ -717,13 +712,13 @@ func TestAllocateSRPID_SkipsInUseIDsOnWraparound(t *testing.T) {
 	ss.srpIDHead = math.MaxUint32 - 1
 
 	// Pre-occupy SRP-ID 1 so the wraparound scan must skip over it.
-	ss.rememberSRPolicyIntent(1, table.PolicyTypeExplicit, table.UnspecifiedMetric)
+	ss.rememberSRPolicyIntent(1, table.CandidatePath{Explicit: &table.ExplicitPath{}})
 
-	got, err := ss.allocateSRPID(table.PolicyTypeDynamic, table.TEMetric)
+	got, err := ss.allocateSRPID(table.CandidatePath{Dynamic: &table.DynamicPath{Metric: table.TEMetric}})
 	require.NoError(t, err, "allocation 1")
 	require.Equal(t, uint32(math.MaxUint32-1), got, "allocation 1")
 
-	got, err = ss.allocateSRPID(table.PolicyTypeDynamic, table.TEMetric)
+	got, err = ss.allocateSRPID(table.CandidatePath{Dynamic: &table.DynamicPath{Metric: table.TEMetric}})
 	require.NoError(t, err, "allocation 2")
 	assert.Equal(t, uint32(2), got, "allocation 2: SRP-ID 1 is still in use and must be skipped")
 
@@ -736,10 +731,10 @@ func TestAllocateSRPID_ErrorsWhenExhausted(t *testing.T) {
 
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	ss.srpIDMax = 3 // valid range is [1, 2]; 0 and 3 are reserved.
-	ss.rememberSRPolicyIntent(1, table.PolicyTypeDynamic, table.TEMetric)
-	ss.rememberSRPolicyIntent(2, table.PolicyTypeDynamic, table.TEMetric)
+	ss.rememberSRPolicyIntent(1, table.CandidatePath{Dynamic: &table.DynamicPath{Metric: table.TEMetric}})
+	ss.rememberSRPolicyIntent(2, table.CandidatePath{Dynamic: &table.DynamicPath{Metric: table.TEMetric}})
 
-	_, err := ss.allocateSRPID(table.PolicyTypeDynamic, table.TEMetric)
+	_, err := ss.allocateSRPID(table.CandidatePath{Dynamic: &table.DynamicPath{Metric: table.TEMetric}})
 	assert.Error(t, err, "expected an error when every non-reserved SRP-ID is in use")
 }
 
@@ -748,15 +743,14 @@ func TestSendPCInitiate_ErrorsWhenSRPIDExhausted(t *testing.T) {
 
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	ss.srpIDMax = 3
-	ss.rememberSRPolicyIntent(1, table.PolicyTypeDynamic, table.TEMetric)
-	ss.rememberSRPolicyIntent(2, table.PolicyTypeDynamic, table.TEMetric)
+	ss.rememberSRPolicyIntent(1, table.CandidatePath{Dynamic: &table.DynamicPath{Metric: table.TEMetric}})
+	ss.rememberSRPolicyIntent(2, table.CandidatePath{Dynamic: &table.DynamicPath{Metric: table.TEMetric}})
 
 	srPolicy := table.SRPolicy{
-		Name:    "srp-id-exhausted",
-		SrcAddr: netip.MustParseAddr("10.255.0.1"),
-		DstAddr: netip.MustParseAddr("10.255.0.2"),
-		Type:    table.PolicyTypeDynamic,
-		Metric:  table.TEMetric,
+		Name:          "srp-id-exhausted",
+		Headend:       netip.MustParseAddr("10.255.0.1"),
+		Endpoint:      netip.MustParseAddr("10.255.0.2"),
+		CandidatePath: table.CandidatePath{Dynamic: &table.DynamicPath{Metric: table.TEMetric}},
 	}
 
 	assert.Error(t, ss.SendPCInitiate(srPolicy, false))
@@ -767,15 +761,14 @@ func TestSendPCUpdate_ErrorsWhenSRPIDExhausted(t *testing.T) {
 
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	ss.srpIDMax = 3
-	ss.rememberSRPolicyIntent(1, table.PolicyTypeDynamic, table.TEMetric)
-	ss.rememberSRPolicyIntent(2, table.PolicyTypeDynamic, table.TEMetric)
+	ss.rememberSRPolicyIntent(1, table.CandidatePath{Dynamic: &table.DynamicPath{Metric: table.TEMetric}})
+	ss.rememberSRPolicyIntent(2, table.CandidatePath{Dynamic: &table.DynamicPath{Metric: table.TEMetric}})
 
 	srPolicy := table.SRPolicy{
-		Name:    "srp-id-exhausted",
-		SrcAddr: netip.MustParseAddr("10.255.0.1"),
-		DstAddr: netip.MustParseAddr("10.255.0.2"),
-		Type:    table.PolicyTypeDynamic,
-		Metric:  table.TEMetric,
+		Name:          "srp-id-exhausted",
+		Headend:       netip.MustParseAddr("10.255.0.1"),
+		Endpoint:      netip.MustParseAddr("10.255.0.2"),
+		CandidatePath: table.CandidatePath{Dynamic: &table.DynamicPath{Metric: table.TEMetric}},
 	}
 
 	assert.Error(t, ss.SendPCUpdate(srPolicy))
@@ -806,11 +799,10 @@ var concurrentSendCases = []concurrentSendCase{
 		name: "SendPCUpdate",
 		send: func(ss *Session, _ int) error {
 			return ss.SendPCUpdate(table.SRPolicy{
-				Name:    "concurrent-send-test",
-				SrcAddr: netip.MustParseAddr("10.255.0.1"),
-				DstAddr: netip.MustParseAddr("10.255.0.2"),
-				Type:    table.PolicyTypeDynamic,
-				Metric:  table.TEMetric,
+				Name:          "concurrent-send-test",
+				Headend:       netip.MustParseAddr("10.255.0.1"),
+				Endpoint:      netip.MustParseAddr("10.255.0.2"),
+				CandidatePath: table.CandidatePath{Dynamic: &table.DynamicPath{Metric: table.TEMetric}},
 			})
 		},
 	},
@@ -818,12 +810,11 @@ var concurrentSendCases = []concurrentSendCase{
 		name: "RequestSRPolicyCreated",
 		send: func(ss *Session, i int) error {
 			return ss.RequestSRPolicyCreated(table.SRPolicy{
-				Name:    "concurrent-send-test",
-				SrcAddr: netip.MustParseAddr("10.255.0.1"),
-				DstAddr: netip.MustParseAddr("10.255.0.2"),
-				Color:   uint32(i),
-				Type:    table.PolicyTypeDynamic,
-				Metric:  table.TEMetric,
+				Name:          "concurrent-send-test",
+				Headend:       netip.MustParseAddr("10.255.0.1"),
+				Endpoint:      netip.MustParseAddr("10.255.0.2"),
+				Color:         uint32(i),
+				CandidatePath: table.CandidatePath{Dynamic: &table.DynamicPath{Metric: table.TEMetric}},
 			})
 		},
 	},
@@ -3671,7 +3662,7 @@ func TestReceivePCEPMessage_ProcessesMessagesThenReturnsOnClose(t *testing.T) {
 	})
 
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
-	ss.rememberSRPolicyIntent(9, table.PolicyTypeExplicit, table.UnspecifiedMetric)
+	ss.rememberSRPolicyIntent(9, table.CandidatePath{Explicit: &table.ExplicitPath{}})
 
 	keepaliveMessage := pcep.NewKeepaliveMessage()
 	writeMessage(t, client, keepaliveMessage)
@@ -4872,7 +4863,7 @@ func TestUpdateOrCreatePolicy_SrcAddrFallsBackToAssociationSrc(t *testing.T) {
 
 	policy, found := ss.SearchSRPolicy(1)
 	require.True(t, found)
-	assert.Equal(t, netip.MustParseAddr("192.0.2.9"), policy.SrcAddr)
+	assert.Equal(t, netip.MustParseAddr("192.0.2.9"), policy.Headend)
 }
 
 func TestUpdateOrCreatePolicy_InvalidSrcAddr(t *testing.T) {
@@ -4899,7 +4890,7 @@ func TestUpdateOrCreatePolicy_DstAddrFallsBackToAssociationEndpoint(t *testing.T
 
 	policy, found := ss.SearchSRPolicy(1)
 	require.True(t, found)
-	assert.Equal(t, netip.MustParseAddr("192.0.2.20"), policy.DstAddr)
+	assert.Equal(t, netip.MustParseAddr("192.0.2.20"), policy.Endpoint)
 }
 
 func TestUpdateOrCreatePolicy_InvalidDstAddr(t *testing.T) {
@@ -4996,8 +4987,8 @@ func TestSendPCInitiate_InvalidSegmentTypeIsRejected(t *testing.T) {
 	wantSRPID := ss.srpIDHead
 	srPolicy := table.SRPolicy{
 		Name:        "bad-segment",
-		SrcAddr:     netip.MustParseAddr("10.255.0.1"),
-		DstAddr:     netip.MustParseAddr("10.255.0.2"),
+		Headend:     netip.MustParseAddr("10.255.0.1"),
+		Endpoint:    netip.MustParseAddr("10.255.0.2"),
 		SegmentList: []table.Segment{unknownSegment{}},
 	}
 
@@ -5184,21 +5175,19 @@ func TestSessionStats_SendCountersIncrementOnSuccess(t *testing.T) {
 	assert.Equal(t, uint64(1), ss.Stats().PCErrSent)
 
 	require.NoError(t, ss.SendPCUpdate(table.SRPolicy{
-		Name:    "stats-test",
-		SrcAddr: netip.MustParseAddr("10.255.0.1"),
-		DstAddr: netip.MustParseAddr("10.255.0.2"),
-		Type:    table.PolicyTypeDynamic,
-		Metric:  table.TEMetric,
+		Name:          "stats-test",
+		Headend:       netip.MustParseAddr("10.255.0.1"),
+		Endpoint:      netip.MustParseAddr("10.255.0.2"),
+		CandidatePath: table.CandidatePath{Dynamic: &table.DynamicPath{Metric: table.TEMetric}},
 	}))
 	require.NoError(t, readPCEPMessage(client))
 	assert.Equal(t, uint64(1), ss.Stats().UpdSent)
 
 	require.NoError(t, ss.SendPCInitiate(table.SRPolicy{
-		Name:    "stats-test",
-		SrcAddr: netip.MustParseAddr("10.255.0.1"),
-		DstAddr: netip.MustParseAddr("10.255.0.2"),
-		Type:    table.PolicyTypeDynamic,
-		Metric:  table.TEMetric,
+		Name:          "stats-test",
+		Headend:       netip.MustParseAddr("10.255.0.1"),
+		Endpoint:      netip.MustParseAddr("10.255.0.2"),
+		CandidatePath: table.CandidatePath{Dynamic: &table.DynamicPath{Metric: table.TEMetric}},
 	}, false))
 	require.NoError(t, readPCEPMessage(client))
 	assert.Equal(t, uint64(1), ss.Stats().PCInitiateSent)
@@ -5507,9 +5496,9 @@ func TestHandleStateReport_UnsupportedAssocTypeIsIgnoredForSRPolicySemantics(t *
 	policy, found := ss.SearchSRPolicy(sr.LSPObject.PlspID)
 	require.True(t, found)
 	assert.Equal(t, uint32(55), policy.Color)
-	assert.Equal(t, uint32(33), policy.Preference)
-	assert.Equal(t, netip.MustParseAddr("192.0.2.1"), policy.SrcAddr)
-	assert.Equal(t, netip.MustParseAddr("192.0.2.2"), policy.DstAddr)
+	assert.Equal(t, uint32(33), policy.CandidatePath.Preference)
+	assert.Equal(t, netip.MustParseAddr("192.0.2.1"), policy.Headend)
+	assert.Equal(t, netip.MustParseAddr("192.0.2.2"), policy.Endpoint)
 }
 
 func TestHandleStateReport_EveryUnsupportedAssocTypeIsReported(t *testing.T) {
@@ -5788,18 +5777,15 @@ func TestSendPCUpdateAndPCInitiate_RejectSegmentListDeeperThanPeerMSD(t *testing
 		[]pcep.CapabilityInterface{pcep.NewSRPCECapability(false, false, 1)})
 
 	srPolicy := table.SRPolicy{
-		Name:        "too-deep",
-		SrcAddr:     netip.MustParseAddr("10.255.0.1"),
-		DstAddr:     netip.MustParseAddr("10.255.0.2"),
-		Type:        table.PolicyTypeDynamic,
-		Metric:      table.TEMetric,
-		SegmentList: []table.Segment{table.NewSegmentSRMPLS(16001), table.NewSegmentSRMPLS(16002)},
+		Name:          "too-deep",
+		Headend:       netip.MustParseAddr("10.255.0.1"),
+		Endpoint:      netip.MustParseAddr("10.255.0.2"),
+		CandidatePath: table.CandidatePath{Dynamic: &table.DynamicPath{Metric: table.TEMetric}},
+		SegmentList:   []table.Segment{table.NewSegmentSRMPLS(16001), table.NewSegmentSRMPLS(16002)},
 	}
 
 	require.ErrorContains(t, ss.SendPCUpdate(srPolicy), "maximum SID depth")
 	require.ErrorContains(t, ss.SendPCInitiate(srPolicy, false), "maximum SID depth")
-
-	// Delete is not subject to the SID depth limit.
 	require.NoError(t, ss.SendPCInitiate(srPolicy, true))
 	assert.Equal(t, uint64(0), ss.Stats().UpdSent)
 }
@@ -5817,19 +5803,36 @@ func TestSendPCUpdateAndPCInitiate_RejectUnadvertisedPathSetupType(t *testing.T)
 		}})
 
 	srPolicy := table.SRPolicy{
-		Name:        "srv6-to-sr-mpls-only-pcc",
-		SrcAddr:     netip.MustParseAddr("2001:db8::1"),
-		DstAddr:     netip.MustParseAddr("2001:db8::2"),
-		Type:        table.PolicyTypeDynamic,
-		Metric:      table.TEMetric,
-		SegmentList: []table.Segment{table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr("2001:db8::100")))},
+		Name:          "srv6-to-sr-mpls-only-pcc",
+		Headend:       netip.MustParseAddr("2001:db8::1"),
+		Endpoint:      netip.MustParseAddr("2001:db8::2"),
+		CandidatePath: table.CandidatePath{Dynamic: &table.DynamicPath{Metric: table.TEMetric}},
+		SegmentList:   []table.Segment{table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr("2001:db8::100")))},
 	}
 
 	require.ErrorContains(t, ss.SendPCUpdate(srPolicy), "path setup type")
 	require.ErrorContains(t, ss.SendPCInitiate(srPolicy, false), "path setup type")
-
-	// Deletion uses the same PATH-SETUP-TYPE TLV and is rejected too.
 	require.ErrorContains(t, ss.SendPCInitiate(srPolicy, true), "path setup type")
 	assert.Equal(t, uint64(0), ss.Stats().UpdSent)
 	assert.Equal(t, uint64(0), ss.Stats().PCInitiateSent)
+}
+
+func TestSendPCInitiate_RejectsIPv6EndpointForJuniperLegacyPCC(t *testing.T) {
+	t.Parallel()
+
+	server, _ := newTCPConnPair(t)
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), server, logger.NewNop(), nil, 0)
+	ss.commitPeerOpen(OpenParams{SessionID: 1, Keepalive: 30, DeadTimer: 120}, pcep.JuniperLegacy, nil)
+
+	srPolicy := table.SRPolicy{
+		Name:          "juniper-legacy-ipv6-endpoint",
+		Headend:       netip.MustParseAddr("2001:db8::1"),
+		Endpoint:      netip.MustParseAddr("2001:db8::2"),
+		CandidatePath: table.CandidatePath{Dynamic: &table.DynamicPath{Metric: table.TEMetric}},
+	}
+
+	require.ErrorContains(t, ss.SendPCInitiate(srPolicy, false), "Juniper legacy")
+	require.NoError(t, ss.SendPCInitiate(srPolicy, true))
+	assert.Equal(t, uint64(1), ss.Stats().PCInitiateSent)
 }

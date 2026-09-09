@@ -611,14 +611,14 @@ func GetSRPolicyList(client pb.PCEServiceClient, peerAddr netip.Addr) ([]SRPolic
 }
 
 func convertSRPolicy(p *pb.SRPolicy) (table.SRPolicy, error) {
-	srcAddr, ok := netip.AddrFromSlice(p.GetSrcAddr())
+	headend, ok := netip.AddrFromSlice(p.GetHeadend())
 	if !ok {
-		return table.SRPolicy{}, fmt.Errorf("invalid SR policy source address: %v", p.GetSrcAddr())
+		return table.SRPolicy{}, fmt.Errorf("invalid SR policy headend address: %v", p.GetHeadend())
 	}
 
-	dstAddr, ok := netip.AddrFromSlice(p.GetDstAddr())
+	endpoint, ok := netip.AddrFromSlice(p.GetEndpoint())
 	if !ok {
-		return table.SRPolicy{}, fmt.Errorf("invalid SR policy destination address: %v", p.GetDstAddr())
+		return table.SRPolicy{}, fmt.Errorf("invalid SR policy endpoint address: %v", p.GetEndpoint())
 	}
 
 	segmentList := make([]table.Segment, 0, len(p.GetSegmentList()))
@@ -637,24 +637,44 @@ func convertSRPolicy(p *pb.SRPolicy) (table.SRPolicy, error) {
 	}
 
 	return table.SRPolicy{
-		PlspID:      p.GetPlspId(),
-		Name:        p.GetPolicyName(),
-		SegmentList: segmentList,
-		SrcAddr:     srcAddr,
-		DstAddr:     dstAddr,
-		SrcRouterID: p.GetSrcRouterId(),
-		DstRouterID: p.GetDstRouterId(),
-		Color:       p.GetColor(),
-		Preference:  p.GetPreference(),
-		LSPID:       lspID,
-		State:       policyStateFromPB(p.GetState()),
-		Type:        policyTypeFromPB(p.GetType()),
-		Metric:      metricTypeFromPB(p.GetMetric()),
-		Plane: table.Plane{
-			Family:    fromPBAddressFamily(p.GetUnderlayFamily()),
-			DataPlane: fromPBDataPlane(p.GetDataPlane()),
-		},
+		PlspID:           p.GetPlspId(),
+		Name:             p.GetPolicyName(),
+		SegmentList:      segmentList,
+		Headend:          headend,
+		Endpoint:         endpoint,
+		HeadendRouterID:  p.GetHeadendRouterId(),
+		EndpointRouterID: p.GetEndpointRouterId(),
+		Color:            p.GetColor(),
+		CandidatePath:    candidatePathFromPB(p.GetCandidatePath()),
+		LSPID:            lspID,
+		State:            policyStateFromPB(p.GetState()),
 	}, nil
+}
+
+func candidatePathFromPB(cp *pb.CandidatePath) table.CandidatePath {
+	tableCP := table.CandidatePath{Preference: cp.GetPreference()}
+
+	switch v := cp.GetPath().(type) {
+	case *pb.CandidatePath_Dynamic:
+		tableCP.Dynamic = &table.DynamicPath{
+			Metric: metricTypeFromPB(v.Dynamic.GetMetric()),
+			Plane: table.Plane{
+				Family:    fromPBAddressFamily(v.Dynamic.GetUnderlayFamily()),
+				DataPlane: fromPBDataPlane(v.Dynamic.GetDataPlane()),
+			},
+		}
+	case *pb.CandidatePath_Explicit:
+		segmentList := make([]table.Segment, 0, len(v.Explicit.GetSegmentList()))
+		for _, s := range v.Explicit.GetSegmentList() {
+			if seg, err := segmentFromPB(s); err == nil {
+				segmentList = append(segmentList, seg)
+			}
+		}
+
+		tableCP.Explicit = &table.ExplicitPath{SegmentList: segmentList}
+	}
+
+	return tableCP
 }
 
 func fromPBDataPlane(dp pb.DataPlane) table.DataPlane {
@@ -711,17 +731,6 @@ func policyStateFromPB(state pb.SRPolicyState) table.PolicyState {
 		return table.PolicyActive
 	case pb.SRPolicyState_SR_POLICY_STATE_UNKNOWN:
 		return table.PolicyUnknown
-	default:
-		return ""
-	}
-}
-
-func policyTypeFromPB(polType pb.SRPolicyType) table.PolicyType {
-	switch polType {
-	case pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT:
-		return table.PolicyTypeExplicit
-	case pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC:
-		return table.PolicyTypeDynamic
 	default:
 		return ""
 	}

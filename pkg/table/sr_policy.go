@@ -26,36 +26,52 @@ const (
 	PolicyUnknown = PolicyState("unknown")
 )
 
-// PolicyType is the SR Policy candidate path type defined in RFC 9256 §2.4.2.
-// The zero value means the type is unknown.
-type PolicyType string
+// DefaultPreference is the default SR Policy candidate path preference (RFC 9256 §2.7).
+const DefaultPreference uint32 = 100
 
-const (
-	// PolicyTypeExplicit indicates an explicit path SR Policy candidate path.
-	PolicyTypeExplicit = PolicyType("explicit")
-	// PolicyTypeDynamic indicates a dynamic SR Policy candidate path.
-	PolicyTypeDynamic = PolicyType("dynamic")
-)
+// DynamicPath is a candidate path with an optimization objective
+// for a specific underlay plane (RFC 9256 §2.2).
+type DynamicPath struct {
+	Metric MetricType `json:"metric"`
+	// Plane is the underlay scope used for TED path computation.
+	Plane Plane `json:"plane,omitzero"`
+}
+
+// ExplicitPath is a candidate path fully specified as a segment list (RFC 9256 §2.2).
+type ExplicitPath struct {
+	SegmentList []Segment `json:"segmentList"`
+}
+
+// CandidatePath is either Dynamic or Explicit (RFC 9256 §2.2).
+// The zero value represents an unknown candidate path type.
+type CandidatePath struct {
+	// Preference selects the active candidate path (RFC 9256 §2.7).
+	Preference uint32        `json:"preference"`
+	Dynamic    *DynamicPath  `json:"dynamic,omitempty"`
+	Explicit   *ExplicitPath `json:"explicit,omitempty"`
+}
 
 // SRPolicy represents an SR Policy with its path and attributes.
 type SRPolicy struct {
-	PlspID      uint32      `json:"plspId,omitempty"`
-	Name        string      `json:"policyName"`
-	SegmentList []Segment   `json:"segmentList"`
-	SrcAddr     netip.Addr  `json:"srcAddr"`
-	DstAddr     netip.Addr  `json:"dstAddr"`
-	SrcRouterID string      `json:"srcRouterId,omitempty"`
-	DstRouterID string      `json:"dstRouterId,omitempty"`
-	Color       uint32      `json:"color"`
-	Preference  uint32      `json:"preference"`
-	LSPID       uint16      `json:"lspId,omitempty"`
-	State       PolicyState `json:"state,omitempty"`
-	// Type and Metric are only known for policies created by Pola.
-	Type   PolicyType `json:"type,omitempty"`
-	Metric MetricType `json:"metric,omitempty"`
-	// Plane is the underlay plane used for dynamic path computation.
-	// Zero for explicit paths, which have no underlay plane.
-	Plane Plane `json:"plane,omitzero"`
+	// Headend and Endpoint identify the policy (RFC 9256 §2.1).
+	Headend  netip.Addr `json:"headend"`
+	Endpoint netip.Addr `json:"endpoint"`
+	Color    uint32     `json:"color"`
+	Name     string     `json:"policyName"`
+
+	// Router IDs are populated for display when resolvable from the TED.
+	HeadendRouterID  string `json:"headendRouterId,omitempty"`
+	EndpointRouterID string `json:"endpointRouterId,omitempty"`
+
+	// SegmentList is the currently signaled segment list.
+	SegmentList []Segment `json:"segmentList"`
+
+	CandidatePath CandidatePath `json:"candidatePath"`
+
+	// PlspID, LSPID, and State are PCEP-assigned state, not policy identity.
+	PlspID uint32      `json:"plspId,omitempty"`
+	LSPID  uint16      `json:"lspId,omitempty"`
+	State  PolicyState `json:"state,omitempty"`
 }
 
 // NewSRPolicy creates a new SR Policy with the given attributes.
@@ -63,23 +79,23 @@ func NewSRPolicy(
 	plspID uint32,
 	name string,
 	segmentList []Segment,
-	srcAddr netip.Addr,
-	dstAddr netip.Addr,
+	headend netip.Addr,
+	endpoint netip.Addr,
 	color uint32,
 	preference uint32,
 	lspID uint16,
 	state PolicyState,
 ) *SRPolicy {
 	p := &SRPolicy{
-		PlspID:      plspID,
-		Name:        name,
-		SegmentList: segmentList,
-		SrcAddr:     srcAddr,
-		DstAddr:     dstAddr,
-		Color:       color,
-		Preference:  preference,
-		LSPID:       lspID,
-		State:       state,
+		PlspID:        plspID,
+		Name:          name,
+		SegmentList:   segmentList,
+		Headend:       headend,
+		Endpoint:      endpoint,
+		Color:         color,
+		CandidatePath: CandidatePath{Preference: preference},
+		LSPID:         lspID,
+		State:         state,
 	}
 
 	return p
@@ -109,7 +125,7 @@ func (p *SRPolicy) Update(df PolicyDiff) {
 	}
 
 	if df.Preference != nil {
-		p.Preference = *df.Preference
+		p.CandidatePath.Preference = *df.Preference
 	}
 
 	if df.SegmentList != nil {

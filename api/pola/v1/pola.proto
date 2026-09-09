@@ -43,15 +43,9 @@ enum DataPlane {
   DATA_PLANE_SRV6 = 2;
 }
 
-enum SRPolicyType {
-  SR_POLICY_TYPE_UNSPECIFIED = 0;
-  SR_POLICY_TYPE_EXPLICIT = 1;
-  SR_POLICY_TYPE_DYNAMIC = 2;
-}
-
 message Waypoint {
   string router_id = 1;
-  string sid = 2; // Optional: explicit SID override
+  string sid = 2; // Optional explicit SID override.
 }
 
 enum SRPolicyState {
@@ -62,35 +56,67 @@ enum SRPolicyState {
   SR_POLICY_STATE_UNKNOWN = 4;
 }
 
+message DynamicPath {
+  MetricType metric = 1;
+  // Unspecified uses the unique viable data plane; rejected if ambiguous.
+  DataPlane data_plane = 2;
+  // Unspecified uses the unique viable family; rejected if ambiguous.
+  // Pola extension; no IETF counterpart.
+  AddressFamily underlay_family = 3;
+  repeated Waypoint waypoints = 4;
+}
+
+message ExplicitPath {
+  repeated Segment segment_list = 1;
+}
+
+message CandidatePath {
+  // Zero means "not set" in proto3 and is normalized server-side to
+  // table.DefaultPreference (100) (RFC 9256 §2.7).
+  uint32 preference = 1;
+
+  oneof path {
+    DynamicPath dynamic = 2;
+    ExplicitPath explicit = 3;
+  }
+}
+
 message SRPolicy {
   bytes peer_addr = 1;
-  bytes src_addr = 2;
-  bytes dst_addr = 3;
-  string src_router_id = 4;
-  string dst_router_id = 5;
+
+  // Policy identity addresses (RFC 9256 §2.1). Mutually exclusive with
+  // headend_router_id / endpoint_router_id.
+  bytes headend = 2;
+  bytes endpoint = 3;
+
+  // Router ID form for TED resolution. Mutually exclusive with headend / endpoint.
+  string headend_router_id = 4;
+  string endpoint_router_id = 5;
+  // Address family used to resolve endpoints from router IDs.
+  // Unspecified follows the underlay family; valid only with the router ID form.
+  AddressFamily endpoint_family = 18;
+
   uint32 color = 6;
-  uint32 preference = 7;
   string policy_name = 8;
-  SRPolicyType type = 9;
-  repeated Segment segment_list = 10;
-  MetricType metric = 11;
-  repeated Waypoint waypoints = 12;
+
+  CandidatePath candidate_path = 19;
+
   uint32 plsp_id = 13;
   uint32 lsp_id = 14;
   SRPolicyState state = 15;
-  // Underlay plane for dynamic path computation.
-  // Unspecified uses the TED node's unique viable plane and is rejected if ambiguous.
-  AddressFamily underlay_family = 16;
-  DataPlane data_plane = 17;
+  // Currently signaled segment list reported by the PCE, not request input.
+  repeated Segment segment_list = 20;
+
+  reserved 7, 9, 10, 11, 12, 16, 17;
+  reserved "preference", "type", "metric", "waypoints", "underlay_family", "data_plane";
 }
 
 message CreateSRPolicyRequest {
   SRPolicy sr_policy = 1;
   uint32 asn = 2;
-  reserved 3;
-  bool disable_path_compute = 4;
   bool no_sid_validate = 5;
-  reserved "sid_validate";
+  reserved 3, 4;
+  reserved "sid_validate", "disable_path_compute";
 }
 
 message CreateSRPolicyResponse {
@@ -242,8 +268,6 @@ message MessageCounter {
   uint64 rcvd = 2;
 }
 
-// SessionStats contains per-session PCEP message counters.
-// Open and close are Pola-specific additions.
 message SessionStats {
   MessageCounter keepalive = 1; // keepalive-sent / keepalive-rcvd (RFC 9826)
   MessageCounter pcerr = 2; // pcerr-sent / pcerr-rcvd (RFC 9826)

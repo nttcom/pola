@@ -63,10 +63,10 @@ func newSRPolicyDeleteCmd(c *cli) *cobra.Command {
 }
 
 func deleteSRPolicy(out io.Writer, input inputFormat, jsonFlag bool, client pb.PCEServiceClient) error {
-	if !input.SRPolicy.PCEPSessionAddr.IsValid() || input.SRPolicy.Color == 0 || !input.SRPolicy.DstAddr.IsValid() || input.SRPolicy.Name == "" {
+	if !input.SRPolicy.PCEPSessionAddr.IsValid() || input.SRPolicy.Color == 0 || !input.SRPolicy.Endpoint.IsValid() || input.SRPolicy.Name == "" {
 		sampleInput := "srPolicy:\n" +
 			"  pcepSessionAddr: 192.0.2.1\n" +
-			"  dstAddr: 192.0.2.2\n" +
+			"  endpoint: 192.0.2.2\n" +
 			"  color: 100\n" +
 			"  name: name\n"
 		errMsg := "invalid input\n" +
@@ -78,7 +78,7 @@ func deleteSRPolicy(out io.Writer, input inputFormat, jsonFlag bool, client pb.P
 
 	srPolicy := &pb.SRPolicy{
 		PeerAddr:   input.SRPolicy.PCEPSessionAddr.AsSlice(),
-		DstAddr:    input.SRPolicy.DstAddr.AsSlice(),
+		Endpoint:   input.SRPolicy.Endpoint.AsSlice(),
 		Color:      input.SRPolicy.Color,
 		PolicyName: input.SRPolicy.Name,
 	}

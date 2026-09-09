@@ -104,10 +104,12 @@ func validEndpointInput() inputFormat {
 		ASN: 65000,
 		SRPolicy: srPolicy{
 			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
-			SrcAddr:         netip.MustParseAddr(testPeerAddr1),
-			DstAddr:         netip.MustParseAddr(testPeerAddr2),
+			Headend:         netip.MustParseAddr(testPeerAddr1),
+			Endpoint:        netip.MustParseAddr(testPeerAddr2),
 			Color:           100,
-			SegmentList:     []segment{{SID: "16003"}},
+			CandidatePath: candidatePath{
+				Explicit: &explicitPath{SegmentList: []segment{{SID: "16003"}}},
+			},
 		},
 	}
 }
@@ -169,14 +171,17 @@ func TestNewSRPolicyAddCmd_RunE(t *testing.T) {
 	t.Run("success delegates to addSRPolicy", func(t *testing.T) {
 		t.Parallel()
 		path := filepath.Join(t.TempDir(), "policy.yaml")
-		yamlContent := "srPolicy:\n" +
+		yamlContent := "asn: 65000\n" +
+			"srPolicy:\n" +
 			"  pcepSessionAddr: 192.0.2.1\n" +
-			"  srcAddr: 192.0.2.1\n" +
-			"  dstAddr: 192.0.2.2\n" +
+			"  headend: 192.0.2.1\n" +
+			"  endpoint: 192.0.2.2\n" +
 			"  name: pol1\n" +
 			"  color: 100\n" +
-			"  segmentList:\n" +
-			"    - sid: \"16003\"\n"
+			"  candidatePath:\n" +
+			"    explicit:\n" +
+			"      segmentList:\n" +
+			"        - sid: \"16003\"\n"
 		require.NoError(t, os.WriteFile(path, []byte(yamlContent), 0o600))
 
 		cmd := newTestSRPolicyAddCmd(&fakePCEServiceClient{})
@@ -201,12 +206,17 @@ func TestNewSRPolicyAddCmd_RunE(t *testing.T) {
 func TestAddSRPolicy(t *testing.T) {
 	t.Parallel()
 
-	t.Run("srcRouterID/dstRouterID and srcAddr/dstAddr are mutually exclusive", func(t *testing.T) {
+	t.Run("headendRouterID/endpointRouterID and headend/endpoint are mutually exclusive", func(t *testing.T) {
 		t.Parallel()
 
 		input := inputFormat{SRPolicy: srPolicy{
-			SrcRouterID: testRouterID1,
-			SrcAddr:     netip.MustParseAddr(testPeerAddr1),
+			PCEPSessionAddr:  netip.MustParseAddr(testPeerAddr1),
+			Color:            100,
+			HeadendRouterID:  testRouterID1,
+			Headend:          netip.MustParseAddr(testPeerAddr1),
+			EndpointRouterID: testRouterID2,
+			Endpoint:         netip.MustParseAddr(testPeerAddr2),
+			CandidatePath:    candidatePath{Explicit: &explicitPath{SegmentList: []segment{{SID: "16003"}}}},
 		}}
 		err := addSRPolicy(&bytes.Buffer{}, &bytes.Buffer{}, input, false, false, nil)
 		require.Error(t, err)
@@ -252,16 +262,15 @@ func TestAddSRPolicy(t *testing.T) {
 
 		fake := &fakePCEServiceClient{}
 		input := inputFormat{ASN: 65000, SRPolicy: srPolicy{
-			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
-			SrcRouterID:     testRouterID1,
-			DstRouterID:     testRouterID2,
-			Color:           100,
-			Type:            srPolicyTypeExplicit,
-			SegmentList:     []segment{{SID: "16003"}},
+			PCEPSessionAddr:  netip.MustParseAddr(testPeerAddr1),
+			HeadendRouterID:  testRouterID1,
+			EndpointRouterID: testRouterID2,
+			Color:            100,
+			CandidatePath:    candidatePath{Explicit: &explicitPath{SegmentList: []segment{{SID: "16003"}}}},
 		}}
 		require.NoError(t, addSRPolicy(&bytes.Buffer{}, &bytes.Buffer{}, input, false, false, fake))
 		require.NotNil(t, fake.createSRPolicyReq)
-		assert.Equal(t, testRouterID1, fake.createSRPolicyReq.GetSrPolicy().GetSrcRouterId())
+		assert.Equal(t, testRouterID1, fake.createSRPolicyReq.GetSrPolicy().GetHeadendRouterId())
 	})
 
 	t.Run("router ID form grpc error is translated too", func(t *testing.T) {
@@ -269,12 +278,11 @@ func TestAddSRPolicy(t *testing.T) {
 
 		fake := &fakePCEServiceClient{createSRPolicyErr: assert.AnError}
 		input := inputFormat{ASN: 65000, SRPolicy: srPolicy{
-			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
-			SrcRouterID:     testRouterID1,
-			DstRouterID:     testRouterID2,
-			Color:           100,
-			Type:            srPolicyTypeExplicit,
-			SegmentList:     []segment{{SID: "16003"}},
+			PCEPSessionAddr:  netip.MustParseAddr(testPeerAddr1),
+			HeadendRouterID:  testRouterID1,
+			EndpointRouterID: testRouterID2,
+			Color:            100,
+			CandidatePath:    candidatePath{Explicit: &explicitPath{SegmentList: []segment{{SID: "16003"}}}},
 		}}
 		err := addSRPolicy(&bytes.Buffer{}, &bytes.Buffer{}, input, false, false, fake)
 		require.ErrorIs(t, err, assert.AnError)
@@ -295,341 +303,294 @@ func TestAddSRPolicy(t *testing.T) {
 	})
 }
 
-func TestAddSRPolicyWithEndpointAddr(t *testing.T) {
+func TestBuildCreateSRPolicyRequest(t *testing.T) {
 	t.Parallel()
-
-	base := func() srPolicy {
-		return srPolicy{
-			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
-			SrcAddr:         netip.MustParseAddr(testPeerAddr1),
-			DstAddr:         netip.MustParseAddr(testPeerAddr2),
-			Color:           100,
-			SegmentList:     []segment{{SID: "16003"}},
-		}
-	}
-
-	t.Run("type must be explicit (or empty)", func(t *testing.T) {
-		t.Parallel()
-
-		p := base()
-		p.Type = srPolicyTypeDynamic
-		err := addSRPolicyWithEndpointAddr(inputFormat{SRPolicy: p}, false, nil)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), srPolicyTypeExplicit)
-	})
-
-	t.Run("metric and waypoints require a dynamic path", func(t *testing.T) {
-		t.Parallel()
-
-		p := base()
-		p.Metric = metricTypeIGP
-		err := addSRPolicyWithEndpointAddr(inputFormat{SRPolicy: p}, false, nil)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "dynamic path")
-	})
-
-	t.Run("underlayFamily and dataPlane require TED-based computation", func(t *testing.T) {
-		t.Parallel()
-
-		p := base()
-		p.UnderlayFamily = underlayFamilyIPv6
-		err := addSRPolicyWithEndpointAddr(inputFormat{SRPolicy: p}, false, nil)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "underlayFamily")
-	})
 
 	t.Run("missing mandatory fields", func(t *testing.T) {
 		t.Parallel()
 
-		err := addSRPolicyWithEndpointAddr(inputFormat{}, false, nil)
+		_, err := buildCreateSRPolicyRequest(inputFormat{}, false)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid input")
-	})
-
-	t.Run("success builds the explicit request", func(t *testing.T) {
-		t.Parallel()
-
-		fake := &fakePCEServiceClient{}
-		p := base()
-		p.Name = testPolicyName
-		p.SegmentList = []segment{{SID: "16003", LocalAddr: testPeerAddr1, RemoteAddr: testPeerAddr2, SIDStructure: "32,16,0,80"}}
-
-		require.NoError(t, addSRPolicyWithEndpointAddr(inputFormat{ASN: 65000, SRPolicy: p}, true, fake))
-
-		require.NotNil(t, fake.createSRPolicyReq)
-
-		want := &pb.SRPolicy{
-			PeerAddr:    netip.MustParseAddr(testPeerAddr1).AsSlice(),
-			SrcAddr:     netip.MustParseAddr(testPeerAddr1).AsSlice(),
-			DstAddr:     netip.MustParseAddr(testPeerAddr2).AsSlice(),
-			SegmentList: []*pb.Segment{{Sid: "16003", LocalAddr: testPeerAddr1, RemoteAddr: testPeerAddr2, SidStructure: "32,16,0,80"}},
-			Color:       100,
-			PolicyName:  testPolicyName,
-			Type:        pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT,
-		}
-		assert.Equal(t, want, fake.createSRPolicyReq.GetSrPolicy())
-		assert.Equal(t, uint32(65000), fake.createSRPolicyReq.GetAsn())
-		assert.True(t, fake.createSRPolicyReq.GetDisablePathCompute())
-		assert.True(t, fake.createSRPolicyReq.GetNoSidValidate())
-	})
-
-	t.Run("grpc error propagates", func(t *testing.T) {
-		t.Parallel()
-
-		fake := &fakePCEServiceClient{createSRPolicyErr: assert.AnError}
-		err := addSRPolicyWithEndpointAddr(inputFormat{SRPolicy: base()}, false, fake)
-		require.ErrorIs(t, err, assert.AnError)
-	})
-}
-
-func TestAddSRPolicyWithRouterID(t *testing.T) {
-	t.Parallel()
-
-	t.Run("invalid common input", func(t *testing.T) {
-		t.Parallel()
-
-		err := addSRPolicyWithRouterID(inputFormat{}, false, nil)
-		require.Error(t, err)
-	})
-
-	t.Run("dynamic path builds the request", func(t *testing.T) {
-		t.Parallel()
-
-		fake := &fakePCEServiceClient{}
-		input := inputFormat{ASN: 65000, SRPolicy: srPolicy{
-			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
-			SrcRouterID:     testRouterID1,
-			DstRouterID:     testRouterID2,
-			Name:            testPolicyName,
-			Color:           100,
-			Type:            srPolicyTypeDynamic,
-			Metric:          metricTypeDelay,
-			Waypoints:       []waypoint{{RouterID: "0000.0aff.0003"}},
-		}}
-		require.NoError(t, addSRPolicyWithRouterID(input, true, fake))
-
-		require.NotNil(t, fake.createSRPolicyReq)
-
-		want := &pb.SRPolicy{
-			PeerAddr:    netip.MustParseAddr(testPeerAddr1).AsSlice(),
-			SrcRouterId: testRouterID1,
-			DstRouterId: testRouterID2,
-			Color:       100,
-			PolicyName:  testPolicyName,
-			Type:        pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC,
-			Metric:      pb.MetricType_METRIC_TYPE_DELAY,
-			Waypoints:   []*pb.Waypoint{{RouterId: "0000.0aff.0003"}},
-		}
-		assert.Equal(t, want, fake.createSRPolicyReq.GetSrPolicy())
-		assert.Equal(t, uint32(65000), fake.createSRPolicyReq.GetAsn())
-		assert.True(t, fake.createSRPolicyReq.GetNoSidValidate())
-		assert.False(t, fake.createSRPolicyReq.GetDisablePathCompute())
-	})
-
-	t.Run("dynamic path with underlayFamily=ipv6 and dataPlane=srv6", func(t *testing.T) {
-		t.Parallel()
-
-		fake := &fakePCEServiceClient{}
-		input := inputFormat{ASN: 65000, SRPolicy: srPolicy{
-			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
-			SrcRouterID:     testRouterID1,
-			DstRouterID:     testRouterID2,
-			Color:           100,
-			Type:            srPolicyTypeDynamic,
-			Metric:          metricTypeIGP,
-			UnderlayFamily:  underlayFamilyIPv6,
-			DataPlane:       dataPlaneSRv6,
-		}}
-		require.NoError(t, addSRPolicyWithRouterID(input, false, fake))
-
-		require.NotNil(t, fake.createSRPolicyReq)
-		assert.Equal(t, pb.AddressFamily_ADDRESS_FAMILY_IPV6, fake.createSRPolicyReq.GetSrPolicy().GetUnderlayFamily())
-		assert.Equal(t, pb.DataPlane_DATA_PLANE_SRV6, fake.createSRPolicyReq.GetSrPolicy().GetDataPlane())
-	})
-
-	t.Run("invalid underlayFamily is rejected", func(t *testing.T) {
-		t.Parallel()
-
-		input := inputFormat{ASN: 65000, SRPolicy: srPolicy{
-			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
-			SrcRouterID:     testRouterID1,
-			DstRouterID:     testRouterID2,
-			Color:           100,
-			Type:            srPolicyTypeDynamic,
-			Metric:          metricTypeIGP,
-			UnderlayFamily:  "ipv5",
-		}}
-		err := addSRPolicyWithRouterID(input, false, nil)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "underlayFamily")
-	})
-
-	t.Run("invalid dataPlane is rejected", func(t *testing.T) {
-		t.Parallel()
-
-		input := inputFormat{ASN: 65000, SRPolicy: srPolicy{
-			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
-			SrcRouterID:     testRouterID1,
-			DstRouterID:     testRouterID2,
-			Color:           100,
-			Type:            srPolicyTypeDynamic,
-			Metric:          metricTypeIGP,
-			DataPlane:       "srv7",
-		}}
-		err := addSRPolicyWithRouterID(input, false, nil)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "dataPlane")
 	})
 
 	t.Run("explicit path builds the request", func(t *testing.T) {
 		t.Parallel()
 
-		fake := &fakePCEServiceClient{}
-		input := inputFormat{ASN: 65000, SRPolicy: srPolicy{
+		p := srPolicy{
 			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
-			SrcRouterID:     testRouterID1,
-			DstRouterID:     testRouterID2,
+			Headend:         netip.MustParseAddr(testPeerAddr1),
+			Endpoint:        netip.MustParseAddr(testPeerAddr2),
 			Color:           100,
-			Type:            srPolicyTypeExplicit,
-			SegmentList:     []segment{{SID: "16003"}},
-		}}
-		require.NoError(t, addSRPolicyWithRouterID(input, false, fake))
+			Name:            testPolicyName,
+			CandidatePath: candidatePath{
+				Preference: 200,
+				Explicit: &explicitPath{SegmentList: []segment{
+					{SID: "16003", LocalAddr: testPeerAddr1, RemoteAddr: testPeerAddr2, SIDStructure: "32,16,0,80"},
+				}},
+			},
+		}
 
-		require.NotNil(t, fake.createSRPolicyReq)
-		assert.Equal(t, pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT, fake.createSRPolicyReq.GetSrPolicy().GetType())
-		assert.Equal(t, []*pb.Segment{{Sid: "16003"}}, fake.createSRPolicyReq.GetSrPolicy().GetSegmentList())
+		req, err := buildCreateSRPolicyRequest(inputFormat{ASN: 65000, SRPolicy: p}, true)
+		require.NoError(t, err)
+
+		want := &pb.SRPolicy{
+			PeerAddr:   netip.MustParseAddr(testPeerAddr1).AsSlice(),
+			Headend:    netip.MustParseAddr(testPeerAddr1).AsSlice(),
+			Endpoint:   netip.MustParseAddr(testPeerAddr2).AsSlice(),
+			Color:      100,
+			PolicyName: testPolicyName,
+			CandidatePath: &pb.CandidatePath{
+				Preference: 200,
+				Path: &pb.CandidatePath_Explicit{Explicit: &pb.ExplicitPath{
+					SegmentList: []*pb.Segment{{Sid: "16003", LocalAddr: testPeerAddr1, RemoteAddr: testPeerAddr2, SidStructure: "32,16,0,80"}},
+				}},
+			},
+		}
+		assert.Equal(t, want, req.GetSrPolicy())
+		assert.Equal(t, uint32(65000), req.GetAsn())
+		assert.True(t, req.GetNoSidValidate())
 	})
 
-	t.Run("invalid type is rejected", func(t *testing.T) {
+	t.Run("dynamic path builds the request", func(t *testing.T) {
 		t.Parallel()
 
-		input := inputFormat{ASN: 65000, SRPolicy: srPolicy{
+		p := srPolicy{
+			PCEPSessionAddr:  netip.MustParseAddr(testPeerAddr1),
+			HeadendRouterID:  testRouterID1,
+			EndpointRouterID: testRouterID2,
+			Name:             testPolicyName,
+			Color:            100,
+			CandidatePath: candidatePath{
+				Dynamic: &dynamicPath{
+					Metric:    metricTypeDelay,
+					Waypoints: []waypoint{{RouterID: "0000.0aff.0003"}},
+				},
+			},
+		}
+
+		req, err := buildCreateSRPolicyRequest(inputFormat{ASN: 65000, SRPolicy: p}, false)
+		require.NoError(t, err)
+
+		want := &pb.SRPolicy{
+			PeerAddr:         netip.MustParseAddr(testPeerAddr1).AsSlice(),
+			HeadendRouterId:  testRouterID1,
+			EndpointRouterId: testRouterID2,
+			Color:            100,
+			PolicyName:       testPolicyName,
+			CandidatePath: &pb.CandidatePath{
+				Path: &pb.CandidatePath_Dynamic{Dynamic: &pb.DynamicPath{
+					Metric:    pb.MetricType_METRIC_TYPE_DELAY,
+					Waypoints: []*pb.Waypoint{{RouterId: "0000.0aff.0003"}},
+				}},
+			},
+		}
+		assert.Equal(t, want, req.GetSrPolicy())
+	})
+
+	t.Run("dynamic path with underlayFamily=ipv6 and dataPlane=srv6", func(t *testing.T) {
+		t.Parallel()
+
+		p := srPolicy{
+			PCEPSessionAddr:  netip.MustParseAddr(testPeerAddr1),
+			HeadendRouterID:  testRouterID1,
+			EndpointRouterID: testRouterID2,
+			Color:            100,
+			CandidatePath: candidatePath{
+				Dynamic: &dynamicPath{Metric: metricTypeIGP, UnderlayFamily: underlayFamilyIPv6, DataPlane: dataPlaneSRv6},
+			},
+		}
+
+		req, err := buildCreateSRPolicyRequest(inputFormat{ASN: 65000, SRPolicy: p}, false)
+		require.NoError(t, err)
+
+		dyn := req.GetSrPolicy().GetCandidatePath().GetDynamic()
+		require.NotNil(t, dyn)
+		assert.Equal(t, pb.AddressFamily_ADDRESS_FAMILY_IPV6, dyn.GetUnderlayFamily())
+		assert.Equal(t, pb.DataPlane_DATA_PLANE_SRV6, dyn.GetDataPlane())
+	})
+
+	t.Run("endpointFamily is valid only with the router ID form", func(t *testing.T) {
+		t.Parallel()
+
+		p := srPolicy{
 			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
-			SrcRouterID:     testRouterID1,
-			DstRouterID:     testRouterID2,
+			Headend:         netip.MustParseAddr(testPeerAddr1),
+			Endpoint:        netip.MustParseAddr(testPeerAddr2),
+			EndpointFamily:  underlayFamilyIPv4,
 			Color:           100,
-			Type:            "unknown",
-		}}
-		err := addSRPolicyWithRouterID(input, false, nil)
+			CandidatePath:   candidatePath{Explicit: &explicitPath{SegmentList: []segment{{SID: "16003"}}}},
+		}
+
+		_, err := buildCreateSRPolicyRequest(inputFormat{ASN: 65000, SRPolicy: p}, false)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "endpointFamily")
+	})
+
+	t.Run("invalid endpointFamily is rejected", func(t *testing.T) {
+		t.Parallel()
+
+		p := srPolicy{
+			PCEPSessionAddr:  netip.MustParseAddr(testPeerAddr1),
+			HeadendRouterID:  testRouterID1,
+			EndpointRouterID: testRouterID2,
+			EndpointFamily:   "ipv5",
+			Color:            100,
+			CandidatePath:    candidatePath{Explicit: &explicitPath{SegmentList: []segment{{SID: "16003"}}}},
+		}
+
+		_, err := buildCreateSRPolicyRequest(inputFormat{ASN: 65000, SRPolicy: p}, false)
 		require.Error(t, err)
 	})
 
-	t.Run("grpc error propagates", func(t *testing.T) {
+	t.Run("invalid underlayFamily is rejected", func(t *testing.T) {
 		t.Parallel()
 
-		fake := &fakePCEServiceClient{createSRPolicyErr: assert.AnError}
-		input := inputFormat{ASN: 65000, SRPolicy: srPolicy{
+		p := srPolicy{
+			PCEPSessionAddr:  netip.MustParseAddr(testPeerAddr1),
+			HeadendRouterID:  testRouterID1,
+			EndpointRouterID: testRouterID2,
+			Color:            100,
+			CandidatePath:    candidatePath{Dynamic: &dynamicPath{Metric: metricTypeIGP, UnderlayFamily: "ipv5"}},
+		}
+
+		_, err := buildCreateSRPolicyRequest(inputFormat{ASN: 65000, SRPolicy: p}, false)
+		require.Error(t, err)
+	})
+
+	t.Run("invalid dataPlane is rejected", func(t *testing.T) {
+		t.Parallel()
+
+		p := srPolicy{
+			PCEPSessionAddr:  netip.MustParseAddr(testPeerAddr1),
+			HeadendRouterID:  testRouterID1,
+			EndpointRouterID: testRouterID2,
+			Color:            100,
+			CandidatePath:    candidatePath{Dynamic: &dynamicPath{Metric: metricTypeIGP, DataPlane: "srv7"}},
+		}
+
+		_, err := buildCreateSRPolicyRequest(inputFormat{ASN: 65000, SRPolicy: p}, false)
+		require.Error(t, err)
+	})
+
+	t.Run("only headend set without endpoint", func(t *testing.T) {
+		t.Parallel()
+
+		p := srPolicy{
 			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
-			SrcRouterID:     testRouterID1,
-			DstRouterID:     testRouterID2,
+			Headend:         netip.MustParseAddr(testPeerAddr1),
 			Color:           100,
-			Type:            srPolicyTypeExplicit,
-			SegmentList:     []segment{{SID: "16003"}},
-		}}
-		err := addSRPolicyWithRouterID(input, false, fake)
-		require.ErrorIs(t, err, assert.AnError)
-	})
-}
+			CandidatePath:   candidatePath{Explicit: &explicitPath{SegmentList: []segment{{SID: "16003"}}}},
+		}
 
-func TestSampleInputs(t *testing.T) {
-	t.Parallel()
-
-	dynamic, explicit := sampleInputs()
-	assert.Contains(t, dynamic, "type: dynamic")
-	assert.Contains(t, explicit, "type: explicit")
-}
-
-func TestValidateCommonInput(t *testing.T) {
-	t.Parallel()
-
-	valid := srPolicy{
-		PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
-		Color:           100,
-		SrcRouterID:     testRouterID1,
-		DstRouterID:     testRouterID2,
-	}
-
-	t.Run("all mandatory fields present", func(t *testing.T) {
-		t.Parallel()
-		require.NoError(t, validateCommonInput(inputFormat{ASN: 65000, SRPolicy: valid}, "dynamic-sample", "explicit-sample"))
+		_, err := buildCreateSRPolicyRequest(inputFormat{ASN: 65000, SRPolicy: p}, false)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid input")
 	})
 
-	tests := []struct {
-		name  string
-		input inputFormat
-	}{
-		{"missing ASN", inputFormat{SRPolicy: valid}},
-		{"missing pcepSessionAddr", inputFormat{ASN: 65000, SRPolicy: srPolicy{Color: 100, SrcRouterID: "a", DstRouterID: "b"}}},
-		{"missing color", inputFormat{ASN: 65000, SRPolicy: srPolicy{PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1), SrcRouterID: "a", DstRouterID: "b"}}},
-		{"missing srcRouterID", inputFormat{ASN: 65000, SRPolicy: srPolicy{PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1), Color: 100, DstRouterID: "b"}}},
-		{"missing dstRouterID", inputFormat{ASN: 65000, SRPolicy: srPolicy{PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1), Color: 100, SrcRouterID: "a"}}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			err := validateCommonInput(tt.input, "dynamic-sample", "explicit-sample")
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), "dynamic-sample")
-			assert.Contains(t, err.Error(), "explicit-sample")
-		})
-	}
-}
-
-func TestBuildPolicyByType(t *testing.T) {
-	t.Parallel()
-
-	t.Run(srPolicyTypeExplicit, func(t *testing.T) {
+	t.Run("only headendRouterID set without endpointRouterID", func(t *testing.T) {
 		t.Parallel()
 
-		input := inputFormat{SRPolicy: srPolicy{Type: srPolicyTypeExplicit, SegmentList: []segment{{SID: "16003"}}}}
-		spec, err := buildPolicyByType(input, "d", "e")
-		require.NoError(t, err)
-		assert.Equal(t, pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT, spec.Type)
-		assert.Equal(t, pb.MetricType_METRIC_TYPE_UNSPECIFIED, spec.Metric)
-		assert.Equal(t, []*pb.Segment{{Sid: "16003"}}, spec.Segments)
-		assert.Nil(t, spec.Waypoints)
+		p := srPolicy{
+			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
+			HeadendRouterID: testRouterID1,
+			Color:           100,
+			CandidatePath:   candidatePath{Explicit: &explicitPath{SegmentList: []segment{{SID: "16003"}}}},
+		}
+
+		_, err := buildCreateSRPolicyRequest(inputFormat{ASN: 65000, SRPolicy: p}, false)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid input")
 	})
 
-	t.Run(srPolicyTypeDynamic, func(t *testing.T) {
+	t.Run("neither address nor router ID form is specified", func(t *testing.T) {
 		t.Parallel()
 
-		input := inputFormat{SRPolicy: srPolicy{Type: srPolicyTypeDynamic, Metric: metricTypeIGP, Waypoints: []waypoint{{RouterID: "r1"}}}}
-		spec, err := buildPolicyByType(input, "d", "e")
-		require.NoError(t, err)
-		assert.Equal(t, pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC, spec.Type)
-		assert.Equal(t, pb.MetricType_METRIC_TYPE_IGP, spec.Metric)
-		assert.Nil(t, spec.Segments)
-		assert.Equal(t, []*pb.Waypoint{{RouterId: "r1"}}, spec.Waypoints)
+		p := srPolicy{
+			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
+			Color:           100,
+			CandidatePath:   candidatePath{Explicit: &explicitPath{SegmentList: []segment{{SID: "16003"}}}},
+		}
+
+		_, err := buildCreateSRPolicyRequest(inputFormat{ASN: 65000, SRPolicy: p}, false)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid input")
 	})
 
-	t.Run("unrecognized type is rejected", func(t *testing.T) {
+	t.Run("dynamic and explicit are mutually exclusive", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := buildPolicyByType(inputFormat{SRPolicy: srPolicy{Type: "unknown"}}, "d", "e")
+		p := srPolicy{
+			PCEPSessionAddr:  netip.MustParseAddr(testPeerAddr1),
+			HeadendRouterID:  testRouterID1,
+			EndpointRouterID: testRouterID2,
+			Color:            100,
+			CandidatePath: candidatePath{
+				Dynamic:  &dynamicPath{Metric: metricTypeIGP},
+				Explicit: &explicitPath{SegmentList: []segment{{SID: "16003"}}},
+			},
+		}
+
+		_, err := buildCreateSRPolicyRequest(inputFormat{ASN: 65000, SRPolicy: p}, false)
+		require.Error(t, err)
+	})
+
+	t.Run("candidatePath must specify either dynamic or explicit", func(t *testing.T) {
+		t.Parallel()
+
+		p := srPolicy{
+			PCEPSessionAddr:  netip.MustParseAddr(testPeerAddr1),
+			HeadendRouterID:  testRouterID1,
+			EndpointRouterID: testRouterID2,
+			Color:            100,
+		}
+
+		_, err := buildCreateSRPolicyRequest(inputFormat{ASN: 65000, SRPolicy: p}, false)
 		require.Error(t, err)
 	})
 
 	t.Run("explicit with no segments", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := buildPolicyByType(inputFormat{SRPolicy: srPolicy{Type: srPolicyTypeExplicit}}, "d", "sample-explicit")
+		p := srPolicy{
+			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
+			Headend:         netip.MustParseAddr(testPeerAddr1),
+			Endpoint:        netip.MustParseAddr(testPeerAddr2),
+			Color:           100,
+			CandidatePath:   candidatePath{Explicit: &explicitPath{}},
+		}
+
+		_, err := buildCreateSRPolicyRequest(inputFormat{ASN: 65000, SRPolicy: p}, false)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "sample-explicit")
 	})
 
 	t.Run("dynamic with no metric", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := buildPolicyByType(inputFormat{SRPolicy: srPolicy{Type: srPolicyTypeDynamic}}, "sample-dynamic", "e")
+		p := srPolicy{
+			PCEPSessionAddr:  netip.MustParseAddr(testPeerAddr1),
+			HeadendRouterID:  testRouterID1,
+			EndpointRouterID: testRouterID2,
+			Color:            100,
+			CandidatePath:    candidatePath{Dynamic: &dynamicPath{}},
+		}
+
+		_, err := buildCreateSRPolicyRequest(inputFormat{ASN: 65000, SRPolicy: p}, false)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "sample-dynamic")
 	})
 
 	t.Run("dynamic with invalid metric", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := buildPolicyByType(inputFormat{SRPolicy: srPolicy{Type: srPolicyTypeDynamic, Metric: "bandwidth"}}, "d", "e")
+		p := srPolicy{
+			PCEPSessionAddr:  netip.MustParseAddr(testPeerAddr1),
+			HeadendRouterID:  testRouterID1,
+			EndpointRouterID: testRouterID2,
+			Color:            100,
+			CandidatePath:    candidatePath{Dynamic: &dynamicPath{Metric: "bandwidth"}},
+		}
+
+		_, err := buildCreateSRPolicyRequest(inputFormat{ASN: 65000, SRPolicy: p}, false)
 		require.Error(t, err)
 	})
 }
@@ -658,7 +619,7 @@ func TestToPBSegment(t *testing.T) {
 	assert.Equal(t, want, got)
 }
 
-func TestParseUnderlayFamily(t *testing.T) {
+func TestParseAddressFamily(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -674,7 +635,7 @@ func TestParseUnderlayFamily(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := parseUnderlayFamily(tt.in)
+			got, err := parseAddressFamily(tt.in)
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, got)
 		})
@@ -683,7 +644,7 @@ func TestParseUnderlayFamily(t *testing.T) {
 	t.Run("unrecognized value is rejected", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := parseUnderlayFamily("ipv5")
+		_, err := parseAddressFamily("ipv5")
 		require.Error(t, err)
 	})
 }
