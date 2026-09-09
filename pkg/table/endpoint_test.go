@@ -37,13 +37,12 @@ func TestEndpointSpecResolve(t *testing.T) {
 	addrV4B := netip.MustParseAddr("10.0.0.2")
 
 	tests := []struct {
-		name           string
-		spec           table.EndpointSpec
-		ted            *table.LsTED
-		underlayFamily table.AddressFamily
-		wantHeadend    netip.Addr
-		wantEndpoint   netip.Addr
-		wantErr        bool
+		name         string
+		spec         table.EndpointSpec
+		ted          *table.LsTED
+		wantHeadend  netip.Addr
+		wantEndpoint netip.Addr
+		wantErr      bool
 	}{
 		{
 			name:         "address form passes through without touching the TED",
@@ -53,50 +52,47 @@ func TestEndpointSpecResolve(t *testing.T) {
 			wantEndpoint: addrV4B,
 		},
 		{
-			name: "router ID form resolves via the underlay family (IPv4)",
+			name: "router ID form resolves via the unique common loopback family (IPv4)",
 			spec: table.EndpointSpec{HeadendRouterID: testRouterIDA, EndpointRouterID: testRouterIDB},
 			ted: newTestTED(
 				lsNodeWithLoopbacks(testRouterIDA, "10.0.0.1"),
 				lsNodeWithLoopbacks(testRouterIDB, "10.0.0.2"),
 			),
-			underlayFamily: table.AFIPv4,
-			wantHeadend:    netip.MustParseAddr("10.0.0.1"),
-			wantEndpoint:   netip.MustParseAddr("10.0.0.2"),
+			wantHeadend:  netip.MustParseAddr("10.0.0.1"),
+			wantEndpoint: netip.MustParseAddr("10.0.0.2"),
 		},
 		{
-			name: "router ID form resolves via the underlay family (IPv6)",
+			name: "router ID form resolves via the unique common loopback family (IPv6)",
 			spec: table.EndpointSpec{HeadendRouterID: testRouterIDA, EndpointRouterID: testRouterIDB},
 			ted: newTestTED(
 				lsNodeWithLoopbacks(testRouterIDA, testSRv6SID1),
 				lsNodeWithLoopbacks(testRouterIDB, testSRv6SID2),
 			),
-			underlayFamily: table.AFIPv6,
-			wantHeadend:    netip.MustParseAddr(testSRv6SID1),
-			wantEndpoint:   netip.MustParseAddr(testSRv6SID2),
+			wantHeadend:  netip.MustParseAddr(testSRv6SID1),
+			wantEndpoint: netip.MustParseAddr(testSRv6SID2),
 		},
 		{
-			name: "explicit endpointFamily overrides the underlay family (cross-AF, not rejected)",
+			name: "explicit endpointFamily picks among multiple shared loopback families",
 			spec: table.EndpointSpec{HeadendRouterID: testRouterIDA, EndpointRouterID: testRouterIDB, Family: table.AFIPv4},
 			ted: newTestTED(
 				lsNodeWithLoopbacks(testRouterIDA, "10.0.0.1", testSRv6SID1),
 				lsNodeWithLoopbacks(testRouterIDB, "10.0.0.2", testSRv6SID2),
 			),
-			underlayFamily: table.AFIPv6,
-			wantHeadend:    netip.MustParseAddr("10.0.0.1"),
-			wantEndpoint:   netip.MustParseAddr("10.0.0.2"),
+			wantHeadend:  netip.MustParseAddr("10.0.0.1"),
+			wantEndpoint: netip.MustParseAddr("10.0.0.2"),
 		},
 		{
-			name: "underlay family without a shared loopback is an error, not a silent fallback",
+			name: "endpoint family resolution is independent of the underlay plane",
 			spec: table.EndpointSpec{HeadendRouterID: testRouterIDA, EndpointRouterID: testRouterIDB},
 			ted: newTestTED(
 				lsNodeWithLoopbacks(testRouterIDA, "10.0.0.1"),
 				lsNodeWithLoopbacks(testRouterIDB, "10.0.0.2"),
 			),
-			underlayFamily: table.AFIPv6,
-			wantErr:        true,
+			wantHeadend:  netip.MustParseAddr("10.0.0.1"),
+			wantEndpoint: netip.MustParseAddr("10.0.0.2"),
 		},
 		{
-			name: "dual-stack nodes with no underlay family and no explicit family is ambiguous",
+			name: "dual-stack nodes with no explicit family is ambiguous",
 			spec: table.EndpointSpec{HeadendRouterID: testRouterIDA, EndpointRouterID: testRouterIDB},
 			ted: newTestTED(
 				lsNodeWithLoopbacks(testRouterIDA, "10.0.0.1", testSRv6SID1),
@@ -119,13 +115,75 @@ func TestEndpointSpecResolve(t *testing.T) {
 			ted:     nil,
 			wantErr: true,
 		},
+		{
+			name:    "mixing address and router ID forms is rejected",
+			spec:    table.EndpointSpec{Headend: addrV4A, HeadendRouterID: testRouterIDA, EndpointRouterID: testRouterIDB},
+			ted:     nil,
+			wantErr: true,
+		},
+		{
+			name:    "address form with only headend set is rejected",
+			spec:    table.EndpointSpec{Headend: addrV4A},
+			ted:     nil,
+			wantErr: true,
+		},
+		{
+			name:    "router ID form with only headendRouterID set is rejected",
+			spec:    table.EndpointSpec{HeadendRouterID: testRouterIDA},
+			ted:     nil,
+			wantErr: true,
+		},
+		{
+			name:    "neither form set is rejected",
+			spec:    table.EndpointSpec{},
+			ted:     nil,
+			wantErr: true,
+		},
+		{
+			name:    "router ID form with a nil TED is rejected",
+			spec:    table.EndpointSpec{HeadendRouterID: testRouterIDA, EndpointRouterID: testRouterIDB},
+			ted:     nil,
+			wantErr: true,
+		},
+		{
+			name:    "unknown headend router ID is rejected",
+			spec:    table.EndpointSpec{HeadendRouterID: testRouterIDA, EndpointRouterID: testRouterIDB},
+			ted:     newTestTED(lsNodeWithLoopbacks(testRouterIDB, "10.0.0.2")),
+			wantErr: true,
+		},
+		{
+			name: "unknown endpoint router ID is rejected",
+			spec: table.EndpointSpec{HeadendRouterID: testRouterIDA, EndpointRouterID: testRouterIDB},
+			ted: newTestTED(
+				lsNodeWithLoopbacks(testRouterIDA, "10.0.0.1"),
+			),
+			wantErr: true,
+		},
+		{
+			name: "explicit endpointFamily unavailable on the headend is rejected",
+			spec: table.EndpointSpec{HeadendRouterID: testRouterIDA, EndpointRouterID: testRouterIDB, Family: table.AFIPv6},
+			ted: newTestTED(
+				lsNodeWithLoopbacks(testRouterIDA, "10.0.0.1"),
+				lsNodeWithLoopbacks(testRouterIDB, testSRv6SID2),
+			),
+			wantErr: true,
+		},
+		{
+			name: "explicit endpointFamily unavailable on the endpoint is rejected",
+			spec: table.EndpointSpec{HeadendRouterID: testRouterIDA, EndpointRouterID: testRouterIDB, Family: table.AFIPv6},
+			ted: newTestTED(
+				lsNodeWithLoopbacks(testRouterIDA, testSRv6SID1),
+				lsNodeWithLoopbacks(testRouterIDB, "10.0.0.2"),
+			),
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			headend, endpoint, err := tt.spec.Resolve(tt.ted, tt.underlayFamily)
+			headend, endpoint, err := tt.spec.Resolve(tt.ted)
 			if tt.wantErr {
 				assert.Error(t, err)
 				return

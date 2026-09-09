@@ -27,9 +27,7 @@ func (s EndpointSpec) UsesRouterID() bool {
 }
 
 // Resolve returns the policy endpoints as addresses.
-// Explicit address-family selections must be supported by both endpoints;
-// otherwise, the unique common loopback family is used.
-func (s EndpointSpec) Resolve(ted *LsTED, underlayFamily AddressFamily) (headend, endpoint netip.Addr, err error) {
+func (s EndpointSpec) Resolve(ted *LsTED) (headend, endpoint netip.Addr, err error) {
 	usesAddr := s.Headend.IsValid() || s.Endpoint.IsValid()
 	usesRouterID := s.UsesRouterID()
 
@@ -51,13 +49,13 @@ func (s EndpointSpec) Resolve(ted *LsTED, underlayFamily AddressFamily) (headend
 			return netip.Addr{}, netip.Addr{}, errors.New("both headendRouterID and endpointRouterID must be set")
 		}
 
-		return s.resolveViaTED(ted, underlayFamily)
+		return s.resolveViaTED(ted)
 	default:
 		return netip.Addr{}, netip.Addr{}, errors.New("either headend/endpoint or headendRouterID/endpointRouterID must be set")
 	}
 }
 
-func (s EndpointSpec) resolveViaTED(ted *LsTED, underlayFamily AddressFamily) (headend, endpoint netip.Addr, err error) {
+func (s EndpointSpec) resolveViaTED(ted *LsTED) (headend, endpoint netip.Addr, err error) {
 	if ted == nil {
 		return netip.Addr{}, netip.Addr{}, errors.New("ted is nil")
 	}
@@ -72,7 +70,7 @@ func (s EndpointSpec) resolveViaTED(ted *LsTED, underlayFamily AddressFamily) (h
 		return netip.Addr{}, netip.Addr{}, fmt.Errorf("no node with router ID %s", s.EndpointRouterID)
 	}
 
-	family, err := s.resolveFamily(headendNode, endpointNode, underlayFamily)
+	family, err := s.resolveFamily(headendNode, endpointNode)
 	if err != nil {
 		return netip.Addr{}, netip.Addr{}, err
 	}
@@ -90,17 +88,9 @@ func (s EndpointSpec) resolveViaTED(ted *LsTED, underlayFamily AddressFamily) (h
 	return headend, endpoint, nil
 }
 
-func (s EndpointSpec) resolveFamily(headendNode, endpointNode *LsNode, underlayFamily AddressFamily) (AddressFamily, error) {
+func (s EndpointSpec) resolveFamily(headendNode, endpointNode *LsNode) (AddressFamily, error) {
 	if s.Family.IsValid() {
 		return s.Family, nil
-	}
-
-	if underlayFamily.IsValid() {
-		if headendNode.HasLoopback(underlayFamily) && endpointNode.HasLoopback(underlayFamily) {
-			return underlayFamily, nil
-		}
-
-		return AFUnspecified, fmt.Errorf("underlay family %v has no loopback on headend %s and/or endpoint %s; specify endpointFamily", underlayFamily, s.HeadendRouterID, s.EndpointRouterID)
 	}
 
 	var candidates []AddressFamily
