@@ -31,7 +31,7 @@ Configure the IP address and port for PCEP and gRPC.
 `address` must be a literal IPv4 or IPv6 address; hostnames are not resolved.
 See [JSON schema](../schemas/server/polad_config.json) for config details.
 
-### TED disable
+### Disabling TED
 
 To manage SR Policy without using TED, disable TED as follows.
 
@@ -91,7 +91,7 @@ global:
     maxKeepalive: 60
 ```
 
-### TED enable
+### Enabling TED
 
 To manage SR Policy using TED, enable TED as follows.
 This also enables dynamic path calculation.
@@ -99,7 +99,26 @@ This also enables dynamic path calculation.
 TED updates require a supported BGP-LS source.
 Currently, only GoBGP is supported.
 
-**Not currently available for IPv6 underlay (IPv6 SR-MPLS / SRv6).**
+#### Underlay address family
+
+Path computation runs on an **underlay plane**, a combination of address
+family and data plane.
+
+Supported combinations:
+
+| underlayFamily | dataPlane | Status         |
+| -------------- | --------- | -------------- |
+| ipv4           | sr-mpls   | Supported      |
+| ipv6           | sr-mpls   | Supported      |
+| ipv6           | srv6      | Supported      |
+| ipv4           | srv6      | Not applicable |
+
+A dynamic candidate path selects the plane with `underlayFamily` and
+`dataPlane`. If both are unspecified, Pola uses the headend's unique viable
+plane and rejects the request when multiple planes are available.
+
+The endpoint and underlay address families are independent, so cross-AF
+policies are supported.
 
 ```yaml
 global:
@@ -141,9 +160,21 @@ neighbors:
       afi-safi-name: ls
 ```
 
+#### Known limitations
+
+* **BGP-LS Multi-Topology ID (TLV 263)** is not exposed through GoBGP's
+  Node/Link/Prefix NLRI API. Pola infers MT-0/MT-2 adjacency usability from the
+  advertised interface address family.
+* **SR Adjacency-SID**: At most one SR Adjacency-SID is available per link, so
+  IPv4- and IPv6-specific SIDs cannot be distinguished on the same dual-stack link.
+* **IOS-XR interoperability**: IPv6-endpoint PCE-initiated SR-MPLS policies were
+  observed to be rejected locally by IOS-XR 24.4.1 (`pcinitiate: bad sock info`),
+  even though the PCEP message is valid on the wire. Cross-AF behavior may vary
+  by PCC implementation and version.
+
 ## Run Polad
 
-Start polad. Specify the created configuration file with the -f option.
+Start polad. Specify the created configuration file with the `-f` option.
 
 ```bash
 $ sudo polad -f polad.yaml
