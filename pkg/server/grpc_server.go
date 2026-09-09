@@ -415,13 +415,12 @@ func resolveDynamicPolicy(s *APIServer, req *pb.CreateSRPolicyRequest, spec tabl
 		return resolvedPath{}, err
 	}
 
-	headend, endpoint, err := spec.Resolve(ted, scope.Plane.Family)
+	headend, endpoint, err := spec.Resolve(ted)
 	if err != nil {
 		return resolvedPath{}, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "%s", err.Error())
 	}
 
-	// Endpoint and underlay families need not match; Pola aligns them by default
-	// for PCC interoperability, but cross-AF is supported (§1.3).
+	// Endpoint and underlay address families are independent; cross-AF policies are supported (§1.3).
 	if endpointFamily := table.FamilyOfAddr(endpoint); scope.Plane.Family.IsValid() && endpointFamily != scope.Plane.Family {
 		s.logger.Warn("cross address-family SR Policy",
 			logger.String("endpointFamily", endpointFamily.String()),
@@ -491,7 +490,7 @@ func resolveExplicitPolicy(s *APIServer, spec table.EndpointSpec, explicit *pb.E
 		}
 	}
 
-	headend, endpoint, err := spec.Resolve(ted, table.AFUnspecified)
+	headend, endpoint, err := spec.Resolve(ted)
 	if err != nil {
 		return resolvedPath{}, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "%s", err.Error())
 	}

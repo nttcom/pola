@@ -1,0 +1,11 @@
+global:
+  config:
+    as: 65000
+    router-id: "10.255.2.255"
+neighbors:
+  - config:
+      peer-as: 65000
+      neighbor-address: "10.0.30.1"
+    afi-safis:
+      - config:
+          afi-safi-name: ls
