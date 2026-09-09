@@ -16,6 +16,7 @@ and a PCEP Library in Go.
 ## Features
 
 * Support for SRv6 (full-SID/uSID) and SR-MPLS
+* IPv4 / IPv6 underlay support, including dual-stack topologies
 * Implementation of active stateful PCE functionality (PCInitiate, PCUpdate, etc.)
 * Dynamic and explicit SR policy definition using YAML
   * Dynamic path: Utilizes CSPF with GoBGP BGP-LS TED
