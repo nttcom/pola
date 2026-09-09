@@ -2898,9 +2898,10 @@ func (x *Metric) GetValue() uint32 {
 
 type Srv6EndXSID struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
-	EndpointBehavior uint32                 `protobuf:"varint,1,opt,name=endpoint_behavior,json=endpointBehavior,proto3" json:"endpoint_behavior,omitempty"`
 	Sids             []*SID                 `protobuf:"bytes,2,rep,name=sids,proto3" json:"sids,omitempty"`
 	SidStructure     *SidStructure          `protobuf:"bytes,3,opt,name=sid_structure,json=sidStructure,proto3" json:"sid_structure,omitempty"`
+	Weight           uint32                 `protobuf:"varint,4,opt,name=weight,proto3" json:"weight,omitempty"`
+	EndpointBehavior *EndpointBehavior      `protobuf:"bytes,5,opt,name=endpoint_behavior,json=endpointBehavior,proto3" json:"endpoint_behavior,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -2935,13 +2936,6 @@ func (*Srv6EndXSID) Descriptor() ([]byte, []int) {
 	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{34}
 }
 
-func (x *Srv6EndXSID) GetEndpointBehavior() uint32 {
-	if x != nil {
-		return x.EndpointBehavior
-	}
-	return 0
-}
-
 func (x *Srv6EndXSID) GetSids() []*SID {
 	if x != nil {
 		return x.Sids
@@ -2952,6 +2946,20 @@ func (x *Srv6EndXSID) GetSids() []*SID {
 func (x *Srv6EndXSID) GetSidStructure() *SidStructure {
 	if x != nil {
 		return x.SidStructure
+	}
+	return nil
+}
+
+func (x *Srv6EndXSID) GetWeight() uint32 {
+	if x != nil {
+		return x.Weight
+	}
+	return 0
+}
+
+func (x *Srv6EndXSID) GetEndpointBehavior() *EndpointBehavior {
+	if x != nil {
+		return x.EndpointBehavior
 	}
 	return nil
 }
@@ -3825,11 +3833,12 @@ const file_api_pola_v1_pola_proto_rawDesc = "" +
 	"_sid_index\"K\n" +
 	"\x06Metric\x12+\n" +
 	"\x04type\x18\x01 \x01(\x0e2\x17.api.pola.v1.MetricTypeR\x04type\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\rR\x05value\"\xa0\x01\n" +
-	"\vSrv6EndXSID\x12+\n" +
-	"\x11endpoint_behavior\x18\x01 \x01(\rR\x10endpointBehavior\x12$\n" +
+	"\x05value\x18\x02 \x01(\rR\x05value\"\xdd\x01\n" +
+	"\vSrv6EndXSID\x12$\n" +
 	"\x04sids\x18\x02 \x03(\v2\x10.api.pola.v1.SIDR\x04sids\x12>\n" +
-	"\rsid_structure\x18\x03 \x01(\v2\x19.api.pola.v1.SidStructureR\fsidStructure\"\xa0\x01\n" +
+	"\rsid_structure\x18\x03 \x01(\v2\x19.api.pola.v1.SidStructureR\fsidStructure\x12\x16\n" +
+	"\x06weight\x18\x04 \x01(\rR\x06weight\x12J\n" +
+	"\x11endpoint_behavior\x18\x05 \x01(\v2\x1d.api.pola.v1.EndpointBehaviorR\x10endpointBehaviorJ\x04\b\x01\x10\x02\"\xa0\x01\n" +
 	"\x0eLsLinkEndpoint\x12\x1b\n" +
 	"\trouter_id\x18\x01 \x01(\tR\brouterId\x12\x10\n" +
 	"\x03asn\x18\x02 \x01(\rR\x03asn\x12&\n" +
@@ -4066,35 +4075,36 @@ var file_api_pola_v1_pola_proto_depIdxs = []int32{
 	8,  // 52: api.pola.v1.Metric.type:type_name -> api.pola.v1.MetricType
 	38, // 53: api.pola.v1.Srv6EndXSID.sids:type_name -> api.pola.v1.SID
 	37, // 54: api.pola.v1.Srv6EndXSID.sid_structure:type_name -> api.pola.v1.SidStructure
-	0,  // 55: api.pola.v1.AdjSid.family:type_name -> api.pola.v1.AddressFamily
-	44, // 56: api.pola.v1.LsLink.local:type_name -> api.pola.v1.LsLinkEndpoint
-	44, // 57: api.pola.v1.LsLink.remote:type_name -> api.pola.v1.LsLinkEndpoint
-	42, // 58: api.pola.v1.LsLink.metrics:type_name -> api.pola.v1.Metric
-	45, // 59: api.pola.v1.LsLink.adj_sids:type_name -> api.pola.v1.AdjSid
-	43, // 60: api.pola.v1.LsLink.srv6_end_x_sids:type_name -> api.pola.v1.Srv6EndXSID
-	46, // 61: api.pola.v1.LsNode.links:type_name -> api.pola.v1.LsLink
-	41, // 62: api.pola.v1.LsNode.prefixes:type_name -> api.pola.v1.LsPrefix
-	40, // 63: api.pola.v1.LsNode.srv6_sids:type_name -> api.pola.v1.LsSrv6SID
-	34, // 64: api.pola.v1.GetSessionListResponse.sessions:type_name -> api.pola.v1.Session
-	35, // 65: api.pola.v1.GetSRPolicyListResponse.sessions:type_name -> api.pola.v1.SRPolicySession
-	47, // 66: api.pola.v1.GetTEDResponse.nodes:type_name -> api.pola.v1.LsNode
-	15, // 67: api.pola.v1.PCEService.CreateSRPolicy:input_type -> api.pola.v1.CreateSRPolicyRequest
-	17, // 68: api.pola.v1.PCEService.DeleteSRPolicy:input_type -> api.pola.v1.DeleteSRPolicyRequest
-	48, // 69: api.pola.v1.PCEService.GetSessionList:input_type -> api.pola.v1.GetSessionListRequest
-	50, // 70: api.pola.v1.PCEService.GetSRPolicyList:input_type -> api.pola.v1.GetSRPolicyListRequest
-	52, // 71: api.pola.v1.PCEService.GetTED:input_type -> api.pola.v1.GetTEDRequest
-	54, // 72: api.pola.v1.PCEService.DeleteSession:input_type -> api.pola.v1.DeleteSessionRequest
-	16, // 73: api.pola.v1.PCEService.CreateSRPolicy:output_type -> api.pola.v1.CreateSRPolicyResponse
-	18, // 74: api.pola.v1.PCEService.DeleteSRPolicy:output_type -> api.pola.v1.DeleteSRPolicyResponse
-	49, // 75: api.pola.v1.PCEService.GetSessionList:output_type -> api.pola.v1.GetSessionListResponse
-	51, // 76: api.pola.v1.PCEService.GetSRPolicyList:output_type -> api.pola.v1.GetSRPolicyListResponse
-	53, // 77: api.pola.v1.PCEService.GetTED:output_type -> api.pola.v1.GetTEDResponse
-	55, // 78: api.pola.v1.PCEService.DeleteSession:output_type -> api.pola.v1.DeleteSessionResponse
-	73, // [73:79] is the sub-list for method output_type
-	67, // [67:73] is the sub-list for method input_type
-	67, // [67:67] is the sub-list for extension type_name
-	67, // [67:67] is the sub-list for extension extendee
-	0,  // [0:67] is the sub-list for field type_name
+	36, // 55: api.pola.v1.Srv6EndXSID.endpoint_behavior:type_name -> api.pola.v1.EndpointBehavior
+	0,  // 56: api.pola.v1.AdjSid.family:type_name -> api.pola.v1.AddressFamily
+	44, // 57: api.pola.v1.LsLink.local:type_name -> api.pola.v1.LsLinkEndpoint
+	44, // 58: api.pola.v1.LsLink.remote:type_name -> api.pola.v1.LsLinkEndpoint
+	42, // 59: api.pola.v1.LsLink.metrics:type_name -> api.pola.v1.Metric
+	45, // 60: api.pola.v1.LsLink.adj_sids:type_name -> api.pola.v1.AdjSid
+	43, // 61: api.pola.v1.LsLink.srv6_end_x_sids:type_name -> api.pola.v1.Srv6EndXSID
+	46, // 62: api.pola.v1.LsNode.links:type_name -> api.pola.v1.LsLink
+	41, // 63: api.pola.v1.LsNode.prefixes:type_name -> api.pola.v1.LsPrefix
+	40, // 64: api.pola.v1.LsNode.srv6_sids:type_name -> api.pola.v1.LsSrv6SID
+	34, // 65: api.pola.v1.GetSessionListResponse.sessions:type_name -> api.pola.v1.Session
+	35, // 66: api.pola.v1.GetSRPolicyListResponse.sessions:type_name -> api.pola.v1.SRPolicySession
+	47, // 67: api.pola.v1.GetTEDResponse.nodes:type_name -> api.pola.v1.LsNode
+	15, // 68: api.pola.v1.PCEService.CreateSRPolicy:input_type -> api.pola.v1.CreateSRPolicyRequest
+	17, // 69: api.pola.v1.PCEService.DeleteSRPolicy:input_type -> api.pola.v1.DeleteSRPolicyRequest
+	48, // 70: api.pola.v1.PCEService.GetSessionList:input_type -> api.pola.v1.GetSessionListRequest
+	50, // 71: api.pola.v1.PCEService.GetSRPolicyList:input_type -> api.pola.v1.GetSRPolicyListRequest
+	52, // 72: api.pola.v1.PCEService.GetTED:input_type -> api.pola.v1.GetTEDRequest
+	54, // 73: api.pola.v1.PCEService.DeleteSession:input_type -> api.pola.v1.DeleteSessionRequest
+	16, // 74: api.pola.v1.PCEService.CreateSRPolicy:output_type -> api.pola.v1.CreateSRPolicyResponse
+	18, // 75: api.pola.v1.PCEService.DeleteSRPolicy:output_type -> api.pola.v1.DeleteSRPolicyResponse
+	49, // 76: api.pola.v1.PCEService.GetSessionList:output_type -> api.pola.v1.GetSessionListResponse
+	51, // 77: api.pola.v1.PCEService.GetSRPolicyList:output_type -> api.pola.v1.GetSRPolicyListResponse
+	53, // 78: api.pola.v1.PCEService.GetTED:output_type -> api.pola.v1.GetTEDResponse
+	55, // 79: api.pola.v1.PCEService.DeleteSession:output_type -> api.pola.v1.DeleteSessionResponse
+	74, // [74:80] is the sub-list for method output_type
+	68, // [68:74] is the sub-list for method input_type
+	68, // [68:68] is the sub-list for extension type_name
+	68, // [68:68] is the sub-list for extension extendee
+	0,  // [0:68] is the sub-list for field type_name
 }
 
 func init() { file_api_pola_v1_pola_proto_init() }

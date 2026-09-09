@@ -97,7 +97,8 @@ func TestPrintLink(t *testing.T) {
 
 		link := &LsLink{
 			Srv6EndXSIDs: []*Srv6EndXSID{{
-				EndpointBehavior: 5,
+				EndpointBehavior: EndpointBehavior{Behavior: 5, Flags: 0xC0, Algorithm: 128},
+				Weight:           7,
 				Sids:             []string{tedInternalTestSRv6SID1},
 				Srv6SIDStructure: &SIDStructure{LocalBlock: 1, LocalNode: 2, LocalFunc: 3, LocalArg: 4},
 			}},
@@ -107,7 +108,8 @@ func TestPrintLink(t *testing.T) {
 		printLink(&errWriter{w: &buf}, link)
 
 		assert.Contains(t, buf.String(), "SRv6 End.X SID:")
-		assert.Contains(t, buf.String(), "EndpointBehavior: "+BehaviorToString(5))
+		assert.Contains(t, buf.String(),
+			"EndpointBehavior: "+BehaviorToString(5)+", Flags: 192, Algorithm: 128, Weight: 7")
 		assert.Contains(t, buf.String(), fmt.Sprintf("SIDs: [%s]", tedInternalTestSRv6SID1))
 		assert.Contains(t, buf.String(), "Block: 1, Node: 2, Func: 3, Arg: 4")
 	})

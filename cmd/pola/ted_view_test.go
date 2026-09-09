@@ -99,19 +99,23 @@ func TestEndpointBehaviorViewFrom_IncludesFlagsAndAlgorithm(t *testing.T) {
 
 	v := endpointBehaviorViewFrom(table.EndpointBehavior{Behavior: table.BehaviorEND, Flags: 1, Algorithm: 2})
 	assert.Equal(t, table.BehaviorEND, v.Behavior)
-	require.NotNil(t, v.Flags)
-	assert.Equal(t, uint8(1), *v.Flags)
-	require.NotNil(t, v.Algorithm)
-	assert.Equal(t, uint8(2), *v.Algorithm)
+	assert.Equal(t, uint8(1), v.Flags)
+	assert.Equal(t, uint8(2), v.Algorithm)
 }
 
-func TestEndpointBehaviorViewFromBehavior_OmitsFlagsAndAlgorithm(t *testing.T) {
+func TestNewTEDSrv6EndXSIDView_IncludesFlagsAlgorithmAndWeight(t *testing.T) {
 	t.Parallel()
 
-	v := endpointBehaviorViewFromBehavior(table.BehaviorENDX)
-	assert.Equal(t, table.BehaviorENDX, v.Behavior)
-	assert.Nil(t, v.Flags)
-	assert.Nil(t, v.Algorithm)
+	v := newTEDSrv6EndXSIDView(&table.Srv6EndXSID{
+		EndpointBehavior: table.EndpointBehavior{
+			Behavior: table.BehaviorENDX, Flags: 0xC0, Algorithm: 128,
+		},
+		Weight: 7,
+	})
+	assert.Equal(t, table.BehaviorENDX, v.EndpointBehavior.Behavior)
+	assert.Equal(t, uint8(0xC0), v.EndpointBehavior.Flags)
+	assert.Equal(t, uint8(128), v.EndpointBehavior.Algorithm)
+	assert.Equal(t, uint8(7), v.Weight)
 }
 
 func TestNewTEDPrefixViews_SkipsNilEntries(t *testing.T) {
@@ -137,7 +141,7 @@ func TestNewTEDLinkView_IncludesSrv6EndXSID(t *testing.T) {
 
 	link := &table.LsLink{
 		Srv6EndXSIDs: []*table.Srv6EndXSID{{
-			EndpointBehavior: table.BehaviorENDX,
+			EndpointBehavior: table.EndpointBehavior{Behavior: table.BehaviorENDX},
 			Sids:             []string{testSrv6EndXSID},
 			Srv6SIDStructure: &table.SIDStructure{LocalBlock: 1, LocalNode: 2, LocalFunc: 3, LocalArg: 4},
 		}},
@@ -155,8 +159,8 @@ func TestNewTEDLinkView_MultipleSrv6EndXSIDs(t *testing.T) {
 
 	link := &table.LsLink{
 		Srv6EndXSIDs: []*table.Srv6EndXSID{
-			{EndpointBehavior: table.BehaviorENDX, Sids: []string{"fc00:0:1:1::"}},
-			{EndpointBehavior: table.BehaviorENDX, Sids: []string{"fc00:0:1:2::"}},
+			{EndpointBehavior: table.EndpointBehavior{Behavior: table.BehaviorENDX}, Sids: []string{"fc00:0:1:1::"}},
+			{EndpointBehavior: table.EndpointBehavior{Behavior: table.BehaviorENDX}, Sids: []string{"fc00:0:1:2::"}},
 			nil,
 		},
 	}
