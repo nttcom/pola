@@ -828,26 +828,6 @@ func TestPolicyStateFromPB(t *testing.T) {
 	}
 }
 
-func TestPolicyTypeFromPB(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		in   pb.SRPolicyType
-		want table.PolicyType
-	}{
-		{"explicit", pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT, table.PolicyTypeExplicit},
-		{"dynamic", pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC, table.PolicyTypeDynamic},
-		{"unspecified maps to the unknown type", pb.SRPolicyType_SR_POLICY_TYPE_UNSPECIFIED, table.PolicyType("")},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			assert.Equal(t, tt.want, policyTypeFromPB(tt.in))
-		})
-	}
-}
-
 func TestMetricTypeFromPB(t *testing.T) {
 	t.Parallel()
 
@@ -877,37 +857,33 @@ func TestConvertSRPolicy(t *testing.T) {
 		t.Parallel()
 
 		p := &pb.SRPolicy{
-			PlspId:      7,
-			PolicyName:  testPolicyName,
-			SrcAddr:     netip.MustParseAddr(testIPv4Addr1).AsSlice(),
-			DstAddr:     netip.MustParseAddr(testIPv4Addr2).AsSlice(),
-			SrcRouterId: testRouterID1,
-			DstRouterId: testRouterID2,
-			Color:       100,
-			Preference:  200,
-			LspId:       3,
-			State:       pb.SRPolicyState_SR_POLICY_STATE_UP,
-			Type:        pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT,
-			Metric:      pb.MetricType_METRIC_TYPE_UNSPECIFIED,
-			SegmentList: []*pb.Segment{{Sid: "16003"}},
+			PlspId:           7,
+			PolicyName:       testPolicyName,
+			Headend:          netip.MustParseAddr(testIPv4Addr1).AsSlice(),
+			Endpoint:         netip.MustParseAddr(testIPv4Addr2).AsSlice(),
+			HeadendRouterId:  testRouterID1,
+			EndpointRouterId: testRouterID2,
+			Color:            100,
+			CandidatePath:    &pb.CandidatePath{Preference: 200},
+			LspId:            3,
+			State:            pb.SRPolicyState_SR_POLICY_STATE_UP,
+			SegmentList:      []*pb.Segment{{Sid: "16003"}},
 		}
 		got, err := convertSRPolicy(p)
 		require.NoError(t, err)
 
 		want := table.SRPolicy{
-			PlspID:      7,
-			Name:        testPolicyName,
-			SegmentList: []table.Segment{table.SegmentSRMPLS{Sid: 16003}},
-			SrcAddr:     netip.MustParseAddr(testIPv4Addr1),
-			DstAddr:     netip.MustParseAddr(testIPv4Addr2),
-			SrcRouterID: testRouterID1,
-			DstRouterID: testRouterID2,
-			Color:       100,
-			Preference:  200,
-			LSPID:       3,
-			State:       table.PolicyUp,
-			Type:        table.PolicyTypeExplicit,
-			Metric:      table.UnspecifiedMetric,
+			PlspID:           7,
+			Name:             testPolicyName,
+			SegmentList:      []table.Segment{table.SegmentSRMPLS{Sid: 16003}},
+			Headend:          netip.MustParseAddr(testIPv4Addr1),
+			Endpoint:         netip.MustParseAddr(testIPv4Addr2),
+			HeadendRouterID:  testRouterID1,
+			EndpointRouterID: testRouterID2,
+			Color:            100,
+			CandidatePath:    table.CandidatePath{Preference: 200},
+			LSPID:            3,
+			State:            table.PolicyUp,
 		}
 		assert.Equal(t, want, got)
 	})
@@ -916,27 +892,87 @@ func TestConvertSRPolicy(t *testing.T) {
 		t.Parallel()
 
 		p := &pb.SRPolicy{
-			SrcAddr:        netip.MustParseAddr(testIPv4Addr1).AsSlice(),
-			DstAddr:        netip.MustParseAddr(testIPv4Addr2).AsSlice(),
-			UnderlayFamily: pb.AddressFamily_ADDRESS_FAMILY_IPV6,
-			DataPlane:      pb.DataPlane_DATA_PLANE_SRV6,
+			Headend:  netip.MustParseAddr(testIPv4Addr1).AsSlice(),
+			Endpoint: netip.MustParseAddr(testIPv4Addr2).AsSlice(),
+			CandidatePath: &pb.CandidatePath{
+				Path: &pb.CandidatePath_Dynamic{Dynamic: &pb.DynamicPath{
+					UnderlayFamily: pb.AddressFamily_ADDRESS_FAMILY_IPV6,
+					DataPlane:      pb.DataPlane_DATA_PLANE_SRV6,
+				}},
+			},
 		}
 		got, err := convertSRPolicy(p)
 		require.NoError(t, err)
-		assert.Equal(t, table.Plane{Family: table.AFIPv6, DataPlane: table.DPSRv6}, got.Plane)
+		require.NotNil(t, got.CandidatePath.Dynamic)
+		assert.Equal(t, table.Plane{Family: table.AFIPv6, DataPlane: table.DPSRv6}, got.CandidatePath.Dynamic.Plane)
+	})
+
+	t.Run("SR-MPLS underlay plane", func(t *testing.T) {
+		t.Parallel()
+
+		p := &pb.SRPolicy{
+			Headend:  netip.MustParseAddr(testIPv4Addr1).AsSlice(),
+			Endpoint: netip.MustParseAddr(testIPv4Addr2).AsSlice(),
+			CandidatePath: &pb.CandidatePath{
+				Path: &pb.CandidatePath_Dynamic{Dynamic: &pb.DynamicPath{
+					UnderlayFamily: pb.AddressFamily_ADDRESS_FAMILY_IPV4,
+					DataPlane:      pb.DataPlane_DATA_PLANE_SR_MPLS,
+				}},
+			},
+		}
+		got, err := convertSRPolicy(p)
+		require.NoError(t, err)
+		require.NotNil(t, got.CandidatePath.Dynamic)
+		assert.Equal(t, table.Plane{Family: table.AFIPv4, DataPlane: table.DPSRMPLS}, got.CandidatePath.Dynamic.Plane)
+	})
+
+	t.Run("unspecified data plane", func(t *testing.T) {
+		t.Parallel()
+
+		p := &pb.SRPolicy{
+			Headend:  netip.MustParseAddr(testIPv4Addr1).AsSlice(),
+			Endpoint: netip.MustParseAddr(testIPv4Addr2).AsSlice(),
+			CandidatePath: &pb.CandidatePath{
+				Path: &pb.CandidatePath_Dynamic{Dynamic: &pb.DynamicPath{
+					DataPlane: pb.DataPlane_DATA_PLANE_UNSPECIFIED,
+				}},
+			},
+		}
+		got, err := convertSRPolicy(p)
+		require.NoError(t, err)
+		require.NotNil(t, got.CandidatePath.Dynamic)
+		assert.Equal(t, table.DPUnspecified, got.CandidatePath.Dynamic.Plane.DataPlane)
+	})
+
+	t.Run("explicit path", func(t *testing.T) {
+		t.Parallel()
+
+		p := &pb.SRPolicy{
+			Headend:  netip.MustParseAddr(testIPv4Addr1).AsSlice(),
+			Endpoint: netip.MustParseAddr(testIPv4Addr2).AsSlice(),
+			CandidatePath: &pb.CandidatePath{
+				Path: &pb.CandidatePath_Explicit{Explicit: &pb.ExplicitPath{
+					SegmentList: []*pb.Segment{{Sid: "16003"}},
+				}},
+			},
+		}
+		got, err := convertSRPolicy(p)
+		require.NoError(t, err)
+		require.NotNil(t, got.CandidatePath.Explicit)
+		assert.Equal(t, []table.Segment{table.SegmentSRMPLS{Sid: 16003}}, got.CandidatePath.Explicit.SegmentList)
 	})
 
 	t.Run("invalid source address", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := convertSRPolicy(&pb.SRPolicy{SrcAddr: []byte{1, 2, 3}, DstAddr: netip.MustParseAddr(testIPv4Addr2).AsSlice()})
+		_, err := convertSRPolicy(&pb.SRPolicy{Headend: []byte{1, 2, 3}, Endpoint: netip.MustParseAddr(testIPv4Addr2).AsSlice()})
 		require.Error(t, err)
 	})
 
 	t.Run("invalid destination address", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := convertSRPolicy(&pb.SRPolicy{SrcAddr: netip.MustParseAddr(testIPv4Addr1).AsSlice(), DstAddr: []byte{1, 2, 3}})
+		_, err := convertSRPolicy(&pb.SRPolicy{Headend: netip.MustParseAddr(testIPv4Addr1).AsSlice(), Endpoint: []byte{1, 2, 3}})
 		require.Error(t, err)
 	})
 
@@ -944,8 +980,8 @@ func TestConvertSRPolicy(t *testing.T) {
 		t.Parallel()
 
 		_, err := convertSRPolicy(&pb.SRPolicy{
-			SrcAddr:     netip.MustParseAddr(testIPv4Addr1).AsSlice(),
-			DstAddr:     netip.MustParseAddr(testIPv4Addr2).AsSlice(),
+			Headend:     netip.MustParseAddr(testIPv4Addr1).AsSlice(),
+			Endpoint:    netip.MustParseAddr(testIPv4Addr2).AsSlice(),
 			SegmentList: []*pb.Segment{{Sid: "not-a-sid"}},
 		})
 		require.Error(t, err)
@@ -955,9 +991,9 @@ func TestConvertSRPolicy(t *testing.T) {
 		t.Parallel()
 
 		_, err := convertSRPolicy(&pb.SRPolicy{
-			SrcAddr: netip.MustParseAddr(testIPv4Addr1).AsSlice(),
-			DstAddr: netip.MustParseAddr(testIPv4Addr2).AsSlice(),
-			LspId:   math.MaxUint16 + 1,
+			Headend:  netip.MustParseAddr(testIPv4Addr1).AsSlice(),
+			Endpoint: netip.MustParseAddr(testIPv4Addr2).AsSlice(),
+			LspId:    math.MaxUint16 + 1,
 		})
 		require.Error(t, err)
 	})
@@ -1006,8 +1042,8 @@ func TestGetSRPolicyList(t *testing.T) {
 				State:    pb.SessionState_SESSION_STATE_UP,
 				SrPolicies: []*pb.SRPolicy{{
 					PolicyName: testPolicyName,
-					SrcAddr:    netip.MustParseAddr(testIPv4Addr1).AsSlice(),
-					DstAddr:    netip.MustParseAddr(testIPv4Addr2).AsSlice(),
+					Headend:    netip.MustParseAddr(testIPv4Addr1).AsSlice(),
+					Endpoint:   netip.MustParseAddr(testIPv4Addr2).AsSlice(),
 				}},
 			}},
 		}}
@@ -1044,7 +1080,7 @@ func TestGetSRPolicyList(t *testing.T) {
 		client := &fakeClient{srPolicyListResp: &pb.GetSRPolicyListResponse{
 			Sessions: []*pb.SRPolicySession{{
 				PeerAddr:   netip.MustParseAddr(testIPv4Addr1).AsSlice(),
-				SrPolicies: []*pb.SRPolicy{{SrcAddr: []byte{1, 2, 3}}},
+				SrPolicies: []*pb.SRPolicy{{Headend: []byte{1, 2, 3}}},
 			}},
 		}}
 		_, err := GetSRPolicyList(client, netip.Addr{})

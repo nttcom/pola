@@ -12,17 +12,21 @@
                 "pcepSessionAddr": {
                     "$ref": "#/$defs/ipAddr"
                 },
-                "srcAddr": {
+                "headend": {
                     "$ref": "#/$defs/ipAddr"
                 },
-                "dstAddr": {
+                "endpoint": {
                     "$ref": "#/$defs/ipAddr"
                 },
-                "srcRouterID": {
+                "headendRouterID": {
                     "type": "string"
                 },
-                "dstRouterID": {
+                "endpointRouterID": {
                     "type": "string"
+                },
+                "endpointFamily": {
+                    "type": "string",
+                    "enum": ["ipv4", "ipv6"]
                 },
                 "name": {
                     "type": "string"
@@ -31,89 +35,91 @@
                     "type": "integer",
                     "minimum": 1
                 },
-                "type": {
-                    "type": "string",
-                    "enum": ["explicit", "dynamic"]
-                },
-                "metric": {
-                    "type": "string",
-                    "enum": ["igp", "te", "delay", "hopcount"]
-                },
-                "underlayFamily": {
-                    "type": "string",
-                    "enum": ["ipv4", "ipv6"]
-                },
-                "dataPlane": {
-                    "type": "string",
-                    "enum": ["sr-mpls", "srv6"]
-                },
-                "segmentList": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "segment.json"
-                    }
-                },
-                "waypoints": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "routerID": {
-                                "type": "string"
-                            },
-                            "sid": {
-                                "type": "string"
-                            }
+                "candidatePath": {
+                    "type": "object",
+                    "properties": {
+                        "preference": {
+                            "type": "integer",
+                            "minimum": 1
                         },
-                        "required": ["routerID"],
-                        "additionalProperties": false
-                    }
+                        "dynamic": {
+                            "type": "object",
+                            "properties": {
+                                "metric": {
+                                    "type": "string",
+                                    "enum": ["igp", "te", "delay", "hopcount"]
+                                },
+                                "dataPlane": {
+                                    "type": "string",
+                                    "enum": ["sr-mpls", "srv6"]
+                                },
+                                "underlayFamily": {
+                                    "type": "string",
+                                    "enum": ["ipv4", "ipv6"]
+                                },
+                                "waypoints": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "routerID": {
+                                                "type": "string"
+                                            },
+                                            "sid": {
+                                                "type": "string"
+                                            }
+                                        },
+                                        "required": ["routerID"],
+                                        "additionalProperties": false
+                                    }
+                                }
+                            },
+                            "required": ["metric"],
+                            "additionalProperties": false
+                        },
+                        "explicit": {
+                            "type": "object",
+                            "properties": {
+                                "segmentList": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "segment.json"
+                                    },
+                                    "minItems": 1
+                                }
+                            },
+                            "required": ["segmentList"],
+                            "additionalProperties": false
+                        }
+                    },
+                    "oneOf": [
+                        { "required": ["dynamic"], "not": { "required": ["explicit"] } },
+                        { "required": ["explicit"], "not": { "required": ["dynamic"] } }
+                    ],
+                    "additionalProperties": false
                 }
             },
+            "required": ["pcepSessionAddr", "name", "color", "candidatePath"],
             "additionalProperties": false,
             "oneOf": [
                 {
                     "title": "Endpoints resolved from the TED by router ID",
-                    "required": ["pcepSessionAddr", "srcRouterID", "dstRouterID", "name", "color", "type"],
+                    "required": ["headendRouterID", "endpointRouterID"],
                     "not": {
                         "anyOf": [
-                            { "required": ["srcAddr"] },
-                            { "required": ["dstAddr"] }
+                            { "required": ["headend"] },
+                            { "required": ["endpoint"] }
                         ]
-                    },
-                    "allOf": [
-                        {
-                            "if": {
-                                "properties": { "type": { "const": "explicit" } }
-                            },
-                            "then": {
-                                "required": ["segmentList"]
-                            }
-                        },
-                        {
-                            "if": {
-                                "properties": { "type": { "const": "dynamic" } }
-                            },
-                            "then": {
-                                "required": ["metric"]
-                            }
-                        }
-                    ]
+                    }
                 },
                 {
-                    "title": "Endpoints given directly; no path computation, so explicit only",
-                    "required": ["pcepSessionAddr", "srcAddr", "dstAddr", "name", "color", "segmentList"],
-                    "properties": {
-                        "type": { "const": "explicit" }
-                    },
+                    "title": "Endpoints given directly as addresses",
+                    "required": ["headend", "endpoint"],
                     "not": {
                         "anyOf": [
-                            { "required": ["srcRouterID"] },
-                            { "required": ["dstRouterID"] },
-                            { "required": ["metric"] },
-                            { "required": ["waypoints"] },
-                            { "required": ["underlayFamily"] },
-                            { "required": ["dataPlane"] }
+                            { "required": ["headendRouterID"] },
+                            { "required": ["endpointRouterID"] },
+                            { "required": ["endpointFamily"] }
                         ]
                     }
                 }
@@ -131,9 +137,28 @@
                 "properties": {
                     "srPolicy": {
                         "anyOf": [
-                            { "required": ["srcRouterID"] },
-                            { "required": ["dstRouterID"] }
+                            { "required": ["headendRouterID"] },
+                            { "required": ["endpointRouterID"] }
                         ]
+                    }
+                }
+            },
+            "then": {
+                "required": ["asn"]
+            }
+        },
+        {
+            "$comment": "A dynamic candidate path is TED-computed, which is keyed by ASN",
+            "if": {
+                "required": ["srPolicy"],
+                "properties": {
+                    "srPolicy": {
+                        "required": ["candidatePath"],
+                        "properties": {
+                            "candidatePath": {
+                                "required": ["dynamic"]
+                            }
+                        }
                     }
                 }
             },

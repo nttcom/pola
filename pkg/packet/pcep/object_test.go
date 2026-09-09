@@ -798,7 +798,7 @@ func TestNewAssociationObject_DefaultCandidatePathIdentifier(t *testing.T) {
 		0x0a, 0x00, 0x00, 0x00, // protocol=0x0a + mbz
 		0x00, 0x00, 0x00, 0x00, // ASN=0
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // originator addr padding
-		0xc0, 0x00, 0x02, 0x02, // dstAddr=192.0.2.2
+		0xc0, 0x00, 0x02, 0x01, // originator=srcAddr=192.0.2.1 (RFC 9256 §2.6, RFC 9862 §4.2)
 		0x00, 0x00, 0x00, 0x01, // discriminator=1
 		0x00, 0x3b, 0x00, 0x04, 0x00, 0x00, 0x00, 0xc8, // SRPOLICY-CPATH-PREFERENCE TLV: preference=200
 	}
@@ -844,18 +844,6 @@ func TestNewAssociationObject_JuniperLegacy_OriginatorASN(t *testing.T) {
 			assert.Equal(t, tt.expectedASN, cpID.OriginatorASN)
 		})
 	}
-}
-
-// pcep.JuniperLegacy uses the IPv4 Extended Association ID TLV format.
-// IPv6 endpoints must be rejected during object construction.
-func TestNewAssociationObject_JuniperLegacy_RejectsIPv6(t *testing.T) {
-	t.Parallel()
-
-	srcAddr := netip.MustParseAddr(testIPv6Addr1)
-	dstAddr := netip.MustParseAddr(testIPv6Addr2)
-
-	_, err := pcep.NewAssociationObject(srcAddr, dstAddr, 100, 200, pcep.VendorSpecific(pcep.JuniperLegacy))
-	assert.Error(t, err)
 }
 
 // Verifies Juniper vendor-specific TLVs preserve typed fields and legacy wire format.
@@ -1882,8 +1870,9 @@ func TestAssociationObject_Serialize_ObjectLengthBoundary(t *testing.T) {
 func TestNewAssociationObject_MismatchedFamilies(t *testing.T) {
 	t.Parallel()
 
-	_, err := pcep.NewAssociationObject(netip.MustParseAddr("192.0.2.1"), netip.MustParseAddr(testIPv6Addr1), 100, 200)
-	assert.Error(t, err)
+	o, err := pcep.NewAssociationObject(netip.MustParseAddr("192.0.2.1"), netip.MustParseAddr(testIPv6Addr1), 100, 200)
+	require.NoError(t, err)
+	assert.Equal(t, pcep.ObjectTypeAssociationIPv4, o.ObjectType)
 }
 
 func TestNewAssociationObject_ObjectType(t *testing.T) {
@@ -1907,6 +1896,13 @@ func TestNewAssociationObject_ObjectType(t *testing.T) {
 			assert.Equal(t, tt.want, o.ObjectType)
 		})
 	}
+}
+
+func TestNewAssociationObject_InvalidSrcAddr(t *testing.T) {
+	t.Parallel()
+
+	_, err := pcep.NewAssociationObject(netip.Addr{}, netip.MustParseAddr("192.0.2.2"), 100, 200)
+	require.Error(t, err)
 }
 
 func TestAssociationObject_Endpoint(t *testing.T) {

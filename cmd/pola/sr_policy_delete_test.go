@@ -73,7 +73,7 @@ func TestNewSRPolicyDeleteCmd_RunE(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "policy.yaml")
 		yamlContent := "srPolicy:\n" +
 			"  pcepSessionAddr: 192.0.2.1\n" +
-			"  dstAddr: 192.0.2.2\n" +
+			"  endpoint: 192.0.2.2\n" +
 			"  color: 100\n" +
 			"  name: pol1\n"
 		require.NoError(t, os.WriteFile(path, []byte(yamlContent), 0o600))
@@ -103,7 +103,7 @@ func TestDeleteSRPolicy(t *testing.T) {
 	validPolicy := func() srPolicy {
 		return srPolicy{
 			PCEPSessionAddr: netip.MustParseAddr(testPeerAddr1),
-			DstAddr:         netip.MustParseAddr(testPeerAddr2),
+			Endpoint:        netip.MustParseAddr(testPeerAddr2),
 			Color:           100,
 			Name:            testPolicyName,
 		}
@@ -128,7 +128,7 @@ func TestDeleteSRPolicy(t *testing.T) {
 
 		require.NotNil(t, fake.deleteSRPolicyReq)
 		assert.Equal(t, netip.MustParseAddr(testPeerAddr1).AsSlice(), fake.deleteSRPolicyReq.GetSrPolicy().GetPeerAddr())
-		assert.Equal(t, netip.MustParseAddr(testPeerAddr2).AsSlice(), fake.deleteSRPolicyReq.GetSrPolicy().GetDstAddr())
+		assert.Equal(t, netip.MustParseAddr(testPeerAddr2).AsSlice(), fake.deleteSRPolicyReq.GetSrPolicy().GetEndpoint())
 		assert.Equal(t, uint32(100), fake.deleteSRPolicyReq.GetSrPolicy().GetColor())
 		assert.Equal(t, testPolicyName, fake.deleteSRPolicyReq.GetSrPolicy().GetPolicyName())
 		assert.Equal(t, uint32(65000), fake.deleteSRPolicyReq.GetAsn())

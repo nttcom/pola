@@ -124,55 +124,6 @@ func (DataPlane) EnumDescriptor() ([]byte, []int) {
 	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{1}
 }
 
-type SRPolicyType int32
-
-const (
-	SRPolicyType_SR_POLICY_TYPE_UNSPECIFIED SRPolicyType = 0
-	SRPolicyType_SR_POLICY_TYPE_EXPLICIT    SRPolicyType = 1
-	SRPolicyType_SR_POLICY_TYPE_DYNAMIC     SRPolicyType = 2
-)
-
-// Enum value maps for SRPolicyType.
-var (
-	SRPolicyType_name = map[int32]string{
-		0: "SR_POLICY_TYPE_UNSPECIFIED",
-		1: "SR_POLICY_TYPE_EXPLICIT",
-		2: "SR_POLICY_TYPE_DYNAMIC",
-	}
-	SRPolicyType_value = map[string]int32{
-		"SR_POLICY_TYPE_UNSPECIFIED": 0,
-		"SR_POLICY_TYPE_EXPLICIT":    1,
-		"SR_POLICY_TYPE_DYNAMIC":     2,
-	}
-)
-
-func (x SRPolicyType) Enum() *SRPolicyType {
-	p := new(SRPolicyType)
-	*p = x
-	return p
-}
-
-func (x SRPolicyType) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (SRPolicyType) Descriptor() protoreflect.EnumDescriptor {
-	return file_api_pola_v1_pola_proto_enumTypes[2].Descriptor()
-}
-
-func (SRPolicyType) Type() protoreflect.EnumType {
-	return &file_api_pola_v1_pola_proto_enumTypes[2]
-}
-
-func (x SRPolicyType) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use SRPolicyType.Descriptor instead.
-func (SRPolicyType) EnumDescriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{2}
-}
-
 type SRPolicyState int32
 
 const (
@@ -212,11 +163,11 @@ func (x SRPolicyState) String() string {
 }
 
 func (SRPolicyState) Descriptor() protoreflect.EnumDescriptor {
-	return file_api_pola_v1_pola_proto_enumTypes[3].Descriptor()
+	return file_api_pola_v1_pola_proto_enumTypes[2].Descriptor()
 }
 
 func (SRPolicyState) Type() protoreflect.EnumType {
-	return &file_api_pola_v1_pola_proto_enumTypes[3]
+	return &file_api_pola_v1_pola_proto_enumTypes[2]
 }
 
 func (x SRPolicyState) Number() protoreflect.EnumNumber {
@@ -225,7 +176,7 @@ func (x SRPolicyState) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use SRPolicyState.Descriptor instead.
 func (SRPolicyState) EnumDescriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{3}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{2}
 }
 
 type SessionState int32
@@ -267,11 +218,11 @@ func (x SessionState) String() string {
 }
 
 func (SessionState) Descriptor() protoreflect.EnumDescriptor {
-	return file_api_pola_v1_pola_proto_enumTypes[4].Descriptor()
+	return file_api_pola_v1_pola_proto_enumTypes[3].Descriptor()
 }
 
 func (SessionState) Type() protoreflect.EnumType {
-	return &file_api_pola_v1_pola_proto_enumTypes[4]
+	return &file_api_pola_v1_pola_proto_enumTypes[3]
 }
 
 func (x SessionState) Number() protoreflect.EnumNumber {
@@ -280,7 +231,7 @@ func (x SessionState) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use SessionState.Descriptor instead.
 func (SessionState) EnumDescriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{4}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{3}
 }
 
 type PccType int32
@@ -319,11 +270,11 @@ func (x PccType) String() string {
 }
 
 func (PccType) Descriptor() protoreflect.EnumDescriptor {
-	return file_api_pola_v1_pola_proto_enumTypes[5].Descriptor()
+	return file_api_pola_v1_pola_proto_enumTypes[4].Descriptor()
 }
 
 func (PccType) Type() protoreflect.EnumType {
-	return &file_api_pola_v1_pola_proto_enumTypes[5]
+	return &file_api_pola_v1_pola_proto_enumTypes[4]
 }
 
 func (x PccType) Number() protoreflect.EnumNumber {
@@ -332,7 +283,7 @@ func (x PccType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PccType.Descriptor instead.
 func (PccType) EnumDescriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{5}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{4}
 }
 
 type CapabilityType int32
@@ -389,11 +340,11 @@ func (x CapabilityType) String() string {
 }
 
 func (CapabilityType) Descriptor() protoreflect.EnumDescriptor {
-	return file_api_pola_v1_pola_proto_enumTypes[6].Descriptor()
+	return file_api_pola_v1_pola_proto_enumTypes[5].Descriptor()
 }
 
 func (CapabilityType) Type() protoreflect.EnumType {
-	return &file_api_pola_v1_pola_proto_enumTypes[6]
+	return &file_api_pola_v1_pola_proto_enumTypes[5]
 }
 
 func (x CapabilityType) Number() protoreflect.EnumNumber {
@@ -402,7 +353,7 @@ func (x CapabilityType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use CapabilityType.Descriptor instead.
 func (CapabilityType) EnumDescriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{6}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{5}
 }
 
 // RFC 9826 ietf-pcep: /pcep/entity/peers/peer/sessions/session/initiator
@@ -439,11 +390,11 @@ func (x SessionInitiator) String() string {
 }
 
 func (SessionInitiator) Descriptor() protoreflect.EnumDescriptor {
-	return file_api_pola_v1_pola_proto_enumTypes[7].Descriptor()
+	return file_api_pola_v1_pola_proto_enumTypes[6].Descriptor()
 }
 
 func (SessionInitiator) Type() protoreflect.EnumType {
-	return &file_api_pola_v1_pola_proto_enumTypes[7]
+	return &file_api_pola_v1_pola_proto_enumTypes[6]
 }
 
 func (x SessionInitiator) Number() protoreflect.EnumNumber {
@@ -452,7 +403,7 @@ func (x SessionInitiator) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use SessionInitiator.Descriptor instead.
 func (SessionInitiator) EnumDescriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{7}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{6}
 }
 
 // LSP-DB synchronization state defined by RFC 8231 and exposed by RFC 9826.
@@ -492,11 +443,11 @@ func (x LspDbSyncState) String() string {
 }
 
 func (LspDbSyncState) Descriptor() protoreflect.EnumDescriptor {
-	return file_api_pola_v1_pola_proto_enumTypes[8].Descriptor()
+	return file_api_pola_v1_pola_proto_enumTypes[7].Descriptor()
 }
 
 func (LspDbSyncState) Type() protoreflect.EnumType {
-	return &file_api_pola_v1_pola_proto_enumTypes[8]
+	return &file_api_pola_v1_pola_proto_enumTypes[7]
 }
 
 func (x LspDbSyncState) Number() protoreflect.EnumNumber {
@@ -505,7 +456,7 @@ func (x LspDbSyncState) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use LspDbSyncState.Descriptor instead.
 func (LspDbSyncState) EnumDescriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{8}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{7}
 }
 
 type MetricType int32
@@ -547,11 +498,11 @@ func (x MetricType) String() string {
 }
 
 func (MetricType) Descriptor() protoreflect.EnumDescriptor {
-	return file_api_pola_v1_pola_proto_enumTypes[9].Descriptor()
+	return file_api_pola_v1_pola_proto_enumTypes[8].Descriptor()
 }
 
 func (MetricType) Type() protoreflect.EnumType {
-	return &file_api_pola_v1_pola_proto_enumTypes[9]
+	return &file_api_pola_v1_pola_proto_enumTypes[8]
 }
 
 func (x MetricType) Number() protoreflect.EnumNumber {
@@ -560,7 +511,7 @@ func (x MetricType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use MetricType.Descriptor instead.
 func (MetricType) EnumDescriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{9}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{8}
 }
 
 type Segment struct {
@@ -668,7 +619,7 @@ func (x *Segment) GetRemoteIfaceId() uint32 {
 type Waypoint struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RouterId      string                 `protobuf:"bytes,1,opt,name=router_id,json=routerId,proto3" json:"router_id,omitempty"`
-	Sid           string                 `protobuf:"bytes,2,opt,name=sid,proto3" json:"sid,omitempty"` // Optional: explicit SID override
+	Sid           string                 `protobuf:"bytes,2,opt,name=sid,proto3" json:"sid,omitempty"` // Optional explicit SID override.
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -717,34 +668,241 @@ func (x *Waypoint) GetSid() string {
 	return ""
 }
 
-type SRPolicy struct {
-	state       protoimpl.MessageState `protogen:"open.v1"`
-	PeerAddr    []byte                 `protobuf:"bytes,1,opt,name=peer_addr,json=peerAddr,proto3" json:"peer_addr,omitempty"`
-	SrcAddr     []byte                 `protobuf:"bytes,2,opt,name=src_addr,json=srcAddr,proto3" json:"src_addr,omitempty"`
-	DstAddr     []byte                 `protobuf:"bytes,3,opt,name=dst_addr,json=dstAddr,proto3" json:"dst_addr,omitempty"`
-	SrcRouterId string                 `protobuf:"bytes,4,opt,name=src_router_id,json=srcRouterId,proto3" json:"src_router_id,omitempty"`
-	DstRouterId string                 `protobuf:"bytes,5,opt,name=dst_router_id,json=dstRouterId,proto3" json:"dst_router_id,omitempty"`
-	Color       uint32                 `protobuf:"varint,6,opt,name=color,proto3" json:"color,omitempty"`
-	Preference  uint32                 `protobuf:"varint,7,opt,name=preference,proto3" json:"preference,omitempty"`
-	PolicyName  string                 `protobuf:"bytes,8,opt,name=policy_name,json=policyName,proto3" json:"policy_name,omitempty"`
-	Type        SRPolicyType           `protobuf:"varint,9,opt,name=type,proto3,enum=api.pola.v1.SRPolicyType" json:"type,omitempty"`
-	SegmentList []*Segment             `protobuf:"bytes,10,rep,name=segment_list,json=segmentList,proto3" json:"segment_list,omitempty"`
-	Metric      MetricType             `protobuf:"varint,11,opt,name=metric,proto3,enum=api.pola.v1.MetricType" json:"metric,omitempty"`
-	Waypoints   []*Waypoint            `protobuf:"bytes,12,rep,name=waypoints,proto3" json:"waypoints,omitempty"`
-	PlspId      uint32                 `protobuf:"varint,13,opt,name=plsp_id,json=plspId,proto3" json:"plsp_id,omitempty"`
-	LspId       uint32                 `protobuf:"varint,14,opt,name=lsp_id,json=lspId,proto3" json:"lsp_id,omitempty"`
-	State       SRPolicyState          `protobuf:"varint,15,opt,name=state,proto3,enum=api.pola.v1.SRPolicyState" json:"state,omitempty"`
-	// Underlay plane for dynamic path computation.
-	// Unspecified uses the TED node's unique viable plane and is rejected if ambiguous.
-	UnderlayFamily AddressFamily `protobuf:"varint,16,opt,name=underlay_family,json=underlayFamily,proto3,enum=api.pola.v1.AddressFamily" json:"underlay_family,omitempty"`
-	DataPlane      DataPlane     `protobuf:"varint,17,opt,name=data_plane,json=dataPlane,proto3,enum=api.pola.v1.DataPlane" json:"data_plane,omitempty"`
+type DynamicPath struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Metric MetricType             `protobuf:"varint,1,opt,name=metric,proto3,enum=api.pola.v1.MetricType" json:"metric,omitempty"`
+	// Unspecified uses the unique viable data plane; rejected if ambiguous.
+	DataPlane DataPlane `protobuf:"varint,2,opt,name=data_plane,json=dataPlane,proto3,enum=api.pola.v1.DataPlane" json:"data_plane,omitempty"`
+	// Unspecified uses the unique viable family; rejected if ambiguous.
+	// Pola extension; no IETF counterpart.
+	UnderlayFamily AddressFamily `protobuf:"varint,3,opt,name=underlay_family,json=underlayFamily,proto3,enum=api.pola.v1.AddressFamily" json:"underlay_family,omitempty"`
+	Waypoints      []*Waypoint   `protobuf:"bytes,4,rep,name=waypoints,proto3" json:"waypoints,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
 
+func (x *DynamicPath) Reset() {
+	*x = DynamicPath{}
+	mi := &file_api_pola_v1_pola_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DynamicPath) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DynamicPath) ProtoMessage() {}
+
+func (x *DynamicPath) ProtoReflect() protoreflect.Message {
+	mi := &file_api_pola_v1_pola_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DynamicPath.ProtoReflect.Descriptor instead.
+func (*DynamicPath) Descriptor() ([]byte, []int) {
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *DynamicPath) GetMetric() MetricType {
+	if x != nil {
+		return x.Metric
+	}
+	return MetricType_METRIC_TYPE_UNSPECIFIED
+}
+
+func (x *DynamicPath) GetDataPlane() DataPlane {
+	if x != nil {
+		return x.DataPlane
+	}
+	return DataPlane_DATA_PLANE_UNSPECIFIED
+}
+
+func (x *DynamicPath) GetUnderlayFamily() AddressFamily {
+	if x != nil {
+		return x.UnderlayFamily
+	}
+	return AddressFamily_ADDRESS_FAMILY_UNSPECIFIED
+}
+
+func (x *DynamicPath) GetWaypoints() []*Waypoint {
+	if x != nil {
+		return x.Waypoints
+	}
+	return nil
+}
+
+type ExplicitPath struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SegmentList   []*Segment             `protobuf:"bytes,1,rep,name=segment_list,json=segmentList,proto3" json:"segment_list,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExplicitPath) Reset() {
+	*x = ExplicitPath{}
+	mi := &file_api_pola_v1_pola_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExplicitPath) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExplicitPath) ProtoMessage() {}
+
+func (x *ExplicitPath) ProtoReflect() protoreflect.Message {
+	mi := &file_api_pola_v1_pola_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExplicitPath.ProtoReflect.Descriptor instead.
+func (*ExplicitPath) Descriptor() ([]byte, []int) {
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *ExplicitPath) GetSegmentList() []*Segment {
+	if x != nil {
+		return x.SegmentList
+	}
+	return nil
+}
+
+type CandidatePath struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Zero means "not set" in proto3 and is normalized server-side to
+	// table.DefaultPreference (100) (RFC 9256 §2.7).
+	Preference uint32 `protobuf:"varint,1,opt,name=preference,proto3" json:"preference,omitempty"`
+	// Types that are valid to be assigned to Path:
+	//
+	//	*CandidatePath_Dynamic
+	//	*CandidatePath_Explicit
+	Path          isCandidatePath_Path `protobuf_oneof:"path"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CandidatePath) Reset() {
+	*x = CandidatePath{}
+	mi := &file_api_pola_v1_pola_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CandidatePath) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CandidatePath) ProtoMessage() {}
+
+func (x *CandidatePath) ProtoReflect() protoreflect.Message {
+	mi := &file_api_pola_v1_pola_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CandidatePath.ProtoReflect.Descriptor instead.
+func (*CandidatePath) Descriptor() ([]byte, []int) {
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *CandidatePath) GetPreference() uint32 {
+	if x != nil {
+		return x.Preference
+	}
+	return 0
+}
+
+func (x *CandidatePath) GetPath() isCandidatePath_Path {
+	if x != nil {
+		return x.Path
+	}
+	return nil
+}
+
+func (x *CandidatePath) GetDynamic() *DynamicPath {
+	if x != nil {
+		if x, ok := x.Path.(*CandidatePath_Dynamic); ok {
+			return x.Dynamic
+		}
+	}
+	return nil
+}
+
+func (x *CandidatePath) GetExplicit() *ExplicitPath {
+	if x != nil {
+		if x, ok := x.Path.(*CandidatePath_Explicit); ok {
+			return x.Explicit
+		}
+	}
+	return nil
+}
+
+type isCandidatePath_Path interface {
+	isCandidatePath_Path()
+}
+
+type CandidatePath_Dynamic struct {
+	Dynamic *DynamicPath `protobuf:"bytes,2,opt,name=dynamic,proto3,oneof"`
+}
+
+type CandidatePath_Explicit struct {
+	Explicit *ExplicitPath `protobuf:"bytes,3,opt,name=explicit,proto3,oneof"`
+}
+
+func (*CandidatePath_Dynamic) isCandidatePath_Path() {}
+
+func (*CandidatePath_Explicit) isCandidatePath_Path() {}
+
+type SRPolicy struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	PeerAddr []byte                 `protobuf:"bytes,1,opt,name=peer_addr,json=peerAddr,proto3" json:"peer_addr,omitempty"`
+	// Policy identity addresses (RFC 9256 §2.1). Mutually exclusive with
+	// headend_router_id / endpoint_router_id.
+	Headend  []byte `protobuf:"bytes,2,opt,name=headend,proto3" json:"headend,omitempty"`
+	Endpoint []byte `protobuf:"bytes,3,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
+	// Router ID form for TED resolution. Mutually exclusive with headend / endpoint.
+	HeadendRouterId  string `protobuf:"bytes,4,opt,name=headend_router_id,json=headendRouterId,proto3" json:"headend_router_id,omitempty"`
+	EndpointRouterId string `protobuf:"bytes,5,opt,name=endpoint_router_id,json=endpointRouterId,proto3" json:"endpoint_router_id,omitempty"`
+	// Address family used to resolve endpoints from router IDs.
+	// Unspecified follows the underlay family; valid only with the router ID form.
+	EndpointFamily AddressFamily  `protobuf:"varint,18,opt,name=endpoint_family,json=endpointFamily,proto3,enum=api.pola.v1.AddressFamily" json:"endpoint_family,omitempty"`
+	Color          uint32         `protobuf:"varint,6,opt,name=color,proto3" json:"color,omitempty"`
+	PolicyName     string         `protobuf:"bytes,8,opt,name=policy_name,json=policyName,proto3" json:"policy_name,omitempty"`
+	CandidatePath  *CandidatePath `protobuf:"bytes,19,opt,name=candidate_path,json=candidatePath,proto3" json:"candidate_path,omitempty"`
+	PlspId         uint32         `protobuf:"varint,13,opt,name=plsp_id,json=plspId,proto3" json:"plsp_id,omitempty"`
+	LspId          uint32         `protobuf:"varint,14,opt,name=lsp_id,json=lspId,proto3" json:"lsp_id,omitempty"`
+	State          SRPolicyState  `protobuf:"varint,15,opt,name=state,proto3,enum=api.pola.v1.SRPolicyState" json:"state,omitempty"`
+	// Currently signaled segment list reported by the PCE, not request input.
+	SegmentList   []*Segment `protobuf:"bytes,20,rep,name=segment_list,json=segmentList,proto3" json:"segment_list,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
 func (x *SRPolicy) Reset() {
 	*x = SRPolicy{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[2]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -756,7 +914,7 @@ func (x *SRPolicy) String() string {
 func (*SRPolicy) ProtoMessage() {}
 
 func (x *SRPolicy) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[2]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -769,7 +927,7 @@ func (x *SRPolicy) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SRPolicy.ProtoReflect.Descriptor instead.
 func (*SRPolicy) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{2}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *SRPolicy) GetPeerAddr() []byte {
@@ -779,44 +937,44 @@ func (x *SRPolicy) GetPeerAddr() []byte {
 	return nil
 }
 
-func (x *SRPolicy) GetSrcAddr() []byte {
+func (x *SRPolicy) GetHeadend() []byte {
 	if x != nil {
-		return x.SrcAddr
+		return x.Headend
 	}
 	return nil
 }
 
-func (x *SRPolicy) GetDstAddr() []byte {
+func (x *SRPolicy) GetEndpoint() []byte {
 	if x != nil {
-		return x.DstAddr
+		return x.Endpoint
 	}
 	return nil
 }
 
-func (x *SRPolicy) GetSrcRouterId() string {
+func (x *SRPolicy) GetHeadendRouterId() string {
 	if x != nil {
-		return x.SrcRouterId
+		return x.HeadendRouterId
 	}
 	return ""
 }
 
-func (x *SRPolicy) GetDstRouterId() string {
+func (x *SRPolicy) GetEndpointRouterId() string {
 	if x != nil {
-		return x.DstRouterId
+		return x.EndpointRouterId
 	}
 	return ""
+}
+
+func (x *SRPolicy) GetEndpointFamily() AddressFamily {
+	if x != nil {
+		return x.EndpointFamily
+	}
+	return AddressFamily_ADDRESS_FAMILY_UNSPECIFIED
 }
 
 func (x *SRPolicy) GetColor() uint32 {
 	if x != nil {
 		return x.Color
-	}
-	return 0
-}
-
-func (x *SRPolicy) GetPreference() uint32 {
-	if x != nil {
-		return x.Preference
 	}
 	return 0
 }
@@ -828,30 +986,9 @@ func (x *SRPolicy) GetPolicyName() string {
 	return ""
 }
 
-func (x *SRPolicy) GetType() SRPolicyType {
+func (x *SRPolicy) GetCandidatePath() *CandidatePath {
 	if x != nil {
-		return x.Type
-	}
-	return SRPolicyType_SR_POLICY_TYPE_UNSPECIFIED
-}
-
-func (x *SRPolicy) GetSegmentList() []*Segment {
-	if x != nil {
-		return x.SegmentList
-	}
-	return nil
-}
-
-func (x *SRPolicy) GetMetric() MetricType {
-	if x != nil {
-		return x.Metric
-	}
-	return MetricType_METRIC_TYPE_UNSPECIFIED
-}
-
-func (x *SRPolicy) GetWaypoints() []*Waypoint {
-	if x != nil {
-		return x.Waypoints
+		return x.CandidatePath
 	}
 	return nil
 }
@@ -877,33 +1014,25 @@ func (x *SRPolicy) GetState() SRPolicyState {
 	return SRPolicyState_SR_POLICY_STATE_UNSPECIFIED
 }
 
-func (x *SRPolicy) GetUnderlayFamily() AddressFamily {
+func (x *SRPolicy) GetSegmentList() []*Segment {
 	if x != nil {
-		return x.UnderlayFamily
+		return x.SegmentList
 	}
-	return AddressFamily_ADDRESS_FAMILY_UNSPECIFIED
-}
-
-func (x *SRPolicy) GetDataPlane() DataPlane {
-	if x != nil {
-		return x.DataPlane
-	}
-	return DataPlane_DATA_PLANE_UNSPECIFIED
+	return nil
 }
 
 type CreateSRPolicyRequest struct {
-	state              protoimpl.MessageState `protogen:"open.v1"`
-	SrPolicy           *SRPolicy              `protobuf:"bytes,1,opt,name=sr_policy,json=srPolicy,proto3" json:"sr_policy,omitempty"`
-	Asn                uint32                 `protobuf:"varint,2,opt,name=asn,proto3" json:"asn,omitempty"`
-	DisablePathCompute bool                   `protobuf:"varint,4,opt,name=disable_path_compute,json=disablePathCompute,proto3" json:"disable_path_compute,omitempty"`
-	NoSidValidate      bool                   `protobuf:"varint,5,opt,name=no_sid_validate,json=noSidValidate,proto3" json:"no_sid_validate,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SrPolicy      *SRPolicy              `protobuf:"bytes,1,opt,name=sr_policy,json=srPolicy,proto3" json:"sr_policy,omitempty"`
+	Asn           uint32                 `protobuf:"varint,2,opt,name=asn,proto3" json:"asn,omitempty"`
+	NoSidValidate bool                   `protobuf:"varint,5,opt,name=no_sid_validate,json=noSidValidate,proto3" json:"no_sid_validate,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CreateSRPolicyRequest) Reset() {
 	*x = CreateSRPolicyRequest{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[3]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -915,7 +1044,7 @@ func (x *CreateSRPolicyRequest) String() string {
 func (*CreateSRPolicyRequest) ProtoMessage() {}
 
 func (x *CreateSRPolicyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[3]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -928,7 +1057,7 @@ func (x *CreateSRPolicyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateSRPolicyRequest.ProtoReflect.Descriptor instead.
 func (*CreateSRPolicyRequest) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{3}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *CreateSRPolicyRequest) GetSrPolicy() *SRPolicy {
@@ -943,13 +1072,6 @@ func (x *CreateSRPolicyRequest) GetAsn() uint32 {
 		return x.Asn
 	}
 	return 0
-}
-
-func (x *CreateSRPolicyRequest) GetDisablePathCompute() bool {
-	if x != nil {
-		return x.DisablePathCompute
-	}
-	return false
 }
 
 func (x *CreateSRPolicyRequest) GetNoSidValidate() bool {
@@ -967,7 +1089,7 @@ type CreateSRPolicyResponse struct {
 
 func (x *CreateSRPolicyResponse) Reset() {
 	*x = CreateSRPolicyResponse{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[4]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -979,7 +1101,7 @@ func (x *CreateSRPolicyResponse) String() string {
 func (*CreateSRPolicyResponse) ProtoMessage() {}
 
 func (x *CreateSRPolicyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[4]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -992,7 +1114,7 @@ func (x *CreateSRPolicyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateSRPolicyResponse.ProtoReflect.Descriptor instead.
 func (*CreateSRPolicyResponse) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{4}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{7}
 }
 
 type DeleteSRPolicyRequest struct {
@@ -1005,7 +1127,7 @@ type DeleteSRPolicyRequest struct {
 
 func (x *DeleteSRPolicyRequest) Reset() {
 	*x = DeleteSRPolicyRequest{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[5]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1017,7 +1139,7 @@ func (x *DeleteSRPolicyRequest) String() string {
 func (*DeleteSRPolicyRequest) ProtoMessage() {}
 
 func (x *DeleteSRPolicyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[5]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1030,7 +1152,7 @@ func (x *DeleteSRPolicyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteSRPolicyRequest.ProtoReflect.Descriptor instead.
 func (*DeleteSRPolicyRequest) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{5}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *DeleteSRPolicyRequest) GetSrPolicy() *SRPolicy {
@@ -1055,7 +1177,7 @@ type DeleteSRPolicyResponse struct {
 
 func (x *DeleteSRPolicyResponse) Reset() {
 	*x = DeleteSRPolicyResponse{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[6]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1067,7 +1189,7 @@ func (x *DeleteSRPolicyResponse) String() string {
 func (*DeleteSRPolicyResponse) ProtoMessage() {}
 
 func (x *DeleteSRPolicyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[6]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1080,7 +1202,7 @@ func (x *DeleteSRPolicyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteSRPolicyResponse.ProtoReflect.Descriptor instead.
 func (*DeleteSRPolicyResponse) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{6}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{9}
 }
 
 type StatefulCapability struct {
@@ -1098,7 +1220,7 @@ type StatefulCapability struct {
 
 func (x *StatefulCapability) Reset() {
 	*x = StatefulCapability{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[7]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1110,7 +1232,7 @@ func (x *StatefulCapability) String() string {
 func (*StatefulCapability) ProtoMessage() {}
 
 func (x *StatefulCapability) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[7]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1123,7 +1245,7 @@ func (x *StatefulCapability) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StatefulCapability.ProtoReflect.Descriptor instead.
 func (*StatefulCapability) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{7}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *StatefulCapability) GetLspUpdate() bool {
@@ -1187,7 +1309,7 @@ type SrCapability struct {
 
 func (x *SrCapability) Reset() {
 	*x = SrCapability{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[8]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1199,7 +1321,7 @@ func (x *SrCapability) String() string {
 func (*SrCapability) ProtoMessage() {}
 
 func (x *SrCapability) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[8]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1212,7 +1334,7 @@ func (x *SrCapability) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SrCapability.ProtoReflect.Descriptor instead.
 func (*SrCapability) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{8}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *SrCapability) GetUnlimitedMsd() bool {
@@ -1246,7 +1368,7 @@ type Msd struct {
 
 func (x *Msd) Reset() {
 	*x = Msd{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[9]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1258,7 +1380,7 @@ func (x *Msd) String() string {
 func (*Msd) ProtoMessage() {}
 
 func (x *Msd) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[9]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1271,7 +1393,7 @@ func (x *Msd) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Msd.ProtoReflect.Descriptor instead.
 func (*Msd) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{9}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *Msd) GetType() uint32 {
@@ -1298,7 +1420,7 @@ type Srv6Capability struct {
 
 func (x *Srv6Capability) Reset() {
 	*x = Srv6Capability{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[10]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1310,7 +1432,7 @@ func (x *Srv6Capability) String() string {
 func (*Srv6Capability) ProtoMessage() {}
 
 func (x *Srv6Capability) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[10]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1323,7 +1445,7 @@ func (x *Srv6Capability) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Srv6Capability.ProtoReflect.Descriptor instead.
 func (*Srv6Capability) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{10}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *Srv6Capability) GetNaiSupported() bool {
@@ -1351,7 +1473,7 @@ type PathSetupTypeCapability struct {
 
 func (x *PathSetupTypeCapability) Reset() {
 	*x = PathSetupTypeCapability{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[11]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1363,7 +1485,7 @@ func (x *PathSetupTypeCapability) String() string {
 func (*PathSetupTypeCapability) ProtoMessage() {}
 
 func (x *PathSetupTypeCapability) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[11]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1376,7 +1498,7 @@ func (x *PathSetupTypeCapability) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PathSetupTypeCapability.ProtoReflect.Descriptor instead.
 func (*PathSetupTypeCapability) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{11}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *PathSetupTypeCapability) GetPathSetupTypes() []uint32 {
@@ -1402,7 +1524,7 @@ type AssocTypeListCapability struct {
 
 func (x *AssocTypeListCapability) Reset() {
 	*x = AssocTypeListCapability{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[12]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1414,7 +1536,7 @@ func (x *AssocTypeListCapability) String() string {
 func (*AssocTypeListCapability) ProtoMessage() {}
 
 func (x *AssocTypeListCapability) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[12]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1427,7 +1549,7 @@ func (x *AssocTypeListCapability) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AssocTypeListCapability.ProtoReflect.Descriptor instead.
 func (*AssocTypeListCapability) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{12}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *AssocTypeListCapability) GetAssocTypes() []uint32 {
@@ -1446,7 +1568,7 @@ type LspDbVersionCapability struct {
 
 func (x *LspDbVersionCapability) Reset() {
 	*x = LspDbVersionCapability{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[13]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1458,7 +1580,7 @@ func (x *LspDbVersionCapability) String() string {
 func (*LspDbVersionCapability) ProtoMessage() {}
 
 func (x *LspDbVersionCapability) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[13]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1471,7 +1593,7 @@ func (x *LspDbVersionCapability) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LspDbVersionCapability.ProtoReflect.Descriptor instead.
 func (*LspDbVersionCapability) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{13}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *LspDbVersionCapability) GetVersionNumber() uint64 {
@@ -1494,7 +1616,7 @@ type MultipathCapability struct {
 
 func (x *MultipathCapability) Reset() {
 	*x = MultipathCapability{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[14]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1506,7 +1628,7 @@ func (x *MultipathCapability) String() string {
 func (*MultipathCapability) ProtoMessage() {}
 
 func (x *MultipathCapability) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[14]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1519,7 +1641,7 @@ func (x *MultipathCapability) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MultipathCapability.ProtoReflect.Descriptor instead.
 func (*MultipathCapability) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{14}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *MultipathCapability) GetMaxMultipaths() uint32 {
@@ -1566,7 +1688,7 @@ type VendorInformationCapability struct {
 
 func (x *VendorInformationCapability) Reset() {
 	*x = VendorInformationCapability{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[15]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1578,7 +1700,7 @@ func (x *VendorInformationCapability) String() string {
 func (*VendorInformationCapability) ProtoMessage() {}
 
 func (x *VendorInformationCapability) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[15]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1591,7 +1713,7 @@ func (x *VendorInformationCapability) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VendorInformationCapability.ProtoReflect.Descriptor instead.
 func (*VendorInformationCapability) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{15}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *VendorInformationCapability) GetEnterpriseNumber() uint32 {
@@ -1610,7 +1732,7 @@ type UnknownCapability struct {
 
 func (x *UnknownCapability) Reset() {
 	*x = UnknownCapability{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[16]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1622,7 +1744,7 @@ func (x *UnknownCapability) String() string {
 func (*UnknownCapability) ProtoMessage() {}
 
 func (x *UnknownCapability) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[16]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1635,7 +1757,7 @@ func (x *UnknownCapability) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnknownCapability.ProtoReflect.Descriptor instead.
 func (*UnknownCapability) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{16}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *UnknownCapability) GetTlvType() uint32 {
@@ -1666,7 +1788,7 @@ type Capability struct {
 
 func (x *Capability) Reset() {
 	*x = Capability{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[17]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1678,7 +1800,7 @@ func (x *Capability) String() string {
 func (*Capability) ProtoMessage() {}
 
 func (x *Capability) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[17]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1691,7 +1813,7 @@ func (x *Capability) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Capability.ProtoReflect.Descriptor instead.
 func (*Capability) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{17}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *Capability) GetType() CapabilityType {
@@ -1857,7 +1979,7 @@ type SessionTimers struct {
 
 func (x *SessionTimers) Reset() {
 	*x = SessionTimers{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[18]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1869,7 +1991,7 @@ func (x *SessionTimers) String() string {
 func (*SessionTimers) ProtoMessage() {}
 
 func (x *SessionTimers) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[18]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1882,7 +2004,7 @@ func (x *SessionTimers) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionTimers.ProtoReflect.Descriptor instead.
 func (*SessionTimers) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{18}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *SessionTimers) GetKeepalive() uint32 {
@@ -1909,7 +2031,7 @@ type EffectiveTimers struct {
 
 func (x *EffectiveTimers) Reset() {
 	*x = EffectiveTimers{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[19]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1921,7 +2043,7 @@ func (x *EffectiveTimers) String() string {
 func (*EffectiveTimers) ProtoMessage() {}
 
 func (x *EffectiveTimers) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[19]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1934,7 +2056,7 @@ func (x *EffectiveTimers) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EffectiveTimers.ProtoReflect.Descriptor instead.
 func (*EffectiveTimers) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{19}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *EffectiveTimers) GetKeepalive() uint32 {
@@ -1962,7 +2084,7 @@ type MessageCounter struct {
 
 func (x *MessageCounter) Reset() {
 	*x = MessageCounter{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[20]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1974,7 +2096,7 @@ func (x *MessageCounter) String() string {
 func (*MessageCounter) ProtoMessage() {}
 
 func (x *MessageCounter) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[20]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1987,7 +2109,7 @@ func (x *MessageCounter) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MessageCounter.ProtoReflect.Descriptor instead.
 func (*MessageCounter) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{20}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *MessageCounter) GetSent() uint64 {
@@ -2004,8 +2126,6 @@ func (x *MessageCounter) GetRcvd() uint64 {
 	return 0
 }
 
-// SessionStats contains per-session PCEP message counters.
-// Open and close are Pola-specific additions.
 type SessionStats struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	Keepalive        *MessageCounter        `protobuf:"bytes,1,opt,name=keepalive,proto3" json:"keepalive,omitempty"`                                        // keepalive-sent / keepalive-rcvd (RFC 9826)
@@ -2028,7 +2148,7 @@ type SessionStats struct {
 
 func (x *SessionStats) Reset() {
 	*x = SessionStats{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[21]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2040,7 +2160,7 @@ func (x *SessionStats) String() string {
 func (*SessionStats) ProtoMessage() {}
 
 func (x *SessionStats) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[21]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2053,7 +2173,7 @@ func (x *SessionStats) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionStats.ProtoReflect.Descriptor instead.
 func (*SessionStats) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{21}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *SessionStats) GetKeepalive() *MessageCounter {
@@ -2180,7 +2300,7 @@ type Session struct {
 
 func (x *Session) Reset() {
 	*x = Session{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[22]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2192,7 +2312,7 @@ func (x *Session) String() string {
 func (*Session) ProtoMessage() {}
 
 func (x *Session) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[22]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2205,7 +2325,7 @@ func (x *Session) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Session.ProtoReflect.Descriptor instead.
 func (*Session) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{22}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *Session) GetPeerAddr() []byte {
@@ -2332,7 +2452,7 @@ type SRPolicySession struct {
 
 func (x *SRPolicySession) Reset() {
 	*x = SRPolicySession{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[23]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2344,7 +2464,7 @@ func (x *SRPolicySession) String() string {
 func (*SRPolicySession) ProtoMessage() {}
 
 func (x *SRPolicySession) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[23]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2357,7 +2477,7 @@ func (x *SRPolicySession) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SRPolicySession.ProtoReflect.Descriptor instead.
 func (*SRPolicySession) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{23}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *SRPolicySession) GetPeerAddr() []byte {
@@ -2399,7 +2519,7 @@ type EndpointBehavior struct {
 
 func (x *EndpointBehavior) Reset() {
 	*x = EndpointBehavior{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[24]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2411,7 +2531,7 @@ func (x *EndpointBehavior) String() string {
 func (*EndpointBehavior) ProtoMessage() {}
 
 func (x *EndpointBehavior) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[24]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2424,7 +2544,7 @@ func (x *EndpointBehavior) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EndpointBehavior.ProtoReflect.Descriptor instead.
 func (*EndpointBehavior) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{24}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *EndpointBehavior) GetBehavior() uint32 {
@@ -2460,7 +2580,7 @@ type SidStructure struct {
 
 func (x *SidStructure) Reset() {
 	*x = SidStructure{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[25]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2472,7 +2592,7 @@ func (x *SidStructure) String() string {
 func (*SidStructure) ProtoMessage() {}
 
 func (x *SidStructure) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[25]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2485,7 +2605,7 @@ func (x *SidStructure) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SidStructure.ProtoReflect.Descriptor instead.
 func (*SidStructure) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{25}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *SidStructure) GetLocalBlock() uint32 {
@@ -2525,7 +2645,7 @@ type SID struct {
 
 func (x *SID) Reset() {
 	*x = SID{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[26]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2537,7 +2657,7 @@ func (x *SID) String() string {
 func (*SID) ProtoMessage() {}
 
 func (x *SID) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[26]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2550,7 +2670,7 @@ func (x *SID) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SID.ProtoReflect.Descriptor instead.
 func (*SID) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{26}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *SID) GetSid() string {
@@ -2569,7 +2689,7 @@ type MultiTopoID struct {
 
 func (x *MultiTopoID) Reset() {
 	*x = MultiTopoID{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[27]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2581,7 +2701,7 @@ func (x *MultiTopoID) String() string {
 func (*MultiTopoID) ProtoMessage() {}
 
 func (x *MultiTopoID) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[27]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2594,7 +2714,7 @@ func (x *MultiTopoID) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MultiTopoID.ProtoReflect.Descriptor instead.
 func (*MultiTopoID) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{27}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *MultiTopoID) GetMultiTopoId() uint32 {
@@ -2616,7 +2736,7 @@ type LsSrv6SID struct {
 
 func (x *LsSrv6SID) Reset() {
 	*x = LsSrv6SID{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[28]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2628,7 +2748,7 @@ func (x *LsSrv6SID) String() string {
 func (*LsSrv6SID) ProtoMessage() {}
 
 func (x *LsSrv6SID) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[28]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2641,7 +2761,7 @@ func (x *LsSrv6SID) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LsSrv6SID.ProtoReflect.Descriptor instead.
 func (*LsSrv6SID) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{28}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *LsSrv6SID) GetSids() []*SID {
@@ -2682,7 +2802,7 @@ type LsPrefix struct {
 
 func (x *LsPrefix) Reset() {
 	*x = LsPrefix{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[29]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2694,7 +2814,7 @@ func (x *LsPrefix) String() string {
 func (*LsPrefix) ProtoMessage() {}
 
 func (x *LsPrefix) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[29]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2707,7 +2827,7 @@ func (x *LsPrefix) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LsPrefix.ProtoReflect.Descriptor instead.
 func (*LsPrefix) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{29}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *LsPrefix) GetPrefix() string {
@@ -2734,7 +2854,7 @@ type Metric struct {
 
 func (x *Metric) Reset() {
 	*x = Metric{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[30]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2746,7 +2866,7 @@ func (x *Metric) String() string {
 func (*Metric) ProtoMessage() {}
 
 func (x *Metric) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[30]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2759,7 +2879,7 @@ func (x *Metric) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Metric.ProtoReflect.Descriptor instead.
 func (*Metric) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{30}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *Metric) GetType() MetricType {
@@ -2787,7 +2907,7 @@ type Srv6EndXSID struct {
 
 func (x *Srv6EndXSID) Reset() {
 	*x = Srv6EndXSID{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[31]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2799,7 +2919,7 @@ func (x *Srv6EndXSID) String() string {
 func (*Srv6EndXSID) ProtoMessage() {}
 
 func (x *Srv6EndXSID) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[31]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2812,7 +2932,7 @@ func (x *Srv6EndXSID) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Srv6EndXSID.ProtoReflect.Descriptor instead.
 func (*Srv6EndXSID) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{31}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *Srv6EndXSID) GetEndpointBehavior() uint32 {
@@ -2850,7 +2970,7 @@ type LsLinkEndpoint struct {
 
 func (x *LsLinkEndpoint) Reset() {
 	*x = LsLinkEndpoint{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[32]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2862,7 +2982,7 @@ func (x *LsLinkEndpoint) String() string {
 func (*LsLinkEndpoint) ProtoMessage() {}
 
 func (x *LsLinkEndpoint) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[32]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2875,7 +2995,7 @@ func (x *LsLinkEndpoint) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LsLinkEndpoint.ProtoReflect.Descriptor instead.
 func (*LsLinkEndpoint) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{32}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *LsLinkEndpoint) GetRouterId() string {
@@ -2924,7 +3044,7 @@ type AdjSid struct {
 
 func (x *AdjSid) Reset() {
 	*x = AdjSid{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[33]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2936,7 +3056,7 @@ func (x *AdjSid) String() string {
 func (*AdjSid) ProtoMessage() {}
 
 func (x *AdjSid) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[33]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2949,7 +3069,7 @@ func (x *AdjSid) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdjSid.ProtoReflect.Descriptor instead.
 func (*AdjSid) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{33}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *AdjSid) GetFamily() AddressFamily {
@@ -2979,7 +3099,7 @@ type LsLink struct {
 
 func (x *LsLink) Reset() {
 	*x = LsLink{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[34]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2991,7 +3111,7 @@ func (x *LsLink) String() string {
 func (*LsLink) ProtoMessage() {}
 
 func (x *LsLink) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[34]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3004,7 +3124,7 @@ func (x *LsLink) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LsLink.ProtoReflect.Descriptor instead.
 func (*LsLink) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{34}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *LsLink) GetLocal() *LsLinkEndpoint {
@@ -3059,7 +3179,7 @@ type LsNode struct {
 
 func (x *LsNode) Reset() {
 	*x = LsNode{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[35]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3071,7 +3191,7 @@ func (x *LsNode) String() string {
 func (*LsNode) ProtoMessage() {}
 
 func (x *LsNode) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[35]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3084,7 +3204,7 @@ func (x *LsNode) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LsNode.ProtoReflect.Descriptor instead.
 func (*LsNode) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{35}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *LsNode) GetAsn() uint32 {
@@ -3160,7 +3280,7 @@ type GetSessionListRequest struct {
 
 func (x *GetSessionListRequest) Reset() {
 	*x = GetSessionListRequest{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[36]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3172,7 +3292,7 @@ func (x *GetSessionListRequest) String() string {
 func (*GetSessionListRequest) ProtoMessage() {}
 
 func (x *GetSessionListRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[36]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3185,7 +3305,7 @@ func (x *GetSessionListRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSessionListRequest.ProtoReflect.Descriptor instead.
 func (*GetSessionListRequest) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{36}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *GetSessionListRequest) GetPeerAddr() []byte {
@@ -3211,7 +3331,7 @@ type GetSessionListResponse struct {
 
 func (x *GetSessionListResponse) Reset() {
 	*x = GetSessionListResponse{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[37]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3223,7 +3343,7 @@ func (x *GetSessionListResponse) String() string {
 func (*GetSessionListResponse) ProtoMessage() {}
 
 func (x *GetSessionListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[37]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3236,7 +3356,7 @@ func (x *GetSessionListResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSessionListResponse.ProtoReflect.Descriptor instead.
 func (*GetSessionListResponse) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{37}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *GetSessionListResponse) GetSessions() []*Session {
@@ -3255,7 +3375,7 @@ type GetSRPolicyListRequest struct {
 
 func (x *GetSRPolicyListRequest) Reset() {
 	*x = GetSRPolicyListRequest{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[38]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3267,7 +3387,7 @@ func (x *GetSRPolicyListRequest) String() string {
 func (*GetSRPolicyListRequest) ProtoMessage() {}
 
 func (x *GetSRPolicyListRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[38]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3280,7 +3400,7 @@ func (x *GetSRPolicyListRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSRPolicyListRequest.ProtoReflect.Descriptor instead.
 func (*GetSRPolicyListRequest) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{38}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *GetSRPolicyListRequest) GetPeerAddr() []byte {
@@ -3299,7 +3419,7 @@ type GetSRPolicyListResponse struct {
 
 func (x *GetSRPolicyListResponse) Reset() {
 	*x = GetSRPolicyListResponse{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[39]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3311,7 +3431,7 @@ func (x *GetSRPolicyListResponse) String() string {
 func (*GetSRPolicyListResponse) ProtoMessage() {}
 
 func (x *GetSRPolicyListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[39]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3324,7 +3444,7 @@ func (x *GetSRPolicyListResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSRPolicyListResponse.ProtoReflect.Descriptor instead.
 func (*GetSRPolicyListResponse) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{39}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *GetSRPolicyListResponse) GetSessions() []*SRPolicySession {
@@ -3342,7 +3462,7 @@ type GetTEDRequest struct {
 
 func (x *GetTEDRequest) Reset() {
 	*x = GetTEDRequest{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[40]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3354,7 +3474,7 @@ func (x *GetTEDRequest) String() string {
 func (*GetTEDRequest) ProtoMessage() {}
 
 func (x *GetTEDRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[40]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3367,7 +3487,7 @@ func (x *GetTEDRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTEDRequest.ProtoReflect.Descriptor instead.
 func (*GetTEDRequest) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{40}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{43}
 }
 
 type GetTEDResponse struct {
@@ -3380,7 +3500,7 @@ type GetTEDResponse struct {
 
 func (x *GetTEDResponse) Reset() {
 	*x = GetTEDResponse{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[41]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3392,7 +3512,7 @@ func (x *GetTEDResponse) String() string {
 func (*GetTEDResponse) ProtoMessage() {}
 
 func (x *GetTEDResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[41]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3405,7 +3525,7 @@ func (x *GetTEDResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTEDResponse.ProtoReflect.Descriptor instead.
 func (*GetTEDResponse) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{41}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *GetTEDResponse) GetEnabled() bool {
@@ -3431,7 +3551,7 @@ type DeleteSessionRequest struct {
 
 func (x *DeleteSessionRequest) Reset() {
 	*x = DeleteSessionRequest{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[42]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3443,7 +3563,7 @@ func (x *DeleteSessionRequest) String() string {
 func (*DeleteSessionRequest) ProtoMessage() {}
 
 func (x *DeleteSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[42]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3456,7 +3576,7 @@ func (x *DeleteSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteSessionRequest.ProtoReflect.Descriptor instead.
 func (*DeleteSessionRequest) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{42}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *DeleteSessionRequest) GetPeerAddr() []byte {
@@ -3474,7 +3594,7 @@ type DeleteSessionResponse struct {
 
 func (x *DeleteSessionResponse) Reset() {
 	*x = DeleteSessionResponse{}
-	mi := &file_api_pola_v1_pola_proto_msgTypes[43]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3486,7 +3606,7 @@ func (x *DeleteSessionResponse) String() string {
 func (*DeleteSessionResponse) ProtoMessage() {}
 
 func (x *DeleteSessionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_pola_v1_pola_proto_msgTypes[43]
+	mi := &file_api_pola_v1_pola_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3499,7 +3619,7 @@ func (x *DeleteSessionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteSessionResponse.ProtoReflect.Descriptor instead.
 func (*DeleteSessionResponse) Descriptor() ([]byte, []int) {
-	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{43}
+	return file_api_pola_v1_pola_proto_rawDescGZIP(), []int{46}
 }
 
 var File_api_pola_v1_pola_proto protoreflect.FileDescriptor
@@ -3523,35 +3643,45 @@ const file_api_pola_v1_pola_proto_rawDesc = "" +
 	"\x10_remote_iface_id\"9\n" +
 	"\bWaypoint\x12\x1b\n" +
 	"\trouter_id\x18\x01 \x01(\tR\brouterId\x12\x10\n" +
-	"\x03sid\x18\x02 \x01(\tR\x03sid\"\xa8\x05\n" +
-	"\bSRPolicy\x12\x1b\n" +
-	"\tpeer_addr\x18\x01 \x01(\fR\bpeerAddr\x12\x19\n" +
-	"\bsrc_addr\x18\x02 \x01(\fR\asrcAddr\x12\x19\n" +
-	"\bdst_addr\x18\x03 \x01(\fR\adstAddr\x12\"\n" +
-	"\rsrc_router_id\x18\x04 \x01(\tR\vsrcRouterId\x12\"\n" +
-	"\rdst_router_id\x18\x05 \x01(\tR\vdstRouterId\x12\x14\n" +
-	"\x05color\x18\x06 \x01(\rR\x05color\x12\x1e\n" +
+	"\x03sid\x18\x02 \x01(\tR\x03sid\"\xef\x01\n" +
+	"\vDynamicPath\x12/\n" +
+	"\x06metric\x18\x01 \x01(\x0e2\x17.api.pola.v1.MetricTypeR\x06metric\x125\n" +
 	"\n" +
-	"preference\x18\a \x01(\rR\n" +
-	"preference\x12\x1f\n" +
+	"data_plane\x18\x02 \x01(\x0e2\x16.api.pola.v1.DataPlaneR\tdataPlane\x12C\n" +
+	"\x0funderlay_family\x18\x03 \x01(\x0e2\x1a.api.pola.v1.AddressFamilyR\x0eunderlayFamily\x123\n" +
+	"\twaypoints\x18\x04 \x03(\v2\x15.api.pola.v1.WaypointR\twaypoints\"G\n" +
+	"\fExplicitPath\x127\n" +
+	"\fsegment_list\x18\x01 \x03(\v2\x14.api.pola.v1.SegmentR\vsegmentList\"\xa6\x01\n" +
+	"\rCandidatePath\x12\x1e\n" +
+	"\n" +
+	"preference\x18\x01 \x01(\rR\n" +
+	"preference\x124\n" +
+	"\adynamic\x18\x02 \x01(\v2\x18.api.pola.v1.DynamicPathH\x00R\adynamic\x127\n" +
+	"\bexplicit\x18\x03 \x01(\v2\x19.api.pola.v1.ExplicitPathH\x00R\bexplicitB\x06\n" +
+	"\x04path\"\xfd\x04\n" +
+	"\bSRPolicy\x12\x1b\n" +
+	"\tpeer_addr\x18\x01 \x01(\fR\bpeerAddr\x12\x18\n" +
+	"\aheadend\x18\x02 \x01(\fR\aheadend\x12\x1a\n" +
+	"\bendpoint\x18\x03 \x01(\fR\bendpoint\x12*\n" +
+	"\x11headend_router_id\x18\x04 \x01(\tR\x0fheadendRouterId\x12,\n" +
+	"\x12endpoint_router_id\x18\x05 \x01(\tR\x10endpointRouterId\x12C\n" +
+	"\x0fendpoint_family\x18\x12 \x01(\x0e2\x1a.api.pola.v1.AddressFamilyR\x0eendpointFamily\x12\x14\n" +
+	"\x05color\x18\x06 \x01(\rR\x05color\x12\x1f\n" +
 	"\vpolicy_name\x18\b \x01(\tR\n" +
-	"policyName\x12-\n" +
-	"\x04type\x18\t \x01(\x0e2\x19.api.pola.v1.SRPolicyTypeR\x04type\x127\n" +
-	"\fsegment_list\x18\n" +
-	" \x03(\v2\x14.api.pola.v1.SegmentR\vsegmentList\x12/\n" +
-	"\x06metric\x18\v \x01(\x0e2\x17.api.pola.v1.MetricTypeR\x06metric\x123\n" +
-	"\twaypoints\x18\f \x03(\v2\x15.api.pola.v1.WaypointR\twaypoints\x12\x17\n" +
+	"policyName\x12A\n" +
+	"\x0ecandidate_path\x18\x13 \x01(\v2\x1a.api.pola.v1.CandidatePathR\rcandidatePath\x12\x17\n" +
 	"\aplsp_id\x18\r \x01(\rR\x06plspId\x12\x15\n" +
 	"\x06lsp_id\x18\x0e \x01(\rR\x05lspId\x120\n" +
-	"\x05state\x18\x0f \x01(\x0e2\x1a.api.pola.v1.SRPolicyStateR\x05state\x12C\n" +
-	"\x0funderlay_family\x18\x10 \x01(\x0e2\x1a.api.pola.v1.AddressFamilyR\x0eunderlayFamily\x125\n" +
-	"\n" +
-	"data_plane\x18\x11 \x01(\x0e2\x16.api.pola.v1.DataPlaneR\tdataPlane\"\xcb\x01\n" +
+	"\x05state\x18\x0f \x01(\x0e2\x1a.api.pola.v1.SRPolicyStateR\x05state\x127\n" +
+	"\fsegment_list\x18\x14 \x03(\v2\x14.api.pola.v1.SegmentR\vsegmentListJ\x04\b\a\x10\bJ\x04\b\t\x10\n" +
+	"J\x04\b\n" +
+	"\x10\vJ\x04\b\v\x10\fJ\x04\b\f\x10\rJ\x04\b\x10\x10\x11J\x04\b\x11\x10\x12R\n" +
+	"preferenceR\x04typeR\x06metricR\twaypointsR\x0funderlay_familyR\n" +
+	"data_plane\"\xb5\x01\n" +
 	"\x15CreateSRPolicyRequest\x122\n" +
 	"\tsr_policy\x18\x01 \x01(\v2\x15.api.pola.v1.SRPolicyR\bsrPolicy\x12\x10\n" +
-	"\x03asn\x18\x02 \x01(\rR\x03asn\x120\n" +
-	"\x14disable_path_compute\x18\x04 \x01(\bR\x12disablePathCompute\x12&\n" +
-	"\x0fno_sid_validate\x18\x05 \x01(\bR\rnoSidValidateJ\x04\b\x03\x10\x04R\fsid_validate\"*\n" +
+	"\x03asn\x18\x02 \x01(\rR\x03asn\x12&\n" +
+	"\x0fno_sid_validate\x18\x05 \x01(\bR\rnoSidValidateJ\x04\b\x03\x10\x04J\x04\b\x04\x10\x05R\fsid_validateR\x14disable_path_compute\"*\n" +
 	"\x16CreateSRPolicyResponseJ\x04\b\x01\x10\x02R\n" +
 	"is_success\"]\n" +
 	"\x15DeleteSRPolicyRequest\x122\n" +
@@ -3754,11 +3884,7 @@ const file_api_pola_v1_pola_proto_rawDesc = "" +
 	"\tDataPlane\x12\x1a\n" +
 	"\x16DATA_PLANE_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12DATA_PLANE_SR_MPLS\x10\x01\x12\x13\n" +
-	"\x0fDATA_PLANE_SRV6\x10\x02*g\n" +
-	"\fSRPolicyType\x12\x1e\n" +
-	"\x1aSR_POLICY_TYPE_UNSPECIFIED\x10\x00\x12\x1b\n" +
-	"\x17SR_POLICY_TYPE_EXPLICIT\x10\x01\x12\x1a\n" +
-	"\x16SR_POLICY_TYPE_DYNAMIC\x10\x02*\x9b\x01\n" +
+	"\x0fDATA_PLANE_SRV6\x10\x02*\x9b\x01\n" +
 	"\rSRPolicyState\x12\x1f\n" +
 	"\x1bSR_POLICY_STATE_UNSPECIFIED\x10\x00\x12\x18\n" +
 	"\x14SR_POLICY_STATE_DOWN\x10\x01\x12\x16\n" +
@@ -3824,145 +3950,151 @@ func file_api_pola_v1_pola_proto_rawDescGZIP() []byte {
 	return file_api_pola_v1_pola_proto_rawDescData
 }
 
-var file_api_pola_v1_pola_proto_enumTypes = make([]protoimpl.EnumInfo, 10)
-var file_api_pola_v1_pola_proto_msgTypes = make([]protoimpl.MessageInfo, 44)
+var file_api_pola_v1_pola_proto_enumTypes = make([]protoimpl.EnumInfo, 9)
+var file_api_pola_v1_pola_proto_msgTypes = make([]protoimpl.MessageInfo, 47)
 var file_api_pola_v1_pola_proto_goTypes = []any{
 	(AddressFamily)(0),                  // 0: api.pola.v1.AddressFamily
 	(DataPlane)(0),                      // 1: api.pola.v1.DataPlane
-	(SRPolicyType)(0),                   // 2: api.pola.v1.SRPolicyType
-	(SRPolicyState)(0),                  // 3: api.pola.v1.SRPolicyState
-	(SessionState)(0),                   // 4: api.pola.v1.SessionState
-	(PccType)(0),                        // 5: api.pola.v1.PccType
-	(CapabilityType)(0),                 // 6: api.pola.v1.CapabilityType
-	(SessionInitiator)(0),               // 7: api.pola.v1.SessionInitiator
-	(LspDbSyncState)(0),                 // 8: api.pola.v1.LspDbSyncState
-	(MetricType)(0),                     // 9: api.pola.v1.MetricType
-	(*Segment)(nil),                     // 10: api.pola.v1.Segment
-	(*Waypoint)(nil),                    // 11: api.pola.v1.Waypoint
-	(*SRPolicy)(nil),                    // 12: api.pola.v1.SRPolicy
-	(*CreateSRPolicyRequest)(nil),       // 13: api.pola.v1.CreateSRPolicyRequest
-	(*CreateSRPolicyResponse)(nil),      // 14: api.pola.v1.CreateSRPolicyResponse
-	(*DeleteSRPolicyRequest)(nil),       // 15: api.pola.v1.DeleteSRPolicyRequest
-	(*DeleteSRPolicyResponse)(nil),      // 16: api.pola.v1.DeleteSRPolicyResponse
-	(*StatefulCapability)(nil),          // 17: api.pola.v1.StatefulCapability
-	(*SrCapability)(nil),                // 18: api.pola.v1.SrCapability
-	(*Msd)(nil),                         // 19: api.pola.v1.Msd
-	(*Srv6Capability)(nil),              // 20: api.pola.v1.Srv6Capability
-	(*PathSetupTypeCapability)(nil),     // 21: api.pola.v1.PathSetupTypeCapability
-	(*AssocTypeListCapability)(nil),     // 22: api.pola.v1.AssocTypeListCapability
-	(*LspDbVersionCapability)(nil),      // 23: api.pola.v1.LspDbVersionCapability
-	(*MultipathCapability)(nil),         // 24: api.pola.v1.MultipathCapability
-	(*VendorInformationCapability)(nil), // 25: api.pola.v1.VendorInformationCapability
-	(*UnknownCapability)(nil),           // 26: api.pola.v1.UnknownCapability
-	(*Capability)(nil),                  // 27: api.pola.v1.Capability
-	(*SessionTimers)(nil),               // 28: api.pola.v1.SessionTimers
-	(*EffectiveTimers)(nil),             // 29: api.pola.v1.EffectiveTimers
-	(*MessageCounter)(nil),              // 30: api.pola.v1.MessageCounter
-	(*SessionStats)(nil),                // 31: api.pola.v1.SessionStats
-	(*Session)(nil),                     // 32: api.pola.v1.Session
-	(*SRPolicySession)(nil),             // 33: api.pola.v1.SRPolicySession
-	(*EndpointBehavior)(nil),            // 34: api.pola.v1.EndpointBehavior
-	(*SidStructure)(nil),                // 35: api.pola.v1.SidStructure
-	(*SID)(nil),                         // 36: api.pola.v1.SID
-	(*MultiTopoID)(nil),                 // 37: api.pola.v1.MultiTopoID
-	(*LsSrv6SID)(nil),                   // 38: api.pola.v1.LsSrv6SID
-	(*LsPrefix)(nil),                    // 39: api.pola.v1.LsPrefix
-	(*Metric)(nil),                      // 40: api.pola.v1.Metric
-	(*Srv6EndXSID)(nil),                 // 41: api.pola.v1.Srv6EndXSID
-	(*LsLinkEndpoint)(nil),              // 42: api.pola.v1.LsLinkEndpoint
-	(*AdjSid)(nil),                      // 43: api.pola.v1.AdjSid
-	(*LsLink)(nil),                      // 44: api.pola.v1.LsLink
-	(*LsNode)(nil),                      // 45: api.pola.v1.LsNode
-	(*GetSessionListRequest)(nil),       // 46: api.pola.v1.GetSessionListRequest
-	(*GetSessionListResponse)(nil),      // 47: api.pola.v1.GetSessionListResponse
-	(*GetSRPolicyListRequest)(nil),      // 48: api.pola.v1.GetSRPolicyListRequest
-	(*GetSRPolicyListResponse)(nil),     // 49: api.pola.v1.GetSRPolicyListResponse
-	(*GetTEDRequest)(nil),               // 50: api.pola.v1.GetTEDRequest
-	(*GetTEDResponse)(nil),              // 51: api.pola.v1.GetTEDResponse
-	(*DeleteSessionRequest)(nil),        // 52: api.pola.v1.DeleteSessionRequest
-	(*DeleteSessionResponse)(nil),       // 53: api.pola.v1.DeleteSessionResponse
+	(SRPolicyState)(0),                  // 2: api.pola.v1.SRPolicyState
+	(SessionState)(0),                   // 3: api.pola.v1.SessionState
+	(PccType)(0),                        // 4: api.pola.v1.PccType
+	(CapabilityType)(0),                 // 5: api.pola.v1.CapabilityType
+	(SessionInitiator)(0),               // 6: api.pola.v1.SessionInitiator
+	(LspDbSyncState)(0),                 // 7: api.pola.v1.LspDbSyncState
+	(MetricType)(0),                     // 8: api.pola.v1.MetricType
+	(*Segment)(nil),                     // 9: api.pola.v1.Segment
+	(*Waypoint)(nil),                    // 10: api.pola.v1.Waypoint
+	(*DynamicPath)(nil),                 // 11: api.pola.v1.DynamicPath
+	(*ExplicitPath)(nil),                // 12: api.pola.v1.ExplicitPath
+	(*CandidatePath)(nil),               // 13: api.pola.v1.CandidatePath
+	(*SRPolicy)(nil),                    // 14: api.pola.v1.SRPolicy
+	(*CreateSRPolicyRequest)(nil),       // 15: api.pola.v1.CreateSRPolicyRequest
+	(*CreateSRPolicyResponse)(nil),      // 16: api.pola.v1.CreateSRPolicyResponse
+	(*DeleteSRPolicyRequest)(nil),       // 17: api.pola.v1.DeleteSRPolicyRequest
+	(*DeleteSRPolicyResponse)(nil),      // 18: api.pola.v1.DeleteSRPolicyResponse
+	(*StatefulCapability)(nil),          // 19: api.pola.v1.StatefulCapability
+	(*SrCapability)(nil),                // 20: api.pola.v1.SrCapability
+	(*Msd)(nil),                         // 21: api.pola.v1.Msd
+	(*Srv6Capability)(nil),              // 22: api.pola.v1.Srv6Capability
+	(*PathSetupTypeCapability)(nil),     // 23: api.pola.v1.PathSetupTypeCapability
+	(*AssocTypeListCapability)(nil),     // 24: api.pola.v1.AssocTypeListCapability
+	(*LspDbVersionCapability)(nil),      // 25: api.pola.v1.LspDbVersionCapability
+	(*MultipathCapability)(nil),         // 26: api.pola.v1.MultipathCapability
+	(*VendorInformationCapability)(nil), // 27: api.pola.v1.VendorInformationCapability
+	(*UnknownCapability)(nil),           // 28: api.pola.v1.UnknownCapability
+	(*Capability)(nil),                  // 29: api.pola.v1.Capability
+	(*SessionTimers)(nil),               // 30: api.pola.v1.SessionTimers
+	(*EffectiveTimers)(nil),             // 31: api.pola.v1.EffectiveTimers
+	(*MessageCounter)(nil),              // 32: api.pola.v1.MessageCounter
+	(*SessionStats)(nil),                // 33: api.pola.v1.SessionStats
+	(*Session)(nil),                     // 34: api.pola.v1.Session
+	(*SRPolicySession)(nil),             // 35: api.pola.v1.SRPolicySession
+	(*EndpointBehavior)(nil),            // 36: api.pola.v1.EndpointBehavior
+	(*SidStructure)(nil),                // 37: api.pola.v1.SidStructure
+	(*SID)(nil),                         // 38: api.pola.v1.SID
+	(*MultiTopoID)(nil),                 // 39: api.pola.v1.MultiTopoID
+	(*LsSrv6SID)(nil),                   // 40: api.pola.v1.LsSrv6SID
+	(*LsPrefix)(nil),                    // 41: api.pola.v1.LsPrefix
+	(*Metric)(nil),                      // 42: api.pola.v1.Metric
+	(*Srv6EndXSID)(nil),                 // 43: api.pola.v1.Srv6EndXSID
+	(*LsLinkEndpoint)(nil),              // 44: api.pola.v1.LsLinkEndpoint
+	(*AdjSid)(nil),                      // 45: api.pola.v1.AdjSid
+	(*LsLink)(nil),                      // 46: api.pola.v1.LsLink
+	(*LsNode)(nil),                      // 47: api.pola.v1.LsNode
+	(*GetSessionListRequest)(nil),       // 48: api.pola.v1.GetSessionListRequest
+	(*GetSessionListResponse)(nil),      // 49: api.pola.v1.GetSessionListResponse
+	(*GetSRPolicyListRequest)(nil),      // 50: api.pola.v1.GetSRPolicyListRequest
+	(*GetSRPolicyListResponse)(nil),     // 51: api.pola.v1.GetSRPolicyListResponse
+	(*GetTEDRequest)(nil),               // 52: api.pola.v1.GetTEDRequest
+	(*GetTEDResponse)(nil),              // 53: api.pola.v1.GetTEDResponse
+	(*DeleteSessionRequest)(nil),        // 54: api.pola.v1.DeleteSessionRequest
+	(*DeleteSessionResponse)(nil),       // 55: api.pola.v1.DeleteSessionResponse
 }
 var file_api_pola_v1_pola_proto_depIdxs = []int32{
-	2,  // 0: api.pola.v1.SRPolicy.type:type_name -> api.pola.v1.SRPolicyType
-	10, // 1: api.pola.v1.SRPolicy.segment_list:type_name -> api.pola.v1.Segment
-	9,  // 2: api.pola.v1.SRPolicy.metric:type_name -> api.pola.v1.MetricType
-	11, // 3: api.pola.v1.SRPolicy.waypoints:type_name -> api.pola.v1.Waypoint
-	3,  // 4: api.pola.v1.SRPolicy.state:type_name -> api.pola.v1.SRPolicyState
-	0,  // 5: api.pola.v1.SRPolicy.underlay_family:type_name -> api.pola.v1.AddressFamily
-	1,  // 6: api.pola.v1.SRPolicy.data_plane:type_name -> api.pola.v1.DataPlane
-	12, // 7: api.pola.v1.CreateSRPolicyRequest.sr_policy:type_name -> api.pola.v1.SRPolicy
-	12, // 8: api.pola.v1.DeleteSRPolicyRequest.sr_policy:type_name -> api.pola.v1.SRPolicy
-	19, // 9: api.pola.v1.Srv6Capability.msds:type_name -> api.pola.v1.Msd
-	27, // 10: api.pola.v1.PathSetupTypeCapability.sub_capabilities:type_name -> api.pola.v1.Capability
-	6,  // 11: api.pola.v1.Capability.type:type_name -> api.pola.v1.CapabilityType
-	17, // 12: api.pola.v1.Capability.stateful:type_name -> api.pola.v1.StatefulCapability
-	18, // 13: api.pola.v1.Capability.sr:type_name -> api.pola.v1.SrCapability
-	20, // 14: api.pola.v1.Capability.srv6:type_name -> api.pola.v1.Srv6Capability
-	21, // 15: api.pola.v1.Capability.path_setup_type:type_name -> api.pola.v1.PathSetupTypeCapability
-	22, // 16: api.pola.v1.Capability.assoc_type_list:type_name -> api.pola.v1.AssocTypeListCapability
-	23, // 17: api.pola.v1.Capability.lsp_db_version:type_name -> api.pola.v1.LspDbVersionCapability
-	24, // 18: api.pola.v1.Capability.multipath:type_name -> api.pola.v1.MultipathCapability
-	25, // 19: api.pola.v1.Capability.vendor_information:type_name -> api.pola.v1.VendorInformationCapability
-	26, // 20: api.pola.v1.Capability.unknown:type_name -> api.pola.v1.UnknownCapability
-	30, // 21: api.pola.v1.SessionStats.keepalive:type_name -> api.pola.v1.MessageCounter
-	30, // 22: api.pola.v1.SessionStats.pcerr:type_name -> api.pola.v1.MessageCounter
-	30, // 23: api.pola.v1.SessionStats.pcntf:type_name -> api.pola.v1.MessageCounter
-	30, // 24: api.pola.v1.SessionStats.report:type_name -> api.pola.v1.MessageCounter
-	30, // 25: api.pola.v1.SessionStats.update:type_name -> api.pola.v1.MessageCounter
-	30, // 26: api.pola.v1.SessionStats.initiate:type_name -> api.pola.v1.MessageCounter
-	30, // 27: api.pola.v1.SessionStats.open:type_name -> api.pola.v1.MessageCounter
-	30, // 28: api.pola.v1.SessionStats.close:type_name -> api.pola.v1.MessageCounter
-	30, // 29: api.pola.v1.SessionStats.pcreq:type_name -> api.pola.v1.MessageCounter
-	30, // 30: api.pola.v1.SessionStats.pcrep:type_name -> api.pola.v1.MessageCounter
-	4,  // 31: api.pola.v1.Session.state:type_name -> api.pola.v1.SessionState
-	27, // 32: api.pola.v1.Session.local_capabilities:type_name -> api.pola.v1.Capability
-	5,  // 33: api.pola.v1.Session.pcc_type:type_name -> api.pola.v1.PccType
-	27, // 34: api.pola.v1.Session.peer_capabilities:type_name -> api.pola.v1.Capability
-	28, // 35: api.pola.v1.Session.local_timers:type_name -> api.pola.v1.SessionTimers
-	28, // 36: api.pola.v1.Session.peer_timers:type_name -> api.pola.v1.SessionTimers
-	29, // 37: api.pola.v1.Session.effective_timers:type_name -> api.pola.v1.EffectiveTimers
-	7,  // 38: api.pola.v1.Session.initiator:type_name -> api.pola.v1.SessionInitiator
-	8,  // 39: api.pola.v1.Session.sync_state:type_name -> api.pola.v1.LspDbSyncState
-	31, // 40: api.pola.v1.Session.stats:type_name -> api.pola.v1.SessionStats
-	4,  // 41: api.pola.v1.SRPolicySession.state:type_name -> api.pola.v1.SessionState
-	8,  // 42: api.pola.v1.SRPolicySession.sync_state:type_name -> api.pola.v1.LspDbSyncState
-	12, // 43: api.pola.v1.SRPolicySession.sr_policies:type_name -> api.pola.v1.SRPolicy
-	36, // 44: api.pola.v1.LsSrv6SID.sids:type_name -> api.pola.v1.SID
-	34, // 45: api.pola.v1.LsSrv6SID.endpoint_behavior:type_name -> api.pola.v1.EndpointBehavior
-	35, // 46: api.pola.v1.LsSrv6SID.sid_structure:type_name -> api.pola.v1.SidStructure
-	37, // 47: api.pola.v1.LsSrv6SID.multi_topo_ids:type_name -> api.pola.v1.MultiTopoID
-	9,  // 48: api.pola.v1.Metric.type:type_name -> api.pola.v1.MetricType
-	36, // 49: api.pola.v1.Srv6EndXSID.sids:type_name -> api.pola.v1.SID
-	35, // 50: api.pola.v1.Srv6EndXSID.sid_structure:type_name -> api.pola.v1.SidStructure
-	0,  // 51: api.pola.v1.AdjSid.family:type_name -> api.pola.v1.AddressFamily
-	42, // 52: api.pola.v1.LsLink.local:type_name -> api.pola.v1.LsLinkEndpoint
-	42, // 53: api.pola.v1.LsLink.remote:type_name -> api.pola.v1.LsLinkEndpoint
-	40, // 54: api.pola.v1.LsLink.metrics:type_name -> api.pola.v1.Metric
-	43, // 55: api.pola.v1.LsLink.adj_sids:type_name -> api.pola.v1.AdjSid
-	41, // 56: api.pola.v1.LsLink.srv6_end_x_sids:type_name -> api.pola.v1.Srv6EndXSID
-	44, // 57: api.pola.v1.LsNode.links:type_name -> api.pola.v1.LsLink
-	39, // 58: api.pola.v1.LsNode.prefixes:type_name -> api.pola.v1.LsPrefix
-	38, // 59: api.pola.v1.LsNode.srv6_sids:type_name -> api.pola.v1.LsSrv6SID
-	32, // 60: api.pola.v1.GetSessionListResponse.sessions:type_name -> api.pola.v1.Session
-	33, // 61: api.pola.v1.GetSRPolicyListResponse.sessions:type_name -> api.pola.v1.SRPolicySession
-	45, // 62: api.pola.v1.GetTEDResponse.nodes:type_name -> api.pola.v1.LsNode
-	13, // 63: api.pola.v1.PCEService.CreateSRPolicy:input_type -> api.pola.v1.CreateSRPolicyRequest
-	15, // 64: api.pola.v1.PCEService.DeleteSRPolicy:input_type -> api.pola.v1.DeleteSRPolicyRequest
-	46, // 65: api.pola.v1.PCEService.GetSessionList:input_type -> api.pola.v1.GetSessionListRequest
-	48, // 66: api.pola.v1.PCEService.GetSRPolicyList:input_type -> api.pola.v1.GetSRPolicyListRequest
-	50, // 67: api.pola.v1.PCEService.GetTED:input_type -> api.pola.v1.GetTEDRequest
-	52, // 68: api.pola.v1.PCEService.DeleteSession:input_type -> api.pola.v1.DeleteSessionRequest
-	14, // 69: api.pola.v1.PCEService.CreateSRPolicy:output_type -> api.pola.v1.CreateSRPolicyResponse
-	16, // 70: api.pola.v1.PCEService.DeleteSRPolicy:output_type -> api.pola.v1.DeleteSRPolicyResponse
-	47, // 71: api.pola.v1.PCEService.GetSessionList:output_type -> api.pola.v1.GetSessionListResponse
-	49, // 72: api.pola.v1.PCEService.GetSRPolicyList:output_type -> api.pola.v1.GetSRPolicyListResponse
-	51, // 73: api.pola.v1.PCEService.GetTED:output_type -> api.pola.v1.GetTEDResponse
-	53, // 74: api.pola.v1.PCEService.DeleteSession:output_type -> api.pola.v1.DeleteSessionResponse
-	69, // [69:75] is the sub-list for method output_type
-	63, // [63:69] is the sub-list for method input_type
-	63, // [63:63] is the sub-list for extension type_name
-	63, // [63:63] is the sub-list for extension extendee
-	0,  // [0:63] is the sub-list for field type_name
+	8,  // 0: api.pola.v1.DynamicPath.metric:type_name -> api.pola.v1.MetricType
+	1,  // 1: api.pola.v1.DynamicPath.data_plane:type_name -> api.pola.v1.DataPlane
+	0,  // 2: api.pola.v1.DynamicPath.underlay_family:type_name -> api.pola.v1.AddressFamily
+	10, // 3: api.pola.v1.DynamicPath.waypoints:type_name -> api.pola.v1.Waypoint
+	9,  // 4: api.pola.v1.ExplicitPath.segment_list:type_name -> api.pola.v1.Segment
+	11, // 5: api.pola.v1.CandidatePath.dynamic:type_name -> api.pola.v1.DynamicPath
+	12, // 6: api.pola.v1.CandidatePath.explicit:type_name -> api.pola.v1.ExplicitPath
+	0,  // 7: api.pola.v1.SRPolicy.endpoint_family:type_name -> api.pola.v1.AddressFamily
+	13, // 8: api.pola.v1.SRPolicy.candidate_path:type_name -> api.pola.v1.CandidatePath
+	2,  // 9: api.pola.v1.SRPolicy.state:type_name -> api.pola.v1.SRPolicyState
+	9,  // 10: api.pola.v1.SRPolicy.segment_list:type_name -> api.pola.v1.Segment
+	14, // 11: api.pola.v1.CreateSRPolicyRequest.sr_policy:type_name -> api.pola.v1.SRPolicy
+	14, // 12: api.pola.v1.DeleteSRPolicyRequest.sr_policy:type_name -> api.pola.v1.SRPolicy
+	21, // 13: api.pola.v1.Srv6Capability.msds:type_name -> api.pola.v1.Msd
+	29, // 14: api.pola.v1.PathSetupTypeCapability.sub_capabilities:type_name -> api.pola.v1.Capability
+	5,  // 15: api.pola.v1.Capability.type:type_name -> api.pola.v1.CapabilityType
+	19, // 16: api.pola.v1.Capability.stateful:type_name -> api.pola.v1.StatefulCapability
+	20, // 17: api.pola.v1.Capability.sr:type_name -> api.pola.v1.SrCapability
+	22, // 18: api.pola.v1.Capability.srv6:type_name -> api.pola.v1.Srv6Capability
+	23, // 19: api.pola.v1.Capability.path_setup_type:type_name -> api.pola.v1.PathSetupTypeCapability
+	24, // 20: api.pola.v1.Capability.assoc_type_list:type_name -> api.pola.v1.AssocTypeListCapability
+	25, // 21: api.pola.v1.Capability.lsp_db_version:type_name -> api.pola.v1.LspDbVersionCapability
+	26, // 22: api.pola.v1.Capability.multipath:type_name -> api.pola.v1.MultipathCapability
+	27, // 23: api.pola.v1.Capability.vendor_information:type_name -> api.pola.v1.VendorInformationCapability
+	28, // 24: api.pola.v1.Capability.unknown:type_name -> api.pola.v1.UnknownCapability
+	32, // 25: api.pola.v1.SessionStats.keepalive:type_name -> api.pola.v1.MessageCounter
+	32, // 26: api.pola.v1.SessionStats.pcerr:type_name -> api.pola.v1.MessageCounter
+	32, // 27: api.pola.v1.SessionStats.pcntf:type_name -> api.pola.v1.MessageCounter
+	32, // 28: api.pola.v1.SessionStats.report:type_name -> api.pola.v1.MessageCounter
+	32, // 29: api.pola.v1.SessionStats.update:type_name -> api.pola.v1.MessageCounter
+	32, // 30: api.pola.v1.SessionStats.initiate:type_name -> api.pola.v1.MessageCounter
+	32, // 31: api.pola.v1.SessionStats.open:type_name -> api.pola.v1.MessageCounter
+	32, // 32: api.pola.v1.SessionStats.close:type_name -> api.pola.v1.MessageCounter
+	32, // 33: api.pola.v1.SessionStats.pcreq:type_name -> api.pola.v1.MessageCounter
+	32, // 34: api.pola.v1.SessionStats.pcrep:type_name -> api.pola.v1.MessageCounter
+	3,  // 35: api.pola.v1.Session.state:type_name -> api.pola.v1.SessionState
+	29, // 36: api.pola.v1.Session.local_capabilities:type_name -> api.pola.v1.Capability
+	4,  // 37: api.pola.v1.Session.pcc_type:type_name -> api.pola.v1.PccType
+	29, // 38: api.pola.v1.Session.peer_capabilities:type_name -> api.pola.v1.Capability
+	30, // 39: api.pola.v1.Session.local_timers:type_name -> api.pola.v1.SessionTimers
+	30, // 40: api.pola.v1.Session.peer_timers:type_name -> api.pola.v1.SessionTimers
+	31, // 41: api.pola.v1.Session.effective_timers:type_name -> api.pola.v1.EffectiveTimers
+	6,  // 42: api.pola.v1.Session.initiator:type_name -> api.pola.v1.SessionInitiator
+	7,  // 43: api.pola.v1.Session.sync_state:type_name -> api.pola.v1.LspDbSyncState
+	33, // 44: api.pola.v1.Session.stats:type_name -> api.pola.v1.SessionStats
+	3,  // 45: api.pola.v1.SRPolicySession.state:type_name -> api.pola.v1.SessionState
+	7,  // 46: api.pola.v1.SRPolicySession.sync_state:type_name -> api.pola.v1.LspDbSyncState
+	14, // 47: api.pola.v1.SRPolicySession.sr_policies:type_name -> api.pola.v1.SRPolicy
+	38, // 48: api.pola.v1.LsSrv6SID.sids:type_name -> api.pola.v1.SID
+	36, // 49: api.pola.v1.LsSrv6SID.endpoint_behavior:type_name -> api.pola.v1.EndpointBehavior
+	37, // 50: api.pola.v1.LsSrv6SID.sid_structure:type_name -> api.pola.v1.SidStructure
+	39, // 51: api.pola.v1.LsSrv6SID.multi_topo_ids:type_name -> api.pola.v1.MultiTopoID
+	8,  // 52: api.pola.v1.Metric.type:type_name -> api.pola.v1.MetricType
+	38, // 53: api.pola.v1.Srv6EndXSID.sids:type_name -> api.pola.v1.SID
+	37, // 54: api.pola.v1.Srv6EndXSID.sid_structure:type_name -> api.pola.v1.SidStructure
+	0,  // 55: api.pola.v1.AdjSid.family:type_name -> api.pola.v1.AddressFamily
+	44, // 56: api.pola.v1.LsLink.local:type_name -> api.pola.v1.LsLinkEndpoint
+	44, // 57: api.pola.v1.LsLink.remote:type_name -> api.pola.v1.LsLinkEndpoint
+	42, // 58: api.pola.v1.LsLink.metrics:type_name -> api.pola.v1.Metric
+	45, // 59: api.pola.v1.LsLink.adj_sids:type_name -> api.pola.v1.AdjSid
+	43, // 60: api.pola.v1.LsLink.srv6_end_x_sids:type_name -> api.pola.v1.Srv6EndXSID
+	46, // 61: api.pola.v1.LsNode.links:type_name -> api.pola.v1.LsLink
+	41, // 62: api.pola.v1.LsNode.prefixes:type_name -> api.pola.v1.LsPrefix
+	40, // 63: api.pola.v1.LsNode.srv6_sids:type_name -> api.pola.v1.LsSrv6SID
+	34, // 64: api.pola.v1.GetSessionListResponse.sessions:type_name -> api.pola.v1.Session
+	35, // 65: api.pola.v1.GetSRPolicyListResponse.sessions:type_name -> api.pola.v1.SRPolicySession
+	47, // 66: api.pola.v1.GetTEDResponse.nodes:type_name -> api.pola.v1.LsNode
+	15, // 67: api.pola.v1.PCEService.CreateSRPolicy:input_type -> api.pola.v1.CreateSRPolicyRequest
+	17, // 68: api.pola.v1.PCEService.DeleteSRPolicy:input_type -> api.pola.v1.DeleteSRPolicyRequest
+	48, // 69: api.pola.v1.PCEService.GetSessionList:input_type -> api.pola.v1.GetSessionListRequest
+	50, // 70: api.pola.v1.PCEService.GetSRPolicyList:input_type -> api.pola.v1.GetSRPolicyListRequest
+	52, // 71: api.pola.v1.PCEService.GetTED:input_type -> api.pola.v1.GetTEDRequest
+	54, // 72: api.pola.v1.PCEService.DeleteSession:input_type -> api.pola.v1.DeleteSessionRequest
+	16, // 73: api.pola.v1.PCEService.CreateSRPolicy:output_type -> api.pola.v1.CreateSRPolicyResponse
+	18, // 74: api.pola.v1.PCEService.DeleteSRPolicy:output_type -> api.pola.v1.DeleteSRPolicyResponse
+	49, // 75: api.pola.v1.PCEService.GetSessionList:output_type -> api.pola.v1.GetSessionListResponse
+	51, // 76: api.pola.v1.PCEService.GetSRPolicyList:output_type -> api.pola.v1.GetSRPolicyListResponse
+	53, // 77: api.pola.v1.PCEService.GetTED:output_type -> api.pola.v1.GetTEDResponse
+	55, // 78: api.pola.v1.PCEService.DeleteSession:output_type -> api.pola.v1.DeleteSessionResponse
+	73, // [73:79] is the sub-list for method output_type
+	67, // [67:73] is the sub-list for method input_type
+	67, // [67:67] is the sub-list for extension type_name
+	67, // [67:67] is the sub-list for extension extendee
+	0,  // [0:67] is the sub-list for field type_name
 }
 
 func init() { file_api_pola_v1_pola_proto_init() }
@@ -3971,8 +4103,12 @@ func file_api_pola_v1_pola_proto_init() {
 		return
 	}
 	file_api_pola_v1_pola_proto_msgTypes[0].OneofWrappers = []any{}
-	file_api_pola_v1_pola_proto_msgTypes[8].OneofWrappers = []any{}
-	file_api_pola_v1_pola_proto_msgTypes[17].OneofWrappers = []any{
+	file_api_pola_v1_pola_proto_msgTypes[4].OneofWrappers = []any{
+		(*CandidatePath_Dynamic)(nil),
+		(*CandidatePath_Explicit)(nil),
+	}
+	file_api_pola_v1_pola_proto_msgTypes[11].OneofWrappers = []any{}
+	file_api_pola_v1_pola_proto_msgTypes[20].OneofWrappers = []any{
 		(*Capability_Stateful)(nil),
 		(*Capability_Sr)(nil),
 		(*Capability_Srv6)(nil),
@@ -3983,16 +4119,16 @@ func file_api_pola_v1_pola_proto_init() {
 		(*Capability_VendorInformation)(nil),
 		(*Capability_Unknown)(nil),
 	}
-	file_api_pola_v1_pola_proto_msgTypes[22].OneofWrappers = []any{}
-	file_api_pola_v1_pola_proto_msgTypes[29].OneofWrappers = []any{}
+	file_api_pola_v1_pola_proto_msgTypes[25].OneofWrappers = []any{}
 	file_api_pola_v1_pola_proto_msgTypes[32].OneofWrappers = []any{}
+	file_api_pola_v1_pola_proto_msgTypes[35].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_pola_v1_pola_proto_rawDesc), len(file_api_pola_v1_pola_proto_rawDesc)),
-			NumEnums:      10,
-			NumMessages:   44,
+			NumEnums:      9,
+			NumMessages:   47,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

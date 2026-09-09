@@ -52,23 +52,23 @@ func writeSRPolicyItemText(ew *errWriter, policy table.SRPolicy) {
 	ew.printf("    LSPID: %d\n", policy.LSPID)
 	ew.printf("    State: %s\n", policy.State)
 
-	if policy.Type != "" {
-		ew.printf("    Type: %s\n", policy.Type)
+	switch {
+	case policy.CandidatePath.Dynamic != nil:
+		ew.printf("    Type: dynamic\n")
+		ew.printf("    Metric: %s\n", policy.CandidatePath.Dynamic.Metric.DisplayString())
+
+		if plane := policy.CandidatePath.Dynamic.Plane; plane != (table.Plane{}) {
+			ew.printf("    UnderlayFamily: %s\n", plane.Family)
+			ew.printf("    DataPlane: %s\n", plane.DataPlane)
+		}
+	case policy.CandidatePath.Explicit != nil:
+		ew.printf("    Type: explicit\n")
 	}
 
-	if policy.Metric != table.UnspecifiedMetric {
-		ew.printf("    Metric: %s\n", policy.Metric.DisplayString())
-	}
-
-	if policy.Plane != (table.Plane{}) {
-		ew.printf("    UnderlayFamily: %s\n", policy.Plane.Family)
-		ew.printf("    DataPlane: %s\n", policy.Plane.DataPlane)
-	}
-
-	ew.printf("    SrcAddr: %s\n", srcDstDisplay(policy.SrcAddr.String(), policy.SrcRouterID))
-	ew.printf("    DstAddr: %s\n", srcDstDisplay(policy.DstAddr.String(), policy.DstRouterID))
+	ew.printf("    Headend: %s\n", srcDstDisplay(policy.Headend.String(), policy.HeadendRouterID))
+	ew.printf("    Endpoint: %s\n", srcDstDisplay(policy.Endpoint.String(), policy.EndpointRouterID))
 	ew.printf("    Color: %d\n", policy.Color)
-	ew.printf("    Preference: %d\n", policy.Preference)
+	ew.printf("    Preference: %d\n", policy.CandidatePath.Preference)
 	ew.printf("    SegmentList: %s\n", segmentListDisplayString(policy.SegmentList))
 }
 

@@ -2229,6 +2229,7 @@ func (o *AssociationObject) Len() (int, error) {
 }
 
 // NewAssociationObject creates and returns a new AssociationObject.
+// The Association Object-Type is determined by the source address (RFC 8697 §6.1, RFC 9862 §4.4).
 func NewAssociationObject(srcAddr, dstAddr netip.Addr, color, preference uint32, opt ...Opt) (*AssociationObject, error) {
 	opts := optParams{
 		pccType: RFCCompliant,
@@ -2241,12 +2242,12 @@ func NewAssociationObject(srcAddr, dstAddr netip.Addr, color, preference uint32,
 	var objectType ObjectType
 
 	switch {
-	case dstAddr.Is4() && srcAddr.Is4():
+	case srcAddr.Is4():
 		objectType = ObjectTypeAssociationIPv4
-	case dstAddr.Is6() && srcAddr.Is6():
+	case srcAddr.Is6():
 		objectType = ObjectTypeAssociationIPv6
 	default:
-		return nil, fmt.Errorf("invalid endpoints address (NewAssociationObject): src=%v dst=%v", srcAddr, dstAddr)
+		return nil, fmt.Errorf("invalid association source address (NewAssociationObject): src=%v", srcAddr)
 	}
 
 	o := &AssociationObject{
@@ -2257,10 +2258,6 @@ func NewAssociationObject(srcAddr, dstAddr netip.Addr, color, preference uint32,
 	}
 
 	if opts.pccType == JuniperLegacy {
-		if !dstAddr.Is4() {
-			return nil, fmt.Errorf("invalid endpoint address for JuniperLegacy (NewAssociationObject): only IPv4 is supported, got dst=%v", dstAddr)
-		}
-
 		o.AssocID = 0
 		o.AssocType = AssocTypeSRPolicyAssociationJuniper
 		associationObjectTLVs := []TLVInterface{
@@ -2293,7 +2290,9 @@ func NewAssociationObject(srcAddr, dstAddr netip.Addr, color, preference uint32,
 			&SRPolicyCandidatePathIdentifier{
 				ProtocolOrigin: ProtocolOriginPCEP, // this PCE originates the candidate path
 				OriginatorASN:  opts.originatorASN,
-				OriginatorAddr: dstAddr,
+				// Originator is the PCE's headend address, not the policy endpoint
+				// (RFC 9256 §2.6, RFC 9862 §4.2).
+				OriginatorAddr: srcAddr,
 				Discriminator:  1, // keep existing wire value
 			},
 			&SRPolicyCandidatePathPreference{

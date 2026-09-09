@@ -209,24 +209,25 @@ func TestShowSRPolicyList(t *testing.T) {
 				SyncState: pb.LspDbSyncState_LSP_DB_SYNC_STATE_FINISHED,
 				SrPolicies: []*pb.SRPolicy{
 					{
-						PolicyName:  testPolicyName,
-						PlspId:      1,
-						LspId:       2,
-						State:       pb.SRPolicyState_SR_POLICY_STATE_UP,
-						Type:        pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC,
-						Metric:      pb.MetricType_METRIC_TYPE_TE,
-						SrcAddr:     netip.MustParseAddr(testPeerAddr1).AsSlice(),
-						SrcRouterId: testRouterID1,
-						DstAddr:     netip.MustParseAddr(testPeerAddr2).AsSlice(),
-						DstRouterId: testRouterID2,
-						Color:       100,
-						Preference:  200,
+						PolicyName:       testPolicyName,
+						PlspId:           1,
+						LspId:            2,
+						State:            pb.SRPolicyState_SR_POLICY_STATE_UP,
+						Headend:          netip.MustParseAddr(testPeerAddr1).AsSlice(),
+						HeadendRouterId:  testRouterID1,
+						Endpoint:         netip.MustParseAddr(testPeerAddr2).AsSlice(),
+						EndpointRouterId: testRouterID2,
+						Color:            100,
+						CandidatePath: &pb.CandidatePath{
+							Preference: 200,
+							Path:       &pb.CandidatePath_Dynamic{Dynamic: &pb.DynamicPath{Metric: pb.MetricType_METRIC_TYPE_TE}},
+						},
 						SegmentList: []*pb.Segment{{Sid: "16003"}, {Sid: "16002"}},
 					},
 					{
 						PolicyName: "pol2",
-						SrcAddr:    netip.MustParseAddr("192.0.2.3").AsSlice(),
-						DstAddr:    netip.MustParseAddr("192.0.2.4").AsSlice(),
+						Headend:    netip.MustParseAddr("192.0.2.3").AsSlice(),
+						Endpoint:   netip.MustParseAddr("192.0.2.4").AsSlice(),
 					},
 				},
 			}},
@@ -245,8 +246,8 @@ func TestShowSRPolicyList(t *testing.T) {
 			"    State: up\n" +
 			"    Type: dynamic\n" +
 			"    Metric: te\n" +
-			"    SrcAddr: 192.0.2.1 (0000.0aff.0001)\n" +
-			"    DstAddr: 192.0.2.2 (0000.0aff.0002)\n" +
+			"    Headend: 192.0.2.1 (0000.0aff.0001)\n" +
+			"    Endpoint: 192.0.2.2 (0000.0aff.0002)\n" +
 			"    Color: 100\n" +
 			"    Preference: 200\n" +
 			"    SegmentList: 16003 -> 16002\n" +
@@ -254,8 +255,8 @@ func TestShowSRPolicyList(t *testing.T) {
 			"    PlspID: 0\n" +
 			"    LSPID: 0\n" +
 			"    State: \n" +
-			"    SrcAddr: 192.0.2.3\n" +
-			"    DstAddr: 192.0.2.4\n" +
+			"    Headend: 192.0.2.3\n" +
+			"    Endpoint: 192.0.2.4\n" +
 			"    Color: 0\n" +
 			"    Preference: 0\n" +
 			"    SegmentList: None\n"
@@ -271,12 +272,15 @@ func TestShowSRPolicyList(t *testing.T) {
 				State:     pb.SessionState_SESSION_STATE_UP,
 				SyncState: pb.LspDbSyncState_LSP_DB_SYNC_STATE_FINISHED,
 				SrPolicies: []*pb.SRPolicy{{
-					PolicyName:     testPolicyName,
-					Type:           pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC,
-					UnderlayFamily: pb.AddressFamily_ADDRESS_FAMILY_IPV6,
-					DataPlane:      pb.DataPlane_DATA_PLANE_SRV6,
-					SrcAddr:        netip.MustParseAddr("2001:db8::1").AsSlice(),
-					DstAddr:        netip.MustParseAddr("2001:db8::2").AsSlice(),
+					PolicyName: testPolicyName,
+					CandidatePath: &pb.CandidatePath{
+						Path: &pb.CandidatePath_Dynamic{Dynamic: &pb.DynamicPath{
+							UnderlayFamily: pb.AddressFamily_ADDRESS_FAMILY_IPV6,
+							DataPlane:      pb.DataPlane_DATA_PLANE_SRV6,
+						}},
+					},
+					Headend:  netip.MustParseAddr("2001:db8::1").AsSlice(),
+					Endpoint: netip.MustParseAddr("2001:db8::2").AsSlice(),
 				}},
 			}},
 		}}
@@ -344,8 +348,8 @@ func TestShowSRPolicyList(t *testing.T) {
 				SyncState: pb.LspDbSyncState_LSP_DB_SYNC_STATE_FINISHED,
 				SrPolicies: []*pb.SRPolicy{{
 					PolicyName: testPolicyName,
-					SrcAddr:    netip.MustParseAddr(testPeerAddr1).AsSlice(),
-					DstAddr:    netip.MustParseAddr(testPeerAddr2).AsSlice(),
+					Headend:    netip.MustParseAddr(testPeerAddr1).AsSlice(),
+					Endpoint:   netip.MustParseAddr(testPeerAddr2).AsSlice(),
 				}},
 			}},
 		}}
@@ -363,10 +367,10 @@ func TestShowSRPolicyList(t *testing.T) {
 			"srPolicies": [{
 				"policyName": "pol1",
 				"segmentList": [],
-				"srcAddr": "192.0.2.1",
-				"dstAddr": "192.0.2.2",
+				"headend": "192.0.2.1",
+				"endpoint": "192.0.2.2",
 				"color": 0,
-				"preference": 0
+				"candidatePath": {"preference": 0}
 			}]
 		}]`
 		assert.JSONEq(t, want, out.String())

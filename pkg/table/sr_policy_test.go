@@ -185,15 +185,15 @@ func TestNewSRPolicy(t *testing.T) {
 	p := table.NewSRPolicy(1, "policy1", segList, srcAddr, dstAddr, 100, 200, 1, table.PolicyUp)
 
 	want := &table.SRPolicy{
-		PlspID:      1,
-		Name:        "policy1",
-		SegmentList: segList,
-		SrcAddr:     srcAddr,
-		DstAddr:     dstAddr,
-		Color:       100,
-		Preference:  200,
-		LSPID:       1,
-		State:       table.PolicyUp,
+		PlspID:        1,
+		Name:          "policy1",
+		SegmentList:   segList,
+		Headend:       srcAddr,
+		Endpoint:      dstAddr,
+		Color:         100,
+		CandidatePath: table.CandidatePath{Preference: 200},
+		LSPID:         1,
+		State:         table.PolicyUp,
 	}
 	assert.Equal(t, want, p)
 }
@@ -214,19 +214,19 @@ func TestSRPolicyUpdate(t *testing.T) {
 		{
 			name: "state and LSPID always applied, optional fields left unset when nil",
 			diff: table.PolicyDiff{State: table.PolicyDown, LSPID: 5},
-			want: table.SRPolicy{Name: "original", Color: 100, Preference: 200, LSPID: 5, State: table.PolicyDown, SegmentList: []table.Segment{table.NewSegmentSRMPLS(16001)}},
+			want: table.SRPolicy{Name: "original", Color: 100, CandidatePath: table.CandidatePath{Preference: 200}, LSPID: 5, State: table.PolicyDown, SegmentList: []table.Segment{table.NewSegmentSRMPLS(16001)}},
 		},
 		{
 			name: "optional fields applied when set",
 			diff: table.PolicyDiff{Name: &name, Color: &color, Preference: &preference, SegmentList: newSegList, State: table.PolicyUp, LSPID: 6},
-			want: table.SRPolicy{Name: name, Color: color, Preference: preference, LSPID: 6, State: table.PolicyUp, SegmentList: newSegList},
+			want: table.SRPolicy{Name: name, Color: color, CandidatePath: table.CandidatePath{Preference: preference}, LSPID: 6, State: table.PolicyUp, SegmentList: newSegList},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			p := &table.SRPolicy{Name: "original", Color: 100, Preference: 200, SegmentList: []table.Segment{table.NewSegmentSRMPLS(16001)}}
+			p := &table.SRPolicy{Name: "original", Color: 100, CandidatePath: table.CandidatePath{Preference: 200}, SegmentList: []table.Segment{table.NewSegmentSRMPLS(16001)}}
 			p.Update(tt.diff)
 			assert.Equal(t, tt.want, *p)
 		})

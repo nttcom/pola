@@ -45,19 +45,23 @@ func main() {
 	_, err = c.CreateSRPolicy(ctx, &pb.CreateSRPolicyRequest{
 		Asn: 65000,
 		SrPolicy: &pb.SRPolicy{
-			PeerAddr:    ssAddr.AsSlice(),
-			SrcRouterId: "0000.0aff.0001",
-			DstRouterId: "0000.0aff.0004",
-			Color:       100,
-			PolicyName:  "sample-name",
-			Type:        pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT,
-			SegmentList: []*pb.Segment{
-				{Sid: "16002"},
-				{Sid: "16003"},
-				{Sid: "16004"},
+			PeerAddr:         ssAddr.AsSlice(),
+			HeadendRouterId:  "0000.0aff.0001",
+			EndpointRouterId: "0000.0aff.0004",
+			Color:            100,
+			PolicyName:       "sample-name",
+			CandidatePath: &pb.CandidatePath{
+				Path: &pb.CandidatePath_Explicit{
+					Explicit: &pb.ExplicitPath{
+						SegmentList: []*pb.Segment{
+							{Sid: "16002"},
+							{Sid: "16003"},
+							{Sid: "16004"},
+						},
+					},
+				},
 			},
 		},
-		DisablePathCompute: false,
 	})
 	if err != nil {
 		log.Fatalf("c.CreateSRPolicy error: %v", err) //nolint:gocritic // main exits immediately.

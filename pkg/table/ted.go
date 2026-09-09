@@ -429,6 +429,12 @@ func (n *LsNode) LoopbackAddr(af AddressFamily) (netip.Addr, error) {
 	return netip.Addr{}, fmt.Errorf("node doesn't have a %s loopback address", af)
 }
 
+// HasLoopback reports whether the node has a loopback address in af.
+func (n *LsNode) HasLoopback(af AddressFamily) bool {
+	_, err := n.LoopbackAddr(af)
+	return err == nil
+}
+
 // UpdateTED updates the TED with this node's information.
 func (n *LsNode) UpdateTED(ted *LsTED, cfgASN uint32) {
 	nodes := ted.Nodes

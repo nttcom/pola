@@ -279,30 +279,53 @@ func (s *APIServer) buildPBSession(pcepSession *Session, includeStats bool) *pb.
 
 func (s *APIServer) buildPBSRPolicy(pcepSession *Session, policy *table.SRPolicy, routerIDIndex map[netip.Addr]string) *pb.SRPolicy {
 	srPolicy := &pb.SRPolicy{
-		PeerAddr:    pcepSession.peerAddr.AsSlice(),
-		SegmentList: make([]*pb.Segment, 0, len(policy.SegmentList)),
-		Color:       policy.Color,
-		Preference:  policy.Preference,
-		PolicyName:  policy.Name,
-		SrcAddr:     policy.SrcAddr.AsSlice(),
-		DstAddr:     policy.DstAddr.AsSlice(),
-		PlspId:      policy.PlspID,
-		LspId:       uint32(policy.LSPID),
-		State:       toPBPolicyState(policy.State),
-		Type:        toPBPolicyType(policy.Type),
-		Metric:      toPBMetricType(policy.Metric),
+		PeerAddr:         pcepSession.peerAddr.AsSlice(),
+		SegmentList:      make([]*pb.Segment, 0, len(policy.SegmentList)),
+		Color:            policy.Color,
+		PolicyName:       policy.Name,
+		Headend:          policy.Headend.AsSlice(),
+		Endpoint:         policy.Endpoint.AsSlice(),
+		PlspId:           policy.PlspID,
+		LspId:            uint32(policy.LSPID),
+		State:            toPBPolicyState(policy.State),
+		CandidatePath:    toPBCandidatePath(policy.CandidatePath),
+		HeadendRouterId:  routerIDIndex[policy.Headend],
+		EndpointRouterId: routerIDIndex[policy.Endpoint],
 	}
-
-	srPolicy.SrcRouterId = routerIDIndex[policy.SrcAddr]
-	srPolicy.DstRouterId = routerIDIndex[policy.DstAddr]
-	srPolicy.UnderlayFamily = toPBAddressFamily(policy.Plane.Family)
-	srPolicy.DataPlane = toPBDataPlane(policy.Plane.DataPlane)
 
 	for _, segment := range policy.SegmentList {
 		srPolicy.SegmentList = append(srPolicy.SegmentList, convertSegment(segment))
 	}
 
 	return srPolicy
+}
+
+func toPBCandidatePath(cp table.CandidatePath) *pb.CandidatePath {
+	pbCP := &pb.CandidatePath{Preference: cp.Preference}
+
+	switch {
+	case cp.Dynamic != nil:
+		pbCP.Path = &pb.CandidatePath_Dynamic{Dynamic: &pb.DynamicPath{
+			Metric:         toPBMetricType(cp.Dynamic.Metric),
+			DataPlane:      toPBDataPlane(cp.Dynamic.Plane.DataPlane),
+			UnderlayFamily: toPBAddressFamily(cp.Dynamic.Plane.Family),
+		}}
+	case cp.Explicit != nil:
+		pbCP.Path = &pb.CandidatePath_Explicit{Explicit: &pb.ExplicitPath{
+			SegmentList: convertSegmentList(cp.Explicit.SegmentList),
+		}}
+	}
+
+	return pbCP
+}
+
+func convertSegmentList(segmentList []table.Segment) []*pb.Segment {
+	pbSegments := make([]*pb.Segment, 0, len(segmentList))
+	for _, segment := range segmentList {
+		pbSegments = append(pbSegments, convertSegment(segment))
+	}
+
+	return pbSegments
 }
 
 func buildPBSRPolicySession(pcepSession *Session, policies []*pb.SRPolicy) *pb.SRPolicySession {
@@ -357,17 +380,6 @@ func fromPBDataPlane(dp pb.DataPlane) table.DataPlane {
 		return table.DPSRv6
 	default:
 		return table.DPUnspecified
-	}
-}
-
-func toPBPolicyType(polType table.PolicyType) pb.SRPolicyType {
-	switch polType {
-	case table.PolicyTypeExplicit:
-		return pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT
-	case table.PolicyTypeDynamic:
-		return pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC
-	default:
-		return pb.SRPolicyType_SR_POLICY_TYPE_UNSPECIFIED
 	}
 }
 
