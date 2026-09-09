@@ -1027,8 +1027,32 @@ func createMetric(metricInfo *pb.Metric) (*table.Metric, error) {
 	}
 }
 
+func endpointBehaviorFromPB(name string, eb *pb.EndpointBehavior) (table.EndpointBehavior, error) {
+	behavior, err := safecast.Uint16(eb.GetBehavior(), name+" endpoint behavior")
+	if err != nil {
+		return table.EndpointBehavior{}, err
+	}
+
+	flags, err := safecast.Uint8(eb.GetFlags(), name+" endpoint behavior flags")
+	if err != nil {
+		return table.EndpointBehavior{}, err
+	}
+
+	algorithm, err := safecast.Uint8(eb.GetAlgorithm(), name+" endpoint behavior algorithm")
+	if err != nil {
+		return table.EndpointBehavior{}, err
+	}
+
+	return table.EndpointBehavior{Behavior: behavior, Flags: flags, Algorithm: algorithm}, nil
+}
+
 func createSrv6EndXSID(srv6EndXSID *pb.Srv6EndXSID) (*table.Srv6EndXSID, error) {
-	endpointBehavior, err := safecast.Uint16(srv6EndXSID.GetEndpointBehavior(), "SRv6 End.X SID endpoint behavior")
+	endpointBehavior, err := endpointBehaviorFromPB("SRv6 End.X SID", srv6EndXSID.GetEndpointBehavior())
+	if err != nil {
+		return nil, err
+	}
+
+	weight, err := safecast.Uint8(srv6EndXSID.GetWeight(), "SRv6 End.X SID weight")
 	if err != nil {
 		return nil, err
 	}
@@ -1040,6 +1064,7 @@ func createSrv6EndXSID(srv6EndXSID *pb.Srv6EndXSID) (*table.Srv6EndXSID, error) 
 
 	lsSrv6EndXSID := &table.Srv6EndXSID{
 		EndpointBehavior: endpointBehavior,
+		Weight:           weight,
 		Sids:             []string{},
 		Srv6SIDStructure: structure,
 	}
@@ -1062,24 +1087,12 @@ func createSrv6SID(lsNode *table.LsNode, srv6SID *pb.LsSrv6SID) (*table.LsSrv6SI
 		lsSrv6SID.MultiTopoIDs = append(lsSrv6SID.MultiTopoIDs, topoID.GetMultiTopoId())
 	}
 
-	behavior, err := safecast.Uint16(srv6SID.GetEndpointBehavior().GetBehavior(), "SRv6 SID endpoint behavior")
+	endpointBehavior, err := endpointBehaviorFromPB("SRv6 SID", srv6SID.GetEndpointBehavior())
 	if err != nil {
 		return nil, err
 	}
 
-	flags, err := safecast.Uint8(srv6SID.GetEndpointBehavior().GetFlags(), "SRv6 SID endpoint behavior flags")
-	if err != nil {
-		return nil, err
-	}
-
-	algorithm, err := safecast.Uint8(srv6SID.GetEndpointBehavior().GetAlgorithm(), "SRv6 SID endpoint behavior algorithm")
-	if err != nil {
-		return nil, err
-	}
-
-	lsSrv6SID.EndpointBehavior.Behavior = behavior
-	lsSrv6SID.EndpointBehavior.Flags = flags
-	lsSrv6SID.EndpointBehavior.Algorithm = algorithm
+	lsSrv6SID.EndpointBehavior = endpointBehavior
 
 	structure, err := sidStructureFromPB(srv6SID.GetSidStructure())
 	if err != nil {

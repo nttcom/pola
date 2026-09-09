@@ -17,7 +17,6 @@ import (
 // fullTEDNodeViewFixture exercises the rendering branches in ted_text.go.
 func fullTEDNodeViewFixture() tedNodeView {
 	sidIdx := uint32(7)
-	flags, algorithm := uint8(1), uint8(2)
 	ifaceID := uint32(5)
 
 	return tedNodeView{
@@ -40,7 +39,8 @@ func fullTEDNodeViewFixture() tedNodeView {
 				AdjSids: []tedAdjSidView{{Family: "ipv6", Sid: 200}},
 				Srv6EndXSIDs: []tedSrv6EndXSIDView{
 					{
-						EndpointBehavior: endpointBehaviorView{Name: "END-X-BEHAVIOR"},
+						EndpointBehavior: endpointBehaviorView{Name: "END-X-BEHAVIOR", Flags: 0xC0, Algorithm: 128},
+						Weight:           7,
 						Sids:             []string{testSrv6EndXSID},
 						SidStructure:     &table.SIDStructure{LocalBlock: 21, LocalNode: 22, LocalFunc: 23, LocalArg: 24},
 					},
@@ -56,7 +56,7 @@ func fullTEDNodeViewFixture() tedNodeView {
 			},
 			{
 				Sids:             []string{"fc00:0:2:node2::"},
-				EndpointBehavior: endpointBehaviorView{Name: "NODE-SID-BEHAVIOR-2", Flags: &flags, Algorithm: &algorithm},
+				EndpointBehavior: endpointBehaviorView{Name: "NODE-SID-BEHAVIOR-2", Flags: 1, Algorithm: 2},
 				SidStructure:     &table.SIDStructure{LocalBlock: 41, LocalNode: 42, LocalFunc: 43, LocalArg: 44},
 				MultiTopoIDs:     []uint32{2, 3},
 			},

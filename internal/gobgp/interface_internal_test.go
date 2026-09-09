@@ -465,6 +465,9 @@ func TestGetLsLink(t *testing.T) {
 					IgpMetric: 5,
 					Srv6EndXSid: &api.LsSrv6EndXSID{
 						EndpointBehavior: uint32(table.BehaviorENDX),
+						Flags:            0xC0,
+						Algorithm:        128,
+						Weight:           7,
 						Sids:             []string{testSrv6EndXSID},
 						Srv6SidStructure: &api.LsSrv6SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
 					},
@@ -474,7 +477,10 @@ func TestGetLsLink(t *testing.T) {
 					Remote:  table.LinkEndpoint{Node: expectedRemote},
 					Metrics: []*table.Metric{table.NewMetric(table.IGPMetric, 5)},
 					Srv6EndXSIDs: []*table.Srv6EndXSID{{
-						EndpointBehavior: table.BehaviorENDX,
+						EndpointBehavior: table.EndpointBehavior{
+							Behavior: table.BehaviorENDX, Flags: 0xC0, Algorithm: 128,
+						},
+						Weight:           7,
 						Sids:             []string{testSrv6EndXSID},
 						Srv6SIDStructure: &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
 					}},
@@ -567,25 +573,46 @@ func TestSrv6EndXSIDFromAPI(t *testing.T) {
 
 		got, err := srv6EndXSIDFromAPI(&api.LsSrv6EndXSID{
 			EndpointBehavior: uint32(table.BehaviorENDX),
+			Flags:            0xC0,
+			Algorithm:        128,
+			Weight:           7,
 			Sids:             []string{testSrv6EndXSID},
 			Srv6SidStructure: validStructure,
 		})
 		require.NoError(t, err)
 		assert.Equal(t, &table.Srv6EndXSID{
-			EndpointBehavior: table.BehaviorENDX,
+			EndpointBehavior: table.EndpointBehavior{
+				Behavior: table.BehaviorENDX, Flags: 0xC0, Algorithm: 128,
+			},
+			Weight:           7,
 			Sids:             []string{testSrv6EndXSID},
 			Srv6SIDStructure: &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
 		}, got)
 	})
 
-	t.Run("endpoint behavior overflow", func(t *testing.T) {
+	t.Run("out-of-range fields are rejected", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := srv6EndXSIDFromAPI(&api.LsSrv6EndXSID{
-			EndpointBehavior: math.MaxUint16 + 1,
-			Srv6SidStructure: validStructure,
-		})
-		require.Error(t, err)
+		tests := []struct {
+			name string
+			sid  *api.LsSrv6EndXSID
+		}{
+			{"endpoint behavior", &api.LsSrv6EndXSID{EndpointBehavior: math.MaxUint16 + 1}},
+			{"flags", &api.LsSrv6EndXSID{Flags: math.MaxUint8 + 1}},
+			{"algorithm", &api.LsSrv6EndXSID{Algorithm: math.MaxUint8 + 1}},
+			{"weight", &api.LsSrv6EndXSID{Weight: math.MaxUint8 + 1}},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				tt.sid.Srv6SidStructure = validStructure
+
+				_, err := srv6EndXSIDFromAPI(tt.sid)
+				require.Error(t, err)
+			})
+		}
 	})
 
 	t.Run("SID structure overflow propagates", func(t *testing.T) {
@@ -607,7 +634,7 @@ func TestSrv6EndXSIDFromAPI(t *testing.T) {
 		})
 		require.NoError(t, err)
 		assert.Equal(t, &table.Srv6EndXSID{
-			EndpointBehavior: table.BehaviorENDX,
+			EndpointBehavior: table.EndpointBehavior{Behavior: table.BehaviorENDX},
 			Sids:             []string{testSrv6EndXSID},
 		}, got)
 	})

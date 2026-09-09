@@ -3474,7 +3474,10 @@ func TestGetTED_ConvertsFullNode(t *testing.T) {
 		table.NewMetric(table.TEMetric, 20),
 	}
 	link.Srv6EndXSIDs = []*table.Srv6EndXSID{{
-		EndpointBehavior: table.BehaviorENDX,
+		EndpointBehavior: table.EndpointBehavior{
+			Behavior: table.BehaviorENDX, Flags: 0xC0, Algorithm: 128,
+		},
+		Weight:           7,
 		Sids:             []string{testSRv6SID1, ""},
 		Srv6SIDStructure: &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
 	}}
@@ -3536,9 +3539,12 @@ func TestGetTED_ConvertsFullNode(t *testing.T) {
 				AdjSids: []*pb.AdjSid{{Family: pb.AddressFamily_ADDRESS_FAMILY_UNSPECIFIED, Sid: 24001}},
 				Srv6EndXSids: []*pb.Srv6EndXSID{
 					{
-						EndpointBehavior: uint32(table.BehaviorENDX),
-						Sids:             []*pb.SID{{Sid: testSRv6SID1}},
-						SidStructure:     &pb.SidStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
+						EndpointBehavior: &pb.EndpointBehavior{
+							Behavior: uint32(table.BehaviorENDX), Flags: 0xC0, Algorithm: 128,
+						},
+						Weight:       7,
+						Sids:         []*pb.SID{{Sid: testSRv6SID1}},
+						SidStructure: &pb.SidStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
 					},
 				},
 			},

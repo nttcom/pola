@@ -116,7 +116,8 @@ func linkEndpointDisplay(e tedLinkEndpointView) string {
 
 func writeTEDSrv6EndXSIDText(ew *errWriter, sid tedSrv6EndXSIDView) {
 	ew.println("      SRv6 End.X SID:")
-	ew.printf("        EndpointBehavior: %s\n", sid.EndpointBehavior.Name)
+	ew.printf("        EndpointBehavior: %s, Flags: %d, Algorithm: %d, Weight: %d\n",
+		sid.EndpointBehavior.Name, sid.EndpointBehavior.Flags, sid.EndpointBehavior.Algorithm, sid.Weight)
 	ew.printf("        SIDs: %v\n", sid.Sids)
 
 	if sid.SidStructure == nil {
@@ -146,16 +147,7 @@ func writeTEDSrv6SIDText(ew *errWriter, sid tedSrv6SIDView) {
 			sid.SidStructure.LocalBlock, sid.SidStructure.LocalNode, sid.SidStructure.LocalFunc, sid.SidStructure.LocalArg)
 	}
 
-	var flags, algorithm uint8
-	if sid.EndpointBehavior.Flags != nil {
-		flags = *sid.EndpointBehavior.Flags
-	}
-
-	if sid.EndpointBehavior.Algorithm != nil {
-		algorithm = *sid.EndpointBehavior.Algorithm
-	}
-
 	ew.printf("    EndpointBehavior: %s, Flags: %d, Algorithm: %d\n",
-		sid.EndpointBehavior.Name, flags, algorithm)
+		sid.EndpointBehavior.Name, sid.EndpointBehavior.Flags, sid.EndpointBehavior.Algorithm)
 	ew.printf("    MultiTopoIDs: %v\n", sid.MultiTopoIDs)
 }

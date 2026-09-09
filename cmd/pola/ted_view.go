@@ -66,16 +66,16 @@ type tedSrv6SIDView struct {
 
 type tedSrv6EndXSIDView struct {
 	EndpointBehavior endpointBehaviorView `json:"endpointBehavior"`
+	Weight           uint8                `json:"weight"`
 	Sids             []string             `json:"sids"`
 	SidStructure     *table.SIDStructure  `json:"sidStructure,omitempty"`
 }
 
-// endpointBehaviorView omits Flags and Algorithm for End.X SIDs, which carry only the behavior.
 type endpointBehaviorView struct {
 	Behavior  uint16 `json:"behavior"`
 	Name      string `json:"name"` // table.BehaviorToString
-	Flags     *uint8 `json:"flags,omitempty"`
-	Algorithm *uint8 `json:"algorithm,omitempty"`
+	Flags     uint8  `json:"flags"`
+	Algorithm uint8  `json:"algorithm"`
 }
 
 // newTEDNodeViews returns views in router ID order for deterministic output.
@@ -226,27 +226,18 @@ func newTEDSrv6SIDViews(sids []*table.LsSrv6SID) []tedSrv6SIDView {
 
 func newTEDSrv6EndXSIDView(s *table.Srv6EndXSID) tedSrv6EndXSIDView {
 	return tedSrv6EndXSIDView{
-		EndpointBehavior: endpointBehaviorViewFromBehavior(s.EndpointBehavior),
+		EndpointBehavior: endpointBehaviorViewFrom(s.EndpointBehavior),
+		Weight:           s.Weight,
 		Sids:             s.Sids,
 		SidStructure:     s.Srv6SIDStructure,
 	}
 }
 
 func endpointBehaviorViewFrom(eb table.EndpointBehavior) endpointBehaviorView {
-	flags := eb.Flags
-	algorithm := eb.Algorithm
-
 	return endpointBehaviorView{
 		Behavior:  eb.Behavior,
 		Name:      table.BehaviorToString(eb.Behavior),
-		Flags:     &flags,
-		Algorithm: &algorithm,
-	}
-}
-
-func endpointBehaviorViewFromBehavior(behavior uint16) endpointBehaviorView {
-	return endpointBehaviorView{
-		Behavior: behavior,
-		Name:     table.BehaviorToString(behavior),
+		Flags:     eb.Flags,
+		Algorithm: eb.Algorithm,
 	}
 }

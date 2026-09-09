@@ -608,15 +608,23 @@ func buildLsSrv6SID(s *table.LsSrv6SID) *pb.LsSrv6SID {
 		pbSID.MultiTopoIds = append(pbSID.MultiTopoIds, &pb.MultiTopoID{MultiTopoId: topoID})
 	}
 
-	if s.EndpointBehavior != (table.EndpointBehavior{}) {
-		pbSID.EndpointBehavior = &pb.EndpointBehavior{
-			Behavior:  uint32(s.EndpointBehavior.Behavior),
-			Flags:     uint32(s.EndpointBehavior.Flags),
-			Algorithm: uint32(s.EndpointBehavior.Algorithm),
-		}
-	}
+	pbSID.EndpointBehavior = buildEndpointBehavior(s.EndpointBehavior)
 
 	return pbSID
+}
+
+// buildEndpointBehavior returns nil for the zero value to distinguish an absent
+// behavior from the End behavior (0) on the wire.
+func buildEndpointBehavior(eb table.EndpointBehavior) *pb.EndpointBehavior {
+	if eb == (table.EndpointBehavior{}) {
+		return nil
+	}
+
+	return &pb.EndpointBehavior{
+		Behavior:  uint32(eb.Behavior),
+		Flags:     uint32(eb.Flags),
+		Algorithm: uint32(eb.Algorithm),
+	}
 }
 
 // buildSidStructure preserves SID Structure presence.
@@ -635,7 +643,8 @@ func buildSidStructure(s *table.SIDStructure) *pb.SidStructure {
 
 func convertSrv6EndXSID(sid *table.Srv6EndXSID) *pb.Srv6EndXSID {
 	pbSID := &pb.Srv6EndXSID{
-		EndpointBehavior: uint32(sid.EndpointBehavior),
+		EndpointBehavior: buildEndpointBehavior(sid.EndpointBehavior),
+		Weight:           uint32(sid.Weight),
 		Sids:             make([]*pb.SID, 0, len(sid.Sids)),
 		SidStructure:     buildSidStructure(sid.Srv6SIDStructure),
 	}

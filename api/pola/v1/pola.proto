@@ -364,9 +364,11 @@ message Metric {
 }
 
 message Srv6EndXSID {
-  uint32 endpoint_behavior = 1;
   repeated SID sids = 2;
   SidStructure sid_structure = 3;
+  uint32 weight = 4;
+  EndpointBehavior endpoint_behavior = 5;
+  reserved 1;
 }
 
 message LsLinkEndpoint {

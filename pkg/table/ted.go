@@ -227,7 +227,11 @@ func printLink(ew *errWriter, link *LsLink) {
 		}
 
 		ew.println("      SRv6 End.X SID:")
-		ew.printf("        EndpointBehavior: %s\n", BehaviorToString(endXSID.EndpointBehavior))
+		ew.printf("        EndpointBehavior: %s, Flags: %d, Algorithm: %d, Weight: %d\n",
+			BehaviorToString(endXSID.EndpointBehavior.Behavior),
+			endXSID.EndpointBehavior.Flags,
+			endXSID.EndpointBehavior.Algorithm,
+			endXSID.Weight)
 		ew.printf("        SIDs: %v\n", endXSID.Sids)
 		printSIDStructure(ew, "        ", endXSID.Srv6SIDStructure)
 	}
@@ -748,6 +752,10 @@ func ParseSIDStructure(s string) (*SIDStructure, error) {
 }
 
 // EndpointBehavior represents the endpoint behavior attributes of an SRv6 SID.
+//
+// RFC 9514 defines the same Endpoint Behavior, Flags, and Algorithm fields for
+// the SRv6 End.X SID and Endpoint Behavior TLVs. Flags are preserved as a raw
+// octet because their semantics depend on the advertising protocol and TLV.
 type EndpointBehavior struct {
 	Behavior  uint16
 	Flags     uint8
@@ -893,9 +901,10 @@ func (m MetricType) MarshalJSON() ([]byte, error) {
 	return json.Marshal(m.DisplayString())
 }
 
-// Srv6EndXSID represents an SRv6 End.X SID in the BGP-LS TED.
+// Srv6EndXSID represents an SRv6 End.X SID in the BGP-LS TED (RFC 9514 §4.1).
 type Srv6EndXSID struct {
-	EndpointBehavior uint16
+	EndpointBehavior EndpointBehavior
+	Weight           uint8
 	Sids             []string
 	Srv6SIDStructure *SIDStructure // nil when the SID Structure TLV was not advertised
 }

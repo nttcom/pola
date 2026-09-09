@@ -632,8 +632,37 @@ func parseOptionalAddr(s string) (netip.Addr, error) {
 	return addr, nil
 }
 
+func endpointBehaviorFromAPI(name string, behavior, flags, algorithm uint32) (table.EndpointBehavior, error) {
+	b, err := safecast.Uint16(behavior, name+" endpoint behavior")
+	if err != nil {
+		return table.EndpointBehavior{}, err
+	}
+
+	f, err := safecast.Uint8(flags, name+" endpoint behavior flags")
+	if err != nil {
+		return table.EndpointBehavior{}, err
+	}
+
+	a, err := safecast.Uint8(algorithm, name+" endpoint behavior algorithm")
+	if err != nil {
+		return table.EndpointBehavior{}, err
+	}
+
+	return table.EndpointBehavior{Behavior: b, Flags: f, Algorithm: a}, nil
+}
+
 func srv6EndXSIDFromAPI(srv6EndXSID *api.LsSrv6EndXSID) (*table.Srv6EndXSID, error) {
-	endpointBehavior, err := safecast.Uint16(srv6EndXSID.GetEndpointBehavior(), "SRv6 End.X SID endpoint behavior")
+	endpointBehavior, err := endpointBehaviorFromAPI(
+		"SRv6 End.X SID",
+		srv6EndXSID.GetEndpointBehavior(),
+		srv6EndXSID.GetFlags(),
+		srv6EndXSID.GetAlgorithm(),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	weight, err := safecast.Uint8(srv6EndXSID.GetWeight(), "SRv6 End.X SID weight")
 	if err != nil {
 		return nil, err
 	}
@@ -645,6 +674,7 @@ func srv6EndXSIDFromAPI(srv6EndXSID *api.LsSrv6EndXSID) (*table.Srv6EndXSID, err
 
 	return &table.Srv6EndXSID{
 		EndpointBehavior: endpointBehavior,
+		Weight:           weight,
 		Sids:             srv6EndXSID.GetSids(),
 		Srv6SIDStructure: structure,
 	}, nil
@@ -805,17 +835,12 @@ func getLsSrv6SID(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrSrv6SID *api.LsAtt
 		return nil, err
 	}
 
-	behavior, err := safecast.Uint16(endpointBehavior.GetEndpointBehavior(), "SRv6 SID endpoint behavior")
-	if err != nil {
-		return nil, err
-	}
-
-	flags, err := safecast.Uint8(endpointBehavior.GetFlags(), "SRv6 SID endpoint behavior flags")
-	if err != nil {
-		return nil, err
-	}
-
-	algorithm, err := safecast.Uint8(endpointBehavior.GetAlgorithm(), "SRv6 SID endpoint behavior algorithm")
+	behavior, err := endpointBehaviorFromAPI(
+		"SRv6 SID",
+		endpointBehavior.GetEndpointBehavior(),
+		endpointBehavior.GetFlags(),
+		endpointBehavior.GetAlgorithm(),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -823,9 +848,7 @@ func getLsSrv6SID(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrSrv6SID *api.LsAtt
 	localNode := table.NewLsNode(localNodeASN, localNodeID)
 	lsSrv6SID := table.NewLsSrv6SID(localNode)
 	lsSrv6SID.SIDStructure = structure
-	lsSrv6SID.EndpointBehavior.Behavior = behavior
-	lsSrv6SID.EndpointBehavior.Flags = flags
-	lsSrv6SID.EndpointBehavior.Algorithm = algorithm
+	lsSrv6SID.EndpointBehavior = behavior
 	lsSrv6SID.Sids = srv6SIDs
 	lsSrv6SID.MultiTopoIDs = multiTopoIDs
 
