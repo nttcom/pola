@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/netip"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -530,6 +531,7 @@ type LinkKey struct {
 	RemoteRouterID string
 	local          endpointKey
 	remote         endpointKey
+	multiTopoIDs   string
 }
 
 // LsLink represents a link in the BGP-LS TED.
@@ -538,6 +540,7 @@ type LsLink struct {
 	Metrics       []*Metric
 	AdjSids       []AdjSID
 	Srv6EndXSIDs  []*Srv6EndXSID
+	MultiTopoIDs  map[uint16]struct{}
 }
 
 // NewLsLink creates a new BGP-LS link between two nodes.
@@ -563,6 +566,54 @@ func (l *LsLink) Families() AddressFamilySet {
 	return s
 }
 
+// mtIDFamily returns the address family for an IS-IS Multi-Topology ID.
+func mtIDFamily(id uint16) AddressFamily {
+	switch id {
+	case 0: // Standard topology: IPv4 unicast (and IPv6 when topology 2 is absent).
+		return AFIPv4
+	case 2: // IPv6 routing topology.
+		return AFIPv6
+	default:
+		return AFUnspecified
+	}
+}
+
+// UsableForFamily reports whether l is usable for CSPF in address family af.
+// Links with a Multi-Topology ID are usable only for the family it identifies.
+func (l *LsLink) UsableForFamily(af AddressFamily) bool {
+	if len(l.MultiTopoIDs) == 0 {
+		return l.Families().Has(af)
+	}
+
+	for id := range l.MultiTopoIDs {
+		if mtIDFamily(id) == af {
+			return true
+		}
+	}
+
+	return false
+}
+
+func multiTopoIDsKey(ids map[uint16]struct{}) string {
+	if len(ids) == 0 {
+		return ""
+	}
+
+	sorted := make([]int, 0, len(ids))
+	for id := range ids {
+		sorted = append(sorted, int(id))
+	}
+
+	sort.Ints(sorted)
+
+	parts := make([]string, len(sorted))
+	for i, id := range sorted {
+		parts[i] = strconv.Itoa(id)
+	}
+
+	return strings.Join(parts, ",")
+}
+
 // Key returns l's link identity for TED update dedup/merge.
 func (l *LsLink) Key() LinkKey {
 	return LinkKey{
@@ -570,6 +621,7 @@ func (l *LsLink) Key() LinkKey {
 		RemoteRouterID: nodeRouterID(l.Remote.Node),
 		local:          newEndpointKey(l.Local),
 		remote:         newEndpointKey(l.Remote),
+		multiTopoIDs:   multiTopoIDsKey(l.MultiTopoIDs),
 	}
 }
 

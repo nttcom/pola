@@ -363,6 +363,108 @@ func TestLsLink_KeyAndUpdateTED(t *testing.T) {
 
 		assert.Len(t, ted.Nodes["A"].Links, 2)
 	})
+
+	t.Run("same interface ID but different Multi-Topology IDs produce distinct parallel links", func(t *testing.T) {
+		t.Parallel()
+
+		ted := &LsTED{Nodes: map[string]*LsNode{}}
+		ifaceID := uint32(5)
+		v4 := netip.MustParseAddr("192.0.2.1")
+		v6 := netip.MustParseAddr("2001:db8::1")
+
+		ipv4Topo := &LsLink{
+			Local:        LinkEndpoint{Node: NewLsNode(1, "A"), InterfaceID: &ifaceID, IPv4: v4, IPv6: v6},
+			Remote:       LinkEndpoint{Node: NewLsNode(1, "B"), IPv4: v4, IPv6: v6},
+			Metrics:      []*Metric{NewMetric(IGPMetric, 10)},
+			MultiTopoIDs: map[uint16]struct{}{0: {}},
+		}
+		ipv4Topo.UpdateTED(ted, 1)
+
+		ipv6Topo := &LsLink{
+			Local:        LinkEndpoint{Node: NewLsNode(1, "A"), InterfaceID: &ifaceID, IPv4: v4, IPv6: v6},
+			Remote:       LinkEndpoint{Node: NewLsNode(1, "B"), IPv4: v4, IPv6: v6},
+			Metrics:      []*Metric{NewMetric(IGPMetric, 100)},
+			MultiTopoIDs: map[uint16]struct{}{2: {}},
+		}
+		ipv6Topo.UpdateTED(ted, 1)
+
+		require.Len(t, ted.Nodes["A"].Links, 2)
+
+		var v4Metric, v6Metric uint32
+		for _, link := range ted.Nodes["A"].Links {
+			metric, err := link.Metric(IGPMetric)
+			require.NoError(t, err)
+
+			switch {
+			case link.UsableForFamily(AFIPv4):
+				v4Metric = metric
+			case link.UsableForFamily(AFIPv6):
+				v6Metric = metric
+			}
+		}
+
+		assert.Equal(t, uint32(10), v4Metric, "the IPv4-topology metric must survive independently of the IPv6-topology one")
+		assert.Equal(t, uint32(100), v6Metric, "the IPv6-topology metric must survive independently of the IPv4-topology one")
+	})
+}
+
+func TestLsLink_UsableForFamily(t *testing.T) {
+	t.Parallel()
+
+	v4 := netip.MustParseAddr("192.0.2.1")
+	v6 := netip.MustParseAddr("2001:db8::1")
+
+	tests := []struct {
+		name     string
+		link     *LsLink
+		wantIPv4 bool
+		wantIPv6 bool
+	}{
+		{
+			name:     "no Multi-Topology ID: usable per address presence",
+			link:     &LsLink{Local: LinkEndpoint{IPv4: v4, IPv6: v6}, Remote: LinkEndpoint{IPv4: v4, IPv6: v6}},
+			wantIPv4: true,
+			wantIPv6: true,
+		},
+		{
+			name: "Multi-Topology ID 0 (standard): IPv4 only, despite dual-stack addressing",
+			link: &LsLink{
+				Local:        LinkEndpoint{IPv4: v4, IPv6: v6},
+				Remote:       LinkEndpoint{IPv4: v4, IPv6: v6},
+				MultiTopoIDs: map[uint16]struct{}{0: {}},
+			},
+			wantIPv4: true,
+			wantIPv6: false,
+		},
+		{
+			name: "Multi-Topology ID 2 (IPv6 routing topology): IPv6 only, despite dual-stack addressing",
+			link: &LsLink{
+				Local:        LinkEndpoint{IPv4: v4, IPv6: v6},
+				Remote:       LinkEndpoint{IPv4: v4, IPv6: v6},
+				MultiTopoIDs: map[uint16]struct{}{2: {}},
+			},
+			wantIPv4: false,
+			wantIPv6: true,
+		},
+		{
+			name: "Multi-Topology ID unrecognized (not standard or IPv6 topology): unusable for any family",
+			link: &LsLink{
+				Local:        LinkEndpoint{IPv4: v4, IPv6: v6},
+				Remote:       LinkEndpoint{IPv4: v4, IPv6: v6},
+				MultiTopoIDs: map[uint16]struct{}{1: {}},
+			},
+			wantIPv4: false,
+			wantIPv6: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.wantIPv4, tt.link.UsableForFamily(AFIPv4))
+			assert.Equal(t, tt.wantIPv6, tt.link.UsableForFamily(AFIPv6))
+		})
+	}
 }
 
 func TestLsLink_Validate(t *testing.T) {

@@ -587,6 +587,13 @@ func getLsLink(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrLink *api.LsAttribute
 	lsLink.Local.InterfaceID = linkDescriptor.LinkLocalId
 	lsLink.Remote.InterfaceID = linkDescriptor.LinkRemoteId
 
+	if multiTopoIDs := linkDescriptor.GetMultiTopoId().GetMultiTopoIds(); len(multiTopoIDs) != 0 {
+		lsLink.MultiTopoIDs = make(map[uint16]struct{}, len(multiTopoIDs))
+		for _, id := range multiTopoIDs {
+			lsLink.MultiTopoIDs[uint16(id)] = struct{}{}
+		}
+	}
+
 	lsLink.Metrics = append(lsLink.Metrics, table.NewMetric(table.IGPMetric, lsAttrLink.GetIgpMetric()))
 
 	teMetric := lsAttrLink.GetDefaultTeMetric()

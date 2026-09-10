@@ -51,7 +51,8 @@ DUAL_STACK_LAB_DIR = os.path.join(
     "dual-stack",
 )
 DUAL_STACK_POLA = f"clab-{DUAL_STACK_LAB}-pola"
-DUAL_STACK_HEADEND = f"clab-{DUAL_STACK_LAB}-pe02"
+DUAL_STACK_PE01 = f"clab-{DUAL_STACK_LAB}-pe01"  # xrd headend
+DUAL_STACK_PE02 = f"clab-{DUAL_STACK_LAB}-pe02"  # Junos headend
 
 DUAL_STACK_ROUTER_IDS = [
     "0000.0002.0001",  # pe01 (IPv4-only loopback identity)
@@ -165,10 +166,14 @@ def dual_stack_lab(clab_deploy_module):
 
     clab_deploy_module(DUAL_STACK_LAB_DIR)
 
-    print("Waiting for PCEP session")
+    print("Waiting for PCEP sessions")
     wait_until_command_success(
         f"docker exec {DUAL_STACK_POLA} /bin/pola session -p {GRPC_PORT} "
-        "| grep 'Session #0: 10.0.30.2'"
+        "| grep '10.0.30.1'"
+    )
+    wait_until_command_success(
+        f"docker exec {DUAL_STACK_POLA} /bin/pola session -p {GRPC_PORT} "
+        "| grep '10.0.30.2'"
     )
 
     wait_until_ted_has_routers(DUAL_STACK_POLA, DUAL_STACK_ROUTER_IDS)
@@ -188,6 +193,45 @@ class TestDynamicPathDualStack:
         assert "success" in result.stdout.lower(), (
             f"failed to add {policy_file}\n"
             f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        )
+
+    def _assert_xrd_segments(self, headend, command, expected_sids):
+        """Verify the SR-MPLS label stack reported by an xrd (IOS-XR) headend."""
+
+        ssh_client = wait_for_ssh(headend)
+        try:
+            output = wait_until_ssh_output_contains(
+                ssh_client, command, "Operational: up", timeout=180
+            )
+        finally:
+            ssh_client.close()
+
+        assert "Path Type: SRMPLSv4" in output, output
+
+        sids = re.findall(r"SID\[\d+\]:\s*(\d+)", output)
+        assert sids == expected_sids, (
+            f"SR-ERO label stack mismatch.\n"
+            f"Expected: {expected_sids}\n"
+            f"Actual:   {sids}\n{output}"
+        )
+
+    def _assert_junos_segments(self, lsp_name, expected_labels):
+        """Verify the SR-MPLS label stack reported by the Junos headend."""
+
+        ssh_client = wait_for_ssh(DUAL_STACK_PE02)
+        try:
+            lsp_output = wait_until_lsp_up(ssh_client, lsp_name)
+        finally:
+            ssh_client.close()
+
+        labels = re.findall(
+            r"SID type:\s*\d+-bit label,\s*Value:\s*(\d+)",
+            lsp_output,
+        )
+        assert labels == expected_labels, (
+            f"SR-ERO label stack mismatch.\n"
+            f"Expected: {expected_labels}\n"
+            f"Actual:   {labels}\n{lsp_output}"
         )
 
     def test__dual_stack_links_expose_both_address_families(self, dual_stack_lab):
@@ -223,60 +267,59 @@ class TestDynamicPathDualStack:
             f"pe02 did not advertise its IPv6 loopback as a /128 prefix\nfull TED: {ted}"
         )
 
-    def test__ipv4_underlay_computes_the_ipv4_cheap_path(self, dual_stack_lab):
-        """Verify the IPv4-cheap path is selected for an IPv4 endpoint with IPv4 underlay."""
+    def test__pe02_ipv4_underlay_computes_the_ipv4_cheap_path(self, dual_stack_lab):
+        """Verify pe02, as headend, selects the IPv4-cheap path via p01."""
 
         self._add_policy("/pe02-ipv4.yaml")
 
-        ssh_client = wait_for_ssh(DUAL_STACK_HEADEND)
-        try:
-            output = wait_until_ssh_output_contains(
-                ssh_client,
-                "show segment-routing traffic-eng policy color 400 endpoint ipv4 10.255.2.1",
-                "Operational: up",
-                timeout=180,
-            )
-        finally:
-            ssh_client.close()
-
-        assert "Path Type: SRMPLSv4" in output, output
-
-        sids = re.findall(r"SID\[\d+\]:\s*(\d+)", output)
-        assert sids == ["16022", "16021"], (
-            f"SR-ERO label stack mismatch (expected the path via p01).\n"
-            f"Expected: ['16022', '16021']\n"
-            f"Actual:   {sids}\n{output}"
+        self._assert_junos_segments(
+            "DUAL-STACK-IPV4-POLICY",
+            ["16022", "16021"],
         )
 
     @pytest.mark.xfail(
         reason=(
-            "IOS-XR 24.4.1 cannot process PCE-initiated SR-MPLS policies "
-            "with IPv6 endpoints; it drops the request with "
-            "'pcinitiate: bad sock info'. The PCEP message is valid on the wire."
+            "Junos 25.2R1.9 pccd rejects PCE-initiated SR-MPLS policies with "
+            "an IPv6-typed SRPAG association object: "
+            "'IPv6 SRPAG received for non SRv6 LSP'."
         ),
         strict=False,
     )
-    def test__ipv6_underlay_computes_the_ipv6_cheap_path(self, dual_stack_lab):
-        """Verify the IPv6-cheap path is selected for an IPv6 endpoint with IPv6 underlay."""
+    def test__pe02_ipv6_underlay_computes_the_ipv6_cheap_path(self, dual_stack_lab):
+        """Verify pe02, as headend, selects the IPv6-cheap path via p02."""
 
         self._add_policy("/pe02-ipv6.yaml")
 
-        ssh_client = wait_for_ssh(DUAL_STACK_HEADEND)
-        try:
-            output = wait_until_ssh_output_contains(
-                ssh_client,
-                "show segment-routing traffic-eng policy color 600 endpoint ipv6 2001:db8:200:1::1",
-                "Operational: up",
-                timeout=60,
-            )
-        finally:
-            ssh_client.close()
+        self._assert_junos_segments(
+            "DUAL-STACK-IPV6-POLICY",
+            ["16123", "16121"],
+        )
 
-        assert "Path Type: SRMPLSv4" in output, output
+    def test__pe01_ipv4_underlay_computes_the_ipv4_cheap_path(self, dual_stack_lab):
+        """Verify pe01, as headend, selects the IPv4-cheap path via p01."""
 
-        sids = re.findall(r"SID\[\d+\]:\s*(\d+)", output)
-        assert sids == ["16123", "16121"], (
-            f"SR-ERO label stack mismatch (expected the path via p02).\n"
-            f"Expected: ['16123', '16121']\n"
-            f"Actual:   {sids}\n{output}"
+        self._add_policy("/pe01-ipv4.yaml")
+
+        self._assert_xrd_segments(
+            DUAL_STACK_PE01,
+            "show segment-routing traffic-eng policy color 401 endpoint ipv4 10.255.2.4",
+            ["16022", "16024"],
+        )
+
+    @pytest.mark.xfail(
+        reason=(
+            "IOS-XR 24.4.1 rejects PCE-initiated SR-MPLS policies with IPv6 "
+            "endpoints, reporting 'pcinitiate: bad sock info'."
+        ),
+        strict=False,
+    )
+    def test__pe01_ipv6_underlay_computes_the_ipv6_cheap_path(self, dual_stack_lab):
+        """Verify pe01, as headend, selects the IPv6-cheap path via p02."""
+
+        self._add_policy("/pe01-ipv6.yaml")
+
+        self._assert_xrd_segments(
+            DUAL_STACK_PE01,
+            "show segment-routing traffic-eng policy color 601 endpoint ipv6 2001:db8:200:4::1",
+            ["16123", "16124"],
         )
