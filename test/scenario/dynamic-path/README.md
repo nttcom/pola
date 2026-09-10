@@ -100,7 +100,7 @@ srv6-usid/input/sr-policies/pe02-policy-loose-source-routing.yaml
          |        +------+        |
      +------+                +------+
      | pe01 |                | pe02 |
-     | XRd  |                | XRd  |
+     | XRd  |                | Junos|
      +------+                +------+
          |        +------+        |
          +--------| p02  |--------+     IPv4 metric: expensive
@@ -108,29 +108,42 @@ srv6-usid/input/sr-policies/pe02-policy-loose-source-routing.yaml
                   +------+
 ```
 
-Each PE-P link is dual-stack with independent IS-IS metrics, so the cheapest
-IPv4 and IPv6 paths differ.
+Each PE-P link is dual-stack, with independent IS-IS metrics for IPv4 and IPv6,
+so the preferred path differs by address family.
 
 ## Dual-Stack Test Cases
 
 ### `test__dual_stack_links_expose_both_address_families`
 
-Verifies that dual-stack links expose both IPv4 and IPv6 addresses in the TED.
+Dual-stack links expose both IPv4 and IPv6 addresses in the TED.
 
 ### `test__pe02_ipv6_loopback_is_advertised_as_a_128_prefix`
 
-Verifies that `pe02` advertises its IPv6 loopback as a `/128` prefix.
+`pe02` advertises its IPv6 loopback as a `/128` prefix.
 
-### `test__ipv4_underlay_computes_the_ipv4_cheap_path`
+### `test__pe02_ipv4_underlay_computes_the_ipv4_cheap_path`
 
-Verifies that the IPv4 underlay selects the path via `p01`.
+The IPv4 underlay selects the path via `p01`.
 
-### `test__ipv6_underlay_computes_the_ipv6_cheap_path`
+### `test__pe02_ipv6_underlay_computes_the_ipv6_cheap_path`
 
-Verifies that the IPv6 underlay selects the path via `p02`.
+The IPv6 underlay selects the path via `p02`.
 
 > [!NOTE]
-> This case is currently `xfail`. IOS-XR 24.4.1 cannot process a
-> PCE-initiated SR-MPLS policy with an IPv6 endpoint. The PCEP message is
-> correct on the wire; the PCC rejects it locally. See the `xfail` reason in
-> `test_dynamic_path.py` for details.
+> Currently `xfail`: Junos 25.2R1.9 `pccd` rejects the PCE-initiated SR-MPLS
+> policy because its SRPAG association object is IPv6-typed
+> (`PCError: IPv6 SRPAG received for non SRv6 LSP`). The PCInitiate message is
+> otherwise valid on the wire. See the `xfail` reason in `test_dynamic_path.py`.
+
+### `test__pe01_ipv4_underlay_computes_the_ipv4_cheap_path`
+
+The IPv4 underlay selects the path via `p01`.
+
+### `test__pe01_ipv6_underlay_computes_the_ipv6_cheap_path`
+
+The IPv6 underlay selects the path via `p02`.
+
+> [!NOTE]
+> Currently `xfail`: IOS-XR 24.4.1 rejects PCE-initiated SR-MPLS policies with
+> an IPv6 endpoint. The PCEP message is correct on the wire. See the `xfail`
+> reason in `test_dynamic_path.py`.

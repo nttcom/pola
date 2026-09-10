@@ -128,6 +128,16 @@ func connectV6(local, remote *table.LsNode, igpCost uint32) {
 	})
 }
 
+// connectMultiTopo creates an IPv4/IPv6 dual-stack LsLink for a single multi-topology ID.
+func connectMultiTopo(local, remote *table.LsNode, mtID uint16, igpCost uint32) {
+	local.Links = append(local.Links, &table.LsLink{
+		Local:        table.LinkEndpoint{Node: local, IPv4: testLinkLocalIPv4, IPv6: testLinkLocalIPv6},
+		Remote:       table.LinkEndpoint{Node: remote, IPv4: testLinkRemoteIPv4, IPv6: testLinkRemoteIPv6},
+		Metrics:      []*table.Metric{table.NewMetric(table.IGPMetric, igpCost)},
+		MultiTopoIDs: map[uint16]struct{}{mtID: {}},
+	})
+}
+
 func buildTED(nodes ...*table.LsNode) *table.LsTED {
 	m := make(map[string]*table.LsNode, len(nodes))
 	for _, n := range nodes {
@@ -300,6 +310,52 @@ func TestCSPF_PathSelection(t *testing.T) {
 			},
 			src: "A", dst: "B", metric: table.IGPMetric, scope: scopeV6SRMPLS,
 			want: []table.Segment{mplsSeg(11)},
+		},
+		{
+			name: "multi-topology per-family metrics are not conflated across parallel transit paths",
+			buildTED: func() *table.LsTED {
+				a := dualStackNode("A", 0, 10, "2001:db8::a")
+				b := dualStackNode("B", 1, 11, "2001:db8::b")
+				p1 := dualStackNode("P1", 2, 12, "2001:db8::c") // true IPv4 cost 10
+				p2 := dualStackNode("P2", 3, 13, "2001:db8::d") // true IPv4 cost 200, IPv6 cost 1
+
+				connectMultiTopo(a, p1, 0, 10)
+				connectMultiTopo(a, p1, 2, 500)
+				connectMultiTopo(p1, b, 0, 10)
+				connectMultiTopo(p1, b, 2, 500)
+
+				connectMultiTopo(a, p2, 0, 200)
+				connectMultiTopo(a, p2, 2, 1)
+				connectMultiTopo(p2, b, 0, 200)
+				connectMultiTopo(p2, b, 2, 1)
+
+				return buildTED(a, b, p1, p2)
+			},
+			src: "A", dst: "B", metric: table.IGPMetric, scope: scopeV4SRMPLS,
+			want: []table.Segment{mplsSeg(2), mplsSeg(1)},
+		},
+		{
+			name: "multi-topology per-family metrics are not conflated across parallel transit paths (IPv6)",
+			buildTED: func() *table.LsTED {
+				a := dualStackNode("A", 0, 10, "2001:db8::a")
+				b := dualStackNode("B", 1, 11, "2001:db8::b")
+				p1 := dualStackNode("P1", 2, 12, "2001:db8::c") // true IPv4 cost 1, IPv6 cost 500
+				p2 := dualStackNode("P2", 3, 13, "2001:db8::d") // true IPv6 cost 10
+
+				connectMultiTopo(a, p1, 0, 1)
+				connectMultiTopo(a, p1, 2, 500)
+				connectMultiTopo(p1, b, 0, 1)
+				connectMultiTopo(p1, b, 2, 500)
+
+				connectMultiTopo(a, p2, 0, 500)
+				connectMultiTopo(a, p2, 2, 10)
+				connectMultiTopo(p2, b, 0, 500)
+				connectMultiTopo(p2, b, 2, 10)
+
+				return buildTED(a, b, p1, p2)
+			},
+			src: "A", dst: "B", metric: table.IGPMetric, scope: scopeV6SRMPLS,
+			want: []table.Segment{mplsSeg(13), mplsSeg(11)},
 		},
 		{
 			name: "an IPv6 scope never selects a cheaper IPv4-only edge",

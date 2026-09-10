@@ -486,6 +486,22 @@ func TestGetLsLink(t *testing.T) {
 					}},
 				},
 			},
+			{
+				// IS-IS Multi-Topology uses a Multi-Topology ID to distinguish Link NLRIs
+				// for different topologies (RFC 7752, Section 3.2.1.5).
+				name: "Multi-Topology ID is preserved",
+				desc: &api.LsLinkDescriptor{
+					InterfaceAddrIpv4: "10.0.0.1", NeighborAddrIpv4: "10.0.0.2",
+					MultiTopoId: &api.LsMultiTopologyIdentifier{MultiTopoIds: []uint32{2}},
+				},
+				attr: &api.LsAttributeLink{IgpMetric: 10},
+				want: &table.LsLink{
+					Local:        table.LinkEndpoint{Node: expectedLocal, IPv4: netip.MustParseAddr("10.0.0.1")},
+					Remote:       table.LinkEndpoint{Node: expectedRemote, IPv4: netip.MustParseAddr("10.0.0.2")},
+					Metrics:      []*table.Metric{table.NewMetric(table.IGPMetric, 10)},
+					MultiTopoIDs: map[uint16]struct{}{2: {}},
+				},
+			},
 		}
 
 		for _, tt := range tests {

@@ -162,15 +162,12 @@ neighbors:
 
 #### Known limitations
 
-* **BGP-LS Multi-Topology ID (TLV 263)** is not exposed through GoBGP's
-  Node/Link/Prefix NLRI API. Pola infers MT-0/MT-2 adjacency usability from the
-  advertised interface address family.
-* **SR Adjacency-SID**: At most one SR Adjacency-SID is available per link, so
+* **SR Adjacency-SID**: Only one SR Adjacency-SID is available per link, so
   IPv4- and IPv6-specific SIDs cannot be distinguished on the same dual-stack link.
-* **IOS-XR interoperability**: IPv6-endpoint PCE-initiated SR-MPLS policies were
-  observed to be rejected locally by IOS-XR 24.4.1 (`pcinitiate: bad sock info`),
-  even though the PCEP message is valid on the wire. Cross-AF behavior may vary
-  by PCC implementation and version.
+* **IOS-XR interoperability**: IOS-XR 24.4.1 rejected IPv6-endpoint
+  PCE-initiated SR-MPLS policies (`pcinitiate: bad sock info`).
+* **Junos interoperability**: Junos 25.2R1.9 rejected IPv6-endpoint
+  PCE-initiated SR-MPLS policies (`IPv6 SRPAG received for non SRv6 LSP`).
 
 ## Run Polad
 
