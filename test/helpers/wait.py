@@ -9,7 +9,6 @@ import time
 from collections.abc import Callable
 
 import paramiko
-from deepdiff import DeepDiff
 
 
 def run_command(cmd: str) -> subprocess.CompletedProcess:
@@ -209,25 +208,140 @@ def wait_until_ted_has_links(
     )
 
 
-def wait_until_ted_matches(
+def _keyed_by(items: list, key: str) -> dict:
+    return {item[key]: item for item in items if key in item}
+
+
+def _missing_scalar_keys(actual: dict, expected: dict, skip: set[str]) -> list[str]:
+    missing = []
+    for key, value in expected.items():
+        if key in skip:
+            continue
+        if not isinstance(value, (list, dict)) and actual.get(key) != value:
+            missing.append(f"{key}={value!r} (got {actual.get(key)!r})")
+    return missing
+
+
+def _missing_prefixes(actual: dict, expected: dict, node_id) -> list[str]:
+    actual_prefixes = {
+        (p.get("prefix"), p.get("sidIndex")) for p in actual.get("prefixes", [])
+    }
+    missing = []
+    for prefix in expected.get("prefixes", []):
+        key = (prefix.get("prefix"), prefix.get("sidIndex"))
+        if key not in actual_prefixes:
+            missing.append(f"node {node_id}: prefix {key} not found")
+    return missing
+
+
+def _link_matches(actual_link: dict, expected_link: dict) -> bool:
+    expected_metrics = expected_link.get("metrics")
+    if expected_metrics is not None:
+        actual_metrics = actual_link.get("metrics", [])
+        if not all(metric in actual_metrics for metric in expected_metrics):
+            return False
+
+    expected_families = {
+        adj_sid["family"] for adj_sid in expected_link.get("adjSids", [])
+    }
+    if expected_families:
+        actual_families = {
+            adj_sid["family"] for adj_sid in actual_link.get("adjSids", [])
+        }
+        if not expected_families.issubset(actual_families):
+            return False
+
+    # SID function values vary across boots; compare only the endpoint behavior.
+    expected_behaviors = {
+        sid.get("endpointBehavior", {}).get("behavior")
+        for sid in expected_link.get("srv6EndXSids", [])
+    }
+    if expected_behaviors:
+        actual_behaviors = {
+            sid.get("endpointBehavior", {}).get("behavior")
+            for sid in actual_link.get("srv6EndXSids", [])
+        }
+        if not expected_behaviors.issubset(actual_behaviors):
+            return False
+
+    return True
+
+
+def _missing_links(actual: dict, expected: dict, node_id) -> list[str]:
+    missing = []
+    actual_links_by_remote: dict[str, list] = {}
+    for link in actual.get("links", []):
+        remote_id = link.get("remote", {}).get("routerId")
+        actual_links_by_remote.setdefault(remote_id, []).append(link)
+
+    for expected_link in expected.get("links", []):
+        remote_id = expected_link.get("remote", {}).get("routerId")
+        candidates = actual_links_by_remote.get(remote_id, [])
+        if not candidates:
+            missing.append(f"node {node_id}: link to {remote_id} not found")
+            continue
+
+        if not any(_link_matches(candidate, expected_link) for candidate in candidates):
+            missing.append(
+                f"node {node_id}: no link to {remote_id} matches "
+                f"{expected_link} (candidates: {candidates})"
+            )
+
+    return missing
+
+
+def _missing_srv6_sids(actual: dict, expected: dict, node_id) -> list[str]:
+    actual_sids = {tuple(s.get("sids", [])) for s in actual.get("srv6Sids", [])}
+    missing = []
+    for expected_sid in expected.get("srv6Sids", []):
+        key = tuple(expected_sid.get("sids", []))
+        if key not in actual_sids:
+            missing.append(f"node {node_id}: srv6Sids {key} not found")
+    return missing
+
+
+def ted_missing(ted: list, expected: list) -> list[str]:
+    """Return missing expected TED content using subset semantics; Adj-SIDs are compared by family only."""
+
+    nodes_by_id = _keyed_by(ted, "routerId")
+    missing = []
+
+    for expected_node in expected:
+        node_id = expected_node.get("routerId")
+        actual_node = nodes_by_id.get(node_id)
+
+        if actual_node is None:
+            missing.append(f"node {node_id} not found")
+            continue
+
+        missing.extend(
+            _missing_scalar_keys(
+                actual_node,
+                expected_node,
+                skip={"routerId", "prefixes", "links", "srv6Sids"},
+            )
+        )
+        missing.extend(_missing_prefixes(actual_node, expected_node, node_id))
+        missing.extend(_missing_links(actual_node, expected_node, node_id))
+        missing.extend(_missing_srv6_sids(actual_node, expected_node, node_id))
+
+    return missing
+
+
+def wait_until_ted_contains(
     pola_container: str,
     expected: list,
     timeout: int = 600,
     interval: int = 5,
 ) -> list:
-    """Wait until TED JSON matches expected."""
+    """Wait until the TED contains everything in `expected` (subset match)."""
 
     def predicate(ted):
-        diff = DeepDiff(
-            ted,
-            expected,
-            ignore_order=True,
-        )
+        missing = ted_missing(ted, expected)
+        if missing:
+            print("Waiting for TED content:\n" + "\n".join(missing))
 
-        if diff:
-            print(f"Waiting for TED update:\n{diff}")
-
-        return diff == {}
+        return not missing
 
     return wait_until_ted(
         pola_container,

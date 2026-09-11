@@ -7,7 +7,7 @@ Example topology powered by [Containerlab](https://containerlab.dev/)
 ## Requirements
 
 * container host (Linux)
-* FRRouting image (`frrouting/frr:v8.4.1`)
+* FRRouting image (`quay.io/frrouting/frr:10.7.1`)
 * MPLS kernel modules on the container host (`mpls_router`, `mpls_gso`, `mpls_iptunnel`)
 * Pola helper image (`ghcr.io/nttcom/pola:latest-debug`)
 * Host utility image (`wbitt/network-multitool:latest`)

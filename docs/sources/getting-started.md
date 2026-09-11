@@ -160,15 +160,6 @@ neighbors:
       afi-safi-name: ls
 ```
 
-#### Known limitations
-
-* **SR Adjacency-SID**: Only one SR Adjacency-SID is available per link, so
-  IPv4- and IPv6-specific SIDs cannot be distinguished on the same dual-stack link.
-* **IOS-XR interoperability**: IOS-XR 24.4.1 rejected IPv6-endpoint
-  PCE-initiated SR-MPLS policies (`pcinitiate: bad sock info`).
-* **Junos interoperability**: Junos 25.2R1.9 rejected IPv6-endpoint
-  PCE-initiated SR-MPLS policies (`IPv6 SRPAG received for non SRv6 LSP`).
-
 ## Run Polad
 
 Start polad. Specify the created configuration file with the `-f` option.
@@ -181,3 +172,13 @@ $ sudo polad -f polad.yaml
 
 After Polad is running, use the [pola CLI](../../cmd/pola/README.md) or
 [gRPC client](../../api/grpc/) to manage the daemon.
+
+## Next Steps
+
+- **CLI Tool**: [pola CLI command reference](../../cmd/pola/README.md)
+- **Technical Details**: [Technical Specifications](technical-specifications.md)
+- **Examples**:
+  - [Containerlab examples](../../examples/containerlab/README.md) (network topology simulations)
+  - [gRPC API examples](../../examples/grpc/go/README.md) (build your own controller)
+- **Development**: [Contributing guide](../../CONTRIBUTING.md)
+- **Testing**: [Scenario tests](../../test/README.md)

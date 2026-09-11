@@ -369,8 +369,9 @@ func TestGetLsLink(t *testing.T) {
 	expectedLocal := table.NewLsNode(65000, testRouterID1)
 	expectedRemote := table.NewLsNode(65000, testRouterID2)
 
-	newNLRI := func(desc *api.LsLinkDescriptor) *api.LsAddrPrefix {
+	newNLRI := func(desc *api.LsLinkDescriptor, protocolID api.LsProtocolID) *api.LsAddrPrefix {
 		return &api.LsAddrPrefix{
+			ProtocolId: protocolID,
 			Nlri: &api.LsAddrPrefix_LsNLRI{
 				Nlri: &api.LsAddrPrefix_LsNLRI_Link{
 					Link: &api.LsLinkNLRI{
@@ -387,10 +388,11 @@ func TestGetLsLink(t *testing.T) {
 		t.Parallel()
 
 		tests := []struct {
-			name string
-			desc *api.LsLinkDescriptor
-			attr *api.LsAttributeLink
-			want *table.LsLink
+			name       string
+			desc       *api.LsLinkDescriptor
+			protocolID api.LsProtocolID
+			attr       *api.LsAttributeLink
+			want       *table.LsLink
 		}{
 			{
 				name: "IPv4 addresses and IGP metric only",
@@ -409,7 +411,7 @@ func TestGetLsLink(t *testing.T) {
 					IgpMetric:               10,
 					DefaultTeMetric:         20,
 					UnidirectionalLinkDelay: 30,
-					SrAdjacencySid:          12345,
+					SrAdjacencySids:         []*api.LsAttributeLinkAdjacencySID{{Sid: 12345}},
 				},
 				want: &table.LsLink{
 					Local:  table.LinkEndpoint{Node: expectedLocal, IPv6: netip.MustParseAddr("2001:db8::1")},
@@ -419,7 +421,69 @@ func TestGetLsLink(t *testing.T) {
 						table.NewMetric(table.TEMetric, 20),
 						table.NewMetric(table.DelayMetric, 30),
 					},
+					// Protocol ID is unspecified, so the Adj-SID address family cannot be derived.
 					AdjSids: []table.AdjSID{{Family: table.AFUnspecified, Sid: 12345}},
+				},
+			},
+			{
+				name:       "IS-IS dual-stack link distinguishes IPv4 and IPv6 Adj-SIDs",
+				protocolID: api.LsProtocolID_LS_PROTOCOL_ID_ISIS_L2,
+				desc: &api.LsLinkDescriptor{
+					InterfaceAddrIpv4: "10.0.0.1", NeighborAddrIpv4: "10.0.0.2",
+					InterfaceAddrIpv6: "2001:db8::1", NeighborAddrIpv6: "2001:db8::2",
+				},
+				attr: &api.LsAttributeLink{
+					IgpMetric: 10,
+					SrAdjacencySids: []*api.LsAttributeLinkAdjacencySID{
+						{Flags: 0x00, Sid: 24001},
+						{Flags: 0x80, Sid: 24002},
+					},
+				},
+				want: &table.LsLink{
+					Local: table.LinkEndpoint{
+						Node: expectedLocal,
+						IPv4: netip.MustParseAddr("10.0.0.1"), IPv6: netip.MustParseAddr("2001:db8::1"),
+					},
+					Remote: table.LinkEndpoint{
+						Node: expectedRemote,
+						IPv4: netip.MustParseAddr("10.0.0.2"), IPv6: netip.MustParseAddr("2001:db8::2"),
+					},
+					Metrics: []*table.Metric{table.NewMetric(table.IGPMetric, 10)},
+					AdjSids: []table.AdjSID{
+						{Family: table.AFIPv4, Sid: 24001},
+						{Family: table.AFIPv6, Sid: 24002},
+					},
+				},
+			},
+			{
+				name:       "OSPFv2 Adjacency-SID family is always IPv4",
+				protocolID: api.LsProtocolID_LS_PROTOCOL_ID_OSPF_V2,
+				desc:       &api.LsLinkDescriptor{InterfaceAddrIpv4: "10.0.0.1", NeighborAddrIpv4: "10.0.0.2"},
+				attr: &api.LsAttributeLink{
+					IgpMetric:       10,
+					SrAdjacencySids: []*api.LsAttributeLinkAdjacencySID{{Sid: 24003}},
+				},
+				want: &table.LsLink{
+					Local:   table.LinkEndpoint{Node: expectedLocal, IPv4: netip.MustParseAddr("10.0.0.1")},
+					Remote:  table.LinkEndpoint{Node: expectedRemote, IPv4: netip.MustParseAddr("10.0.0.2")},
+					Metrics: []*table.Metric{table.NewMetric(table.IGPMetric, 10)},
+					AdjSids: []table.AdjSID{{Family: table.AFIPv4, Sid: 24003}},
+				},
+			},
+			{
+				// BGP-LS lacks enough information to derive the Adj-SID address family for OSPFv3.
+				name:       "OSPFv3 Adjacency-SID family cannot be derived",
+				protocolID: api.LsProtocolID_LS_PROTOCOL_ID_OSPF_V3,
+				desc:       &api.LsLinkDescriptor{InterfaceAddrIpv6: "2001:db8::1", NeighborAddrIpv6: "2001:db8::2"},
+				attr: &api.LsAttributeLink{
+					IgpMetric:       10,
+					SrAdjacencySids: []*api.LsAttributeLinkAdjacencySID{{Sid: 24004}},
+				},
+				want: &table.LsLink{
+					Local:   table.LinkEndpoint{Node: expectedLocal, IPv6: netip.MustParseAddr("2001:db8::1")},
+					Remote:  table.LinkEndpoint{Node: expectedRemote, IPv6: netip.MustParseAddr("2001:db8::2")},
+					Metrics: []*table.Metric{table.NewMetric(table.IGPMetric, 10)},
+					AdjSids: []table.AdjSID{{Family: table.AFUnspecified, Sid: 24004}},
 				},
 			},
 			{
@@ -502,13 +566,30 @@ func TestGetLsLink(t *testing.T) {
 					MultiTopoIDs: map[uint16]struct{}{2: {}},
 				},
 			},
+			{
+				name: "Adjacency-SID with Sid=0 is skipped",
+				desc: &api.LsLinkDescriptor{InterfaceAddrIpv4: "10.0.0.1", NeighborAddrIpv4: "10.0.0.2"},
+				attr: &api.LsAttributeLink{
+					IgpMetric: 10,
+					SrAdjacencySids: []*api.LsAttributeLinkAdjacencySID{
+						{Sid: 0},
+						{Sid: 24001},
+					},
+				},
+				want: &table.LsLink{
+					Local:   table.LinkEndpoint{Node: expectedLocal, IPv4: netip.MustParseAddr("10.0.0.1")},
+					Remote:  table.LinkEndpoint{Node: expectedRemote, IPv4: netip.MustParseAddr("10.0.0.2")},
+					Metrics: []*table.Metric{table.NewMetric(table.IGPMetric, 10)},
+					AdjSids: []table.AdjSID{{Family: table.AFUnspecified, Sid: 24001}},
+				},
+			},
 		}
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
 
-				got, err := getLsLink(newNLRI(tt.desc), tt.attr)
+				got, err := getLsLink(newNLRI(tt.desc, tt.protocolID), tt.attr)
 				require.NoError(t, err)
 				assert.Equal(t, tt.want, got)
 			})
@@ -533,7 +614,7 @@ func TestGetLsLink(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
 
-				_, err := getLsLink(newNLRI(tt.desc), &api.LsAttributeLink{})
+				_, err := getLsLink(newNLRI(tt.desc, api.LsProtocolID_LS_PROTOCOL_ID_UNSPECIFIED), &api.LsAttributeLink{})
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.wantErr)
 			})
@@ -572,7 +653,7 @@ func TestGetLsLink(t *testing.T) {
 	t.Run("SRv6 End.X SID conversion error propagates", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := getLsLink(newNLRI(&api.LsLinkDescriptor{}), &api.LsAttributeLink{
+		_, err := getLsLink(newNLRI(&api.LsLinkDescriptor{}, api.LsProtocolID_LS_PROTOCOL_ID_UNSPECIFIED), &api.LsAttributeLink{
 			Srv6EndXSid: &api.LsSrv6EndXSID{EndpointBehavior: math.MaxUint16 + 1},
 		})
 		require.Error(t, err)

@@ -1,0 +1,202 @@
+[
+  {
+    "routerId": "0000.0001.0001",
+    "hostname": "pe01",
+    "isisAreaId": "49.0000",
+    "links": [
+      {
+        "remote": {
+          "routerId": "0000.0001.0004"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 100
+          }
+        ],
+        "srv6EndXSids": [
+          {
+            "endpointBehavior": {
+              "behavior": 57
+            }
+          }
+        ]
+      },
+      {
+        "remote": {
+          "routerId": "0000.0001.0003"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 10
+          }
+        ],
+        "srv6EndXSids": [
+          {
+            "endpointBehavior": {
+              "behavior": 57
+            }
+          }
+        ]
+      }
+    ],
+    "srv6Sids": [
+      {
+        "sids": [
+          "fcbb:bb00:1001::"
+        ]
+      }
+    ]
+  },
+  {
+    "routerId": "0000.0001.0002",
+    "hostname": "pe02",
+    "isisAreaId": "49.0000",
+    "links": [
+      {
+        "remote": {
+          "routerId": "0000.0001.0004"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 10
+          }
+        ],
+        "srv6EndXSids": [
+          {
+            "endpointBehavior": {
+              "behavior": 57
+            }
+          }
+        ]
+      }
+    ],
+    "srv6Sids": [
+      {
+        "sids": [
+          "fcbb:bb00:1002::"
+        ]
+      }
+    ]
+  },
+  {
+    "routerId": "0000.0001.0003",
+    "hostname": "p01",
+    "isisAreaId": "49.0000",
+    "links": [
+      {
+        "remote": {
+          "routerId": "0000.0001.0001"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 10
+          }
+        ],
+        "srv6EndXSids": [
+          {
+            "endpointBehavior": {
+              "behavior": 57
+            }
+          }
+        ]
+      },
+      {
+        "remote": {
+          "routerId": "0000.0001.0004"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 10
+          }
+        ],
+        "srv6EndXSids": [
+          {
+            "endpointBehavior": {
+              "behavior": 57
+            }
+          }
+        ]
+      }
+    ],
+    "srv6Sids": [
+      {
+        "sids": [
+          "fcbb:bb00:1003::"
+        ]
+      }
+    ]
+  },
+  {
+    "routerId": "0000.0001.0004",
+    "hostname": "p02",
+    "isisAreaId": "49.0000",
+    "links": [
+      {
+        "remote": {
+          "routerId": "0000.0001.0003"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 10
+          }
+        ],
+        "srv6EndXSids": [
+          {
+            "endpointBehavior": {
+              "behavior": 57
+            }
+          }
+        ]
+      },
+      {
+        "remote": {
+          "routerId": "0000.0001.0002"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 10
+          }
+        ],
+        "srv6EndXSids": [
+          {
+            "endpointBehavior": {
+              "behavior": 57
+            }
+          }
+        ]
+      },
+      {
+        "remote": {
+          "routerId": "0000.0001.0001"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 100
+          }
+        ],
+        "srv6EndXSids": [
+          {
+            "endpointBehavior": {
+              "behavior": 57
+            }
+          }
+        ]
+      }
+    ],
+    "srv6Sids": [
+      {
+        "sids": [
+          "fcbb:bb00:1004::"
+        ]
+      }
+    ]
+  }
+]

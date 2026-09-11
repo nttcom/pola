@@ -1,0 +1,268 @@
+[
+  {
+    "routerId": "0000.0002.0001",
+    "hostname": "pe01",
+    "isisAreaId": "49.0000",
+    "srgb": {
+      "begin": 16000,
+      "end": 24000
+    },
+    "prefixes": [
+      {
+        "prefix": "10.255.2.1/32",
+        "sidIndex": 21
+      },
+      {
+        "prefix": "2001:db8:200:1::1/128",
+        "sidIndex": 121
+      }
+    ],
+    "links": [
+      {
+        "remote": {
+          "routerId": "0000.0002.0002"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 10
+          }
+        ]
+      },
+      {
+        "remote": {
+          "routerId": "0000.0002.0003"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 100
+          }
+        ]
+      },
+      {
+        "remote": {
+          "routerId": "0000.0002.0003"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 10
+          }
+        ]
+      },
+      {
+        "remote": {
+          "routerId": "0000.0002.0002"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 100
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "routerId": "0000.0002.0002",
+    "hostname": "p01",
+    "isisAreaId": "49.0000",
+    "srgb": {
+      "begin": 16000,
+      "end": 24000
+    },
+    "prefixes": [
+      {
+        "prefix": "10.255.2.2/32",
+        "sidIndex": 22
+      },
+      {
+        "prefix": "2001:db8:200::2/128",
+        "sidIndex": 122
+      }
+    ],
+    "links": [
+      {
+        "remote": {
+          "routerId": "0000.0002.0001"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 100
+          }
+        ]
+      },
+      {
+        "remote": {
+          "routerId": "0000.0002.0001"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 10
+          }
+        ]
+      },
+      {
+        "remote": {
+          "routerId": "0000.0002.0005"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 10
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "routerId": "0000.0002.0003",
+    "hostname": "p02",
+    "isisAreaId": "49.0000",
+    "srgb": {
+      "begin": 16000,
+      "end": 24000
+    },
+    "prefixes": [
+      {
+        "prefix": "2001:db8:200::3/128",
+        "sidIndex": 123
+      },
+      {
+        "prefix": "10.255.2.3/32",
+        "sidIndex": 23
+      }
+    ],
+    "links": [
+      {
+        "remote": {
+          "routerId": "0000.0002.0004"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 100
+          }
+        ]
+      },
+      {
+        "remote": {
+          "routerId": "0000.0002.0004"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 10
+          }
+        ]
+      },
+      {
+        "remote": {
+          "routerId": "0000.0002.0001"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 100
+          }
+        ]
+      },
+      {
+        "remote": {
+          "routerId": "0000.0002.0005"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 100
+          }
+        ]
+      },
+      {
+        "remote": {
+          "routerId": "0000.0002.0001"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 10
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "routerId": "0000.0002.0004",
+    "hostname": "pe02",
+    "isisAreaId": "49.0000",
+    "srgb": {
+      "begin": 16000,
+      "end": 24000
+    },
+    "prefixes": [
+      {
+        "prefix": "10.255.2.4/32",
+        "sidIndex": 24
+      },
+      {
+        "prefix": "2001:db8:200:4::1/128",
+        "sidIndex": 124
+      }
+    ],
+    "links": [
+      {
+        "remote": {
+          "routerId": "0000.0002.0003"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 10
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "routerId": "0000.0002.0005",
+    "hostname": "pe03",
+    "isisAreaId": "49.0000",
+    "srgb": {
+      "begin": 16000,
+      "end": 24000
+    },
+    "prefixes": [
+      {
+        "prefix": "10.255.2.5/32",
+        "sidIndex": 25
+      }
+    ],
+    "links": [
+      {
+        "remote": {
+          "routerId": "0000.0002.0002"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 10
+          }
+        ]
+      },
+      {
+        "remote": {
+          "routerId": "0000.0002.0003"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 10
+          }
+        ]
+      }
+    ]
+  }
+]

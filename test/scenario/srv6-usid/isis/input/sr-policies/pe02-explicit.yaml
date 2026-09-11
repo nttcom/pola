@@ -1,0 +1,16 @@
+asn: 65000
+srPolicy:
+  pcepSessionAddr: "fd00::2"
+  headend: "fd00:ffff::2"
+  endpoint: "fd00:ffff::1"
+  name: "pe02-explicit"
+  color: 101
+  candidatePath:
+    explicit:
+      segmentList:
+        - sid: "fcbb:bb00:1004::"
+          localAddr: "fcbb:bb00:1004::"
+        - sid: "fcbb:bb00:1003::"
+          localAddr: "fcbb:bb00:1003::"
+        - sid: "fcbb:bb00:1001::"
+          localAddr: "fcbb:bb00:1001::"

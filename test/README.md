@@ -2,60 +2,18 @@
 
 ## 1. Install Required Tools and Container Images
 
-Make sure the following tools and container images are installed:
+See [Containerlab Setup Prerequisites](../setup/containerlab-prerequisites.md) for detailed setup instructions.
 
-### Docker
+Quick checklist:
 
-\* Note: Please make it executable without using sudo
-
-```bash
-$ docker --version
-Docker version 28.3.3, build 980b856
-```
-
-### containerlab
-
-```bash
-$ containerlab version
-  ____ ___  _   _ _____  _    ___ _   _ _____ ____  _       _
- / ___/ _ \| \ | |_   _|/ \  |_ _| \ | | ____|  _ \| | __ _| |__
-| |  | | | |  \| | | | / _ \  | ||  \| |  _| | |_) | |/ _` | '_ \
-| |__| |_| | |\  | | |/ ___ \ | || |\  | |___|  _ <| | (_| | |_) |
- \____\___/|_| \_| |_/_/   \_\___|_| \_|_____|_| \_\_|\__,_|_.__/
-
-    version: 0.69.3
-     commit: 49ee599b
-       date: 2025-08-06T21:02:24Z
-     source: https://github.com/srl-labs/containerlab
- rel. notes: https://containerlab.dev/rn/0.69/#0693
-```
-
-### uv
-
-```bash
-$ uv -V
-uv 0.8.13
-```
-
-### Cisco XRd
-
-```bash
-$ docker images --format '{{.Repository}}:{{.Tag}}' | grep '^ios-xr/xrd-control-plane:24.4.1$'
-ios-xr/xrd-control-plane:24.4.1
-```
-
-### vjunos-router
-
-```bash
-$ docker images --format '{{.Repository}}:{{.Tag}}' | grep '^vrnetlab/juniper_vjunos-router:25.2R1.9$'
-vrnetlab/juniper_vjunos-router:25.2R1.9
-```
-
-#### how to install image
-
-1. Get VM image from [Juniper support downloads page](https://support.juniper.net/support/downloads/)
-2. Clone the vrnetlab repository from [GitHub](https://github.com/srl-labs/vrnetlab/tree/master)
-3. Create vjunos-router image
+- Docker installed and executable without sudo
+- Containerlab installed
+- uv (Python package manager) installed
+- Container images:
+  - `ios-xr/xrd-control-plane:24.4.1` (if running XRd-based topologies)
+  - `vrnetlab/juniper_vjunos-router:26.2R1.7` (if running Juniper-based topologies)
+  - `quay.io/frrouting/frr:10.7.1` (if running FRRouting-based topologies)
+- MPLS kernel modules loaded (if using SR-MPLS)
 
 ## 2. Synchronize Dependencies with uv
 
@@ -69,7 +27,7 @@ uv sync
 Place the binaries you want to test in the appropriate location, or run
 `make test-deps` from the repository root to build and stage them.
 
-ex:
+For example:
 
 ```bash
 $ ls -la <repository-root>/test/bin
@@ -84,9 +42,7 @@ drwxrwxr-x 9 --- ---     4096 Aug 28 01:23 ..
 
 ## 4. Run the Test
 
-Execute the test using the appropriate command or script.
-
-\* Note: Make sure to run `uv run pytest` with the `-s` option. Otherwise, the test fail.
+Run the full scenario suite:
 
 ```bash
 uv run pytest -s
@@ -98,17 +54,29 @@ From the repository root, the same run is available as a Make target:
 make test-scenario
 ```
 
+> [!NOTE]
+> The `-s` option is required; without it, scenario tests may fail.
+
 ### Running a Subset
 
-A full run boots every Containerlab topology, so it takes a while. These options
-cut the loop short while iterating:
+A full run boots every Containerlab topology, so it takes a while. Use these
+options to run a smaller subset while iterating:
 
 ```bash
 make test-scenario PYTEST_ARGS="-s -x"                      # stop at the first failure
-make test-scenario PYTEST_ARGS="-s --lf"                    # rerun only what failed last time
-make test-scenario PYTEST_ARGS="-s scenario/explicit-path"  # one suite
+make test-scenario PYTEST_ARGS="-s --lf"                    # rerun only the last failures
+make test-scenario PYTEST_ARGS="-s scenario/sr-mpls/isis"   # one lab
+make test-scenario PYTEST_ARGS="-s -k show_ted"             # TED tests in every lab
 make test-scenario PYTEST_ARGS="-s -k loose_source_routing" # one test case
 ```
+
+| Lab directory | Topology name | Routers | Vendors | Underlay |
+| --- | --- | --- | --- | --- |
+| `scenario/sr-mpls/isis` | `sr-mpls-isis` | 5 | XRd, vJunos, FRR | IS-IS / IPv4 / SR-MPLS |
+| `scenario/sr-mpls/isis-dual-stack` | `sr-mpls-isis-dual-stack` | 5 | XRd, vJunos, FRR | IS-IS / IPv4+IPv6 / SR-MPLS |
+| `scenario/sr-mpls/ospf` | `sr-mpls-ospf` | 4 | XRd, FRR | OSPFv2+OSPFv3 / IPv4 / SR-MPLS |
+| `scenario/srv6/isis` | `srv6-isis` | 4 | XRd, vJunos | IS-IS / IPv6 / SRv6 (full-length SIDs) |
+| `scenario/srv6-usid/isis` | `srv6-usid-isis` | 4 | XRd, vJunos | IS-IS / IPv6 / SRv6 uSID |
 
 ### Running in Parallel
 
@@ -116,11 +84,17 @@ make test-scenario PYTEST_ARGS="-s -k loose_source_routing" # one test case
 make test-scenario-parallel
 ```
 
+By default, 3 workers are used. Adjust this with:
+
+```bash
+make test-scenario-parallel TEST_WORKERS=2
+```
+
 New tests must declare the topology they use with
-`@pytest.mark.xdist_group("<lab name>")` so tests sharing a topology run on the
-same worker. A parallel run boots every topology at once, so it needs the memory
-of all of them together.
+`@pytest.mark.xdist_group("<topology name>")` so tests sharing a topology run
+on the same worker. A parallel run boots every topology at once, so it requires
+enough memory for all of them.
 
 > [!IMPORTANT]
-> When running `pytest -n` directly, always pass `--dist loadgroup`. Without it, two workers
-> can deploy the same topology at the same time and destroy each other's containers.
+> When running `pytest -n` directly, always use `--dist loadgroup`.
+> Otherwise, multiple workers may deploy the same topology simultaneously.

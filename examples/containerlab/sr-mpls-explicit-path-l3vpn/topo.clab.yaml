@@ -11,7 +11,7 @@ topology:
         - ip addr add 10.0.255.254/24 dev eth1
     pe01:
       kind: linux
-      image: frrouting/frr:v8.4.1
+      image: quay.io/frrouting/frr:10.7.1
       binds:
         - startup-configs/common/daemons:/etc/frr/daemons
         - startup-configs/common/vtysh.conf:/etc/frr/vtysh.conf
@@ -30,7 +30,7 @@ topology:
         - bash /vtysh.sh
     pe02:
       kind: linux
-      image: frrouting/frr:v8.4.1
+      image: quay.io/frrouting/frr:10.7.1
       binds:
         - startup-configs/common/daemons:/etc/frr/daemons
         - startup-configs/common/vtysh.conf:/etc/frr/vtysh.conf
@@ -49,7 +49,7 @@ topology:
         - bash /vtysh.sh
     p01:
       kind: linux
-      image: frrouting/frr:v8.4.1
+      image: quay.io/frrouting/frr:10.7.1
       binds:
         - startup-configs/common/daemons:/etc/frr/daemons
         - startup-configs/common/vtysh.conf:/etc/frr/vtysh.conf
@@ -63,7 +63,7 @@ topology:
         - sysctl -w net.mpls.platform_labels=1048575
     p02:
       kind: linux
-      image: frrouting/frr:v8.4.1
+      image: quay.io/frrouting/frr:10.7.1
       binds:
         - startup-configs/common/daemons:/etc/frr/daemons
         - startup-configs/common/vtysh.conf:/etc/frr/vtysh.conf

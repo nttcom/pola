@@ -40,18 +40,23 @@ and a PCEP Library in Go.
 * Junos
 * VRP
 
-## Installation & Use
+## Documentation
 
-* [Getting Started](docs/sources/getting-started.md)
-* [Docker Image Usage](build/package/README.md)
-* Examples (powered by [Containerlab](https://containerlab.dev/))
-  * [Containerlab Conventions](examples/containerlab)
+* [Getting Started](docs/sources/getting-started.md) - Installation, configuration, and basic usage
+* [Technical Specifications](docs/sources/technical-specifications.md) - Technical details, data models, and limitations
+* [Docker Image Usage](build/package/README.md) - Container-based deployment
+
+## Examples
+
+Examples are powered by [Containerlab](https://containerlab.dev/):
+
+* [Containerlab Setup](examples/containerlab) - Common prerequisites and conventions
   * [SR-MPLS Explicit Path](examples/containerlab/sr-mpls-explicit-path)
   * [SR-MPLS L3VPN](examples/containerlab/sr-mpls-explicit-path-l3vpn)
   * [SRv6 Explicit Path L3VPN](examples/containerlab/srv6-explicit-path-l3vpn)
   * [SRv6 uSID Dynamic Path](examples/containerlab/srv6-usid-dynamic-path)
   * [SRv6 uSID Loose Source Routing SFC](examples/containerlab/srv6-usid-dynamic-path-loose-source-routing-sfc)
-* [Go gRPC API Examples](examples/grpc/go) (for building your own controller)
+* [Go gRPC API Examples](examples/grpc/go) - Build your own controller
 
 ## Contributing
 

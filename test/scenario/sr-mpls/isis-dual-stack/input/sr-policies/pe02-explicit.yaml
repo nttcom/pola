@@ -1,0 +1,14 @@
+asn: 65000
+srPolicy:
+  pcepSessionAddr: "10.0.30.2"
+  headend: "10.255.2.4"
+  endpoint: "10.255.2.1"
+  name: pe02-explicit
+  color: 403
+  candidatePath:
+    explicit:
+      segmentList:
+        - sid: "16022"
+          localAddr: "10.255.2.2"
+        - sid: "16021"
+          localAddr: "10.255.2.1"

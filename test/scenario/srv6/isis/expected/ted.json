@@ -1,0 +1,140 @@
+[
+  {
+    "routerId": "0000.0005.0001",
+    "hostname": "pe01",
+    "isisAreaId": "49.0000",
+    "links": [
+      {
+        "remote": {
+          "routerId": "0000.0005.0003"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 10
+          }
+        ]
+      },
+      {
+        "remote": {
+          "routerId": "0000.0005.0004"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 100
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "routerId": "0000.0005.0002",
+    "hostname": "pe02",
+    "isisAreaId": "49.0000",
+    "links": [
+      {
+        "remote": {
+          "routerId": "0000.0005.0003"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 100
+          }
+        ]
+      },
+      {
+        "remote": {
+          "routerId": "0000.0005.0004"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 10
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "routerId": "0000.0005.0003",
+    "hostname": "p01",
+    "isisAreaId": "49.0000",
+    "links": [
+      {
+        "remote": {
+          "routerId": "0000.0005.0001"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 10
+          }
+        ]
+      },
+      {
+        "remote": {
+          "routerId": "0000.0005.0002"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 100
+          }
+        ]
+      },
+      {
+        "remote": {
+          "routerId": "0000.0005.0004"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 10
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "routerId": "0000.0005.0004",
+    "hostname": "p02",
+    "isisAreaId": "49.0000",
+    "links": [
+      {
+        "remote": {
+          "routerId": "0000.0005.0001"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 100
+          }
+        ]
+      },
+      {
+        "remote": {
+          "routerId": "0000.0005.0002"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 10
+          }
+        ]
+      },
+      {
+        "remote": {
+          "routerId": "0000.0005.0003"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 10
+          }
+        ]
+      }
+    ]
+  }
+]

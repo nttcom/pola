@@ -4,7 +4,7 @@ topology:
     xrd:
       image: ios-xr/xrd-control-plane:24.4.1
     juniper_vjunosrouter:
-      image: vrnetlab/juniper_vjunos-router:25.2R1.9
+      image: vrnetlab/juniper_vjunos-router:26.2R1.7
   nodes:
     pe01:
       kind: xrd

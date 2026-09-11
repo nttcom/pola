@@ -116,7 +116,8 @@ make test-scenario
 You can pass extra pytest arguments:
 
 ```bash
-make test-scenario PYTEST_ARGS='-k dynamic_path -s'
+make test-scenario PYTEST_ARGS='-s -k dynamic_path'
+make test-scenario PYTEST_ARGS='-s scenario/sr-mpls/isis'
 ```
 
 Run scenario tests in parallel:

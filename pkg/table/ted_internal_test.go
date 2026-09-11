@@ -391,6 +391,7 @@ func TestLsLink_KeyAndUpdateTED(t *testing.T) {
 		require.Len(t, ted.Nodes["A"].Links, 2)
 
 		var v4Metric, v6Metric uint32
+
 		for _, link := range ted.Nodes["A"].Links {
 			metric, err := link.Metric(IGPMetric)
 			require.NoError(t, err)
@@ -513,4 +514,20 @@ func TestLsLink_Validate(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestNodeSegment_InvalidDataPlane(t *testing.T) {
+	t.Parallel()
+
+	node := NewLsNode(65000, "0000.0000.0001")
+	node.Prefixes = []*LsPrefix{
+		{Prefix: netip.MustParsePrefix("192.0.2.1/32"), SidIndex: 100, HasSidIndex: true},
+	}
+	node.SrgbBegin, node.SrgbEnd = 16000, 23999
+
+	plane := Plane{Family: AFIPv4, DataPlane: DataPlane(99)}
+
+	_, err := node.NodeSegment(plane)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "data plane must be specified")
 }

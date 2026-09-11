@@ -2,7 +2,7 @@ name: srv6-explicit-path-l3vpn
 topology:
   kinds:
     juniper_vjunosrouter:
-      image: vrnetlab/juniper_vjunos-router:25.2R1.9
+      image: vrnetlab/juniper_vjunos-router:26.2R1.7
   nodes:
     pola:
       kind: linux

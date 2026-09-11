@@ -590,7 +590,12 @@ func getLsLink(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrLink *api.LsAttribute
 	if multiTopoIDs := linkDescriptor.GetMultiTopoId().GetMultiTopoIds(); len(multiTopoIDs) != 0 {
 		lsLink.MultiTopoIDs = make(map[uint16]struct{}, len(multiTopoIDs))
 		for _, id := range multiTopoIDs {
-			lsLink.MultiTopoIDs[uint16(id)] = struct{}{}
+			topoID, err := safecast.Uint16(id, "MultiTopoID")
+			if err != nil {
+				return nil, fmt.Errorf("failed to convert MultiTopoID: %w", err)
+			}
+
+			lsLink.MultiTopoIDs[topoID] = struct{}{}
 		}
 	}
 
@@ -608,9 +613,17 @@ func getLsLink(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrLink *api.LsAttribute
 		)
 	}
 
-	// GoBGP does not distinguish IPv4 and IPv6 Adj-SIDs, so leave the family unspecified.
-	if adjSid := lsAttrLink.GetSrAdjacencySid(); adjSid != 0 {
-		lsLink.AdjSids = append(lsLink.AdjSids, table.AdjSID{Family: table.AFUnspecified, Sid: adjSid})
+	protocolID := typedLinkStateNLRI.GetProtocolId()
+
+	for _, adjSid := range lsAttrLink.GetSrAdjacencySids() {
+		if adjSid.GetSid() == 0 {
+			continue
+		}
+
+		lsLink.AdjSids = append(lsLink.AdjSids, table.AdjSID{
+			Family: adjSIDFamily(protocolID, adjSid.GetFlags()),
+			Sid:    adjSid.GetSid(),
+		})
 	}
 
 	if srv6EndXSID := lsAttrLink.GetSrv6EndXSid(); srv6EndXSID != nil {
@@ -623,6 +636,27 @@ func getLsLink(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrLink *api.LsAttribute
 	}
 
 	return lsLink, nil
+}
+
+// isisAdjSIDAddressFamilyFlag is the F flag in an IS-IS Adjacency-SID.
+// Set for IPv6, clear for IPv4 (RFC 8667 Section 2.2.1).
+const isisAdjSIDAddressFamilyFlag = 0x80
+
+// adjSIDFamily returns the address family an Adjacency-SID applies to.
+// OSPFv3's address family cannot be derived from BGP-LS.
+func adjSIDFamily(protocolID api.LsProtocolID, flags uint32) table.AddressFamily {
+	switch protocolID {
+	case api.LsProtocolID_LS_PROTOCOL_ID_ISIS_L1, api.LsProtocolID_LS_PROTOCOL_ID_ISIS_L2:
+		if flags&isisAdjSIDAddressFamilyFlag != 0 {
+			return table.AFIPv6
+		}
+
+		return table.AFIPv4
+	case api.LsProtocolID_LS_PROTOCOL_ID_OSPF_V2:
+		return table.AFIPv4
+	default:
+		return table.AFUnspecified
+	}
 }
 
 // parseOptionalAddr returns the zero address for an empty string.
