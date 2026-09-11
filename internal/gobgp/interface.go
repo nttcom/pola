@@ -561,70 +561,23 @@ func getLsLink(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrLink *api.LsAttribute
 
 	linkDescriptor := lsLinkNLRI.GetLinkDescriptor()
 
-	localIPv4, err := parseOptionalAddr(linkDescriptor.GetInterfaceAddrIpv4())
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse local IPv4 address: %w", err)
-	}
-
-	localIPv6, err := parseOptionalAddr(linkDescriptor.GetInterfaceAddrIpv6())
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse local IPv6 address: %w", err)
-	}
-
-	remoteIPv4, err := parseOptionalAddr(linkDescriptor.GetNeighborAddrIpv4())
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse remote IPv4 address: %w", err)
-	}
-
-	remoteIPv6, err := parseOptionalAddr(linkDescriptor.GetNeighborAddrIpv6())
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse remote IPv6 address: %w", err)
-	}
-
 	lsLink := table.NewLsLink(localNode, remoteNode)
-	lsLink.Local.IPv4, lsLink.Local.IPv6 = localIPv4, localIPv6
-	lsLink.Remote.IPv4, lsLink.Remote.IPv6 = remoteIPv4, remoteIPv6
+
+	if err := setLsLinkAddrs(lsLink, linkDescriptor); err != nil {
+		return nil, err
+	}
+
 	lsLink.Local.InterfaceID = linkDescriptor.LinkLocalId
 	lsLink.Remote.InterfaceID = linkDescriptor.LinkRemoteId
 
-	if multiTopoIDs := linkDescriptor.GetMultiTopoId().GetMultiTopoIds(); len(multiTopoIDs) != 0 {
-		lsLink.MultiTopoIDs = make(map[uint16]struct{}, len(multiTopoIDs))
-		for _, id := range multiTopoIDs {
-			topoID, err := safecast.Uint16(id, "MultiTopoID")
-			if err != nil {
-				return nil, fmt.Errorf("failed to convert MultiTopoID: %w", err)
-			}
-
-			lsLink.MultiTopoIDs[topoID] = struct{}{}
-		}
+	multiTopoIDs, err := multiTopoIDSet(linkDescriptor.GetMultiTopoId().GetMultiTopoIds())
+	if err != nil {
+		return nil, err
 	}
 
-	lsLink.Metrics = append(lsLink.Metrics, table.NewMetric(table.IGPMetric, lsAttrLink.GetIgpMetric()))
-
-	teMetric := lsAttrLink.GetDefaultTeMetric()
-	if teMetric != 0 {
-		lsLink.Metrics = append(lsLink.Metrics, table.NewMetric(table.TEMetric, teMetric))
-	}
-
-	if delay := lsAttrLink.GetUnidirectionalLinkDelay(); delay != 0 {
-		lsLink.Metrics = append(
-			lsLink.Metrics,
-			table.NewMetric(table.DelayMetric, delay),
-		)
-	}
-
-	protocolID := typedLinkStateNLRI.GetProtocolId()
-
-	for _, adjSid := range lsAttrLink.GetSrAdjacencySids() {
-		if adjSid.GetSid() == 0 {
-			continue
-		}
-
-		lsLink.AdjSids = append(lsLink.AdjSids, table.AdjSID{
-			Family: adjSIDFamily(protocolID, adjSid.GetFlags()),
-			Sid:    adjSid.GetSid(),
-		})
-	}
+	lsLink.MultiTopoIDs = multiTopoIDs
+	lsLink.Metrics = lsLinkMetrics(lsAttrLink)
+	lsLink.AdjSids = lsLinkAdjSids(typedLinkStateNLRI.GetProtocolId(), lsAttrLink.GetSrAdjacencySids())
 
 	if srv6EndXSID := lsAttrLink.GetSrv6EndXSid(); srv6EndXSID != nil {
 		converted, err := srv6EndXSIDFromAPI(srv6EndXSID)
@@ -636,6 +589,82 @@ func getLsLink(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrLink *api.LsAttribute
 	}
 
 	return lsLink, nil
+}
+
+func setLsLinkAddrs(lsLink *table.LsLink, linkDescriptor *api.LsLinkDescriptor) error {
+	var err error
+
+	lsLink.Local.IPv4, err = parseOptionalAddr(linkDescriptor.GetInterfaceAddrIpv4())
+	if err != nil {
+		return fmt.Errorf("failed to parse local IPv4 address: %w", err)
+	}
+
+	lsLink.Local.IPv6, err = parseOptionalAddr(linkDescriptor.GetInterfaceAddrIpv6())
+	if err != nil {
+		return fmt.Errorf("failed to parse local IPv6 address: %w", err)
+	}
+
+	lsLink.Remote.IPv4, err = parseOptionalAddr(linkDescriptor.GetNeighborAddrIpv4())
+	if err != nil {
+		return fmt.Errorf("failed to parse remote IPv4 address: %w", err)
+	}
+
+	lsLink.Remote.IPv6, err = parseOptionalAddr(linkDescriptor.GetNeighborAddrIpv6())
+	if err != nil {
+		return fmt.Errorf("failed to parse remote IPv6 address: %w", err)
+	}
+
+	return nil
+}
+
+func multiTopoIDSet(multiTopoIDs []uint32) (map[uint16]struct{}, error) {
+	if len(multiTopoIDs) == 0 {
+		return nil, nil
+	}
+
+	set := make(map[uint16]struct{}, len(multiTopoIDs))
+
+	for _, id := range multiTopoIDs {
+		topoID, err := safecast.Uint16(id, "MultiTopoID")
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert MultiTopoID: %w", err)
+		}
+
+		set[topoID] = struct{}{}
+	}
+
+	return set, nil
+}
+
+func lsLinkMetrics(lsAttrLink *api.LsAttributeLink) []*table.Metric {
+	metrics := []*table.Metric{table.NewMetric(table.IGPMetric, lsAttrLink.GetIgpMetric())}
+
+	if teMetric := lsAttrLink.GetDefaultTeMetric(); teMetric != 0 {
+		metrics = append(metrics, table.NewMetric(table.TEMetric, teMetric))
+	}
+
+	if delay := lsAttrLink.GetUnidirectionalLinkDelay(); delay != 0 {
+		metrics = append(metrics, table.NewMetric(table.DelayMetric, delay))
+	}
+
+	return metrics
+}
+
+func lsLinkAdjSids(protocolID api.LsProtocolID, adjSids []*api.LsAttributeLinkAdjacencySID) []table.AdjSID {
+	var result []table.AdjSID
+
+	for _, adjSid := range adjSids {
+		if adjSid.GetSid() == 0 {
+			continue
+		}
+
+		result = append(result, table.AdjSID{
+			Family: adjSIDFamily(protocolID, adjSid.GetFlags()),
+			Sid:    adjSid.GetSid(),
+		})
+	}
+
+	return result
 }
 
 // isisAdjSIDAddressFamilyFlag is the F flag in an IS-IS Adjacency-SID.

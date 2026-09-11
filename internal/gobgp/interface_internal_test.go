@@ -658,6 +658,18 @@ func TestGetLsLink(t *testing.T) {
 		})
 		require.Error(t, err)
 	})
+
+	t.Run("Multi-Topology ID conversion error propagates", func(t *testing.T) {
+		t.Parallel()
+
+		desc := &api.LsLinkDescriptor{
+			MultiTopoId: &api.LsMultiTopologyIdentifier{MultiTopoIds: []uint32{math.MaxUint16 + 1}},
+		}
+
+		_, err := getLsLink(newNLRI(desc, api.LsProtocolID_LS_PROTOCOL_ID_UNSPECIFIED), &api.LsAttributeLink{})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to convert MultiTopoID")
+	})
 }
 
 func TestSrv6EndXSIDFromAPI(t *testing.T) {
