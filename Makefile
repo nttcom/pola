@@ -32,6 +32,8 @@ LICENSES_TEMPLATE         := licenses/report.md.tmpl
 LICENSES_OUTPUT           := licenses/THIRD_PARTY_LICENSES.md
 LICENSES_OUTPUT_EXAMPLES  := licenses/THIRD_PARTY_LICENSES_EXAMPLES.md
 
+TEST_WORKERS ?= 3
+
 .PHONY: \
 	help \
 	setup \
@@ -210,8 +212,7 @@ test-deps: build fetch-gobgp ## Stage all binaries required for scenario tests
 test-scenario: test-deps ## Run containerlab scenario tests
 	cd test && uv run pytest $(PYTEST_ARGS)
 
-# Keep tests sharing a lab on the same worker.
-test-scenario-parallel: PYTEST_ARGS = -s -n 4 --dist loadgroup
+test-scenario-parallel: PYTEST_ARGS = -s -n $(TEST_WORKERS) --dist loadgroup
 test-scenario-parallel: test-scenario ## Run containerlab scenario tests, one lab per worker
 
 ci: check-proto check-licenses lint build test test-examples test-coverage-diff ## Run the same checks as CI
