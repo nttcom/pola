@@ -1,0 +1,13 @@
+asn: 65000
+srPolicy:
+  pcepSessionAddr: "10.0.50.5"
+  headendRouterID: "10.255.4.5"
+  endpointRouterID: "10.255.4.1"
+  endpointFamily: ipv4
+  name: pe02-dynamic
+  color: 803
+  candidatePath:
+    dynamic:
+      metric: igp
+      dataPlane: sr-mpls
+      underlayFamily: ipv4

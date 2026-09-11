@@ -1,0 +1,153 @@
+[
+  {
+    "routerId": "10.255.4.1",
+    "srgb": {
+      "begin": 16000,
+      "end": 24000
+    },
+    "prefixes": [
+      {
+        "prefix": "10.255.4.1/32",
+        "sidIndex": 41
+      }
+    ],
+    "links": [
+      {
+        "remote": {
+          "routerId": "10.255.4.2"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 5
+          }
+        ]
+      },
+      {
+        "remote": {
+          "routerId": "10.255.4.3"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 10
+          }
+        ]
+      }
+    ],
+    "hostname": "pe01"
+  },
+  {
+    "routerId": "10.255.4.2",
+    "srgb": {
+      "begin": 16000,
+      "end": 24000
+    },
+    "prefixes": [
+      {
+        "prefix": "10.255.4.2/32",
+        "sidIndex": 42
+      }
+    ],
+    "links": [
+      {
+        "remote": {
+          "routerId": "10.255.4.5"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 10
+          }
+        ]
+      },
+      {
+        "remote": {
+          "routerId": "10.255.4.1"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 10
+          }
+        ]
+      }
+    ],
+    "hostname": "p01"
+  },
+  {
+    "routerId": "10.255.4.3",
+    "srgb": {
+      "begin": 16000,
+      "end": 24000
+    },
+    "prefixes": [
+      {
+        "prefix": "10.255.4.3/32",
+        "sidIndex": 43
+      }
+    ],
+    "links": [
+      {
+        "remote": {
+          "routerId": "10.255.4.1"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 10
+          }
+        ]
+      },
+      {
+        "remote": {
+          "routerId": "10.255.4.5"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 10
+          }
+        ]
+      }
+    ],
+    "hostname": "p02"
+  },
+  {
+    "routerId": "10.255.4.5",
+    "srgb": {
+      "begin": 16000,
+      "end": 24000
+    },
+    "prefixes": [
+      {
+        "prefix": "10.255.4.5/32",
+        "sidIndex": 45
+      }
+    ],
+    "links": [
+      {
+        "remote": {
+          "routerId": "10.255.4.2"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 10
+          }
+        ]
+      },
+      {
+        "remote": {
+          "routerId": "10.255.4.3"
+        },
+        "metrics": [
+          {
+            "type": "igp",
+            "value": 10
+          }
+        ]
+      }
+    ]
+  }
+]
