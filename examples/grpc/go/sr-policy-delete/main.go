@@ -4,7 +4,7 @@
 // see https://github.com/nttcom/pola/blob/main/LICENSE
 
 // Command sr-policy-delete deletes an SR Policy.
-// The policy is identified by PeerAddr, Color, DstAddr and PolicyName.
+// The policy is identified by PeerAddr, Color, Endpoint and PolicyName.
 package main
 
 import (
@@ -42,12 +42,12 @@ func main() {
 	defer cancel()
 
 	ssAddr := netip.MustParseAddr("192.0.2.1")
-	dstAddr := netip.MustParseAddr("192.0.2.2")
+	endpoint := netip.MustParseAddr("192.0.2.2")
 
 	_, err = c.DeleteSRPolicy(ctx, &pb.DeleteSRPolicyRequest{
 		SrPolicy: &pb.SRPolicy{
 			PeerAddr:   ssAddr.AsSlice(),
-			DstAddr:    dstAddr.AsSlice(),
+			Endpoint:   endpoint.AsSlice(),
 			Color:      100,
 			PolicyName: "sample-name",
 		},

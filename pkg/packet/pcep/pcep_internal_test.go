@@ -66,7 +66,7 @@ func TestNAITypeSR_naiLength(t *testing.T) {
 		"IPv4Adjacency":          {nt: NAITypeSRIPv4Adjacency, want: 8},
 		"IPv6AdjacencyGlobal":    {nt: NAITypeSRIPv6AdjacencyGlobal, want: 32},
 		"UnnumberedAdjacency":    {nt: NAITypeSRUnnumberedAdjacency, wantErr: true},
-		"IPv6AdjacencyLinkLocal": {nt: NAITypeSRIPv6AdjacencyLinkLocal, wantErr: true},
+		"IPv6AdjacencyLinkLocal": {nt: NAITypeSRIPv6AdjacencyLinkLocal, want: 40},
 		"Unknown":                {nt: NAITypeSR(0x07), wantErr: true},
 	}
 
@@ -459,7 +459,7 @@ func TestEroObject_RoundTrip(t *testing.T) {
 		return subo
 	}
 	mkSRv6Ero := func(sidStr, localStr string) *SRv6EroSubobject {
-		seg := table.NewSegmentSRv6(netip.MustParseAddr(sidStr))
+		seg := table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr(sidStr)))
 		seg.LocalAddr = netip.MustParseAddr(localStr)
 		subo, err := NewSRv6EroSubobject(seg)
 		require.NoError(t, err)

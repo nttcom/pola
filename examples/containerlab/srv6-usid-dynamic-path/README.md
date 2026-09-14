@@ -66,7 +66,7 @@ Node #0: 0000.0001.0001
         igp: 100
       Adj-SID: 0
       SRv6 End.X SID:
-        EndpointBehavior: UA
+        EndpointBehavior: UA, Flags: 0, Algorithm: 0, Weight: 0
         SIDs: [fcbb:bb00:1001:e001::]
         SID Structure: Block: 32, Node: 16, Func: 16, Arg: 64
     Local: None Remote: None
@@ -75,7 +75,7 @@ Node #0: 0000.0001.0001
         igp: 10
       Adj-SID: 0
       SRv6 End.X SID:
-        EndpointBehavior: UA
+        EndpointBehavior: UA, Flags: 0, Algorithm: 0, Weight: 0
         SIDs: [fcbb:bb00:1001:e000::]
         SID Structure: Block: 32, Node: 16, Func: 16, Arg: 64
   SRv6 SIDs:

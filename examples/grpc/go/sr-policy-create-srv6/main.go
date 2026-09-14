@@ -42,32 +42,36 @@ func main() {
 	defer cancel()
 
 	ssAddr := netip.MustParseAddr("2001:db8::1")
-	srcAddr := netip.MustParseAddr("2001:db8::1")
-	dstAddr := netip.MustParseAddr("2001:db8::2")
+	headend := netip.MustParseAddr("2001:db8::1")
+	endpoint := netip.MustParseAddr("2001:db8::2")
 
 	_, err = c.CreateSRPolicy(ctx, &pb.CreateSRPolicyRequest{
 		SrPolicy: &pb.SRPolicy{
 			PeerAddr:   ssAddr.AsSlice(),
-			SrcAddr:    srcAddr.AsSlice(),
-			DstAddr:    dstAddr.AsSlice(),
+			Headend:    headend.AsSlice(),
+			Endpoint:   endpoint.AsSlice(),
 			Color:      100,
 			PolicyName: "sample-srv6",
-			Type:       pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT,
-			SegmentList: []*pb.Segment{
-				{
-					Sid:          "2001:db8:1005::",
-					LocalAddr:    "2001:db8::5",
-					SidStructure: "32,16,0,80",
-				},
-				{
-					Sid:          "2001:db8:1006::",
-					LocalAddr:    "2001:db8::6",
-					SidStructure: "32,16,0,80",
+			CandidatePath: &pb.CandidatePath{
+				Path: &pb.CandidatePath_Explicit{
+					Explicit: &pb.ExplicitPath{
+						SegmentList: []*pb.Segment{
+							{
+								Sid:          "2001:db8:1005::",
+								LocalAddr:    "2001:db8::5",
+								SidStructure: "32,16,0,80",
+							},
+							{
+								Sid:          "2001:db8:1006::",
+								LocalAddr:    "2001:db8::6",
+								SidStructure: "32,16,0,80",
+							},
+						},
+					},
 				},
 			},
 		},
-		DisablePathCompute: true,
-		NoSidValidate:      true,
+		NoSidValidate: true,
 	})
 	if err != nil {
 		log.Fatalf("c.CreateSRPolicy error: %v", err) //nolint:gocritic // main exits immediately.

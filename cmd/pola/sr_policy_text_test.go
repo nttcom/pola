@@ -94,6 +94,28 @@ func TestWriteSRPolicyText_PropagatesSeparatorWriteError(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestWriteSRPolicyItemText_ExplicitPath(t *testing.T) {
+	t.Parallel()
+
+	views := []srPolicySessionView{
+		{
+			PeerAddress: testPeerAddr1,
+			State:       "up",
+			LSPDBSync:   "finished",
+			SRPolicies: []table.SRPolicy{
+				{
+					Name:          "policy1",
+					CandidatePath: table.CandidatePath{Explicit: &table.ExplicitPath{}},
+				},
+			},
+		},
+	}
+
+	w := &condFailWriter{}
+	require.NoError(t, writeSRPolicyText(w, views))
+	require.Contains(t, w.buf.String(), "    Type: explicit\n")
+}
+
 func TestWriteSRPolicyText_SeparatesMultipleSessionsWithBlankLine(t *testing.T) {
 	t.Parallel()
 

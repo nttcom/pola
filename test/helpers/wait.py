@@ -191,7 +191,7 @@ def wait_until_ted_has_links(
         for node in ted:
             local = node.get("routerId")
             for link in node.get("links", []):
-                remote = link.get("remoteRouterId")
+                remote = link.get("remote", {}).get("routerId")
                 if local and remote:
                     found.add(frozenset((local, remote)))
 

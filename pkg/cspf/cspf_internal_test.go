@@ -21,12 +21,25 @@ const (
 	cspfInternalTestOverrideSID   = "2001:db8::ffff"
 )
 
+var (
+	cspfInternalTestScopeV4SRMPLS = PathScope{Plane: table.Plane{Family: table.AFIPv4, DataPlane: table.DPSRMPLS}}
+	cspfInternalTestScopeV6SRMPLS = PathScope{Plane: table.Plane{Family: table.AFIPv6, DataPlane: table.DPSRMPLS}}
+	cspfInternalTestScopeV6SRv6   = PathScope{Plane: table.Plane{Family: table.AFIPv6, DataPlane: table.DPSRv6}}
+)
+
+var (
+	cspfInternalTestLocalIPv4  = netip.MustParseAddr("192.0.2.101")
+	cspfInternalTestRemoteIPv4 = netip.MustParseAddr("192.0.2.102")
+	cspfInternalTestLocalIPv6  = netip.MustParseAddr("2001:db8:f::1")
+	cspfInternalTestRemoteIPv6 = netip.MustParseAddr("2001:db8:f::2")
+)
+
 func cspfInternalTestSRMPLSNode(routerID string, sidIndex uint32) *table.LsNode {
 	return &table.LsNode{
 		RouterID:  routerID,
 		SrgbBegin: 16000,
 		Prefixes: []*table.LsPrefix{
-			{SidIndex: sidIndex, HasSidIndex: true},
+			{Prefix: netip.MustParsePrefix("192.0.2.1/32"), SidIndex: sidIndex, HasSidIndex: true},
 		},
 	}
 }
@@ -52,9 +65,23 @@ func cspfInternalTestSRv6DefaultSeg(sid string) table.SegmentSRv6 {
 	addr := netip.MustParseAddr(sid)
 
 	return table.SegmentSRv6{
-		Sid:       addr,
+		Sid:       table.SRv6SID(addr),
 		LocalAddr: addr,
+		Behavior:  table.BehaviorEND,
 		Structure: &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16},
+	}
+}
+
+// cspfInternalTestDualStackSRMPLSNode advertises independent IPv4 and IPv6
+// Prefix-SIDs so a test can tell which family's label was resolved.
+func cspfInternalTestDualStackSRMPLSNode(routerID string, v4SidIndex, v6SidIndex uint32) *table.LsNode {
+	return &table.LsNode{
+		RouterID:  routerID,
+		SrgbBegin: 16000,
+		Prefixes: []*table.LsPrefix{
+			{Prefix: netip.MustParsePrefix("192.0.2.1/32"), SidIndex: v4SidIndex, HasSidIndex: true},
+			{Prefix: netip.MustParsePrefix("2001:db8::1/128"), SidIndex: v6SidIndex, HasSidIndex: true},
+		},
 	}
 }
 
@@ -64,9 +91,9 @@ func cspfInternalTestNodeWithoutSID(routerID string) *table.LsNode {
 
 func cspfInternalTestConnect(local, remote *table.LsNode) {
 	local.Links = append(local.Links, &table.LsLink{
-		LocalNode:  local,
-		RemoteNode: remote,
-		Metrics:    []*table.Metric{table.NewMetric(table.IGPMetric, 1)},
+		Local:   table.LinkEndpoint{Node: local, IPv4: cspfInternalTestLocalIPv4},
+		Remote:  table.LinkEndpoint{Node: remote, IPv4: cspfInternalTestRemoteIPv4},
+		Metrics: []*table.Metric{table.NewMetric(table.IGPMetric, 1)},
 	})
 }
 
@@ -109,7 +136,7 @@ func TestCSPF_Errors(t *testing.T) {
 				return cspfInternalTestBuildTED(a, b)
 			},
 			src: "A", dst: "B", metric: table.IGPMetric,
-			wantErr: "node doesn't have a Node SID",
+			wantErr: "node doesn't have a ipv4 Prefix-SID",
 		},
 		{
 			name: "a newly discovered neighbor has no Node SID",
@@ -120,7 +147,7 @@ func TestCSPF_Errors(t *testing.T) {
 				return cspfInternalTestBuildTED(a, b)
 			},
 			src: "A", dst: "B", metric: table.IGPMetric,
-			wantErr: "node doesn't have a Node SID",
+			wantErr: "node doesn't have a ipv4 Prefix-SID",
 		},
 		{
 			name: "destination router is absent from the TED",
@@ -180,7 +207,7 @@ func TestCSPF_Errors(t *testing.T) {
 			name: "a link with a nil remote node is skipped instead of panicking",
 			buildTED: func() *table.LsTED {
 				a, d := cspfInternalTestSRMPLSNode("A", 0), cspfInternalTestSRMPLSNode("D", 3)
-				a.Links = append(a.Links, &table.LsLink{LocalNode: a, RemoteNode: nil})
+				a.Links = append(a.Links, &table.LsLink{Local: table.LinkEndpoint{Node: a}})
 
 				return cspfInternalTestBuildTED(a, d)
 			},
@@ -194,7 +221,7 @@ func TestCSPF_Errors(t *testing.T) {
 			t.Parallel()
 
 			ted := tt.buildTED()
-			got, err := CSPF(tt.src, tt.dst, tt.metric, ted)
+			got, err := CSPF(tt.src, tt.dst, tt.metric, cspfInternalTestScopeV4SRMPLS, ted)
 			assert.Nil(t, got)
 			assert.EqualError(t, err, tt.wantErr)
 		})
@@ -217,17 +244,30 @@ func TestCSPF_TopologyLimitationClassification(t *testing.T) {
 		wantReason string
 	}{
 		{"an unreachable destination", func() error {
-			_, err := CSPF("A", "B", table.IGPMetric, cspfInternalTestBuildTED(cspfInternalTestSRMPLSNode("A", 0), cspfInternalTestSRMPLSNode("B", 1)))
+			_, err := CSPF("A", "B", table.IGPMetric, cspfInternalTestScopeV4SRMPLS, cspfInternalTestBuildTED(cspfInternalTestSRMPLSNode("A", 0), cspfInternalTestSRMPLSNode("B", 1)))
 			return err
 		}, reasonDestinationUnreachable},
-		{"a metric absent from a traversed link", func() error { _, err := CSPF("A", "B", table.TEMetric, linear()); return err }, reasonMetricNotCarried},
+		{"a metric absent from a traversed link", func() error {
+			_, err := CSPF("A", "B", table.TEMetric, cspfInternalTestScopeV4SRMPLS, linear())
+			return err
+		}, reasonMetricNotCarried},
 		{"a node without a Node SID", func() error {
 			a, b := cspfInternalTestNodeWithoutSID("A"), cspfInternalTestSRMPLSNode("B", 0)
 			cspfInternalTestConnect(a, b)
-			_, err := CSPF("A", "B", table.IGPMetric, cspfInternalTestBuildTED(a, b))
+			_, err := CSPF("A", "B", table.IGPMetric, cspfInternalTestScopeV4SRMPLS, cspfInternalTestBuildTED(a, b))
 
 			return err
 		}, reasonTEDDataIncomplete},
+		{"a scope address family absent from every link", func() error {
+			// Both nodes have a viable IPv6 segment; only the link is IPv4-only,
+			// isolating the edge filter from node-segment resolution.
+			a := cspfInternalTestDualStackSRMPLSNode("A", 0, 10)
+			b := cspfInternalTestDualStackSRMPLSNode("B", 1, 11)
+			cspfInternalTestConnect(a, b)
+			_, err := CSPF("A", "B", table.IGPMetric, cspfInternalTestScopeV6SRMPLS, cspfInternalTestBuildTED(a, b))
+
+			return err
+		}, reasonDestinationUnreachable},
 	}
 
 	for _, tt := range tests {
@@ -247,8 +287,74 @@ func TestCSPF_TopologyLimitationClassification(t *testing.T) {
 func TestUpdateNeighborCosts_UnknownCalcNode(t *testing.T) {
 	t.Parallel()
 
-	err := updateNeighborCosts("Z", map[string]*node{}, map[string]*table.LsNode{}, table.IGPMetric)
+	err := updateNeighborCosts("Z", map[string]*node{}, map[string]*table.LsNode{}, table.IGPMetric, cspfInternalTestScopeV4SRMPLS)
 	assert.EqualError(t, err, "router Z not found in TED")
+}
+
+func TestLinkUsable(t *testing.T) {
+	t.Parallel()
+
+	a, b := cspfInternalTestSRMPLSNode("A", 0), cspfInternalTestSRMPLSNode("B", 1)
+
+	tests := []struct {
+		name  string
+		link  *table.LsLink
+		scope PathScope
+		want  bool
+	}{
+		{
+			name:  "IPv4-only link is usable under an IPv4 scope",
+			link:  &table.LsLink{Local: table.LinkEndpoint{Node: a, IPv4: cspfInternalTestLocalIPv4}, Remote: table.LinkEndpoint{Node: b, IPv4: cspfInternalTestRemoteIPv4}},
+			scope: cspfInternalTestScopeV4SRMPLS,
+			want:  true,
+		},
+		{
+			name:  "IPv4-only link is not usable under an IPv6 scope",
+			link:  &table.LsLink{Local: table.LinkEndpoint{Node: a, IPv4: cspfInternalTestLocalIPv4}, Remote: table.LinkEndpoint{Node: b, IPv4: cspfInternalTestRemoteIPv4}},
+			scope: cspfInternalTestScopeV6SRMPLS,
+			want:  false,
+		},
+		{
+			name:  "IPv6-only link is usable under an IPv6 scope",
+			link:  &table.LsLink{Local: table.LinkEndpoint{Node: a, IPv6: cspfInternalTestLocalIPv6}, Remote: table.LinkEndpoint{Node: b, IPv6: cspfInternalTestRemoteIPv6}},
+			scope: cspfInternalTestScopeV6SRv6,
+			want:  true,
+		},
+		{
+			name:  "IPv6-only link is not usable under an IPv4 scope",
+			link:  &table.LsLink{Local: table.LinkEndpoint{Node: a, IPv6: cspfInternalTestLocalIPv6}, Remote: table.LinkEndpoint{Node: b, IPv6: cspfInternalTestRemoteIPv6}},
+			scope: cspfInternalTestScopeV4SRMPLS,
+			want:  false,
+		},
+		{
+			name: "a dual-stack link is usable under either scope",
+			link: &table.LsLink{
+				Local:  table.LinkEndpoint{Node: a, IPv4: cspfInternalTestLocalIPv4, IPv6: cspfInternalTestLocalIPv6},
+				Remote: table.LinkEndpoint{Node: b, IPv4: cspfInternalTestRemoteIPv4, IPv6: cspfInternalTestRemoteIPv6},
+			},
+			scope: cspfInternalTestScopeV6SRMPLS,
+			want:  true,
+		},
+		{
+			name:  "an address advertised on only one side is not usable in that family",
+			link:  &table.LsLink{Local: table.LinkEndpoint{Node: a, IPv4: cspfInternalTestLocalIPv4}, Remote: table.LinkEndpoint{Node: b}},
+			scope: cspfInternalTestScopeV4SRMPLS,
+			want:  false,
+		},
+		{
+			name:  "an unnumbered link with no address in either family is usable under any scope",
+			link:  &table.LsLink{Local: table.LinkEndpoint{Node: a}, Remote: table.LinkEndpoint{Node: b}},
+			scope: cspfInternalTestScopeV6SRv6,
+			want:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, linkUsable(tt.link, tt.scope))
+		})
+	}
 }
 
 func TestBuildWaypointSegment(t *testing.T) {
@@ -258,6 +364,7 @@ func TestBuildWaypointSegment(t *testing.T) {
 		name           string
 		node           *table.LsNode
 		explicitSID    string
+		scope          PathScope
 		want           table.Segment
 		wantErr        string
 		wantTopoReason string
@@ -266,18 +373,21 @@ func TestBuildWaypointSegment(t *testing.T) {
 			name:        "empty SID falls back to the node's default SR-MPLS segment",
 			node:        cspfInternalTestSRMPLSNode("A", 0),
 			explicitSID: "",
+			scope:       cspfInternalTestScopeV4SRMPLS,
 			want:        cspfInternalTestMPLSSeg(0),
 		},
 		{
 			name:        "empty SID falls back to the node's default SRv6 segment",
 			node:        cspfInternalTestSRv6Node(),
 			explicitSID: "",
+			scope:       cspfInternalTestScopeV6SRv6,
 			want:        cspfInternalTestSRv6DefaultSeg("2001:db8::a"),
 		},
 		{
 			name:           "empty SID returns an error when the node has no Node SID",
 			node:           cspfInternalTestNodeWithoutSID("A"),
 			explicitSID:    "",
+			scope:          cspfInternalTestScopeV6SRv6,
 			wantErr:        "node doesn't have a Node SID",
 			wantTopoReason: reasonTEDDataIncomplete,
 		},
@@ -285,9 +395,11 @@ func TestBuildWaypointSegment(t *testing.T) {
 			name:        "explicit SID overrides the SID but keeps the node's SID structure",
 			node:        cspfInternalTestSRv6Node(),
 			explicitSID: cspfInternalTestOverrideSID,
+			scope:       cspfInternalTestScopeV6SRv6,
 			want: table.SegmentSRv6{
-				Sid:       netip.MustParseAddr(cspfInternalTestOverrideSID),
+				Sid:       table.SRv6SID(netip.MustParseAddr(cspfInternalTestOverrideSID)),
 				LocalAddr: netip.MustParseAddr("2001:db8::a"),
+				Behavior:  table.BehaviorEND,
 				Structure: &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16},
 			},
 		},
@@ -305,37 +417,63 @@ func TestBuildWaypointSegment(t *testing.T) {
 				},
 			},
 			explicitSID: cspfInternalTestOverrideSID,
+			scope:       cspfInternalTestScopeV6SRv6,
 			want: table.SegmentSRv6{
-				Sid:       netip.MustParseAddr(cspfInternalTestOverrideSID),
+				Sid:       table.SRv6SID(netip.MustParseAddr(cspfInternalTestOverrideSID)),
 				LocalAddr: netip.MustParseAddr("2001:db8::a"),
+				Behavior:  table.BehaviorUN,
 				Structure: &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16},
 				USid:      true,
 			},
 		},
 		{
-			name:        "invalid explicit SID returns a parse error",
-			node:        cspfInternalTestSRMPLSNode("A", 0),
+			name:        "invalid explicit SID returns a parse error under SRv6 scope",
+			node:        cspfInternalTestSRv6Node(),
 			explicitSID: cspfInternalTestInvalidSID,
+			scope:       cspfInternalTestScopeV6SRv6,
 			wantErr:     `invalid explicit SID "not-an-address": ParseAddr("not-an-address"): unable to parse IP`,
 		},
 		{
-			name:           "explicit SID on a node without any SRv6 SIDs returns an error",
-			node:           cspfInternalTestSRMPLSNode("A", 0),
-			explicitSID:    cspfInternalTestOverrideSID,
-			wantErr:        "no SRv6 SIDs available",
-			wantTopoReason: reasonTEDDataIncomplete,
+			name:        "explicit SID under SR-MPLS scope overrides the node's default label",
+			node:        cspfInternalTestSRMPLSNode("A", 0),
+			explicitSID: "20000",
+			scope:       cspfInternalTestScopeV4SRMPLS,
+			want:        table.NewSegmentSRMPLS(20000),
+		},
+		{
+			name:        "non-numeric explicit SID under SR-MPLS scope returns a parse error",
+			node:        cspfInternalTestSRMPLSNode("A", 0),
+			explicitSID: cspfInternalTestInvalidSID,
+			scope:       cspfInternalTestScopeV4SRMPLS,
+			wantErr:     `invalid explicit SID "not-an-address": strconv.ParseUint: parsing "not-an-address": invalid syntax`,
+		},
+		{
+			name:        "explicit SID exceeding the maximum SR-MPLS label is rejected",
+			node:        cspfInternalTestSRMPLSNode("A", 0),
+			explicitSID: "1048576",
+			scope:       cspfInternalTestScopeV4SRMPLS,
+			wantErr:     `explicit SID "1048576" exceeds the maximum SR-MPLS label 1048575`,
 		},
 		{
 			name:        "IPv4 explicit SID is rejected",
 			node:        cspfInternalTestSRv6Node(),
 			explicitSID: "10.0.0.1",
+			scope:       cspfInternalTestScopeV6SRv6,
 			wantErr:     `explicit SID "10.0.0.1" must be an IPv6 SRv6 SID`,
 		},
 		{
 			name:        "IPv4-mapped explicit SID is rejected",
 			node:        cspfInternalTestSRv6Node(),
 			explicitSID: "::ffff:10.0.0.1",
+			scope:       cspfInternalTestScopeV6SRv6,
 			wantErr:     `explicit SID "::ffff:10.0.0.1" must be an IPv6 SRv6 SID`,
+		},
+		{
+			name:        "explicit SID with an unspecified data plane is rejected",
+			node:        cspfInternalTestSRv6Node(),
+			explicitSID: cspfInternalTestOverrideSID,
+			scope:       PathScope{Plane: table.Plane{Family: table.AFIPv6}},
+			wantErr:     "data plane must be specified to build a waypoint segment",
 		},
 	}
 
@@ -343,7 +481,7 @@ func TestBuildWaypointSegment(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := buildWaypointSegment(tt.node, tt.explicitSID)
+			got, err := buildWaypointSegment(tt.node, tt.explicitSID, tt.scope)
 			if tt.wantErr != "" {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.wantErr)

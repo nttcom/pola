@@ -16,9 +16,14 @@
         ],
         "links": [
             {
-                "localIp": "10.0.0.1",
-                "remoteIp": "10.0.0.2",
-                "remoteRouterId": "0000.0aff.0002",
+                "local": {
+                    "routerId": "0000.0aff.0001",
+                    "ipv4": "10.0.0.1"
+                },
+                "remote": {
+                    "routerId": "0000.0aff.0002",
+                    "ipv4": "10.0.0.2"
+                },
                 "metrics": [
                     {
                         "type": "igp",
@@ -29,7 +34,12 @@
                         "value": 10
                     }
                 ],
-                "adjSid": 299776
+                "adjSids": [
+                    {
+                        "family": "unspecified",
+                        "sid": 299776
+                    }
+                ]
             }
         ],
         "srv6Sids": []
@@ -51,9 +61,14 @@
         ],
         "links": [
             {
-                "localIp": "10.0.0.2",
-                "remoteIp": "10.0.0.1",
-                "remoteRouterId": "0000.0aff.0001",
+                "local": {
+                    "routerId": "0000.0aff.0002",
+                    "ipv4": "10.0.0.2"
+                },
+                "remote": {
+                    "routerId": "0000.0aff.0001",
+                    "ipv4": "10.0.0.1"
+                },
                 "metrics": [
                     {
                         "type": "igp",
@@ -64,7 +79,12 @@
                         "value": 10
                     }
                 ],
-                "adjSid": 299776
+                "adjSids": [
+                    {
+                        "family": "unspecified",
+                        "sid": 299776
+                    }
+                ]
             }
         ],
         "srv6Sids": []

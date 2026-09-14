@@ -28,7 +28,8 @@ const (
 // fakeSegment is used to test unsupported segment types.
 type fakeSegment struct{}
 
-func (fakeSegment) SidString() string { return "fake" }
+func (fakeSegment) SidString() string       { return "fake" }
+func (fakeSegment) Family() table.DataPlane { return table.DPUnspecified }
 
 func TestSREroSubobject_RoundTrip(t *testing.T) {
 	t.Parallel()
@@ -46,6 +47,16 @@ func TestSREroSubobject_RoundTrip(t *testing.T) {
 		if remote != "" {
 			seg.RemoteAddr = netip.MustParseAddr(remote)
 		}
+
+		return seg
+	}
+	mkSRMPLSWithLinkLocalNAI := func(sid uint32, local, remote string, localIfaceID, remoteIfaceID uint32) table.SegmentSRMPLS {
+		seg := table.NewSegmentSRMPLS(sid)
+
+		seg.LocalAddr = netip.MustParseAddr(local)
+		seg.RemoteAddr = netip.MustParseAddr(remote)
+		seg.LocalIfaceID = &localIfaceID
+		seg.RemoteIfaceID = &remoteIfaceID
 
 		return seg
 	}
@@ -93,6 +104,12 @@ func TestSREroSubobject_RoundTrip(t *testing.T) {
 			NAIType:       pcep.NAITypeSRIPv6AdjacencyGlobal,
 			MFlag:         true,
 			Segment:       mkSRMPLSWithNAI(24002, testIPv6Addr1, testIPv6Addr2),
+		},
+		"IPv6AdjacencyLinkLocal": {
+			SubobjectType: pcep.SubobjectTypeEROSR,
+			NAIType:       pcep.NAITypeSRIPv6AdjacencyLinkLocal,
+			MFlag:         true,
+			Segment:       mkSRMPLSWithLinkLocalNAI(24003, "fe80::1", "fe80::2", 5, 7),
 		},
 		"IPv4Node_CFlag_MPLSStackAttrs": {
 			SubobjectType: pcep.SubobjectTypeEROSR,
@@ -180,6 +197,16 @@ func TestNewSREroSubobject_NAIFromSegment(t *testing.T) {
 		},
 		"LinkLocalRemoteOnly": {
 			seg: mk(testIPv6Addr1, "fe80::2"), wantErr: true,
+		},
+		"LinkLocalAdjacencyWithIfaceID": {
+			seg: func() table.SegmentSRMPLS {
+				seg := mk("fe80::1", "fe80::2")
+				localIfaceID, remoteIfaceID := uint32(1), uint32(2)
+				seg.LocalIfaceID, seg.RemoteIfaceID = &localIfaceID, &remoteIfaceID
+
+				return seg
+			}(),
+			wantNAIType: pcep.NAITypeSRIPv6AdjacencyLinkLocal, wantLength: 4 + 4 + 40,
 		},
 	}
 
@@ -277,6 +304,12 @@ func TestSREroSubobject_SerializeRejectsNAIMismatch(t *testing.T) {
 			pcep.NAITypeSRIPv6AdjacencyGlobal, testIPv4Addr1, testIPv4Addr2,
 		),
 		"UnsupportedNAIType": mkSubo(pcep.NAITypeSRUnnumberedAdjacency, testIPv4Addr1, testIPv4Addr2),
+		"LinkLocalAdjacencyWithIPv4Addrs": mkSubo(
+			pcep.NAITypeSRIPv6AdjacencyLinkLocal, testIPv4Addr1, testIPv4Addr2,
+		),
+		"LinkLocalAdjacencyWithoutIfaceIDs": mkSubo(
+			pcep.NAITypeSRIPv6AdjacencyLinkLocal, testIPv6Addr1, testIPv6Addr2,
+		),
 	}
 
 	for name, subo := range cases {
@@ -464,11 +497,21 @@ func TestSREroSubobject_DecodeFromBytes_TruncatedAfterHeader(t *testing.T) {
 func TestSRv6EroSubobject_RoundTrip(t *testing.T) {
 	t.Parallel()
 
-	sid := netip.MustParseAddr("fc00:0:1::")
+	sid := table.SRv6SID(netip.MustParseAddr("fc00:0:1::"))
 	local := netip.MustParseAddr(testIPv6Addr1)
 	remote := netip.MustParseAddr(testIPv6Addr2)
+	linkLocalIfaceID := uint32(5)
+	linkLocalRemoteIfaceID := uint32(7)
 
 	cases := map[string]pcep.SRv6EroSubobject{
+		"IPv6AdjLinkLocal_ENDX": {
+			SubobjectType: pcep.SubobjectTypeEROSRv6,
+			NAIType:       pcep.NAITypeSRv6IPv6AdjacencyLinkLocal,
+			Segment: table.SegmentSRv6{
+				Sid: sid, LocalAddr: netip.MustParseAddr("fe80::1"), RemoteAddr: netip.MustParseAddr("fe80::2"),
+				LocalIfaceID: &linkLocalIfaceID, RemoteIfaceID: &linkLocalRemoteIfaceID,
+			},
+		},
 		"IPv6Node_END": {
 			SubobjectType: pcep.SubobjectTypeEROSRv6,
 			NAIType:       pcep.NAITypeSRv6IPv6Node,
@@ -755,7 +798,7 @@ func TestNewAssociationObject_DefaultCandidatePathIdentifier(t *testing.T) {
 		0x0a, 0x00, 0x00, 0x00, // protocol=0x0a + mbz
 		0x00, 0x00, 0x00, 0x00, // ASN=0
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // originator addr padding
-		0xc0, 0x00, 0x02, 0x02, // dstAddr=192.0.2.2
+		0xc0, 0x00, 0x02, 0x01, // originator=srcAddr=192.0.2.1 (RFC 9256 §2.6, RFC 9862 §4.2)
 		0x00, 0x00, 0x00, 0x01, // discriminator=1
 		0x00, 0x3b, 0x00, 0x04, 0x00, 0x00, 0x00, 0xc8, // SRPOLICY-CPATH-PREFERENCE TLV: preference=200
 	}
@@ -801,18 +844,6 @@ func TestNewAssociationObject_JuniperLegacy_OriginatorASN(t *testing.T) {
 			assert.Equal(t, tt.expectedASN, cpID.OriginatorASN)
 		})
 	}
-}
-
-// pcep.JuniperLegacy uses the IPv4 Extended Association ID TLV format.
-// IPv6 endpoints must be rejected during object construction.
-func TestNewAssociationObject_JuniperLegacy_RejectsIPv6(t *testing.T) {
-	t.Parallel()
-
-	srcAddr := netip.MustParseAddr(testIPv6Addr1)
-	dstAddr := netip.MustParseAddr(testIPv6Addr2)
-
-	_, err := pcep.NewAssociationObject(srcAddr, dstAddr, 100, 200, pcep.VendorSpecific(pcep.JuniperLegacy))
-	assert.Error(t, err)
 }
 
 // Verifies Juniper vendor-specific TLVs preserve typed fields and legacy wire format.
@@ -1316,7 +1347,7 @@ func TestNewSrpObject(t *testing.T) {
 			want: &pcep.SrpObject{ObjectType: pcep.ObjectTypeSRPSRP, SrpID: 2, TLVs: []pcep.TLVInterface{&pcep.PathSetupType{PathSetupType: pcep.PathSetupTypeSRTE}}},
 		},
 		"SRv6": {
-			segs: []table.Segment{table.NewSegmentSRv6(netip.MustParseAddr("fc00:0:1::"))}, srpID: 3, remove: true,
+			segs: []table.Segment{table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr("fc00:0:1::")))}, srpID: 3, remove: true,
 			want: &pcep.SrpObject{ObjectType: pcep.ObjectTypeSRPSRP, RFlag: true, SrpID: 3, TLVs: []pcep.TLVInterface{&pcep.PathSetupType{PathSetupType: pcep.PathSetupTypeSRv6TE}}},
 		},
 		"InvalidSegmentType": {
@@ -1351,7 +1382,7 @@ func TestPathSetupTypeForSegments(t *testing.T) {
 		"NoSegments":         {nil, 0, false},
 		"UnknownSegmentType": {[]table.Segment{fakeSegment{}}, 0, false},
 		"SRMPLS":             {[]table.Segment{table.NewSegmentSRMPLS(16001)}, pcep.PathSetupTypeSRTE, true},
-		"SRv6":               {[]table.Segment{table.NewSegmentSRv6(netip.MustParseAddr("fc00:0:1::"))}, pcep.PathSetupTypeSRv6TE, true},
+		"SRv6":               {[]table.Segment{table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr("fc00:0:1::")))}, pcep.PathSetupTypeSRv6TE, true},
 	}
 
 	for name, tt := range cases {
@@ -1499,7 +1530,7 @@ func TestNewEroSubobject(t *testing.T) {
 	t.Run("SRv6", func(t *testing.T) {
 		t.Parallel()
 
-		seg := table.NewSegmentSRv6(netip.MustParseAddr("fc00:0:1::"))
+		seg := table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr("fc00:0:1::")))
 		subo, err := pcep.NewEroSubobject(seg)
 		require.NoError(t, err)
 		assert.IsType(t, &pcep.SRv6EroSubobject{}, subo)
@@ -1516,7 +1547,7 @@ func TestNewEroSubobject(t *testing.T) {
 		t.Parallel()
 
 		seg := table.SegmentSRv6{
-			Sid:        netip.MustParseAddr("fc00:0:1::"),
+			Sid:        table.SRv6SID(netip.MustParseAddr("fc00:0:1::")),
 			LocalAddr:  netip.MustParseAddr("fe80::1"),
 			RemoteAddr: netip.MustParseAddr("fe80::2"),
 		}
@@ -1628,7 +1659,7 @@ func TestNAITypeSRv6_StringWithReference(t *testing.T) {
 func TestSRv6EroSubobject_ToSegment(t *testing.T) {
 	t.Parallel()
 
-	seg := table.NewSegmentSRv6(netip.MustParseAddr("fc00:0:1::"))
+	seg := table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr("fc00:0:1::")))
 	subo := &pcep.SRv6EroSubobject{Segment: seg}
 	assert.Equal(t, seg, subo.ToSegment())
 }
@@ -1652,7 +1683,6 @@ func TestSRv6EroSubobject_Len_Errors(t *testing.T) {
 	}
 }
 
-// Serialize still requires LocalAddr even when the NAI is absent (F=1).
 func TestSRv6EroSubobject_Serialize_UnknownBehavior(t *testing.T) {
 	t.Parallel()
 
@@ -1660,13 +1690,60 @@ func TestSRv6EroSubobject_Serialize_UnknownBehavior(t *testing.T) {
 		SubobjectType: pcep.SubobjectTypeEROSRv6,
 		NAIType:       pcep.NAITypeSRv6Absent,
 		FFlag:         true,
-		Segment:       table.SegmentSRv6{Sid: netip.MustParseAddr("fc00:0:1::")},
+		Segment:       table.SegmentSRv6{Sid: table.SRv6SID(netip.MustParseAddr("fc00:0:1::"))},
 	}
 
 	b, err := o.Serialize()
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, len(b), 8)
 	assert.Equal(t, table.BehaviorOpaque, binary.BigEndian.Uint16(b[6:8]))
+}
+
+func TestSRv6EroSubobject_Serialize_LinkLocalAdjacency(t *testing.T) {
+	t.Parallel()
+
+	local, remote := netip.MustParseAddr("fe80::1"), netip.MustParseAddr("fe80::2")
+	localIfaceID, remoteIfaceID := uint32(5), uint32(7)
+
+	seg := table.SegmentSRv6{
+		Sid:           table.SRv6SID(netip.MustParseAddr("fc00:0:1::")),
+		LocalAddr:     local,
+		RemoteAddr:    remote,
+		LocalIfaceID:  &localIfaceID,
+		RemoteIfaceID: &remoteIfaceID,
+	}
+
+	subo, err := pcep.NewSRv6EroSubobject(seg)
+	require.NoError(t, err)
+
+	b, err := subo.Serialize()
+	require.NoError(t, err)
+
+	var decoded pcep.SRv6EroSubobject
+	require.NoError(t, decoded.DecodeFromBytes(b))
+	assert.Equal(t, local, decoded.Segment.LocalAddr)
+	assert.Equal(t, remote, decoded.Segment.RemoteAddr)
+	require.NotNil(t, decoded.Segment.LocalIfaceID)
+	assert.Equal(t, localIfaceID, *decoded.Segment.LocalIfaceID)
+	require.NotNil(t, decoded.Segment.RemoteIfaceID)
+	assert.Equal(t, remoteIfaceID, *decoded.Segment.RemoteIfaceID)
+}
+
+func TestSRv6EroSubobject_Serialize_LinkLocalMissingIfaceIDs(t *testing.T) {
+	t.Parallel()
+
+	o := &pcep.SRv6EroSubobject{
+		SubobjectType: pcep.SubobjectTypeEROSRv6,
+		NAIType:       pcep.NAITypeSRv6IPv6AdjacencyLinkLocal,
+		Segment: table.SegmentSRv6{
+			Sid:        table.SRv6SID(netip.MustParseAddr("fc00:0:1::")),
+			LocalAddr:  netip.MustParseAddr("fe80::1"),
+			RemoteAddr: netip.MustParseAddr("fe80::2"),
+		},
+	}
+
+	_, err := o.Serialize()
+	assert.Error(t, err)
 }
 
 func TestEndpointsObject_Len_Error(t *testing.T) {
@@ -1793,8 +1870,9 @@ func TestAssociationObject_Serialize_ObjectLengthBoundary(t *testing.T) {
 func TestNewAssociationObject_MismatchedFamilies(t *testing.T) {
 	t.Parallel()
 
-	_, err := pcep.NewAssociationObject(netip.MustParseAddr("192.0.2.1"), netip.MustParseAddr(testIPv6Addr1), 100, 200)
-	assert.Error(t, err)
+	o, err := pcep.NewAssociationObject(netip.MustParseAddr("192.0.2.1"), netip.MustParseAddr(testIPv6Addr1), 100, 200)
+	require.NoError(t, err)
+	assert.Equal(t, pcep.ObjectTypeAssociationIPv4, o.ObjectType)
 }
 
 func TestNewAssociationObject_ObjectType(t *testing.T) {
@@ -1818,6 +1896,13 @@ func TestNewAssociationObject_ObjectType(t *testing.T) {
 			assert.Equal(t, tt.want, o.ObjectType)
 		})
 	}
+}
+
+func TestNewAssociationObject_InvalidSrcAddr(t *testing.T) {
+	t.Parallel()
+
+	_, err := pcep.NewAssociationObject(netip.Addr{}, netip.MustParseAddr("192.0.2.2"), 100, 200)
+	require.Error(t, err)
 }
 
 func TestAssociationObject_Endpoint(t *testing.T) {
@@ -1895,7 +1980,7 @@ func TestEroObject_Serialize_LenError_SRv6AbsentNAI(t *testing.T) {
 		SubobjectType: pcep.SubobjectTypeEROSRv6,
 		NAIType:       pcep.NAITypeSRv6Absent,
 		FFlag:         false,
-		Segment:       table.SegmentSRv6{Sid: netip.MustParseAddr("fc00:0:1::")},
+		Segment:       table.SegmentSRv6{Sid: table.SRv6SID(netip.MustParseAddr("fc00:0:1::"))},
 	}
 	o := pcep.EroObject{ObjectType: pcep.ObjectTypeEROExplicitRoute, EroSubobjects: []pcep.EroSubobject{badSubo}}
 
@@ -1980,6 +2065,10 @@ func TestSRv6EroSubobject_DecodeFromBytes_LinkLocalAdjacency(t *testing.T) {
 	require.NoError(t, o.DecodeFromBytes(raw))
 	assert.Equal(t, local, o.Segment.LocalAddr)
 	assert.Equal(t, remote, o.Segment.RemoteAddr)
+	require.NotNil(t, o.Segment.LocalIfaceID)
+	assert.Equal(t, uint32(0), *o.Segment.LocalIfaceID)
+	require.NotNil(t, o.Segment.RemoteIfaceID)
+	assert.Equal(t, uint32(0), *o.Segment.RemoteIfaceID)
 
 	l, err := o.Len()
 	require.NoError(t, err)
@@ -2073,7 +2162,7 @@ func TestSRv6EroSubobject_DecodeFromBytes_TruncatedAfterHeader(t *testing.T) {
 func TestNewSRv6EroSubobject_NAIFromSegment(t *testing.T) {
 	t.Parallel()
 
-	sid := netip.MustParseAddr("fc00:0:1::")
+	sid := table.SRv6SID(netip.MustParseAddr("fc00:0:1::"))
 	local := netip.MustParseAddr(testIPv6Addr1)
 	remote := netip.MustParseAddr(testIPv6Addr2)
 
@@ -2097,6 +2186,17 @@ func TestNewSRv6EroSubobject_NAIFromSegment(t *testing.T) {
 			seg:         table.SegmentSRv6{Sid: sid, LocalAddr: local, Structure: &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16}},
 			wantNAIType: pcep.NAITypeSRv6IPv6Node, wantTFlag: true,
 		},
+		"LinkLocalAdjacencyWithIfaceID": {
+			seg: func() table.SegmentSRv6 {
+				localIfaceID, remoteIfaceID := uint32(1), uint32(2)
+
+				return table.SegmentSRv6{
+					Sid: sid, LocalAddr: netip.MustParseAddr("fe80::1"), RemoteAddr: netip.MustParseAddr("fe80::2"),
+					LocalIfaceID: &localIfaceID, RemoteIfaceID: &remoteIfaceID,
+				}
+			}(),
+			wantNAIType: pcep.NAITypeSRv6IPv6AdjacencyLinkLocal,
+		},
 	}
 
 	for name, tt := range cases {
@@ -2115,7 +2215,7 @@ func TestNewSRv6EroSubobject_NAIFromSegment(t *testing.T) {
 func TestNewSRv6EroSubobject_LinkLocalRejected(t *testing.T) {
 	t.Parallel()
 
-	sid := netip.MustParseAddr("fc00:0:1::")
+	sid := table.SRv6SID(netip.MustParseAddr("fc00:0:1::"))
 
 	cases := map[string]table.SegmentSRv6{
 		"LinkLocalAdjacency": {
@@ -2139,7 +2239,7 @@ func TestNewSRv6EroSubobject_LinkLocalRejected(t *testing.T) {
 func TestNewSRv6EroSubobject_AddressFamilyRejected(t *testing.T) {
 	t.Parallel()
 
-	sid := netip.MustParseAddr("fc00:0:1::")
+	sid := table.SRv6SID(netip.MustParseAddr("fc00:0:1::"))
 
 	cases := map[string]table.SegmentSRv6{
 		"IPv4LocalAddr": {
@@ -2150,6 +2250,12 @@ func TestNewSRv6EroSubobject_AddressFamilyRejected(t *testing.T) {
 		},
 		"RemoteAddrWithoutLocalAddr": {
 			Sid: sid, RemoteAddr: netip.MustParseAddr(testIPv6Addr2),
+		},
+		"IPv4MappedSid": {
+			Sid: table.SRv6SID(netip.MustParseAddr("::ffff:192.0.2.1")), LocalAddr: netip.MustParseAddr(testIPv6Addr1),
+		},
+		"IPv4Sid": {
+			Sid: table.SRv6SID(netip.MustParseAddr(testIPv4Addr1)), LocalAddr: netip.MustParseAddr(testIPv6Addr1),
 		},
 	}
 
@@ -2166,7 +2272,7 @@ func TestNewSRv6EroSubobject_AddressFamilyRejected(t *testing.T) {
 func TestNewSRv6EroSubobject_StructureValidation(t *testing.T) {
 	t.Parallel()
 
-	sid := netip.MustParseAddr("fc00:0:1::")
+	sid := table.SRv6SID(netip.MustParseAddr("fc00:0:1::"))
 	local := netip.MustParseAddr(testIPv6Addr1)
 
 	t.Run("NilStructureIsAbsent", func(t *testing.T) {

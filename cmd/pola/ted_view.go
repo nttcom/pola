@@ -33,12 +33,23 @@ type tedPrefixView struct {
 }
 
 type tedLinkView struct {
-	LocalIP        string              `json:"localIp,omitempty"`
-	RemoteIP       string              `json:"remoteIp,omitempty"`
-	RemoteRouterID string              `json:"remoteRouterId"`
-	Metrics        []tedMetricView     `json:"metrics"`
-	AdjSid         uint32              `json:"adjSid"`
-	Srv6EndXSID    *tedSrv6EndXSIDView `json:"srv6EndXSid,omitempty"`
+	Local        tedLinkEndpointView  `json:"local"`
+	Remote       tedLinkEndpointView  `json:"remote"`
+	Metrics      []tedMetricView      `json:"metrics"`
+	AdjSids      []tedAdjSidView      `json:"adjSids"`
+	Srv6EndXSIDs []tedSrv6EndXSIDView `json:"srv6EndXSids,omitempty"`
+}
+
+type tedLinkEndpointView struct {
+	RouterID    string  `json:"routerId,omitempty"`
+	IPv4        string  `json:"ipv4,omitempty"`
+	IPv6        string  `json:"ipv6,omitempty"`
+	InterfaceID *uint32 `json:"interfaceId,omitempty"`
+}
+
+type tedAdjSidView struct {
+	Family string `json:"family"` // ipv4 | ipv6 | unspecified
+	Sid    uint32 `json:"sid"`
 }
 
 type tedMetricView struct {
@@ -55,16 +66,16 @@ type tedSrv6SIDView struct {
 
 type tedSrv6EndXSIDView struct {
 	EndpointBehavior endpointBehaviorView `json:"endpointBehavior"`
+	Weight           uint8                `json:"weight"`
 	Sids             []string             `json:"sids"`
 	SidStructure     *table.SIDStructure  `json:"sidStructure,omitempty"`
 }
 
-// endpointBehaviorView omits Flags and Algorithm for End.X SIDs, which carry only the behavior.
 type endpointBehaviorView struct {
 	Behavior  uint16 `json:"behavior"`
 	Name      string `json:"name"` // table.BehaviorToString
-	Flags     *uint8 `json:"flags,omitempty"`
-	Algorithm *uint8 `json:"algorithm,omitempty"`
+	Flags     uint8  `json:"flags"`
+	Algorithm uint8  `json:"algorithm"`
 }
 
 // newTEDNodeViews returns views in router ID order for deterministic output.
@@ -133,27 +144,53 @@ func newTEDLinkViews(links []*table.LsLink) []tedLinkView {
 
 func newTEDLinkView(l *table.LsLink) tedLinkView {
 	v := tedLinkView{
+		Local:   newTEDLinkEndpointView(l.Local),
+		Remote:  newTEDLinkEndpointView(l.Remote),
 		Metrics: newTEDMetricViews(l.Metrics),
-		AdjSid:  l.AdjSid,
-	}
-	if l.LocalIP.IsValid() {
-		v.LocalIP = l.LocalIP.String()
+		AdjSids: newTEDAdjSidViews(l.AdjSids),
 	}
 
-	if l.RemoteIP.IsValid() {
-		v.RemoteIP = l.RemoteIP.String()
-	}
+	for _, sid := range l.Srv6EndXSIDs {
+		if sid == nil {
+			continue
+		}
 
-	if l.RemoteNode != nil {
-		v.RemoteRouterID = l.RemoteNode.RouterID
-	}
-
-	if l.Srv6EndXSID != nil {
-		sid := newTEDSrv6EndXSIDView(l.Srv6EndXSID)
-		v.Srv6EndXSID = &sid
+		v.Srv6EndXSIDs = append(v.Srv6EndXSIDs, newTEDSrv6EndXSIDView(sid))
 	}
 
 	return v
+}
+
+func newTEDLinkEndpointView(e table.LinkEndpoint) tedLinkEndpointView {
+	v := tedLinkEndpointView{}
+
+	if e.Node != nil {
+		v.RouterID = e.Node.RouterID
+	}
+
+	if e.IPv4.IsValid() {
+		v.IPv4 = e.IPv4.String()
+	}
+
+	if e.IPv6.IsValid() {
+		v.IPv6 = e.IPv6.String()
+	}
+
+	if e.InterfaceID != nil {
+		ifaceID := *e.InterfaceID
+		v.InterfaceID = &ifaceID
+	}
+
+	return v
+}
+
+func newTEDAdjSidViews(adjSids []table.AdjSID) []tedAdjSidView {
+	views := make([]tedAdjSidView, 0, len(adjSids))
+	for _, a := range adjSids {
+		views = append(views, tedAdjSidView{Family: a.Family.String(), Sid: a.Sid})
+	}
+
+	return views
 }
 
 func newTEDMetricViews(metrics []*table.Metric) []tedMetricView {
@@ -189,27 +226,18 @@ func newTEDSrv6SIDViews(sids []*table.LsSrv6SID) []tedSrv6SIDView {
 
 func newTEDSrv6EndXSIDView(s *table.Srv6EndXSID) tedSrv6EndXSIDView {
 	return tedSrv6EndXSIDView{
-		EndpointBehavior: endpointBehaviorViewFromBehavior(s.EndpointBehavior),
+		EndpointBehavior: endpointBehaviorViewFrom(s.EndpointBehavior),
+		Weight:           s.Weight,
 		Sids:             s.Sids,
 		SidStructure:     s.Srv6SIDStructure,
 	}
 }
 
 func endpointBehaviorViewFrom(eb table.EndpointBehavior) endpointBehaviorView {
-	flags := eb.Flags
-	algorithm := eb.Algorithm
-
 	return endpointBehaviorView{
 		Behavior:  eb.Behavior,
 		Name:      table.BehaviorToString(eb.Behavior),
-		Flags:     &flags,
-		Algorithm: &algorithm,
-	}
-}
-
-func endpointBehaviorViewFromBehavior(behavior uint16) endpointBehaviorView {
-	return endpointBehaviorView{
-		Behavior: behavior,
-		Name:     table.BehaviorToString(behavior),
+		Flags:     eb.Flags,
+		Algorithm: eb.Algorithm,
 	}
 }

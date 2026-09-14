@@ -16,13 +16,20 @@ import (
 	"github.com/nttcom/pola/pkg/table"
 )
 
+var (
+	planeIPv4SRMPLS = table.Plane{Family: table.AFIPv4, DataPlane: table.DPSRMPLS}
+	planeIPv6SRMPLS = table.Plane{Family: table.AFIPv6, DataPlane: table.DPSRMPLS}
+	planeIPv6SRv6   = table.Plane{Family: table.AFIPv6, DataPlane: table.DPSRv6}
+)
+
 func TestLsNodeNodeSegment(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name string
-		node *table.LsNode
-		want string
+		name  string
+		node  *table.LsNode
+		plane table.Plane
+		want  string
 	}{
 		{
 			name: "PrefixSIDIndexZero",
@@ -33,20 +40,23 @@ func TestLsNodeNodeSegment(t *testing.T) {
 					{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 0, HasSidIndex: true},
 				},
 			},
-			want: "16000",
+			plane: planeIPv4SRMPLS,
+			want:  "16000",
 		},
 		{
-			name: "SRv6 Node SID is used when no Prefix-SID is present",
+			name: "SRv6 Node SID is used for the SRv6 plane even when a Prefix-SID is present",
 			node: &table.LsNode{
-				RouterID: testRouterID1,
+				RouterID:  testRouterID1,
+				SrgbBegin: 16000,
 				Prefixes: []*table.LsPrefix{
-					{Prefix: netip.MustParsePrefix("10.0.0.1/32")},
+					{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 0, HasSidIndex: true},
 				},
 				SRv6SIDs: []*table.LsSrv6SID{
 					{Sids: []string{testSRv6SID1}},
 				},
 			},
-			want: testSRv6SID1,
+			plane: planeIPv6SRv6,
+			want:  testSRv6SID1,
 		},
 		{
 			name: "SRv6 SID entries with no Sids are skipped",
@@ -57,26 +67,70 @@ func TestLsNodeNodeSegment(t *testing.T) {
 					{Sids: []string{testSRv6SID2}},
 				},
 			},
-			want: testSRv6SID2,
+			plane: planeIPv6SRv6,
+			want:  testSRv6SID2,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			seg, err := tt.node.NodeSegment()
+			seg, err := tt.node.NodeSegment(tt.plane)
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, seg.SidString())
 		})
 	}
 }
 
+func TestLsNodeNodeSegment_DualStackIsPlaneDeterministic(t *testing.T) {
+	t.Parallel()
+
+	node := &table.LsNode{
+		RouterID:  testRouterID1,
+		SrgbBegin: 16000,
+		Prefixes: []*table.LsPrefix{
+			{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 10, HasSidIndex: true},
+			{Prefix: netip.MustParsePrefix("2001:db8::1/128"), SidIndex: 20, HasSidIndex: true},
+		},
+		SRv6SIDs: []*table.LsSrv6SID{
+			{Sids: []string{testSRv6SID1}},
+		},
+	}
+
+	tests := []struct {
+		name  string
+		plane table.Plane
+		want  string
+	}{
+		{"IPv4 SR-MPLS uses the IPv4 Prefix-SID", planeIPv4SRMPLS, "16010"},
+		{"IPv6 SR-MPLS uses the IPv6 Prefix-SID", planeIPv6SRMPLS, "16020"},
+		{"IPv6 SRv6 uses the SRv6 SID", planeIPv6SRv6, testSRv6SID1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			seg, err := node.NodeSegment(tt.plane)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, seg.SidString())
+		})
+	}
+
+	t.Run("an unspecified plane is rejected", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := node.NodeSegment(table.Plane{})
+		assert.Error(t, err)
+	})
+}
+
 func TestLsNodeNodeSegment_Errors(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name string
-		node *table.LsNode
+		name  string
+		node  *table.LsNode
+		plane table.Plane
 	}{
 		{
 			name: "NoPrefixSID",
@@ -87,6 +141,7 @@ func TestLsNodeNodeSegment_Errors(t *testing.T) {
 					{Prefix: netip.MustParsePrefix("10.0.0.1/32")},
 				},
 			},
+			plane: planeIPv4SRMPLS,
 		},
 		{
 			name: "SRv6 SID cannot be parsed as an address",
@@ -96,6 +151,7 @@ func TestLsNodeNodeSegment_Errors(t *testing.T) {
 					{Sids: []string{testInvalidAddr}},
 				},
 			},
+			plane: planeIPv6SRv6,
 		},
 		{
 			name: "SRv6 SID is an IPv4 address",
@@ -105,6 +161,7 @@ func TestLsNodeNodeSegment_Errors(t *testing.T) {
 					{Sids: []string{"192.0.2.1"}},
 				},
 			},
+			plane: planeIPv6SRv6,
 		},
 		{
 			name: "SRv6 SID is an IPv4-mapped IPv6 address",
@@ -114,24 +171,37 @@ func TestLsNodeNodeSegment_Errors(t *testing.T) {
 					{Sids: []string{"::ffff:192.0.2.1"}},
 				},
 			},
+			plane: planeIPv6SRv6,
 		},
 		{
 			name: "Prefix-SID index without an SRGB",
 			node: &table.LsNode{
 				RouterID: testRouterID1,
-				Prefixes: []*table.LsPrefix{{SidIndex: 10, HasSidIndex: true}},
+				Prefixes: []*table.LsPrefix{{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 10, HasSidIndex: true}},
 			},
+			plane: planeIPv4SRMPLS,
 		},
 		{
-			name: "no Prefix-SID and no SRv6 SIDs",
-			node: &table.LsNode{RouterID: testRouterID1},
+			name:  "no Prefix-SID and no SRv6 SIDs",
+			node:  &table.LsNode{RouterID: testRouterID1},
+			plane: planeIPv4SRMPLS,
+		},
+		{
+			name:  "unspecified plane",
+			node:  &table.LsNode{RouterID: testRouterID1},
+			plane: table.Plane{},
+		},
+		{
+			name:  "SRv6 over IPv4 is never valid",
+			node:  &table.LsNode{RouterID: testRouterID1},
+			plane: table.Plane{Family: table.AFIPv4, DataPlane: table.DPSRv6},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := tt.node.NodeSegment()
+			_, err := tt.node.NodeSegment(tt.plane)
 			assert.Error(t, err, "expected an error for a node without a Node SID")
 		})
 	}
@@ -149,7 +219,7 @@ func TestNodeSegment_PrefixSIDOutsideSRGB(t *testing.T) {
 			node: &table.LsNode{
 				RouterID:  testRouterID1,
 				SrgbBegin: 0xFFFFF,
-				Prefixes:  []*table.LsPrefix{{SidIndex: 10, HasSidIndex: true}},
+				Prefixes:  []*table.LsPrefix{{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 10, HasSidIndex: true}},
 			},
 		},
 		{
@@ -158,7 +228,7 @@ func TestNodeSegment_PrefixSIDOutsideSRGB(t *testing.T) {
 				RouterID:  testRouterID1,
 				SrgbBegin: 16000,
 				SrgbEnd:   16010,
-				Prefixes:  []*table.LsPrefix{{SidIndex: 100, HasSidIndex: true}},
+				Prefixes:  []*table.LsPrefix{{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 100, HasSidIndex: true}},
 			},
 		},
 	}
@@ -166,7 +236,7 @@ func TestNodeSegment_PrefixSIDOutsideSRGB(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := tt.node.NodeSegment()
+			_, err := tt.node.NodeSegment(planeIPv4SRMPLS)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "out of range for SRGB")
 		})
@@ -179,32 +249,44 @@ func TestLsNodeLoopbackAddr(t *testing.T) {
 	tests := []struct {
 		name    string
 		node    *table.LsNode
+		af      table.AddressFamily
 		want    netip.Addr
 		wantErr bool
 	}{
 		{
 			name: "IPv4 /32 is a loopback address",
 			node: &table.LsNode{Prefixes: []*table.LsPrefix{{Prefix: netip.MustParsePrefix("10.0.0.1/32")}}},
+			af:   table.AFIPv4,
 			want: netip.MustParseAddr("10.0.0.1"),
 		},
 		{
 			name:    "IPv4 non-/32 is not a loopback address",
 			node:    &table.LsNode{Prefixes: []*table.LsPrefix{{Prefix: netip.MustParsePrefix("10.0.0.0/24")}}},
+			af:      table.AFIPv4,
 			wantErr: true,
 		},
 		{
 			name: "IPv6 /128 is a loopback address",
 			node: &table.LsNode{Prefixes: []*table.LsPrefix{{Prefix: netip.MustParsePrefix("2001:db8::1/128")}}},
+			af:   table.AFIPv6,
 			want: netip.MustParseAddr(testSRv6SID1),
 		},
 		{
 			name:    "IPv6 non-/128 is not a loopback address",
 			node:    &table.LsNode{Prefixes: []*table.LsPrefix{{Prefix: netip.MustParsePrefix("2001:db8::/64")}}},
+			af:      table.AFIPv6,
 			wantErr: true,
 		},
 		{
 			name:    "no prefixes",
 			node:    &table.LsNode{},
+			af:      table.AFIPv4,
+			wantErr: true,
+		},
+		{
+			name:    "an unspecified address family is rejected",
+			node:    &table.LsNode{Prefixes: []*table.LsPrefix{{Prefix: netip.MustParsePrefix("10.0.0.1/32")}}},
+			af:      table.AFUnspecified,
 			wantErr: true,
 		},
 	}
@@ -212,7 +294,7 @@ func TestLsNodeLoopbackAddr(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := tt.node.LoopbackAddr()
+			got, err := tt.node.LoopbackAddr(tt.af)
 			if tt.wantErr {
 				assert.Error(t, err)
 				return
@@ -221,6 +303,26 @@ func TestLsNodeLoopbackAddr(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, got)
 		})
+	}
+}
+
+func TestLsNodeLoopbackAddr_DualStackOrderIndependent(t *testing.T) {
+	t.Parallel()
+
+	v4 := &table.LsPrefix{Prefix: netip.MustParsePrefix("10.0.0.1/32")}
+	v6 := &table.LsPrefix{Prefix: netip.MustParsePrefix("2001:db8::1/128")}
+
+	forward := &table.LsNode{Prefixes: []*table.LsPrefix{v4, v6}}
+	reversed := &table.LsNode{Prefixes: []*table.LsPrefix{v6, v4}}
+
+	for _, af := range []table.AddressFamily{table.AFIPv4, table.AFIPv6} {
+		gotForward, err := forward.LoopbackAddr(af)
+		require.NoError(t, err)
+
+		gotReversed, err := reversed.LoopbackAddr(af)
+		require.NoError(t, err)
+
+		assert.Equal(t, gotForward, gotReversed)
 	}
 }
 
@@ -277,12 +379,123 @@ func TestLsNodeAddLink(t *testing.T) {
 	assert.Equal(t, []*table.LsLink{link}, node.Links)
 }
 
+func TestLsNodeDefaultPlane(t *testing.T) {
+	t.Parallel()
+
+	t.Run("no viable plane", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := (&table.LsNode{RouterID: testRouterID1}).DefaultPlane()
+		assert.EqualError(t, err, "node doesn't have a Node SID")
+	})
+
+	t.Run("exactly one viable plane", func(t *testing.T) {
+		t.Parallel()
+
+		node := &table.LsNode{RouterID: testRouterID1, SRv6SIDs: []*table.LsSrv6SID{{Sids: []string{testSRv6SID1}}}}
+
+		plane, err := node.DefaultPlane()
+		require.NoError(t, err)
+		assert.Equal(t, table.Plane{Family: table.AFIPv6, DataPlane: table.DPSRv6}, plane)
+	})
+
+	t.Run("multiple viable planes require an explicit choice", func(t *testing.T) {
+		t.Parallel()
+
+		node := &table.LsNode{
+			RouterID:  testRouterID1,
+			SrgbBegin: 16000,
+			Prefixes: []*table.LsPrefix{
+				{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 0, HasSidIndex: true},
+			},
+			SRv6SIDs: []*table.LsSrv6SID{{Sids: []string{testSRv6SID1}}},
+		}
+
+		_, err := node.DefaultPlane()
+		assert.ErrorContains(t, err, "an explicit plane is required")
+	})
+}
+
+func TestLsNodeDefaultLoopbackFamily(t *testing.T) {
+	t.Parallel()
+
+	t.Run("no loopback address", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := (&table.LsNode{RouterID: testRouterID1}).DefaultLoopbackFamily()
+		assert.EqualError(t, err, "node doesn't have a loopback address")
+	})
+
+	t.Run("exactly one address family", func(t *testing.T) {
+		t.Parallel()
+
+		node := &table.LsNode{
+			RouterID: testRouterID1,
+			Prefixes: []*table.LsPrefix{{Prefix: netip.MustParsePrefix("10.0.0.1/32")}},
+		}
+
+		af, err := node.DefaultLoopbackFamily()
+		require.NoError(t, err)
+		assert.Equal(t, table.AFIPv4, af)
+	})
+
+	t.Run("multiple address families require an explicit choice", func(t *testing.T) {
+		t.Parallel()
+
+		node := &table.LsNode{
+			RouterID: testRouterID1,
+			Prefixes: []*table.LsPrefix{
+				{Prefix: netip.MustParsePrefix("10.0.0.1/32")},
+				{Prefix: netip.MustParsePrefix("2001:db8::1/128")},
+			},
+		}
+
+		_, err := node.DefaultLoopbackFamily()
+		assert.ErrorContains(t, err, "an explicit family is required")
+	})
+}
+
+func TestLinkEndpointAddr(t *testing.T) {
+	t.Parallel()
+
+	e := table.LinkEndpoint{
+		IPv4: netip.MustParseAddr("192.0.2.1"),
+		IPv6: netip.MustParseAddr("2001:db8::1"),
+	}
+
+	assert.Equal(t, e.IPv4, e.Addr(table.AFIPv4))
+	assert.Equal(t, e.IPv6, e.Addr(table.AFIPv6))
+	assert.False(t, e.Addr(table.AFUnspecified).IsValid())
+}
+
+func TestLsLinkKey_DistinguishesByAddressFamily(t *testing.T) {
+	t.Parallel()
+
+	ipv4Link := &table.LsLink{
+		Local:  table.LinkEndpoint{IPv4: netip.MustParseAddr("192.0.2.1")},
+		Remote: table.LinkEndpoint{IPv4: netip.MustParseAddr("192.0.2.2")},
+	}
+	ipv6Link := &table.LsLink{
+		Local:  table.LinkEndpoint{IPv6: netip.MustParseAddr("2001:db8::1")},
+		Remote: table.LinkEndpoint{IPv6: netip.MustParseAddr("2001:db8::2")},
+	}
+	noAddrLink := &table.LsLink{}
+
+	assert.NotEqual(t, ipv4Link.Key(), ipv6Link.Key())
+	assert.NotEqual(t, ipv4Link.Key(), noAddrLink.Key())
+	assert.Equal(t, noAddrLink.Key(), (&table.LsLink{}).Key())
+}
+
 func TestNewLsLink(t *testing.T) {
 	t.Parallel()
 
 	local := &table.LsNode{RouterID: "R1"}
 	remote := &table.LsNode{RouterID: "R2"}
-	assert.Equal(t, &table.LsLink{LocalNode: local, RemoteNode: remote}, table.NewLsLink(local, remote))
+	want := &table.LsLink{
+		Local:  table.LinkEndpoint{Node: local},
+		Remote: table.LinkEndpoint{Node: remote},
+	}
+	assert.Equal(t, want, table.NewLsLink(local, remote))
 }
 
 func TestLsLinkMetric(t *testing.T) {
@@ -340,8 +553,8 @@ func TestLsLinkUpdateTED_CreatesNodesAndAddsLink(t *testing.T) {
 
 	require.Contains(t, ted.Nodes, "R1")
 	require.Contains(t, ted.Nodes, "R2")
-	assert.Same(t, ted.Nodes["R1"], link.LocalNode)
-	assert.Same(t, ted.Nodes["R2"], link.RemoteNode)
+	assert.Same(t, ted.Nodes["R1"], link.Local.Node)
+	assert.Same(t, ted.Nodes["R2"], link.Remote.Node)
 	assert.Equal(t, []*table.LsLink{link}, ted.Nodes["R1"].Links)
 }
 
@@ -357,8 +570,8 @@ func TestLsLinkUpdateTED_ReusesExistingNodes(t *testing.T) {
 	link := table.NewLsLink(&table.LsNode{ASN: 1, RouterID: "R1"}, &table.LsNode{ASN: 1, RouterID: "R2"})
 	link.UpdateTED(ted, 1)
 
-	assert.Same(t, existingLocal, link.LocalNode, "expected the link to reference the existing node object")
-	assert.Same(t, existingRemote, link.RemoteNode)
+	assert.Same(t, existingLocal, link.Local.Node, "expected the link to reference the existing node object")
+	assert.Same(t, existingRemote, link.Remote.Node)
 	assert.Equal(t, []*table.LsLink{preexistingLink, link}, existingLocal.Links, "expected the link to be appended to existing links")
 }
 
@@ -452,6 +665,36 @@ func TestLsSrv6SIDUpdateTED_ReusesExistingNode(t *testing.T) {
 
 	assert.Same(t, existing, first.LocalNode)
 	assert.Equal(t, []*table.LsSrv6SID{first, second}, existing.SRv6SIDs)
+}
+
+func TestLsNodeAddSrv6SID(t *testing.T) {
+	t.Parallel()
+
+	t.Run("re-advertisement of the same SID replaces the existing entry", func(t *testing.T) {
+		t.Parallel()
+
+		node := &table.LsNode{RouterID: testRouterID1}
+		first := &table.LsSrv6SID{Sids: []string{testSRv6SID1}}
+		node.AddSrv6SID(first)
+
+		second := &table.LsSrv6SID{Sids: []string{testSRv6SID1}}
+		node.AddSrv6SID(second)
+
+		assert.Equal(t, []*table.LsSrv6SID{second}, node.SRv6SIDs)
+	})
+
+	t.Run("entries with no Sids have no dedup key and are both appended", func(t *testing.T) {
+		t.Parallel()
+
+		node := &table.LsNode{RouterID: testRouterID1}
+		first := &table.LsSrv6SID{}
+		node.AddSrv6SID(first)
+
+		second := &table.LsSrv6SID{}
+		node.AddSrv6SID(second)
+
+		assert.Equal(t, []*table.LsSrv6SID{first, second}, node.SRv6SIDs, "entries with no Sids have no meaningful dedup key, so they must not collide")
+	})
 }
 
 func TestNewMetric(t *testing.T) {
@@ -633,6 +876,27 @@ func TestLsTEDAddressRouterIDIndex(t *testing.T) {
 	assert.Nil(t, nilTED.AddressRouterIDIndex())
 }
 
+func TestLsTEDAddressRouterIDIndex_ConflictIsAmbiguous(t *testing.T) {
+	t.Parallel()
+
+	shared := netip.MustParsePrefix("192.0.2.0/30")
+
+	for range 20 {
+		ted := &table.LsTED{Nodes: map[string]*table.LsNode{}}
+
+		nodeX := table.NewLsNode(65000, "router-x")
+		nodeX.Prefixes = append(nodeX.Prefixes, &table.LsPrefix{LocalNode: nodeX, Prefix: shared})
+		ted.Nodes[nodeX.RouterID] = nodeX
+
+		nodeY := table.NewLsNode(65000, "router-y")
+		nodeY.Prefixes = append(nodeY.Prefixes, &table.LsPrefix{LocalNode: nodeY, Prefix: shared})
+		ted.Nodes[nodeY.RouterID] = nodeY
+
+		index := ted.AddressRouterIDIndex()
+		assert.Empty(t, index[shared.Addr()], "conflicting owners must never resolve to whichever node was visited last")
+	}
+}
+
 func TestLsTEDFindRouterIDByLoopback(t *testing.T) {
 	t.Parallel()
 
@@ -684,7 +948,7 @@ func TestLsTEDPrint(t *testing.T) {
 				RouterID: "R1",
 				Hostname: "router1",
 				Links: []*table.LsLink{
-					{RemoteNode: &table.LsNode{RouterID: "R2"}},
+					{Remote: table.LinkEndpoint{Node: &table.LsNode{RouterID: "R2"}}},
 				},
 			},
 		}}
@@ -703,10 +967,10 @@ func TestLsTEDPrint(t *testing.T) {
 				RouterID: "R1",
 				Links: []*table.LsLink{
 					{
-						RemoteNode: &table.LsNode{RouterID: "R2"},
-						Srv6EndXSID: &table.Srv6EndXSID{
+						Remote: table.LinkEndpoint{Node: &table.LsNode{RouterID: "R2"}},
+						Srv6EndXSIDs: []*table.Srv6EndXSID{{
 							Sids: []string{"fcbb:bb00:0100::"},
-						},
+						}},
 					},
 				},
 			},

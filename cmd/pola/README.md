@@ -183,8 +183,8 @@ Session: 192.0.2.2 (State: up, LSP-DB Sync: finished)
     LSPID: 1
     State: up
     Type: explicit
-    SrcAddr: 192.0.2.2 (0000.0aff.0002)
-    DstAddr: 192.0.2.1 (0000.0aff.0001)
+    Headend: 192.0.2.2 (0000.0aff.0002)
+    Endpoint: 192.0.2.1 (0000.0aff.0001)
     Color: 999
     Preference: 100
     SegmentList: 16003 -> 16001
@@ -209,15 +209,22 @@ JSON output
           { "sid": 16003 },
           { "sid": 16001 }
         ],
-        "srcAddr": "192.0.2.2",
-        "dstAddr": "192.0.2.1",
-        "srcRouterId": "0000.0aff.0002",
-        "dstRouterId": "0000.0aff.0001",
+        "headend": "192.0.2.2",
+        "endpoint": "192.0.2.1",
+        "headendRouterId": "0000.0aff.0002",
+        "endpointRouterId": "0000.0aff.0001",
         "color": 999,
-        "preference": 100,
+        "candidatePath": {
+          "preference": 100,
+          "explicit": {
+            "segmentList": [
+              { "sid": 16003 },
+              { "sid": 16001 }
+            ]
+          }
+        },
         "lspId": 1,
-        "state": "up",
-        "type": "explicit"
+        "state": "up"
       }
     ]
   },
@@ -230,13 +237,14 @@ JSON output
 ]
 ```
 
-Notes:
-
-- `state` and `lspDbSync` use the same vocabulary as `pola session`.
-- Policies appear after the first PCRpt is received.
-- `lspId` is omitted when zero.
-- `srcRouterId`/`dstRouterId` are resolved from TED.
-- `metric` is included for policies created with `type: dynamic`.
+> [!NOTE]
+> - `state` and `lspDbSync` use the same vocabulary as `pola session`.
+> - Policies appear after the first PCRpt is received.
+> - `lspId` is omitted when zero.
+> - `headendRouterId`/`endpointRouterId` are resolved from TED.
+> - `candidatePath.dynamic.metric` is included for policies with a dynamic candidate path.
+> - Top-level `segmentList` is the currently signaled segment list; for an
+>   explicit candidate path, `candidatePath.explicit.segmentList` mirrors it.
 
 ### pola sr-policy add -f `filepath`
 
@@ -251,14 +259,24 @@ asn: 65000
 srPolicy:
   pcepSessionAddr: 192.0.2.1
   name: policy-name
-  srcRouterID: 0000.0aff.0001
-  dstRouterID: 0000.0aff.0004
+  headendRouterID: 0000.0aff.0001
+  endpointRouterID: 0000.0aff.0004
   color: 100
-  type: dynamic
-  metric: igp
+  candidatePath:
+    dynamic:
+      metric: igp
 ```
 
-`metric` can be `igp`, `te`, or `delay`.
+`metric` can be `igp`, `te`, `delay`, or `hopcount`.
+
+`candidatePath.dynamic.underlayFamily` selects the underlay address family.
+When unspecified, it follows `endpointFamily` or the endpoint's address
+family. Cross-address-family configurations are supported by Pola, but are not
+guaranteed for IETF interoperability.
+
+`candidatePath.dynamic.dataPlane` selects the data plane (`sr-mpls` or
+`srv6`). When unspecified, Pola uses the unique viable data plane; if multiple
+are available, the request is rejected.
 
 JSON output
 
@@ -277,14 +295,15 @@ asn: 65000
 srPolicy:
   pcepSessionAddr: 192.0.2.1
   name: policy-name
-  srcRouterID: 0000.0aff.0001
-  dstRouterID: 0000.0aff.0004
+  headendRouterID: 0000.0aff.0001
+  endpointRouterID: 0000.0aff.0004
   color: 100
-  type: explicit
-  segmentList:
-    - sid: 16003
-    - sid: 16002
-    - sid: 16004
+  candidatePath:
+    explicit:
+      segmentList:
+        - sid: 16003
+        - sid: 16002
+        - sid: 16004
 ```
 
 JSON output
@@ -297,15 +316,20 @@ JSON output
 
 #### Explicit path with endpoint addresses
 
-Instead of `srcRouterID`/`dstRouterID`, endpoints can be given directly as
-`srcAddr`/`dstAddr`. This form bypasses path computation: no CSPF or router-ID
-resolution is performed, so it accepts only `type: explicit` and takes the
-segment list verbatim.
+Endpoints can be specified as `headend`/`endpoint` addresses instead of
+`headendRouterID`/`endpointRouterID` (RFC 9256 §2.1), for both dynamic and
+explicit candidate paths. For dynamic paths, router IDs required for CSPF are
+resolved from the TED; `endpointFamily` selects the resolution family and is
+only valid with the router-ID form.
 
-Each SID is still validated against the TED, so with `ted.enable: false` this
-form additionally requires `--no-sid-validate`.
+Each SID is validated against the TED. When `ted.enable: false`,
+`--no-sid-validate` is also required.
 
 `localAddr` is required for SRv6 SIDs and optional for SR-MPLS labels.
+
+`localInterfaceId` and `remoteInterfaceId` identify the interface for a
+link-local IPv6 adjacency segment (RFC 8664/9603 §4.3.1, NAI type 6).
+They are only meaningful for link-local IPv6 addresses.
 
 See [JSON schema](../../docs/schemas/cli/policy.json) for input details.
 
@@ -315,17 +339,19 @@ YAML input format
 asn: 65000
 srPolicy:
   pcepSessionAddr: "2001:0db8::1"
-  srcAddr: "2001:0db8::1"
-  dstAddr: "2001:0db8::2"
+  headend: "2001:0db8::1"
+  endpoint: "2001:0db8::2"
   name: "policy-name"
   color: 100
-  segmentList:
-    - sid: "2001:0db8:1005::"
-      localAddr: "2001:0db8::5"
-      sidStructure: "32,16,0,80"
-    - sid: "2001:0db8:1006::"
-      localAddr: "2001:0db8::6"
-      sidStructure: "32,16,0,80"
+  candidatePath:
+    explicit:
+      segmentList:
+        - sid: "2001:0db8:1005::"
+          localAddr: "2001:0db8::5"
+          sidStructure: "32,16,0,80"
+        - sid: "2001:0db8:1006::"
+          localAddr: "2001:0db8::6"
+          sidStructure: "32,16,0,80"
 ```
 
 JSON output
@@ -358,13 +384,14 @@ Node #0: 0000.0aff.0001
     10.255.0.1/32
       index: 1
   Links:
-    Local: 10.0.0.1 Remote: 10.0.0.2
+    Local: 10.0.0.1, 2001:db8::1 (interface 5) Remote: 10.0.0.2, 2001:db8::2
       RemoteRouterID: 0000.0aff.0002
       Metrics:
         igp: 10
-      Adj-SID: 17
+      Adj-SIDs:
+        unspecified: 17
       SRv6 End.X SID:
-        EndpointBehavior: ENDX
+        EndpointBehavior: ENDX, Flags: 0, Algorithm: 0, Weight: 0
         SIDs: [2001:db8:1::1]
         SID Structure: Block: 32, Node: 16, Func: 16, Arg: 0
   SRv6 SIDs:
@@ -385,9 +412,11 @@ Node #1: 0000.0aff.0002
   SRv6 SIDs:
 ```
 
-JSON output. The top level is an array of nodes; there is no wrapping
-`ted` object. `localIp`/`remoteIp` are omitted when no interface address
-is present in the BGP-LS descriptor.
+### JSON output
+
+- The top level is an array of nodes; there is no wrapping `ted` object.
+- `links[].local` and `links[].remote` always contain `routerId`; `ipv4`, `ipv6`, and `interfaceId` are included when present.
+- `adjSids` contains `{ "family", "sid" }` objects. `family` is always `"unspecified"` because the available Adjacency-SID information does not include its address family.
 
 ```json
 [
@@ -403,16 +432,18 @@ is present in the BGP-LS descriptor.
     ],
     "links": [
       {
-        "localIp": "10.0.0.1",
-        "remoteIp": "10.0.0.2",
-        "remoteRouterId": "0000.0aff.0002",
+        "local": { "routerId": "0000.0aff.0001", "ipv4": "10.0.0.1", "ipv6": "2001:db8::1", "interfaceId": 5 },
+        "remote": { "routerId": "0000.0aff.0002", "ipv4": "10.0.0.2", "ipv6": "2001:db8::2" },
         "metrics": [{ "type": "igp", "value": 10 }],
-        "adjSid": 17,
-        "srv6EndXSid": {
-          "endpointBehavior": { "behavior": 5, "name": "ENDX" },
-          "sids": ["2001:db8:1::1"],
-          "sidStructure": { "localBlock": 32, "localNode": 16, "localFunc": 16, "localArg": 0 }
-        }
+        "adjSids": [{ "family": "unspecified", "sid": 17 }],
+        "srv6EndXSids": [
+          {
+            "endpointBehavior": { "behavior": 5, "name": "ENDX", "flags": 0, "algorithm": 0 },
+            "weight": 0,
+            "sids": ["2001:db8:1::1"],
+            "sidStructure": { "localBlock": 32, "localNode": 16, "localFunc": 16, "localArg": 0 }
+          }
+        ]
       }
     ],
     "srv6Sids": [
@@ -440,13 +471,13 @@ is present in the BGP-LS descriptor.
 ]
 ```
 
-Notes:
-
-- `metrics[].type` is a lowercase token (`igp`, `te`, `delay`, `hopcount`),
-  matching the metric vocabulary used elsewhere.
-- `endpointBehavior.flags`/`.algorithm` are present for node SRv6 SIDs
-  (`srv6Sids`) but omitted for adjacency SIDs (`links[].srv6EndXSid`), which
-  carry only the behavior.
+> [!NOTE]
+> - `endpointBehavior` contains `behavior`, `flags`, and `algorithm` for node
+>   SRv6 SIDs (`srv6Sids`) and adjacency SIDs (`links[].srv6EndXSids`).
+> - `flags` is the raw octet; its interpretation depends on the advertising
+>   protocol and TLV.
+> - `weight` is the End.X SID load-balancing weight and appears only under
+>   `links[].srv6EndXSids`.
 
 ## Completion
 

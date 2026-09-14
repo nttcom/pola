@@ -332,13 +332,12 @@ func TestSRPolicyCreateDynamic(t *testing.T) {
 
 		req := f.createReq
 		require.NotNil(t, req, "server received no request")
-		// Dynamic policies require TED-based path computation.
-		assert.False(t, req.GetDisablePathCompute())
-		assert.Equal(t, pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC, req.GetSrPolicy().GetType())
+		dynamic := req.GetSrPolicy().GetCandidatePath().GetDynamic()
+		require.NotNil(t, dynamic, "want a dynamic candidate path")
 		assert.NotZero(t, req.GetAsn(), "want the TED ASN")
-		assert.NotEmpty(t, req.GetSrPolicy().GetSrcRouterId())
-		assert.Len(t, req.GetSrPolicy().GetWaypoints(), 1)
-		assert.Equal(t, pb.MetricType_METRIC_TYPE_TE, req.GetSrPolicy().GetMetric())
+		assert.NotEmpty(t, req.GetSrPolicy().GetHeadendRouterId())
+		assert.Len(t, dynamic.GetWaypoints(), 1)
+		assert.Equal(t, pb.MetricType_METRIC_TYPE_TE, dynamic.GetMetric())
 		assert.False(t, req.GetNoSidValidate())
 	})
 
@@ -362,9 +361,9 @@ func TestSRPolicyCreateExplicit(t *testing.T) {
 
 		req := f.createReq
 		require.NotNil(t, req, "server received no request")
-		assert.False(t, req.GetDisablePathCompute())
-		assert.Equal(t, pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT, req.GetSrPolicy().GetType())
-		assert.NotEmpty(t, req.GetSrPolicy().GetSegmentList())
+		explicit := req.GetSrPolicy().GetCandidatePath().GetExplicit()
+		require.NotNil(t, explicit, "want an explicit candidate path")
+		assert.NotEmpty(t, explicit.GetSegmentList())
 		assert.False(t, req.GetNoSidValidate())
 	})
 
@@ -388,11 +387,11 @@ func TestSRPolicyCreateNoSIDValidate(t *testing.T) {
 
 		req := f.createReq
 		require.NotNil(t, req, "server received no request")
-		assert.True(t, req.GetDisablePathCompute())
-		assert.Equal(t, pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT, req.GetSrPolicy().GetType())
-		assert.NotEmpty(t, req.GetSrPolicy().GetSrcAddr())
-		assert.NotEmpty(t, req.GetSrPolicy().GetDstAddr())
-		assert.NotEmpty(t, req.GetSrPolicy().GetSegmentList())
+		explicit := req.GetSrPolicy().GetCandidatePath().GetExplicit()
+		require.NotNil(t, explicit, "want an explicit candidate path")
+		assert.NotEmpty(t, req.GetSrPolicy().GetHeadend())
+		assert.NotEmpty(t, req.GetSrPolicy().GetEndpoint())
+		assert.NotEmpty(t, explicit.GetSegmentList())
 		assert.True(t, req.GetNoSidValidate())
 	})
 
@@ -417,7 +416,7 @@ func TestSRPolicyCreateSRv6(t *testing.T) {
 		req := f.createReq
 		require.NotNil(t, req, "server received no request")
 		// SRv6 segments require LocalAddr and SidStructure.
-		for _, seg := range req.GetSrPolicy().GetSegmentList() {
+		for _, seg := range req.GetSrPolicy().GetCandidatePath().GetExplicit().GetSegmentList() {
 			assert.NotEmpty(t, seg.GetLocalAddr(), "segment %s", seg.GetSid())
 			assert.NotEmpty(t, seg.GetSidStructure(), "segment %s", seg.GetSid())
 		}
@@ -447,7 +446,7 @@ func TestSRPolicyDelete(t *testing.T) {
 		require.NotNil(t, req, "server received no request")
 		// polad identifies the policy by these four fields, so all must be set.
 		assert.NotEmpty(t, req.GetSrPolicy().GetPeerAddr())
-		assert.NotEmpty(t, req.GetSrPolicy().GetDstAddr())
+		assert.NotEmpty(t, req.GetSrPolicy().GetEndpoint())
 		assert.NotZero(t, req.GetSrPolicy().GetColor())
 		assert.NotEmpty(t, req.GetSrPolicy().GetPolicyName())
 	})
@@ -530,12 +529,12 @@ func TestSRPolicyList(t *testing.T) {
 			{
 				PeerAddr: addrBytes(t, "192.0.2.1"),
 				SrPolicies: []*pb.SRPolicy{{
-					SrcAddr:     addrBytes(t, "192.0.2.1"),
-					DstAddr:     addrBytes(t, "192.0.2.2"),
-					PolicyName:  "with-segments",
-					Color:       100,
-					Preference:  200,
-					SegmentList: []*pb.Segment{{Sid: "16002"}, {Sid: "16003"}},
+					Headend:       addrBytes(t, "192.0.2.1"),
+					Endpoint:      addrBytes(t, "192.0.2.2"),
+					PolicyName:    "with-segments",
+					Color:         100,
+					CandidatePath: &pb.CandidatePath{Preference: 200},
+					SegmentList:   []*pb.Segment{{Sid: "16002"}, {Sid: "16003"}},
 				}},
 			},
 			{
@@ -549,8 +548,8 @@ func TestSRPolicyList(t *testing.T) {
 		wantOutput(t, out, code,
 			"srPolicy(0):",
 			"policyName: with-segments",
-			"srcAddr: 192.0.2.1",
-			"dstAddr: 192.0.2.2",
+			"headend: 192.0.2.1",
+			"endpoint: 192.0.2.2",
 			"color: 100",
 			"preference: 200",
 			"path: 16002 -> 16003",
@@ -581,7 +580,7 @@ func TestTEDGet(t *testing.T) {
 				RouterId: "0000.0aff.0001",
 				Hostname: "node1",
 				Prefixes: []*pb.LsPrefix{{Prefix: "10.0.0.1/32"}},
-				Links:    []*pb.LsLink{{LocalRouterId: "0000.0aff.0001"}},
+				Links:    []*pb.LsLink{{Local: &pb.LsLinkEndpoint{RouterId: "0000.0aff.0001"}}},
 			}},
 		}}
 		out, code := run(t, "ted-get", serve(t, f))

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"strconv"
 
 	"github.com/nttcom/pola/pkg/table"
 )
@@ -47,6 +48,12 @@ const (
 
 const errNextNodeNotFound = "next node not found"
 
+// PathScope constrains path computation to a single underlay plane.
+// The plane must be fully specified; no implicit default is used.
+type PathScope struct {
+	Plane table.Plane
+}
+
 type node struct {
 	id          string
 	calculated  bool
@@ -63,7 +70,6 @@ func newNode(id string, cost uint32, nodeSeg table.Segment) *node {
 	}
 }
 
-// validateMetricType rejects metric types that cannot be used for path computation.
 func validateMetricType(metric table.MetricType) error {
 	if !metric.IsValid() {
 		return invalidInputf("unsupported metric type %d", int(metric))
@@ -76,8 +82,8 @@ func validateMetricType(metric table.MetricType) error {
 	return nil
 }
 
-// CSPF computes the shortest path from srcRouterID to dstRouterID using the given metric.
-func CSPF(srcRouterID, dstRouterID string, metric table.MetricType, ted *table.LsTED) ([]table.Segment, error) {
+// CSPF computes the shortest path from srcRouterID to dstRouterID using the given metric and scope.
+func CSPF(srcRouterID, dstRouterID string, metric table.MetricType, scope PathScope, ted *table.LsTED) ([]table.Segment, error) {
 	if ted == nil {
 		return nil, errors.New("ted is nil")
 	}
@@ -86,7 +92,11 @@ func CSPF(srcRouterID, dstRouterID string, metric table.MetricType, ted *table.L
 		return nil, err
 	}
 
-	segmentList, err := spf(srcRouterID, dstRouterID, metric, ted.Nodes)
+	if err := scope.Plane.Validate(); err != nil {
+		return nil, invalidInputf("invalid scope: %w", err)
+	}
+
+	segmentList, err := spf(srcRouterID, dstRouterID, metric, scope, ted.Nodes)
 	if err != nil {
 		return nil, err
 	}
@@ -99,6 +109,7 @@ func WithLooseSourceRouting(
 	src, dst string,
 	waypoints []table.Waypoint,
 	metric table.MetricType,
+	scope PathScope,
 	ted *table.LsTED,
 ) ([]table.Segment, error) {
 	if ted == nil {
@@ -107,6 +118,10 @@ func WithLooseSourceRouting(
 
 	if err := validateMetricType(metric); err != nil {
 		return nil, err
+	}
+
+	if err := scope.Plane.Validate(); err != nil {
+		return nil, invalidInputf("invalid scope: %w", err)
 	}
 
 	// Validate waypoints before computing any section.
@@ -123,7 +138,7 @@ func WithLooseSourceRouting(
 	allWaypoints := append(append([]table.Waypoint{}, waypoints...), table.Waypoint{RouterID: dst})
 
 	for _, wp := range allWaypoints {
-		sectionSegs, seg, err := buildSectionSegments(prev, wp, metric, ted, fullList)
+		sectionSegs, seg, err := buildSectionSegments(prev, wp, metric, scope, ted, fullList)
 		if err != nil {
 			return nil, err
 		}
@@ -136,15 +151,15 @@ func WithLooseSourceRouting(
 	return fullList, nil
 }
 
-// buildSectionSegments calculates CSPF to waypoint and builds the waypoint segment.
 func buildSectionSegments(
 	prev string,
 	wp table.Waypoint,
 	metric table.MetricType,
+	scope PathScope,
 	ted *table.LsTED,
 	fullList []table.Segment,
 ) (sectionSegs []table.Segment, waypointSeg table.Segment, err error) {
-	sectionSegs, err = CSPF(prev, wp.RouterID, metric, ted)
+	sectionSegs, err = CSPF(prev, wp.RouterID, metric, scope, ted)
 	if err != nil {
 		return nil, nil, fmt.Errorf("CSPF failed between %s and %s: %w", prev, wp.RouterID, err)
 	}
@@ -154,7 +169,7 @@ func buildSectionSegments(
 	// Existence is guaranteed by the CSPF call above.
 	node, _ := nodeInTED(ted.Nodes, wp.RouterID)
 
-	waypointSeg, err = buildWaypointSegment(node, wp.SID)
+	waypointSeg, err = buildWaypointSegment(node, wp.SID, scope)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to build segment for waypoint %s: %w", wp.RouterID, err)
 	}
@@ -162,28 +177,12 @@ func buildSectionSegments(
 	return sectionSegs, waypointSeg, nil
 }
 
-// buildWaypointSegment builds a Segment for a waypoint using the node and optional explicit SID.
-func buildWaypointSegment(node *table.LsNode, explicitSID string) (table.Segment, error) {
+func buildWaypointSegment(node *table.LsNode, explicitSID string, scope PathScope) (table.Segment, error) {
 	if explicitSID != "" {
-		addr, err := netip.ParseAddr(explicitSID)
-		if err != nil {
-			return nil, invalidInputf("invalid explicit SID %q: %w", explicitSID, err)
-		}
-		// Explicit SID must be an IPv6 address.
-		addr = addr.Unmap()
-		if !addr.Is6() {
-			return nil, invalidInputf("explicit SID %q must be an IPv6 SRv6 SID", explicitSID)
-		}
-
-		seg, err := table.NewSegmentSRv6WithNodeInfo(addr, node)
-		if err != nil {
-			return nil, topologyLimitationf(reasonTEDDataIncomplete, "%w", err)
-		}
-
-		return seg, nil
+		return buildExplicitWaypointSegment(node, explicitSID, scope)
 	}
 
-	seg, err := node.NodeSegment()
+	seg, err := node.NodeSegment(scope.Plane)
 	if err != nil {
 		return nil, topologyLimitationf(reasonTEDDataIncomplete, "%w", err)
 	}
@@ -191,7 +190,43 @@ func buildWaypointSegment(node *table.LsNode, explicitSID string) (table.Segment
 	return seg, nil
 }
 
-// removeDuplicateFirst removes the first segment of section if it equals the last of fullList.
+// buildExplicitWaypointSegment parses and validates an explicit waypoint SID
+// according to the scope's data plane.
+func buildExplicitWaypointSegment(node *table.LsNode, explicitSID string, scope PathScope) (table.Segment, error) {
+	switch scope.Plane.DataPlane {
+	case table.DPSRv6:
+		addr, err := netip.ParseAddr(explicitSID)
+		if err != nil {
+			return nil, invalidInputf("invalid explicit SID %q: %w", explicitSID, err)
+		}
+
+		sid, err := table.ParseSRv6SID(addr.Unmap().String())
+		if err != nil {
+			return nil, invalidInputf("explicit SID %q must be an IPv6 SRv6 SID: %w", explicitSID, err)
+		}
+
+		seg, err := table.NewSegmentSRv6WithNodeInfo(sid, node)
+		if err != nil {
+			return nil, topologyLimitationf(reasonTEDDataIncomplete, "%w", err)
+		}
+
+		return seg, nil
+	case table.DPSRMPLS:
+		label, err := strconv.ParseUint(explicitSID, 10, 32)
+		if err != nil {
+			return nil, invalidInputf("invalid explicit SID %q: %w", explicitSID, err)
+		}
+
+		if label > uint64(table.MPLSLabelMax) {
+			return nil, invalidInputf("explicit SID %q exceeds the maximum SR-MPLS label %d", explicitSID, table.MPLSLabelMax)
+		}
+
+		return table.NewSegmentSRMPLS(uint32(label)), nil
+	default:
+		return nil, invalidInputf("data plane must be specified to build a waypoint segment")
+	}
+}
+
 func removeDuplicateFirst(fullList, section []table.Segment) []table.Segment {
 	if len(fullList) > 0 && len(section) > 0 && table.SegmentsEqual(fullList[len(fullList)-1], section[0]) {
 		return section[1:]
@@ -200,7 +235,6 @@ func removeDuplicateFirst(fullList, section []table.Segment) []table.Segment {
 	return section
 }
 
-// appendIfNotDuplicate appends a segment to the list if it is not equal to the last segment.
 func appendIfNotDuplicate(list []table.Segment, seg table.Segment) []table.Segment {
 	if len(list) == 0 || !table.SegmentsEqual(list[len(list)-1], seg) {
 		list = append(list, seg)
@@ -209,8 +243,8 @@ func appendIfNotDuplicate(list []table.Segment, seg table.Segment) []table.Segme
 	return list
 }
 
-func spf(srcRouterID, dstRouterID string, metricType table.MetricType, network map[string]*table.LsNode) ([]table.Segment, error) {
-	calculatingNodes, err := initNodeMap(srcRouterID, network)
+func spf(srcRouterID, dstRouterID string, metricType table.MetricType, scope PathScope, network map[string]*table.LsNode) ([]table.Segment, error) {
+	calculatingNodes, err := initNodeMap(srcRouterID, scope, network)
 	if err != nil {
 		return nil, err
 	}
@@ -219,7 +253,6 @@ func spf(srcRouterID, dstRouterID string, metricType table.MetricType, network m
 		return nil, invalidInputf("destination router %s not found in TED", dstRouterID)
 	}
 
-	// Keep calculating the shortest path until the destination node is reached.
 	for {
 		calcNodeID, err := nextNode(calculatingNodes)
 		if err != nil {
@@ -230,7 +263,7 @@ func spf(srcRouterID, dstRouterID string, metricType table.MetricType, network m
 			break
 		}
 
-		if err := updateNeighborCosts(calcNodeID, calculatingNodes, network, metricType); err != nil {
+		if err := updateNeighborCosts(calcNodeID, calculatingNodes, network, metricType, scope); err != nil {
 			return nil, err
 		}
 
@@ -240,7 +273,6 @@ func spf(srcRouterID, dstRouterID string, metricType table.MetricType, network m
 	return buildSegmentListFromPath(srcRouterID, dstRouterID, calculatingNodes), nil
 }
 
-// nodeInTED returns the node for routerID if it exists and is non-nil.
 func nodeInTED(network map[string]*table.LsNode, routerID string) (*table.LsNode, bool) {
 	node, ok := network[routerID]
 	if !ok || node == nil {
@@ -250,14 +282,13 @@ func nodeInTED(network map[string]*table.LsNode, routerID string) (*table.LsNode
 	return node, true
 }
 
-// initNodeMap initializes the map of nodes used for SPF calculation.
-func initNodeMap(srcRouterID string, network map[string]*table.LsNode) (map[string]*node, error) {
+func initNodeMap(srcRouterID string, scope PathScope, network map[string]*table.LsNode) (map[string]*node, error) {
 	srcNode, ok := nodeInTED(network, srcRouterID)
 	if !ok {
 		return nil, invalidInputf("source router %s not found in TED", srcRouterID)
 	}
 
-	startNodeSeg, err := srcNode.NodeSegment()
+	startNodeSeg, err := srcNode.NodeSegment(scope.Plane)
 	if err != nil {
 		return nil, topologyLimitationf(reasonTEDDataIncomplete, "%w", err)
 	}
@@ -268,19 +299,39 @@ func initNodeMap(srcRouterID string, network map[string]*table.LsNode) (map[stri
 	return map[string]*node{srcRouterID: startNode}, nil
 }
 
-// updateNeighborCosts updates costs for neighbors of the given node in SPF calculation.
-func updateNeighborCosts(calcNodeID string, calculatingNodes map[string]*node, network map[string]*table.LsNode, metricType table.MetricType) error {
+// linkUsable is the sole edge filter for path computation.
+// Unnumbered links are considered usable.
+func linkUsable(link *table.LsLink, scope PathScope) bool {
+	if link.UsableForFamily(scope.Plane.Family) {
+		return true
+	}
+
+	return linkUnnumbered(link)
+}
+
+func linkUnnumbered(link *table.LsLink) bool {
+	return !link.Local.IPv4.IsValid() && !link.Local.IPv6.IsValid() &&
+		!link.Remote.IPv4.IsValid() && !link.Remote.IPv6.IsValid()
+}
+
+func updateNeighborCosts(calcNodeID string, calculatingNodes map[string]*node, network map[string]*table.LsNode, metricType table.MetricType, scope PathScope) error {
 	calcNode, ok := nodeInTED(network, calcNodeID)
 	if !ok {
 		return topologyLimitationf(reasonTEDDataIncomplete, "router %s not found in TED", calcNodeID)
 	}
 
 	for _, link := range calcNode.Links {
-		if link == nil || link.RemoteNode == nil {
+		if link == nil || link.Remote.Node == nil {
 			continue
 		}
 
-		if _, ok := nodeInTED(network, link.RemoteNode.RouterID); !ok {
+		if !linkUsable(link, scope) {
+			continue
+		}
+
+		remoteRouterID := link.Remote.Node.RouterID
+
+		if _, ok := nodeInTED(network, remoteRouterID); !ok {
 			continue
 		}
 
@@ -289,34 +340,32 @@ func updateNeighborCosts(calcNodeID string, calculatingNodes map[string]*node, n
 			return topologyLimitationf(reasonMetricNotCarried, "%w", err)
 		}
 
-		if remoteNode, exists := calculatingNodes[link.RemoteNode.RouterID]; exists {
+		if remoteNode, exists := calculatingNodes[remoteRouterID]; exists {
 			if calculatingNodes[calcNodeID].cost+metric < remoteNode.cost {
 				remoteNode.cost = calculatingNodes[calcNodeID].cost + metric
 				remoteNode.prevNode = calcNodeID
 			}
 		} else {
-			remoteNodeSeg, err := link.RemoteNode.NodeSegment()
+			remoteNodeSeg, err := link.Remote.Node.NodeSegment(scope.Plane)
 			if err != nil {
 				return topologyLimitationf(reasonTEDDataIncomplete, "%w", err)
 			}
 
-			remoteNode := newNode(link.RemoteNode.RouterID, calculatingNodes[calcNodeID].cost+metric, remoteNodeSeg)
+			remoteNode := newNode(remoteRouterID, calculatingNodes[calcNodeID].cost+metric, remoteNodeSeg)
 			remoteNode.prevNode = calcNodeID
-			calculatingNodes[link.RemoteNode.RouterID] = remoteNode
+			calculatingNodes[remoteRouterID] = remoteNode
 		}
 	}
 
 	return nil
 }
 
-// buildSegmentListFromPath builds the segment list from SPF results.
 func buildSegmentListFromPath(srcRouterID, dstRouterID string, calculatingNodes map[string]*node) []table.Segment {
 	segmentList := []table.Segment{}
 	for pathNode := calculatingNodes[dstRouterID]; pathNode.id != srcRouterID; pathNode = calculatingNodes[pathNode.prevNode] {
 		segmentList = append(segmentList, pathNode.nodeSegment)
 	}
 
-	// Reverse the segment list to get correct order from src → dst
 	for i, j := 0, len(segmentList)-1; i < j; i, j = i+1, j-1 {
 		segmentList[i], segmentList[j] = segmentList[j], segmentList[i]
 	}
@@ -324,7 +373,6 @@ func buildSegmentListFromPath(srcRouterID, dstRouterID string, calculatingNodes 
 	return segmentList
 }
 
-// nextNode returns the ID of the next node to calculate.
 func nextNode(calculatingNodes map[string]*node) (string, error) {
 	nextNodeID := ""
 

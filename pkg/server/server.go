@@ -283,7 +283,9 @@ func parseRemoteAddr(tcpConn *net.TCPConn) (netip.Addr, error) {
 		return netip.Addr{}, fmt.Errorf("failed to parse remote address %s: %w", remoteAddrStr, err)
 	}
 
-	return addrPort.Addr(), nil
+	// A dual-stack listener reports IPv4 peers as IPv4-mapped IPv6; normalize
+	// so session lookups use a consistent address representation.
+	return addrPort.Addr().Unmap(), nil
 }
 
 // Serve starts the PCEP server on the specified address and port.

@@ -52,18 +52,23 @@ func writeSRPolicyItemText(ew *errWriter, policy table.SRPolicy) {
 	ew.printf("    LSPID: %d\n", policy.LSPID)
 	ew.printf("    State: %s\n", policy.State)
 
-	if policy.Type != "" {
-		ew.printf("    Type: %s\n", policy.Type)
+	switch {
+	case policy.CandidatePath.Dynamic != nil:
+		ew.printf("    Type: dynamic\n")
+		ew.printf("    Metric: %s\n", policy.CandidatePath.Dynamic.Metric.DisplayString())
+
+		if plane := policy.CandidatePath.Dynamic.Plane; plane != (table.Plane{}) {
+			ew.printf("    UnderlayFamily: %s\n", plane.Family)
+			ew.printf("    DataPlane: %s\n", plane.DataPlane)
+		}
+	case policy.CandidatePath.Explicit != nil:
+		ew.printf("    Type: explicit\n")
 	}
 
-	if policy.Metric != table.UnspecifiedMetric {
-		ew.printf("    Metric: %s\n", policy.Metric.DisplayString())
-	}
-
-	ew.printf("    SrcAddr: %s\n", srcDstDisplay(policy.SrcAddr.String(), policy.SrcRouterID))
-	ew.printf("    DstAddr: %s\n", srcDstDisplay(policy.DstAddr.String(), policy.DstRouterID))
+	ew.printf("    Headend: %s\n", srcDstDisplay(policy.Headend.String(), policy.HeadendRouterID))
+	ew.printf("    Endpoint: %s\n", srcDstDisplay(policy.Endpoint.String(), policy.EndpointRouterID))
 	ew.printf("    Color: %d\n", policy.Color)
-	ew.printf("    Preference: %d\n", policy.Preference)
+	ew.printf("    Preference: %d\n", policy.CandidatePath.Preference)
 	ew.printf("    SegmentList: %s\n", segmentListDisplayString(policy.SegmentList))
 }
 
@@ -91,7 +96,7 @@ func (ew *errWriter) println(a ...any) {
 
 func segmentListDisplayString(segmentList []table.Segment) string {
 	if len(segmentList) == 0 {
-		return "None"
+		return displayNone
 	}
 
 	tokens := make([]string, len(segmentList))
@@ -113,6 +118,10 @@ func srcDstDisplay(addr, routerID string) string {
 func segmentDisplayString(seg table.Segment) string {
 	var localAddr, remoteAddr string
 
+	var localIfaceID, remoteIfaceID *uint32
+
+	var behavior uint16
+
 	switch v := seg.(type) {
 	case table.SegmentSRv6:
 		if v.LocalAddr.IsValid() {
@@ -122,6 +131,9 @@ func segmentDisplayString(seg table.Segment) string {
 		if v.RemoteAddr.IsValid() {
 			remoteAddr = v.RemoteAddr.String()
 		}
+
+		localIfaceID, remoteIfaceID = v.LocalIfaceID, v.RemoteIfaceID
+		behavior = v.Behavior
 	case table.SegmentSRMPLS:
 		if v.LocalAddr.IsValid() {
 			localAddr = v.LocalAddr.String()
@@ -130,16 +142,35 @@ func segmentDisplayString(seg table.Segment) string {
 		if v.RemoteAddr.IsValid() {
 			remoteAddr = v.RemoteAddr.String()
 		}
+
+		localIfaceID, remoteIfaceID = v.LocalIfaceID, v.RemoteIfaceID
 	}
 
-	switch {
-	case localAddr == "" && remoteAddr == "":
-		return seg.SidString()
-	case remoteAddr == "":
-		return fmt.Sprintf("%s (local=%s)", seg.SidString(), localAddr)
-	case localAddr == "":
-		return fmt.Sprintf("%s (remote=%s)", seg.SidString(), remoteAddr)
-	default:
-		return fmt.Sprintf("%s (local=%s, remote=%s)", seg.SidString(), localAddr, remoteAddr)
+	var details []string
+
+	if localAddr != "" {
+		details = append(details, "local="+localAddr)
 	}
+
+	if remoteAddr != "" {
+		details = append(details, "remote="+remoteAddr)
+	}
+
+	if localIfaceID != nil {
+		details = append(details, fmt.Sprintf("localIface=%d", *localIfaceID))
+	}
+
+	if remoteIfaceID != nil {
+		details = append(details, fmt.Sprintf("remoteIface=%d", *remoteIfaceID))
+	}
+
+	if behavior != 0 {
+		details = append(details, "behavior="+table.BehaviorToString(behavior))
+	}
+
+	if len(details) == 0 {
+		return seg.SidString()
+	}
+
+	return fmt.Sprintf("%s (%s)", seg.SidString(), strings.Join(details, ", "))
 }

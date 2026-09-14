@@ -26,33 +26,52 @@ const (
 	PolicyUnknown = PolicyState("unknown")
 )
 
-// PolicyType is the SR Policy candidate path type defined in RFC 9256 §2.4.2.
-// The zero value means the type is unknown.
-type PolicyType string
+// DefaultPreference is the default SR Policy candidate path preference (RFC 9256 §2.7).
+const DefaultPreference uint32 = 100
 
-const (
-	// PolicyTypeExplicit indicates an explicit path SR Policy candidate path.
-	PolicyTypeExplicit = PolicyType("explicit")
-	// PolicyTypeDynamic indicates a dynamic SR Policy candidate path.
-	PolicyTypeDynamic = PolicyType("dynamic")
-)
+// DynamicPath is a candidate path with an optimization objective
+// for a specific underlay plane (RFC 9256 §2.2).
+type DynamicPath struct {
+	Metric MetricType `json:"metric"`
+	// Plane is the underlay scope used for TED path computation.
+	Plane Plane `json:"plane,omitzero"`
+}
+
+// ExplicitPath is a candidate path fully specified as a segment list (RFC 9256 §2.2).
+type ExplicitPath struct {
+	SegmentList []Segment `json:"segmentList"`
+}
+
+// CandidatePath is either Dynamic or Explicit (RFC 9256 §2.2).
+// The zero value represents an unknown candidate path type.
+type CandidatePath struct {
+	// Preference selects the active candidate path (RFC 9256 §2.7).
+	Preference uint32        `json:"preference"`
+	Dynamic    *DynamicPath  `json:"dynamic,omitempty"`
+	Explicit   *ExplicitPath `json:"explicit,omitempty"`
+}
 
 // SRPolicy represents an SR Policy with its path and attributes.
 type SRPolicy struct {
-	PlspID      uint32      `json:"plspId,omitempty"`
-	Name        string      `json:"policyName"`
-	SegmentList []Segment   `json:"segmentList"`
-	SrcAddr     netip.Addr  `json:"srcAddr"`
-	DstAddr     netip.Addr  `json:"dstAddr"`
-	SrcRouterID string      `json:"srcRouterId,omitempty"`
-	DstRouterID string      `json:"dstRouterId,omitempty"`
-	Color       uint32      `json:"color"`
-	Preference  uint32      `json:"preference"`
-	LSPID       uint16      `json:"lspId,omitempty"`
-	State       PolicyState `json:"state,omitempty"`
-	// Type and Metric are only known for policies created by Pola.
-	Type   PolicyType `json:"type,omitempty"`
-	Metric MetricType `json:"metric,omitempty"`
+	// Headend and Endpoint identify the policy (RFC 9256 §2.1).
+	Headend  netip.Addr `json:"headend"`
+	Endpoint netip.Addr `json:"endpoint"`
+	Color    uint32     `json:"color"`
+	Name     string     `json:"policyName"`
+
+	// Router IDs are populated for display when resolvable from the TED.
+	HeadendRouterID  string `json:"headendRouterId,omitempty"`
+	EndpointRouterID string `json:"endpointRouterId,omitempty"`
+
+	// SegmentList is the currently signaled segment list.
+	SegmentList []Segment `json:"segmentList"`
+
+	CandidatePath CandidatePath `json:"candidatePath"`
+
+	// PlspID, LSPID, and State are PCEP-assigned state, not policy identity.
+	PlspID uint32      `json:"plspId,omitempty"`
+	LSPID  uint16      `json:"lspId,omitempty"`
+	State  PolicyState `json:"state,omitempty"`
 }
 
 // NewSRPolicy creates a new SR Policy with the given attributes.
@@ -60,23 +79,23 @@ func NewSRPolicy(
 	plspID uint32,
 	name string,
 	segmentList []Segment,
-	srcAddr netip.Addr,
-	dstAddr netip.Addr,
+	headend netip.Addr,
+	endpoint netip.Addr,
 	color uint32,
 	preference uint32,
 	lspID uint16,
 	state PolicyState,
 ) *SRPolicy {
 	p := &SRPolicy{
-		PlspID:      plspID,
-		Name:        name,
-		SegmentList: segmentList,
-		SrcAddr:     srcAddr,
-		DstAddr:     dstAddr,
-		Color:       color,
-		Preference:  preference,
-		LSPID:       lspID,
-		State:       state,
+		PlspID:        plspID,
+		Name:          name,
+		SegmentList:   segmentList,
+		Headend:       headend,
+		Endpoint:      endpoint,
+		Color:         color,
+		CandidatePath: CandidatePath{Preference: preference},
+		LSPID:         lspID,
+		State:         state,
 	}
 
 	return p
@@ -106,7 +125,7 @@ func (p *SRPolicy) Update(df PolicyDiff) {
 	}
 
 	if df.Preference != nil {
-		p.Preference = *df.Preference
+		p.CandidatePath.Preference = *df.Preference
 	}
 
 	if df.SegmentList != nil {
@@ -120,6 +139,8 @@ const SRv6SIDBitLength = 128
 // Segment is an interface for SR Policy segments (SRv6 or SR-MPLS).
 type Segment interface {
 	SidString() string
+	// Family reports the data plane this segment belongs to.
+	Family() DataPlane
 }
 
 func segmentFamily(segment Segment) SegmentFamily {
@@ -133,11 +154,42 @@ func segmentFamily(segment Segment) SegmentFamily {
 	}
 }
 
+// SRv6SID is distinct from netip.Addr to prevent accidental mixing of
+// full-SIDs, locators, and ordinary IPv6 addresses.
+type SRv6SID netip.Addr
+
+// Addr returns sid as a netip.Addr.
+func (sid SRv6SID) Addr() netip.Addr { return netip.Addr(sid) }
+
+// String returns the string representation of sid.
+func (sid SRv6SID) String() string { return netip.Addr(sid).String() }
+
+// IsValid reports whether sid holds a valid address.
+func (sid SRv6SID) IsValid() bool { return netip.Addr(sid).IsValid() }
+
+// ParseSRv6SID parses s as an SRv6 SID and rejects IPv4-mapped IPv6 addresses.
+func ParseSRv6SID(s string) (SRv6SID, error) {
+	addr, err := netip.ParseAddr(s)
+	if err != nil {
+		return SRv6SID{}, fmt.Errorf("invalid SRv6 SID %q: %w", s, err)
+	}
+
+	if !addr.Is6() || addr.Is4In6() {
+		return SRv6SID{}, fmt.Errorf("SRv6 SID %q is not a valid IPv6 address", s)
+	}
+
+	return SRv6SID(addr), nil
+}
+
 // NewSegment creates a Segment from a SID string, which can be either an IPv6 address (SRv6) or a number (SR-MPLS).
 func NewSegment(sid string) (Segment, error) {
-	addr, err := netip.ParseAddr(sid)
-	if err == nil && addr.Is6() {
-		return NewSegmentSRv6(addr), nil
+	if addr, err := netip.ParseAddr(sid); err == nil && addr.Is6() {
+		srv6SID, err := ParseSRv6SID(sid)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewSegmentSRv6(srv6SID), nil
 	}
 
 	i, err := strconv.ParseUint(sid, 10, 32)
@@ -200,11 +252,18 @@ const FirstSIDIndex = 0
 
 // SegmentSRv6 represents an SRv6 segment.
 type SegmentSRv6 struct {
-	Sid        netip.Addr    `json:"sid"`
+	Sid        SRv6SID       `json:"sid"`
 	LocalAddr  netip.Addr    `json:"localAddr,omitzero"`
 	RemoteAddr netip.Addr    `json:"remoteAddr,omitzero"`
 	Structure  *SIDStructure `json:"sidStructure,omitempty"`
 	USid       bool          `json:"uSid,omitempty"`
+	// Behavior is the TED-advertised endpoint behavior (RFC 9603 §4.3.1).
+	// Zero means unknown; BehaviorOrDerived derives it from other fields.
+	Behavior uint16 `json:"behavior,omitempty"`
+	// LocalIfaceID/RemoteIfaceID identify the interface for link-local RemoteAddr
+	// in NAI type 6 encoding (RFC 8664/9603 §4.3.1). nil means not advertised.
+	LocalIfaceID  *uint32 `json:"localIfaceId,omitempty"`
+	RemoteIfaceID *uint32 `json:"remoteIfaceId,omitempty"`
 }
 
 // SidString returns the SRv6 SID as a string.
@@ -212,8 +271,16 @@ func (seg SegmentSRv6) SidString() string {
 	return seg.Sid.String()
 }
 
-// Behavior returns the endpoint behavior of the SRv6 segment based on its attributes.
-func (seg SegmentSRv6) Behavior() uint16 {
+// Family reports the data plane this segment belongs to.
+func (seg SegmentSRv6) Family() DataPlane { return DPSRv6 }
+
+// BehaviorOrDerived returns the TED-advertised endpoint behavior, or derives
+// it from the segment's other attributes when the behavior is unknown.
+func (seg SegmentSRv6) BehaviorOrDerived() uint16 {
+	if seg.Behavior != 0 {
+		return seg.Behavior
+	}
+
 	if !seg.LocalAddr.IsValid() {
 		return BehaviorOpaque
 	}
@@ -234,14 +301,14 @@ func (seg SegmentSRv6) Behavior() uint16 {
 }
 
 // NewSegmentSRv6 creates a new SRv6 segment with the given SID.
-func NewSegmentSRv6(sid netip.Addr) SegmentSRv6 {
+func NewSegmentSRv6(sid SRv6SID) SegmentSRv6 {
 	return SegmentSRv6{
 		Sid: sid,
 	}
 }
 
 // NewSegmentSRv6WithNodeInfo creates a new SRv6 segment with the given SID and enriches it with node information from the TED.
-func NewSegmentSRv6WithNodeInfo(sid netip.Addr, n *LsNode) (SegmentSRv6, error) {
+func NewSegmentSRv6WithNodeInfo(sid SRv6SID, n *LsNode) (SegmentSRv6, error) {
 	seg := SegmentSRv6{
 		Sid: sid,
 	}
@@ -261,6 +328,7 @@ func NewSegmentSRv6WithNodeInfo(sid netip.Addr, n *LsNode) (SegmentSRv6, error) 
 		seg.LocalAddr = addr
 
 		seg.Structure = srv6SID.SIDStructure.Clone()
+		seg.Behavior = srv6SID.EndpointBehavior.Behavior
 
 		if IsUSidBehavior(srv6SID.EndpointBehavior.Behavior) {
 			seg.USid = true
@@ -289,12 +357,19 @@ type SegmentSRMPLS struct {
 	// Optional NAI for SR-ERO encoding (RFC 8664 §4.3.1).
 	LocalAddr  netip.Addr `json:"localAddr,omitzero"`
 	RemoteAddr netip.Addr `json:"remoteAddr,omitzero"`
+	// LocalIfaceID/RemoteIfaceID identify the interface for link-local RemoteAddr
+	// in NAI type 6 encoding. nil means not advertised.
+	LocalIfaceID  *uint32 `json:"localIfaceId,omitempty"`
+	RemoteIfaceID *uint32 `json:"remoteIfaceId,omitempty"`
 }
 
 // SidString returns the SR-MPLS SID as a string.
 func (seg SegmentSRMPLS) SidString() string {
 	return strconv.FormatUint(uint64(seg.Sid), 10)
 }
+
+// Family reports the data plane this segment belongs to.
+func (seg SegmentSRMPLS) Family() DataPlane { return DPSRMPLS }
 
 // HasMPLSStackEntryAttrs reports whether the SR-MPLS segment has any MPLS stack entry attributes set.
 func (seg SegmentSRMPLS) HasMPLSStackEntryAttrs() bool {
