@@ -179,6 +179,26 @@ func TestSegmentFromPB_SRMPLS(t *testing.T) {
 	}
 }
 
+func TestSegmentFromPB_SRMPLS_IfaceIDs(t *testing.T) {
+	t.Parallel()
+
+	localIfaceID, remoteIfaceID := uint32(5), uint32(6)
+
+	seg, err := segmentFromPB(&pb.Segment{
+		Sid:           "16003",
+		LocalIfaceId:  &localIfaceID,
+		RemoteIfaceId: &remoteIfaceID,
+	})
+	require.NoError(t, err)
+
+	mplsSeg, ok := seg.(table.SegmentSRMPLS)
+	require.Truef(t, ok, "segment type: got %T, want table.SegmentSRMPLS", seg)
+	require.NotNil(t, mplsSeg.LocalIfaceID)
+	assert.Equal(t, localIfaceID, *mplsSeg.LocalIfaceID)
+	require.NotNil(t, mplsSeg.RemoteIfaceID)
+	assert.Equal(t, remoteIfaceID, *mplsSeg.RemoteIfaceID)
+}
+
 func TestSegmentFromPB_SRMPLS_SidAbsent(t *testing.T) {
 	t.Parallel()
 
@@ -198,11 +218,16 @@ func TestSegmentFromPB_SRMPLS_SidAbsent(t *testing.T) {
 func TestSegmentFromPB_SRv6(t *testing.T) {
 	t.Parallel()
 
+	localIfaceID, remoteIfaceID := uint32(5), uint32(6)
+
 	seg, err := segmentFromPB(&pb.Segment{
-		Sid:          "2001:db8:1005::",
-		LocalAddr:    "2001:db8::5",
-		RemoteAddr:   "2001:db8::6",
-		SidStructure: "32,16,0,80",
+		Sid:           "2001:db8:1005::",
+		LocalAddr:     "2001:db8::5",
+		RemoteAddr:    "2001:db8::6",
+		SidStructure:  "32,16,0,80",
+		Behavior:      uint32(table.BehaviorEND),
+		LocalIfaceId:  &localIfaceID,
+		RemoteIfaceId: &remoteIfaceID,
 	})
 	require.NoError(t, err)
 
@@ -212,6 +237,18 @@ func TestSegmentFromPB_SRv6(t *testing.T) {
 	assert.Equal(t, "2001:db8::5", srv6Seg.LocalAddr.String())
 	assert.Equal(t, "2001:db8::6", srv6Seg.RemoteAddr.String())
 	assert.Equal(t, &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalArg: 80}, srv6Seg.Structure)
+	assert.Equal(t, table.BehaviorEND, srv6Seg.Behavior)
+	require.NotNil(t, srv6Seg.LocalIfaceID)
+	assert.Equal(t, localIfaceID, *srv6Seg.LocalIfaceID)
+	require.NotNil(t, srv6Seg.RemoteIfaceID)
+	assert.Equal(t, remoteIfaceID, *srv6Seg.RemoteIfaceID)
+}
+
+func TestSegmentFromPB_SRv6_BehaviorOverflow(t *testing.T) {
+	t.Parallel()
+
+	_, err := segmentFromPB(&pb.Segment{Sid: "2001:db8:1005::", Behavior: math.MaxUint16 + 1})
+	require.Error(t, err)
 }
 
 func TestSegmentFromPB_InvalidSID(t *testing.T) {
@@ -791,26 +828,6 @@ func TestPolicyStateFromPB(t *testing.T) {
 	}
 }
 
-func TestPolicyTypeFromPB(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		in   pb.SRPolicyType
-		want table.PolicyType
-	}{
-		{"explicit", pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT, table.PolicyTypeExplicit},
-		{"dynamic", pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC, table.PolicyTypeDynamic},
-		{"unspecified maps to the unknown type", pb.SRPolicyType_SR_POLICY_TYPE_UNSPECIFIED, table.PolicyType("")},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			assert.Equal(t, tt.want, policyTypeFromPB(tt.in))
-		})
-	}
-}
-
 func TestMetricTypeFromPB(t *testing.T) {
 	t.Parallel()
 
@@ -840,52 +857,122 @@ func TestConvertSRPolicy(t *testing.T) {
 		t.Parallel()
 
 		p := &pb.SRPolicy{
-			PlspId:      7,
-			PolicyName:  testPolicyName,
-			SrcAddr:     netip.MustParseAddr(testIPv4Addr1).AsSlice(),
-			DstAddr:     netip.MustParseAddr(testIPv4Addr2).AsSlice(),
-			SrcRouterId: testRouterID1,
-			DstRouterId: testRouterID2,
-			Color:       100,
-			Preference:  200,
-			LspId:       3,
-			State:       pb.SRPolicyState_SR_POLICY_STATE_UP,
-			Type:        pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT,
-			Metric:      pb.MetricType_METRIC_TYPE_UNSPECIFIED,
-			SegmentList: []*pb.Segment{{Sid: "16003"}},
+			PlspId:           7,
+			PolicyName:       testPolicyName,
+			Headend:          netip.MustParseAddr(testIPv4Addr1).AsSlice(),
+			Endpoint:         netip.MustParseAddr(testIPv4Addr2).AsSlice(),
+			HeadendRouterId:  testRouterID1,
+			EndpointRouterId: testRouterID2,
+			Color:            100,
+			CandidatePath:    &pb.CandidatePath{Preference: 200},
+			LspId:            3,
+			State:            pb.SRPolicyState_SR_POLICY_STATE_UP,
+			SegmentList:      []*pb.Segment{{Sid: "16003"}},
 		}
 		got, err := convertSRPolicy(p)
 		require.NoError(t, err)
 
 		want := table.SRPolicy{
-			PlspID:      7,
-			Name:        testPolicyName,
-			SegmentList: []table.Segment{table.SegmentSRMPLS{Sid: 16003}},
-			SrcAddr:     netip.MustParseAddr(testIPv4Addr1),
-			DstAddr:     netip.MustParseAddr(testIPv4Addr2),
-			SrcRouterID: testRouterID1,
-			DstRouterID: testRouterID2,
-			Color:       100,
-			Preference:  200,
-			LSPID:       3,
-			State:       table.PolicyUp,
-			Type:        table.PolicyTypeExplicit,
-			Metric:      table.UnspecifiedMetric,
+			PlspID:           7,
+			Name:             testPolicyName,
+			SegmentList:      []table.Segment{table.SegmentSRMPLS{Sid: 16003}},
+			Headend:          netip.MustParseAddr(testIPv4Addr1),
+			Endpoint:         netip.MustParseAddr(testIPv4Addr2),
+			HeadendRouterID:  testRouterID1,
+			EndpointRouterID: testRouterID2,
+			Color:            100,
+			CandidatePath:    table.CandidatePath{Preference: 200},
+			LSPID:            3,
+			State:            table.PolicyUp,
 		}
 		assert.Equal(t, want, got)
+	})
+
+	t.Run("underlay plane", func(t *testing.T) {
+		t.Parallel()
+
+		p := &pb.SRPolicy{
+			Headend:  netip.MustParseAddr(testIPv4Addr1).AsSlice(),
+			Endpoint: netip.MustParseAddr(testIPv4Addr2).AsSlice(),
+			CandidatePath: &pb.CandidatePath{
+				Path: &pb.CandidatePath_Dynamic{Dynamic: &pb.DynamicPath{
+					UnderlayFamily: pb.AddressFamily_ADDRESS_FAMILY_IPV6,
+					DataPlane:      pb.DataPlane_DATA_PLANE_SRV6,
+				}},
+			},
+		}
+		got, err := convertSRPolicy(p)
+		require.NoError(t, err)
+		require.NotNil(t, got.CandidatePath.Dynamic)
+		assert.Equal(t, table.Plane{Family: table.AFIPv6, DataPlane: table.DPSRv6}, got.CandidatePath.Dynamic.Plane)
+	})
+
+	t.Run("SR-MPLS underlay plane", func(t *testing.T) {
+		t.Parallel()
+
+		p := &pb.SRPolicy{
+			Headend:  netip.MustParseAddr(testIPv4Addr1).AsSlice(),
+			Endpoint: netip.MustParseAddr(testIPv4Addr2).AsSlice(),
+			CandidatePath: &pb.CandidatePath{
+				Path: &pb.CandidatePath_Dynamic{Dynamic: &pb.DynamicPath{
+					UnderlayFamily: pb.AddressFamily_ADDRESS_FAMILY_IPV4,
+					DataPlane:      pb.DataPlane_DATA_PLANE_SR_MPLS,
+				}},
+			},
+		}
+		got, err := convertSRPolicy(p)
+		require.NoError(t, err)
+		require.NotNil(t, got.CandidatePath.Dynamic)
+		assert.Equal(t, table.Plane{Family: table.AFIPv4, DataPlane: table.DPSRMPLS}, got.CandidatePath.Dynamic.Plane)
+	})
+
+	t.Run("unspecified data plane", func(t *testing.T) {
+		t.Parallel()
+
+		p := &pb.SRPolicy{
+			Headend:  netip.MustParseAddr(testIPv4Addr1).AsSlice(),
+			Endpoint: netip.MustParseAddr(testIPv4Addr2).AsSlice(),
+			CandidatePath: &pb.CandidatePath{
+				Path: &pb.CandidatePath_Dynamic{Dynamic: &pb.DynamicPath{
+					DataPlane: pb.DataPlane_DATA_PLANE_UNSPECIFIED,
+				}},
+			},
+		}
+		got, err := convertSRPolicy(p)
+		require.NoError(t, err)
+		require.NotNil(t, got.CandidatePath.Dynamic)
+		assert.Equal(t, table.DPUnspecified, got.CandidatePath.Dynamic.Plane.DataPlane)
+	})
+
+	t.Run("explicit path", func(t *testing.T) {
+		t.Parallel()
+
+		p := &pb.SRPolicy{
+			Headend:  netip.MustParseAddr(testIPv4Addr1).AsSlice(),
+			Endpoint: netip.MustParseAddr(testIPv4Addr2).AsSlice(),
+			CandidatePath: &pb.CandidatePath{
+				Path: &pb.CandidatePath_Explicit{Explicit: &pb.ExplicitPath{
+					SegmentList: []*pb.Segment{{Sid: "16003"}},
+				}},
+			},
+		}
+		got, err := convertSRPolicy(p)
+		require.NoError(t, err)
+		require.NotNil(t, got.CandidatePath.Explicit)
+		assert.Equal(t, []table.Segment{table.SegmentSRMPLS{Sid: 16003}}, got.CandidatePath.Explicit.SegmentList)
 	})
 
 	t.Run("invalid source address", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := convertSRPolicy(&pb.SRPolicy{SrcAddr: []byte{1, 2, 3}, DstAddr: netip.MustParseAddr(testIPv4Addr2).AsSlice()})
+		_, err := convertSRPolicy(&pb.SRPolicy{Headend: []byte{1, 2, 3}, Endpoint: netip.MustParseAddr(testIPv4Addr2).AsSlice()})
 		require.Error(t, err)
 	})
 
 	t.Run("invalid destination address", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := convertSRPolicy(&pb.SRPolicy{SrcAddr: netip.MustParseAddr(testIPv4Addr1).AsSlice(), DstAddr: []byte{1, 2, 3}})
+		_, err := convertSRPolicy(&pb.SRPolicy{Headend: netip.MustParseAddr(testIPv4Addr1).AsSlice(), Endpoint: []byte{1, 2, 3}})
 		require.Error(t, err)
 	})
 
@@ -893,8 +980,8 @@ func TestConvertSRPolicy(t *testing.T) {
 		t.Parallel()
 
 		_, err := convertSRPolicy(&pb.SRPolicy{
-			SrcAddr:     netip.MustParseAddr(testIPv4Addr1).AsSlice(),
-			DstAddr:     netip.MustParseAddr(testIPv4Addr2).AsSlice(),
+			Headend:     netip.MustParseAddr(testIPv4Addr1).AsSlice(),
+			Endpoint:    netip.MustParseAddr(testIPv4Addr2).AsSlice(),
 			SegmentList: []*pb.Segment{{Sid: "not-a-sid"}},
 		})
 		require.Error(t, err)
@@ -904,9 +991,9 @@ func TestConvertSRPolicy(t *testing.T) {
 		t.Parallel()
 
 		_, err := convertSRPolicy(&pb.SRPolicy{
-			SrcAddr: netip.MustParseAddr(testIPv4Addr1).AsSlice(),
-			DstAddr: netip.MustParseAddr(testIPv4Addr2).AsSlice(),
-			LspId:   math.MaxUint16 + 1,
+			Headend:  netip.MustParseAddr(testIPv4Addr1).AsSlice(),
+			Endpoint: netip.MustParseAddr(testIPv4Addr2).AsSlice(),
+			LspId:    math.MaxUint16 + 1,
 		})
 		require.Error(t, err)
 	})
@@ -955,8 +1042,8 @@ func TestGetSRPolicyList(t *testing.T) {
 				State:    pb.SessionState_SESSION_STATE_UP,
 				SrPolicies: []*pb.SRPolicy{{
 					PolicyName: testPolicyName,
-					SrcAddr:    netip.MustParseAddr(testIPv4Addr1).AsSlice(),
-					DstAddr:    netip.MustParseAddr(testIPv4Addr2).AsSlice(),
+					Headend:    netip.MustParseAddr(testIPv4Addr1).AsSlice(),
+					Endpoint:   netip.MustParseAddr(testIPv4Addr2).AsSlice(),
 				}},
 			}},
 		}}
@@ -993,7 +1080,7 @@ func TestGetSRPolicyList(t *testing.T) {
 		client := &fakeClient{srPolicyListResp: &pb.GetSRPolicyListResponse{
 			Sessions: []*pb.SRPolicySession{{
 				PeerAddr:   netip.MustParseAddr(testIPv4Addr1).AsSlice(),
-				SrPolicies: []*pb.SRPolicy{{SrcAddr: []byte{1, 2, 3}}},
+				SrPolicies: []*pb.SRPolicy{{Headend: []byte{1, 2, 3}}},
 			}},
 		}}
 		_, err := GetSRPolicyList(client, netip.Addr{})
@@ -1060,26 +1147,31 @@ func TestGetTED_Success(t *testing.T) {
 		SrgbEnd:    23999,
 		Links: []*pb.LsLink{
 			{
-				LocalRouterId:  testRouterID1,
-				RemoteRouterId: testRouterID2,
-				LocalIp:        testIPv4Addr1,
-				RemoteIp:       testIPv4Addr2,
-				AdjSid:         24001,
+				Local:  &pb.LsLinkEndpoint{RouterId: testRouterID1, Ipv4: testIPv4Addr1},
+				Remote: &pb.LsLinkEndpoint{RouterId: testRouterID2, Ipv4: testIPv4Addr2},
+				AdjSids: []*pb.AdjSid{
+					{Family: pb.AddressFamily_ADDRESS_FAMILY_IPV4, Sid: 24001},
+				},
 				Metrics: []*pb.Metric{
 					{Type: pb.MetricType_METRIC_TYPE_IGP, Value: 10},
 					{Type: pb.MetricType_METRIC_TYPE_TE, Value: 20},
 					{Type: pb.MetricType_METRIC_TYPE_DELAY, Value: 30},
 					{Type: pb.MetricType_METRIC_TYPE_HOPCOUNT, Value: 1},
 				},
-				Srv6EndXSid: &pb.Srv6EndXSID{
-					EndpointBehavior: uint32(table.BehaviorENDX),
-					Sids:             []*pb.SID{{Sid: "2001:db8:1::"}},
-					SidStructure:     &pb.SidStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 0, LocalArg: 80},
+				Srv6EndXSids: []*pb.Srv6EndXSID{
+					{
+						EndpointBehavior: &pb.EndpointBehavior{
+							Behavior: uint32(table.BehaviorENDX), Flags: 0xC0, Algorithm: 128,
+						},
+						Weight:       7,
+						Sids:         []*pb.SID{{Sid: "2001:db8:1::"}},
+						SidStructure: &pb.SidStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 0, LocalArg: 80},
+					},
 				},
 			},
 			{
-				LocalRouterId:  testRouterID1,
-				RemoteRouterId: testRouterID2,
+				Local:  &pb.LsLinkEndpoint{RouterId: testRouterID1},
+				Remote: &pb.LsLinkEndpoint{RouterId: testRouterID2},
 			},
 		},
 		Prefixes: []*pb.LsPrefix{
@@ -1111,24 +1203,30 @@ func TestGetTED_Success(t *testing.T) {
 	require.Len(t, a.Links, 2)
 
 	link0 := a.Links[0]
-	assert.Equal(t, testIPv4Addr1, link0.LocalIP.String())
-	assert.Equal(t, testIPv4Addr2, link0.RemoteIP.String())
-	assert.Same(t, ted.Nodes[testRouterID2], link0.RemoteNode)
-	assert.Equal(t, uint32(24001), link0.AdjSid)
+	assert.Equal(t, testIPv4Addr1, link0.Local.IPv4.String())
+	assert.Equal(t, testIPv4Addr2, link0.Remote.IPv4.String())
+	assert.Same(t, ted.Nodes[testRouterID2], link0.Remote.Node)
+	require.Len(t, link0.AdjSids, 1)
+	assert.Equal(t, uint32(24001), link0.AdjSids[0].Sid)
 	assert.Equal(t, []*table.Metric{
 		table.NewMetric(table.IGPMetric, 10),
 		table.NewMetric(table.TEMetric, 20),
 		table.NewMetric(table.DelayMetric, 30),
 		table.NewMetric(table.HopcountMetric, 1),
 	}, link0.Metrics)
-	require.NotNil(t, link0.Srv6EndXSID)
-	assert.Equal(t, table.BehaviorENDX, link0.Srv6EndXSID.EndpointBehavior)
-	assert.Equal(t, []string{"2001:db8:1::"}, link0.Srv6EndXSID.Sids)
-	assert.Equal(t, &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 0, LocalArg: 80}, link0.Srv6EndXSID.Srv6SIDStructure)
+	require.Len(t, link0.Srv6EndXSIDs, 1)
+	assert.Equal(t, table.EndpointBehavior{
+		Behavior: table.BehaviorENDX, Flags: 0xC0, Algorithm: 128,
+	}, link0.Srv6EndXSIDs[0].EndpointBehavior)
+	assert.Equal(t, uint8(7), link0.Srv6EndXSIDs[0].Weight)
+	assert.Equal(t, []string{"2001:db8:1::"}, link0.Srv6EndXSIDs[0].Sids)
+	assert.Equal(t, &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 0, LocalArg: 80}, link0.Srv6EndXSIDs[0].Srv6SIDStructure)
 
 	link1 := a.Links[1]
-	assert.False(t, link1.LocalIP.IsValid())
-	assert.False(t, link1.RemoteIP.IsValid())
+	assert.False(t, link1.Local.IPv4.IsValid())
+	assert.False(t, link1.Local.IPv6.IsValid())
+	assert.False(t, link1.Remote.IPv4.IsValid())
+	assert.False(t, link1.Remote.IPv6.IsValid())
 
 	require.Len(t, a.Prefixes, 2)
 	assert.True(t, a.Prefixes[0].HasPrefixSID())
@@ -1150,7 +1248,10 @@ func TestGetTED_PropagatesConversionErrors(t *testing.T) {
 		t.Parallel()
 
 		node := &pb.LsNode{RouterId: testRouterID1, Links: []*pb.LsLink{
-			{LocalRouterId: testRouterID1, RemoteRouterId: testRouterID1, LocalIp: "not-an-ip"},
+			{
+				Local:  &pb.LsLinkEndpoint{RouterId: testRouterID1, Ipv4: "not-an-ip"},
+				Remote: &pb.LsLinkEndpoint{RouterId: testRouterID1},
+			},
 		}}
 		_, err := GetTED(&fakeClient{tedResp: &pb.GetTEDResponse{Enabled: true, Nodes: []*pb.LsNode{node}}})
 		require.Error(t, err)
@@ -1176,21 +1277,23 @@ func TestCreateLsLink(t *testing.T) {
 
 		link, err := createLsLink(localNode, remoteNode, &pb.LsLink{})
 		require.NoError(t, err)
-		assert.False(t, link.LocalIP.IsValid())
-		assert.False(t, link.RemoteIP.IsValid())
+		assert.False(t, link.Local.IPv4.IsValid())
+		assert.False(t, link.Local.IPv6.IsValid())
+		assert.False(t, link.Remote.IPv4.IsValid())
+		assert.False(t, link.Remote.IPv6.IsValid())
 	})
 
-	t.Run("invalid localIp", func(t *testing.T) {
+	t.Run("invalid local IPv4", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := createLsLink(localNode, remoteNode, &pb.LsLink{LocalIp: "not-an-ip"})
+		_, err := createLsLink(localNode, remoteNode, &pb.LsLink{Local: &pb.LsLinkEndpoint{Ipv4: "not-an-ip"}})
 		require.Error(t, err)
 	})
 
-	t.Run("invalid remoteIp", func(t *testing.T) {
+	t.Run("invalid remote IPv4", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := createLsLink(localNode, remoteNode, &pb.LsLink{RemoteIp: "not-an-ip"})
+		_, err := createLsLink(localNode, remoteNode, &pb.LsLink{Remote: &pb.LsLinkEndpoint{Ipv4: "not-an-ip"}})
 		require.Error(t, err)
 	})
 
@@ -1207,9 +1310,57 @@ func TestCreateLsLink(t *testing.T) {
 		t.Parallel()
 
 		_, err := createLsLink(localNode, remoteNode, &pb.LsLink{
-			Srv6EndXSid: &pb.Srv6EndXSID{EndpointBehavior: math.MaxUint16 + 1},
+			Srv6EndXSids: []*pb.Srv6EndXSID{{
+				EndpointBehavior: &pb.EndpointBehavior{Behavior: math.MaxUint16 + 1},
+			}},
 		})
 		require.Error(t, err)
+	})
+
+	t.Run("valid local and remote IPv6", func(t *testing.T) {
+		t.Parallel()
+
+		link, err := createLsLink(localNode, remoteNode, &pb.LsLink{
+			Local:  &pb.LsLinkEndpoint{Ipv6: "2001:db8::1"},
+			Remote: &pb.LsLinkEndpoint{Ipv6: "2001:db8::2"},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, "2001:db8::1", link.Local.IPv6.String())
+		assert.Equal(t, "2001:db8::2", link.Remote.IPv6.String())
+	})
+
+	t.Run("invalid local IPv6", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := createLsLink(localNode, remoteNode, &pb.LsLink{Local: &pb.LsLinkEndpoint{Ipv6: "not-an-ip"}})
+		require.Error(t, err)
+	})
+
+	t.Run("interface ID is carried through", func(t *testing.T) {
+		t.Parallel()
+
+		ifaceID := uint32(7)
+		link, err := createLsLink(localNode, remoteNode, &pb.LsLink{
+			Local: &pb.LsLinkEndpoint{InterfaceId: &ifaceID},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, link.Local.InterfaceID)
+		assert.Equal(t, ifaceID, *link.Local.InterfaceID)
+	})
+
+	t.Run("AdjSid address family is converted", func(t *testing.T) {
+		t.Parallel()
+
+		link, err := createLsLink(localNode, remoteNode, &pb.LsLink{
+			AdjSids: []*pb.AdjSid{
+				{Family: pb.AddressFamily_ADDRESS_FAMILY_IPV6, Sid: 100},
+				{Family: pb.AddressFamily_ADDRESS_FAMILY_UNSPECIFIED, Sid: 200},
+			},
+		})
+		require.NoError(t, err)
+		require.Len(t, link.AdjSids, 2)
+		assert.Equal(t, table.AFIPv6, link.AdjSids[0].Family)
+		assert.Equal(t, table.AFUnspecified, link.AdjSids[1].Family)
 	})
 }
 
@@ -1267,23 +1418,51 @@ func TestCreateSrv6EndXSID(t *testing.T) {
 		t.Parallel()
 
 		got, err := createSrv6EndXSID(&pb.Srv6EndXSID{
-			EndpointBehavior: uint32(table.BehaviorENDX),
-			Sids:             []*pb.SID{{Sid: "2001:db8::1:0"}},
-			SidStructure:     &pb.SidStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
+			EndpointBehavior: &pb.EndpointBehavior{
+				Behavior: uint32(table.BehaviorENDX), Flags: 0xC0, Algorithm: 128,
+			},
+			Weight:       7,
+			Sids:         []*pb.SID{{Sid: "2001:db8::1:0"}},
+			SidStructure: &pb.SidStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
 		})
 		require.NoError(t, err)
 		assert.Equal(t, &table.Srv6EndXSID{
-			EndpointBehavior: table.BehaviorENDX,
+			EndpointBehavior: table.EndpointBehavior{
+				Behavior: table.BehaviorENDX, Flags: 0xC0, Algorithm: 128,
+			},
+			Weight:           7,
 			Sids:             []string{"2001:db8::1:0"},
 			Srv6SIDStructure: &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
 		}, got)
 	})
 
-	t.Run("endpoint behavior overflow", func(t *testing.T) {
+	t.Run("out-of-range fields are rejected", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := createSrv6EndXSID(&pb.Srv6EndXSID{EndpointBehavior: math.MaxUint16 + 1})
-		require.Error(t, err)
+		tests := []struct {
+			name string
+			sid  *pb.Srv6EndXSID
+		}{
+			{"endpoint behavior", &pb.Srv6EndXSID{
+				EndpointBehavior: &pb.EndpointBehavior{Behavior: math.MaxUint16 + 1},
+			}},
+			{"flags", &pb.Srv6EndXSID{
+				EndpointBehavior: &pb.EndpointBehavior{Flags: math.MaxUint8 + 1},
+			}},
+			{"algorithm", &pb.Srv6EndXSID{
+				EndpointBehavior: &pb.EndpointBehavior{Algorithm: math.MaxUint8 + 1},
+			}},
+			{"weight", &pb.Srv6EndXSID{Weight: math.MaxUint8 + 1}},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				_, err := createSrv6EndXSID(tt.sid)
+				require.Error(t, err)
+			})
+		}
 	})
 
 	t.Run("SID structure overflow propagates", func(t *testing.T) {

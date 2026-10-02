@@ -25,6 +25,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -396,11 +397,9 @@ func TestGetLsLink(t *testing.T) {
 				desc: &api.LsLinkDescriptor{InterfaceAddrIpv4: "10.0.0.1", NeighborAddrIpv4: "10.0.0.2"},
 				attr: &api.LsAttributeLink{IgpMetric: 10},
 				want: &table.LsLink{
-					LocalNode:  expectedLocal,
-					RemoteNode: expectedRemote,
-					LocalIP:    netip.MustParseAddr("10.0.0.1"),
-					RemoteIP:   netip.MustParseAddr("10.0.0.2"),
-					Metrics:    []*table.Metric{table.NewMetric(table.IGPMetric, 10)},
+					Local:   table.LinkEndpoint{Node: expectedLocal, IPv4: netip.MustParseAddr("10.0.0.1")},
+					Remote:  table.LinkEndpoint{Node: expectedRemote, IPv4: netip.MustParseAddr("10.0.0.2")},
+					Metrics: []*table.Metric{table.NewMetric(table.IGPMetric, 10)},
 				},
 			},
 			{
@@ -413,16 +412,50 @@ func TestGetLsLink(t *testing.T) {
 					SrAdjacencySid:          12345,
 				},
 				want: &table.LsLink{
-					LocalNode:  expectedLocal,
-					RemoteNode: expectedRemote,
-					LocalIP:    netip.MustParseAddr("2001:db8::1"),
-					RemoteIP:   netip.MustParseAddr("2001:db8::2"),
+					Local:  table.LinkEndpoint{Node: expectedLocal, IPv6: netip.MustParseAddr("2001:db8::1")},
+					Remote: table.LinkEndpoint{Node: expectedRemote, IPv6: netip.MustParseAddr("2001:db8::2")},
 					Metrics: []*table.Metric{
 						table.NewMetric(table.IGPMetric, 10),
 						table.NewMetric(table.TEMetric, 20),
 						table.NewMetric(table.DelayMetric, 30),
 					},
-					AdjSid: 12345,
+					AdjSids: []table.AdjSID{{Family: table.AFUnspecified, Sid: 12345}},
+				},
+			},
+			{
+				name: "dual-stack link keeps both IPv4 and IPv6 addresses",
+				desc: &api.LsLinkDescriptor{
+					InterfaceAddrIpv4: "10.0.0.1", NeighborAddrIpv4: "10.0.0.2",
+					InterfaceAddrIpv6: "2001:db8::1", NeighborAddrIpv6: "2001:db8::2",
+				},
+				attr: &api.LsAttributeLink{IgpMetric: 10},
+				want: &table.LsLink{
+					Local: table.LinkEndpoint{
+						Node: expectedLocal,
+						IPv4: netip.MustParseAddr("10.0.0.1"), IPv6: netip.MustParseAddr("2001:db8::1"),
+					},
+					Remote: table.LinkEndpoint{
+						Node: expectedRemote,
+						IPv4: netip.MustParseAddr("10.0.0.2"), IPv6: netip.MustParseAddr("2001:db8::2"),
+					},
+					Metrics: []*table.Metric{table.NewMetric(table.IGPMetric, 10)},
+				},
+			},
+			{
+				name: "link-local IDs are preserved",
+				desc: &api.LsLinkDescriptor{
+					InterfaceAddrIpv6: "fe80::1", NeighborAddrIpv6: "fe80::2",
+					LinkLocalId: proto.Uint32(7), LinkRemoteId: proto.Uint32(8),
+				},
+				attr: &api.LsAttributeLink{IgpMetric: 10},
+				want: &table.LsLink{
+					Local: table.LinkEndpoint{
+						Node: expectedLocal, IPv6: netip.MustParseAddr("fe80::1"), InterfaceID: proto.Uint32(7),
+					},
+					Remote: table.LinkEndpoint{
+						Node: expectedRemote, IPv6: netip.MustParseAddr("fe80::2"), InterfaceID: proto.Uint32(8),
+					},
+					Metrics: []*table.Metric{table.NewMetric(table.IGPMetric, 10)},
 				},
 			},
 			{
@@ -432,21 +465,41 @@ func TestGetLsLink(t *testing.T) {
 					IgpMetric: 5,
 					Srv6EndXSid: &api.LsSrv6EndXSID{
 						EndpointBehavior: uint32(table.BehaviorENDX),
+						Flags:            0xC0,
+						Algorithm:        128,
+						Weight:           7,
 						Sids:             []string{testSrv6EndXSID},
 						Srv6SidStructure: &api.LsSrv6SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
 					},
 				},
 				want: &table.LsLink{
-					LocalNode:  expectedLocal,
-					RemoteNode: expectedRemote,
-					LocalIP:    netip.Addr{},
-					RemoteIP:   netip.Addr{},
-					Metrics:    []*table.Metric{table.NewMetric(table.IGPMetric, 5)},
-					Srv6EndXSID: &table.Srv6EndXSID{
-						EndpointBehavior: table.BehaviorENDX,
+					Local:   table.LinkEndpoint{Node: expectedLocal},
+					Remote:  table.LinkEndpoint{Node: expectedRemote},
+					Metrics: []*table.Metric{table.NewMetric(table.IGPMetric, 5)},
+					Srv6EndXSIDs: []*table.Srv6EndXSID{{
+						EndpointBehavior: table.EndpointBehavior{
+							Behavior: table.BehaviorENDX, Flags: 0xC0, Algorithm: 128,
+						},
+						Weight:           7,
 						Sids:             []string{testSrv6EndXSID},
 						Srv6SIDStructure: &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
-					},
+					}},
+				},
+			},
+			{
+				// IS-IS Multi-Topology uses a Multi-Topology ID to distinguish Link NLRIs
+				// for different topologies (RFC 7752, Section 3.2.1.5).
+				name: "Multi-Topology ID is preserved",
+				desc: &api.LsLinkDescriptor{
+					InterfaceAddrIpv4: "10.0.0.1", NeighborAddrIpv4: "10.0.0.2",
+					MultiTopoId: &api.LsMultiTopologyIdentifier{MultiTopoIds: []uint32{2}},
+				},
+				attr: &api.LsAttributeLink{IgpMetric: 10},
+				want: &table.LsLink{
+					Local:        table.LinkEndpoint{Node: expectedLocal, IPv4: netip.MustParseAddr("10.0.0.1")},
+					Remote:       table.LinkEndpoint{Node: expectedRemote, IPv4: netip.MustParseAddr("10.0.0.2")},
+					Metrics:      []*table.Metric{table.NewMetric(table.IGPMetric, 10)},
+					MultiTopoIDs: map[uint16]struct{}{2: {}},
 				},
 			},
 		}
@@ -536,25 +589,46 @@ func TestSrv6EndXSIDFromAPI(t *testing.T) {
 
 		got, err := srv6EndXSIDFromAPI(&api.LsSrv6EndXSID{
 			EndpointBehavior: uint32(table.BehaviorENDX),
+			Flags:            0xC0,
+			Algorithm:        128,
+			Weight:           7,
 			Sids:             []string{testSrv6EndXSID},
 			Srv6SidStructure: validStructure,
 		})
 		require.NoError(t, err)
 		assert.Equal(t, &table.Srv6EndXSID{
-			EndpointBehavior: table.BehaviorENDX,
+			EndpointBehavior: table.EndpointBehavior{
+				Behavior: table.BehaviorENDX, Flags: 0xC0, Algorithm: 128,
+			},
+			Weight:           7,
 			Sids:             []string{testSrv6EndXSID},
 			Srv6SIDStructure: &table.SIDStructure{LocalBlock: 32, LocalNode: 16, LocalFunc: 16, LocalArg: 0},
 		}, got)
 	})
 
-	t.Run("endpoint behavior overflow", func(t *testing.T) {
+	t.Run("out-of-range fields are rejected", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := srv6EndXSIDFromAPI(&api.LsSrv6EndXSID{
-			EndpointBehavior: math.MaxUint16 + 1,
-			Srv6SidStructure: validStructure,
-		})
-		require.Error(t, err)
+		tests := []struct {
+			name string
+			sid  *api.LsSrv6EndXSID
+		}{
+			{"endpoint behavior", &api.LsSrv6EndXSID{EndpointBehavior: math.MaxUint16 + 1}},
+			{"flags", &api.LsSrv6EndXSID{Flags: math.MaxUint8 + 1}},
+			{"algorithm", &api.LsSrv6EndXSID{Algorithm: math.MaxUint8 + 1}},
+			{"weight", &api.LsSrv6EndXSID{Weight: math.MaxUint8 + 1}},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				tt.sid.Srv6SidStructure = validStructure
+
+				_, err := srv6EndXSIDFromAPI(tt.sid)
+				require.Error(t, err)
+			})
+		}
 	})
 
 	t.Run("SID structure overflow propagates", func(t *testing.T) {
@@ -576,7 +650,7 @@ func TestSrv6EndXSIDFromAPI(t *testing.T) {
 		})
 		require.NoError(t, err)
 		assert.Equal(t, &table.Srv6EndXSID{
-			EndpointBehavior: table.BehaviorENDX,
+			EndpointBehavior: table.EndpointBehavior{Behavior: table.BehaviorENDX},
 			Sids:             []string{testSrv6EndXSID},
 		}, got)
 	})
@@ -802,7 +876,7 @@ func TestGetLsSrv6SID_LocatorRegistrationEndToEnd(t *testing.T) {
 
 	idx := table.NewSIDIndex(ted)
 
-	container := table.NewSegmentSRv6(netip.MustParseAddr("fc00:1::99"))
+	container := table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr("fc00:1::99")))
 	container.USid = true
 	assert.True(t, idx.Has(container), "expected the /32 locator to be registered despite LocalNode being 0")
 }

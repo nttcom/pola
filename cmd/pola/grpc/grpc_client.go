@@ -611,14 +611,14 @@ func GetSRPolicyList(client pb.PCEServiceClient, peerAddr netip.Addr) ([]SRPolic
 }
 
 func convertSRPolicy(p *pb.SRPolicy) (table.SRPolicy, error) {
-	srcAddr, ok := netip.AddrFromSlice(p.GetSrcAddr())
+	headend, ok := netip.AddrFromSlice(p.GetHeadend())
 	if !ok {
-		return table.SRPolicy{}, fmt.Errorf("invalid SR policy source address: %v", p.GetSrcAddr())
+		return table.SRPolicy{}, fmt.Errorf("invalid SR policy headend address: %v", p.GetHeadend())
 	}
 
-	dstAddr, ok := netip.AddrFromSlice(p.GetDstAddr())
+	endpoint, ok := netip.AddrFromSlice(p.GetEndpoint())
 	if !ok {
-		return table.SRPolicy{}, fmt.Errorf("invalid SR policy destination address: %v", p.GetDstAddr())
+		return table.SRPolicy{}, fmt.Errorf("invalid SR policy endpoint address: %v", p.GetEndpoint())
 	}
 
 	segmentList := make([]table.Segment, 0, len(p.GetSegmentList()))
@@ -637,20 +637,55 @@ func convertSRPolicy(p *pb.SRPolicy) (table.SRPolicy, error) {
 	}
 
 	return table.SRPolicy{
-		PlspID:      p.GetPlspId(),
-		Name:        p.GetPolicyName(),
-		SegmentList: segmentList,
-		SrcAddr:     srcAddr,
-		DstAddr:     dstAddr,
-		SrcRouterID: p.GetSrcRouterId(),
-		DstRouterID: p.GetDstRouterId(),
-		Color:       p.GetColor(),
-		Preference:  p.GetPreference(),
-		LSPID:       lspID,
-		State:       policyStateFromPB(p.GetState()),
-		Type:        policyTypeFromPB(p.GetType()),
-		Metric:      metricTypeFromPB(p.GetMetric()),
+		PlspID:           p.GetPlspId(),
+		Name:             p.GetPolicyName(),
+		SegmentList:      segmentList,
+		Headend:          headend,
+		Endpoint:         endpoint,
+		HeadendRouterID:  p.GetHeadendRouterId(),
+		EndpointRouterID: p.GetEndpointRouterId(),
+		Color:            p.GetColor(),
+		CandidatePath:    candidatePathFromPB(p.GetCandidatePath()),
+		LSPID:            lspID,
+		State:            policyStateFromPB(p.GetState()),
 	}, nil
+}
+
+func candidatePathFromPB(cp *pb.CandidatePath) table.CandidatePath {
+	tableCP := table.CandidatePath{Preference: cp.GetPreference()}
+
+	switch v := cp.GetPath().(type) {
+	case *pb.CandidatePath_Dynamic:
+		tableCP.Dynamic = &table.DynamicPath{
+			Metric: metricTypeFromPB(v.Dynamic.GetMetric()),
+			Plane: table.Plane{
+				Family:    fromPBAddressFamily(v.Dynamic.GetUnderlayFamily()),
+				DataPlane: fromPBDataPlane(v.Dynamic.GetDataPlane()),
+			},
+		}
+	case *pb.CandidatePath_Explicit:
+		segmentList := make([]table.Segment, 0, len(v.Explicit.GetSegmentList()))
+		for _, s := range v.Explicit.GetSegmentList() {
+			if seg, err := segmentFromPB(s); err == nil {
+				segmentList = append(segmentList, seg)
+			}
+		}
+
+		tableCP.Explicit = &table.ExplicitPath{SegmentList: segmentList}
+	}
+
+	return tableCP
+}
+
+func fromPBDataPlane(dp pb.DataPlane) table.DataPlane {
+	switch dp {
+	case pb.DataPlane_DATA_PLANE_SR_MPLS:
+		return table.DPSRMPLS
+	case pb.DataPlane_DATA_PLANE_SRV6:
+		return table.DPSRv6
+	default:
+		return table.DPUnspecified
+	}
 }
 
 func sidStructureFromPB(s *pb.SidStructure) (*table.SIDStructure, error) {
@@ -701,17 +736,6 @@ func policyStateFromPB(state pb.SRPolicyState) table.PolicyState {
 	}
 }
 
-func policyTypeFromPB(polType pb.SRPolicyType) table.PolicyType {
-	switch polType {
-	case pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT:
-		return table.PolicyTypeExplicit
-	case pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC:
-		return table.PolicyTypeDynamic
-	default:
-		return ""
-	}
-}
-
 func metricTypeFromPB(metricType pb.MetricType) table.MetricType {
 	switch metricType {
 	case pb.MetricType_METRIC_TYPE_IGP:
@@ -752,6 +776,14 @@ func segmentFromPB(s *pb.Segment) (table.Segment, error) {
 
 		v.Structure = structure
 
+		behavior, err := safecast.Uint16(s.GetBehavior(), "segment behavior")
+		if err != nil {
+			return nil, err
+		}
+
+		v.Behavior = behavior
+		v.LocalIfaceID, v.RemoteIfaceID = s.LocalIfaceId, s.RemoteIfaceId
+
 		return v, nil
 	case table.SegmentSRMPLS:
 		v.LocalAddr, err = parseOptionalAddr("SR-MPLS local address", s.GetLocalAddr())
@@ -765,6 +797,7 @@ func segmentFromPB(s *pb.Segment) (table.Segment, error) {
 		}
 
 		v.SidAbsent = s.GetSidAbsent()
+		v.LocalIfaceID, v.RemoteIfaceID = s.LocalIfaceId, s.RemoteIfaceId
 
 		return v, nil
 	default:
@@ -850,8 +883,8 @@ func initializeLsNodes(ted *table.LsTED, nodes []*pb.LsNode) {
 
 func addLsNode(ted *table.LsTED, node *pb.LsNode) error {
 	for _, link := range node.GetLinks() {
-		localNode := ted.Nodes[link.GetLocalRouterId()]
-		remoteNode := ted.Nodes[link.GetRemoteRouterId()]
+		localNode := ted.Nodes[link.GetLocal().GetRouterId()]
+		remoteNode := ted.Nodes[link.GetRemote().GetRouterId()]
 
 		lsLink, err := createLsLink(localNode, remoteNode, link)
 		if err != nil {
@@ -901,22 +934,27 @@ func createLsPrefix(lsNode *table.LsNode, prefix *pb.LsPrefix) (*table.LsPrefix,
 }
 
 func createLsLink(localNode, remoteNode *table.LsNode, link *pb.LsLink) (*table.LsLink, error) {
-	lsLink := &table.LsLink{
-		LocalNode:  localNode,
-		RemoteNode: remoteNode,
-		AdjSid:     link.GetAdjSid(),
+	lsLink := table.NewLsLink(localNode, remoteNode)
+
+	local, err := createLinkEndpoint(localNode, link.GetLocal())
+	if err != nil {
+		return nil, fmt.Errorf("invalid local link endpoint: %w", err)
 	}
 
-	var err error
+	lsLink.Local = local
 
-	err = lsLink.LocalIP.UnmarshalText([]byte(link.GetLocalIp()))
+	remote, err := createLinkEndpoint(remoteNode, link.GetRemote())
 	if err != nil {
-		return nil, fmt.Errorf("invalid link local IP %q: %w", link.GetLocalIp(), err)
+		return nil, fmt.Errorf("invalid remote link endpoint: %w", err)
 	}
 
-	err = lsLink.RemoteIP.UnmarshalText([]byte(link.GetRemoteIp()))
-	if err != nil {
-		return nil, fmt.Errorf("invalid link remote IP %q: %w", link.GetRemoteIp(), err)
+	lsLink.Remote = remote
+
+	for _, adjSid := range link.GetAdjSids() {
+		lsLink.AdjSids = append(lsLink.AdjSids, table.AdjSID{
+			Family: fromPBAddressFamily(adjSid.GetFamily()),
+			Sid:    adjSid.GetSid(),
+		})
 	}
 
 	for _, metricInfo := range link.GetMetrics() {
@@ -928,16 +966,50 @@ func createLsLink(localNode, remoteNode *table.LsNode, link *pb.LsLink) (*table.
 		lsLink.Metrics = append(lsLink.Metrics, metric)
 	}
 
-	if link.GetSrv6EndXSid() != nil {
-		srv6EndXSID, err := createSrv6EndXSID(link.GetSrv6EndXSid())
+	for _, pbEndXSID := range link.GetSrv6EndXSids() {
+		srv6EndXSID, err := createSrv6EndXSID(pbEndXSID)
 		if err != nil {
 			return nil, err
 		}
 
-		lsLink.Srv6EndXSID = srv6EndXSID
+		lsLink.Srv6EndXSIDs = append(lsLink.Srv6EndXSIDs, srv6EndXSID)
 	}
 
 	return lsLink, nil
+}
+
+func createLinkEndpoint(node *table.LsNode, pbEndpoint *pb.LsLinkEndpoint) (table.LinkEndpoint, error) {
+	e := table.LinkEndpoint{Node: node}
+
+	if s := pbEndpoint.GetIpv4(); s != "" {
+		if err := e.IPv4.UnmarshalText([]byte(s)); err != nil {
+			return table.LinkEndpoint{}, fmt.Errorf("invalid IPv4 address %q: %w", s, err)
+		}
+	}
+
+	if s := pbEndpoint.GetIpv6(); s != "" {
+		if err := e.IPv6.UnmarshalText([]byte(s)); err != nil {
+			return table.LinkEndpoint{}, fmt.Errorf("invalid IPv6 address %q: %w", s, err)
+		}
+	}
+
+	if pbEndpoint != nil && pbEndpoint.InterfaceId != nil {
+		ifaceID := pbEndpoint.GetInterfaceId()
+		e.InterfaceID = &ifaceID
+	}
+
+	return e, nil
+}
+
+func fromPBAddressFamily(af pb.AddressFamily) table.AddressFamily {
+	switch af {
+	case pb.AddressFamily_ADDRESS_FAMILY_IPV4:
+		return table.AFIPv4
+	case pb.AddressFamily_ADDRESS_FAMILY_IPV6:
+		return table.AFIPv6
+	default:
+		return table.AFUnspecified
+	}
 }
 
 func createMetric(metricInfo *pb.Metric) (*table.Metric, error) {
@@ -955,8 +1027,32 @@ func createMetric(metricInfo *pb.Metric) (*table.Metric, error) {
 	}
 }
 
+func endpointBehaviorFromPB(name string, eb *pb.EndpointBehavior) (table.EndpointBehavior, error) {
+	behavior, err := safecast.Uint16(eb.GetBehavior(), name+" endpoint behavior")
+	if err != nil {
+		return table.EndpointBehavior{}, err
+	}
+
+	flags, err := safecast.Uint8(eb.GetFlags(), name+" endpoint behavior flags")
+	if err != nil {
+		return table.EndpointBehavior{}, err
+	}
+
+	algorithm, err := safecast.Uint8(eb.GetAlgorithm(), name+" endpoint behavior algorithm")
+	if err != nil {
+		return table.EndpointBehavior{}, err
+	}
+
+	return table.EndpointBehavior{Behavior: behavior, Flags: flags, Algorithm: algorithm}, nil
+}
+
 func createSrv6EndXSID(srv6EndXSID *pb.Srv6EndXSID) (*table.Srv6EndXSID, error) {
-	endpointBehavior, err := safecast.Uint16(srv6EndXSID.GetEndpointBehavior(), "SRv6 End.X SID endpoint behavior")
+	endpointBehavior, err := endpointBehaviorFromPB("SRv6 End.X SID", srv6EndXSID.GetEndpointBehavior())
+	if err != nil {
+		return nil, err
+	}
+
+	weight, err := safecast.Uint8(srv6EndXSID.GetWeight(), "SRv6 End.X SID weight")
 	if err != nil {
 		return nil, err
 	}
@@ -968,6 +1064,7 @@ func createSrv6EndXSID(srv6EndXSID *pb.Srv6EndXSID) (*table.Srv6EndXSID, error) 
 
 	lsSrv6EndXSID := &table.Srv6EndXSID{
 		EndpointBehavior: endpointBehavior,
+		Weight:           weight,
 		Sids:             []string{},
 		Srv6SIDStructure: structure,
 	}
@@ -990,24 +1087,12 @@ func createSrv6SID(lsNode *table.LsNode, srv6SID *pb.LsSrv6SID) (*table.LsSrv6SI
 		lsSrv6SID.MultiTopoIDs = append(lsSrv6SID.MultiTopoIDs, topoID.GetMultiTopoId())
 	}
 
-	behavior, err := safecast.Uint16(srv6SID.GetEndpointBehavior().GetBehavior(), "SRv6 SID endpoint behavior")
+	endpointBehavior, err := endpointBehaviorFromPB("SRv6 SID", srv6SID.GetEndpointBehavior())
 	if err != nil {
 		return nil, err
 	}
 
-	flags, err := safecast.Uint8(srv6SID.GetEndpointBehavior().GetFlags(), "SRv6 SID endpoint behavior flags")
-	if err != nil {
-		return nil, err
-	}
-
-	algorithm, err := safecast.Uint8(srv6SID.GetEndpointBehavior().GetAlgorithm(), "SRv6 SID endpoint behavior algorithm")
-	if err != nil {
-		return nil, err
-	}
-
-	lsSrv6SID.EndpointBehavior.Behavior = behavior
-	lsSrv6SID.EndpointBehavior.Flags = flags
-	lsSrv6SID.EndpointBehavior.Algorithm = algorithm
+	lsSrv6SID.EndpointBehavior = endpointBehavior
 
 	structure, err := sidStructureFromPB(srv6SID.GetSidStructure())
 	if err != nil {

@@ -24,17 +24,28 @@ message Segment {
   string local_addr = 3;
   string remote_addr = 4;
   bool sid_absent = 5;
+  // SRv6 endpoint behavior advertised by the TED (RFC 9603 §4.3.1).
+  uint32 behavior = 6;
+  // Interface ID for link-local NAI scoping (RFC 8664/9603 §4.3.1).
+  optional uint32 local_iface_id = 7;
+  optional uint32 remote_iface_id = 8;
 }
 
-enum SRPolicyType {
-  SR_POLICY_TYPE_UNSPECIFIED = 0;
-  SR_POLICY_TYPE_EXPLICIT = 1;
-  SR_POLICY_TYPE_DYNAMIC = 2;
+enum AddressFamily {
+  ADDRESS_FAMILY_UNSPECIFIED = 0;
+  ADDRESS_FAMILY_IPV4 = 1;
+  ADDRESS_FAMILY_IPV6 = 2;
+}
+
+enum DataPlane {
+  DATA_PLANE_UNSPECIFIED = 0;
+  DATA_PLANE_SR_MPLS = 1;
+  DATA_PLANE_SRV6 = 2;
 }
 
 message Waypoint {
   string router_id = 1;
-  string sid = 2; // Optional: explicit SID override
+  string sid = 2; // Optional explicit SID override.
 }
 
 enum SRPolicyState {
@@ -45,31 +56,67 @@ enum SRPolicyState {
   SR_POLICY_STATE_UNKNOWN = 4;
 }
 
+message DynamicPath {
+  MetricType metric = 1;
+  // Unspecified uses the unique viable data plane; rejected if ambiguous.
+  DataPlane data_plane = 2;
+  // Unspecified uses the unique viable family; rejected if ambiguous.
+  // Pola extension; no IETF counterpart.
+  AddressFamily underlay_family = 3;
+  repeated Waypoint waypoints = 4;
+}
+
+message ExplicitPath {
+  repeated Segment segment_list = 1;
+}
+
+message CandidatePath {
+  // Zero means "not set" in proto3 and is normalized server-side to
+  // table.DefaultPreference (100) (RFC 9256 §2.7).
+  uint32 preference = 1;
+
+  oneof path {
+    DynamicPath dynamic = 2;
+    ExplicitPath explicit = 3;
+  }
+}
+
 message SRPolicy {
   bytes peer_addr = 1;
-  bytes src_addr = 2;
-  bytes dst_addr = 3;
-  string src_router_id = 4;
-  string dst_router_id = 5;
+
+  // Policy identity addresses (RFC 9256 §2.1). Mutually exclusive with
+  // headend_router_id / endpoint_router_id.
+  bytes headend = 2;
+  bytes endpoint = 3;
+
+  // Router ID form for TED resolution. Mutually exclusive with headend / endpoint.
+  string headend_router_id = 4;
+  string endpoint_router_id = 5;
+  // Address family used to resolve endpoints from router IDs.
+  // Unspecified follows the underlay family; valid only with the router ID form.
+  AddressFamily endpoint_family = 18;
+
   uint32 color = 6;
-  uint32 preference = 7;
   string policy_name = 8;
-  SRPolicyType type = 9;
-  repeated Segment segment_list = 10;
-  MetricType metric = 11;
-  repeated Waypoint waypoints = 12;
+
+  CandidatePath candidate_path = 19;
+
   uint32 plsp_id = 13;
   uint32 lsp_id = 14;
   SRPolicyState state = 15;
+  // Currently signaled segment list reported by the PCE, not request input.
+  repeated Segment segment_list = 20;
+
+  reserved 7, 9, 10, 11, 12, 16, 17;
+  reserved "preference", "type", "metric", "waypoints", "underlay_family", "data_plane";
 }
 
 message CreateSRPolicyRequest {
   SRPolicy sr_policy = 1;
   uint32 asn = 2;
-  reserved 3;
-  bool disable_path_compute = 4;
   bool no_sid_validate = 5;
-  reserved "sid_validate";
+  reserved 3, 4;
+  reserved "sid_validate", "disable_path_compute";
 }
 
 message CreateSRPolicyResponse {
@@ -221,8 +268,6 @@ message MessageCounter {
   uint64 rcvd = 2;
 }
 
-// SessionStats contains per-session PCEP message counters.
-// Open and close are Pola-specific additions.
 message SessionStats {
   MessageCounter keepalive = 1; // keepalive-sent / keepalive-rcvd (RFC 9826)
   MessageCounter pcerr = 2; // pcerr-sent / pcerr-rcvd (RFC 9826)
@@ -319,21 +364,37 @@ message Metric {
 }
 
 message Srv6EndXSID {
-  uint32 endpoint_behavior = 1;
   repeated SID sids = 2;
   SidStructure sid_structure = 3;
+  uint32 weight = 4;
+  EndpointBehavior endpoint_behavior = 5;
+  reserved 1;
+}
+
+message LsLinkEndpoint {
+  string router_id = 1;
+  uint32 asn = 2;
+  // Interface ID (BGP-LS TLV 258/259) for link-local IPv6 address scoping.
+  optional uint32 interface_id = 3;
+  string ipv4 = 4;
+  string ipv6 = 5;
+}
+
+message AdjSid {
+  // Unspecified when GoBGP cannot distinguish IPv4 and IPv6 Adjacency-SIDs.
+  AddressFamily family = 1;
+  uint32 sid = 2;
 }
 
 message LsLink {
-  string local_router_id = 1;
-  uint32 local_asn = 2;
-  string local_ip = 3;
-  string remote_router_id = 4;
-  uint32 remote_asn = 5;
-  string remote_ip = 6;
-  repeated Metric metrics = 7;
-  uint32 adj_sid = 8;
-  Srv6EndXSID srv6_end_x_sid = 9;
+  LsLinkEndpoint local = 1;
+  LsLinkEndpoint remote = 2;
+  repeated Metric metrics = 3;
+  repeated AdjSid adj_sids = 4;
+  repeated Srv6EndXSID srv6_end_x_sids = 5;
+  // Replaced by local, remote, adj_sids, and srv6_end_x_sids.
+  reserved 6 to 9;
+  reserved "local_router_id", "local_asn", "local_ip", "remote_router_id", "remote_asn", "remote_ip", "adj_sid", "srv6_end_x_sid";
 }
 
 message LsNode {

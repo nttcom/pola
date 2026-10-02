@@ -31,7 +31,7 @@ Configure the IP address and port for PCEP and gRPC.
 `address` must be a literal IPv4 or IPv6 address; hostnames are not resolved.
 See [JSON schema](../schemas/server/polad_config.json) for config details.
 
-### TED disable
+### Disabling TED
 
 To manage SR Policy without using TED, disable TED as follows.
 
@@ -91,7 +91,7 @@ global:
     maxKeepalive: 60
 ```
 
-### TED enable
+### Enabling TED
 
 To manage SR Policy using TED, enable TED as follows.
 This also enables dynamic path calculation.
@@ -99,7 +99,26 @@ This also enables dynamic path calculation.
 TED updates require a supported BGP-LS source.
 Currently, only GoBGP is supported.
 
-**Not currently available for IPv6 underlay (IPv6 SR-MPLS / SRv6).**
+#### Underlay address family
+
+Path computation runs on an **underlay plane**, a combination of address
+family and data plane.
+
+Supported combinations:
+
+| underlayFamily | dataPlane | Status         |
+| -------------- | --------- | -------------- |
+| ipv4           | sr-mpls   | Supported      |
+| ipv6           | sr-mpls   | Supported      |
+| ipv6           | srv6      | Supported      |
+| ipv4           | srv6      | Not applicable |
+
+A dynamic candidate path selects the plane with `underlayFamily` and
+`dataPlane`. If both are unspecified, Pola uses the headend's unique viable
+plane and rejects the request when multiple planes are available.
+
+The endpoint and underlay address families are independent, so cross-AF
+policies are supported.
 
 ```yaml
 global:
@@ -141,9 +160,18 @@ neighbors:
       afi-safi-name: ls
 ```
 
+#### Known limitations
+
+* **SR Adjacency-SID**: Only one SR Adjacency-SID is available per link, so
+  IPv4- and IPv6-specific SIDs cannot be distinguished on the same dual-stack link.
+* **IOS-XR interoperability**: IOS-XR 24.4.1 rejected IPv6-endpoint
+  PCE-initiated SR-MPLS policies (`pcinitiate: bad sock info`).
+* **Junos interoperability**: Junos 25.2R1.9 rejected IPv6-endpoint
+  PCE-initiated SR-MPLS policies (`IPv6 SRPAG received for non SRv6 LSP`).
+
 ## Run Polad
 
-Start polad. Specify the created configuration file with the -f option.
+Start polad. Specify the created configuration file with the `-f` option.
 
 ```bash
 $ sudo polad -f polad.yaml

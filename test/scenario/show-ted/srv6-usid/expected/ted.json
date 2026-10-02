@@ -18,7 +18,14 @@
         ],
         "links": [
             {
-                "remoteRouterId": "0000.0aff.0002",
+                "local": {
+                    "routerId": "0000.0aff.0001",
+                    "interfaceId": 333
+                },
+                "remote": {
+                    "routerId": "0000.0aff.0002",
+                    "interfaceId": 333
+                },
                 "metrics": [
                     {
                         "type": "igp",
@@ -29,22 +36,24 @@
                         "value": 10
                     }
                 ],
-                "adjSid": 0,
-                "srv6EndXSid": {
-                    "endpointBehavior": {
-                        "behavior": 57,
-                        "name": "UA"
-                    },
-                    "sids": [
-                        "fcbb:bb00:1001:e000::"
-                    ],
-                    "sidStructure": {
-                        "localBlock": 32,
-                        "localNode": 16,
-                        "localFunc": 16,
-                        "localArg": 64
+                "adjSids": [],
+                "srv6EndXSids": [
+                    {
+                        "endpointBehavior": {
+                            "behavior": 57,
+                            "name": "UA"
+                        },
+                        "sids": [
+                            "fcbb:bb00:1001:e000::"
+                        ],
+                        "sidStructure": {
+                            "localBlock": 32,
+                            "localNode": 16,
+                            "localFunc": 16,
+                            "localArg": 64
+                        }
                     }
-                }
+                ]
             }
         ],
         "srv6Sids": [
@@ -86,7 +95,14 @@
         ],
         "links": [
             {
-                "remoteRouterId": "0000.0aff.0001",
+                "local": {
+                    "routerId": "0000.0aff.0002",
+                    "interfaceId": 333
+                },
+                "remote": {
+                    "routerId": "0000.0aff.0001",
+                    "interfaceId": 333
+                },
                 "metrics": [
                     {
                         "type": "igp",
@@ -97,22 +113,24 @@
                         "value": 10
                     }
                 ],
-                "adjSid": 0,
-                "srv6EndXSid": {
-                    "endpointBehavior": {
-                        "behavior": 57,
-                        "name": "UA"
-                    },
-                    "sids": [
-                        "fcbb:bb00:1002:e000::"
-                    ],
-                    "sidStructure": {
-                        "localBlock": 32,
-                        "localNode": 16,
-                        "localFunc": 16,
-                        "localArg": 64
+                "adjSids": [],
+                "srv6EndXSids": [
+                    {
+                        "endpointBehavior": {
+                            "behavior": 57,
+                            "name": "UA"
+                        },
+                        "sids": [
+                            "fcbb:bb00:1002:e000::"
+                        ],
+                        "sidStructure": {
+                            "localBlock": 32,
+                            "localNode": 16,
+                            "localFunc": 16,
+                            "localArg": 64
+                        }
                     }
-                }
+                ]
             }
         ],
         "srv6Sids": [

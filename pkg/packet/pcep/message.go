@@ -724,7 +724,7 @@ func NewPCInitiateMessage(srpID uint32, srPolicy table.SRPolicy, opt ...Opt) (*P
 
 	// PLSP-ID is 0 on instantiation; the PCC assigns it (RFC 8281 §5.3.1).
 	m.LSPObject = NewLSPObject(srPolicy.Name, &srPolicy.Color, 0)
-	if m.EndpointsObject, err = NewEndpointsObject(srPolicy.DstAddr, srPolicy.SrcAddr); err != nil {
+	if m.EndpointsObject, err = NewEndpointsObject(srPolicy.Endpoint, srPolicy.Headend); err != nil {
 		return nil, err
 	}
 
@@ -732,21 +732,23 @@ func NewPCInitiateMessage(srpID uint32, srPolicy table.SRPolicy, opt ...Opt) (*P
 		return nil, err
 	}
 
+	preference := srPolicy.CandidatePath.Preference
+
 	switch opts.pccType {
 	case JuniperLegacy:
-		if m.AssociationObject, err = NewAssociationObject(srPolicy.SrcAddr, srPolicy.DstAddr, srPolicy.Color, srPolicy.Preference, VendorSpecific(opts.pccType), OriginatorASN(opts.originatorASN)); err != nil {
+		if m.AssociationObject, err = NewAssociationObject(srPolicy.Headend, srPolicy.Endpoint, srPolicy.Color, preference, VendorSpecific(opts.pccType), OriginatorASN(opts.originatorASN)); err != nil {
 			return nil, err
 		}
 	case CiscoLegacy:
-		if m.VendorInformationObject, err = NewVendorInformationObject(CiscoLegacy, srPolicy.Color, srPolicy.Preference); err != nil {
+		if m.VendorInformationObject, err = NewVendorInformationObject(CiscoLegacy, srPolicy.Color, preference); err != nil {
 			return nil, err
 		}
 	case RFCCompliant:
-		if m.AssociationObject, err = NewAssociationObject(srPolicy.SrcAddr, srPolicy.DstAddr, srPolicy.Color, srPolicy.Preference, OriginatorASN(opts.originatorASN)); err != nil {
+		if m.AssociationObject, err = NewAssociationObject(srPolicy.Headend, srPolicy.Endpoint, srPolicy.Color, preference, OriginatorASN(opts.originatorASN)); err != nil {
 			return nil, err
 		}
 
-		if m.VendorInformationObject, err = NewVendorInformationObject(CiscoLegacy, srPolicy.Color, srPolicy.Preference); err != nil {
+		if m.VendorInformationObject, err = NewVendorInformationObject(CiscoLegacy, srPolicy.Color, preference); err != nil {
 			return nil, err
 		}
 	default:

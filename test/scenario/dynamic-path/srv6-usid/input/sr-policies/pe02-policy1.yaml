@@ -1,9 +1,10 @@
 asn: 65000
 srPolicy:
   pcepSessionAddr: "fd00::2"
-  srcRouterID: "0000.0001.0002"
-  dstRouterID: "0000.0001.0001"
+  headendRouterID: "0000.0001.0002"
+  endpointRouterID: "0000.0001.0001"
   name: "DYNAMIC-POLICY"
   color: 100
-  type: dynamic
-  metric: igp
+  candidatePath:
+    dynamic:
+      metric: igp

@@ -46,7 +46,7 @@ func TestSIDIndexHas_SRMPLS(t *testing.T) {
 			{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 3, HasSidIndex: true},
 		},
 		Links: []*table.LsLink{
-			{AdjSid: 24001},
+			{AdjSids: []table.AdjSID{{Sid: 24001}}},
 		},
 	}
 	ted := newTestTED(node)
@@ -221,10 +221,10 @@ func TestSIDIndexHas_SRv6Exact(t *testing.T) {
 		},
 		Links: []*table.LsLink{
 			{
-				Srv6EndXSID: &table.Srv6EndXSID{
+				Srv6EndXSIDs: []*table.Srv6EndXSID{{
 					Sids:             []string{"2001:db8:1::1"},
 					Srv6SIDStructure: &table.SIDStructure{},
-				},
+				}},
 			},
 		},
 	}
@@ -235,9 +235,9 @@ func TestSIDIndexHas_SRv6Exact(t *testing.T) {
 		seg  table.Segment
 		want bool
 	}{
-		{"End SID exact match", table.NewSegmentSRv6(netip.MustParseAddr(testSRv6ExactSID)), true},
-		{"End.X SID exact match", table.NewSegmentSRv6(netip.MustParseAddr("2001:db8:1::1")), true},
-		{"unknown SID", table.NewSegmentSRv6(netip.MustParseAddr("2001:db8:1::99")), false},
+		{"End SID exact match", table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr(testSRv6ExactSID))), true},
+		{"End.X SID exact match", table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr("2001:db8:1::1"))), true},
+		{"unknown SID", table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr("2001:db8:1::99"))), false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -269,7 +269,7 @@ func TestSIDIndexHas_USID(t *testing.T) {
 	t.Run("structure present, container within locator", func(t *testing.T) {
 		t.Parallel()
 
-		seg := table.NewSegmentSRv6(container)
+		seg := table.NewSegmentSRv6(table.SRv6SID(container))
 		seg.USid = true
 		seg.Structure = &table.SIDStructure{LocalBlock: 32, LocalNode: 16}
 		assert.True(t, table.NewSIDIndex(ted).Has(seg), "expected uSID container to be accepted via locator containment")
@@ -278,7 +278,7 @@ func TestSIDIndexHas_USID(t *testing.T) {
 	t.Run("no structure, falls back to containment", func(t *testing.T) {
 		t.Parallel()
 
-		seg := table.NewSegmentSRv6(container)
+		seg := table.NewSegmentSRv6(table.SRv6SID(container))
 		seg.USid = true
 		assert.True(t, table.NewSIDIndex(ted).Has(seg), "expected uSID container without structure to be accepted via containment fallback")
 	})
@@ -286,7 +286,7 @@ func TestSIDIndexHas_USID(t *testing.T) {
 	t.Run("declared locator shorter than TED advertised", func(t *testing.T) {
 		t.Parallel()
 
-		seg := table.NewSegmentSRv6(container)
+		seg := table.NewSegmentSRv6(table.SRv6SID(container))
 		seg.USid = true
 		// Declares a /32 locator (block=24,node=8), which contradicts the /48
 		// the TED actually advertises.
@@ -297,7 +297,7 @@ func TestSIDIndexHas_USID(t *testing.T) {
 	t.Run("declared zero-width locator does not match an unrelated enclosing TED locator", func(t *testing.T) {
 		t.Parallel()
 
-		seg := table.NewSegmentSRv6(container)
+		seg := table.NewSegmentSRv6(table.SRv6SID(container))
 		seg.USid = true
 		seg.Structure = &table.SIDStructure{LocalFunc: 48}
 		assert.False(t, table.NewSIDIndex(ted).Has(seg), "expected declared zero-width locator not to match an unrelated enclosing TED locator")
@@ -306,7 +306,7 @@ func TestSIDIndexHas_USID(t *testing.T) {
 	t.Run("outside any known locator", func(t *testing.T) {
 		t.Parallel()
 
-		seg := table.NewSegmentSRv6(netip.MustParseAddr("fcbb:bb00:ffff::"))
+		seg := table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr("fcbb:bb00:ffff::")))
 		seg.USid = true
 		assert.False(t, table.NewSIDIndex(ted).Has(seg), "expected mismatch for a SID outside any known locator")
 	})
@@ -314,7 +314,7 @@ func TestSIDIndexHas_USID(t *testing.T) {
 	t.Run("non-uSID segment does not fall back to locator containment", func(t *testing.T) {
 		t.Parallel()
 
-		seg := table.NewSegmentSRv6(container)
+		seg := table.NewSegmentSRv6(table.SRv6SID(container))
 		assert.False(t, table.NewSIDIndex(ted).Has(seg), "expected non-uSID segment to require an exact SID match")
 	})
 }
@@ -339,7 +339,7 @@ func TestSIDIndexAddLinkSIDs_SkipsNilLink(t *testing.T) {
 
 	node := &table.LsNode{
 		RouterID: testRouterID1,
-		Links:    []*table.LsLink{nil, {AdjSid: 24001}},
+		Links:    []*table.LsLink{nil, {AdjSids: []table.AdjSID{{Sid: 24001}}}},
 	}
 	idx := table.NewSIDIndex(newTestTED(node))
 	assert.True(t, idx.Has(table.NewSegmentSRMPLS(24001)), "expected the adj SID after the nil link to still be registered")
@@ -363,7 +363,7 @@ func TestSIDIndexAddSRv6_EdgeCases(t *testing.T) {
 			SRv6SIDs: []*table.LsSrv6SID{{Sids: []string{"10.0.0.1"}}},
 		}
 		idx := table.NewSIDIndex(newTestTED(node))
-		assert.False(t, idx.Has(table.NewSegmentSRv6(netip.MustParseAddr("10.0.0.1"))), "expected an IPv4 address advertised as an SRv6 SID to be ignored")
+		assert.False(t, idx.Has(table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr("10.0.0.1")))), "expected an IPv4 address advertised as an SRv6 SID to be ignored")
 	})
 
 	t.Run("unparsable SID is not registered", func(t *testing.T) {
@@ -374,7 +374,7 @@ func TestSIDIndexAddSRv6_EdgeCases(t *testing.T) {
 			SRv6SIDs: []*table.LsSrv6SID{{Sids: []string{testInvalidAddr}}},
 		}
 		idx := table.NewSIDIndex(newTestTED(node))
-		assert.False(t, idx.Has(table.NewSegmentSRv6(netip.MustParseAddr(testSRv6SID1))))
+		assert.False(t, idx.Has(table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr(testSRv6SID1)))))
 	})
 
 	t.Run("zero locator length still registers the exact SID but skips the locator", func(t *testing.T) {
@@ -386,9 +386,9 @@ func TestSIDIndexAddSRv6_EdgeCases(t *testing.T) {
 			SRv6SIDs: []*table.LsSrv6SID{{Sids: []string{sid.String()}, SIDStructure: &table.SIDStructure{}}},
 		}
 		idx := table.NewSIDIndex(newTestTED(node))
-		assert.True(t, idx.Has(table.NewSegmentSRv6(sid)), "expected exact match regardless of locator length")
+		assert.True(t, idx.Has(table.NewSegmentSRv6(table.SRv6SID(sid))), "expected exact match regardless of locator length")
 
-		other := table.NewSegmentSRv6(netip.MustParseAddr("fc00:0:1::1234"))
+		other := table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr("fc00:0:1::1234")))
 		other.USid = true
 		assert.False(t, idx.Has(other), "expected no locator fallback registered when LocalBlock+LocalNode is 0")
 	})
@@ -402,9 +402,9 @@ func TestSIDIndexAddSRv6_EdgeCases(t *testing.T) {
 			SRv6SIDs: []*table.LsSrv6SID{{Sids: []string{sid.String()}, SIDStructure: &table.SIDStructure{LocalBlock: 200, LocalNode: 200}}},
 		}
 		idx := table.NewSIDIndex(newTestTED(node))
-		assert.True(t, idx.Has(table.NewSegmentSRv6(sid)), "expected exact match regardless of locator length")
+		assert.True(t, idx.Has(table.NewSegmentSRv6(table.SRv6SID(sid))), "expected exact match regardless of locator length")
 
-		other := table.NewSegmentSRv6(netip.MustParseAddr("fc00:0:1::1234"))
+		other := table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr("fc00:0:1::1234")))
 		other.USid = true
 		assert.False(t, idx.Has(other), "expected no locator fallback registered when LocalBlock+LocalNode exceeds 128 bits")
 	})
@@ -426,9 +426,9 @@ func TestSIDIndexAddSRv6_EdgeCases(t *testing.T) {
 			}},
 		}
 		idx := table.NewSIDIndex(newTestTED(node))
-		assert.True(t, idx.Has(table.NewSegmentSRv6(sid)), "expected exact match regardless of total width")
+		assert.True(t, idx.Has(table.NewSegmentSRv6(table.SRv6SID(sid))), "expected exact match regardless of total width")
 
-		other := table.NewSegmentSRv6(netip.MustParseAddr("fc00:0:1::1234"))
+		other := table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr("fc00:0:1::1234")))
 		other.USid = true
 		assert.False(t, idx.Has(other), "expected no locator fallback registered when LocalBlock+LocalNode+LocalFunc+LocalArg exceeds 128 bits")
 	})
@@ -442,7 +442,7 @@ func TestSIDIndexAddSRv6_EdgeCases(t *testing.T) {
 		}
 		idx := table.NewSIDIndex(newTestTED(node))
 
-		seg := table.NewSegmentSRv6(netip.MustParseAddr("10.0.0.1"))
+		seg := table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr("10.0.0.1")))
 		assert.False(t, idx.Has(seg))
 		_, err := idx.NextHop(testRouterID1, seg)
 		assert.Error(t, err, "expected NextHop to agree with Has() for a non-IPv6 advertised SID")
@@ -454,13 +454,13 @@ func TestSIDIndexAddSRv6_EdgeCases(t *testing.T) {
 		nodeA := &table.LsNode{RouterID: testRouterIDA}
 		nodeB := &table.LsNode{RouterID: testRouterIDB}
 		nodeA.Links = []*table.LsLink{{
-			LocalNode:   nodeA,
-			RemoteNode:  nodeB,
-			Srv6EndXSID: &table.Srv6EndXSID{Sids: []string{"10.0.0.1"}},
+			Local:        table.LinkEndpoint{Node: nodeA},
+			Remote:       table.LinkEndpoint{Node: nodeB},
+			Srv6EndXSIDs: []*table.Srv6EndXSID{{Sids: []string{"10.0.0.1"}}},
 		}}
 		idx := table.NewSIDIndex(newTestTED(nodeA, nodeB))
 
-		seg := table.NewSegmentSRv6(netip.MustParseAddr("10.0.0.1"))
+		seg := table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr("10.0.0.1")))
 		assert.False(t, idx.Has(seg))
 		_, err := idx.NextHop(testRouterIDA, seg)
 		assert.Error(t, err, "expected NextHop to agree with Has() for a non-IPv6 advertised End.X SID")
@@ -483,7 +483,7 @@ func TestSIDIndexHas_EmptyTED(t *testing.T) {
 
 			idx := table.NewSIDIndex(tt.ted)
 			assert.False(t, idx.Has(table.NewSegmentSRMPLS(16003)), "expected no match against an empty TED")
-			assert.False(t, idx.Has(table.NewSegmentSRv6(netip.MustParseAddr(testSRv6ExactSID))), "expected no match against an empty TED")
+			assert.False(t, idx.Has(table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr(testSRv6ExactSID)))), "expected no match against an empty TED")
 		})
 	}
 }
@@ -503,7 +503,7 @@ func TestMissingSegments(t *testing.T) {
 	segmentList := []table.Segment{
 		table.NewSegmentSRMPLS(16003),
 		table.NewSegmentSRMPLS(16099),
-		table.NewSegmentSRv6(netip.MustParseAddr("2001:db8:1::99")),
+		table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr("2001:db8:1::99"))),
 	}
 
 	want := []table.MissingSegment{
@@ -515,8 +515,8 @@ func TestMissingSegments(t *testing.T) {
 
 type fakeUnknownSegment struct{}
 
-func (fakeUnknownSegment) SidString() string              { return "unknown" }
-func (fakeUnknownSegment) GetFamily() table.SegmentFamily { return table.SegmentUnknown }
+func (fakeUnknownSegment) SidString() string       { return "unknown" }
+func (fakeUnknownSegment) Family() table.DataPlane { return table.DPUnspecified }
 
 func TestHasUnknownSegmentType(t *testing.T) {
 	t.Parallel()
@@ -533,7 +533,7 @@ func TestHasUnknownSegmentType(t *testing.T) {
 		},
 		{
 			name: "all known, SRv6",
-			segs: []table.Segment{table.NewSegmentSRv6(netip.MustParseAddr(testSRv6SID1))},
+			segs: []table.Segment{table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr(testSRv6SID1)))},
 			want: false,
 		},
 		{
@@ -591,7 +591,7 @@ func TestOutOfRangeSRMPLSLabels(t *testing.T) {
 		},
 		{
 			name: "SRv6 and nil segments are ignored",
-			segs: []table.Segment{nil, table.NewSegmentSRv6(netip.MustParseAddr(testSRv6SID1))},
+			segs: []table.Segment{nil, table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr(testSRv6SID1)))},
 		},
 		{
 			name: "empty list",
@@ -617,8 +617,8 @@ func TestHasMixedSegmentTypes(t *testing.T) {
 		{
 			name: "all SRv6",
 			segs: []table.Segment{
-				table.NewSegmentSRv6(netip.MustParseAddr(testSRv6SID1)),
-				table.NewSegmentSRv6(netip.MustParseAddr(testSRv6SID2)),
+				table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr(testSRv6SID1))),
+				table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr(testSRv6SID2))),
 			},
 			want: false,
 		},
@@ -630,7 +630,7 @@ func TestHasMixedSegmentTypes(t *testing.T) {
 		{
 			name: "mixed SRv6 then SR-MPLS",
 			segs: []table.Segment{
-				table.NewSegmentSRv6(netip.MustParseAddr(testSRv6SID1)),
+				table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr(testSRv6SID1))),
 				table.NewSegmentSRMPLS(16001),
 			},
 			want: true,
@@ -639,14 +639,14 @@ func TestHasMixedSegmentTypes(t *testing.T) {
 			name: "mixed SR-MPLS then SRv6",
 			segs: []table.Segment{
 				table.NewSegmentSRMPLS(16001),
-				table.NewSegmentSRv6(netip.MustParseAddr(testSRv6SID1)),
+				table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr(testSRv6SID1))),
 			},
 			want: true,
 		},
 		{
 			name: "SRv6 with unknown family",
 			segs: []table.Segment{
-				table.NewSegmentSRv6(netip.MustParseAddr(testSRv6SID1)),
+				table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr(testSRv6SID1))),
 				fakeUnknownSegment{},
 			},
 			want: false,
@@ -700,8 +700,14 @@ func TestValidateExplicitPath(t *testing.T) {
 		SrgbBegin: 16000,
 		Prefixes:  []*table.LsPrefix{{Prefix: netip.MustParsePrefix("10.0.0.12/32"), SidIndex: 3, HasSidIndex: true}},
 	}
-	nodeA.Links = []*table.LsLink{{LocalNode: nodeA, RemoteNode: nodeB, AdjSid: 24001}}
-	nodeB.Links = []*table.LsLink{{LocalNode: nodeB, RemoteNode: nodeC, AdjSid: 24002}}
+	nodeA.Links = []*table.LsLink{{
+		Local: table.LinkEndpoint{Node: nodeA}, Remote: table.LinkEndpoint{Node: nodeB},
+		AdjSids: []table.AdjSID{{Sid: 24001}},
+	}}
+	nodeB.Links = []*table.LsLink{{
+		Local: table.LinkEndpoint{Node: nodeB}, Remote: table.LinkEndpoint{Node: nodeC},
+		AdjSids: []table.AdjSID{{Sid: 24002}},
+	}}
 
 	ted := newTestTED(nodeA, nodeB, nodeC)
 
@@ -789,8 +795,8 @@ func TestValidateExplicitPathSRv6(t *testing.T) {
 		RouterID: testRouterIDC,
 		SRv6SIDs: []*table.LsSrv6SID{{Sids: []string{"fc00::c:1"}}},
 	}
-	nodeA.Links = []*table.LsLink{{LocalNode: nodeA, RemoteNode: nodeB, Srv6EndXSID: &table.Srv6EndXSID{Sids: []string{"fc00::a:b"}}}}
-	nodeB.Links = []*table.LsLink{{LocalNode: nodeB, RemoteNode: nodeC, Srv6EndXSID: &table.Srv6EndXSID{Sids: []string{"fc00::b:c"}}}}
+	nodeA.Links = []*table.LsLink{{Local: table.LinkEndpoint{Node: nodeA}, Remote: table.LinkEndpoint{Node: nodeB}, Srv6EndXSIDs: []*table.Srv6EndXSID{{Sids: []string{"fc00::a:b"}}}}}
+	nodeB.Links = []*table.LsLink{{Local: table.LinkEndpoint{Node: nodeB}, Remote: table.LinkEndpoint{Node: nodeC}, Srv6EndXSIDs: []*table.Srv6EndXSID{{Sids: []string{"fc00::b:c"}}}}}
 
 	ted := newTestTED(nodeA, nodeB, nodeC)
 
@@ -804,8 +810,8 @@ func TestValidateExplicitPathSRv6(t *testing.T) {
 			name: "valid: A to B via End SID, B to C via End.X on B",
 			src:  testRouterIDA,
 			segs: []table.Segment{
-				table.NewSegmentSRv6(netip.MustParseAddr("fc00::b:1")), // End SID of B
-				table.NewSegmentSRv6(netip.MustParseAddr("fc00::b:c")), // End.X on B -> C
+				table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr("fc00::b:1"))), // End SID of B
+				table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr("fc00::b:c"))), // End.X on B -> C
 			},
 			wantErr: "",
 		},
@@ -813,7 +819,7 @@ func TestValidateExplicitPathSRv6(t *testing.T) {
 			name: "End.X on wrong owner: B End.X used while owner is A",
 			src:  testRouterIDA,
 			segs: []table.Segment{
-				table.NewSegmentSRv6(netip.MustParseAddr("fc00::b:c")), // belongs to B, not A
+				table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr("fc00::b:c"))), // belongs to B, not A
 			},
 			wantErr: "does not have adjacency SID",
 		},
@@ -821,7 +827,7 @@ func TestValidateExplicitPathSRv6(t *testing.T) {
 			name: "SRv6 SID not in TED",
 			src:  testRouterIDA,
 			segs: []table.Segment{
-				table.NewSegmentSRv6(netip.MustParseAddr("fd00::dead:beef")),
+				table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr("fd00::dead:beef"))),
 			},
 			wantErr: "not found in TED",
 		},
@@ -829,7 +835,7 @@ func TestValidateExplicitPathSRv6(t *testing.T) {
 			name: "single End SID valid",
 			src:  testRouterIDA,
 			segs: []table.Segment{
-				table.NewSegmentSRv6(netip.MustParseAddr("fc00::a:1")), // End SID of A
+				table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr("fc00::a:1"))), // End SID of A
 			},
 			wantErr: "",
 		},
@@ -865,14 +871,14 @@ func usidLocatorNode(routerID, sid string, remote *table.LsNode, endXSid string)
 		}},
 	}
 	if remote != nil {
-		node.Links = []*table.LsLink{{RemoteNode: remote, Srv6EndXSID: &table.Srv6EndXSID{Sids: []string{endXSid}}}}
+		node.Links = []*table.LsLink{{Remote: table.LinkEndpoint{Node: remote}, Srv6EndXSIDs: []*table.Srv6EndXSID{{Sids: []string{endXSid}}}}}
 	}
 
 	return node
 }
 
 func usidContainerSeg(addr string, structure *table.SIDStructure) table.Segment {
-	seg := table.NewSegmentSRv6(netip.MustParseAddr(addr))
+	seg := table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr(addr)))
 	seg.USid = true
 	seg.Structure = structure
 
@@ -897,7 +903,7 @@ func TestValidateExplicitPathUSID(t *testing.T) {
 
 		err := table.ValidateExplicitPath(ted, "X", []table.Segment{
 			usidContainerSeg(container, &table.SIDStructure{LocalBlock: 32, LocalNode: 16}),
-			table.NewSegmentSRv6(netip.MustParseAddr(endXToW1)),
+			table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr(endXToW1))),
 		})
 		require.NoError(t, err)
 	})
@@ -911,7 +917,7 @@ func TestValidateExplicitPathUSID(t *testing.T) {
 
 		err := table.ValidateExplicitPath(ted, "X", []table.Segment{
 			usidContainerSeg("fcbb:bb00:0100::", &table.SIDStructure{LocalBlock: 32, LocalNode: 16}),
-			table.NewSegmentSRv6(netip.MustParseAddr(endXToW1)),
+			table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr(endXToW1))),
 		})
 		require.NoError(t, err)
 	})
@@ -927,7 +933,7 @@ func TestValidateExplicitPathUSID(t *testing.T) {
 
 		err := table.ValidateExplicitPath(ted, "X", []table.Segment{
 			usidContainerSeg(container, &table.SIDStructure{LocalBlock: 32, LocalNode: 16}),
-			table.NewSegmentSRv6(netip.MustParseAddr(endXToW3)),
+			table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr(endXToW3))),
 		})
 		require.NoError(t, err)
 	})
@@ -943,7 +949,7 @@ func TestValidateExplicitPathUSID(t *testing.T) {
 
 		err := table.ValidateExplicitPath(ted, "X", []table.Segment{
 			usidContainerSeg(container, &table.SIDStructure{LocalBlock: 32, LocalNode: 16}),
-			table.NewSegmentSRv6(netip.MustParseAddr(endXToW1)),
+			table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr(endXToW1))),
 		})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "does not have adjacency SID")
@@ -960,7 +966,7 @@ func TestValidateExplicitPathUSID(t *testing.T) {
 
 		err := table.ValidateExplicitPath(ted, "X", []table.Segment{
 			usidContainerSeg(container, &table.SIDStructure{LocalBlock: 32, LocalNode: 16}),
-			table.NewSegmentSRv6(netip.MustParseAddr(endXToW3)),
+			table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr(endXToW3))),
 		})
 		require.NoError(t, err)
 	})
@@ -974,7 +980,7 @@ func TestValidateExplicitPathUSID(t *testing.T) {
 
 		err := table.ValidateExplicitPath(ted, "X", []table.Segment{
 			usidContainerSeg(container, &table.SIDStructure{LocalBlock: 32, LocalNode: 16}),
-			table.NewSegmentSRv6(netip.MustParseAddr("fd00::dead:beef")),
+			table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr("fd00::dead:beef"))),
 		})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "not found in TED")
@@ -1013,7 +1019,7 @@ func TestValidateExplicitPathUSID(t *testing.T) {
 		ted := newTestTED(nodeX)
 
 		err := table.ValidateExplicitPath(ted, "X", []table.Segment{
-			table.NewSegmentSRv6(netip.MustParseAddr(container)),
+			table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr(container))),
 		})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "not found in TED")
@@ -1030,7 +1036,7 @@ func TestValidateExplicitPathUSID(t *testing.T) {
 			RouterID: testRouterIDB,
 			SRv6SIDs: []*table.LsSrv6SID{{Sids: []string{"fc00::b:1"}}},
 		}
-		nodeA.Links = []*table.LsLink{{LocalNode: nodeA, RemoteNode: nodeB, Srv6EndXSID: &table.Srv6EndXSID{Sids: []string{"fc00::a:b"}}}}
+		nodeA.Links = []*table.LsLink{{Local: table.LinkEndpoint{Node: nodeA}, Remote: table.LinkEndpoint{Node: nodeB}, Srv6EndXSIDs: []*table.Srv6EndXSID{{Sids: []string{"fc00::a:b"}}}}}
 		ted := newTestTED(nodeA, nodeB)
 
 		err := table.ValidateExplicitPath(ted, testRouterIDB, []table.Segment{
@@ -1068,7 +1074,7 @@ func TestValidateExplicitPathUSID(t *testing.T) {
 			RouterID: testRouterIDB,
 			SRv6SIDs: []*table.LsSrv6SID{{Sids: []string{"fc00::b:1"}}},
 		}
-		nodeA.Links = []*table.LsLink{{LocalNode: nodeA, RemoteNode: nodeB, Srv6EndXSID: &table.Srv6EndXSID{Sids: []string{"fc00::a:b"}}}}
+		nodeA.Links = []*table.LsLink{{Local: table.LinkEndpoint{Node: nodeA}, Remote: table.LinkEndpoint{Node: nodeB}, Srv6EndXSIDs: []*table.Srv6EndXSID{{Sids: []string{"fc00::a:b"}}}}}
 		ted := newTestTED(nodeA, nodeB)
 
 		// A /32 locator has no node bits and resolves directly to its owner.
