@@ -590,7 +590,12 @@ func getLsLink(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrLink *api.LsAttribute
 	if multiTopoIDs := linkDescriptor.GetMultiTopoId().GetMultiTopoIds(); len(multiTopoIDs) != 0 {
 		lsLink.MultiTopoIDs = make(map[uint16]struct{}, len(multiTopoIDs))
 		for _, id := range multiTopoIDs {
-			lsLink.MultiTopoIDs[uint16(id)] = struct{}{}
+			multiTopoID, err := safecast.Uint16(id, "link Multi-Topology ID")
+			if err != nil {
+				return nil, err
+			}
+
+			lsLink.MultiTopoIDs[multiTopoID] = struct{}{}
 		}
 	}
 
