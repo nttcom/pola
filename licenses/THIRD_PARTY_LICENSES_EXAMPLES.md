@@ -485,10 +485,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ---
 
-## google.golang.org/grpc v1.83.2
+## google.golang.org/grpc v1.84.0
 
 - License: Apache-2.0
-- Source: <https://github.com/grpc/grpc-go/blob/v1.83.2/LICENSE>
+- Source: <https://github.com/grpc/grpc-go/blob/v1.84.0/LICENSE>
 
 ```text
 
