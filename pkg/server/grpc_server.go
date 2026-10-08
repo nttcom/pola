@@ -415,6 +415,8 @@ func resolveDynamicPolicy(s *APIServer, req *pb.CreateSRPolicyRequest, spec tabl
 		return resolvedPath{}, err
 	}
 
+	spec.UnderlayFamily = scope.Plane.Family
+
 	headend, endpoint, err := spec.Resolve(ted)
 	if err != nil {
 		return resolvedPath{}, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "%s", err.Error())

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"slices"
 )
 
 // EndpointSpec identifies how the policy endpoints are specified (RFC 9256 §2.1).
@@ -19,6 +20,7 @@ type EndpointSpec struct {
 	HeadendRouterID  string
 	EndpointRouterID string
 	Family           AddressFamily
+	UnderlayFamily   AddressFamily
 }
 
 // UsesRouterID reports whether s names its endpoints by router ID.
@@ -107,6 +109,10 @@ func (s EndpointSpec) resolveFamily(headendNode, endpointNode *LsNode) (AddressF
 	case 1:
 		return candidates[0], nil
 	default:
+		if slices.Contains(candidates, s.UnderlayFamily) {
+			return s.UnderlayFamily, nil
+		}
+
 		return AFUnspecified, fmt.Errorf("headend %s and endpoint %s share multiple loopback address families %v; specify endpointFamily", s.HeadendRouterID, s.EndpointRouterID, candidates)
 	}
 }

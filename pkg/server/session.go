@@ -1721,7 +1721,13 @@ func (ss *Session) computePathFromTED(sr *pcep.StateReport) ([]table.Segment, er
 	return segmentList, nil
 }
 
+// planeFromReport prefers the policy's underlay plane because endpoint
+// and underlay families are independent.
 func (ss *Session) planeFromReport(sr *pcep.StateReport) (table.Plane, error) {
+	if plane, ok := ss.dynamicPlane(sr.LSPObject.PlspID); ok {
+		return plane, nil
+	}
+
 	family := table.FamilyOfAddr(sr.LSPObject.SrcAddr)
 	if family == table.AFUnspecified || family != table.FamilyOfAddr(sr.LSPObject.DstAddr) {
 		return table.Plane{}, errors.New("LSP source and destination addresses must be valid and share an address family")
@@ -1733,6 +1739,20 @@ func (ss *Session) planeFromReport(sr *pcep.StateReport) (table.Plane, error) {
 	}
 
 	return table.Plane{Family: family, DataPlane: dataPlane}, nil
+}
+
+func (ss *Session) dynamicPlane(plspID uint32) (table.Plane, bool) {
+	ss.srPoliciesMu.RLock()
+	defer ss.srPoliciesMu.RUnlock()
+
+	p, ok := ss.searchSRPolicyLocked(plspID)
+	if !ok || p.CandidatePath.Dynamic == nil {
+		return table.Plane{}, false
+	}
+
+	plane := p.CandidatePath.Dynamic.Plane
+
+	return plane, plane.Validate() == nil
 }
 
 func (ss *Session) dataPlaneFromPeerCapabilities(af table.AddressFamily) (table.DataPlane, error) {

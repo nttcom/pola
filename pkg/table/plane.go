@@ -94,11 +94,17 @@ func (dp DataPlane) String() string {
 	}
 }
 
+// MarshalText implements encoding.TextMarshaler.
+func (af AddressFamily) MarshalText() ([]byte, error) { return []byte(af.String()), nil }
+
+// MarshalText implements encoding.TextMarshaler.
+func (dp DataPlane) MarshalText() ([]byte, error) { return []byte(dp.String()), nil }
+
 // Plane pairs an address family with a data plane.
 // It is the unit of scope used by the TED, CSPF, and SR abstractions.
 type Plane struct {
-	Family    AddressFamily
-	DataPlane DataPlane
+	Family    AddressFamily `json:"family"`
+	DataPlane DataPlane     `json:"dataPlane"`
 }
 
 // Validate reports an error for an unspecified or unsupported plane combination.
