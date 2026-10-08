@@ -1356,8 +1356,8 @@ func (o *SREroSubobject) serializeNAI() ([]uint8, error) {
 }
 
 func serializeIPv6LinkLocalNAI(local, remote netip.Addr, localIfaceID, remoteIfaceID *uint32) ([]uint8, error) {
-	if !local.Is6() || !remote.Is6() {
-		return nil, errors.New("IPv6 link-local adjacency NAI requires IPv6 LocalAddr and RemoteAddr")
+	if !local.IsLinkLocalUnicast() || !remote.IsLinkLocalUnicast() {
+		return nil, errors.New("IPv6 link-local adjacency NAI requires link-local IPv6 LocalAddr and RemoteAddr")
 	}
 
 	if localIfaceID == nil || remoteIfaceID == nil {
