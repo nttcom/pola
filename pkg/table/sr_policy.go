@@ -164,6 +164,9 @@ func (sid SRv6SID) Addr() netip.Addr { return netip.Addr(sid) }
 // String returns the string representation of sid.
 func (sid SRv6SID) String() string { return netip.Addr(sid).String() }
 
+// MarshalText returns the textual IPv6 representation of sid.
+func (sid SRv6SID) MarshalText() ([]byte, error) { return netip.Addr(sid).MarshalText() }
+
 // IsValid reports whether sid holds a valid address.
 func (sid SRv6SID) IsValid() bool { return netip.Addr(sid).IsValid() }
 
