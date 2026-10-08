@@ -102,11 +102,11 @@ func linkEndpointDisplay(e tedLinkEndpointView) string {
 		addrs = append(addrs, e.IPv6)
 	}
 
-	if len(addrs) == 0 {
-		return displayNone
+	s := displayNone
+	if len(addrs) != 0 {
+		s = strings.Join(addrs, ", ")
 	}
 
-	s := strings.Join(addrs, ", ")
 	if e.InterfaceID != nil {
 		s += fmt.Sprintf(" (interface %d)", *e.InterfaceID)
 	}
