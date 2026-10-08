@@ -79,8 +79,11 @@
                     {
                         "endpointBehavior": {
                             "behavior": 57,
-                            "name": "UA"
+                            "name": "UA",
+                            "flags": 0,
+                            "algorithm": 0
                         },
+                        "weight": 0,
                         "sids": [
                             "fcbb:bb00:1002:e000::"
                         ],
