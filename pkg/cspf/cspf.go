@@ -301,8 +301,8 @@ func initNodeMap(srcRouterID string, scope PathScope, network map[string]*table.
 
 // linkUsable is the sole edge filter for path computation.
 // Unnumbered links without topology metadata are considered usable.
-func linkUsable(link *table.LsLink, scope PathScope) bool {
-	if link.UsableForFamily(scope.Plane.Family) {
+func linkUsable(node *table.LsNode, link *table.LsLink, scope PathScope) bool {
+	if node.LinkUsableForFamily(link, scope.Plane.Family) {
 		return true
 	}
 
@@ -325,7 +325,7 @@ func updateNeighborCosts(calcNodeID string, calculatingNodes map[string]*node, n
 			continue
 		}
 
-		if !linkUsable(link, scope) {
+		if !linkUsable(calcNode, link, scope) {
 			continue
 		}
 

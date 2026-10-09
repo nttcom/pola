@@ -582,32 +582,59 @@ func (l *LsLink) Families() AddressFamilySet {
 	return s
 }
 
-// mtIDFamily returns the address family for an IS-IS Multi-Topology ID.
-func mtIDFamily(id uint16) AddressFamily {
-	switch id {
-	case 0: // Standard topology: IPv4 unicast (and IPv6 when topology 2 is absent).
-		return AFIPv4
-	case 2: // IPv6 routing topology.
-		return AFIPv6
-	default:
-		return AFUnspecified
-	}
-}
+// MT-IDs defined by RFC 5120 for IS-IS.
+const (
+	mtIDStandard = 0
+	mtIDIPv6     = 2
+)
 
 // UsableForFamily reports whether l is usable for CSPF in address family af.
-// Links with a Multi-Topology ID are usable only for the family it identifies.
+// IPv6 can use the standard topology unless a dedicated IPv6 topology is advertised.
 func (l *LsLink) UsableForFamily(af AddressFamily) bool {
 	if len(l.MultiTopoIDs) == 0 {
 		return l.Families().Has(af)
 	}
 
-	for id := range l.MultiTopoIDs {
-		if mtIDFamily(id) == af {
-			return true
+	_, hasStandard := l.MultiTopoIDs[mtIDStandard]
+	_, hasIPv6 := l.MultiTopoIDs[mtIDIPv6]
+
+	switch af {
+	case AFIPv4:
+		return hasStandard && l.Families().Has(AFIPv4)
+	case AFIPv6:
+		return hasIPv6 || (hasStandard && l.Families().Has(AFIPv6))
+	default:
+		return false
+	}
+}
+
+// LinkUsableForFamily also excludes standard-topology IPv6 links when a
+// dedicated IPv6 topology exists for the same neighbor.
+func (n *LsNode) LinkUsableForFamily(l *LsLink, af AddressFamily) bool {
+	if !l.UsableForFamily(af) {
+		return false
+	}
+
+	if af != AFIPv6 {
+		return true
+	}
+
+	if _, ok := l.MultiTopoIDs[mtIDIPv6]; ok || len(l.MultiTopoIDs) == 0 {
+		return true
+	}
+
+	for _, other := range n.Links {
+		if other == nil || other == l || other.Remote.Node == nil || l.Remote.Node == nil ||
+			other.Remote.Node.RouterID != l.Remote.Node.RouterID {
+			continue
+		}
+
+		if _, ok := other.MultiTopoIDs[mtIDIPv6]; ok {
+			return false
 		}
 	}
 
-	return false
+	return true
 }
 
 func multiTopoIDsKey(ids map[uint16]struct{}) string {

@@ -352,7 +352,7 @@ func TestLinkUsable(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tt.want, linkUsable(tt.link, tt.scope))
+			assert.Equal(t, tt.want, linkUsable(&table.LsNode{Links: []*table.LsLink{tt.link}}, tt.link, tt.scope))
 		})
 	}
 }

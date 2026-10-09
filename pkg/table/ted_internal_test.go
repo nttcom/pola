@@ -428,14 +428,24 @@ func TestLsLink_UsableForFamily(t *testing.T) {
 			wantIPv6: true,
 		},
 		{
-			name: "Multi-Topology ID 0 (standard): IPv4 only, despite dual-stack addressing",
+			name: "Multi-Topology ID 0 (standard): carries both families when no IPv6 topology is advertised",
 			link: &LsLink{
 				Local:        LinkEndpoint{IPv4: v4, IPv6: v6},
 				Remote:       LinkEndpoint{IPv4: v4, IPv6: v6},
 				MultiTopoIDs: map[uint16]struct{}{0: {}},
 			},
 			wantIPv4: true,
-			wantIPv6: false,
+			wantIPv6: true,
+		},
+		{
+			name: "Multi-Topology ID 0 with IPv6 addresses only: unusable for IPv4",
+			link: &LsLink{
+				Local:        LinkEndpoint{IPv6: v6},
+				Remote:       LinkEndpoint{IPv6: v6},
+				MultiTopoIDs: map[uint16]struct{}{0: {}},
+			},
+			wantIPv4: false,
+			wantIPv6: true,
 		},
 		{
 			name: "Multi-Topology ID 2 (IPv6 routing topology): IPv6 only, despite dual-stack addressing",
