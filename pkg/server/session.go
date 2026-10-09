@@ -1301,12 +1301,7 @@ func (ss *Session) recordUnknownMessage() bool {
 	})
 	ss.unknownMsgTimes = append(ss.unknownMsgTimes, now)
 
-	count := len(ss.unknownMsgTimes)
-	if count > math.MaxUint32 {
-		return true
-	}
-
-	return uint32(count) > ss.maxUnknownMsgs
+	return int64(len(ss.unknownMsgTimes)) > int64(ss.maxUnknownMsgs)
 }
 
 func (ss *Session) handlePCErr(pcerrMessage *pcep.PCErrMessage) {
