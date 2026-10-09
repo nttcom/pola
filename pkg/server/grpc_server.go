@@ -667,6 +667,8 @@ func (s *APIServer) DeleteSRPolicy(_ context.Context, input *pb.DeleteSRPolicyRe
 		return nil, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "invalid endpoint address")
 	}
 
+	endpoint = endpoint.Unmap()
+
 	for _, segment := range inputSRPolicy.GetSegmentList() {
 		seg, err := newEnrichedSegment(segment, s.usidMode)
 		if err != nil {
@@ -717,6 +719,8 @@ func srPolicyListFilter(req *pb.GetSRPolicyListRequest) (netip.Addr, error) {
 		if !ok {
 			return netip.Addr{}, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "invalid session filter address %v", raw)
 		}
+
+		filterAddr = filterAddr.Unmap()
 	}
 
 	return filterAddr, nil
@@ -890,6 +894,8 @@ func resolveSession(pce *Server, addr []byte, requireSynced bool) (*Session, err
 		return nil, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "invalid PCEP session address: %v", addr)
 	}
 
+	peerAddr = peerAddr.Unmap()
+
 	pcepSession := pce.SearchSession(peerAddr)
 	if pcepSession == nil {
 		return nil, newStatus(codes.NotFound, ReasonPCEPSessionNotFound,
@@ -936,19 +942,9 @@ func resolvePlane(node *table.LsNode, pbFamily pb.AddressFamily, pbDataPlane pb.
 		return plane, nil
 	}
 
-	plane, err := node.DefaultPlane()
+	plane, err := node.ResolvePlane(family, dataPlane)
 	if err != nil {
 		return table.Plane{}, newStatus(codes.FailedPrecondition, ReasonTEDDataIncomplete, "%s", err.Error())
-	}
-
-	if family.IsValid() && plane.Family != family {
-		return table.Plane{}, newStatus(codes.InvalidArgument, ReasonInvalidRequest,
-			"node's unique viable plane uses address family %s, which does not match the requested underlay family %s", plane.Family, family)
-	}
-
-	if dataPlane != table.DPUnspecified && plane.DataPlane != dataPlane {
-		return table.Plane{}, newStatus(codes.InvalidArgument, ReasonInvalidRequest,
-			"node's unique viable plane uses data plane %s, which does not match the requested data plane %s", plane.DataPlane, dataPlane)
 	}
 
 	return plane, nil
@@ -993,6 +989,8 @@ func sessionListFilter(req *pb.GetSessionListRequest) (netip.Addr, error) {
 		if !ok {
 			return netip.Addr{}, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "invalid session filter address %v", raw)
 		}
+
+		filterAddr = filterAddr.Unmap()
 	}
 
 	return filterAddr, nil

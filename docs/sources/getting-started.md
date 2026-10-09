@@ -162,8 +162,6 @@ neighbors:
 
 #### Known limitations
 
-* **SR Adjacency-SID**: Only one SR Adjacency-SID is available per link, so
-  IPv4- and IPv6-specific SIDs cannot be distinguished on the same dual-stack link.
 * **IOS-XR interoperability**: IOS-XR 24.4.1 rejected IPv6-endpoint
   PCE-initiated SR-MPLS policies (`pcinitiate: bad sock info`).
 * **Junos interoperability**: Junos 25.2R1.9 rejected IPv6-endpoint

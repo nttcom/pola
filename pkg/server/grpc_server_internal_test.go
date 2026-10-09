@@ -1869,6 +1869,12 @@ func TestResolvePlane(t *testing.T) {
 			wantErr:   "SRv6 requires IPv6",
 		},
 		{
+			name:      "data plane alone selects the matching plane on a dual-plane node",
+			node:      dualPlaneNode,
+			dataPlane: pb.DataPlane_DATA_PLANE_SRV6,
+			wantPlane: table.Plane{Family: table.AFIPv6, DataPlane: table.DPSRv6},
+		},
+		{
 			name:    "ambiguous node without an explicit plane is rejected",
 			node:    dualPlaneNode,
 			wantErr: "explicit plane is required",
@@ -1883,7 +1889,7 @@ func TestResolvePlane(t *testing.T) {
 			name:    "family alone mismatching the node's unique plane is rejected",
 			node:    srMPLSNode,
 			family:  pb.AddressFamily_ADDRESS_FAMILY_IPV6,
-			wantErr: "does not match the requested underlay family",
+			wantErr: "doesn't have a Node SID",
 		},
 		{
 			name:      "data plane alone is cross-checked against the node's unique plane",
@@ -1895,7 +1901,7 @@ func TestResolvePlane(t *testing.T) {
 			name:      "data plane alone mismatching the node's unique plane is rejected",
 			node:      srMPLSNode,
 			dataPlane: pb.DataPlane_DATA_PLANE_SRV6,
-			wantErr:   "does not match the requested data plane",
+			wantErr:   "doesn't have a Node SID",
 		},
 	}
 	for _, tt := range tests {

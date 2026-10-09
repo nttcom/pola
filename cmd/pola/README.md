@@ -417,7 +417,7 @@ Node #1: 0000.0aff.0002
 
 - The top level is an array of nodes; there is no wrapping `ted` object.
 - `links[].local` and `links[].remote` always contain `routerId`; `ipv4`, `ipv6`, and `interfaceId` are included when present.
-- `adjSids` contains `{ "family", "sid" }` objects. `family` is always `"unspecified"` because the available Adjacency-SID information does not include its address family.
+- `adjSids` contains `{ "family", "sid" }` objects. `family` is derived from the IS-IS F flag or OSPF protocol when repeated Adj-SID attributes are available; otherwise, it defaults to `"unspecified"`.
 
 ```json
 [

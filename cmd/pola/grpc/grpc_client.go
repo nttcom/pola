@@ -636,6 +636,11 @@ func convertSRPolicy(p *pb.SRPolicy) (table.SRPolicy, error) {
 		return table.SRPolicy{}, err
 	}
 
+	candidatePath, err := candidatePathFromPB(p.GetCandidatePath())
+	if err != nil {
+		return table.SRPolicy{}, err
+	}
+
 	return table.SRPolicy{
 		PlspID:           p.GetPlspId(),
 		Name:             p.GetPolicyName(),
@@ -645,13 +650,13 @@ func convertSRPolicy(p *pb.SRPolicy) (table.SRPolicy, error) {
 		HeadendRouterID:  p.GetHeadendRouterId(),
 		EndpointRouterID: p.GetEndpointRouterId(),
 		Color:            p.GetColor(),
-		CandidatePath:    candidatePathFromPB(p.GetCandidatePath()),
+		CandidatePath:    candidatePath,
 		LSPID:            lspID,
 		State:            policyStateFromPB(p.GetState()),
 	}, nil
 }
 
-func candidatePathFromPB(cp *pb.CandidatePath) table.CandidatePath {
+func candidatePathFromPB(cp *pb.CandidatePath) (table.CandidatePath, error) {
 	tableCP := table.CandidatePath{Preference: cp.GetPreference()}
 
 	switch v := cp.GetPath().(type) {
@@ -666,15 +671,18 @@ func candidatePathFromPB(cp *pb.CandidatePath) table.CandidatePath {
 	case *pb.CandidatePath_Explicit:
 		segmentList := make([]table.Segment, 0, len(v.Explicit.GetSegmentList()))
 		for _, s := range v.Explicit.GetSegmentList() {
-			if seg, err := segmentFromPB(s); err == nil {
-				segmentList = append(segmentList, seg)
+			seg, err := segmentFromPB(s)
+			if err != nil {
+				return table.CandidatePath{}, err
 			}
+
+			segmentList = append(segmentList, seg)
 		}
 
 		tableCP.Explicit = &table.ExplicitPath{SegmentList: segmentList}
 	}
 
-	return tableCP
+	return tableCP, nil
 }
 
 func fromPBDataPlane(dp pb.DataPlane) table.DataPlane {
@@ -982,14 +990,14 @@ func createLinkEndpoint(node *table.LsNode, pbEndpoint *pb.LsLinkEndpoint) (tabl
 	e := table.LinkEndpoint{Node: node}
 
 	if s := pbEndpoint.GetIpv4(); s != "" {
-		if err := e.IPv4.UnmarshalText([]byte(s)); err != nil {
-			return table.LinkEndpoint{}, fmt.Errorf("invalid IPv4 address %q: %w", s, err)
+		if err := e.IPv4.UnmarshalText([]byte(s)); err != nil || !e.IPv4.Is4() {
+			return table.LinkEndpoint{}, fmt.Errorf("invalid IPv4 address %q", s)
 		}
 	}
 
 	if s := pbEndpoint.GetIpv6(); s != "" {
-		if err := e.IPv6.UnmarshalText([]byte(s)); err != nil {
-			return table.LinkEndpoint{}, fmt.Errorf("invalid IPv6 address %q: %w", s, err)
+		if err := e.IPv6.UnmarshalText([]byte(s)); err != nil || !e.IPv6.Is6() || e.IPv6.Is4In6() {
+			return table.LinkEndpoint{}, fmt.Errorf("invalid IPv6 address %q", s)
 		}
 	}
 

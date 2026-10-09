@@ -364,7 +364,6 @@ func (n *LsNode) nodeSegmentSRv6() (Segment, error) {
 }
 
 // candidatePlanes lists the valid (family, data plane) combinations.
-// The order is not significant; DefaultPlane requires exactly one to be viable.
 var candidatePlanes = []Plane{
 	{Family: AFIPv4, DataPlane: DPSRMPLS},
 	{Family: AFIPv6, DataPlane: DPSRMPLS},
@@ -374,9 +373,26 @@ var candidatePlanes = []Plane{
 // DefaultPlane returns the node's unique viable Plane.
 // An explicit plane is required when the node supports multiple planes.
 func (n *LsNode) DefaultPlane() (Plane, error) {
+	return n.uniquePlane(AFUnspecified, DPUnspecified)
+}
+
+// ResolvePlane returns the unique viable Plane matching the specified constraints.
+func (n *LsNode) ResolvePlane(family AddressFamily, dataPlane DataPlane) (Plane, error) {
+	return n.uniquePlane(family, dataPlane)
+}
+
+func (n *LsNode) uniquePlane(family AddressFamily, dataPlane DataPlane) (Plane, error) {
 	var candidates []Plane
 
 	for _, p := range candidatePlanes {
+		if family.IsValid() && p.Family != family {
+			continue
+		}
+
+		if dataPlane != DPUnspecified && p.DataPlane != dataPlane {
+			continue
+		}
+
 		if _, err := n.NodeSegment(p); err == nil {
 			candidates = append(candidates, p)
 		}

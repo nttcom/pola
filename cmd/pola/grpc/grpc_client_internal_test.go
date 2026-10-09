@@ -987,6 +987,19 @@ func TestConvertSRPolicy(t *testing.T) {
 		require.Error(t, err)
 	})
 
+	t.Run("invalid explicit segment propagates the error", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := convertSRPolicy(&pb.SRPolicy{
+			Headend:  netip.MustParseAddr(testIPv4Addr1).AsSlice(),
+			Endpoint: netip.MustParseAddr(testIPv4Addr2).AsSlice(),
+			CandidatePath: &pb.CandidatePath{
+				Path: &pb.CandidatePath_Explicit{Explicit: &pb.ExplicitPath{SegmentList: []*pb.Segment{{Sid: "not-a-sid"}}}},
+			},
+		})
+		require.Error(t, err)
+	})
+
 	t.Run("LSP-ID overflow", func(t *testing.T) {
 		t.Parallel()
 

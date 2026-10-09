@@ -564,6 +564,7 @@ func TestSRv6EroSubobject_RoundTrip(t *testing.T) {
 			require.NoError(t, err, "Len failed")
 
 			want.Length = uint8(l)
+			want.Segment.Behavior = want.Segment.BehaviorOrDerived()
 
 			raw, err := want.Serialize()
 			require.NoError(t, err, "Serialize failed")

@@ -416,6 +416,49 @@ func TestLsNodeDefaultPlane(t *testing.T) {
 	})
 }
 
+func TestLsNodeResolvePlane(t *testing.T) {
+	t.Parallel()
+
+	node := &table.LsNode{
+		RouterID:  testRouterID1,
+		SrgbBegin: 16000,
+		Prefixes: []*table.LsPrefix{
+			{Prefix: netip.MustParsePrefix("10.0.0.1/32"), SidIndex: 0, HasSidIndex: true},
+		},
+		SRv6SIDs: []*table.LsSrv6SID{{Sids: []string{testSRv6SID1}}},
+	}
+
+	tests := []struct {
+		name      string
+		family    table.AddressFamily
+		dataPlane table.DataPlane
+		want      table.Plane
+		wantErr   string
+	}{
+		{"family narrows to IPv4", table.AFIPv4, table.DPUnspecified, table.Plane{Family: table.AFIPv4, DataPlane: table.DPSRMPLS}, ""},
+		{"family narrows to IPv6", table.AFIPv6, table.DPUnspecified, table.Plane{Family: table.AFIPv6, DataPlane: table.DPSRv6}, ""},
+		{"data plane narrows to SR-MPLS", table.AFUnspecified, table.DPSRMPLS, table.Plane{Family: table.AFIPv4, DataPlane: table.DPSRMPLS}, ""},
+		{"data plane narrows to SRv6", table.AFUnspecified, table.DPSRv6, table.Plane{Family: table.AFIPv6, DataPlane: table.DPSRv6}, ""},
+		{"unspecified is ambiguous", table.AFUnspecified, table.DPUnspecified, table.Plane{}, "an explicit plane is required"},
+		{"no match", table.AFIPv4, table.DPSRv6, table.Plane{}, "node doesn't have a Node SID"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := node.ResolvePlane(tt.family, tt.dataPlane)
+			if tt.wantErr != "" {
+				assert.ErrorContains(t, err, tt.wantErr)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func TestLsNodeDefaultLoopbackFamily(t *testing.T) {
 	t.Parallel()
 

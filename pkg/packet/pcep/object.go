@@ -1673,6 +1673,8 @@ func (o *SRv6EroSubobject) DecodeFromBytes(subobject []uint8) error {
 		return errors.New("SRv6EroSubobject: declared length does not match V/T/F/S flags")
 	}
 
+	o.Segment.Behavior = behavior
+
 	if table.IsUSidBehavior(behavior) {
 		o.Segment.USid = true
 	}
