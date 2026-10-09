@@ -101,6 +101,16 @@ func TestEndpointSpecResolve(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name: "underlay family breaks the tie between multiple shared loopback families",
+			spec: table.EndpointSpec{HeadendRouterID: testRouterIDA, EndpointRouterID: testRouterIDB, UnderlayFamily: table.AFIPv6},
+			ted: newTestTED(
+				lsNodeWithLoopbacks(testRouterIDA, "10.0.0.1", testSRv6SID1),
+				lsNodeWithLoopbacks(testRouterIDB, "10.0.0.2", testSRv6SID2),
+			),
+			wantHeadend:  netip.MustParseAddr(testSRv6SID1),
+			wantEndpoint: netip.MustParseAddr(testSRv6SID2),
+		},
+		{
 			name: "no shared address family is an error",
 			spec: table.EndpointSpec{HeadendRouterID: testRouterIDA, EndpointRouterID: testRouterIDB},
 			ted: newTestTED(

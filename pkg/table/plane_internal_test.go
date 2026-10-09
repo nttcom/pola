@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAddressFamily_String(t *testing.T) {
@@ -77,6 +78,18 @@ func TestDataPlane_String(t *testing.T) {
 			assert.Equal(t, tt.want, tt.dp.String())
 		})
 	}
+}
+
+func TestPlaneMarshalText(t *testing.T) {
+	t.Parallel()
+
+	af, err := AFIPv6.MarshalText()
+	require.NoError(t, err)
+	assert.Equal(t, "ipv6", string(af))
+
+	dp, err := DPSRv6.MarshalText()
+	require.NoError(t, err)
+	assert.Equal(t, "srv6", string(dp))
 }
 
 func TestPlane_Validate(t *testing.T) {

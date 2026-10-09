@@ -4771,6 +4771,46 @@ func TestPlaneFromReport(t *testing.T) {
 		assert.Equal(t, table.Plane{Family: table.AFIPv4, DataPlane: table.DPSRMPLS}, plane)
 	})
 
+	t.Run("stored dynamic path plane takes precedence over LSP addresses", func(t *testing.T) {
+		t.Parallel()
+
+		ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), &table.LsTED{Nodes: map[string]*table.LsNode{}}, 0)
+		sr := newTestStateReport(t, 1, 0)
+		sr.LSPObject.SrcAddr = netip.MustParseAddr("10.0.0.1")
+		sr.LSPObject.DstAddr = netip.MustParseAddr("10.0.0.2")
+		require.NoError(t, ss.RegisterSRPolicy(sr))
+
+		want := table.Plane{Family: table.AFIPv6, DataPlane: table.DPSRv6}
+
+		ss.srPoliciesMu.Lock()
+		ss.srPolicies[0].CandidatePath.Dynamic = &table.DynamicPath{Plane: want}
+		ss.srPoliciesMu.Unlock()
+
+		plane, err := ss.planeFromReport(sr)
+		require.NoError(t, err)
+		assert.Equal(t, want, plane)
+	})
+
+	t.Run("invalid stored dynamic plane falls back to LSP addresses", func(t *testing.T) {
+		t.Parallel()
+
+		ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), &table.LsTED{Nodes: map[string]*table.LsNode{}}, 0)
+		ss.commitPeerOpen(OpenParams{}, pcep.RFCCompliant, []pcep.CapabilityInterface{pcep.NewSRPCECapability(true, false, 0)})
+
+		sr := newTestStateReport(t, 1, 0)
+		sr.LSPObject.SrcAddr = netip.MustParseAddr("10.0.0.1")
+		sr.LSPObject.DstAddr = netip.MustParseAddr("10.0.0.2")
+		require.NoError(t, ss.RegisterSRPolicy(sr))
+
+		ss.srPoliciesMu.Lock()
+		ss.srPolicies[0].CandidatePath.Dynamic = &table.DynamicPath{}
+		ss.srPoliciesMu.Unlock()
+
+		plane, err := ss.planeFromReport(sr)
+		require.NoError(t, err)
+		assert.Equal(t, table.Plane{Family: table.AFIPv4, DataPlane: table.DPSRMPLS}, plane)
+	})
+
 	t.Run("mismatched src/dst families are rejected", func(t *testing.T) {
 		t.Parallel()
 

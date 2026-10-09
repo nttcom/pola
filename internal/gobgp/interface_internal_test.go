@@ -579,6 +579,18 @@ func TestGetLsLink(t *testing.T) {
 		}
 	})
 
+	t.Run("out-of-range Multi-Topology ID is rejected", func(t *testing.T) {
+		t.Parallel()
+
+		desc := &api.LsLinkDescriptor{
+			InterfaceAddrIpv4: "10.0.0.1", NeighborAddrIpv4: "10.0.0.2",
+			MultiTopoIds: []uint32{math.MaxUint16 + 1},
+		}
+
+		_, err := getLsLink(newNLRI(desc), &api.LsAttributeLink{})
+		assert.ErrorContains(t, err, "Multi-Topology ID")
+	})
+
 	t.Run("address parse errors", func(t *testing.T) {
 		t.Parallel()
 
