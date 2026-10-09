@@ -68,7 +68,7 @@ def wait_for_ssh(
 
 def wait_until_command_success(
     cmd: str,
-    timeout: int = 600,
+    timeout: int = 1200,
     interval: int = 5,
 ) -> subprocess.CompletedProcess:
     """Wait until command exits successfully."""
@@ -87,8 +87,34 @@ def wait_until_command_success(
         time.sleep(interval)
 
 
-def get_ted(pola_container: str) -> dict:
-    """Get current TED JSON. Raises RuntimeError/JSONDecodeError on failure."""
+def wait_until_command_output_contains(
+    cmd: str,
+    expected: str,
+    timeout: int = 300,
+    interval: int = 5,
+) -> subprocess.CompletedProcess:
+    """Wait until the stdout of a command contains the expected text."""
+
+    start = time.time()
+
+    while True:
+        result = run_command(cmd)
+
+        if expected in result.stdout:
+            return result
+
+        if time.time() - start > timeout:
+            raise TimeoutError(
+                f"Timeout waiting for {expected!r} in the output of {cmd!r}\n"
+                f"Last output:\n{result.stdout}"
+            )
+
+        print(f"Waiting for {expected!r} in the output of {cmd!r}...")
+        time.sleep(interval)
+
+
+def get_ted(pola_container: str) -> list:
+    """Get current TED JSON (a list of nodes). Raises RuntimeError/JSONDecodeError on failure."""
 
     cmd = f"docker exec {pola_container} /bin/pola -p 50052 ted -j"
     result = run_command(cmd)
@@ -101,10 +127,10 @@ def get_ted(pola_container: str) -> dict:
 
 def wait_until_ted(
     pola_container: str,
-    predicate: Callable[[dict], bool],
+    predicate: Callable[[list], bool],
     timeout: int = 600,
     interval: int = 5,
-) -> dict:
+) -> list:
     """Wait until predicate(ted_json) becomes True."""
 
     start = time.time()
@@ -130,13 +156,13 @@ def wait_until_ted_has_routers(
     router_ids: list[str],
     timeout: int = 600,
     interval: int = 5,
-) -> dict:
+) -> list:
     """Wait until TED contains all router IDs."""
 
     router_ids = set(router_ids)
 
     def predicate(ted):
-        present = {node.get("routerID") for node in ted.get("ted", [])}
+        present = {node.get("routerId") for node in ted}
         missing = router_ids - present
         if missing:
             print(f"Waiting for routers: {missing}")
@@ -156,16 +182,16 @@ def wait_until_ted_has_links(
     expected_links: set[frozenset[str]],
     timeout: int = 600,
     interval: int = 5,
-) -> dict:
+) -> list:
     """Wait until TED contains all expected links."""
 
     def predicate(ted):
         found = set()
 
-        for node in ted.get("ted", []):
-            local = node.get("routerID")
+        for node in ted:
+            local = node.get("routerId")
             for link in node.get("links", []):
-                remote = link.get("remoteNode")
+                remote = link.get("remote", {}).get("routerId")
                 if local and remote:
                     found.add(frozenset((local, remote)))
 
@@ -185,10 +211,10 @@ def wait_until_ted_has_links(
 
 def wait_until_ted_matches(
     pola_container: str,
-    expected: dict,
+    expected: list,
     timeout: int = 600,
     interval: int = 5,
-) -> dict:
+) -> list:
     """Wait until TED JSON matches expected."""
 
     def predicate(ted):
@@ -234,4 +260,33 @@ def wait_until_lsp_up(
             raise TimeoutError(f"Timeout waiting for LSP {lsp_name} to become Up")
 
         print(f"Waiting for LSP {lsp_name} to become Up...")
+        time.sleep(interval)
+
+
+def wait_until_ssh_output_contains(
+    ssh_client: paramiko.SSHClient,
+    command: str,
+    expected: str,
+    timeout: int = 300,
+    interval: int = 5,
+) -> str:
+    """Wait until the output of a command run over SSH contains the expected text."""
+
+    start = time.time()
+    last_output = ""
+
+    while True:
+        _, stdout, _ = ssh_client.exec_command(command)
+        last_output = stdout.read().decode()
+
+        if expected in last_output:
+            return last_output
+
+        if time.time() - start > timeout:
+            raise TimeoutError(
+                f"Timeout waiting for {expected!r} in the output of {command!r}\n"
+                f"Last output:\n{last_output}"
+            )
+
+        print(f"Waiting for {expected!r} in the output of {command!r}...")
         time.sleep(interval)

@@ -15,6 +15,7 @@ func AppendByteSlices(slices ...[]byte) []byte {
 	}
 
 	result := make([]byte, totalLen)
+
 	offset := 0
 	for _, s := range slices {
 		copy(result[offset:], s)
@@ -28,6 +29,7 @@ func AppendByteSlices(slices ...[]byte) []byte {
 func Uint16ToByteSlice[T ~uint16](v T) []byte {
 	b := make([]byte, 2)
 	binary.BigEndian.PutUint16(b, uint16(v))
+
 	return b
 }
 
@@ -35,6 +37,7 @@ func Uint16ToByteSlice[T ~uint16](v T) []byte {
 func Uint32ToByteSlice(v uint32) []byte {
 	b := make([]byte, 4)
 	binary.BigEndian.PutUint32(b, v)
+
 	return b
 }
 
@@ -53,5 +56,6 @@ func SetBit[T Bitwise](value, bit T, condition bool) T {
 	if condition {
 		return value | bit
 	}
+
 	return value
 }

@@ -9,16 +9,21 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"net/netip"
+	"math"
 
 	"github.com/nttcom/pola/pkg/table"
 )
 
+// CommonHeaderLength is the wire length of a PCEP common header.
 const CommonHeaderLength uint16 = 4
 
-// PCEP Message-Type (1 byte)
+// PCEPVersion is the current PCEP protocol version.
+const PCEPVersion uint8 = 1
+
+// MessageType is a PCEP message type code.
 type MessageType uint8
 
+// PCEP message types.
 const (
 	MessageTypeOpen         MessageType = 0x01
 	MessageTypeKeepalive    MessageType = 0x02
@@ -35,79 +40,117 @@ const (
 	MessageTypeStartTLS     MessageType = 0x0d
 )
 
-var messageTypeDescriptions = map[MessageType]struct {
-	Description string
-	Reference   string
-}{
-	MessageTypeOpen:         {"Open", "RFC5440"},
-	MessageTypeKeepalive:    {"Keepalive", "RFC5440"},
-	MessageTypePcreq:        {"Path Computation Request", "RFC5440"},
-	MessageTypePcrep:        {"Path Computation Reply", "RFC5440"},
-	MessageTypeNotification: {"Notification", "RFC5440"},
-	MessageTypeError:        {"Error", "RFC5440"},
-	MessageTypeClose:        {"Close", "RFC5440"},
-	MessageTypePcmReq:       {"Path Computation Monitoring Request", "RFC5886"},
-	MessageTypePcmRep:       {"Path Computation Monitoring Reply", "RFC5886"},
-	MessageTypeReport:       {"Report", "RFC8231"},
-	MessageTypeUpdate:       {"Update", "RFC8281"},
-	MessageTypeLSPInitReq:   {"LSP Initiate Request", "RFC8281"},
-	MessageTypeStartTLS:     {"StartTLS", "RFC8253"},
+var messageTypeDescriptions = map[MessageType]codePointInfo{
+	MessageTypeOpen:         {"Open", rfc(5440)},
+	MessageTypeKeepalive:    {"Keepalive", rfc(5440)},
+	MessageTypePcreq:        {"Path Computation Request", rfc(5440)},
+	MessageTypePcrep:        {"Path Computation Reply", rfc(5440)},
+	MessageTypeNotification: {"Notification", rfc(5440)},
+	MessageTypeError:        {"Error", rfc(5440)},
+	MessageTypeClose:        {"Close", rfc(5440)},
+	MessageTypePcmReq:       {"Path Computation Monitoring Request", rfc(5886)},
+	MessageTypePcmRep:       {"Path Computation Monitoring Reply", rfc(5886)},
+	MessageTypeReport:       {"Report", rfc(8231)},
+	MessageTypeUpdate:       {"Update", rfc(8281)},
+	MessageTypeLSPInitReq:   {"LSP Initiate Request", rfc(8281)},
+	MessageTypeStartTLS:     {"StartTLS", rfc(8253)},
 }
+
+// Name returns the registered name of the message type.
+func (t MessageType) Name() string { return messageTypeDescriptions[t].Description }
+
+// Reference returns the defining document of the message type.
+func (t MessageType) Reference() Reference { return messageTypeDescriptions[t].Reference }
 
 func (t MessageType) String() string {
-	if desc, ok := messageTypeDescriptions[t]; ok {
-		return fmt.Sprintf("%s (0x%02x)", desc.Description, uint8(t))
+	if name := t.Name(); name != "" {
+		return fmt.Sprintf("%s (0x%02x)", name, uint8(t))
 	}
+
 	return fmt.Sprintf("Unknown MessageType (0x%02x)", uint8(t))
 }
 
+// StringWithReference returns a human-readable representation of the message type with reference.
 func (t MessageType) StringWithReference() string {
-	if desc, ok := messageTypeDescriptions[t]; ok {
-		return fmt.Sprintf("%s (0x%02x) [%s]", desc.Description, uint8(t), desc.Reference)
-	}
-	return fmt.Sprintf("Unknown MessageType (0x%02x)", uint8(t))
+	return withReference(t.String(), t.Reference())
 }
 
-// Common header of PCEP Message
-type CommonHeader struct { // RFC5440 6.1
+// CommonHeader is the common header of a PCEP message (RFC 5440 §6.1).
+type CommonHeader struct { // RFC 5440 §6.1
 	Version       uint8 // Current version is 1
 	Flag          uint8
 	MessageType   MessageType
 	MessageLength uint16
 }
 
+// DecodeFromBytes decodes the given bytes into the CommonHeader.
 func (h *CommonHeader) DecodeFromBytes(header []uint8) error {
-	h.Version = uint8(header[0] >> 5)
-	h.Flag = uint8(header[0] & 0x1f)
+	if len(header) < int(CommonHeaderLength) {
+		return fmt.Errorf("PCEP common header too short: got %d bytes, need %d", len(header), CommonHeaderLength)
+	}
+
+	h.Version = header[0] >> 5
+	h.Flag = header[0] & 0x1f
 	h.MessageType = MessageType(header[1])
 	h.MessageLength = binary.BigEndian.Uint16(header[2:4])
+
+	if h.Version != PCEPVersion {
+		return fmt.Errorf("unsupported PCEP version %d", h.Version)
+	}
+	// RFC 5440 §6.1 requires Message-Length to include the common header.
+	if h.MessageLength < CommonHeaderLength {
+		return fmt.Errorf("invalid PCEP message length %d", h.MessageLength)
+	}
+
+	if h.MessageType == MessageTypeKeepalive && h.MessageLength != CommonHeaderLength {
+		return fmt.Errorf("invalid Keepalive message length %d, must be %d", h.MessageLength, CommonHeaderLength)
+	}
+
 	return nil
 }
 
+// Serialize encodes the CommonHeader into bytes.
 func (h *CommonHeader) Serialize() []uint8 {
 	buf := make([]uint8, 0, 4)
-	verFlag := uint8(h.Version<<5 | h.Flag)
-	buf = append(buf, verFlag)
-	buf = append(buf, uint8(h.MessageType))
+	verFlag := h.Version<<5 | h.Flag
+	buf = append(buf, verFlag, uint8(h.MessageType))
 	buf = append(buf, Uint16ToByteSlice(h.MessageLength)...)
+
 	return buf
 }
 
+// NewCommonHeader creates a new CommonHeader.
 func NewCommonHeader(messageType MessageType, messageLength uint16) *CommonHeader {
 	h := &CommonHeader{
-		Version:       uint8(1),
+		Version:       PCEPVersion,
 		Flag:          uint8(0),
 		MessageType:   messageType,
 		MessageLength: messageLength,
 	}
+
 	return h
 }
 
+// messageLength returns the total PCEP message length, which must fit in the
+// 16-bit Message-Length field.
+func messageLength(objects ...[]uint8) (uint16, error) {
+	total := int(CommonHeaderLength)
+	for _, o := range objects {
+		total += len(o)
+	}
+
+	if total > math.MaxUint16 {
+		return 0, fmt.Errorf("PCEP message length %d exceeds %d", total, math.MaxUint16)
+	}
+
+	return uint16(total), nil
+}
+
+// Message is a common interface for all PCEP messages.
 type Message interface {
 	Serialize() ([]uint8, error)
 }
 
-// Compile-time checks that all message types satisfy the Message interface.
 var (
 	_ Message = (*OpenMessage)(nil)
 	_ Message = (*KeepaliveMessage)(nil)
@@ -117,205 +160,297 @@ var (
 	_ Message = (*PCUpdMessage)(nil)
 )
 
-// Open Message
+func objectBody(messageBody []uint8, h *CommonObjectHeader) ([]uint8, error) {
+	if h.ObjectLength < commonObjectHeaderLength || h.ObjectLength%4 != 0 {
+		return nil, fmt.Errorf("invalid object length %d", h.ObjectLength)
+	}
+
+	if int(h.ObjectLength) > len(messageBody) {
+		return nil, fmt.Errorf("object body extends past message (len=%d, total=%d)", h.ObjectLength, len(messageBody))
+	}
+
+	return messageBody[commonObjectHeaderLength:h.ObjectLength], nil
+}
+
+// soleObjectBody decodes a message body containing exactly one object.
+// Errors are prefixed with label to provide message-specific context.
+func soleObjectBody(messageBody []uint8, label string, class ObjectClass, typ ObjectType) ([]uint8, error) {
+	var h CommonObjectHeader
+	if err := h.DecodeFromBytes(messageBody); err != nil {
+		return nil, fmt.Errorf("%s: %w", label, err)
+	}
+
+	if h.ObjectClass != class {
+		return nil, fmt.Errorf("%s: unsupported ObjectClass: %d", label, h.ObjectClass)
+	}
+
+	if h.ObjectType != typ {
+		return nil, fmt.Errorf("%s: unsupported ObjectType: %d", label, h.ObjectType)
+	}
+
+	body, err := objectBody(messageBody, &h)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", label, err)
+	}
+
+	if int(h.ObjectLength) != len(messageBody) {
+		return nil, fmt.Errorf("%s: %d trailing bytes after %s object", label, len(messageBody)-int(h.ObjectLength), class.Name())
+	}
+
+	return body, nil
+}
+
+// OpenMessage is a PCEP Open message.
 type OpenMessage struct {
 	OpenObject *OpenObject
 }
 
+// DecodeFromBytes decodes the given bytes into the OpenMessage.
 func (m *OpenMessage) DecodeFromBytes(messageBody []uint8) error {
-	var commonObjectHeader CommonObjectHeader
-	if err := commonObjectHeader.DecodeFromBytes(messageBody); err != nil {
-		return fmt.Errorf("failed to decode common object header: %w", err)
-	}
-
-	if commonObjectHeader.ObjectClass != ObjectClassOpen {
-		return fmt.Errorf("unsupported ObjectClass: %d", commonObjectHeader.ObjectClass)
-	}
-	if commonObjectHeader.ObjectType != ObjectTypeOpenOpen {
-		return fmt.Errorf("unsupported ObjectType: %d", commonObjectHeader.ObjectType)
+	body, err := soleObjectBody(messageBody, "open", ObjectClassOpen, ObjectTypeOpenOpen)
+	if err != nil {
+		return err
 	}
 
 	openObject := &OpenObject{}
-	if err := openObject.DecodeFromBytes(commonObjectHeader.ObjectType, messageBody[commonObjectHeaderLength:commonObjectHeader.ObjectLength]); err != nil {
-		return fmt.Errorf("failed to decode OpenObject: %w", err)
+	if err := openObject.DecodeFromBytes(ObjectTypeOpenOpen, body); err != nil {
+		return fmt.Errorf("open: %w", err)
 	}
+
 	m.OpenObject = openObject
 
 	return nil
 }
 
+// Serialize encodes the OpenMessage into bytes.
 func (m *OpenMessage) Serialize() ([]uint8, error) {
-	byteOpenObject := m.OpenObject.Serialize()
-	openMessageLength := CommonHeaderLength + m.OpenObject.Len()
-	openHeader := NewCommonHeader(MessageTypeOpen, openMessageLength)
-	byteOpenHeader := openHeader.Serialize()
-	byteOpenMessage := AppendByteSlices(byteOpenHeader, byteOpenObject)
-	return byteOpenMessage, nil
-}
-
-func NewOpenMessage(sessionID uint8, keepalive uint8, capabilities []CapabilityInterface) (*OpenMessage, error) {
-	oo, err := NewOpenObject(sessionID, keepalive, capabilities)
+	byteOpenObject, err := m.OpenObject.Serialize()
 	if err != nil {
 		return nil, err
 	}
-	m := &OpenMessage{
-		OpenObject: oo,
+
+	openMessageLength, err := messageLength(byteOpenObject)
+	if err != nil {
+		return nil, err
 	}
-	return m, nil
+
+	openHeader := NewCommonHeader(MessageTypeOpen, openMessageLength)
+	byteOpenHeader := openHeader.Serialize()
+	byteOpenMessage := AppendByteSlices(byteOpenHeader, byteOpenObject)
+
+	return byteOpenMessage, nil
 }
 
-// Keepalive Message
-type KeepaliveMessage struct {
+// NewOpenMessage creates a new OpenMessage.
+func NewOpenMessage(sessionID, keepalive, deadTimer uint8, capabilities []CapabilityInterface) *OpenMessage {
+	return &OpenMessage{
+		OpenObject: NewOpenObject(sessionID, keepalive, deadTimer, capabilities),
+	}
 }
 
+// KeepaliveMessage is a PCEP Keepalive message.
+type KeepaliveMessage struct{}
+
+// Serialize encodes the KeepaliveMessage into bytes.
 func (m *KeepaliveMessage) Serialize() ([]uint8, error) {
 	keepaliveMessageLength := CommonHeaderLength
 	keepaliveHeader := NewCommonHeader(MessageTypeKeepalive, keepaliveMessageLength)
 	byteKeepaliveHeader := keepaliveHeader.Serialize()
 	byteKeepaliveMessage := byteKeepaliveHeader
+
 	return byteKeepaliveMessage, nil
 }
 
-func NewKeepaliveMessage() (*KeepaliveMessage, error) {
-	m := &KeepaliveMessage{}
-	return m, nil
+// NewKeepaliveMessage creates a new KeepaliveMessage.
+func NewKeepaliveMessage() *KeepaliveMessage {
+	return &KeepaliveMessage{}
 }
 
-// PCErr Message
+// PCErrMessage represents a PCEP Error message containing error objects and SRP objects.
 type PCErrMessage struct {
-	Errors []*PCEPErrorObject
-
-	// SRPs are present when a stateful PCC (RFC 8231) correlates the error
-	// with the PCInitiate/PCUpd request that triggered it.
-	SRPs []*SrpObject
+	Errors []*ErrorObject
+	SRPs   []*SrpObject
+	Open   *OpenObject
 }
 
-// DecodeFromBytes walks the message body object-by-object, framing each one by
-// the Common Object Header ObjectLength (RFC 5440 §7.2). A PCErr may carry an
-// SRP list followed by several PCEP-ERROR objects, so the whole body is
-// traversed rather than decoding only the first object.
-func (m *PCErrMessage) DecodeFromBytes(messageBody []uint8) error {
-	for offset := 0; offset < len(messageBody); {
-		if len(messageBody)-offset < int(commonObjectHeaderLength) {
-			return fmt.Errorf("PCErr: truncated object header at offset %d", offset)
-		}
-		var commonObjectHeader CommonObjectHeader
-		if err := commonObjectHeader.DecodeFromBytes(messageBody[offset : offset+int(commonObjectHeaderLength)]); err != nil {
+func (m *PCErrMessage) decodeObject(header *CommonObjectHeader, body []uint8) error {
+	switch header.ObjectClass {
+	case ObjectClassPCEPError:
+		errObj := &ErrorObject{}
+		if err := errObj.DecodeFromBytes(header.ObjectType, body); err != nil {
 			return err
 		}
-		if commonObjectHeader.ObjectLength < commonObjectHeaderLength || commonObjectHeader.ObjectLength%4 != 0 {
-			return fmt.Errorf("PCErr: invalid object length %d at offset %d", commonObjectHeader.ObjectLength, offset)
-		}
-		end := offset + int(commonObjectHeader.ObjectLength)
-		if end > len(messageBody) {
-			return fmt.Errorf("PCErr: object body extends past message (offset=%d, len=%d, total=%d)",
-				offset, commonObjectHeader.ObjectLength, len(messageBody))
-		}
-		objectBody := messageBody[offset+int(commonObjectHeaderLength) : end]
 
-		switch commonObjectHeader.ObjectClass {
-		case ObjectClassPCEPError:
-			errObj := &PCEPErrorObject{}
-			if err := errObj.DecodeFromBytes(commonObjectHeader.ObjectType, objectBody); err != nil {
-				return err
-			}
-			m.Errors = append(m.Errors, errObj)
-		case ObjectClassSRP:
-			srp := &SrpObject{}
-			if err := srp.DecodeFromBytes(commonObjectHeader.ObjectType, objectBody); err != nil {
-				return err
-			}
-			m.SRPs = append(m.SRPs, srp)
+		m.Errors = append(m.Errors, errObj)
+	case ObjectClassSRP:
+		srp := &SrpObject{}
+		if err := srp.DecodeFromBytes(header.ObjectType, body); err != nil {
+			return err
 		}
-		offset = end
+
+		m.SRPs = append(m.SRPs, srp)
+	case ObjectClassOpen:
+		if header.ObjectType != ObjectTypeOpenOpen {
+			return fmt.Errorf("PCErr: unsupported OPEN ObjectType: %d", header.ObjectType)
+		}
+
+		openObj := &OpenObject{}
+		if err := openObj.DecodeFromBytes(header.ObjectType, body); err != nil {
+			return err
+		}
+
+		m.Open = openObj
+	default:
+		// RFC 5440 §6.7: ignore unsupported object classes.
+	}
+
+	return nil
+}
+
+// DecodeFromBytes decodes the given bytes into the PCErrMessage.
+func (m *PCErrMessage) DecodeFromBytes(messageBody []uint8) error {
+	for offset := 0; offset < len(messageBody); {
+		var commonObjectHeader CommonObjectHeader
+		if err := commonObjectHeader.DecodeFromBytes(messageBody[offset:]); err != nil {
+			return fmt.Errorf("PCErr: %w", err)
+		}
+
+		body, err := objectBody(messageBody[offset:], &commonObjectHeader)
+		if err != nil {
+			return fmt.Errorf("PCErr: %w", err)
+		}
+
+		if err := m.decodeObject(&commonObjectHeader, body); err != nil {
+			return fmt.Errorf("PCErr: %w", err)
+		}
+
+		offset += int(commonObjectHeader.ObjectLength)
 	}
 	// RFC 5440 §6.7 requires at least one PCEP-ERROR object per PCErr message.
 	if len(m.Errors) == 0 {
 		return errors.New("PCErr: message carries no PCEP-ERROR object")
 	}
+
 	return nil
 }
 
+// Serialize encodes the PCErrMessage into bytes.
 func (m *PCErrMessage) Serialize() ([]uint8, error) {
-	length := CommonHeaderLength
+	objects := make([][]uint8, 0, len(m.SRPs)+len(m.Errors)+1)
 	for _, srp := range m.SRPs {
-		length += srp.Len()
+		b, err := srp.Serialize()
+		if err != nil {
+			return nil, err
+		}
+
+		objects = append(objects, b)
 	}
+
 	for _, errObj := range m.Errors {
-		length += errObj.Len()
+		b, err := errObj.Serialize()
+		if err != nil {
+			return nil, err
+		}
+
+		objects = append(objects, b)
 	}
-	buf := NewCommonHeader(MessageTypeError, length).Serialize()
-	for _, srp := range m.SRPs {
-		buf = AppendByteSlices(buf, srp.Serialize())
+
+	if m.Open != nil {
+		b, err := m.Open.Serialize()
+		if err != nil {
+			return nil, err
+		}
+
+		objects = append(objects, b)
 	}
-	for _, errObj := range m.Errors {
-		buf = AppendByteSlices(buf, errObj.Serialize())
+
+	length, err := messageLength(objects...)
+	if err != nil {
+		return nil, err
 	}
-	return buf, nil
+
+	parts := make([][]uint8, 0, len(objects)+1)
+	parts = append(parts, NewCommonHeader(MessageTypeError, length).Serialize())
+	parts = append(parts, objects...)
+
+	return AppendByteSlices(parts...), nil
 }
 
-// SRPIDs returns the SRP-ID of every SRP object in wire order, letting a
-// controller correlate the reported errors with its outstanding requests.
+// SRPIDs returns the SRP-IDs in wire order.
 func (m *PCErrMessage) SRPIDs() []uint32 {
 	if len(m.SRPs) == 0 {
 		return nil
 	}
+
 	ids := make([]uint32, 0, len(m.SRPs))
 	for _, srp := range m.SRPs {
 		ids = append(ids, srp.SrpID)
 	}
+
 	return ids
 }
 
-func NewPCErrMessage(errorType uint8, errorValue uint8, tlvs []TLVInterface) (*PCErrMessage, error) {
-	o, err := NewPCEPErrorObject(errorType, errorValue, tlvs)
-	if err != nil {
-		return nil, err
+// NewPCErrMessage creates a new PCErrMessage.
+func NewPCErrMessage(errorType, errorValue uint8, tlvs []TLVInterface) *PCErrMessage {
+	return &PCErrMessage{
+		Errors: []*ErrorObject{NewErrorObject(errorType, errorValue, tlvs)},
 	}
-	m := &PCErrMessage{
-		Errors: []*PCEPErrorObject{o},
-	}
-	return m, nil
 }
 
-// Close Message
+// NewPCErrMessageWithOpen creates a PCErrMessage with an attached OPEN object.
+func NewPCErrMessageWithOpen(errorType, errorValue uint8, openObject *OpenObject) *PCErrMessage {
+	return &PCErrMessage{
+		Errors: []*ErrorObject{NewErrorObject(errorType, errorValue, nil)},
+		Open:   openObject,
+	}
+}
+
+// CloseMessage is a PCEP Close message.
 type CloseMessage struct {
 	CloseObject *CloseObject
 }
 
+// DecodeFromBytes decodes the given bytes into the CloseMessage.
 func (m *CloseMessage) DecodeFromBytes(messageBody []uint8) error {
-	var commonObjectHeader CommonObjectHeader
-	if err := commonObjectHeader.DecodeFromBytes(messageBody); err != nil {
+	body, err := soleObjectBody(messageBody, "close", ObjectClassClose, ObjectTypeCloseClose)
+	if err != nil {
 		return err
 	}
+
 	closeObject := &CloseObject{}
-	if err := closeObject.DecodeFromBytes(commonObjectHeader.ObjectType, messageBody[commonObjectHeaderLength:commonObjectHeader.ObjectLength]); err != nil {
-		return err
+	if err := closeObject.DecodeFromBytes(ObjectTypeCloseClose, body); err != nil {
+		return fmt.Errorf("close: %w", err)
 	}
+
 	m.CloseObject = closeObject
+
 	return nil
 }
 
+// Serialize encodes the CloseMessage into bytes.
 func (m *CloseMessage) Serialize() ([]uint8, error) {
-	closeMessageLength := CommonHeaderLength + m.CloseObject.Len()
-	closeHeader := NewCommonHeader(MessageTypeClose, closeMessageLength)
-	byteCloseHeader := closeHeader.Serialize()
 	byteCloseObject := m.CloseObject.Serialize()
-	byteCloseMessage := AppendByteSlices(byteCloseHeader, byteCloseObject)
-	return byteCloseMessage, nil
-}
 
-func NewCloseMessage(reason CloseReason) (*CloseMessage, error) {
-	o, err := NewCloseObject(reason)
+	closeMessageLength, err := messageLength(byteCloseObject)
 	if err != nil {
 		return nil, err
 	}
-	m := &CloseMessage{
-		CloseObject: o,
-	}
-	return m, nil
+
+	closeHeader := NewCommonHeader(MessageTypeClose, closeMessageLength)
+	byteCloseHeader := closeHeader.Serialize()
+	byteCloseMessage := AppendByteSlices(byteCloseHeader, byteCloseObject)
+
+	return byteCloseMessage, nil
 }
 
+// NewCloseMessage creates a new CloseMessage.
+func NewCloseMessage(reason CloseReason) *CloseMessage {
+	return &CloseMessage{
+		CloseObject: NewCloseObject(reason),
+	}
+}
+
+// StateReport is a state report carried in a PCRpt message.
 type StateReport struct {
 	SrpObject               *SrpObject
 	LSPObject               *LSPObject
@@ -323,22 +458,21 @@ type StateReport struct {
 	LSPAObject              *LSPAObject
 	MetricObjects           []*MetricObject
 	BandwidthObjects        []*BandwidthObject
-	AssociationObject       *AssociationObject
+	AssociationObjects      []*AssociationObject
 	VendorInformationObject *VendorInformationObject
 }
 
-func NewStateReport() (*StateReport, error) {
-	sr := &StateReport{
+// NewStateReport creates a new StateReport.
+func NewStateReport() *StateReport {
+	return &StateReport{
 		SrpObject:               &SrpObject{},
 		LSPObject:               &LSPObject{},
 		EroObject:               &EroObject{},
 		LSPAObject:              &LSPAObject{},
 		MetricObjects:           []*MetricObject{},
 		BandwidthObjects:        []*BandwidthObject{},
-		AssociationObject:       &AssociationObject{},
 		VendorInformationObject: &VendorInformationObject{},
 	}
-	return sr, nil
 }
 
 func (r *StateReport) decodeBandwidthObject(objectType ObjectType, objectBody []uint8) error {
@@ -346,7 +480,9 @@ func (r *StateReport) decodeBandwidthObject(objectType ObjectType, objectBody []
 	if err := bandwidthObject.DecodeFromBytes(objectType, objectBody); err != nil {
 		return err
 	}
+
 	r.BandwidthObjects = append(r.BandwidthObjects, bandwidthObject)
+
 	return nil
 }
 
@@ -355,7 +491,9 @@ func (r *StateReport) decodeMetricObject(objectType ObjectType, objectBody []uin
 	if err := metricObject.DecodeFromBytes(objectType, objectBody); err != nil {
 		return err
 	}
+
 	r.MetricObjects = append(r.MetricObjects, metricObject)
+
 	return nil
 }
 
@@ -376,19 +514,28 @@ func (r *StateReport) decodeSrpObject(objectType ObjectType, objectBody []uint8)
 	if err := srpObject.DecodeFromBytes(objectType, objectBody); err != nil {
 		return err
 	}
+
 	r.SrpObject = srpObject
+
 	return nil
 }
 
 func (r *StateReport) decodeAssociationObject(objectType ObjectType, objectBody []uint8) error {
-	return r.AssociationObject.DecodeFromBytes(objectType, objectBody)
+	associationObject := &AssociationObject{}
+	if err := associationObject.DecodeFromBytes(objectType, objectBody); err != nil {
+		return err
+	}
+
+	r.AssociationObjects = append(r.AssociationObjects, associationObject)
+
+	return nil
 }
 
 func (r *StateReport) decodeVendorInformationObject(objectType ObjectType, objectBody []uint8) error {
 	return r.VendorInformationObject.DecodeFromBytes(objectType, objectBody)
 }
 
-// PCRpt Message
+// PCRptMessage represents a PCEP Report message containing state reports.
 type PCRptMessage struct {
 	StateReports []*StateReport
 }
@@ -404,52 +551,93 @@ var decodeFuncs = map[ObjectClass]func(*StateReport, ObjectType, []uint8) error{
 	ObjectClassVendorInformation: (*StateReport).decodeVendorInformationObject,
 }
 
-func (m *PCRptMessage) DecodeFromBytes(messageBody []uint8) error {
-	// previousObjectClass: To track the object class and handle the delimitation of StateReports
-	var previousObjectClass ObjectClass
-	var sr *StateReport
-	for len(messageBody) > 0 {
-		var commonObjectHeader CommonObjectHeader
-		if err := commonObjectHeader.DecodeFromBytes(messageBody); err != nil {
-			return err
-		}
-		decodeFunc, ok := decodeFuncs[commonObjectHeader.ObjectClass]
-		if !ok {
-			// Skip the current object if the object class is not registered in decodeFuncs
-			messageBody = messageBody[commonObjectHeader.ObjectLength:]
-			continue
-		}
-		if (previousObjectClass != ObjectClassSRP && commonObjectHeader.ObjectClass == ObjectClassLSP) || commonObjectHeader.ObjectClass == ObjectClassSRP {
-			if sr != nil {
-				m.StateReports = append(m.StateReports, sr)
-			}
+// beginsStateReport reports whether objectClass starts a state report.
+// Per RFC 8231, a state report begins with an SRP, or an LSP without an SRP.
+func beginsStateReport(previousObjectClass, objectClass ObjectClass) bool {
+	return objectClass == ObjectClassSRP || (objectClass == ObjectClassLSP && previousObjectClass != ObjectClassSRP)
+}
 
-			var err error
-			sr, err = NewStateReport()
-			if err != nil {
-				return err
-			}
-		}
-		if err := decodeFunc(sr, commonObjectHeader.ObjectType, messageBody[commonObjectHeaderLength:commonObjectHeader.ObjectLength]); err != nil {
-			return err
-		}
-		previousObjectClass = commonObjectHeader.ObjectClass
-		messageBody = messageBody[commonObjectHeader.ObjectLength:]
+// closeStateReport appends a completed state report.
+// A nil report is ignored.
+func (m *PCRptMessage) closeStateReport(sr *StateReport, lspDecoded bool) error {
+	if sr == nil {
+		return nil
 	}
-	if sr != nil {
-		m.StateReports = append(m.StateReports, sr)
+
+	if !lspDecoded {
+		return errors.New("PCRpt: state report missing LSP object")
 	}
+
+	m.StateReports = append(m.StateReports, sr)
 
 	return nil
 }
 
+// DecodeFromBytes decodes the given bytes into the PCRptMessage.
+func (m *PCRptMessage) DecodeFromBytes(messageBody []uint8) error {
+	var (
+		previousObjectClass ObjectClass
+		sr                  *StateReport
+		lspDecoded          bool
+	)
+
+	for len(messageBody) > 0 {
+		var commonObjectHeader CommonObjectHeader
+		if err := commonObjectHeader.DecodeFromBytes(messageBody); err != nil {
+			return fmt.Errorf("PCRpt: %w", err)
+		}
+
+		body, err := objectBody(messageBody, &commonObjectHeader)
+		if err != nil {
+			return fmt.Errorf("PCRpt: %w", err)
+		}
+
+		decodeFunc, ok := decodeFuncs[commonObjectHeader.ObjectClass]
+		if !ok {
+			messageBody = messageBody[commonObjectHeader.ObjectLength:]
+			continue
+		}
+
+		if beginsStateReport(previousObjectClass, commonObjectHeader.ObjectClass) {
+			if err := m.closeStateReport(sr, lspDecoded); err != nil {
+				return err
+			}
+
+			sr = NewStateReport()
+			lspDecoded = false
+		}
+
+		if sr == nil {
+			return fmt.Errorf("PCRpt: object class %d received before SRP/LSP object", commonObjectHeader.ObjectClass)
+		}
+
+		if err := decodeFunc(sr, commonObjectHeader.ObjectType, body); err != nil {
+			return fmt.Errorf("PCRpt: %w", err)
+		}
+
+		if commonObjectHeader.ObjectClass == ObjectClassLSP {
+			lspDecoded = true
+		}
+
+		previousObjectClass = commonObjectHeader.ObjectClass
+		messageBody = messageBody[commonObjectHeader.ObjectLength:]
+	}
+
+	if sr == nil {
+		return errors.New("PCRpt: no state report")
+	}
+
+	return m.closeStateReport(sr, lspDecoded)
+}
+
+// NewPCRptMessage creates a new PCRptMessage.
 func NewPCRptMessage() *PCRptMessage {
 	return &PCRptMessage{
 		StateReports: []*StateReport{},
 	}
 }
 
-// PCInitiate Message
+// PCInitiateMessage is a PCEP LSP Initiate Request message.
 type PCInitiateMessage struct {
 	SrpObject               *SrpObject
 	LSPObject               *LSPObject
@@ -459,64 +647,51 @@ type PCInitiateMessage struct {
 	VendorInformationObject *VendorInformationObject
 }
 
+// Serialize encodes the PCInitiateMessage into bytes.
 func (m *PCInitiateMessage) Serialize() ([]uint8, error) {
-	var eroObjectLength uint16
-	var err error
-	if m.EroObject != nil {
-		eroObjectLength, err = m.EroObject.Len()
-		if err != nil {
-			return nil, err
-		}
+	byteSrpObject, err := m.SrpObject.Serialize()
+	if err != nil {
+		return nil, err
 	}
 
-	var endpointsObjectLength uint16
+	byteLSPObject, err := m.LSPObject.Serialize()
+	if err != nil {
+		return nil, err
+	}
+
+	var byteEndpointsObject []uint8
 	if m.EndpointsObject != nil {
-		endpointsObjectLength, err = m.EndpointsObject.Len()
-		if err != nil {
+		if byteEndpointsObject, err = m.EndpointsObject.Serialize(); err != nil {
 			return nil, err
 		}
 	}
-	pcinitiateMessageLength := CommonHeaderLength +
-		m.SrpObject.Len() +
-		m.LSPObject.Len() +
-		endpointsObjectLength +
-		eroObjectLength
 
-	byteSrpObject := m.SrpObject.Serialize()
-	byteLSPObject := m.LSPObject.Serialize()
-
-	byteEndpointsObject := []uint8{}
-	if m.EndpointsObject != nil {
-		byteEndpointsObject, err = m.EndpointsObject.Serialize()
-		if err != nil {
-			return nil, err
-		}
-	}
-	byteEroObject := []uint8{}
+	var byteEroObject []uint8
 	if m.EroObject != nil {
-		byteEroObject, err = m.EroObject.Serialize()
-		if err != nil {
+		if byteEroObject, err = m.EroObject.Serialize(); err != nil {
 			return nil, err
 		}
 	}
 
-	byteVendorInformationObject := []uint8{}
-	byteAssociationObject := []uint8{}
-
+	var byteAssociationObject []uint8
 	if m.AssociationObject != nil {
-		byteAssociationObject, err = m.AssociationObject.Serialize()
-		if err != nil {
+		if byteAssociationObject, err = m.AssociationObject.Serialize(); err != nil {
 			return nil, err
 		}
-		associationObjectLength, err := m.AssociationObject.Len()
-		if err != nil {
-			return nil, err
-		}
-		pcinitiateMessageLength += associationObjectLength
 	}
+
+	var byteVendorInformationObject []uint8
 	if m.VendorInformationObject != nil {
-		byteVendorInformationObject = append(byteVendorInformationObject, m.VendorInformationObject.Serialize()...)
-		pcinitiateMessageLength += m.VendorInformationObject.Len()
+		if byteVendorInformationObject, err = m.VendorInformationObject.Serialize(); err != nil {
+			return nil, err
+		}
+	}
+
+	pcinitiateMessageLength, err := messageLength(
+		byteSrpObject, byteLSPObject, byteEndpointsObject, byteEroObject, byteAssociationObject, byteVendorInformationObject,
+	)
+	if err != nil {
+		return nil, err
 	}
 
 	pcinitiateHeader := NewCommonHeader(MessageTypeLSPInitReq, pcinitiateMessageLength)
@@ -524,10 +699,13 @@ func (m *PCInitiateMessage) Serialize() ([]uint8, error) {
 	bytePCInitiateMessage := AppendByteSlices(
 		bytePCInitiateHeader, byteSrpObject, byteLSPObject, byteEndpointsObject, byteEroObject, byteAssociationObject, byteVendorInformationObject,
 	)
+
 	return bytePCInitiateMessage, nil
 }
 
-func NewPCInitiateMessage(srpID uint32, lspName string, lspDelete bool, plspID uint32, segmentList []table.Segment, color uint32, preference uint32, srcAddr netip.Addr, dstAddr netip.Addr, opt ...Opt) (*PCInitiateMessage, error) {
+// NewPCInitiateMessage creates a PCInitiateMessage that instantiates srPolicy
+// as a new LSP. Use NewPCInitiateDeleteMessage to remove one.
+func NewPCInitiateMessage(srpID uint32, srPolicy table.SRPolicy, opt ...Opt) (*PCInitiateMessage, error) {
 	opts := optParams{
 		pccType: RFCCompliant,
 	}
@@ -537,44 +715,44 @@ func NewPCInitiateMessage(srpID uint32, lspName string, lspDelete bool, plspID u
 	}
 
 	m := &PCInitiateMessage{}
+
 	var err error
 
-	if m.SrpObject, err = NewSrpObject(segmentList, srpID, lspDelete); err != nil {
+	if m.SrpObject, err = NewSrpObject(srPolicy.SegmentList, srpID, false); err != nil {
 		return nil, err
 	}
 
-	if lspDelete {
-		if m.LSPObject, err = NewLSPObject(lspName, &color, plspID); err != nil {
-			return nil, err
-		}
-		return m, nil
+	// PLSP-ID is 0 on instantiation; the PCC assigns it (RFC 8281 §5.3.1).
+	m.LSPObject = NewLSPObject(srPolicy.Name, &srPolicy.Color, 0)
+	if m.EndpointsObject, err = NewEndpointsObject(srPolicy.Endpoint, srPolicy.Headend); err != nil {
+		return nil, err
 	}
 
-	if m.LSPObject, err = NewLSPObject(lspName, &color, 0); err != nil {
+	if m.EroObject, err = NewEroObject(srPolicy.SegmentList); err != nil {
 		return nil, err
 	}
-	if m.EndpointsObject, err = NewEndpointsObject(dstAddr, srcAddr); err != nil {
-		return nil, err
-	}
-	if m.EroObject, err = NewEroObject(segmentList); err != nil {
-		return m, err
-	}
+
+	preference := srPolicy.CandidatePath.Preference
 
 	switch opts.pccType {
 	case JuniperLegacy:
-		if m.AssociationObject, err = NewAssociationObject(srcAddr, dstAddr, color, preference, VendorSpecific(opts.pccType)); err != nil {
+		if !srPolicy.Endpoint.Is4() {
+			return nil, errors.New("JuniperLegacy encoding does not support IPv6 endpoints")
+		}
+
+		if m.AssociationObject, err = NewAssociationObject(srPolicy.Headend, srPolicy.Endpoint, srPolicy.Color, preference, VendorSpecific(opts.pccType), OriginatorASN(opts.originatorASN)); err != nil {
 			return nil, err
 		}
 	case CiscoLegacy:
-		if m.VendorInformationObject, err = NewVendorInformationObject(CiscoLegacy, color, preference); err != nil {
+		if m.VendorInformationObject, err = NewVendorInformationObject(CiscoLegacy, srPolicy.Color, preference); err != nil {
 			return nil, err
 		}
 	case RFCCompliant:
-		if m.AssociationObject, err = NewAssociationObject(srcAddr, dstAddr, color, preference); err != nil {
+		if m.AssociationObject, err = NewAssociationObject(srPolicy.Headend, srPolicy.Endpoint, srPolicy.Color, preference, OriginatorASN(opts.originatorASN), OriginatorAddr(opts.originatorAddr)); err != nil {
 			return nil, err
 		}
-		// FRRouting is considered RFC compliant
-		if m.VendorInformationObject, err = NewVendorInformationObject(CiscoLegacy, color, preference); err != nil {
+
+		if m.VendorInformationObject, err = NewVendorInformationObject(CiscoLegacy, srPolicy.Color, preference); err != nil {
 			return nil, err
 		}
 	default:
@@ -584,44 +762,74 @@ func NewPCInitiateMessage(srpID uint32, lspName string, lspDelete bool, plspID u
 	return m, nil
 }
 
-// PCUpdate Message
+// NewPCInitiateDeleteMessage creates a PCInitiateMessage that removes the LSP
+// identified by srPolicy.PlspID, flagged by the SRP R flag (RFC 8281 §5.2).
+// Deletion carries only the SRP and LSP objects, so srPolicy's endpoints and
+// vendor-specific attributes are not encoded; its segment list is still read to
+// derive the PATH-SETUP-TYPE TLV.
+func NewPCInitiateDeleteMessage(srpID uint32, srPolicy table.SRPolicy) (*PCInitiateMessage, error) {
+	srpObject, err := NewSrpObject(srPolicy.SegmentList, srpID, true)
+	if err != nil {
+		return nil, err
+	}
+
+	return &PCInitiateMessage{
+		SrpObject: srpObject,
+		LSPObject: NewLSPObject(srPolicy.Name, &srPolicy.Color, srPolicy.PlspID),
+	}, nil
+}
+
+// PCUpdMessage is a PCEP Update message.
 type PCUpdMessage struct {
 	SrpObject *SrpObject
 	LSPObject *LSPObject
 	EroObject *EroObject
 }
 
+// Serialize encodes the PCUpdMessage into bytes.
 func (m *PCUpdMessage) Serialize() ([]uint8, error) {
-	byteSrpObject := m.SrpObject.Serialize()
-	byteLSPObject := m.LSPObject.Serialize()
+	byteSrpObject, err := m.SrpObject.Serialize()
+	if err != nil {
+		return nil, err
+	}
+
+	byteLSPObject, err := m.LSPObject.Serialize()
+	if err != nil {
+		return nil, err
+	}
+
 	byteEroObject, err := m.EroObject.Serialize()
 	if err != nil {
 		return nil, err
 	}
 
-	eroObjectLength, err := m.EroObject.Len()
+	pcupdMessageLength, err := messageLength(byteSrpObject, byteLSPObject, byteEroObject)
 	if err != nil {
 		return nil, err
 	}
-	pcupdMessageLength := CommonHeaderLength + m.SrpObject.Len() + m.LSPObject.Len() + eroObjectLength
+
 	pcupdHeader := NewCommonHeader(MessageTypeUpdate, pcupdMessageLength)
 	bytePCUpdHeader := pcupdHeader.Serialize()
 	bytePCUpdMessage := AppendByteSlices(bytePCUpdHeader, byteSrpObject, byteLSPObject, byteEroObject)
-	return bytePCUpdMessage, err
+
+	return bytePCUpdMessage, nil
 }
 
-func NewPCUpdMessage(srpID uint32, lspName string, plspID uint32, segmentList []table.Segment) (*PCUpdMessage, error) {
+// NewPCUpdMessage creates a PCUpdMessage that re-signals the LSP identified by
+// srPolicy.PlspID with srPolicy's segment list.
+func NewPCUpdMessage(srpID uint32, srPolicy table.SRPolicy) (*PCUpdMessage, error) {
 	m := &PCUpdMessage{}
+
 	var err error
 
-	if m.SrpObject, err = NewSrpObject(segmentList, srpID, false); err != nil {
+	if m.SrpObject, err = NewSrpObject(srPolicy.SegmentList, srpID, false); err != nil {
 		return nil, err
 	}
-	if m.LSPObject, err = NewLSPObject(lspName, nil, plspID); err != nil {
+	// A nil color omits the COLOR TLV, leaving the value set at instantiation.
+	m.LSPObject = NewLSPObject(srPolicy.Name, nil, srPolicy.PlspID)
+	if m.EroObject, err = NewEroObject(srPolicy.SegmentList); err != nil {
 		return nil, err
 	}
-	if m.EroObject, err = NewEroObject(segmentList); err != nil {
-		return nil, err
-	}
+
 	return m, nil
 }

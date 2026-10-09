@@ -8,7 +8,7 @@ builds:
     main: ./cmd/pola/
     binary: pola
     ldflags:
-      - -s -w -X main.build={{.Version}}
+      - -s -w -X github.com/nttcom/pola/internal/version.version={{.Version}}
     goos:
       - linux
     goarch:
@@ -21,7 +21,7 @@ builds:
     main: ./cmd/polad/
     binary: polad
     ldflags:
-      - -s -w -X main.build={{.Version}}
+      - -s -w -X github.com/nttcom/pola/internal/version.version={{.Version}}
     goos:
       - linux
     goarch:

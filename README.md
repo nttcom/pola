@@ -15,7 +15,8 @@ and a PCEP Library in Go.
 
 ## Features
 
-* Support for SRv6(full-SID/uSID) and SR-MPLS
+* Support for SRv6 (full-SID/uSID) and SR-MPLS
+* IPv4 / IPv6 underlay support, including dual-stack topologies
 * Implementation of active stateful PCE functionality (PCInitiate, PCUpdate, etc.)
 * Dynamic and explicit SR policy definition using YAML
   * Dynamic path: Utilizes CSPF with GoBGP BGP-LS TED
@@ -43,9 +44,14 @@ and a PCEP Library in Go.
 
 * [Getting Started](docs/sources/getting-started.md)
 * [Docker Image Usage](build/package/README.md)
-* Examples (powered by [Containerlab](https://containerlab.dev/)/[Tinet](https://github.com/tinynetwork/tinet))
-  * [SR-MPLS Example](examples/tinet/sr-mpls-explicit-path-l3vpn)
-  * [SRv6 Example](examples/containerlab/srv6-explicit-path-l3vpn)
+* Examples (powered by [Containerlab](https://containerlab.dev/))
+  * [Containerlab Conventions](examples/containerlab)
+  * [SR-MPLS Explicit Path](examples/containerlab/sr-mpls-explicit-path)
+  * [SR-MPLS L3VPN](examples/containerlab/sr-mpls-explicit-path-l3vpn)
+  * [SRv6 Explicit Path L3VPN](examples/containerlab/srv6-explicit-path-l3vpn)
+  * [SRv6 uSID Dynamic Path](examples/containerlab/srv6-usid-dynamic-path)
+  * [SRv6 uSID Loose Source Routing SFC](examples/containerlab/srv6-usid-dynamic-path-loose-source-routing-sfc)
+* [Go gRPC API Examples](examples/grpc/go) (for building your own controller)
 
 ## Contributing
 
@@ -58,7 +64,4 @@ Your contributions are highly appreciated.
 
 ## Licensing
 
-Pola PCE is licensed under the
-[MIT license](https://en.wikipedia.org/wiki/MIT_License).  
-For the full license text, see
-[LICENSE](https://github.com/nttcom/pola/blob/master/LICENSE).
+Pola PCE is licensed under the [MIT License](LICENSE).

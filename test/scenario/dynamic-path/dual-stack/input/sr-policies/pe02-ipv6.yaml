@@ -1,0 +1,13 @@
+asn: 65000
+srPolicy:
+  pcepSessionAddr: "10.0.30.2"
+  headendRouterID: "0000.0002.0004"
+  endpointRouterID: "0000.0002.0001"
+  endpointFamily: ipv6
+  name: "DUAL-STACK-IPV6-POLICY"
+  color: 600
+  candidatePath:
+    dynamic:
+      metric: igp
+      dataPlane: sr-mpls
+      underlayFamily: ipv6

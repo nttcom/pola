@@ -1,0 +1,921 @@
+// Copyright (c) 2022 NTT Communications Corporation
+//
+// This software is released under the MIT License.
+// see https://github.com/nttcom/pola/blob/main/LICENSE
+
+// Package gobgp integrates with GoBGP to monitor BGP-LS updates and build the TED.
+package gobgp
+
+import (
+	"context"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"io"
+	"net/netip"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/nttcom/pola/internal/safecast"
+	"github.com/nttcom/pola/pkg/logger"
+	"github.com/nttcom/pola/pkg/table"
+	"github.com/osrg/gobgp/v4/api"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+)
+
+const (
+	defaultDebounceCooldown = 5 * time.Second
+	defaultRetryInterval    = 10 * time.Second
+)
+
+type monitorOptions struct {
+	debounceCooldown time.Duration
+	retryInterval    time.Duration
+}
+
+// MonitorBGPLsEvents monitors BGP-LS events and sends updates to the TED channel.
+func MonitorBGPLsEvents(ctx context.Context, serverAddr, serverPort string, tedChan chan []table.TEDElem, lg *logger.Logger) {
+	monitorLoop(ctx, serverAddr, serverPort, tedChan, lg, monitorOptions{
+		debounceCooldown: defaultDebounceCooldown,
+		retryInterval:    defaultRetryInterval,
+	})
+}
+
+func monitorLoop(ctx context.Context, serverAddr, serverPort string, tedChan chan []table.TEDElem, lg *logger.Logger, opts monitorOptions) {
+	cc, client, err := newGoBGPClient(serverAddr, serverPort)
+	if err != nil {
+		lg.Error("failed to create gRPC client", logger.String("address", fmt.Sprintf("%s:%s", serverAddr, serverPort)), logger.Error(err))
+		return
+	}
+	defer func() {
+		if err := cc.Close(); err != nil {
+			lg.Error("failed to close gRPC connection", logger.Error(err))
+		}
+	}()
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	initialSync(ctx, client, tedChan, lg)
+
+	req := newWatchRequest()
+
+	stream, ok := establishWatchStream(ctx, client, req, opts.retryInterval, lg)
+	if !ok {
+		return
+	}
+
+	debouncer := NewDebouncer(opts.debounceCooldown)
+
+	fetch := func() ([]table.TEDElem, error) {
+		return GetBGPlsNLRIs(ctx, client)
+	}
+
+	deliver := func(tedElems []table.TEDElem) {
+		select {
+		case tedChan <- tedElems:
+		case <-ctx.Done():
+		}
+	}
+
+	// Debounce consecutive events to avoid fetching TED for every event.
+	for {
+		res, err := stream.Recv()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				lg.Info("BGP-LS watch stream closed by peer, reconnecting")
+			} else {
+				lg.Error("error receiving BGP-LS event", logger.Error(err))
+			}
+
+			stream, ok = reconnectWatchStream(ctx, client, req, opts.retryInterval, lg, debouncer, fetch, deliver)
+			if !ok {
+				return
+			}
+
+			continue
+		}
+
+		if t := res.GetTable(); t != nil {
+			debouncer.Trigger(ctx, fetch, deliver, lg)
+		}
+	}
+}
+
+func reconnectWatchStream(
+	ctx context.Context,
+	client api.GoBgpServiceClient,
+	req *api.WatchEventRequest,
+	retryInterval time.Duration,
+	lg *logger.Logger,
+	debouncer *Debouncer,
+	fetch func() ([]table.TEDElem, error),
+	deliver func([]table.TEDElem),
+) (grpc.ServerStreamingClient[api.WatchEventResponse], bool) {
+	if !waitForRetry(ctx, retryInterval) {
+		return nil, false
+	}
+
+	stream, ok := establishWatchStream(ctx, client, req, retryInterval, lg)
+	if !ok {
+		return nil, false
+	}
+
+	debouncer.Trigger(ctx, fetch, deliver, lg)
+
+	return stream, true
+}
+
+func establishWatchStream(
+	ctx context.Context,
+	client api.GoBgpServiceClient,
+	req *api.WatchEventRequest,
+	retryInterval time.Duration,
+	lg *logger.Logger,
+) (grpc.ServerStreamingClient[api.WatchEventResponse], bool) {
+	for {
+		stream, err := client.WatchEvent(ctx, req)
+		if err == nil {
+			return stream, true
+		}
+
+		lg.Error("failed to establish watch stream", logger.Error(err))
+
+		if !waitForRetry(ctx, retryInterval) {
+			return nil, false
+		}
+	}
+}
+
+func waitForRetry(ctx context.Context, interval time.Duration) bool {
+	timer := time.NewTimer(interval)
+	defer timer.Stop()
+
+	select {
+	case <-timer.C:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
+func newGoBGPClient(serverAddress, serverPort string) (*grpc.ClientConn, api.GoBgpServiceClient, error) {
+	gobgpAddress := fmt.Sprintf("%s:%s", serverAddress, serverPort)
+
+	cc, err := grpc.NewClient(
+		gobgpAddress,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		return nil, nil, fmt.Errorf("connect to GoBGP at %s: %w", gobgpAddress, err)
+	}
+
+	client := api.NewGoBgpServiceClient(cc)
+
+	return cc, client, nil
+}
+
+func initialSync(ctx context.Context, client api.GoBgpServiceClient, tedChan chan []table.TEDElem, lg *logger.Logger) {
+	tedElems, err := GetBGPlsNLRIs(ctx, client)
+	if err != nil {
+		lg.Error("failed to get initial TED info", logger.Error(err))
+		return
+	}
+
+	select {
+	case tedChan <- tedElems:
+	case <-ctx.Done():
+	}
+}
+
+// Debouncer debounces consecutive events to avoid excessive TED fetches.
+type Debouncer struct {
+	mu       sync.Mutex
+	active   bool
+	last     time.Time
+	cooldown time.Duration
+}
+
+// NewDebouncer creates a new Debouncer with the specified cooldown duration.
+func NewDebouncer(cd time.Duration) *Debouncer {
+	return &Debouncer{cooldown: cd}
+}
+
+// Trigger debounces consecutive events before retrieving TED.
+func (d *Debouncer) Trigger(
+	ctx context.Context,
+	fetch func() ([]table.TEDElem, error),
+	deliver func([]table.TEDElem),
+	lg *logger.Logger,
+) {
+	d.mu.Lock()
+
+	d.last = time.Now()
+	if d.active {
+		d.mu.Unlock()
+		return
+	}
+
+	d.active = true
+	d.mu.Unlock()
+
+	go d.run(ctx, fetch, deliver, lg)
+}
+
+// waitCooldown returns false if ctx is cancelled before the cooldown elapses.
+func (d *Debouncer) waitCooldown(ctx context.Context) bool {
+	for {
+		d.mu.Lock()
+		remaining := d.cooldown - time.Since(d.last)
+		d.mu.Unlock()
+
+		if remaining <= 0 {
+			return true
+		}
+
+		timer := time.NewTimer(remaining)
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+			timer.Stop()
+			return false
+		}
+	}
+}
+
+func (d *Debouncer) finish(cycleStart time.Time, released *bool) (pending bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if d.last.After(cycleStart) {
+		return true
+	}
+
+	d.active = false
+	*released = true
+
+	return false
+}
+
+// release avoids clearing d.active after a new Trigger call.
+func (d *Debouncer) release(released bool) {
+	if released {
+		return
+	}
+
+	d.mu.Lock()
+	d.active = false
+	d.mu.Unlock()
+}
+
+func (d *Debouncer) run(
+	ctx context.Context,
+	fetch func() ([]table.TEDElem, error),
+	deliver func([]table.TEDElem),
+	lg *logger.Logger,
+) {
+	released := false
+	defer func() { d.release(released) }()
+
+	for {
+		if !d.waitCooldown(ctx) {
+			if d.finish(time.Now(), &released) {
+				continue
+			}
+
+			return
+		}
+
+		fetchStart := time.Now()
+
+		tedElems, err := fetch()
+		if err != nil {
+			lg.Error("failed to get TED info", logger.Error(err))
+
+			if d.finish(fetchStart, &released) {
+				continue
+			}
+
+			return
+		}
+
+		if ctx.Err() != nil {
+			lg.Debug("deliver aborted due to context cancel")
+
+			if d.finish(fetchStart, &released) {
+				continue
+			}
+
+			return
+		}
+
+		deliver(tedElems)
+
+		if d.finish(fetchStart, &released) {
+			continue
+		}
+
+		return
+	}
+}
+
+func newWatchRequest() *api.WatchEventRequest {
+	return &api.WatchEventRequest{
+		Table: &api.WatchEventRequest_Table{
+			Filters: []*api.WatchEventRequest_Table_Filter{
+				{
+					Type: api.WatchEventRequest_Table_Filter_TYPE_ADJIN,
+					Init: false,
+				},
+			},
+		},
+	}
+}
+
+// GetBGPlsNLRIs retrieves BGP-LS NLRIs from the GoBGP server and converts them to TEDElem format.
+func GetBGPlsNLRIs(ctx context.Context, client api.GoBgpServiceClient) ([]table.TEDElem, error) {
+	req := &api.ListPathRequest{
+		TableType: api.TableType_TABLE_TYPE_GLOBAL,
+		Family: &api.Family{
+			Afi:  api.Family_AFI_LS,
+			Safi: api.Family_SAFI_LS,
+		},
+		Name:     "",
+		SortType: api.ListPathRequest_SORT_TYPE_PREFIX,
+	}
+
+	stream, err := client.ListPath(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve paths from gRPC server: %w", err)
+	}
+
+	var tedElems []table.TEDElem
+
+	for {
+		r, err := stream.Recv()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+
+			return nil, fmt.Errorf("error receiving stream data: %w", err)
+		}
+
+		convertedElems, err := ConvertToTEDElem(r.GetDestination())
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert path to TED element (destination: %v): %w", r.GetDestination(), err)
+		}
+
+		tedElems = append(tedElems, convertedElems...)
+	}
+
+	return tedElems, nil
+}
+
+// ConvertToTEDElem converts a BGP-LS destination to TEDElem format.
+func ConvertToTEDElem(dst *api.Destination) ([]table.TEDElem, error) {
+	if len(dst.GetPaths()) != 1 {
+		return nil, errors.New("invalid path length: expected 1 path")
+	}
+
+	path := dst.GetPaths()[0]
+
+	nlri := path.GetNlri()
+	if nlri == nil {
+		return nil, errors.New("NLRI is nil")
+	}
+
+	lsAddrPrefix := nlri.GetLsAddrPrefix()
+	if lsAddrPrefix == nil {
+		return nil, errors.New("LSAddrPrefix is nil")
+	}
+
+	lsAttr := findLsAttribute(path)
+	if lsAttr == nil {
+		return nil, nil
+	}
+
+	return convertByNlriType(lsAddrPrefix, lsAttr, path)
+}
+
+func findLsAttribute(path *api.Path) *api.Attribute_Ls {
+	for _, pathAttr := range path.GetPattrs() {
+		if lsAttr, ok := pathAttr.GetAttr().(*api.Attribute_Ls); ok {
+			return lsAttr
+		}
+	}
+
+	return nil
+}
+
+func convertByNlriType(nlri *api.LsAddrPrefix, lsAttr *api.Attribute_Ls, path *api.Path) ([]table.TEDElem, error) {
+	switch nlri.GetType() {
+	case api.LsNLRIType_LS_NLRI_TYPE_NODE:
+		return convertNode(nlri, lsAttr)
+	case api.LsNLRIType_LS_NLRI_TYPE_LINK:
+		return convertLink(nlri, lsAttr)
+	case api.LsNLRIType_LS_NLRI_TYPE_PREFIX_V4, api.LsNLRIType_LS_NLRI_TYPE_PREFIX_V6:
+		nlris, err := mpReachNlris(path)
+		if err != nil {
+			return nil, err
+		}
+
+		return convertPrefix(lsAttr, nlris)
+	case api.LsNLRIType_LS_NLRI_TYPE_SRV6_SID:
+		nlris, err := mpReachNlris(path)
+		if err != nil {
+			return nil, err
+		}
+
+		return convertSrv6SID(lsAttr, nlris)
+	default:
+		return nil, fmt.Errorf("invalid LS NLRI type: %s", nlri.GetType().String())
+	}
+}
+
+func convertNode(nlri *api.LsAddrPrefix, lsAttr *api.Attribute_Ls) ([]table.TEDElem, error) {
+	nodeAttr := lsAttr.Ls.GetNode()
+	if nodeAttr == nil {
+		return nil, errors.New("LS Node Attribute is nil")
+	}
+
+	lsNode, err := getLsNode(nlri, nodeAttr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to process LS Node NLRI: %w", err)
+	}
+
+	return []table.TEDElem{lsNode}, nil
+}
+
+func convertLink(nlri *api.LsAddrPrefix, lsAttr *api.Attribute_Ls) ([]table.TEDElem, error) {
+	linkAttr := lsAttr.Ls.GetLink()
+	if linkAttr == nil {
+		return nil, errors.New("LS Link Attribute is nil")
+	}
+
+	lsLink, err := getLsLink(nlri, linkAttr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to process LS Link NLRI: %w", err)
+	}
+
+	return []table.TEDElem{lsLink}, nil
+}
+
+func convertPrefix(lsAttr *api.Attribute_Ls, nlris []*api.NLRI) ([]table.TEDElem, error) {
+	prefixAttr := lsAttr.Ls.GetPrefix()
+	if prefixAttr == nil {
+		return nil, errors.New("LS Prefix Attribute is nil")
+	}
+
+	lsPrefixList, err := getLsPrefixList(nlris, prefixAttr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to process LS Prefix NLRI: %w", err)
+	}
+
+	return lsPrefixList, nil
+}
+
+func convertSrv6SID(lsAttr *api.Attribute_Ls, nlris []*api.NLRI) ([]table.TEDElem, error) {
+	srv6Attr := lsAttr.Ls.GetSrv6Sid()
+	if srv6Attr == nil {
+		return nil, errors.New("LS SRv6 SID Attribute is nil")
+	}
+
+	lsSrv6List, err := getLsSrv6SIDList(nlris, srv6Attr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to process LS SRv6 SID NLRI: %w", err)
+	}
+
+	return lsSrv6List, nil
+}
+
+func findMpReach(path *api.Path) *api.MpReachNLRIAttribute {
+	for _, attr := range path.GetPattrs() {
+		if mp := attr.GetMpReach(); mp != nil {
+			return mp
+		}
+	}
+
+	return nil
+}
+
+func mpReachNlris(path *api.Path) ([]*api.NLRI, error) {
+	mpReach := findMpReach(path)
+	if mpReach == nil {
+		return nil, errors.New("MP-REACH NLRI Attribute is nil")
+	}
+
+	return mpReach.GetNlris(), nil
+}
+
+func formatIsisAreaID(isisArea []byte) string {
+	tmpIsisArea := hex.EncodeToString(isisArea)
+
+	var strIsisArea strings.Builder
+
+	for i, s := range strings.Split(tmpIsisArea, "") {
+		if (len(tmpIsisArea)-i)%4 == 0 && i != 0 {
+			strIsisArea.WriteString(".")
+		}
+
+		strIsisArea.WriteString(s)
+	}
+
+	return strIsisArea.String()
+}
+
+func getLsNode(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrNode *api.LsAttributeNode) (*table.LsNode, error) {
+	localNode := typedLinkStateNLRI.GetNlri().GetNode().GetLocalNode()
+	lsNode := table.NewLsNode(localNode.GetAsn(), localNode.GetIgpRouterId())
+
+	lsNode.IsisAreaID = formatIsisAreaID(lsAttrNode.GetIsisArea())
+	lsNode.Hostname = lsAttrNode.GetName()
+
+	if lsAttrNode.GetSrCapabilities() != nil {
+		srCapabilities := lsAttrNode.GetSrCapabilities().GetRanges()
+		if len(srCapabilities) != 1 {
+			return nil, fmt.Errorf("expected 1 SR Capability TLV, got: %d", len(srCapabilities))
+		}
+
+		lsNode.SrgbBegin = srCapabilities[0].GetBegin()
+		lsNode.SrgbEnd = srCapabilities[0].GetEnd()
+	}
+
+	return lsNode, nil
+}
+
+func getLsLink(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrLink *api.LsAttributeLink) (*table.LsLink, error) {
+	if typedLinkStateNLRI == nil {
+		return nil, errors.New("LS Link NLRI is nil")
+	}
+
+	lsLinkNLRI := typedLinkStateNLRI.GetNlri().GetLink()
+	if lsLinkNLRI == nil {
+		return nil, errors.New("LS Link NLRI is not a link type")
+	}
+
+	localNode := table.NewLsNode(lsLinkNLRI.GetLocalNode().GetAsn(), lsLinkNLRI.GetLocalNode().GetIgpRouterId())
+	remoteNode := table.NewLsNode(lsLinkNLRI.GetRemoteNode().GetAsn(), lsLinkNLRI.GetRemoteNode().GetIgpRouterId())
+
+	linkDescriptor := lsLinkNLRI.GetLinkDescriptor()
+
+	lsLink := table.NewLsLink(localNode, remoteNode)
+
+	if err := applyLinkDescriptor(lsLink, linkDescriptor); err != nil {
+		return nil, err
+	}
+
+	lsLink.Metrics = append(lsLink.Metrics, linkMetricsFromAPI(lsAttrLink)...)
+
+	lsLink.AdjSids = adjSIDsFromAPI(typedLinkStateNLRI.GetProtocolId(), lsAttrLink)
+
+	if srv6EndXSID := lsAttrLink.GetSrv6EndXSid(); srv6EndXSID != nil {
+		converted, err := srv6EndXSIDFromAPI(srv6EndXSID)
+		if err != nil {
+			return nil, err
+		}
+
+		lsLink.Srv6EndXSIDs = append(lsLink.Srv6EndXSIDs, converted)
+	}
+
+	return lsLink, nil
+}
+
+func applyLinkDescriptor(lsLink *table.LsLink, linkDescriptor *api.LsLinkDescriptor) error {
+	var err error
+
+	if lsLink.Local.IPv4, err = parseOptionalAddr(linkDescriptor.GetInterfaceAddrIpv4(), false); err != nil {
+		return fmt.Errorf("failed to parse local IPv4 address: %w", err)
+	}
+
+	if lsLink.Local.IPv6, err = parseOptionalAddr(linkDescriptor.GetInterfaceAddrIpv6(), true); err != nil {
+		return fmt.Errorf("failed to parse local IPv6 address: %w", err)
+	}
+
+	if lsLink.Remote.IPv4, err = parseOptionalAddr(linkDescriptor.GetNeighborAddrIpv4(), false); err != nil {
+		return fmt.Errorf("failed to parse remote IPv4 address: %w", err)
+	}
+
+	if lsLink.Remote.IPv6, err = parseOptionalAddr(linkDescriptor.GetNeighborAddrIpv6(), true); err != nil {
+		return fmt.Errorf("failed to parse remote IPv6 address: %w", err)
+	}
+
+	if linkDescriptor == nil {
+		return nil
+	}
+
+	lsLink.Local.InterfaceID = linkDescriptor.LinkLocalId
+	lsLink.Remote.InterfaceID = linkDescriptor.LinkRemoteId
+
+	multiTopoIDs := linkDescriptor.GetMultiTopoIds()
+	if len(multiTopoIDs) == 0 {
+		return nil
+	}
+
+	lsLink.MultiTopoIDs = make(map[uint16]struct{}, len(multiTopoIDs))
+
+	for _, id := range multiTopoIDs {
+		multiTopoID, err := safecast.Uint16(id, "link Multi-Topology ID")
+		if err != nil {
+			return err
+		}
+
+		lsLink.MultiTopoIDs[multiTopoID] = struct{}{}
+	}
+
+	return nil
+}
+
+func linkMetricsFromAPI(lsAttrLink *api.LsAttributeLink) []*table.Metric {
+	metrics := []*table.Metric{table.NewMetric(table.IGPMetric, lsAttrLink.GetIgpMetric())}
+
+	if teMetric := lsAttrLink.GetDefaultTeMetric(); teMetric != 0 {
+		metrics = append(metrics, table.NewMetric(table.TEMetric, teMetric))
+	}
+
+	if delay := lsAttrLink.GetUnidirectionalLinkDelay(); delay != 0 {
+		metrics = append(metrics, table.NewMetric(table.DelayMetric, delay))
+	}
+
+	return metrics
+}
+
+// F flag indicating an IPv6 adjacency (RFC 8667 §2.2.1).
+const isisAdjSIDFlagF = 0x80
+
+func adjSIDsFromAPI(protocol api.LsProtocolID, lsAttrLink *api.LsAttributeLink) []table.AdjSID {
+	entries := lsAttrLink.GetSrAdjacencySids()
+	if len(entries) == 0 {
+		if sid := lsAttrLink.GetSrAdjacencySid(); sid != 0 {
+			return []table.AdjSID{{Family: table.AFUnspecified, Sid: sid}}
+		}
+
+		return nil
+	}
+
+	adjSIDs := make([]table.AdjSID, 0, len(entries))
+	for _, entry := range entries {
+		adjSIDs = append(adjSIDs, table.AdjSID{Family: adjSIDFamily(protocol, entry.GetFlags()), Sid: entry.GetSid()})
+	}
+
+	return adjSIDs
+}
+
+func adjSIDFamily(protocol api.LsProtocolID, flags uint32) table.AddressFamily {
+	switch protocol {
+	case api.LsProtocolID_LS_PROTOCOL_ID_ISIS_L1, api.LsProtocolID_LS_PROTOCOL_ID_ISIS_L2:
+		if flags&isisAdjSIDFlagF != 0 {
+			return table.AFIPv6
+		}
+
+		return table.AFIPv4
+	case api.LsProtocolID_LS_PROTOCOL_ID_OSPF_V2:
+		return table.AFIPv4
+	case api.LsProtocolID_LS_PROTOCOL_ID_OSPF_V3:
+		return table.AFIPv6
+	default:
+		return table.AFUnspecified
+	}
+}
+
+func parseOptionalAddr(s string, wantIPv6 bool) (netip.Addr, error) {
+	if s == "" {
+		return netip.Addr{}, nil
+	}
+
+	addr, err := netip.ParseAddr(s)
+	if err != nil {
+		return netip.Addr{}, fmt.Errorf("parse address %q: %w", s, err)
+	}
+
+	if addr.Is4() == wantIPv6 || addr.Is4In6() {
+		return netip.Addr{}, fmt.Errorf("address %q does not match descriptor family", s)
+	}
+
+	return addr, nil
+}
+
+func endpointBehaviorFromAPI(name string, behavior, flags, algorithm uint32) (table.EndpointBehavior, error) {
+	b, err := safecast.Uint16(behavior, name+" endpoint behavior")
+	if err != nil {
+		return table.EndpointBehavior{}, err
+	}
+
+	f, err := safecast.Uint8(flags, name+" endpoint behavior flags")
+	if err != nil {
+		return table.EndpointBehavior{}, err
+	}
+
+	a, err := safecast.Uint8(algorithm, name+" endpoint behavior algorithm")
+	if err != nil {
+		return table.EndpointBehavior{}, err
+	}
+
+	return table.EndpointBehavior{Behavior: b, Flags: f, Algorithm: a}, nil
+}
+
+func srv6EndXSIDFromAPI(srv6EndXSID *api.LsSrv6EndXSID) (*table.Srv6EndXSID, error) {
+	endpointBehavior, err := endpointBehaviorFromAPI(
+		"SRv6 End.X SID",
+		srv6EndXSID.GetEndpointBehavior(),
+		srv6EndXSID.GetFlags(),
+		srv6EndXSID.GetAlgorithm(),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	weight, err := safecast.Uint8(srv6EndXSID.GetWeight(), "SRv6 End.X SID weight")
+	if err != nil {
+		return nil, err
+	}
+
+	structure, err := srv6SIDStructureFromAPI(srv6EndXSID.GetSrv6SidStructure())
+	if err != nil {
+		return nil, err
+	}
+
+	return &table.Srv6EndXSID{
+		EndpointBehavior: endpointBehavior,
+		Weight:           weight,
+		Sids:             srv6EndXSID.GetSids(),
+		Srv6SIDStructure: structure,
+	}, nil
+}
+
+func srv6SIDStructureFromAPI(s *api.LsSrv6SIDStructure) (*table.SIDStructure, error) {
+	if s == nil {
+		return nil, nil
+	}
+
+	localBlock, err := safecast.Uint8(s.GetLocalBlock(), "SRv6 SID structure LocalBlock")
+	if err != nil {
+		return nil, err
+	}
+
+	localNode, err := safecast.Uint8(s.GetLocalNode(), "SRv6 SID structure LocalNode")
+	if err != nil {
+		return nil, err
+	}
+
+	localFunc, err := safecast.Uint8(s.GetLocalFunc(), "SRv6 SID structure LocalFunc")
+	if err != nil {
+		return nil, err
+	}
+
+	localArg, err := safecast.Uint8(s.GetLocalArg(), "SRv6 SID structure LocalArg")
+	if err != nil {
+		return nil, err
+	}
+
+	return &table.SIDStructure{
+		LocalBlock: localBlock,
+		LocalNode:  localNode,
+		LocalFunc:  localFunc,
+		LocalArg:   localArg,
+	}, nil
+}
+
+func getLsPrefixList(nlris []*api.NLRI, lsAttrPrefix *api.LsAttributePrefix) ([]table.TEDElem, error) {
+	var lsPrefixList []table.TEDElem
+
+	for _, nlri := range nlris {
+		lsAddrPrefix := nlri.GetLsAddrPrefix()
+
+		lsPrefix, err := getLsPrefix(lsAddrPrefix, lsAttrPrefix)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get LS Prefix: %w", err)
+		}
+
+		lsPrefixList = append(lsPrefixList, lsPrefix)
+	}
+
+	return lsPrefixList, nil
+}
+
+// algo0PrefixSID returns the algorithm 0 Prefix-SID index, if present.
+// The repeated field takes precedence when populated.
+func algo0PrefixSID(lsAttrPrefix *api.LsAttributePrefix) (uint32, bool) {
+	if sids := lsAttrPrefix.GetSrPrefixSids(); len(sids) > 0 {
+		for _, sid := range sids {
+			if sid.GetAlgorithm() == 0 {
+				return sid.GetSid(), true
+			}
+		}
+
+		return 0, false
+	}
+
+	if sid := lsAttrPrefix.GetSrPrefixSid(); sid != 0 {
+		return sid, true
+	}
+
+	return 0, false
+}
+
+func getLsPrefix(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrPrefix *api.LsAttributePrefix) (*table.LsPrefix, error) {
+	var (
+		localNodeID  string
+		localNodeAsn uint32
+		prefix       []string
+	)
+
+	if typedLinkStateNLRI == nil || typedLinkStateNLRI.GetNlri() == nil {
+		return nil, errors.New("LS Prefix NLRI is nil")
+	}
+
+	sidIndex, hasSidIndex := algo0PrefixSID(lsAttrPrefix)
+
+	switch prefNLRI := typedLinkStateNLRI.GetNlri().GetNlri().(type) {
+	case *api.LsAddrPrefix_LsNLRI_PrefixV4:
+		localNodeID = prefNLRI.PrefixV4.GetLocalNode().GetIgpRouterId()
+		localNodeAsn = prefNLRI.PrefixV4.GetLocalNode().GetAsn()
+		prefix = prefNLRI.PrefixV4.GetPrefixDescriptor().GetIpReachability()
+	case *api.LsAddrPrefix_LsNLRI_PrefixV6:
+		localNodeID = prefNLRI.PrefixV6.GetLocalNode().GetIgpRouterId()
+		localNodeAsn = prefNLRI.PrefixV6.GetLocalNode().GetAsn()
+		prefix = prefNLRI.PrefixV6.GetPrefixDescriptor().GetIpReachability()
+	default:
+		return nil, errors.New("invalid LS prefix NLRI type")
+	}
+
+	localNode := table.NewLsNode(localNodeAsn, localNodeID)
+	lsPrefix := table.NewLsPrefix(localNode)
+	lsPrefix.SidIndex = sidIndex
+	lsPrefix.HasSidIndex = hasSidIndex
+
+	if len(prefix) != 1 {
+		return nil, errors.New("invalid prefix length: expected 1 prefix")
+	}
+
+	var err error
+
+	lsPrefix.Prefix, err = netip.ParsePrefix(prefix[0])
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse prefix: %w", err)
+	}
+
+	return lsPrefix, nil
+}
+
+func getLsSrv6SIDList(nlris []*api.NLRI, lsAttrSrv6SID *api.LsAttributeSrv6SID) ([]table.TEDElem, error) {
+	var lsSrv6SIDList []table.TEDElem
+
+	for _, nlri := range nlris {
+		lsAddrPrefix := nlri.GetLsAddrPrefix()
+
+		lsPrefix, err := getLsSrv6SID(lsAddrPrefix, lsAttrSrv6SID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get LS Prefix: %w", err)
+		}
+
+		lsSrv6SIDList = append(lsSrv6SIDList, lsPrefix)
+	}
+
+	return lsSrv6SIDList, nil
+}
+
+func getLsSrv6SID(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrSrv6SID *api.LsAttributeSrv6SID) (*table.LsSrv6SID, error) {
+	if typedLinkStateNLRI == nil {
+		return nil, errors.New("LS SRv6 SID NLRI is nil")
+	}
+
+	srv6SIDStructure := lsAttrSrv6SID.GetSrv6SidStructure()
+	endpointBehavior := lsAttrSrv6SID.GetSrv6EndpointBehavior()
+
+	srv6SIDNLRI := typedLinkStateNLRI.GetNlri().GetSrv6Sid()
+	if srv6SIDNLRI == nil {
+		return nil, errors.New("LS SRv6 SID NLRI is not an SRv6 SID type")
+	}
+
+	localNodeID := srv6SIDNLRI.GetLocalNode().GetIgpRouterId()
+	localNodeASN := srv6SIDNLRI.GetLocalNode().GetAsn()
+	srv6SIDs := srv6SIDNLRI.GetSrv6SidInformation().GetSids()
+	multiTopoIDs := srv6SIDNLRI.GetMultiTopoId().GetMultiTopoIds()
+
+	structure, err := srv6SIDStructureFromAPI(srv6SIDStructure)
+	if err != nil {
+		return nil, err
+	}
+
+	behavior, err := endpointBehaviorFromAPI(
+		"SRv6 SID",
+		endpointBehavior.GetEndpointBehavior(),
+		endpointBehavior.GetFlags(),
+		endpointBehavior.GetAlgorithm(),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	localNode := table.NewLsNode(localNodeASN, localNodeID)
+	lsSrv6SID := table.NewLsSrv6SID(localNode)
+	lsSrv6SID.SIDStructure = structure
+	lsSrv6SID.EndpointBehavior = behavior
+	lsSrv6SID.Sids = srv6SIDs
+	lsSrv6SID.MultiTopoIDs = multiTopoIDs
+
+	return lsSrv6SID, nil
+}

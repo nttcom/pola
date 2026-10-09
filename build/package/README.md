@@ -22,12 +22,12 @@ docker buildx build \
     .
 ```
 
-Note: To build the development image, use `Dockerfile.dev` instead:
+Note: To build the debug image, which adds a shell and network troubleshooting tools on top of the same binaries, use `Dockerfile.debug` instead:
 
 ```bash
 docker buildx build \
     -t <image-name> \
-    -f build/package/Dockerfile.dev \
+    -f build/package/Dockerfile.debug \
     --load \
     .
 ```
@@ -40,15 +40,15 @@ From the repository root, you can build images using Makefile targets:
 # Build production image as pola:latest
 make image
 
-# Build development image as pola:latest-dev
-make image-dev
+# Build debug image as pola:latest-debug
+make image-debug
 ```
 
 You can override image name and tag:
 
 ```bash
 make image IMAGE=<image-name> TAG=<tag>
-make image-dev IMAGE=<image-name> TAG=<tag>
+make image-debug IMAGE=<image-name> TAG=<tag>
 ```
 
 ## Run with Host Network Mode

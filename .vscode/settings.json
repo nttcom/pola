@@ -4,11 +4,11 @@
     "yaml.validate": true,
     "yaml.hover": true,
     "yaml.schemas": {
-        "./docs/schemas/polad_config.json": [
+        "./docs/schemas/server/polad_config.json": [
             "polad*.yaml",
             "polad*.yml"
         ],
-        "./cmd/pola/docs/schemas/policy.json": [
+        "./docs/schemas/cli/policy.json": [
             "*POLICY*.yaml",
             "*POLICY*.yml",
             "*policy*.yaml",

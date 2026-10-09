@@ -1,0 +1,115 @@
+name: sr-mpls-explicit-path-l3vpn
+topology:
+  nodes:
+    pola:
+      kind: linux
+      image: ghcr.io/nttcom/pola:latest-debug
+      binds:
+        - pola/polad.yaml:/pola/polad.yaml
+        - sr-policies/pe01-policy1.yaml:/pola/pe01-policy1.yaml
+      exec:
+        - ip addr add 10.0.255.254/24 dev eth1
+    pe01:
+      kind: linux
+      image: frrouting/frr:v8.4.1
+      binds:
+        - startup-configs/common/daemons:/etc/frr/daemons
+        - startup-configs/common/vtysh.conf:/etc/frr/vtysh.conf
+        - startup-configs/pe01/frr.conf:/etc/frr/frr.conf
+        - startup-configs/pe01/vtysh.sh:/vtysh.sh
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - sysctl -w net.mpls.conf.lo.input=1
+        - sysctl -w net.mpls.conf.eth1.input=1
+        - sysctl -w net.mpls.conf.eth2.input=1
+        - sysctl -w net.mpls.platform_labels=1048575
+        - ip link add cust-a type vrf table 10
+        - ip link set cust-a up
+        - ip link set eth3 master cust-a
+        # Configure PCEP and reapply the RD/RT once the daemons are running.
+        - bash /vtysh.sh
+    pe02:
+      kind: linux
+      image: frrouting/frr:v8.4.1
+      binds:
+        - startup-configs/common/daemons:/etc/frr/daemons
+        - startup-configs/common/vtysh.conf:/etc/frr/vtysh.conf
+        - startup-configs/pe02/frr.conf:/etc/frr/frr.conf
+        - startup-configs/pe02/vtysh.sh:/vtysh.sh
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - sysctl -w net.mpls.conf.lo.input=1
+        - sysctl -w net.mpls.conf.eth1.input=1
+        - sysctl -w net.mpls.conf.eth2.input=1
+        - sysctl -w net.mpls.platform_labels=1048575
+        - ip link add cust-a type vrf table 10
+        - ip link set cust-a up
+        - ip link set eth3 master cust-a
+        # Configure PCEP and reapply the RD/RT once the daemons are running.
+        - bash /vtysh.sh
+    p01:
+      kind: linux
+      image: frrouting/frr:v8.4.1
+      binds:
+        - startup-configs/common/daemons:/etc/frr/daemons
+        - startup-configs/common/vtysh.conf:/etc/frr/vtysh.conf
+        - startup-configs/p01/frr.conf:/etc/frr/frr.conf
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - sysctl -w net.mpls.conf.lo.input=1
+        - sysctl -w net.mpls.conf.eth1.input=1
+        - sysctl -w net.mpls.conf.eth2.input=1
+        - sysctl -w net.mpls.conf.eth3.input=1
+        - sysctl -w net.mpls.platform_labels=1048575
+    p02:
+      kind: linux
+      image: frrouting/frr:v8.4.1
+      binds:
+        - startup-configs/common/daemons:/etc/frr/daemons
+        - startup-configs/common/vtysh.conf:/etc/frr/vtysh.conf
+        - startup-configs/p02/frr.conf:/etc/frr/frr.conf
+      exec:
+        - sysctl -w net.ipv4.ip_forward=1
+        - sysctl -w net.mpls.conf.lo.input=1
+        - sysctl -w net.mpls.conf.eth1.input=1
+        - sysctl -w net.mpls.conf.eth2.input=1
+        - sysctl -w net.mpls.conf.eth3.input=1
+        - sysctl -w net.mpls.platform_labels=1048575
+    host01:
+      kind: linux
+      image: wbitt/network-multitool:latest
+      exec:
+        - ip addr add 192.168.0.2/24 dev eth1
+        - ip route replace default via 192.168.0.1
+    host02:
+      kind: linux
+      image: wbitt/network-multitool:latest
+      exec:
+        - ip addr add 192.168.1.2/24 dev eth1
+        - ip route replace default via 192.168.1.1
+    switch:
+      kind: linux
+      image: wbitt/network-multitool:latest
+      exec:
+        - ip link add name br0 type bridge
+        - ip link set br0 up
+        - ip link set eth1 master br0
+        - ip link set eth1 up
+        - ip link set eth2 master br0
+        - ip link set eth2 up
+        - ip link set eth3 master br0
+        - ip link set eth3 up
+  links:
+    # SR-MPLS domain
+    - endpoints: ["pe01:eth1", "p01:eth1"]
+    - endpoints: ["pe01:eth2", "p02:eth1"]
+    - endpoints: ["pe02:eth1", "p01:eth2"]
+    - endpoints: ["pe02:eth2", "p02:eth2"]
+    - endpoints: ["p01:eth3", "p02:eth3"]
+    # hosts
+    - endpoints: ["pe01:eth3", "host01:eth1"]
+    - endpoints: ["pe02:eth3", "host02:eth1"]
+    # switch
+    - endpoints: ["pola:eth1", "switch:eth1"]
+    - endpoints: ["pe01:eth4", "switch:eth2"]
+    - endpoints: ["pe02:eth4", "switch:eth3"]

@@ -10,12 +10,12 @@ package api.pola.v1;
 option go_package = "github.com/nttcom/pola/api/pola/v1";
 
 service PCEService {
-  rpc CreateSRPolicy (CreateSRPolicyRequest) returns (CreateSRPolicyResponse);
-  rpc DeleteSRPolicy (DeleteSRPolicyRequest) returns (DeleteSRPolicyResponse);
-  rpc GetSessionList (GetSessionListRequest) returns (GetSessionListResponse);
-  rpc GetSRPolicyList (GetSRPolicyListRequest) returns (GetSRPolicyListResponse);
-  rpc GetTED (GetTEDRequest) returns (GetTEDResponse);
-  rpc DeleteSession (DeleteSessionRequest) returns (DeleteSessionResponse);
+  rpc CreateSRPolicy(CreateSRPolicyRequest) returns (CreateSRPolicyResponse);
+  rpc DeleteSRPolicy(DeleteSRPolicyRequest) returns (DeleteSRPolicyResponse);
+  rpc GetSessionList(GetSessionListRequest) returns (GetSessionListResponse);
+  rpc GetSRPolicyList(GetSRPolicyListRequest) returns (GetSRPolicyListResponse);
+  rpc GetTED(GetTEDRequest) returns (GetTEDResponse);
+  rpc DeleteSession(DeleteSessionRequest) returns (DeleteSessionResponse);
 }
 
 message Segment {
@@ -23,42 +23,108 @@ message Segment {
   string sid_structure = 2;
   string local_addr = 3;
   string remote_addr = 4;
+  bool sid_absent = 5;
+  // SRv6 endpoint behavior advertised by the TED (RFC 9603 §4.3.1).
+  uint32 behavior = 6;
+  // Interface ID for link-local NAI scoping (RFC 8664/9603 §4.3.1).
+  optional uint32 local_iface_id = 7;
+  optional uint32 remote_iface_id = 8;
 }
 
-enum SRPolicyType {
-  SR_POLICY_TYPE_UNSPECIFIED = 0;
-  SR_POLICY_TYPE_EXPLICIT = 1;
-  SR_POLICY_TYPE_DYNAMIC = 2;
+enum AddressFamily {
+  ADDRESS_FAMILY_UNSPECIFIED = 0;
+  ADDRESS_FAMILY_IPV4 = 1;
+  ADDRESS_FAMILY_IPV6 = 2;
+}
+
+enum DataPlane {
+  DATA_PLANE_UNSPECIFIED = 0;
+  DATA_PLANE_SR_MPLS = 1;
+  DATA_PLANE_SRV6 = 2;
 }
 
 message Waypoint {
   string router_id = 1;
-  string sid = 2; // optional: explicit SID override
+  string sid = 2; // Optional explicit SID override.
+}
+
+enum SRPolicyState {
+  SR_POLICY_STATE_UNSPECIFIED = 0;
+  SR_POLICY_STATE_DOWN = 1;
+  SR_POLICY_STATE_UP = 2;
+  SR_POLICY_STATE_ACTIVE = 3;
+  SR_POLICY_STATE_UNKNOWN = 4;
+}
+
+message DynamicPath {
+  MetricType metric = 1;
+  // Unspecified uses the unique viable data plane; rejected if ambiguous.
+  DataPlane data_plane = 2;
+  // Unspecified uses the unique viable family; rejected if ambiguous.
+  // Pola extension; no IETF counterpart.
+  AddressFamily underlay_family = 3;
+  repeated Waypoint waypoints = 4;
+}
+
+message ExplicitPath {
+  repeated Segment segment_list = 1;
+}
+
+message CandidatePath {
+  // Zero means "not set" in proto3 and is normalized server-side to
+  // table.DefaultPreference (100) (RFC 9256 §2.7).
+  uint32 preference = 1;
+
+  oneof path {
+    DynamicPath dynamic = 2;
+    ExplicitPath explicit = 3;
+  }
 }
 
 message SRPolicy {
-  bytes pcep_session_addr = 1;
-  bytes src_addr = 2;
-  bytes dst_addr = 3;
-  string src_router_id = 4;
-  string dst_router_id = 5;
+  bytes peer_addr = 1;
+
+  // Policy identity addresses (RFC 9256 §2.1). Mutually exclusive with
+  // headend_router_id / endpoint_router_id.
+  bytes headend = 2;
+  bytes endpoint = 3;
+
+  // Router IDs for TED resolution. Mutually exclusive with headend / endpoint.
+  string headend_router_id = 4;
+  string endpoint_router_id = 5;
+
+  // Address family for resolving router IDs to endpoint addresses.
+  // If unspecified, use the single shared loopback family. If both IPv4 and
+  // IPv6 are shared, use the underlay family to disambiguate; otherwise reject.
+  // Only valid with the router ID form.
+  AddressFamily endpoint_family = 18;
+
   uint32 color = 6;
-  uint32 preference = 7;
   string policy_name = 8;
-  SRPolicyType type = 9;
-  repeated Segment segment_list = 10;
-  MetricType metric = 11;
-  repeated Waypoint waypoints = 12;
+
+  CandidatePath candidate_path = 19;
+
+  uint32 plsp_id = 13;
+  uint32 lsp_id = 14;
+  SRPolicyState state = 15;
+  // Currently signaled segment list reported by the PCE, not request input.
+  repeated Segment segment_list = 20;
+
+  reserved 7, 9, 10, 11, 12, 16, 17;
+  reserved "preference", "type", "metric", "waypoints", "underlay_family", "data_plane";
 }
 
 message CreateSRPolicyRequest {
   SRPolicy sr_policy = 1;
   uint32 asn = 2;
-  bool sid_validate = 3;
+  bool no_sid_validate = 5;
+  reserved 3, 4;
+  reserved "sid_validate", "disable_path_compute";
 }
 
 message CreateSRPolicyResponse {
-  bool is_success = 1;
+  reserved 1;
+  reserved "is_success";
 }
 
 message DeleteSRPolicyRequest {
@@ -67,28 +133,191 @@ message DeleteSRPolicyRequest {
 }
 
 message DeleteSRPolicyResponse {
-  bool is_success = 1;
+  reserved 1;
+  reserved "is_success";
 }
 
 enum SessionState {
   SESSION_STATE_UNSPECIFIED = 0;
-  SESSION_STATE_DOWN = 1;
+  reserved 1;
   SESSION_STATE_UP = 2;
+  SESSION_STATE_TCP_PENDING = 3;
+  SESSION_STATE_OPEN_WAIT = 4;
+  SESSION_STATE_KEEP_WAIT = 5;
+  reserved "SESSION_STATE_DOWN";
+}
+
+enum PccType {
+  PCC_TYPE_UNSPECIFIED = 0;
+  PCC_TYPE_CISCO_LEGACY = 1;
+  PCC_TYPE_JUNIPER_LEGACY = 2;
+  PCC_TYPE_RFC_COMPLIANT = 3;
+}
+
+enum CapabilityType {
+  CAPABILITY_TYPE_UNSPECIFIED = 0;
+  CAPABILITY_TYPE_STATEFUL = 1;
+  CAPABILITY_TYPE_SR = 2;
+  CAPABILITY_TYPE_SRV6 = 3;
+  CAPABILITY_TYPE_PATH_SETUP_TYPE = 4;
+  CAPABILITY_TYPE_ASSOC_TYPE_LIST = 5;
+  CAPABILITY_TYPE_LSP_DB_VERSION = 6;
+  CAPABILITY_TYPE_MULTIPATH = 7;
+  CAPABILITY_TYPE_VENDOR_INFORMATION = 8;
+  CAPABILITY_TYPE_UNKNOWN = 9;
+}
+
+message StatefulCapability {
+  bool lsp_update = 1;
+  bool include_db_version = 2;
+  bool lsp_instantiation = 3;
+  bool triggered_resync = 4;
+  bool delta_lsp_sync = 5;
+  bool triggered_initial_sync = 6;
+  bool color = 7;
+}
+
+message SrCapability {
+  bool unlimited_msd = 1;
+  bool nai_supported = 2;
+  // Unset when unlimited_msd is true (RFC 8664 §5.1).
+  optional uint32 msd = 3;
+}
+
+message Msd {
+  uint32 type = 1;
+  uint32 value = 2;
+}
+
+message Srv6Capability {
+  bool nai_supported = 1;
+  repeated Msd msds = 2;
+}
+
+message PathSetupTypeCapability {
+  repeated uint32 path_setup_types = 1;
+  // Per-PST capability sub-TLVs (RFC 8408 §3).
+  repeated Capability sub_capabilities = 2;
+}
+
+message AssocTypeListCapability {
+  repeated uint32 assoc_types = 1;
+}
+
+message LspDbVersionCapability {
+  uint64 version_number = 1;
+}
+
+message MultipathCapability {
+  uint32 max_multipaths = 1;
+  bool weighted = 2;
+  bool opposite_dir = 3;
+  bool forward_class = 4;
+  bool composite_path = 5;
+}
+
+message VendorInformationCapability {
+  uint32 enterprise_number = 1;
+}
+
+message UnknownCapability {
+  uint32 tlv_type = 1;
+}
+
+message Capability {
+  CapabilityType type = 1;
+
+  oneof detail {
+    StatefulCapability stateful = 2;
+    SrCapability sr = 3;
+    Srv6Capability srv6 = 4;
+    PathSetupTypeCapability path_setup_type = 5;
+    AssocTypeListCapability assoc_type_list = 6;
+    LspDbVersionCapability lsp_db_version = 7;
+    MultipathCapability multipath = 8;
+    VendorInformationCapability vendor_information = 9;
+    UnknownCapability unknown = 10;
+  }
+}
+
+message SessionTimers {
+  uint32 keepalive = 1;
+  uint32 dead_timer = 2;
+}
+
+message EffectiveTimers {
+  uint32 keepalive = 1;
+  uint32 dead_timer = 2;
+}
+
+// RFC 9826 ietf-pcep: /pcep/entity/peers/peer/sessions/session/initiator
+enum SessionInitiator {
+  SESSION_INITIATOR_UNSPECIFIED = 0;
+  SESSION_INITIATOR_LOCAL = 1;
+  SESSION_INITIATOR_REMOTE = 2;
+}
+
+// LSP-DB synchronization state defined by RFC 8231 and exposed by RFC 9826.
+enum LspDbSyncState {
+  LSP_DB_SYNC_STATE_UNSPECIFIED = 0;
+  LSP_DB_SYNC_STATE_PENDING = 1;
+  LSP_DB_SYNC_STATE_ONGOING = 2;
+  LSP_DB_SYNC_STATE_FINISHED = 3;
+}
+
+// MessageCounter contains sent and received message counters.
+message MessageCounter {
+  uint64 sent = 1;
+  uint64 rcvd = 2;
+}
+
+message SessionStats {
+  MessageCounter keepalive = 1; // keepalive-sent / keepalive-rcvd (RFC 9826)
+  MessageCounter pcerr = 2; // pcerr-sent / pcerr-rcvd (RFC 9826)
+  MessageCounter pcntf = 3; // pcntf-sent / pcntf-rcvd (RFC 9826)
+  MessageCounter report = 4; // rpt-sent / rpt-rcvd (RFC 9826, stateful)
+  MessageCounter update = 5; // upd-sent / upd-rcvd (RFC 9826, stateful)
+  MessageCounter initiate = 6; // pcinitiate-sent / pcinitiate-rcvd (RFC 9826, initiation)
+  uint64 unrecognized_rcvd = 7; // unknown-rcvd (RFC 9826)
+  uint64 corrupt_rcvd = 8; // corrupt-rcvd (RFC 9826)
+  uint64 sess_setup_ok = 9; // sess-setup-ok (RFC 9826; per peer, survives session teardown)
+  uint64 sess_setup_fail = 10; // sess-setup-fail (RFC 9826; per peer, survives session teardown)
+  MessageCounter open = 11; // open-sent / open-rcvd (Pola-specific, not in RFC 9826)
+  MessageCounter close = 12; // close-sent / close-rcvd (Pola-specific, not in RFC 9826)
+  MessageCounter pcreq = 13; // pcreq-sent / pcreq-rcvd (RFC 9826)
+  MessageCounter pcrep = 14; // pcrep-sent / pcrep-rcvd (RFC 9826)
 }
 
 message Session {
-  bytes addr = 1;
+  bytes peer_addr = 1;
   SessionState state = 2;
-  repeated string caps = 3;
-  bool is_synced = 4;
+  reserved 3;
+  reserved 4;
+  repeated Capability local_capabilities = 5;
+  reserved 6;
+  PccType pcc_type = 7;
+  repeated Capability peer_capabilities = 8;
+  SessionTimers local_timers = 9;
+  SessionTimers peer_timers = 10;
+  optional uint32 local_session_id = 11;
+  optional uint32 peer_session_id = 12;
+  // Valid when state is SESSION_STATE_UP. Do not infer readiness from
+  // presence or zero values; RFC 5440 permits a negotiated Keepalive of 0.
+  EffectiveTimers effective_timers = 13;
+  SessionInitiator initiator = 14;
+  LspDbSyncState sync_state = 15;
+  int64 created_at_unix_nano = 16; // Unix time in nanoseconds; 0 = unset.
+  int64 established_at_unix_nano = 17; // Unix time in nanoseconds; 0 = not established.
+  SessionStats stats = 18; // Populated only when include_stats is true.
+  int64 uptime_nanos = 19; // Duration since session establishment in nanoseconds; 0 = not established.
+  reserved "caps", "is_synced", "sr_policies";
 }
 
-message SessionList {
-  repeated Session sessions = 1;
-}
-
-message SRPolicyList {
-  repeated SRPolicy sr_policies = 1;
+message SRPolicySession {
+  bytes peer_addr = 1;
+  SessionState state = 2;
+  LspDbSyncState sync_state = 3;
+  repeated SRPolicy sr_policies = 4;
 }
 
 message EndpointBehavior {
@@ -114,14 +343,14 @@ message MultiTopoID {
 
 message LsSrv6SID {
   repeated SID sids = 1;
-	EndpointBehavior endpoint_behavior = 2;
+  EndpointBehavior endpoint_behavior = 2;
   SidStructure sid_structure = 3;
-	repeated MultiTopoID multi_topo_ids = 4;
+  repeated MultiTopoID multi_topo_ids = 4;
 }
 
 message LsPrefix {
   string prefix = 1;
-  uint32 sid_index = 2;
+  optional uint32 sid_index = 2;
 }
 
 enum MetricType {
@@ -138,21 +367,37 @@ message Metric {
 }
 
 message Srv6EndXSID {
-  uint32 endpoint_behavior = 1;
   repeated SID sids = 2;
   SidStructure sid_structure = 3;
+  uint32 weight = 4;
+  EndpointBehavior endpoint_behavior = 5;
+  reserved 1;
+}
+
+message LsLinkEndpoint {
+  string router_id = 1;
+  uint32 asn = 2;
+  // Interface ID (BGP-LS TLV 258/259) for link-local IPv6 address scoping.
+  optional uint32 interface_id = 3;
+  string ipv4 = 4;
+  string ipv6 = 5;
+}
+
+message AdjSid {
+  // Unspecified when GoBGP cannot distinguish IPv4 and IPv6 Adjacency-SIDs.
+  AddressFamily family = 1;
+  uint32 sid = 2;
 }
 
 message LsLink {
-  string local_router_id = 1;
-  uint32 local_asn = 2;
-  string local_ip = 3;
-  string remote_router_id = 4;
-  uint32 remote_asn = 5;
-  string remote_ip = 6;
-  repeated Metric metrics = 7;
-  uint32 adj_sid = 8;
-  Srv6EndXSID srv6_end_x_sid = 9;
+  LsLinkEndpoint local = 1;
+  LsLinkEndpoint remote = 2;
+  repeated Metric metrics = 3;
+  repeated AdjSid adj_sids = 4;
+  repeated Srv6EndXSID srv6_end_x_sids = 5;
+  // Replaced by local, remote, adj_sids, and srv6_end_x_sids.
+  reserved 6 to 9;
+  reserved "local_router_id", "local_asn", "local_ip", "remote_router_id", "remote_asn", "remote_ip", "adj_sid", "srv6_end_x_sid";
 }
 
 message LsNode {
@@ -162,17 +407,14 @@ message LsNode {
   string hostname = 4;
   uint32 srgb_begin = 5;
   uint32 srgb_end = 6;
-  repeated LsLink ls_links = 7;
-  repeated LsPrefix ls_prefixes = 8;
-  repeated LsSrv6SID ls_srv6_sids = 9;
-}
-
-message TED {
-  bool enable = 1;
-  repeated LsNode ls_nodes = 2;
+  repeated LsLink links = 7;
+  repeated LsPrefix prefixes = 8;
+  repeated LsSrv6SID srv6_sids = 9;
 }
 
 message GetSessionListRequest {
+  bytes peer_addr = 1; // Empty selects every session.
+  bool include_stats = 2; // Include session message statistics.
 }
 
 message GetSessionListResponse {
@@ -180,24 +422,27 @@ message GetSessionListResponse {
 }
 
 message GetSRPolicyListRequest {
+  bytes peer_addr = 1;
 }
 
 message GetSRPolicyListResponse {
-  repeated SRPolicy sr_policies = 1;
+  reserved 1;
+  reserved "sr_policies";
+  repeated SRPolicySession sessions = 2;
 }
 
-message GetTEDRequest {
-}
+message GetTEDRequest {}
 
 message GetTEDResponse {
-  bool enable = 1;
-  repeated LsNode ls_nodes = 2;
+  bool enabled = 1;
+  repeated LsNode nodes = 2;
 }
 
 message DeleteSessionRequest {
-  bytes addr = 1;
+  bytes peer_addr = 1;
 }
 
 message DeleteSessionResponse {
-  bool is_success = 1;
+  reserved 1;
+  reserved "is_success";
 }

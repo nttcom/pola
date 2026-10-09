@@ -1,0 +1,172 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+        "global": {
+            "type": "object",
+            "properties": {
+                "pcep": {
+                    "type": "object",
+                    "properties": {
+                        "address": {
+                            "type": "string",
+                            "oneOf": [
+                                {
+                                    "format": "ipv4"
+                                },
+                                {
+                                    "format": "ipv6"
+                                }
+                            ]
+                        },
+                        "port": {
+                            "type": "integer"
+                        },
+                        "keepalive": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 255
+                        },
+                        "deadTimer": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 255
+                        },
+                        "minKeepalive": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 255
+                        },
+                        "maxKeepalive": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 255
+                        },
+                        "allowNegotiation": {
+                            "type": "boolean"
+                        }
+                    },
+                    "required": [
+                        "address",
+                        "port"
+                    ],
+                    "additionalProperties": false
+                },
+                "grpcServer": {
+                    "type": "object",
+                    "properties": {
+                        "address": {
+                            "type": "string",
+                            "oneOf": [
+                                {
+                                    "format": "ipv4"
+                                },
+                                {
+                                    "format": "ipv6"
+                                }
+                            ]
+                        },
+                        "port": {
+                            "type": "integer"
+                        }
+                    },
+                    "required": [
+                        "address",
+                        "port"
+                    ],
+                    "additionalProperties": false
+                },
+                "log": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string"
+                        },
+                        "name": {
+                            "type": "string"
+                        },
+                        "debug": {
+                            "type": "boolean"
+                        }
+                    },
+                    "required": [
+                        "path",
+                        "name"
+                    ],
+                    "additionalProperties": false
+                },
+                "ted": {
+                    "type": "object",
+                    "properties": {
+                        "enable": {
+                            "type": "boolean"
+                        },
+                        "source": {
+                            "type": "string",
+                            "enum": [
+                                "gobgp"
+                            ]
+                        },
+                        "asn": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 4294967295
+                        }
+                    },
+                    "required": [
+                        "enable"
+                    ],
+                    "additionalProperties": false
+                },
+                "gobgp": {
+                    "type": "object",
+                    "properties": {
+                        "grpcClient": {
+                            "type": "object",
+                            "properties": {
+                                "address": {
+                                    "type": "string",
+                                    "oneOf": [
+                                        {
+                                            "format": "ipv4"
+                                        },
+                                        {
+                                            "format": "ipv6"
+                                        }
+                                    ]
+                                },
+                                "port": {
+                                    "type": "integer"
+                                }
+                            },
+                            "required": [
+                                "address",
+                                "port"
+                            ],
+                            "additionalProperties": false
+                        }
+                    },
+                    "required": [
+                        "grpcClient"
+                    ],
+                    "additionalProperties": false
+                },
+                "usidMode": {
+                    "type": "boolean",
+                    "default": false
+                }
+            },
+            "required": [
+                "pcep",
+                "grpcServer",
+                "log",
+                "ted"
+            ],
+            "additionalProperties": false
+        }
+    },
+    "required": [
+        "global"
+    ],
+    "additionalProperties": false
+}

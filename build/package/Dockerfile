@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # ---- builder stage ----
-FROM golang:1.26.5@sha256:ae5a2316d12f3e78fd99177dad452e6ad4f240af2d71d57b480c3477f250fec6 AS builder
+FROM golang:1.27.1@sha256:e0174e51e81218523251d85d248a90d24c3d5e81543b4f07a5d66229397db190 AS builder
 
 WORKDIR /build
 
@@ -15,7 +15,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     go install ./cmd/...
 
 # ---- runtime stage ----
-FROM debian:bookworm-slim@sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818
+FROM debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251
 
 LABEL org.opencontainers.image.authors="Motoki TAKENAKA <m.takenaka@ntt.com>, Wataru MISHIMA <w.mishima@ntt.com>"
 

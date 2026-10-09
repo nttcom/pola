@@ -1,62 +1,142 @@
-GO_CMDS               := pola polad
-IMAGE                 := pola
-TAG                   ?= latest
-PYTHON_DIRS           := test
-TEST_BIN_DIR          := test/bin
-GOBGP_CMDS            := gobgp gobgpd
-GOBGP_MODULE          := github.com/osrg/gobgp/v4
-GOBGP_VERSION         := $(shell go list -m -f '{{.Version}}' $(GOBGP_MODULE))
-GO_VERSION            := $(shell go list -m -f '{{.GoVersion}}')
-GOLANGCI_LINT_VERSION ?= latest
-BUF_VERSION           ?= latest
-PINACT_VERSION        ?= latest
-MARKDOWNLINT_VERSION  ?= latest
-RUFF_VERSION          ?= latest
-PYTEST_ARGS           ?= -s
+# Build
+GO_CMDS := pola polad
+IMAGE   := pola
+TAG     ?= latest
+
+# Test
+PYTHON_DIRS  := test
+TEST_BIN_DIR := test/bin
+PYTEST_ARGS  ?= -s
+
+# Coverage
+COVER_PKGS    := ./cmd/... ./internal/... ./pkg/...
+COVER_PROFILE := coverage.out
+DIFF_BASE      ?= origin/develop
+DIFF_COVER_MIN ?= 90
+
+# External dependencies
+GOBGP_CMDS    := gobgp gobgpd
+GOBGP_MODULE  := github.com/osrg/gobgp/v4
+GOBGP_VERSION := $(shell go list -m -f '{{.Version}}' $(GOBGP_MODULE))
+
+# Go tools are pinned in go.mod.
+MARKDOWNLINT_VERSION ?= 0.49.1
+RUFF_VERSION         ?= 0.16.3
+
+# examples is a separate module, so use the root module's pinned tool versions explicitly.
+GOLANGCI_LINT_VERSION := $(shell go list -m -f '{{.Version}}' github.com/golangci/golangci-lint/v2)
+GOVULNCHECK_VERSION   := $(shell go list -m -f '{{.Version}}' golang.org/x/vuln)
+GOLICENSES_VERSION    := $(shell go list -m -f '{{.Version}}' github.com/google/go-licenses/v2)
+
+LICENSES_TEMPLATE         := licenses/report.md.tmpl
+LICENSES_OUTPUT           := licenses/THIRD_PARTY_LICENSES.md
+LICENSES_OUTPUT_EXAMPLES  := licenses/THIRD_PARTY_LICENSES_EXAMPLES.md
 
 .PHONY: \
 	help \
 	setup \
-	build \
-	install \
 	fmt \
 	fix \
 	lint \
-	test \
-	test-race \
+	lint-go \
+	lint-go-examples \
+	lint-proto \
+	lint-python \
+	lint-markdown \
+	lint-actions \
+	vuln \
 	proto \
 	check-proto \
+	build \
+	install \
+	test \
+	test-examples \
+	test-race \
+	test-coverage \
+	test-coverage-html \
+	test-coverage-diff \
 	image \
-	image-dev \
+	image-debug \
+	licenses \
+	check-licenses \
 	fetch-gobgp \
 	test-deps \
 	test-scenario \
+	test-scenario-parallel \
 	ci \
+	release \
 	clean
 
 .DEFAULT_GOAL := build
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | \
-	awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-16s\033[0m %s\n", $$1, $$2}'
+	awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-22s\033[0m %s\n", $$1, $$2}'
+
+# Print a Makefile variable's value, e.g. `make print-RUFF_VERSION`.
+print-%:
+	@echo $($*)
 
 setup: ## Install development tools required by this Makefile
 	@command -v go >/dev/null || (echo "Go is required: https://go.dev/dl/"; exit 1)
 	@command -v npm >/dev/null || (echo "npm is required (tested with npm 11.17.0): https://nodejs.org/"; exit 1)
 	@command -v uv >/dev/null || (echo "uv is required (tested with uv 0.12.0): https://docs.astral.sh/uv/getting-started/installation/"; exit 1)
-	GOTOOLCHAIN=go$(GO_VERSION) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
-	GOTOOLCHAIN=go$(GO_VERSION) go install github.com/bufbuild/buf/cmd/buf@$(BUF_VERSION)
-	GOTOOLCHAIN=go$(GO_VERSION) go install github.com/suzuki-shunsuke/pinact/cmd/pinact@$(PINACT_VERSION)
 	npm install -g markdownlint-cli@$(MARKDOWNLINT_VERSION)
 	uv tool install ruff@$(RUFF_VERSION)
 	@echo ""
-	@echo "Setup complete. Make sure these are in your PATH:"
-	@echo "  $$(go env GOPATH)/bin"
+	@echo "Setup complete. Make sure this is in your PATH:"
 	@echo "  $$(npm config get prefix)/bin"
 	@echo ""
 	@echo "Also required but not installed by this target:"
-	@echo "  - Docker (for 'image', 'image-dev', and 'test-scenario')"
+	@echo "  - Docker (for 'image', 'image-debug', and 'test-scenario')"
 	@echo "  - containerlab (https://containerlab.dev/install/, for 'test-scenario')"
+
+fmt: ## Format Go and Python source code
+	go tool golangci-lint fmt
+	cd examples && go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) fmt --config=../.golangci.yml
+	ruff format $(PYTHON_DIRS)
+
+fix: fmt ## Apply automatic fixes
+	go fix ./...
+	go tool golangci-lint run --fix --config=.golangci.yml
+	cd examples && go fix ./...
+	cd examples && go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) run --fix --config=../.golangci.yml
+	ruff check --fix $(PYTHON_DIRS)
+	go tool pinact run -u
+
+lint: lint-go lint-proto lint-python lint-markdown lint-actions ## Run every linter
+
+lint-go: ## Lint Go code
+	go tool golangci-lint run --config=.golangci.yml
+	$(MAKE) lint-go-examples
+
+lint-go-examples: ## Lint the examples module
+	cd examples && go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) run --config=../.golangci.yml
+
+lint-proto: ## Lint protobuf definitions
+	go tool buf lint
+
+lint-python: ## Lint and format-check Python code
+	ruff check $(PYTHON_DIRS)
+	ruff format --check $(PYTHON_DIRS)
+
+lint-markdown: ## Lint Markdown
+	markdownlint '**/*.md' --ignore node_modules
+
+# Verify SHA pins and their version comments without modifying workflows.
+lint-actions: ## Verify GitHub Actions are pinned to commit SHAs
+	go tool pinact run --check --verify
+
+vuln: ## Report known vulnerabilities in dependencies
+	go tool govulncheck ./...
+	cd examples && go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
+
+proto: ## Generate protobuf code
+	go tool buf generate
+
+check-proto: proto ## Verify generated protobuf code is up to date
+	git diff --exit-code -- '*.pb.go' '*_grpc.pb.go'
+	test -z "$$(git ls-files --others --exclude-standard -- '*.pb.go' '*_grpc.pb.go')"
 
 build: ## Build Go binaries
 	mkdir -p bin
@@ -69,36 +149,27 @@ install: ## Install Go binaries into GOPATH/bin
 		go install ./cmd/$$cmd; \
 	done
 
-fmt: ## Format Go and Python source code
-	go fmt ./...
-	ruff format $(PYTHON_DIRS)
-
-fix: fmt ## Apply automatic fixes
-	golangci-lint run --fix --config=.golangci.yml
-	ruff check --fix $(PYTHON_DIRS)
-	pinact run -u
-
-lint: ## Run linters
-	test -z "$$(gofmt -l .)"
-	golangci-lint run --config=.golangci.yml
-	buf lint
-	ruff check $(PYTHON_DIRS)
-	ruff format --check $(PYTHON_DIRS)
-	markdownlint '**/*.md' --ignore node_modules
-	pinact run
-
 test: ## Run Go unit tests
 	go test ./...
+
+test-examples: ## Run Go unit tests for the examples module
+	cd examples && go test ./...
 
 test-race: ## Run Go unit tests with race detector
 	go test -race ./...
 
-proto: ## Generate protobuf code
-	buf generate
+test-coverage: ## Run Go unit tests and print a coverage summary
+	go test $(COVER_PKGS) -coverprofile=$(COVER_PROFILE)
+	go tool cover -func=$(COVER_PROFILE)
 
-check-proto: proto ## Verify generated protobuf code is up to date
-	git diff --exit-code -- '*.pb.go' '*_grpc.pb.go'
-	test -z "$$(git ls-files --others --exclude-standard -- '*.pb.go' '*_grpc.pb.go')"
+test-coverage-html: test-coverage ## Open the coverage report in a browser
+	go tool cover -html=$(COVER_PROFILE)
+
+test-coverage-diff: test-coverage ## Check coverage of changed lines
+	go run ./tools/coverage-diff \
+		-base=$(DIFF_BASE) \
+		-profile=$(COVER_PROFILE) \
+		-min=$(DIFF_COVER_MIN)
 
 image: ## Build production Docker image
 	docker buildx build \
@@ -107,17 +178,27 @@ image: ## Build production Docker image
 		--load \
 		.
 
-image-dev: ## Build development Docker image
+image-debug: ## Build debug Docker image (adds a shell and network tools)
 	docker buildx build \
-		-t $(IMAGE):$(TAG)-dev \
-		-f build/package/Dockerfile.dev \
+		-t $(IMAGE):$(TAG)-debug \
+		-f build/package/Dockerfile.debug \
 		--load \
 		.
+
+licenses: ## Generate third-party license files for the root and examples modules
+	go tool go-licenses report --include_tests --ignore $(shell go list -m) \
+		--template=$(LICENSES_TEMPLATE) ./... > $(LICENSES_OUTPUT)
+	cd examples && go run github.com/google/go-licenses/v2@$(GOLICENSES_VERSION) report --include_tests \
+		--ignore $$(go list -m) --ignore github.com/nttcom/pola \
+		--template=../$(LICENSES_TEMPLATE) ./... > ../$(LICENSES_OUTPUT_EXAMPLES)
+
+check-licenses: licenses ## Verify third-party license files are up to date
+	git diff --exit-code -- $(LICENSES_OUTPUT) $(LICENSES_OUTPUT_EXAMPLES)
 
 fetch-gobgp: ## Fetch gobgp/gobgpd binaries into test/bin
 	mkdir -p $(TEST_BIN_DIR)
 	@for cmd in $(GOBGP_CMDS); do \
-		GOBIN=$(abspath $(TEST_BIN_DIR)) go install $(GOBGP_MODULE)/cmd/$$cmd@$(GOBGP_VERSION); \
+		CGO_ENABLED=0 GOBIN=$(abspath $(TEST_BIN_DIR)) go install $(GOBGP_MODULE)/cmd/$$cmd@$(GOBGP_VERSION); \
 	done
 
 test-deps: build fetch-gobgp ## Stage all binaries required for scenario tests
@@ -129,7 +210,33 @@ test-deps: build fetch-gobgp ## Stage all binaries required for scenario tests
 test-scenario: test-deps ## Run containerlab scenario tests
 	cd test && uv run pytest $(PYTEST_ARGS)
 
-ci: build check-proto lint test ## Run the same checks as CI
+# Keep tests sharing a lab on the same worker.
+test-scenario-parallel: PYTEST_ARGS = -s -n 4 --dist loadgroup
+test-scenario-parallel: test-scenario ## Run containerlab scenario tests, one lab per worker
+
+ci: check-proto check-licenses lint build test test-examples test-coverage-diff ## Run the same checks as CI
+
+release: ## Cut a release: make release VERSION=X.Y.Z
+	@if [ -z "$(VERSION)" ]; then echo "Usage: make release VERSION=X.Y.Z"; exit 1; fi
+	@if ! echo "$(VERSION)" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$'; then echo "VERSION must be in X.Y.Z format: $(VERSION)"; exit 1; fi
+	@if [ -n "$$(git status --porcelain)" ]; then echo "Working tree is not clean"; exit 1; fi
+	@if [ "$$(git rev-parse --abbrev-ref HEAD)" != "main" ]; then echo "Must be on main branch"; exit 1; fi
+	@git fetch origin main develop --tags
+	@if git rev-parse -q --verify "refs/tags/v$(VERSION)" >/dev/null; then \
+		echo "Tag v$(VERSION) already exists"; exit 1; \
+	fi
+	@if [ "$$(git rev-parse HEAD)" != "$$(git rev-parse origin/main)" ]; then echo "Local main is out of sync with origin/main"; exit 1; fi
+	@if [ -n "$$(git log origin/main..origin/develop --oneline)" ]; then \
+		echo "develop has commits not yet merged into main:"; \
+		git log origin/main..origin/develop --oneline; \
+		exit 1; \
+	fi
+	$(MAKE) ci
+	$(MAKE) test-race
+	git tag -a "v$(VERSION)" -m "Release v$(VERSION)"
+	git push origin "v$(VERSION)"
 
 clean: ## Remove generated files
-	$(RM) -r bin $(TEST_BIN_DIR)
+	$(RM) -r bin
+	@find $(TEST_BIN_DIR) -type f ! -name .gitignore -delete 2>/dev/null || true
+	$(RM) $(COVER_PROFILE)

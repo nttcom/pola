@@ -6,70 +6,73 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
+	"io"
+	"net/netip"
 
 	"github.com/spf13/cobra"
 
+	pb "github.com/nttcom/pola/api/pola/v1"
 	"github.com/nttcom/pola/cmd/pola/grpc"
 )
 
-func newSRPolicyListCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:  "list",
-		RunE: showSRPolicyList,
+func newSRPolicyListCmd(c *cli) *cobra.Command {
+	cmd := &cobra.Command{
+		Use: "list",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return showSRPolicyList(cmd, args, c.client, c.jsonFmt)
+		},
 	}
+	cmd.Flags().String("peer", "", "filter by PCEP peer address")
+
+	return cmd
 }
 
-func showSRPolicyList(cmd *cobra.Command, args []string) error {
-	jsonFlag, err := cmd.Flags().GetBool("json")
+func showSRPolicyList(cmd *cobra.Command, _ []string, client pb.PCEServiceClient, jsonFmt bool) error {
+	peerAddr, err := peerAddrFlag(cmd)
 	if err != nil {
-		return fmt.Errorf("failed to retrieve 'json' flag: %v", err)
+		return err
 	}
 
-	srPolicies, err := grpc.GetSRPolicyList(client)
+	return writeSRPolicyList(cmd.OutOrStdout(), peerAddr, resolveOutputFormat(jsonFmt), client)
+}
+
+func writeSRPolicyList(w io.Writer, peerAddr netip.Addr, format outputFormat, client pb.PCEServiceClient) error {
+	sessions, err := grpc.GetSRPolicyList(client, peerAddr)
 	if err != nil {
-		return fmt.Errorf("failed to retrieve SR policy list: %v", err)
+		return fmt.Errorf("failed to retrieve SR policy list: %w", err)
 	}
 
-	if jsonFlag {
-		// Output in JSON format
-		outputJSON, err := json.Marshal(srPolicies)
-		if err != nil {
-			return fmt.Errorf("failed to marshal SR policy list to JSON: %v", err)
-		}
-		fmt.Println(string(outputJSON))
-	} else {
-		// Output in user-friendly format
-		if len(srPolicies) == 0 {
-			fmt.Println("No SR Policies found.")
-		} else {
-			for sessionID, policies := range srPolicies {
-				fmt.Printf("Session: %s\n", sessionID)
-				for _, policy := range policies {
-					fmt.Printf("  PolicyName: %s\n", policy.Name)
-					fmt.Printf("    SrcAddr: %s\n", policy.SrcAddr)
-					fmt.Printf("    DstAddr: %s\n", policy.DstAddr)
-					fmt.Printf("    Color: %d\n", policy.Color)
-					fmt.Printf("    Preference: %d\n", policy.Preference)
-					fmt.Printf("    SegmentList: ")
-
-					if len(policy.SegmentList) == 0 {
-						fmt.Println("None")
-					} else {
-						for j, segment := range policy.SegmentList {
-							fmt.Print(segment.SidString())
-							if j == len(policy.SegmentList)-1 {
-								fmt.Println()
-							} else {
-								fmt.Print(" -> ")
-							}
-						}
-					}
-				}
-				fmt.Println()
-			}
-		}
+	if len(sessions) == 0 {
+		return writeNoSessions(w, peerAddr, format)
 	}
-	return nil
+
+	views := make([]srPolicySessionView, 0, len(sessions))
+	for _, ss := range sessions {
+		views = append(views, newSRPolicySessionView(ss))
+	}
+
+	if format == outputJSON {
+		return writeJSON(w, views)
+	}
+
+	return writeSRPolicyText(w, views)
+}
+
+func peerAddrFlag(cmd *cobra.Command) (netip.Addr, error) {
+	flag, err := cmd.Flags().GetString("peer")
+	if err != nil {
+		return netip.Addr{}, fmt.Errorf("failed to retrieve 'peer' flag: %w", err)
+	}
+
+	if flag == "" {
+		return netip.Addr{}, nil
+	}
+
+	addr, err := netip.ParseAddr(flag)
+	if err != nil {
+		return netip.Addr{}, fmt.Errorf("invalid --peer address %q: %w", flag, err)
+	}
+
+	return addr, nil
 }

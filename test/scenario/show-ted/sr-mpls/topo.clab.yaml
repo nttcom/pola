@@ -1,0 +1,38 @@
+name: show-ted-sr-mpls
+topology:
+  kinds:
+    juniper_vjunosrouter:
+      image: vrnetlab/juniper_vjunos-router:25.2R1.9
+  nodes:
+    pola:
+      kind: linux
+      image: golang:1.26.5
+      network-mode: container:gobgp
+      startup-delay: 10
+      binds:
+        - ../../../bin/polad:/bin/polad
+        - ../../../bin/pola:/bin/pola
+        - input/polad.yaml:/polad.yaml
+      cmd: /bin/polad -f /polad.yaml &
+    gobgp:
+      kind: linux
+      image: golang:1.26.5
+      binds:
+        - ../../../bin/gobgpd:/bin/gobgpd
+        - ../../../bin/gobgp:/bin/gobgp
+        - input/gobgpd.yaml:/gobgpd.yaml
+      exec:
+        - apt update
+        - apt install -y iproute2 iputils-ping
+        - ip a add dev eth1 10.100.0.2/24
+        - ip r add 10.255.0.0/24 via 10.100.0.1
+      cmd: /bin/gobgpd -f /gobgpd.yaml &
+    pe01:
+      kind: juniper_vjunosrouter
+      startup-config: input/startup-configs/pe01.cfg
+    pe02:
+      kind: juniper_vjunosrouter
+      startup-config: input/startup-configs/pe02.cfg
+  links:
+    - endpoints: ["pe01:ge-0/0/0", "pe02:ge-0/0/0"]
+    - endpoints: ["gobgp:eth1", "pe01:ge-0/0/1"]

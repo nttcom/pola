@@ -8,6 +8,7 @@ package pcep
 import (
 	"encoding/binary"
 	"fmt"
+	"math"
 )
 
 func decodeTLVLength(data []byte, allowPadding bool) (int, error) {
@@ -18,7 +19,6 @@ func decodeTLVLength(data []byte, allowPadding bool) (int, error) {
 	length := int(binary.BigEndian.Uint16(data[TLVLengthOffset:TLVValueOffset]))
 	expected := TLVValueOffset + length
 
-	// Validate length and optional padding strictly.
 	if len(data) < expected {
 		return 0, fmt.Errorf("tlv: invalid length (expected at least %d bytes, got %d)", expected, len(data))
 	}
@@ -48,13 +48,23 @@ func decodeTLVLength(data []byte, allowPadding bool) (int, error) {
 	return length, nil
 }
 
-func paddedLength(n int, align int) int {
+func paddedLength(n, align int) int {
 	if n%align == 0 {
 		return n
 	}
+
 	return n + (align - (n % align))
 }
 
+func tlvValueLength(n int) (uint16, error) {
+	if n < 0 || n > math.MaxUint16 {
+		return 0, fmt.Errorf("PCEP TLV value length %d is outside the range 0..%d", n, math.MaxUint16)
+	}
+
+	return uint16(n), nil
+}
+
+// IPv4InIPv6Offset is the byte offset of the embedded IPv4 address within an IPv4-mapped IPv6 address.
 const (
 	IPv4InIPv6Offset = 12
 )
@@ -64,10 +74,12 @@ func isIPv4Bytes(b []byte) bool {
 	if len(b) != IPv6AddrLen {
 		return false
 	}
+
 	for i := range IPv4InIPv6Offset {
 		if b[i] != 0 {
 			return false
 		}
 	}
+
 	return true
 }

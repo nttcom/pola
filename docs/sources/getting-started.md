@@ -2,9 +2,9 @@
 
 This page explains how to use Pola PCE.
 
-## Instllation
+## Installation
 
-### From Go Package
+### From Go
 
 ```bash
 go install github.com/nttcom/pola/cmd/polad@latest
@@ -12,20 +12,13 @@ go install github.com/nttcom/pola/cmd/polad@latest
 
 ### From Source
 
-#### Getting the Source
-
 ```bash
 git clone https://github.com/nttcom/pola.git
-```
-
-#### Build & install
-
-```bash
-$ cd pola
-$ go install ./cmd/polad
+cd pola
+go install ./cmd/polad
 
 # or, install with cli command
-$ go install ./...
+go install ./...
 ```
 
 ### From Container Image
@@ -34,12 +27,13 @@ See the [Docker page](../../build/package/README.md).
 
 ## Configuration
 
-Specify the IP address and port number for each PCEP and gRPC.
-See [JSON shema](../schemas/polad_config.json) for config details.
+Configure the IP address and port for PCEP and gRPC.
+`address` must be a literal IPv4 or IPv6 address; hostnames are not resolved.
+See [JSON schema](../schemas/server/polad_config.json) for config details.
 
-### case: TED disable
+### Disabling TED
 
-To manage SR Policy without using TED.
+To manage SR Policy without using TED, disable TED as follows.
 
 ```yaml
 global:
@@ -57,15 +51,74 @@ global:
   usidMode: false
 ```
 
-### case: TED enable
+### PCEP session timers
 
-To manage SR Policy using TED.
-Enabling TED allows dynamic path calculation.
+#### Advertising Pola's timers
 
-A specific tool for updating TED is required to use this feature.
+`global.pcep.keepalive` and `global.pcep.deadTimer` configure the timers Pola
+advertises in its Open message (RFC 5440 §7.3). They default to 30 and 120
+seconds. If `keepalive` is `0`, `deadTimer` must also be `0`.
+
+```yaml
+global:
+  pcep:
+    address: "192.0.2.254"
+    port: 4189
+    keepalive: 30
+    deadTimer: 120
+```
+
+#### Validating peer timers
+
+`global.pcep.minKeepalive` and `global.pcep.maxKeepalive` limit the Keepalive
+value that Pola accepts from a peer's Open message (RFC 7420). Both are
+optional; omitting them disables validation.
+
+If both are set, `minKeepalive` must be less than or equal to `maxKeepalive`.
+
+`global.pcep.allowNegotiation` controls behavior when a peer's Keepalive is
+outside the configured range. It defaults to `true`, allowing Pola to negotiate
+the value; when `false`, the session is rejected.
+
+```yaml
+global:
+  pcep:
+    address: "192.0.2.254"
+    port: 4189
+    keepalive: 30
+    deadTimer: 120
+    minKeepalive: 10
+    maxKeepalive: 60
+```
+
+### Enabling TED
+
+To manage SR Policy using TED, enable TED as follows.
+This also enables dynamic path calculation.
+
+TED updates require a supported BGP-LS source.
 Currently, only GoBGP is supported.
 
-**Not currently available for IPv6 underlay(IPv6 SR-MPLS / SRv6).**
+#### Underlay address family
+
+Path computation runs on an **underlay plane**, a combination of address
+family and data plane.
+
+Supported combinations:
+
+| underlayFamily | dataPlane | Status         |
+| -------------- | --------- | -------------- |
+| ipv4           | sr-mpls   | Supported      |
+| ipv6           | sr-mpls   | Supported      |
+| ipv6           | srv6      | Supported      |
+| ipv4           | srv6      | Not applicable |
+
+A dynamic candidate path selects the plane with `underlayFamily` and
+`dataPlane`. If both are unspecified, Pola uses the headend's unique viable
+plane and rejects the request when multiple planes are available.
+
+The endpoint and underlay address families are independent, so cross-AF
+policies are supported.
 
 ```yaml
 global:
@@ -107,9 +160,16 @@ neighbors:
       afi-safi-name: ls
 ```
 
-## Run Pola PCE using polad
+#### Known limitations
 
-Start polad. Specify the created configuration file with the -f option.
+* **IOS-XR interoperability**: IOS-XR 24.4.1 rejected IPv6-endpoint
+  PCE-initiated SR-MPLS policies (`pcinitiate: bad sock info`).
+* **Junos interoperability**: Junos 25.2R1.9 rejected IPv6-endpoint
+  PCE-initiated SR-MPLS policies (`IPv6 SRPAG received for non SRv6 LSP`).
+
+## Run Polad
+
+Start polad. Specify the created configuration file with the `-f` option.
 
 ```bash
 $ sudo polad -f polad.yaml
@@ -117,5 +177,5 @@ $ sudo polad -f polad.yaml
 2022-06-05T22:57:59.823Z        info    PCEP listen     {"listenInfo": "192.0.2.254:4189"}
 ```
 
-After Polad is running, use [pola cmd](../../cmd/pola/README.md) or the
-[gRCP client](../../api/grpc/) for daemon operations
+After Polad is running, use the [pola CLI](../../cmd/pola/README.md) or
+[gRPC client](../../api/grpc/) to manage the daemon.
