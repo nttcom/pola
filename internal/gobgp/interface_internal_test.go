@@ -551,6 +551,16 @@ func TestGetLsLink(t *testing.T) {
 				},
 			},
 			{
+				name: "nil link descriptor",
+				desc: nil,
+				attr: &api.LsAttributeLink{IgpMetric: 10},
+				want: &table.LsLink{
+					Local:   table.LinkEndpoint{Node: expectedLocal},
+					Remote:  table.LinkEndpoint{Node: expectedRemote},
+					Metrics: []*table.Metric{table.NewMetric(table.IGPMetric, 10)},
+				},
+			},
+			{
 				// IS-IS Multi-Topology uses a Multi-Topology ID to distinguish Link NLRIs
 				// for different topologies (RFC 7752, Section 3.2.1.5).
 				name: "Multi-Topology ID is preserved",

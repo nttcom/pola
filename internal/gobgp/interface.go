@@ -584,18 +584,21 @@ func getLsLink(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrLink *api.LsAttribute
 	lsLink := table.NewLsLink(localNode, remoteNode)
 	lsLink.Local.IPv4, lsLink.Local.IPv6 = localIPv4, localIPv6
 	lsLink.Remote.IPv4, lsLink.Remote.IPv6 = remoteIPv4, remoteIPv6
-	lsLink.Local.InterfaceID = linkDescriptor.LinkLocalId
-	lsLink.Remote.InterfaceID = linkDescriptor.LinkRemoteId
 
-	if multiTopoIDs := linkDescriptor.GetMultiTopoIds(); len(multiTopoIDs) != 0 {
-		lsLink.MultiTopoIDs = make(map[uint16]struct{}, len(multiTopoIDs))
-		for _, id := range multiTopoIDs {
-			multiTopoID, err := safecast.Uint16(id, "link Multi-Topology ID")
-			if err != nil {
-				return nil, err
+	if linkDescriptor != nil {
+		lsLink.Local.InterfaceID = linkDescriptor.LinkLocalId
+		lsLink.Remote.InterfaceID = linkDescriptor.LinkRemoteId
+
+		if multiTopoIDs := linkDescriptor.GetMultiTopoIds(); len(multiTopoIDs) != 0 {
+			lsLink.MultiTopoIDs = make(map[uint16]struct{}, len(multiTopoIDs))
+			for _, id := range multiTopoIDs {
+				multiTopoID, err := safecast.Uint16(id, "link Multi-Topology ID")
+				if err != nil {
+					return nil, err
+				}
+
+				lsLink.MultiTopoIDs[multiTopoID] = struct{}{}
 			}
-
-			lsLink.MultiTopoIDs[multiTopoID] = struct{}{}
 		}
 	}
 
