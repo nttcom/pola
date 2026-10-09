@@ -321,6 +321,14 @@ class TestDynamicPathDualStack:
             ["16022", "16024"],
         )
 
+    @pytest.mark.xfail(
+        reason=(
+            "IOS-XR 24.4.1 rejects PCE-initiated SR-MPLS policies with an IPv4 "
+            "endpoint whose SIDs are IPv6 prefix-SIDs: 'Path-Type mismatch "
+            "detected' (Operational: down, Path Type: UNKNOWN)."
+        ),
+        strict=False,
+    )
     def test__pe01_ipv6_underlay_with_ipv4_endpoint_computes_the_ipv6_cheap_path(
         self, dual_stack_lab
     ):
