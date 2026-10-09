@@ -1869,6 +1869,18 @@ func TestResolvePlane(t *testing.T) {
 			wantErr:   "SRv6 requires IPv6",
 		},
 		{
+			name:    "unknown address family is rejected",
+			node:    dualPlaneNode,
+			family:  pb.AddressFamily(99),
+			wantErr: "unknown address family: 99",
+		},
+		{
+			name:      "unknown data plane is rejected",
+			node:      dualPlaneNode,
+			dataPlane: pb.DataPlane(99),
+			wantErr:   "unknown data plane: 99",
+		},
+		{
 			name:      "data plane alone selects the matching plane on a dual-plane node",
 			node:      dualPlaneNode,
 			dataPlane: pb.DataPlane_DATA_PLANE_SRV6,

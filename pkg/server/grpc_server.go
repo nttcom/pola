@@ -294,12 +294,17 @@ func endpointSpecFromPB(policy *pb.SRPolicy) (table.EndpointSpec, error) {
 		return table.EndpointSpec{}, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "invalid endpoint address: %v", policy.GetEndpoint())
 	}
 
+	family, err := fromPBAddressFamily(policy.GetEndpointFamily())
+	if err != nil {
+		return table.EndpointSpec{}, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "%s", err.Error())
+	}
+
 	return table.EndpointSpec{
 		Headend:          headend,
 		Endpoint:         endpoint,
 		HeadendRouterID:  policy.GetHeadendRouterId(),
 		EndpointRouterID: policy.GetEndpointRouterId(),
-		Family:           fromPBAddressFamily(policy.GetEndpointFamily()),
+		Family:           family,
 	}, nil
 }
 
@@ -930,8 +935,15 @@ func tedNode(ted *table.LsTED, routerID string) (*table.LsNode, bool) {
 // resolvePlane resolves the requested underlay plane, defaulting to the
 // node's unique viable plane when unspecified.
 func resolvePlane(node *table.LsNode, pbFamily pb.AddressFamily, pbDataPlane pb.DataPlane) (table.Plane, error) {
-	family := fromPBAddressFamily(pbFamily)
-	dataPlane := fromPBDataPlane(pbDataPlane)
+	family, err := fromPBAddressFamily(pbFamily)
+	if err != nil {
+		return table.Plane{}, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "%s", err.Error())
+	}
+
+	dataPlane, err := fromPBDataPlane(pbDataPlane)
+	if err != nil {
+		return table.Plane{}, newStatus(codes.InvalidArgument, ReasonInvalidRequest, "%s", err.Error())
+	}
 
 	if family.IsValid() && dataPlane != table.DPUnspecified {
 		plane := table.Plane{Family: family, DataPlane: dataPlane}

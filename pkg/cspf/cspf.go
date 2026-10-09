@@ -300,13 +300,13 @@ func initNodeMap(srcRouterID string, scope PathScope, network map[string]*table.
 }
 
 // linkUsable is the sole edge filter for path computation.
-// Unnumbered links are considered usable.
+// Unnumbered links without topology metadata are considered usable.
 func linkUsable(link *table.LsLink, scope PathScope) bool {
 	if link.UsableForFamily(scope.Plane.Family) {
 		return true
 	}
 
-	return linkUnnumbered(link)
+	return len(link.MultiTopoIDs) == 0 && linkUnnumbered(link)
 }
 
 func linkUnnumbered(link *table.LsLink) bool {

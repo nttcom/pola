@@ -19,6 +19,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func TestToPBSessionState(t *testing.T) {
@@ -355,4 +357,73 @@ func TestGetTED_LinksWithoutIPsRoundTripToCLI(t *testing.T) {
 		assert.False(t, gotNode.Links[0].Remote.IPv4.IsValid())
 		assert.False(t, gotNode.Links[0].Remote.IPv6.IsValid())
 	}
+}
+
+func TestFromPBAddressFamily(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		in      pb.AddressFamily
+		want    table.AddressFamily
+		wantErr bool
+	}{
+		{name: "unspecified", in: pb.AddressFamily_ADDRESS_FAMILY_UNSPECIFIED, want: table.AFUnspecified},
+		{name: "ipv4", in: pb.AddressFamily_ADDRESS_FAMILY_IPV4, want: table.AFIPv4},
+		{name: "ipv6", in: pb.AddressFamily_ADDRESS_FAMILY_IPV6, want: table.AFIPv6},
+		{name: "undeclared value", in: pb.AddressFamily(99), want: table.AFUnspecified, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := fromPBAddressFamily(tt.in)
+			if tt.wantErr {
+				require.ErrorContains(t, err, "unknown address family: 99")
+			} else {
+				require.NoError(t, err)
+			}
+
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestFromPBDataPlane(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		in      pb.DataPlane
+		want    table.DataPlane
+		wantErr bool
+	}{
+		{name: "unspecified", in: pb.DataPlane_DATA_PLANE_UNSPECIFIED, want: table.DPUnspecified},
+		{name: "sr-mpls", in: pb.DataPlane_DATA_PLANE_SR_MPLS, want: table.DPSRMPLS},
+		{name: "srv6", in: pb.DataPlane_DATA_PLANE_SRV6, want: table.DPSRv6},
+		{name: "undeclared value", in: pb.DataPlane(99), want: table.DPUnspecified, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := fromPBDataPlane(tt.in)
+			if tt.wantErr {
+				require.ErrorContains(t, err, "unknown data plane: 99")
+			} else {
+				require.NoError(t, err)
+			}
+
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestEndpointSpecFromPB_UnknownEndpointFamily(t *testing.T) {
+	t.Parallel()
+
+	_, err := endpointSpecFromPB(&pb.SRPolicy{EndpointFamily: pb.AddressFamily(99)})
+	require.Error(t, err)
+	assert.Equal(t, codes.InvalidArgument, status.Code(err))
+	assert.ErrorContains(t, err, "unknown address family: 99")
 }

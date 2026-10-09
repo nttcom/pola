@@ -350,14 +350,17 @@ func toPBAddressFamily(af table.AddressFamily) pb.AddressFamily {
 	}
 }
 
-func fromPBAddressFamily(af pb.AddressFamily) table.AddressFamily {
+// fromPBAddressFamily rejects enum values not declared in the protobuf schema.
+func fromPBAddressFamily(af pb.AddressFamily) (table.AddressFamily, error) {
 	switch af {
+	case pb.AddressFamily_ADDRESS_FAMILY_UNSPECIFIED:
+		return table.AFUnspecified, nil
 	case pb.AddressFamily_ADDRESS_FAMILY_IPV4:
-		return table.AFIPv4
+		return table.AFIPv4, nil
 	case pb.AddressFamily_ADDRESS_FAMILY_IPV6:
-		return table.AFIPv6
+		return table.AFIPv6, nil
 	default:
-		return table.AFUnspecified
+		return table.AFUnspecified, fmt.Errorf("unknown address family: %d", int32(af))
 	}
 }
 
@@ -372,14 +375,17 @@ func toPBDataPlane(dp table.DataPlane) pb.DataPlane {
 	}
 }
 
-func fromPBDataPlane(dp pb.DataPlane) table.DataPlane {
+// fromPBDataPlane rejects enum values not declared in the protobuf schema.
+func fromPBDataPlane(dp pb.DataPlane) (table.DataPlane, error) {
 	switch dp {
+	case pb.DataPlane_DATA_PLANE_UNSPECIFIED:
+		return table.DPUnspecified, nil
 	case pb.DataPlane_DATA_PLANE_SR_MPLS:
-		return table.DPSRMPLS
+		return table.DPSRMPLS, nil
 	case pb.DataPlane_DATA_PLANE_SRV6:
-		return table.DPSRv6
+		return table.DPSRv6, nil
 	default:
-		return table.DPUnspecified
+		return table.DPUnspecified, fmt.Errorf("unknown data plane: %d", int32(dp))
 	}
 }
 
