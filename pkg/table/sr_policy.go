@@ -35,6 +35,8 @@ type DynamicPath struct {
 	Metric MetricType `json:"metric"`
 	// Plane is the underlay scope used for TED path computation.
 	Plane Plane `json:"plane,omitzero"`
+	// Waypoints are loose hops retained for recomputation.
+	Waypoints []Waypoint `json:"waypoints,omitempty"`
 }
 
 // ExplicitPath is a candidate path fully specified as a segment list (RFC 9256 §2.2).
@@ -193,15 +195,15 @@ func (sid *SRv6SID) UnmarshalText(text []byte) error {
 // IsValid reports whether sid holds a valid address.
 func (sid SRv6SID) IsValid() bool { return netip.Addr(sid).IsValid() }
 
-// ParseSRv6SID parses s as an SRv6 SID and rejects IPv4-mapped IPv6 addresses.
+// ParseSRv6SID parses s as an SRv6 SID and rejects IPv4-mapped and zoned IPv6 addresses.
 func ParseSRv6SID(s string) (SRv6SID, error) {
 	addr, err := netip.ParseAddr(s)
 	if err != nil {
 		return SRv6SID{}, fmt.Errorf("invalid SRv6 SID %q: %w", s, err)
 	}
 
-	if !addr.Is6() || addr.Is4In6() {
-		return SRv6SID{}, fmt.Errorf("SRv6 SID %q is not a valid IPv6 address", s)
+	if !addr.Is6() || addr.Is4In6() || addr.Zone() != "" {
+		return SRv6SID{}, fmt.Errorf("SRv6 SID %q is not a valid unzoned IPv6 address", s)
 	}
 
 	return SRv6SID(addr), nil
@@ -449,8 +451,8 @@ func SegmentsEqual(a, b Segment) bool {
 // Waypoint represents a loose hop for SR Policy computation.
 // SID is optional: if empty, TED lookup will be used to find End SID for that router.
 type Waypoint struct {
-	RouterID string
-	SID      string // optional: fixed SID override
+	RouterID string `json:"routerId"`
+	SID      string `json:"sid,omitempty"` // optional: fixed SID override
 }
 
 // SegmentFamily is an enumeration for segment types.

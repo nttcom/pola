@@ -1701,6 +1701,16 @@ func (ss *Session) computePathFromTED(sr *pcep.StateReport) ([]table.Segment, er
 
 	metricType := ss.selectMetricType(sr)
 
+	var waypoints []table.Waypoint
+
+	if cp, ok := ss.storedCandidatePath(sr.LSPObject.PlspID); ok && cp.Dynamic != nil {
+		if cp.Dynamic.Metric != table.UnspecifiedMetric && cp.Dynamic.Metric.IsValid() {
+			metricType = cp.Dynamic.Metric
+		}
+
+		waypoints = cp.Dynamic.Waypoints
+	}
+
 	plane, err := ss.planeFromReport(sr)
 	if err != nil {
 		return nil, fmt.Errorf("resolve underlay plane: %w", err)
@@ -1713,7 +1723,16 @@ func (ss *Session) computePathFromTED(sr *pcep.StateReport) ([]table.Segment, er
 		logger.String("family", plane.Family.String()),
 		logger.String("dataPlane", plane.DataPlane.String()))
 
-	segmentList, err := cspf.CSPF(srcRouterID, dstRouterID, metricType, cspf.PathScope{Plane: plane}, ss.ted)
+	scope := cspf.PathScope{Plane: plane}
+
+	var segmentList []table.Segment
+
+	if len(waypoints) > 0 {
+		segmentList, err = cspf.WithLooseSourceRouting(srcRouterID, dstRouterID, waypoints, metricType, scope, ss.ted)
+	} else {
+		segmentList, err = cspf.CSPF(srcRouterID, dstRouterID, metricType, scope, ss.ted)
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf("CSPF computation failed: %w", err)
 	}

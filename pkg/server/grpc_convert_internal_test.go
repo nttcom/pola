@@ -427,3 +427,16 @@ func TestEndpointSpecFromPB_UnknownEndpointFamily(t *testing.T) {
 	assert.Equal(t, codes.InvalidArgument, status.Code(err))
 	assert.ErrorContains(t, err, "unknown address family: 99")
 }
+
+func TestWaypointsToPB(t *testing.T) {
+	t.Parallel()
+
+	assert.Nil(t, waypointsToPB(nil))
+
+	got := waypointsToPB([]table.Waypoint{{RouterID: "r1", SID: "16001"}, {RouterID: "r2"}})
+	require.Len(t, got, 2)
+	assert.Equal(t, "r1", got[0].GetRouterId())
+	assert.Equal(t, "16001", got[0].GetSid())
+	assert.Equal(t, "r2", got[1].GetRouterId())
+	assert.Empty(t, got[1].GetSid())
+}

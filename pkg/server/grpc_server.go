@@ -441,21 +441,29 @@ func resolveDynamicPolicy(s *APIServer, req *pb.CreateSRPolicyRequest, spec tabl
 		SegmentList: segmentList,
 		CandidatePath: table.CandidatePath{
 			Preference: preference,
-			Dynamic:    &table.DynamicPath{Metric: metricType, Plane: scope.Plane},
+			Dynamic:    &table.DynamicPath{Metric: metricType, Plane: scope.Plane, Waypoints: waypointsFromPB(dyn.GetWaypoints())},
 		},
 	}, nil
 }
 
-func computeDynamicSegmentList(headendRouterID, endpointRouterID string, pbWaypoints []*pb.Waypoint, metricType table.MetricType, scope cspf.PathScope, ted *table.LsTED) ([]table.Segment, error) {
-	if len(pbWaypoints) > 0 {
-		waypoints := make([]table.Waypoint, 0, len(pbWaypoints))
-		for _, w := range pbWaypoints {
-			waypoints = append(waypoints, table.Waypoint{
-				RouterID: w.GetRouterId(),
-				SID:      w.GetSid(), // optional
-			})
-		}
+func waypointsFromPB(pbWaypoints []*pb.Waypoint) []table.Waypoint {
+	if len(pbWaypoints) == 0 {
+		return nil
+	}
 
+	waypoints := make([]table.Waypoint, 0, len(pbWaypoints))
+	for _, w := range pbWaypoints {
+		waypoints = append(waypoints, table.Waypoint{
+			RouterID: w.GetRouterId(),
+			SID:      w.GetSid(), // optional
+		})
+	}
+
+	return waypoints
+}
+
+func computeDynamicSegmentList(headendRouterID, endpointRouterID string, pbWaypoints []*pb.Waypoint, metricType table.MetricType, scope cspf.PathScope, ted *table.LsTED) ([]table.Segment, error) {
+	if waypoints := waypointsFromPB(pbWaypoints); len(waypoints) > 0 {
 		segs, err := cspf.WithLooseSourceRouting(headendRouterID, endpointRouterID, waypoints, metricType, scope, ted)
 		if err != nil {
 			return nil, statusFromCSPFError(err)

@@ -309,6 +309,7 @@ func toPBCandidatePath(cp table.CandidatePath) *pb.CandidatePath {
 			Metric:         toPBMetricType(cp.Dynamic.Metric),
 			DataPlane:      toPBDataPlane(cp.Dynamic.Plane.DataPlane),
 			UnderlayFamily: toPBAddressFamily(cp.Dynamic.Plane.Family),
+			Waypoints:      waypointsToPB(cp.Dynamic.Waypoints),
 		}}
 	case cp.Explicit != nil:
 		pbCP.Path = &pb.CandidatePath_Explicit{Explicit: &pb.ExplicitPath{
@@ -317,6 +318,19 @@ func toPBCandidatePath(cp table.CandidatePath) *pb.CandidatePath {
 	}
 
 	return pbCP
+}
+
+func waypointsToPB(waypoints []table.Waypoint) []*pb.Waypoint {
+	if len(waypoints) == 0 {
+		return nil
+	}
+
+	pbWaypoints := make([]*pb.Waypoint, 0, len(waypoints))
+	for _, w := range waypoints {
+		pbWaypoints = append(pbWaypoints, &pb.Waypoint{RouterId: w.RouterID, Sid: w.SID})
+	}
+
+	return pbWaypoints
 }
 
 func convertSegmentList(segmentList []table.Segment) []*pb.Segment {

@@ -1579,3 +1579,12 @@ func TestCreateMetric(t *testing.T) {
 		require.Error(t, err)
 	})
 }
+
+func TestWaypointsFromPB(t *testing.T) {
+	t.Parallel()
+
+	assert.Nil(t, waypointsFromPB(nil))
+
+	got := waypointsFromPB([]*pb.Waypoint{{RouterId: "r1", Sid: "16001"}, {RouterId: "r2"}})
+	assert.Equal(t, []table.Waypoint{{RouterID: "r1", SID: "16001"}, {RouterID: "r2"}}, got)
+}

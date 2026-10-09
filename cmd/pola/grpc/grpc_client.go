@@ -656,6 +656,19 @@ func convertSRPolicy(p *pb.SRPolicy) (table.SRPolicy, error) {
 	}, nil
 }
 
+func waypointsFromPB(pbWaypoints []*pb.Waypoint) []table.Waypoint {
+	if len(pbWaypoints) == 0 {
+		return nil
+	}
+
+	waypoints := make([]table.Waypoint, 0, len(pbWaypoints))
+	for _, w := range pbWaypoints {
+		waypoints = append(waypoints, table.Waypoint{RouterID: w.GetRouterId(), SID: w.GetSid()})
+	}
+
+	return waypoints
+}
+
 func candidatePathFromPB(cp *pb.CandidatePath) (table.CandidatePath, error) {
 	tableCP := table.CandidatePath{Preference: cp.GetPreference()}
 
@@ -667,6 +680,7 @@ func candidatePathFromPB(cp *pb.CandidatePath) (table.CandidatePath, error) {
 				Family:    fromPBAddressFamily(v.Dynamic.GetUnderlayFamily()),
 				DataPlane: fromPBDataPlane(v.Dynamic.GetDataPlane()),
 			},
+			Waypoints: waypointsFromPB(v.Dynamic.GetWaypoints()),
 		}
 	case *pb.CandidatePath_Explicit:
 		segmentList := make([]table.Segment, 0, len(v.Explicit.GetSegmentList()))

@@ -4651,6 +4651,71 @@ func TestHandleSRPolicyWithPLSPID_SendPCUpdateFailureIsPropagated(t *testing.T) 
 	assert.True(t, found)
 }
 
+func newStoredDynamicSession(t *testing.T, dyn *table.DynamicPath) (*Session, *pcep.StateReport) {
+	t.Helper()
+
+	srcAddr := netip.MustParseAddr("10.0.0.1")
+	dstAddr := netip.MustParseAddr("10.0.0.2")
+	srcNode, dstNode := newLinkedSRMPLSNodes(srcAddr, dstAddr, 10)
+	ted := &table.LsTED{Nodes: map[string]*table.LsNode{srcNode.RouterID: srcNode, dstNode.RouterID: dstNode}}
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), ted, 0)
+
+	policy := table.NewSRPolicy(1, "pe01-policy1", nil, srcAddr, dstAddr, 0, 0, 0, table.PolicyUp)
+	policy.CandidatePath = table.CandidatePath{Dynamic: dyn}
+	ss.srPolicies = append(ss.srPolicies, policy)
+
+	sr := newTestStateReport(t, 1, 0)
+	sr.LSPObject.SrcAddr = srcAddr
+	sr.LSPObject.DstAddr = dstAddr
+
+	return ss, sr
+}
+
+func TestComputePathFromTED_StoredWaypointsAreUsed(t *testing.T) {
+	t.Parallel()
+
+	plane := table.Plane{Family: table.AFIPv4, DataPlane: table.DPSRMPLS}
+
+	t.Run("known waypoint is routed through", func(t *testing.T) {
+		t.Parallel()
+
+		ss, sr := newStoredDynamicSession(t, &table.DynamicPath{
+			Plane:     plane,
+			Waypoints: []table.Waypoint{{RouterID: "PE2"}},
+		})
+
+		_, err := ss.computePathFromTED(sr)
+		assert.NoError(t, err)
+	})
+
+	t.Run("unknown waypoint fails the loose-source-routing computation", func(t *testing.T) {
+		t.Parallel()
+
+		ss, sr := newStoredDynamicSession(t, &table.DynamicPath{
+			Plane:     plane,
+			Waypoints: []table.Waypoint{{RouterID: "no-such-router"}},
+		})
+
+		_, err := ss.computePathFromTED(sr)
+		assert.Error(t, err)
+	})
+}
+
+func TestComputePathFromTED_StoredMetricOverridesReport(t *testing.T) {
+	t.Parallel()
+
+	plane := table.Plane{Family: table.AFIPv4, DataPlane: table.DPSRMPLS}
+
+	ss, sr := newStoredDynamicSession(t, &table.DynamicPath{Plane: plane, Metric: table.IGPMetric})
+	_, err := ss.computePathFromTED(sr)
+	require.Error(t, err)
+
+	ss, sr = newStoredDynamicSession(t, &table.DynamicPath{Plane: plane, Metric: table.UnspecifiedMetric})
+	_, err = ss.computePathFromTED(sr)
+	require.NoError(t, err)
+}
+
 func TestSelectMetricType(t *testing.T) {
 	t.Parallel()
 
