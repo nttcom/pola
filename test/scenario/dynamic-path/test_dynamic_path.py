@@ -280,6 +280,18 @@ class TestDynamicPathDualStack:
             ["16022", "16021"],
         )
 
+    def test__pe02_ipv6_underlay_with_ipv4_endpoint_computes_the_ipv6_cheap_path(
+        self, dual_stack_lab
+    ):
+        """Verify pe02 selects the IPv6-cheap path when the endpoint is IPv4."""
+
+        self._add_policy("/pe02-ipv6-underlay.yaml")
+
+        self._assert_junos_segments(
+            "DUAL-STACK-IPV6-UNDERLAY-POLICY",
+            ["16123", "16121"],
+        )
+
     @pytest.mark.xfail(
         reason=(
             "Junos 25.2R1.9 pccd rejects PCE-initiated SR-MPLS policies with "
@@ -307,6 +319,19 @@ class TestDynamicPathDualStack:
             DUAL_STACK_PE01,
             "show segment-routing traffic-eng policy color 401 endpoint ipv4 10.255.2.4",
             ["16022", "16024"],
+        )
+
+    def test__pe01_ipv6_underlay_with_ipv4_endpoint_computes_the_ipv6_cheap_path(
+        self, dual_stack_lab
+    ):
+        """Verify pe01 selects the IPv6-cheap path when the endpoint is IPv4."""
+
+        self._add_policy("/pe01-ipv6-underlay.yaml")
+
+        self._assert_xrd_segments(
+            DUAL_STACK_PE01,
+            "show segment-routing traffic-eng policy color 603 endpoint ipv4 10.255.2.4",
+            ["16123", "16124"],
         )
 
     @pytest.mark.xfail(

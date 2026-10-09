@@ -2417,3 +2417,39 @@ func testMonitorBGPLsEventsResyncsAfterReconnect(t *testing.T) {
 		t.Fatal("monitorLoop did not return after the context was canceled")
 	}
 }
+
+func TestParseOptionalAddr(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		input    string
+		wantIPv6 bool
+		want     netip.Addr
+		wantErr  string
+	}{
+		"EmptyIsUnset":        {input: "", want: netip.Addr{}},
+		"IPv4":                {input: "192.0.2.1", want: netip.MustParseAddr("192.0.2.1")},
+		"IPv6":                {input: "2001:db8::1", wantIPv6: true, want: netip.MustParseAddr("2001:db8::1")},
+		"InvalidAddress":      {input: "not-an-ip", wantErr: "parse address"},
+		"IPv6InIPv4Field":     {input: "2001:db8::1", wantErr: "does not match descriptor family"},
+		"IPv4InIPv6Field":     {input: "192.0.2.1", wantIPv6: true, wantErr: "does not match descriptor family"},
+		"IPv4MappedInV6Field": {input: "::ffff:192.0.2.1", wantIPv6: true, wantErr: "does not match descriptor family"},
+	}
+
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := parseOptionalAddr(tt.input, tt.wantIPv6)
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+				assert.False(t, got.IsValid())
+
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}

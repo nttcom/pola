@@ -561,22 +561,22 @@ func getLsLink(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrLink *api.LsAttribute
 
 	linkDescriptor := lsLinkNLRI.GetLinkDescriptor()
 
-	localIPv4, err := parseOptionalAddr(linkDescriptor.GetInterfaceAddrIpv4())
+	localIPv4, err := parseOptionalAddr(linkDescriptor.GetInterfaceAddrIpv4(), false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse local IPv4 address: %w", err)
 	}
 
-	localIPv6, err := parseOptionalAddr(linkDescriptor.GetInterfaceAddrIpv6())
+	localIPv6, err := parseOptionalAddr(linkDescriptor.GetInterfaceAddrIpv6(), true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse local IPv6 address: %w", err)
 	}
 
-	remoteIPv4, err := parseOptionalAddr(linkDescriptor.GetNeighborAddrIpv4())
+	remoteIPv4, err := parseOptionalAddr(linkDescriptor.GetNeighborAddrIpv4(), false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse remote IPv4 address: %w", err)
 	}
 
-	remoteIPv6, err := parseOptionalAddr(linkDescriptor.GetNeighborAddrIpv6())
+	remoteIPv6, err := parseOptionalAddr(linkDescriptor.GetNeighborAddrIpv6(), true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse remote IPv6 address: %w", err)
 	}
@@ -665,8 +665,7 @@ func adjSIDFamily(protocol api.LsProtocolID, flags uint32) table.AddressFamily {
 	}
 }
 
-// parseOptionalAddr returns the zero address for an empty string.
-func parseOptionalAddr(s string) (netip.Addr, error) {
+func parseOptionalAddr(s string, wantIPv6 bool) (netip.Addr, error) {
 	if s == "" {
 		return netip.Addr{}, nil
 	}
@@ -674,6 +673,10 @@ func parseOptionalAddr(s string) (netip.Addr, error) {
 	addr, err := netip.ParseAddr(s)
 	if err != nil {
 		return netip.Addr{}, fmt.Errorf("parse address %q: %w", s, err)
+	}
+
+	if addr.Is4() == wantIPv6 || addr.Is4In6() {
+		return netip.Addr{}, fmt.Errorf("address %q does not match descriptor family", s)
 	}
 
 	return addr, nil

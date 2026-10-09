@@ -789,3 +789,18 @@ func TestNewPCInitiateMessage_Errors(t *testing.T) {
 		})
 	}
 }
+
+func TestNewPCInitiateMessage_JuniperLegacyRejectsIPv6Endpoint(t *testing.T) {
+	t.Parallel()
+
+	m, err := pcep.NewPCInitiateMessage(1, table.SRPolicy{
+		Name:          testPolicyName,
+		SegmentList:   []table.Segment{table.NewSegmentSRMPLS(16001)},
+		Color:         100,
+		CandidatePath: table.CandidatePath{Preference: 200},
+		Headend:       netip.MustParseAddr("2001:db8::1"),
+		Endpoint:      netip.MustParseAddr("2001:db8::2"),
+	}, pcep.VendorSpecific(pcep.JuniperLegacy))
+	require.ErrorContains(t, err, "JuniperLegacy encoding does not support IPv6 endpoints")
+	assert.Nil(t, m)
+}
