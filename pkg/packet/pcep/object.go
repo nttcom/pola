@@ -2258,6 +2258,14 @@ func NewAssociationObject(srcAddr, dstAddr netip.Addr, color, preference uint32,
 		return nil, fmt.Errorf("invalid association source address (NewAssociationObject): src=%v", srcAddr)
 	}
 
+	originatorAddr := opts.originatorAddr
+	if !originatorAddr.IsValid() {
+		originatorAddr = netip.IPv4Unspecified()
+		if srcAddr.Is6() {
+			originatorAddr = netip.IPv6Unspecified()
+		}
+	}
+
 	o := &AssociationObject{
 		ObjectType: objectType,
 		RFlag:      false,
@@ -2298,9 +2306,9 @@ func NewAssociationObject(srcAddr, dstAddr netip.Addr, color, preference uint32,
 			&SRPolicyCandidatePathIdentifier{
 				ProtocolOrigin: ProtocolOriginPCEP, // this PCE originates the candidate path
 				OriginatorASN:  opts.originatorASN,
-				// Originator is the PCE's headend address, not the policy endpoint
-				// (RFC 9256 §2.6, RFC 9862 §4.2).
-				OriginatorAddr: srcAddr,
+				// Originator identifies the PCE (RFC 9256 §2.6, RFC 9862 §4.2).
+				// Unspecified when the caller does not supply a PCE address.
+				OriginatorAddr: originatorAddr,
 				Discriminator:  1, // keep existing wire value
 			},
 			&SRPolicyCandidatePathPreference{
@@ -2491,8 +2499,9 @@ func (o *VendorInformationObject) subTLVUint32(typ TLVType) uint32 {
 }
 
 type optParams struct {
-	pccType       PccType
-	originatorASN uint32
+	pccType        PccType
+	originatorASN  uint32
+	originatorAddr netip.Addr
 }
 
 // Opt is a functional option for constructors that build SR Policy objects and messages.
@@ -2509,5 +2518,12 @@ func VendorSpecific(pt PccType) Opt {
 func OriginatorASN(asn uint32) Opt {
 	return func(op *optParams) {
 		op.originatorASN = asn
+	}
+}
+
+// OriginatorAddr returns an Opt that sets the PCE address carried as the originator in the SR Policy Candidate Path Identifier TLV.
+func OriginatorAddr(addr netip.Addr) Opt {
+	return func(op *optParams) {
+		op.originatorAddr = addr
 	}
 }

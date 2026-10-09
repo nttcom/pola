@@ -43,6 +43,8 @@ topology:
         - input/sr-policies/pe01-ipv6.yaml:/pe01-ipv6.yaml
         - input/sr-policies/pe02-ipv4.yaml:/pe02-ipv4.yaml
         - input/sr-policies/pe02-ipv6.yaml:/pe02-ipv6.yaml
+        - input/sr-policies/pe01-ipv6-underlay.yaml:/pe01-ipv6-underlay.yaml
+        - input/sr-policies/pe02-ipv6-underlay.yaml:/pe02-ipv6-underlay.yaml
       exec:
         - apt update
         - apt install -y iproute2 iputils-ping

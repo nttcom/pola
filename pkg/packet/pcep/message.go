@@ -748,7 +748,7 @@ func NewPCInitiateMessage(srpID uint32, srPolicy table.SRPolicy, opt ...Opt) (*P
 			return nil, err
 		}
 	case RFCCompliant:
-		if m.AssociationObject, err = NewAssociationObject(srPolicy.Headend, srPolicy.Endpoint, srPolicy.Color, preference, OriginatorASN(opts.originatorASN)); err != nil {
+		if m.AssociationObject, err = NewAssociationObject(srPolicy.Headend, srPolicy.Endpoint, srPolicy.Color, preference, OriginatorASN(opts.originatorASN), OriginatorAddr(opts.originatorAddr)); err != nil {
 			return nil, err
 		}
 

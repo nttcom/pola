@@ -5898,3 +5898,51 @@ func TestSendPCInitiate_RejectsIPv6EndpointForJuniperLegacyPCC(t *testing.T) {
 	require.NoError(t, ss.SendPCInitiate(srPolicy, true))
 	assert.Equal(t, uint64(1), ss.Stats().PCInitiateSent)
 }
+
+type addrConn struct {
+	*fakeConn
+
+	local net.Addr
+}
+
+func (c *addrConn) LocalAddr() net.Addr { return c.local }
+
+func TestSessionLocalAddr(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		conn net.Conn
+		want netip.Addr
+	}{
+		{name: "nil conn"},
+		{name: "nil local addr", conn: &fakeConn{r: bytes.NewReader(nil)}},
+		{
+			name: "non-TCP local addr",
+			conn: &addrConn{fakeConn: &fakeConn{r: bytes.NewReader(nil)}, local: &net.UnixAddr{Name: "/tmp/x", Net: "unix"}},
+		},
+		{
+			name: "TCP addr without IP",
+			conn: &addrConn{fakeConn: &fakeConn{r: bytes.NewReader(nil)}, local: &net.TCPAddr{Port: 4189}},
+		},
+		{
+			name: "IPv4",
+			conn: &addrConn{fakeConn: &fakeConn{r: bytes.NewReader(nil)}, local: &net.TCPAddr{IP: net.ParseIP("192.0.2.1"), Port: 4189}},
+			want: netip.MustParseAddr("192.0.2.1"),
+		},
+		{
+			name: "IPv6",
+			conn: &addrConn{fakeConn: &fakeConn{r: bytes.NewReader(nil)}, local: &net.TCPAddr{IP: net.ParseIP("2001:db8::1"), Port: 4189}},
+			want: netip.MustParseAddr("2001:db8::1"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ss := &Session{tcpConn: tt.conn}
+			assert.Equal(t, tt.want, ss.localAddr())
+		})
+	}
+}

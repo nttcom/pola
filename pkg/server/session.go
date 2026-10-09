@@ -2105,7 +2105,7 @@ func (ss *Session) SendPCInitiate(srPolicy table.SRPolicy, lspDelete bool) error
 	if lspDelete {
 		pcinitiateMessage, err = pcep.NewPCInitiateDeleteMessage(srpID, srPolicy)
 	} else {
-		pcinitiateMessage, err = pcep.NewPCInitiateMessage(srpID, srPolicy, pcep.VendorSpecific(ss.pccType), pcep.OriginatorASN(ss.asn))
+		pcinitiateMessage, err = pcep.NewPCInitiateMessage(srpID, srPolicy, pcep.VendorSpecific(ss.pccType), pcep.OriginatorASN(ss.asn), pcep.OriginatorAddr(ss.localAddr()))
 	}
 
 	if err != nil {
@@ -2360,4 +2360,22 @@ func (ss *Session) SRPolicies() []*table.SRPolicy {
 	}
 
 	return policies
+}
+
+func (ss *Session) localAddr() netip.Addr {
+	if ss.tcpConn == nil {
+		return netip.Addr{}
+	}
+
+	tcpAddr, ok := ss.tcpConn.LocalAddr().(*net.TCPAddr)
+	if !ok {
+		return netip.Addr{}
+	}
+
+	addr, ok := netip.AddrFromSlice(tcpAddr.IP)
+	if !ok {
+		return netip.Addr{}
+	}
+
+	return addr.Unmap()
 }

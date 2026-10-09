@@ -128,14 +128,15 @@ func TestNewPCInitiateMessage_OriginatorASNReachesWire(t *testing.T) {
 
 	srcAddr := netip.MustParseAddr("192.0.2.1")
 	dstAddr := netip.MustParseAddr("192.0.2.2")
+	pceAddr := netip.MustParseAddr("192.0.2.100")
 	segmentList := []table.Segment{table.NewSegmentSRMPLS(16001)}
 
 	cases := map[string]struct {
 		opts        []pcep.Opt
 		expectedASN uint32
 	}{
-		"OriginatorASNSet":     {opts: []pcep.Opt{pcep.VendorSpecific(pcep.RFCCompliant), pcep.OriginatorASN(65000)}, expectedASN: 65000},
-		"OriginatorASNOmitted": {opts: []pcep.Opt{pcep.VendorSpecific(pcep.RFCCompliant)}, expectedASN: 0},
+		"OriginatorASNSet":     {opts: []pcep.Opt{pcep.VendorSpecific(pcep.RFCCompliant), pcep.OriginatorASN(65000), pcep.OriginatorAddr(pceAddr)}, expectedASN: 65000},
+		"OriginatorASNOmitted": {opts: []pcep.Opt{pcep.VendorSpecific(pcep.RFCCompliant), pcep.OriginatorAddr(pceAddr)}, expectedASN: 0},
 	}
 
 	for name, tt := range cases {
@@ -167,7 +168,7 @@ func TestNewPCInitiateMessage_OriginatorASNReachesWire(t *testing.T) {
 				[]uint8{0x00, 0x39, 0x00, 0x1c}, // SRPOLICY-CPATH-ID TLV: type=0x0039, len=28
 				[]uint8{0x0a, 0x00, 0x00, 0x00}, // protocol origin + mbz
 				pcep.Uint32ToByteSlice(tt.expectedASN),
-				make([]uint8, 12), srcAddr.AsSlice(), // originator address is the headend (IPv4 in the 16 byte field)
+				make([]uint8, 12), pceAddr.AsSlice(), // originator address is the PCE, not the headend
 				[]uint8{0x00, 0x00, 0x00, 0x01}, // discriminator
 			)
 			assert.True(t, bytes.Contains(raw, expectedTLV), "serialized message does not carry ASN %d in the SRPOLICY-CPATH-ID TLV", tt.expectedASN)
