@@ -158,10 +158,10 @@ limitations under the License.
 
 ---
 
-## golang.org/x/net v0.59.0
+## golang.org/x/net v0.60.0
 
 - License: BSD-3-Clause
-- Source: <https://cs.opensource.google/go/x/net/+/v0.59.0:LICENSE>
+- Source: <https://cs.opensource.google/go/x/net/+/v0.60.0:LICENSE>
 
 ```text
 Copyright 2009 The Go Authors.
