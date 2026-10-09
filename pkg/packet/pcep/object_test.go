@@ -198,6 +198,16 @@ func TestNewSREroSubobject_NAIFromSegment(t *testing.T) {
 		"LinkLocalRemoteOnly": {
 			seg: mk(testIPv6Addr1, "fe80::2"), wantErr: true,
 		},
+		"LinkLocalMixedWithIfaceID": {
+			seg: func() table.SegmentSRMPLS {
+				seg := mk("fe80::1", testIPv6Addr2)
+				localIfaceID, remoteIfaceID := uint32(1), uint32(2)
+				seg.LocalIfaceID, seg.RemoteIfaceID = &localIfaceID, &remoteIfaceID
+
+				return seg
+			}(),
+			wantErr: true,
+		},
 		"LinkLocalAdjacencyWithIfaceID": {
 			seg: func() table.SegmentSRMPLS {
 				seg := mk("fe80::1", "fe80::2")
@@ -2216,6 +2226,7 @@ func TestNewSRv6EroSubobject_LinkLocalRejected(t *testing.T) {
 	t.Parallel()
 
 	sid := table.SRv6SID(netip.MustParseAddr("fc00:0:1::"))
+	localIfaceID, remoteIfaceID := uint32(1), uint32(2)
 
 	cases := map[string]table.SegmentSRv6{
 		"LinkLocalAdjacency": {
@@ -2223,6 +2234,14 @@ func TestNewSRv6EroSubobject_LinkLocalRejected(t *testing.T) {
 		},
 		"LinkLocalRemoteOnly": {
 			Sid: sid, LocalAddr: netip.MustParseAddr(testIPv6Addr1), RemoteAddr: netip.MustParseAddr("fe80::2"),
+		},
+		"LinkLocalMixedWithIfaceID": {
+			Sid: sid, LocalAddr: netip.MustParseAddr("fe80::1"), RemoteAddr: netip.MustParseAddr(testIPv6Addr2),
+			LocalIfaceID: &localIfaceID, RemoteIfaceID: &remoteIfaceID,
+		},
+		"LinkLocalWithoutRemote": {
+			Sid: sid, LocalAddr: netip.MustParseAddr("fe80::1"),
+			LocalIfaceID: &localIfaceID, RemoteIfaceID: &remoteIfaceID,
 		},
 	}
 

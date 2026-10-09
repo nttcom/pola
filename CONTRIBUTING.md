@@ -98,6 +98,7 @@ diff coverage: 99.3% (2371/2388 changed instrumented lines covered since 318d86a
 Then use `make test-coverage-html` to see those lines in context.
 
 > [!NOTE]
+>
 > * Comparison starts at the merge base of your branch and `DIFF_BASE` (default `origin/develop`) — the same changes a PR shows under "Files changed".
 > * Coverage is measured against your working tree, not `HEAD`, so uncommitted changes to tracked files are included. Untracked files must be staged with `git add` to be included.
 > * Only instrumented lines count (Go skips declarations, comments, blanks, closing braces).
@@ -136,5 +137,6 @@ make clean
 ### Notes
 
 > [!NOTE]
+>
 > * The authoritative list of targets and behavior is in [Makefile](Makefile).
 > * Docker image runtime examples are documented in [build/package/README.md](build/package/README.md).

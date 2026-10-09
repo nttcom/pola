@@ -14,6 +14,7 @@ import (
 	"math"
 	"net"
 	"net/netip"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -562,7 +563,7 @@ func TestValidateEndpointFamilies(t *testing.T) {
 		},
 		{
 			name:    "SRv6 segment past the first position with an IPv4 endpoint",
-			path:    resolvedPath{Headend: ipv4, Endpoint: ipv4Other, SegmentList: append(append([]table.Segment{}, srmplsSegs...), srv6Segs...)},
+			path:    resolvedPath{Headend: ipv4, Endpoint: ipv4Other, SegmentList: slices.Concat(srmplsSegs, srv6Segs)},
 			wantErr: true,
 		},
 	}

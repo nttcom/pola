@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/netip"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -604,7 +604,7 @@ func multiTopoIDsKey(ids map[uint16]struct{}) string {
 		sorted = append(sorted, int(id))
 	}
 
-	sort.Ints(sorted)
+	slices.Sort(sorted)
 
 	parts := make([]string, len(sorted))
 	for i, id := range sorted {

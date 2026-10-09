@@ -1639,8 +1639,8 @@ func (ss *Session) handleStatefulPCERequest(sr *pcep.StateReport) error {
 func (ss *Session) handleSRPolicyWithPLSPID(sr *pcep.StateReport) error {
 	ss.logger.Debug("Received SR Policy", logger.Uint32("plspID", sr.LSPObject.PlspID))
 
-	// Skip path computation for removed SR Policies or when no TED is available.
-	if sr.LSPObject.RFlag || ss.ted == nil {
+	// Skip path computation for removed SR Policies, unavailable TED, or explicit paths.
+	if sr.LSPObject.RFlag || ss.ted == nil || ss.hasExplicitPath(sr.LSPObject.PlspID) {
 		return ss.handleReportedSRPolicy(sr)
 	}
 
@@ -1742,17 +1742,31 @@ func (ss *Session) planeFromReport(sr *pcep.StateReport) (table.Plane, error) {
 }
 
 func (ss *Session) dynamicPlane(plspID uint32) (table.Plane, bool) {
+	cp, ok := ss.storedCandidatePath(plspID)
+	if !ok || cp.Dynamic == nil {
+		return table.Plane{}, false
+	}
+
+	plane := cp.Dynamic.Plane
+
+	return plane, plane.Validate() == nil
+}
+
+func (ss *Session) hasExplicitPath(plspID uint32) bool {
+	cp, ok := ss.storedCandidatePath(plspID)
+	return ok && cp.Explicit != nil
+}
+
+func (ss *Session) storedCandidatePath(plspID uint32) (table.CandidatePath, bool) {
 	ss.srPoliciesMu.RLock()
 	defer ss.srPoliciesMu.RUnlock()
 
 	p, ok := ss.searchSRPolicyLocked(plspID)
-	if !ok || p.CandidatePath.Dynamic == nil {
-		return table.Plane{}, false
+	if !ok {
+		return table.CandidatePath{}, false
 	}
 
-	plane := p.CandidatePath.Dynamic.Plane
-
-	return plane, plane.Validate() == nil
+	return p.CandidatePath, true
 }
 
 func (ss *Session) dataPlaneFromPeerCapabilities(af table.AddressFamily) (table.DataPlane, error) {

@@ -1493,7 +1493,11 @@ func naiTypeSRFor(seg table.SegmentSRMPLS) (NAITypeSR, error) {
 		return NAITypeSRIPv4Adjacency, nil
 	}
 
-	if local.IsLinkLocalUnicast() || remote.IsLinkLocalUnicast() {
+	if local.IsLinkLocalUnicast() != remote.IsLinkLocalUnicast() {
+		return NAITypeSRAbsent, errors.New("SegmentSRMPLS: LocalAddr and RemoteAddr must both be link-local or both be global")
+	}
+
+	if local.IsLinkLocalUnicast() {
 		if seg.LocalIfaceID == nil || seg.RemoteIfaceID == nil {
 			return NAITypeSRAbsent, errors.New("SegmentSRMPLS: link-local IPv6 adjacency NAI requires LocalIfaceID and RemoteIfaceID")
 		}
@@ -1841,7 +1845,9 @@ func naiTypeSRv6For(seg table.SegmentSRv6) (NAITypeSRv6, bool, error) {
 		return NAITypeSRv6Absent, false, errors.New("SegmentSRv6: NAI LocalAddr must be IPv6")
 	case remote.IsValid() && !remote.Is6():
 		return NAITypeSRv6Absent, false, errors.New("SegmentSRv6: NAI RemoteAddr must be IPv6")
-	case local.IsLinkLocalUnicast() || remote.IsLinkLocalUnicast():
+	case local.IsLinkLocalUnicast() != remote.IsLinkLocalUnicast():
+		return NAITypeSRv6Absent, false, errors.New("SegmentSRv6: LocalAddr and RemoteAddr must both be link-local or both be global")
+	case local.IsLinkLocalUnicast():
 		// Link-local adjacencies require interface IDs to scope the addresses (RFC 8664/9603 §4.3.1).
 		if seg.LocalIfaceID == nil || seg.RemoteIfaceID == nil {
 			return NAITypeSRv6Absent, false, errors.New("SegmentSRv6: link-local IPv6 adjacency NAI requires LocalIfaceID and RemoteIfaceID")

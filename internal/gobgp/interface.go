@@ -587,7 +587,7 @@ func getLsLink(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrLink *api.LsAttribute
 	lsLink.Local.InterfaceID = linkDescriptor.LinkLocalId
 	lsLink.Remote.InterfaceID = linkDescriptor.LinkRemoteId
 
-	if multiTopoIDs := linkDescriptor.GetMultiTopoId().GetMultiTopoIds(); len(multiTopoIDs) != 0 {
+	if multiTopoIDs := linkDescriptor.GetMultiTopoIds(); len(multiTopoIDs) != 0 {
 		lsLink.MultiTopoIDs = make(map[uint16]struct{}, len(multiTopoIDs))
 		for _, id := range multiTopoIDs {
 			multiTopoID, err := safecast.Uint16(id, "link Multi-Topology ID")
@@ -613,10 +613,7 @@ func getLsLink(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrLink *api.LsAttribute
 		)
 	}
 
-	// GoBGP does not distinguish IPv4 and IPv6 Adj-SIDs, so leave the family unspecified.
-	if adjSid := lsAttrLink.GetSrAdjacencySid(); adjSid != 0 {
-		lsLink.AdjSids = append(lsLink.AdjSids, table.AdjSID{Family: table.AFUnspecified, Sid: adjSid})
-	}
+	lsLink.AdjSids = adjSIDsFromAPI(typedLinkStateNLRI.GetProtocolId(), lsAttrLink)
 
 	if srv6EndXSID := lsAttrLink.GetSrv6EndXSid(); srv6EndXSID != nil {
 		converted, err := srv6EndXSIDFromAPI(srv6EndXSID)
@@ -628,6 +625,44 @@ func getLsLink(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrLink *api.LsAttribute
 	}
 
 	return lsLink, nil
+}
+
+// F flag indicating an IPv6 adjacency (RFC 8667 §2.2.1).
+const isisAdjSIDFlagF = 0x80
+
+func adjSIDsFromAPI(protocol api.LsProtocolID, lsAttrLink *api.LsAttributeLink) []table.AdjSID {
+	entries := lsAttrLink.GetSrAdjacencySids()
+	if len(entries) == 0 {
+		if sid := lsAttrLink.GetSrAdjacencySid(); sid != 0 {
+			return []table.AdjSID{{Family: table.AFUnspecified, Sid: sid}}
+		}
+
+		return nil
+	}
+
+	adjSIDs := make([]table.AdjSID, 0, len(entries))
+	for _, entry := range entries {
+		adjSIDs = append(adjSIDs, table.AdjSID{Family: adjSIDFamily(protocol, entry.GetFlags()), Sid: entry.GetSid()})
+	}
+
+	return adjSIDs
+}
+
+func adjSIDFamily(protocol api.LsProtocolID, flags uint32) table.AddressFamily {
+	switch protocol {
+	case api.LsProtocolID_LS_PROTOCOL_ID_ISIS_L1, api.LsProtocolID_LS_PROTOCOL_ID_ISIS_L2:
+		if flags&isisAdjSIDFlagF != 0 {
+			return table.AFIPv6
+		}
+
+		return table.AFIPv4
+	case api.LsProtocolID_LS_PROTOCOL_ID_OSPF_V2:
+		return table.AFIPv4
+	case api.LsProtocolID_LS_PROTOCOL_ID_OSPF_V3:
+		return table.AFIPv6
+	default:
+		return table.AFUnspecified
+	}
 }
 
 // parseOptionalAddr returns the zero address for an empty string.

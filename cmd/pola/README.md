@@ -238,6 +238,7 @@ JSON output
 ```
 
 > [!NOTE]
+>
 > - `state` and `lspDbSync` use the same vocabulary as `pola session`.
 > - Policies appear after the first PCRpt is received.
 > - `lspId` is omitted when zero.
@@ -472,6 +473,7 @@ Node #1: 0000.0aff.0002
 ```
 
 > [!NOTE]
+>
 > - `endpointBehavior` contains `behavior`, `flags`, and `algorithm` for node
 >   SRv6 SIDs (`srv6Sids`) and adjacency SIDs (`links[].srv6EndXSids`).
 > - `flags` is the raw octet; its interpretation depends on the advertising

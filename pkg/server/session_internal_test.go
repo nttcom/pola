@@ -165,6 +165,28 @@ func TestHandleStateReportWithoutTED(t *testing.T) {
 	assert.Len(t, policy.SegmentList, 2)
 }
 
+func TestHandleStateReportKeepsExplicitPath(t *testing.T) {
+	t.Parallel()
+
+	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), &table.LsTED{Nodes: map[string]*table.LsNode{}}, 0)
+	require.NoError(t, ss.RegisterSRPolicy(newTestStateReport(t, 1, 0)))
+
+	explicit := &table.ExplicitPath{SegmentList: []table.Segment{table.NewSegmentSRMPLS(16002)}}
+
+	ss.srPoliciesMu.Lock()
+	ss.srPolicies[0].CandidatePath.Explicit = explicit
+	ss.srPoliciesMu.Unlock()
+
+	report := newTestStateReport(t, 1, 0)
+	report.LSPObject.LSPID++
+	require.NoError(t, ss.handleStateReport(report, pcep.NewPCRptMessage()))
+
+	policy, found := ss.SearchSRPolicy(report.LSPObject.PlspID)
+	require.True(t, found)
+	assert.Same(t, explicit, policy.CandidatePath.Explicit)
+	assert.Len(t, policy.SegmentList, 2, "reported segments are registered as-is")
+}
+
 func TestSRPolicies_SnapshotSegmentListIsIndependent(t *testing.T) {
 	t.Parallel()
 

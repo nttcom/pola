@@ -391,6 +391,7 @@ func TestLsLink_KeyAndUpdateTED(t *testing.T) {
 		require.Len(t, ted.Nodes["A"].Links, 2)
 
 		var v4Metric, v6Metric uint32
+
 		for _, link := range ted.Nodes["A"].Links {
 			metric, err := link.Metric(IGPMetric)
 			require.NoError(t, err)

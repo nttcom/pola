@@ -361,6 +361,70 @@ func TestGetLsNode(t *testing.T) {
 	})
 }
 
+func TestAdjSIDsFromAPI(t *testing.T) {
+	t.Parallel()
+
+	dualStack := &api.LsAttributeLink{
+		SrAdjacencySid: 200,
+		SrAdjacencySids: []*api.LsAttributeLinkAdjacencySID{
+			{Flags: 0x30, Sid: 100},
+			{Flags: 0xb0, Sid: 200},
+		},
+	}
+
+	tests := []struct {
+		name     string
+		protocol api.LsProtocolID
+		attr     *api.LsAttributeLink
+		want     []table.AdjSID
+	}{
+		{
+			name:     "IS-IS keeps every Adj-SID tagged by the F flag",
+			protocol: api.LsProtocolID_LS_PROTOCOL_ID_ISIS_L2,
+			attr:     dualStack,
+			want:     []table.AdjSID{{Family: table.AFIPv4, Sid: 100}, {Family: table.AFIPv6, Sid: 200}},
+		},
+		{
+			name:     "OSPFv2 ignores the IS-IS F flag position",
+			protocol: api.LsProtocolID_LS_PROTOCOL_ID_OSPF_V2,
+			attr:     dualStack,
+			want:     []table.AdjSID{{Family: table.AFIPv4, Sid: 100}, {Family: table.AFIPv4, Sid: 200}},
+		},
+		{
+			name:     "OSPFv3 Adj-SIDs are IPv6",
+			protocol: api.LsProtocolID_LS_PROTOCOL_ID_OSPF_V3,
+			attr:     &api.LsAttributeLink{SrAdjacencySids: []*api.LsAttributeLinkAdjacencySID{{Sid: 300}}},
+			want:     []table.AdjSID{{Family: table.AFIPv6, Sid: 300}},
+		},
+		{
+			name:     "unknown protocol leaves the family unspecified",
+			protocol: api.LsProtocolID_LS_PROTOCOL_ID_STATIC,
+			attr:     &api.LsAttributeLink{SrAdjacencySids: []*api.LsAttributeLinkAdjacencySID{{Flags: 0x80, Sid: 400}}},
+			want:     []table.AdjSID{{Family: table.AFUnspecified, Sid: 400}},
+		},
+		{
+			name:     "singular SID fallback without repeated entries",
+			protocol: api.LsProtocolID_LS_PROTOCOL_ID_ISIS_L2,
+			attr:     &api.LsAttributeLink{SrAdjacencySid: 500},
+			want:     []table.AdjSID{{Family: table.AFUnspecified, Sid: 500}},
+		},
+		{
+			name:     "no Adj-SID",
+			protocol: api.LsProtocolID_LS_PROTOCOL_ID_ISIS_L2,
+			attr:     &api.LsAttributeLink{},
+			want:     nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tt.want, adjSIDsFromAPI(tt.protocol, tt.attr))
+		})
+	}
+}
+
 func TestGetLsLink(t *testing.T) {
 	t.Parallel()
 
@@ -492,7 +556,7 @@ func TestGetLsLink(t *testing.T) {
 				name: "Multi-Topology ID is preserved",
 				desc: &api.LsLinkDescriptor{
 					InterfaceAddrIpv4: "10.0.0.1", NeighborAddrIpv4: "10.0.0.2",
-					MultiTopoId: &api.LsMultiTopologyIdentifier{MultiTopoIds: []uint32{2}},
+					MultiTopoIds: []uint32{2},
 				},
 				attr: &api.LsAttributeLink{IgpMetric: 10},
 				want: &table.LsLink{

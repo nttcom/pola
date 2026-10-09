@@ -158,10 +158,10 @@ limitations under the License.
 
 ---
 
-## golang.org/x/net v0.58.0
+## golang.org/x/net v0.59.0
 
 - License: BSD-3-Clause
-- Source: <https://cs.opensource.google/go/x/net/+/v0.58.0:LICENSE>
+- Source: <https://cs.opensource.google/go/x/net/+/v0.59.0:LICENSE>
 
 ```text
 Copyright 2009 The Go Authors.
@@ -196,10 +196,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ---
 
-## golang.org/x/sys/unix v0.47.0
+## golang.org/x/sys/unix v0.48.0
 
 - License: BSD-3-Clause
-- Source: <https://cs.opensource.google/go/x/sys/+/v0.47.0:LICENSE>
+- Source: <https://cs.opensource.google/go/x/sys/+/v0.48.0:LICENSE>
 
 ```text
 Copyright 2009 The Go Authors.
@@ -234,10 +234,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ---
 
-## golang.org/x/text v0.41.0
+## golang.org/x/text v0.42.0
 
 - License: BSD-3-Clause
-- Source: <https://cs.opensource.google/go/x/text/+/v0.41.0:LICENSE>
+- Source: <https://cs.opensource.google/go/x/text/+/v0.42.0:LICENSE>
 
 ```text
 Copyright 2009 The Go Authors.
