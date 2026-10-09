@@ -882,11 +882,13 @@ type SRPolicy struct {
 	// headend_router_id / endpoint_router_id.
 	Headend  []byte `protobuf:"bytes,2,opt,name=headend,proto3" json:"headend,omitempty"`
 	Endpoint []byte `protobuf:"bytes,3,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
-	// Router ID form for TED resolution. Mutually exclusive with headend / endpoint.
+	// Router IDs for TED resolution. Mutually exclusive with headend / endpoint.
 	HeadendRouterId  string `protobuf:"bytes,4,opt,name=headend_router_id,json=headendRouterId,proto3" json:"headend_router_id,omitempty"`
 	EndpointRouterId string `protobuf:"bytes,5,opt,name=endpoint_router_id,json=endpointRouterId,proto3" json:"endpoint_router_id,omitempty"`
-	// Address family used to resolve endpoints from router IDs.
-	// Unspecified follows the underlay family; valid only with the router ID form.
+	// Address family for resolving router IDs to endpoint addresses.
+	// If unspecified, use the single shared loopback family. If both IPv4 and
+	// IPv6 are shared, use the underlay family to disambiguate; otherwise reject.
+	// Only valid with the router ID form.
 	EndpointFamily AddressFamily  `protobuf:"varint,18,opt,name=endpoint_family,json=endpointFamily,proto3,enum=api.pola.v1.AddressFamily" json:"endpoint_family,omitempty"`
 	Color          uint32         `protobuf:"varint,6,opt,name=color,proto3" json:"color,omitempty"`
 	PolicyName     string         `protobuf:"bytes,8,opt,name=policy_name,json=policyName,proto3" json:"policy_name,omitempty"`

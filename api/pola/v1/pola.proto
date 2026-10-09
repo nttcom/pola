@@ -89,11 +89,14 @@ message SRPolicy {
   bytes headend = 2;
   bytes endpoint = 3;
 
-  // Router ID form for TED resolution. Mutually exclusive with headend / endpoint.
+  // Router IDs for TED resolution. Mutually exclusive with headend / endpoint.
   string headend_router_id = 4;
   string endpoint_router_id = 5;
-  // Address family used to resolve endpoints from router IDs.
-  // Unspecified follows the underlay family; valid only with the router ID form.
+
+  // Address family for resolving router IDs to endpoint addresses.
+  // If unspecified, use the single shared loopback family. If both IPv4 and
+  // IPv6 are shared, use the underlay family to disambiguate; otherwise reject.
+  // Only valid with the router ID form.
   AddressFamily endpoint_family = 18;
 
   uint32 color = 6;
