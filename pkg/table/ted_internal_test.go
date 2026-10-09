@@ -476,6 +476,87 @@ func TestLsLink_UsableForFamily(t *testing.T) {
 			assert.Equal(t, tt.wantIPv6, tt.link.UsableForFamily(AFIPv6))
 		})
 	}
+
+	t.Run("unspecified family is never usable under Multi-Topology", func(t *testing.T) {
+		t.Parallel()
+
+		link := &LsLink{
+			Local:        LinkEndpoint{IPv4: v4, IPv6: v6},
+			Remote:       LinkEndpoint{IPv4: v4, IPv6: v6},
+			MultiTopoIDs: map[uint16]struct{}{0: {}},
+		}
+		assert.False(t, link.UsableForFamily(AFUnspecified))
+	})
+}
+
+func TestLsNode_LinkUsableForFamily(t *testing.T) {
+	t.Parallel()
+
+	v4a, v4b := netip.MustParseAddr("192.0.2.1"), netip.MustParseAddr("192.0.2.2")
+	v6a, v6b := netip.MustParseAddr("2001:db8::1"), netip.MustParseAddr("2001:db8::2")
+
+	local := NewLsNode(65000, "10.0.0.1")
+	peer := NewLsNode(65000, "10.0.0.2")
+	otherPeer := NewLsNode(65000, "10.0.0.3")
+
+	newLink := func(remote *LsNode, ids ...uint16) *LsLink {
+		l := NewLsLink(local, remote)
+		l.Local.IPv4, l.Remote.IPv4 = v4a, v4b
+		l.Local.IPv6, l.Remote.IPv6 = v6a, v6b
+
+		if len(ids) > 0 {
+			l.MultiTopoIDs = map[uint16]struct{}{}
+			for _, id := range ids {
+				l.MultiTopoIDs[id] = struct{}{}
+			}
+		}
+
+		return l
+	}
+
+	t.Run("link unusable for the family is rejected", func(t *testing.T) {
+		t.Parallel()
+
+		l := newLink(peer, 1)
+		assert.False(t, local.LinkUsableForFamily(l, AFIPv6))
+	})
+
+	t.Run("IPv4 skips the IPv6 topology check", func(t *testing.T) {
+		t.Parallel()
+
+		std, v6topo := newLink(peer, 0), newLink(peer, 2)
+		n := &LsNode{Links: []*LsLink{std, v6topo}}
+		assert.True(t, n.LinkUsableForFamily(std, AFIPv4))
+	})
+
+	t.Run("IPv6 topology link and links without MT-ID are always usable", func(t *testing.T) {
+		t.Parallel()
+
+		v6topo, plain := newLink(peer, 2), newLink(peer)
+		n := &LsNode{Links: []*LsLink{v6topo, plain}}
+		assert.True(t, n.LinkUsableForFamily(v6topo, AFIPv6))
+		assert.True(t, n.LinkUsableForFamily(plain, AFIPv6))
+	})
+
+	t.Run("standard link is excluded when a dedicated IPv6 topology link exists to the same neighbor", func(t *testing.T) {
+		t.Parallel()
+
+		std, v6topo := newLink(peer, 0), newLink(peer, 2)
+		n := &LsNode{Links: []*LsLink{std, v6topo}}
+		assert.False(t, n.LinkUsableForFamily(std, AFIPv6))
+	})
+
+	t.Run("standard link stays usable when no IPv6 topology link reaches the same neighbor", func(t *testing.T) {
+		t.Parallel()
+
+		std := newLink(peer, 0)
+		otherV6 := newLink(otherPeer, 2)
+		noMT := newLink(peer, 0)
+		nilRemote := newLink(peer, 2)
+		nilRemote.Remote.Node = nil
+		n := &LsNode{Links: []*LsLink{nil, std, otherV6, noMT, nilRemote}}
+		assert.True(t, n.LinkUsableForFamily(std, AFIPv6))
+	})
 }
 
 func TestLsLink_Validate(t *testing.T) {

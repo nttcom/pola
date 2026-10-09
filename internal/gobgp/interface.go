@@ -561,60 +561,13 @@ func getLsLink(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrLink *api.LsAttribute
 
 	linkDescriptor := lsLinkNLRI.GetLinkDescriptor()
 
-	localIPv4, err := parseOptionalAddr(linkDescriptor.GetInterfaceAddrIpv4(), false)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse local IPv4 address: %w", err)
-	}
-
-	localIPv6, err := parseOptionalAddr(linkDescriptor.GetInterfaceAddrIpv6(), true)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse local IPv6 address: %w", err)
-	}
-
-	remoteIPv4, err := parseOptionalAddr(linkDescriptor.GetNeighborAddrIpv4(), false)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse remote IPv4 address: %w", err)
-	}
-
-	remoteIPv6, err := parseOptionalAddr(linkDescriptor.GetNeighborAddrIpv6(), true)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse remote IPv6 address: %w", err)
-	}
-
 	lsLink := table.NewLsLink(localNode, remoteNode)
-	lsLink.Local.IPv4, lsLink.Local.IPv6 = localIPv4, localIPv6
-	lsLink.Remote.IPv4, lsLink.Remote.IPv6 = remoteIPv4, remoteIPv6
 
-	if linkDescriptor != nil {
-		lsLink.Local.InterfaceID = linkDescriptor.LinkLocalId
-		lsLink.Remote.InterfaceID = linkDescriptor.LinkRemoteId
-
-		if multiTopoIDs := linkDescriptor.GetMultiTopoIds(); len(multiTopoIDs) != 0 {
-			lsLink.MultiTopoIDs = make(map[uint16]struct{}, len(multiTopoIDs))
-			for _, id := range multiTopoIDs {
-				multiTopoID, err := safecast.Uint16(id, "link Multi-Topology ID")
-				if err != nil {
-					return nil, err
-				}
-
-				lsLink.MultiTopoIDs[multiTopoID] = struct{}{}
-			}
-		}
+	if err := applyLinkDescriptor(lsLink, linkDescriptor); err != nil {
+		return nil, err
 	}
 
-	lsLink.Metrics = append(lsLink.Metrics, table.NewMetric(table.IGPMetric, lsAttrLink.GetIgpMetric()))
-
-	teMetric := lsAttrLink.GetDefaultTeMetric()
-	if teMetric != 0 {
-		lsLink.Metrics = append(lsLink.Metrics, table.NewMetric(table.TEMetric, teMetric))
-	}
-
-	if delay := lsAttrLink.GetUnidirectionalLinkDelay(); delay != 0 {
-		lsLink.Metrics = append(
-			lsLink.Metrics,
-			table.NewMetric(table.DelayMetric, delay),
-		)
-	}
+	lsLink.Metrics = append(lsLink.Metrics, linkMetricsFromAPI(lsAttrLink)...)
 
 	lsLink.AdjSids = adjSIDsFromAPI(typedLinkStateNLRI.GetProtocolId(), lsAttrLink)
 
@@ -628,6 +581,65 @@ func getLsLink(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrLink *api.LsAttribute
 	}
 
 	return lsLink, nil
+}
+
+func applyLinkDescriptor(lsLink *table.LsLink, linkDescriptor *api.LsLinkDescriptor) error {
+	var err error
+
+	if lsLink.Local.IPv4, err = parseOptionalAddr(linkDescriptor.GetInterfaceAddrIpv4(), false); err != nil {
+		return fmt.Errorf("failed to parse local IPv4 address: %w", err)
+	}
+
+	if lsLink.Local.IPv6, err = parseOptionalAddr(linkDescriptor.GetInterfaceAddrIpv6(), true); err != nil {
+		return fmt.Errorf("failed to parse local IPv6 address: %w", err)
+	}
+
+	if lsLink.Remote.IPv4, err = parseOptionalAddr(linkDescriptor.GetNeighborAddrIpv4(), false); err != nil {
+		return fmt.Errorf("failed to parse remote IPv4 address: %w", err)
+	}
+
+	if lsLink.Remote.IPv6, err = parseOptionalAddr(linkDescriptor.GetNeighborAddrIpv6(), true); err != nil {
+		return fmt.Errorf("failed to parse remote IPv6 address: %w", err)
+	}
+
+	if linkDescriptor == nil {
+		return nil
+	}
+
+	lsLink.Local.InterfaceID = linkDescriptor.LinkLocalId
+	lsLink.Remote.InterfaceID = linkDescriptor.LinkRemoteId
+
+	multiTopoIDs := linkDescriptor.GetMultiTopoIds()
+	if len(multiTopoIDs) == 0 {
+		return nil
+	}
+
+	lsLink.MultiTopoIDs = make(map[uint16]struct{}, len(multiTopoIDs))
+
+	for _, id := range multiTopoIDs {
+		multiTopoID, err := safecast.Uint16(id, "link Multi-Topology ID")
+		if err != nil {
+			return err
+		}
+
+		lsLink.MultiTopoIDs[multiTopoID] = struct{}{}
+	}
+
+	return nil
+}
+
+func linkMetricsFromAPI(lsAttrLink *api.LsAttributeLink) []*table.Metric {
+	metrics := []*table.Metric{table.NewMetric(table.IGPMetric, lsAttrLink.GetIgpMetric())}
+
+	if teMetric := lsAttrLink.GetDefaultTeMetric(); teMetric != 0 {
+		metrics = append(metrics, table.NewMetric(table.TEMetric, teMetric))
+	}
+
+	if delay := lsAttrLink.GetUnidirectionalLinkDelay(); delay != 0 {
+		metrics = append(metrics, table.NewMetric(table.DelayMetric, delay))
+	}
+
+	return metrics
 }
 
 // F flag indicating an IPv6 adjacency (RFC 8667 §2.2.1).

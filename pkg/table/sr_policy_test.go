@@ -611,3 +611,33 @@ func TestSegmentSRMPLSHasMPLSStackEntryAttrs(t *testing.T) {
 		})
 	}
 }
+
+func TestSRv6SID_JSONRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	sid, err := table.ParseSRv6SID("2001:db8::1")
+	require.NoError(t, err)
+
+	seg := table.NewSegmentSRv6(sid)
+	data, err := json.Marshal(seg)
+	require.NoError(t, err)
+
+	var got table.SegmentSRv6
+	require.NoError(t, json.Unmarshal(data, &got))
+	assert.Equal(t, sid, got.Sid)
+
+	var bad table.SRv6SID
+	require.Error(t, json.Unmarshal([]byte(`"192.0.2.1"`), &bad))
+	require.Error(t, json.Unmarshal([]byte(`"::ffff:192.0.2.1"`), &bad))
+	require.Error(t, json.Unmarshal([]byte(`"not-an-ip"`), &bad))
+}
+
+func TestSRv6SID_UnmarshalTextEmpty(t *testing.T) {
+	t.Parallel()
+
+	sid, err := table.ParseSRv6SID("2001:db8::1")
+	require.NoError(t, err)
+
+	require.NoError(t, sid.UnmarshalText(nil))
+	assert.False(t, sid.IsValid())
+}

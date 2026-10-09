@@ -172,6 +172,24 @@ func (sid SRv6SID) MarshalText() ([]byte, error) {
 	return text, nil
 }
 
+// UnmarshalText parses an SRv6 SID. Empty text yields the zero value.
+func (sid *SRv6SID) UnmarshalText(text []byte) error {
+	if len(text) == 0 {
+		*sid = SRv6SID{}
+
+		return nil
+	}
+
+	parsed, err := ParseSRv6SID(string(text))
+	if err != nil {
+		return err
+	}
+
+	*sid = parsed
+
+	return nil
+}
+
 // IsValid reports whether sid holds a valid address.
 func (sid SRv6SID) IsValid() bool { return netip.Addr(sid).IsValid() }
 
