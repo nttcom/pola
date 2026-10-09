@@ -54,7 +54,7 @@
                 ],
                 "adjSids": [
                     {
-                        "family": "unspecified",
+                        "family": "ipv4",
                         "sid": 299776
                     }
                 ]

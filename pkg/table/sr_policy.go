@@ -139,8 +139,6 @@ const SRv6SIDBitLength = 128
 // Segment is an interface for SR Policy segments (SRv6 or SR-MPLS).
 type Segment interface {
 	SidString() string
-	// Family reports the data plane this segment belongs to.
-	Family() DataPlane
 }
 
 func segmentFamily(segment Segment) SegmentFamily {

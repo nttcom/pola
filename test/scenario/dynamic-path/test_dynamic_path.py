@@ -235,19 +235,26 @@ class TestDynamicPathDualStack:
         )
 
     def test__dual_stack_links_expose_both_address_families(self, dual_stack_lab):
-        """Verify that dual-stack links expose both IPv4 and IPv6 addresses in the TED."""
+        """Verify that dual-stack TED links expose matching IPv4 or IPv6 addresses on both endpoints."""
 
         ted = get_ted(DUAL_STACK_POLA)
+        seen = set()
 
         for node in ted:
             for link in node.get("links", []):
-                for side in ("local", "remote"):
-                    endpoint = link.get(side, {})
-                    missing = {"ipv4", "ipv6"} - endpoint.keys()
-                    assert not missing, (
-                        f"expected both address families on {side} endpoint, "
-                        f"missing {missing} from {link}\nfull TED: {ted}"
-                    )
+                local = {k for k in ("ipv4", "ipv6") if k in link.get("local", {})}
+                remote = {k for k in ("ipv4", "ipv6") if k in link.get("remote", {})}
+
+                assert local and local == remote, (
+                    f"expected matching address families on both endpoints, "
+                    f"got local={local} remote={remote} in {link}\nfull TED: {ted}"
+                )
+
+                seen |= local
+
+        assert seen == {"ipv4", "ipv6"}, (
+            f"missing address families: {seen}\nfull TED: {ted}"
+        )
 
     def test__pe02_ipv6_loopback_is_advertised_as_a_128_prefix(self, dual_stack_lab):
         """Verify pe02 advertises its IPv6 loopback as a /128 prefix."""

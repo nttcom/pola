@@ -736,6 +736,10 @@ func NewPCInitiateMessage(srpID uint32, srPolicy table.SRPolicy, opt ...Opt) (*P
 
 	switch opts.pccType {
 	case JuniperLegacy:
+		if !srPolicy.Endpoint.Is4() {
+			return nil, errors.New("JuniperLegacy encoding does not support IPv6 endpoints")
+		}
+
 		if m.AssociationObject, err = NewAssociationObject(srPolicy.Headend, srPolicy.Endpoint, srPolicy.Color, preference, VendorSpecific(opts.pccType), OriginatorASN(opts.originatorASN)); err != nil {
 			return nil, err
 		}

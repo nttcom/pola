@@ -22,11 +22,10 @@ The `EndpointBehavior` message in the gRPC API contains three fields:
   - Pola preserves and transports this field during TED ingestion and segment generation, but does not currently interpret or utilize the flag values
 
 - **algorithm** (uint32): SRv6 Prefix-SID algorithm number.
-  - Controls how a Prefix-SID label is derived from the SID value
+  - Identifies the SR path-computation algorithm associated with the SID
   - RFC 8986 Fig. 8 defines:
     - 0 = Shortest Path First (SPF)
     - 1 = Strict Shortest Path First
-  - Used by nodes implementing Prefix-SID construction from the locator
 
 ## TED Data Model
 
