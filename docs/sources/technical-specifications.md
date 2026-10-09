@@ -37,9 +37,9 @@ The TED aggregates topology information from BGP-LS (RFC 7752) and makes it avai
 ### Key Concepts
 
 - **Node Identity**: Identified by IGP Router-ID (a string), not IP address. Dual-stack nodes are represented as a single node.
-- **Link Identity**: Uniquely identified by (local router ID, remote router ID, local interface identifier, remote interface identifier, address family)
-- **Address Family**: Link endpoints carry both IPv4 and IPv6 addresses independently; CSPF filters edges by the target address family
-- **Underlay Plane**: A combination of address family (IPv4/IPv6) and data plane (SR-MPLS/SRv6) that constrains path computation
+- **Link Identity**: Identified by local/remote router IDs, endpoint identifiers, and multi-topology IDs. Each endpoint uses its interface ID when present, otherwise its advertised address. Address family is not part of the key, so dual-stack advertisements represent one link.
+- **Address Family**: Link endpoints carry both IPv4 and IPv6 addresses independently; CSPF filters edges by the target address family.
+- **Underlay Plane**: A combination of address family (IPv4/IPv6) and data plane (SR-MPLS/SRv6) that constrains path computation.
 
 ### Supported Underlay Planes
 

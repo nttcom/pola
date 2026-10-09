@@ -271,13 +271,14 @@ srPolicy:
 `metric` can be `igp`, `te`, `delay`, or `hopcount`.
 
 `candidatePath.dynamic.underlayFamily` selects the underlay address family.
-When unspecified, it follows `endpointFamily` or the endpoint's address
-family. Cross-address-family configurations are supported by Pola, but are not
-guaranteed for IETF interoperability.
+If unspecified, Pola infers it when exactly one underlay plane is viable;
+otherwise, the request is rejected. The underlay family is independent of
+the endpoint family, though cross-family configurations may not interoperate
+with other implementations.
 
 `candidatePath.dynamic.dataPlane` selects the data plane (`sr-mpls` or
-`srv6`). When unspecified, Pola uses the unique viable data plane; if multiple
-are available, the request is rejected.
+`srv6`). If unspecified, Pola infers it when exactly one data plane is viable;
+otherwise, the request is rejected.
 
 JSON output
 

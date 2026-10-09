@@ -570,22 +570,11 @@ func (s *APIServer) CreateSRPolicy(_ context.Context, req *pb.CreateSRPolicyRequ
 	return &pb.CreateSRPolicyResponse{}, nil
 }
 
+// validateEndpointFamilies checks that headend and endpoint use the same address family.
 func validateEndpointFamilies(path resolvedPath) error {
-	headendFamily := table.FamilyOfAddr(path.Headend)
-	endpointFamily := table.FamilyOfAddr(path.Endpoint)
-
-	if path.Headend.IsValid() && path.Endpoint.IsValid() && headendFamily != endpointFamily {
+	if path.Headend.IsValid() && path.Endpoint.IsValid() &&
+		table.FamilyOfAddr(path.Headend) != table.FamilyOfAddr(path.Endpoint) {
 		return fmt.Errorf("headend and endpoint addresses must share an address family (headend=%s endpoint=%s)", path.Headend, path.Endpoint)
-	}
-
-	if headendFamily == table.AFIPv6 {
-		return nil
-	}
-
-	for _, seg := range path.SegmentList {
-		if _, ok := seg.(table.SegmentSRv6); ok {
-			return errors.New("an SRv6 segment list requires IPv6 endpoints")
-		}
 	}
 
 	return nil

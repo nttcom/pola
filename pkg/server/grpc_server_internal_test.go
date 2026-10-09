@@ -14,7 +14,6 @@ import (
 	"math"
 	"net"
 	"net/netip"
-	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -526,6 +525,24 @@ func TestValidateSIDs_MixedSegmentTypesAreRejected(t *testing.T) {
 	assert.Contains(t, st.Message(), "mixed SR-MPLS and SRv6 SIDs")
 }
 
+func TestValidateSIDs_MismatchedEndpointFamiliesAreRejected(t *testing.T) {
+	t.Parallel()
+
+	s := newTestAPIServer(nil)
+	req := explicitPolicyRequest(true, "16099")
+	path := resolvedPath{
+		Headend:     netip.MustParseAddr("10.0.0.1"),
+		Endpoint:    netip.MustParseAddr("2001:db8::1"),
+		SegmentList: []table.Segment{table.NewSegmentSRMPLS(16099)},
+	}
+
+	err := s.validateSIDs(req, path)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.InvalidArgument, st.Code())
+	assert.Contains(t, st.Message(), "must share an address family")
+}
+
 func TestValidateEndpointFamilies(t *testing.T) {
 	t.Parallel()
 
@@ -549,9 +566,8 @@ func TestValidateEndpointFamilies(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "SRv6 segment list with an IPv4 endpoint",
-			path:    resolvedPath{Headend: ipv4, Endpoint: ipv4Other, SegmentList: srv6Segs},
-			wantErr: true,
+			name: "SRv6 segment list with an IPv4 endpoint",
+			path: resolvedPath{Headend: ipv4, Endpoint: ipv4Other, SegmentList: srv6Segs},
 		},
 		{
 			name: "SRv6 segment list with an IPv6 endpoint",
@@ -560,11 +576,6 @@ func TestValidateEndpointFamilies(t *testing.T) {
 		{
 			name: "SR-MPLS segment list with an IPv4 endpoint",
 			path: resolvedPath{Headend: ipv4, Endpoint: ipv4Other, SegmentList: srmplsSegs},
-		},
-		{
-			name:    "SRv6 segment past the first position with an IPv4 endpoint",
-			path:    resolvedPath{Headend: ipv4, Endpoint: ipv4Other, SegmentList: slices.Concat(srmplsSegs, srv6Segs)},
-			wantErr: true,
 		},
 	}
 	for _, tt := range tests {
@@ -580,24 +591,6 @@ func TestValidateEndpointFamilies(t *testing.T) {
 			assert.NoError(t, err)
 		})
 	}
-}
-
-func TestValidateSIDs_SRv6SegmentListWithIPv4EndpointIsRejected(t *testing.T) {
-	t.Parallel()
-
-	s := newTestAPIServer(nil)
-	req := explicitPolicyRequest(true, testSRv6SID1)
-	path := resolvedPath{
-		SegmentList: []table.Segment{table.NewSegmentSRv6(table.SRv6SID(netip.MustParseAddr(testSRv6SID1)))},
-		Headend:     netip.MustParseAddr(testAddrA),
-		Endpoint:    netip.MustParseAddr(testAddrB),
-	}
-
-	err := s.validateSIDs(req, path)
-	st, ok := status.FromError(err)
-	require.True(t, ok)
-	assert.Equal(t, codes.InvalidArgument, st.Code())
-	assert.Contains(t, st.Message(), "SRv6 segment list requires IPv6 endpoints")
 }
 
 func TestServe_InvalidAddress(t *testing.T) {
