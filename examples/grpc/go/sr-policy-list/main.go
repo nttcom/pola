@@ -59,10 +59,10 @@ func main() {
 
 			fmt.Printf("  peerAddr: %s\n", peerAddr)
 			fmt.Printf("  policyName: %s\n", srPolicy.GetPolicyName())
-			fmt.Printf("  srcAddr: %s\n", formatAddr(srPolicy.GetSrcAddr()))
-			fmt.Printf("  dstAddr: %s\n", formatAddr(srPolicy.GetDstAddr()))
+			fmt.Printf("  headend: %s\n", formatAddr(srPolicy.GetHeadend()))
+			fmt.Printf("  endpoint: %s\n", formatAddr(srPolicy.GetEndpoint()))
 			fmt.Printf("  color: %d\n", srPolicy.GetColor())
-			fmt.Printf("  preference: %d\n", srPolicy.GetPreference())
+			fmt.Printf("  preference: %d\n", srPolicy.GetCandidatePath().GetPreference())
 			fmt.Printf("  path: %s\n", formatSegmentList(srPolicy.GetSegmentList()))
 		}
 	}

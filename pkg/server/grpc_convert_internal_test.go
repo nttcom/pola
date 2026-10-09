@@ -19,6 +19,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func TestToPBSessionState(t *testing.T) {
@@ -203,25 +205,29 @@ func TestBuildLsLink_LinkIPs(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		localIP      netip.Addr
-		remoteIP     netip.Addr
-		wantLocalIP  string
-		wantRemoteIP string
+		localIPv4    netip.Addr
+		localIPv6    netip.Addr
+		remoteIPv4   netip.Addr
+		wantLocalV4  string
+		wantLocalV6  string
+		wantRemoteV4 string
 	}{
 		{
 			name:         "valid IPs are stringified",
-			localIP:      netip.MustParseAddr("192.0.2.1"),
-			remoteIP:     netip.MustParseAddr("192.0.2.2"),
-			wantLocalIP:  "192.0.2.1",
-			wantRemoteIP: "192.0.2.2",
+			localIPv4:    netip.MustParseAddr("192.0.2.1"),
+			remoteIPv4:   netip.MustParseAddr("192.0.2.2"),
+			wantLocalV4:  "192.0.2.1",
+			wantRemoteV4: "192.0.2.2",
 		},
 		{
 			name: "absent IPs stay empty",
 		},
 		{
-			name:        "only the valid side is stringified",
-			localIP:     netip.MustParseAddr("2001:db8::1"),
-			wantLocalIP: "2001:db8::1",
+			name:        "each family round-trips independently",
+			localIPv4:   netip.MustParseAddr("192.0.2.1"),
+			localIPv6:   netip.MustParseAddr("2001:db8::1"),
+			wantLocalV4: "192.0.2.1",
+			wantLocalV6: "2001:db8::1",
 		},
 	}
 	for _, tt := range tests {
@@ -229,15 +235,62 @@ func TestBuildLsLink_LinkIPs(t *testing.T) {
 			t.Parallel()
 
 			link := table.NewLsLink(localNode, remoteNode)
-			link.LocalIP = tt.localIP
-			link.RemoteIP = tt.remoteIP
+			link.Local.IPv4 = tt.localIPv4
+			link.Local.IPv6 = tt.localIPv6
+			link.Remote.IPv4 = tt.remoteIPv4
 
 			got := buildLsLink(link)
 
-			assert.Equal(t, tt.wantLocalIP, got.GetLocalIp())
-			assert.Equal(t, tt.wantRemoteIP, got.GetRemoteIp())
+			assert.Equal(t, tt.wantLocalV4, got.GetLocal().GetIpv4())
+			assert.Equal(t, tt.wantLocalV6, got.GetLocal().GetIpv6())
+			assert.Equal(t, tt.wantRemoteV4, got.GetRemote().GetIpv4())
+			assert.Empty(t, got.GetRemote().GetIpv6())
 		})
 	}
+}
+
+func TestToPBAddressFamily(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, pb.AddressFamily_ADDRESS_FAMILY_IPV4, toPBAddressFamily(table.AFIPv4))
+	assert.Equal(t, pb.AddressFamily_ADDRESS_FAMILY_IPV6, toPBAddressFamily(table.AFIPv6))
+	assert.Equal(t, pb.AddressFamily_ADDRESS_FAMILY_UNSPECIFIED, toPBAddressFamily(table.AFUnspecified))
+}
+
+func TestToPBDataPlane(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, pb.DataPlane_DATA_PLANE_SR_MPLS, toPBDataPlane(table.DPSRMPLS))
+	assert.Equal(t, pb.DataPlane_DATA_PLANE_SRV6, toPBDataPlane(table.DPSRv6))
+	assert.Equal(t, pb.DataPlane_DATA_PLANE_UNSPECIFIED, toPBDataPlane(table.DPUnspecified))
+}
+
+func TestSetPBIfaceIDs(t *testing.T) {
+	t.Parallel()
+
+	local := uint32(1)
+	remote := uint32(2)
+	pbSeg := &pb.Segment{}
+
+	setPBIfaceIDs(pbSeg, &local, &remote)
+
+	require.NotNil(t, pbSeg.LocalIfaceId)
+	require.NotNil(t, pbSeg.RemoteIfaceId)
+	assert.Equal(t, local, pbSeg.GetLocalIfaceId())
+	assert.Equal(t, remote, pbSeg.GetRemoteIfaceId())
+}
+
+func TestBuildLsLinkEndpoint_InterfaceID(t *testing.T) {
+	t.Parallel()
+
+	node := table.NewLsNode(65000, testRouterID1)
+	ifaceID := uint32(42)
+	endpoint := table.LinkEndpoint{Node: node, InterfaceID: &ifaceID}
+
+	pbEndpoint := buildLsLinkEndpoint(endpoint)
+
+	require.NotNil(t, pbEndpoint.InterfaceId)
+	assert.Equal(t, ifaceID, pbEndpoint.GetInterfaceId())
 }
 
 type tedOnlyClient struct {
@@ -286,8 +339,10 @@ func TestGetTED_LinksWithoutIPsRoundTripToCLI(t *testing.T) {
 
 	for _, pbNode := range resp.GetNodes() {
 		for _, pbLink := range pbNode.GetLinks() {
-			assert.Empty(t, pbLink.GetLocalIp())
-			assert.Empty(t, pbLink.GetRemoteIp())
+			assert.Empty(t, pbLink.GetLocal().GetIpv4())
+			assert.Empty(t, pbLink.GetLocal().GetIpv6())
+			assert.Empty(t, pbLink.GetRemote().GetIpv4())
+			assert.Empty(t, pbLink.GetRemote().GetIpv6())
 		}
 	}
 
@@ -297,7 +352,91 @@ func TestGetTED_LinksWithoutIPsRoundTripToCLI(t *testing.T) {
 
 	for _, gotNode := range got.Nodes {
 		require.Len(t, gotNode.Links, 1)
-		assert.False(t, gotNode.Links[0].LocalIP.IsValid())
-		assert.False(t, gotNode.Links[0].RemoteIP.IsValid())
+		assert.False(t, gotNode.Links[0].Local.IPv4.IsValid())
+		assert.False(t, gotNode.Links[0].Local.IPv6.IsValid())
+		assert.False(t, gotNode.Links[0].Remote.IPv4.IsValid())
+		assert.False(t, gotNode.Links[0].Remote.IPv6.IsValid())
 	}
+}
+
+func TestFromPBAddressFamily(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		in      pb.AddressFamily
+		want    table.AddressFamily
+		wantErr bool
+	}{
+		{name: "unspecified", in: pb.AddressFamily_ADDRESS_FAMILY_UNSPECIFIED, want: table.AFUnspecified},
+		{name: "ipv4", in: pb.AddressFamily_ADDRESS_FAMILY_IPV4, want: table.AFIPv4},
+		{name: "ipv6", in: pb.AddressFamily_ADDRESS_FAMILY_IPV6, want: table.AFIPv6},
+		{name: "undeclared value", in: pb.AddressFamily(99), want: table.AFUnspecified, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := fromPBAddressFamily(tt.in)
+			if tt.wantErr {
+				require.ErrorContains(t, err, "unknown address family: 99")
+			} else {
+				require.NoError(t, err)
+			}
+
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestFromPBDataPlane(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		in      pb.DataPlane
+		want    table.DataPlane
+		wantErr bool
+	}{
+		{name: "unspecified", in: pb.DataPlane_DATA_PLANE_UNSPECIFIED, want: table.DPUnspecified},
+		{name: "sr-mpls", in: pb.DataPlane_DATA_PLANE_SR_MPLS, want: table.DPSRMPLS},
+		{name: "srv6", in: pb.DataPlane_DATA_PLANE_SRV6, want: table.DPSRv6},
+		{name: "undeclared value", in: pb.DataPlane(99), want: table.DPUnspecified, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := fromPBDataPlane(tt.in)
+			if tt.wantErr {
+				require.ErrorContains(t, err, "unknown data plane: 99")
+			} else {
+				require.NoError(t, err)
+			}
+
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestEndpointSpecFromPB_UnknownEndpointFamily(t *testing.T) {
+	t.Parallel()
+
+	_, err := endpointSpecFromPB(&pb.SRPolicy{EndpointFamily: pb.AddressFamily(99)})
+	require.Error(t, err)
+	assert.Equal(t, codes.InvalidArgument, status.Code(err))
+	assert.ErrorContains(t, err, "unknown address family: 99")
+}
+
+func TestWaypointsToPB(t *testing.T) {
+	t.Parallel()
+
+	assert.Nil(t, waypointsToPB(nil))
+
+	got := waypointsToPB([]table.Waypoint{{RouterID: "r1", SID: "16001"}, {RouterID: "r2"}})
+	require.Len(t, got, 2)
+	assert.Equal(t, "r1", got[0].GetRouterId())
+	assert.Equal(t, "16001", got[0].GetSid())
+	assert.Equal(t, "r2", got[1].GetRouterId())
+	assert.Empty(t, got[1].GetSid())
 }

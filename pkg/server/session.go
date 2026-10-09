@@ -256,14 +256,13 @@ type Session struct {
 
 // srPolicyIntent stores policy information not reported by PCEP.
 type srPolicyIntent struct {
-	polType   table.PolicyType
-	metric    table.MetricType
-	expiresAt time.Time
+	candidatePath table.CandidatePath
+	expiresAt     time.Time
 }
 
 // rememberSRPolicyIntent records the intent for an SRP-ID.
 // SRP-ID 0 is reserved for unsolicited PCRpt messages and is ignored.
-func (ss *Session) rememberSRPolicyIntent(srpID uint32, polType table.PolicyType, metric table.MetricType) {
+func (ss *Session) rememberSRPolicyIntent(srpID uint32, candidatePath table.CandidatePath) {
 	if srpID == 0 {
 		return
 	}
@@ -275,7 +274,7 @@ func (ss *Session) rememberSRPolicyIntent(srpID uint32, polType table.PolicyType
 		ss.srPolicyIntents = make(map[uint32]srPolicyIntent)
 	}
 
-	ss.srPolicyIntents[srpID] = srPolicyIntent{polType: polType, metric: metric, expiresAt: time.Now().Add(ss.srPolicyIntentTTL)}
+	ss.srPolicyIntents[srpID] = srPolicyIntent{candidatePath: candidatePath, expiresAt: time.Now().Add(ss.srPolicyIntentTTL)}
 }
 
 func (ss *Session) srPolicyIntentExists(srpID uint32) bool {
@@ -1640,8 +1639,8 @@ func (ss *Session) handleStatefulPCERequest(sr *pcep.StateReport) error {
 func (ss *Session) handleSRPolicyWithPLSPID(sr *pcep.StateReport) error {
 	ss.logger.Debug("Received SR Policy", logger.Uint32("plspID", sr.LSPObject.PlspID))
 
-	// Skip path computation for removed SR Policies or when no TED is available.
-	if sr.LSPObject.RFlag || ss.ted == nil {
+	// Skip path computation for removed SR Policies, unavailable TED, or explicit paths.
+	if sr.LSPObject.RFlag || ss.ted == nil || ss.hasExplicitPath(sr.LSPObject.PlspID) {
 		return ss.handleReportedSRPolicy(sr)
 	}
 
@@ -1702,17 +1701,109 @@ func (ss *Session) computePathFromTED(sr *pcep.StateReport) ([]table.Segment, er
 
 	metricType := ss.selectMetricType(sr)
 
+	var waypoints []table.Waypoint
+
+	if cp, ok := ss.storedCandidatePath(sr.LSPObject.PlspID); ok && cp.Dynamic != nil {
+		if cp.Dynamic.Metric != table.UnspecifiedMetric && cp.Dynamic.Metric.IsValid() {
+			metricType = cp.Dynamic.Metric
+		}
+
+		waypoints = cp.Dynamic.Waypoints
+	}
+
+	plane, err := ss.planeFromReport(sr)
+	if err != nil {
+		return nil, fmt.Errorf("resolve underlay plane: %w", err)
+	}
+
 	ss.logger.Debug("Computed CSPF parameters",
 		logger.String("srcRouterID", srcRouterID),
 		logger.String("dstRouterID", dstRouterID),
-		logger.String("metricType", metricType.String()))
+		logger.String("metricType", metricType.String()),
+		logger.String("family", plane.Family.String()),
+		logger.String("dataPlane", plane.DataPlane.String()))
 
-	segmentList, err := cspf.CSPF(srcRouterID, dstRouterID, metricType, ss.ted)
+	scope := cspf.PathScope{Plane: plane}
+
+	var segmentList []table.Segment
+
+	if len(waypoints) > 0 {
+		segmentList, err = cspf.WithLooseSourceRouting(srcRouterID, dstRouterID, waypoints, metricType, scope, ss.ted)
+	} else {
+		segmentList, err = cspf.CSPF(srcRouterID, dstRouterID, metricType, scope, ss.ted)
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf("CSPF computation failed: %w", err)
 	}
 
 	return segmentList, nil
+}
+
+// planeFromReport prefers the policy's underlay plane because endpoint
+// and underlay families are independent.
+func (ss *Session) planeFromReport(sr *pcep.StateReport) (table.Plane, error) {
+	if plane, ok := ss.dynamicPlane(sr.LSPObject.PlspID); ok {
+		return plane, nil
+	}
+
+	family := table.FamilyOfAddr(sr.LSPObject.SrcAddr)
+	if family == table.AFUnspecified || family != table.FamilyOfAddr(sr.LSPObject.DstAddr) {
+		return table.Plane{}, errors.New("LSP source and destination addresses must be valid and share an address family")
+	}
+
+	dataPlane, err := ss.dataPlaneFromPeerCapabilities(family)
+	if err != nil {
+		return table.Plane{}, err
+	}
+
+	return table.Plane{Family: family, DataPlane: dataPlane}, nil
+}
+
+func (ss *Session) dynamicPlane(plspID uint32) (table.Plane, bool) {
+	cp, ok := ss.storedCandidatePath(plspID)
+	if !ok || cp.Dynamic == nil {
+		return table.Plane{}, false
+	}
+
+	plane := cp.Dynamic.Plane
+
+	return plane, plane.Validate() == nil
+}
+
+func (ss *Session) hasExplicitPath(plspID uint32) bool {
+	cp, ok := ss.storedCandidatePath(plspID)
+	return ok && cp.Explicit != nil
+}
+
+func (ss *Session) storedCandidatePath(plspID uint32) (table.CandidatePath, bool) {
+	ss.srPoliciesMu.RLock()
+	defer ss.srPoliciesMu.RUnlock()
+
+	p, ok := ss.searchSRPolicyLocked(plspID)
+	if !ok {
+		return table.CandidatePath{}, false
+	}
+
+	return p.CandidatePath, true
+}
+
+func (ss *Session) dataPlaneFromPeerCapabilities(af table.AddressFamily) (table.DataPlane, error) {
+	caps := ss.ReceivedCapabilities()
+
+	srv6 := af == table.AFIPv6 && peerSupportsPST(caps, pcep.PathSetupTypeSRv6TE)
+	srmpls := peerSupportsPST(caps, pcep.PathSetupTypeSRTE)
+
+	switch {
+	case srv6 && !srmpls:
+		return table.DPSRv6, nil
+	case srmpls && !srv6:
+		return table.DPSRMPLS, nil
+	case srv6 && srmpls:
+		return table.DPUnspecified, errors.New("PCC advertises both SR-MPLS and SRv6 path setup types; the data plane is ambiguous")
+	default:
+		return table.DPUnspecified, errors.New("PCC does not advertise a Segment Routing path setup type")
+	}
 }
 
 func (ss *Session) extractSrcDstRouterIDs(sr *pcep.StateReport) (srcRouterID, dstRouterID string, err error) {
@@ -1730,14 +1821,15 @@ func (ss *Session) extractSrcDstRouterIDs(sr *pcep.StateReport) (srcRouterID, ds
 		return "", "", errors.New("could not extract valid source and destination addresses")
 	}
 
+	routerIDIndex := ss.ted.RouterIDIndex()
 	addrIndex := ss.ted.AddressRouterIDIndex()
 
-	srcRouterID, err = ss.findRouterIDFromAddress(addrIndex, srcAddr)
+	srcRouterID, err = ss.findRouterIDFromAddress(routerIDIndex, addrIndex, srcAddr)
 	if err != nil {
 		return "", "", fmt.Errorf("cannot find source router ID for %s: %w", srcAddr, err)
 	}
 
-	dstRouterID, err = ss.findRouterIDFromAddress(addrIndex, dstAddr)
+	dstRouterID, err = ss.findRouterIDFromAddress(routerIDIndex, addrIndex, dstAddr)
 	if err != nil {
 		return "", "", fmt.Errorf("cannot find destination router ID for %s: %w", dstAddr, err)
 	}
@@ -1745,12 +1837,14 @@ func (ss *Session) extractSrcDstRouterIDs(sr *pcep.StateReport) (srcRouterID, ds
 	return srcRouterID, dstRouterID, nil
 }
 
-func (ss *Session) findRouterIDFromAddress(addrIndex map[netip.Addr]string, addr netip.Addr) (string, error) {
-	if node, ok := tedNode(ss.ted, addr.String()); ok {
-		return node.RouterID, nil
+// RouterIDIndex is authoritative; AddressRouterIDIndex is a fallback for
+// non-loopback addresses and uses "" for ambiguous advertisements.
+func (ss *Session) findRouterIDFromAddress(routerIDIndex, addrIndex map[netip.Addr]string, addr netip.Addr) (string, error) {
+	if routerID, ok := routerIDIndex[addr]; ok {
+		return routerID, nil
 	}
 
-	if routerID, ok := addrIndex[addr]; ok {
+	if routerID, ok := addrIndex[addr]; ok && routerID != "" {
 		return routerID, nil
 	}
 
@@ -1847,8 +1941,7 @@ func firstPathSetupTypeCapability(caps []pcep.CapabilityInterface) *pcep.PathSet
 }
 
 // peerSupportsPST reports whether the peer supports the given path setup type.
-// PATH-SETUP-TYPE-CAPABILITY takes precedence; otherwise, legacy SR-CAPABILITY-TLV
-// implies PSTs 0 and 1, and its absence implies PST=0 (RFC 8408 §3, RFC 8664 Appendix A).
+// Legacy SR-CAPABILITY-TLV provides the fallback behavior (RFC 8408 §3, RFC 8664 Appendix A).
 func peerSupportsPST(caps []pcep.CapabilityInterface, pst pcep.Pst) bool {
 	if pstCap := firstPathSetupTypeCapability(caps); pstCap != nil {
 		return pstCap.HasPathSetupType(pst)
@@ -1862,9 +1955,7 @@ func peerSupportsPST(caps []pcep.CapabilityInterface, pst pcep.Pst) bool {
 }
 
 // peerMaxSIDs returns the advertised SID depth for the given path setup type.
-// PATH-SETUP-TYPE-CAPABILITY takes precedence; otherwise, the top-level capability
-// is used as a legacy fallback for SRTE (RFC 8408 §3, RFC 8664 Appendix A).
-// An unlisted PST has no advertised SID depth (RFC 8664 §5.1, RFC 9603 §5.1).
+// The top-level capability is a legacy fallback for SRTE (RFC 8664 Appendix A).
 func peerMaxSIDs(caps []pcep.CapabilityInterface, pst pcep.Pst) (maxSIDs uint8, ok bool) {
 	if pstCap := firstPathSetupTypeCapability(caps); pstCap != nil {
 		if !pstCap.HasPathSetupType(pst) {
@@ -1885,7 +1976,6 @@ func peerMaxSIDs(caps []pcep.CapabilityInterface, pst pcep.Pst) (maxSIDs uint8, 
 	return 0, false
 }
 
-// validatePathSetupTypeForPeer rejects segment lists with unsupported path setup types.
 func (ss *Session) validatePathSetupTypeForPeer(segmentList []table.Segment) error {
 	pst, ok := pcep.PathSetupTypeForSegments(segmentList)
 	if !ok {
@@ -1895,6 +1985,15 @@ func (ss *Session) validatePathSetupTypeForPeer(segmentList []table.Segment) err
 
 	if !peerSupportsPST(ss.ReceivedCapabilities(), pst) {
 		return fmt.Errorf("the PCC did not advertise the path setup type this segment list requires: %s", pst)
+	}
+
+	return nil
+}
+
+// Juniper legacy SR Policy encoding supports only IPv4 endpoints, even on IPv6 PCEP sessions (RFC 8697).
+func (ss *Session) validateEndpointFamilyForPeer(endpoint netip.Addr) error {
+	if ss.pccType == pcep.JuniperLegacy && !endpoint.Is4() {
+		return fmt.Errorf("the PCC uses Juniper legacy SR Policy encoding, which only supports IPv4 endpoints: got %s", endpoint)
 	}
 
 	return nil
@@ -1983,7 +2082,7 @@ func nextUnusedSRPID(
 }
 
 // allocateSRPID allocates an unused SRP-ID and records its intent.
-func (ss *Session) allocateSRPID(polType table.PolicyType, metric table.MetricType) (uint32, error) {
+func (ss *Session) allocateSRPID(candidatePath table.CandidatePath) (uint32, error) {
 	ss.srpIDMu.Lock()
 	defer ss.srpIDMu.Unlock()
 
@@ -1993,7 +2092,7 @@ func (ss *Session) allocateSRPID(polType table.PolicyType, metric table.MetricTy
 	}
 
 	ss.srpIDHead = nextHead
-	ss.rememberSRPolicyIntent(srpID, polType, metric)
+	ss.rememberSRPolicyIntent(srpID, candidatePath)
 
 	return srpID, nil
 }
@@ -2010,7 +2109,13 @@ func (ss *Session) SendPCInitiate(srPolicy table.SRPolicy, lspDelete bool) error
 		return fmt.Errorf("cannot %s SR policy %q: %w", action, srPolicy.Name, err)
 	}
 
-	srpID, err := ss.allocateSRPID(srPolicy.Type, srPolicy.Metric)
+	if !lspDelete {
+		if err := ss.validateEndpointFamilyForPeer(srPolicy.Endpoint); err != nil {
+			return fmt.Errorf("cannot %s SR policy %q: %w", action, srPolicy.Name, err)
+		}
+	}
+
+	srpID, err := ss.allocateSRPID(srPolicy.CandidatePath)
 	if err != nil {
 		return err
 	}
@@ -2019,7 +2124,7 @@ func (ss *Session) SendPCInitiate(srPolicy table.SRPolicy, lspDelete bool) error
 	if lspDelete {
 		pcinitiateMessage, err = pcep.NewPCInitiateDeleteMessage(srpID, srPolicy)
 	} else {
-		pcinitiateMessage, err = pcep.NewPCInitiateMessage(srpID, srPolicy, pcep.VendorSpecific(ss.pccType), pcep.OriginatorASN(ss.asn))
+		pcinitiateMessage, err = pcep.NewPCInitiateMessage(srpID, srPolicy, pcep.VendorSpecific(ss.pccType), pcep.OriginatorASN(ss.asn), pcep.OriginatorAddr(ss.localAddr()))
 	}
 
 	if err != nil {
@@ -2045,7 +2150,7 @@ func (ss *Session) SendPCUpdate(srPolicy table.SRPolicy) error {
 		return fmt.Errorf("cannot update SR policy %q: %w", srPolicy.Name, err)
 	}
 
-	srpID, err := ss.allocateSRPID(srPolicy.Type, srPolicy.Metric)
+	srpID, err := ss.allocateSRPID(srPolicy.CandidatePath)
 	if err != nil {
 		return err
 	}
@@ -2164,8 +2269,7 @@ func (ss *Session) updateOrCreatePolicy(sr *pcep.StateReport, segmentList []tabl
 			})
 
 			if intent, ok := ss.takeSRPolicyIntent(sr.SrpObject.SrpID); ok {
-				p.Type = intent.polType
-				p.Metric = intent.metric
+				p.CandidatePath = intent.candidatePath
 			}
 		}
 
@@ -2194,8 +2298,7 @@ func (ss *Session) updateOrCreatePolicy(sr *pcep.StateReport, segmentList []tabl
 
 	p := table.NewSRPolicy(sr.LSPObject.PlspID, sr.LSPObject.Name, segmentList, src, dst, color, preference, lspID, state)
 	if intent, ok := ss.takeSRPolicyIntent(sr.SrpObject.SrpID); ok {
-		p.Type = intent.polType
-		p.Metric = intent.metric
+		p.CandidatePath = intent.candidatePath
 	}
 
 	ss.srPolicies = append(ss.srPolicies, p)
@@ -2247,7 +2350,7 @@ func (ss *Session) SearchPlspID(color uint32, endpoint netip.Addr) (uint32, bool
 	defer ss.srPoliciesMu.RUnlock()
 
 	for _, v := range ss.srPolicies {
-		if v.Color == color && v.DstAddr == endpoint {
+		if v.Color == color && v.Endpoint == endpoint {
 			return v.PlspID, true
 		}
 	}
@@ -2276,4 +2379,22 @@ func (ss *Session) SRPolicies() []*table.SRPolicy {
 	}
 
 	return policies
+}
+
+func (ss *Session) localAddr() netip.Addr {
+	if ss.tcpConn == nil {
+		return netip.Addr{}
+	}
+
+	tcpAddr, ok := ss.tcpConn.LocalAddr().(*net.TCPAddr)
+	if !ok {
+		return netip.Addr{}
+	}
+
+	addr, ok := netip.AddrFromSlice(tcpAddr.IP)
+	if !ok {
+		return netip.Addr{}
+	}
+
+	return addr.Unmap()
 }

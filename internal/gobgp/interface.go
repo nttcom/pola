@@ -559,62 +559,17 @@ func getLsLink(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrLink *api.LsAttribute
 	localNode := table.NewLsNode(lsLinkNLRI.GetLocalNode().GetAsn(), lsLinkNLRI.GetLocalNode().GetIgpRouterId())
 	remoteNode := table.NewLsNode(lsLinkNLRI.GetRemoteNode().GetAsn(), lsLinkNLRI.GetRemoteNode().GetIgpRouterId())
 
-	var (
-		err     error
-		localIP netip.Addr
-	)
-
-	switch {
-	case lsLinkNLRI.GetLinkDescriptor().GetInterfaceAddrIpv4() != "":
-		localIP, err = netip.ParseAddr(lsLinkNLRI.GetLinkDescriptor().GetInterfaceAddrIpv4())
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse local IPv4 address: %w", err)
-		}
-	case lsLinkNLRI.GetLinkDescriptor().GetInterfaceAddrIpv6() != "":
-		localIP, err = netip.ParseAddr(lsLinkNLRI.GetLinkDescriptor().GetInterfaceAddrIpv6())
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse local IPv6 address: %w", err)
-		}
-	default:
-		localIP = netip.Addr{}
-	}
-
-	var remoteIP netip.Addr
-
-	switch {
-	case lsLinkNLRI.GetLinkDescriptor().GetNeighborAddrIpv4() != "":
-		remoteIP, err = netip.ParseAddr(lsLinkNLRI.GetLinkDescriptor().GetNeighborAddrIpv4())
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse remote IPv4 address: %w", err)
-		}
-	case lsLinkNLRI.GetLinkDescriptor().GetNeighborAddrIpv6() != "":
-		remoteIP, err = netip.ParseAddr(lsLinkNLRI.GetLinkDescriptor().GetNeighborAddrIpv6())
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse remote IPv6 address: %w", err)
-		}
-	default:
-		remoteIP = netip.Addr{}
-	}
+	linkDescriptor := lsLinkNLRI.GetLinkDescriptor()
 
 	lsLink := table.NewLsLink(localNode, remoteNode)
-	lsLink.LocalIP = localIP
-	lsLink.RemoteIP = remoteIP
 
-	lsLink.Metrics = append(lsLink.Metrics, table.NewMetric(table.IGPMetric, lsAttrLink.GetIgpMetric()))
-
-	teMetric := lsAttrLink.GetDefaultTeMetric()
-	if teMetric != 0 {
-		lsLink.Metrics = append(lsLink.Metrics, table.NewMetric(table.TEMetric, teMetric))
+	if err := applyLinkDescriptor(lsLink, linkDescriptor); err != nil {
+		return nil, err
 	}
 
-	if delay := lsAttrLink.GetUnidirectionalLinkDelay(); delay != 0 {
-		lsLink.Metrics = append(
-			lsLink.Metrics,
-			table.NewMetric(table.DelayMetric, delay),
-		)
-	}
+	lsLink.Metrics = append(lsLink.Metrics, linkMetricsFromAPI(lsAttrLink)...)
 
-	lsLink.AdjSid = lsAttrLink.GetSrAdjacencySid()
+	lsLink.AdjSids = adjSIDsFromAPI(typedLinkStateNLRI.GetProtocolId(), lsAttrLink)
 
 	if srv6EndXSID := lsAttrLink.GetSrv6EndXSid(); srv6EndXSID != nil {
 		converted, err := srv6EndXSIDFromAPI(srv6EndXSID)
@@ -622,14 +577,157 @@ func getLsLink(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrLink *api.LsAttribute
 			return nil, err
 		}
 
-		lsLink.Srv6EndXSID = converted
+		lsLink.Srv6EndXSIDs = append(lsLink.Srv6EndXSIDs, converted)
 	}
 
 	return lsLink, nil
 }
 
+func applyLinkDescriptor(lsLink *table.LsLink, linkDescriptor *api.LsLinkDescriptor) error {
+	var err error
+
+	if lsLink.Local.IPv4, err = parseOptionalAddr(linkDescriptor.GetInterfaceAddrIpv4(), false); err != nil {
+		return fmt.Errorf("failed to parse local IPv4 address: %w", err)
+	}
+
+	if lsLink.Local.IPv6, err = parseOptionalAddr(linkDescriptor.GetInterfaceAddrIpv6(), true); err != nil {
+		return fmt.Errorf("failed to parse local IPv6 address: %w", err)
+	}
+
+	if lsLink.Remote.IPv4, err = parseOptionalAddr(linkDescriptor.GetNeighborAddrIpv4(), false); err != nil {
+		return fmt.Errorf("failed to parse remote IPv4 address: %w", err)
+	}
+
+	if lsLink.Remote.IPv6, err = parseOptionalAddr(linkDescriptor.GetNeighborAddrIpv6(), true); err != nil {
+		return fmt.Errorf("failed to parse remote IPv6 address: %w", err)
+	}
+
+	if linkDescriptor == nil {
+		return nil
+	}
+
+	lsLink.Local.InterfaceID = linkDescriptor.LinkLocalId
+	lsLink.Remote.InterfaceID = linkDescriptor.LinkRemoteId
+
+	multiTopoIDs := linkDescriptor.GetMultiTopoIds()
+	if len(multiTopoIDs) == 0 {
+		return nil
+	}
+
+	lsLink.MultiTopoIDs = make(map[uint16]struct{}, len(multiTopoIDs))
+
+	for _, id := range multiTopoIDs {
+		multiTopoID, err := safecast.Uint16(id, "link Multi-Topology ID")
+		if err != nil {
+			return err
+		}
+
+		lsLink.MultiTopoIDs[multiTopoID] = struct{}{}
+	}
+
+	return nil
+}
+
+func linkMetricsFromAPI(lsAttrLink *api.LsAttributeLink) []*table.Metric {
+	metrics := []*table.Metric{table.NewMetric(table.IGPMetric, lsAttrLink.GetIgpMetric())}
+
+	if teMetric := lsAttrLink.GetDefaultTeMetric(); teMetric != 0 {
+		metrics = append(metrics, table.NewMetric(table.TEMetric, teMetric))
+	}
+
+	if delay := lsAttrLink.GetUnidirectionalLinkDelay(); delay != 0 {
+		metrics = append(metrics, table.NewMetric(table.DelayMetric, delay))
+	}
+
+	return metrics
+}
+
+// F flag indicating an IPv6 adjacency (RFC 8667 §2.2.1).
+const isisAdjSIDFlagF = 0x80
+
+func adjSIDsFromAPI(protocol api.LsProtocolID, lsAttrLink *api.LsAttributeLink) []table.AdjSID {
+	entries := lsAttrLink.GetSrAdjacencySids()
+	if len(entries) == 0 {
+		if sid := lsAttrLink.GetSrAdjacencySid(); sid != 0 {
+			return []table.AdjSID{{Family: table.AFUnspecified, Sid: sid}}
+		}
+
+		return nil
+	}
+
+	adjSIDs := make([]table.AdjSID, 0, len(entries))
+	for _, entry := range entries {
+		adjSIDs = append(adjSIDs, table.AdjSID{Family: adjSIDFamily(protocol, entry.GetFlags()), Sid: entry.GetSid()})
+	}
+
+	return adjSIDs
+}
+
+func adjSIDFamily(protocol api.LsProtocolID, flags uint32) table.AddressFamily {
+	switch protocol {
+	case api.LsProtocolID_LS_PROTOCOL_ID_ISIS_L1, api.LsProtocolID_LS_PROTOCOL_ID_ISIS_L2:
+		if flags&isisAdjSIDFlagF != 0 {
+			return table.AFIPv6
+		}
+
+		return table.AFIPv4
+	case api.LsProtocolID_LS_PROTOCOL_ID_OSPF_V2:
+		return table.AFIPv4
+	case api.LsProtocolID_LS_PROTOCOL_ID_OSPF_V3:
+		return table.AFIPv6
+	default:
+		return table.AFUnspecified
+	}
+}
+
+func parseOptionalAddr(s string, wantIPv6 bool) (netip.Addr, error) {
+	if s == "" {
+		return netip.Addr{}, nil
+	}
+
+	addr, err := netip.ParseAddr(s)
+	if err != nil {
+		return netip.Addr{}, fmt.Errorf("parse address %q: %w", s, err)
+	}
+
+	if addr.Is4() == wantIPv6 || addr.Is4In6() {
+		return netip.Addr{}, fmt.Errorf("address %q does not match descriptor family", s)
+	}
+
+	return addr, nil
+}
+
+func endpointBehaviorFromAPI(name string, behavior, flags, algorithm uint32) (table.EndpointBehavior, error) {
+	b, err := safecast.Uint16(behavior, name+" endpoint behavior")
+	if err != nil {
+		return table.EndpointBehavior{}, err
+	}
+
+	f, err := safecast.Uint8(flags, name+" endpoint behavior flags")
+	if err != nil {
+		return table.EndpointBehavior{}, err
+	}
+
+	a, err := safecast.Uint8(algorithm, name+" endpoint behavior algorithm")
+	if err != nil {
+		return table.EndpointBehavior{}, err
+	}
+
+	return table.EndpointBehavior{Behavior: b, Flags: f, Algorithm: a}, nil
+}
+
 func srv6EndXSIDFromAPI(srv6EndXSID *api.LsSrv6EndXSID) (*table.Srv6EndXSID, error) {
-	endpointBehavior, err := safecast.Uint16(srv6EndXSID.GetEndpointBehavior(), "SRv6 End.X SID endpoint behavior")
+	endpointBehavior, err := endpointBehaviorFromAPI(
+		"SRv6 End.X SID",
+		srv6EndXSID.GetEndpointBehavior(),
+		srv6EndXSID.GetFlags(),
+		srv6EndXSID.GetAlgorithm(),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	weight, err := safecast.Uint8(srv6EndXSID.GetWeight(), "SRv6 End.X SID weight")
 	if err != nil {
 		return nil, err
 	}
@@ -641,6 +739,7 @@ func srv6EndXSIDFromAPI(srv6EndXSID *api.LsSrv6EndXSID) (*table.Srv6EndXSID, err
 
 	return &table.Srv6EndXSID{
 		EndpointBehavior: endpointBehavior,
+		Weight:           weight,
 		Sids:             srv6EndXSID.GetSids(),
 		Srv6SIDStructure: structure,
 	}, nil
@@ -801,17 +900,12 @@ func getLsSrv6SID(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrSrv6SID *api.LsAtt
 		return nil, err
 	}
 
-	behavior, err := safecast.Uint16(endpointBehavior.GetEndpointBehavior(), "SRv6 SID endpoint behavior")
-	if err != nil {
-		return nil, err
-	}
-
-	flags, err := safecast.Uint8(endpointBehavior.GetFlags(), "SRv6 SID endpoint behavior flags")
-	if err != nil {
-		return nil, err
-	}
-
-	algorithm, err := safecast.Uint8(endpointBehavior.GetAlgorithm(), "SRv6 SID endpoint behavior algorithm")
+	behavior, err := endpointBehaviorFromAPI(
+		"SRv6 SID",
+		endpointBehavior.GetEndpointBehavior(),
+		endpointBehavior.GetFlags(),
+		endpointBehavior.GetAlgorithm(),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -819,9 +913,7 @@ func getLsSrv6SID(typedLinkStateNLRI *api.LsAddrPrefix, lsAttrSrv6SID *api.LsAtt
 	localNode := table.NewLsNode(localNodeASN, localNodeID)
 	lsSrv6SID := table.NewLsSrv6SID(localNode)
 	lsSrv6SID.SIDStructure = structure
-	lsSrv6SID.EndpointBehavior.Behavior = behavior
-	lsSrv6SID.EndpointBehavior.Flags = flags
-	lsSrv6SID.EndpointBehavior.Algorithm = algorithm
+	lsSrv6SID.EndpointBehavior = behavior
 	lsSrv6SID.Sids = srv6SIDs
 	lsSrv6SID.MultiTopoIDs = multiTopoIDs
 

@@ -71,10 +71,23 @@ func newSRPolicyAddCmd(c *cli) *cobra.Command {
 }
 
 type segment struct {
-	SID          string `yaml:"sid"`
-	LocalAddr    string `yaml:"localAddr"`
-	RemoteAddr   string `yaml:"remoteAddr"`
-	SIDStructure string `yaml:"sidStructure"`
+	SID               string  `yaml:"sid"`
+	LocalAddr         string  `yaml:"localAddr"`
+	RemoteAddr        string  `yaml:"remoteAddr"`
+	SIDStructure      string  `yaml:"sidStructure"`
+	LocalInterfaceID  *uint32 `yaml:"localInterfaceId"`
+	RemoteInterfaceID *uint32 `yaml:"remoteInterfaceId"`
+}
+
+func toPBSegment(s segment) *pb.Segment {
+	return &pb.Segment{
+		Sid:           s.SID,
+		LocalAddr:     s.LocalAddr,
+		RemoteAddr:    s.RemoteAddr,
+		SidStructure:  s.SIDStructure,
+		LocalIfaceId:  s.LocalInterfaceID,
+		RemoteIfaceId: s.RemoteInterfaceID,
+	}
 }
 
 type waypoint struct {
@@ -82,18 +95,37 @@ type waypoint struct {
 	SID      string `yaml:"sid"` // optional: fixed SID override
 }
 
+type dynamicPath struct {
+	Metric         string     `yaml:"metric"`
+	DataPlane      string     `yaml:"dataPlane"`
+	UnderlayFamily string     `yaml:"underlayFamily"`
+	Waypoints      []waypoint `yaml:"waypoints"`
+}
+
+type explicitPath struct {
+	SegmentList []segment `yaml:"segmentList"`
+}
+
+type candidatePath struct {
+	Preference uint32        `yaml:"preference"`
+	Dynamic    *dynamicPath  `yaml:"dynamic"`
+	Explicit   *explicitPath `yaml:"explicit"`
+}
+
+// Endpoints use either address or router-ID form, mutually exclusively (RFC 9256 §2.1).
 type srPolicy struct {
 	PCEPSessionAddr netip.Addr `yaml:"pcepSessionAddr"`
-	SrcAddr         netip.Addr `yaml:"srcAddr"`
-	DstAddr         netip.Addr `yaml:"dstAddr"`
-	SrcRouterID     string     `yaml:"srcRouterID"`
-	DstRouterID     string     `yaml:"dstRouterID"`
-	Name            string     `yaml:"name"`
-	SegmentList     []segment  `yaml:"segmentList"`
-	Color           uint32     `yaml:"color"`
-	Type            string     `yaml:"type"`
-	Metric          string     `yaml:"metric"`
-	Waypoints       []waypoint `yaml:"waypoints"`
+
+	Headend  netip.Addr `yaml:"headend"`
+	Endpoint netip.Addr `yaml:"endpoint"`
+
+	HeadendRouterID  string `yaml:"headendRouterID"`
+	EndpointRouterID string `yaml:"endpointRouterID"`
+	EndpointFamily   string `yaml:"endpointFamily"`
+
+	Name          string        `yaml:"name"`
+	Color         uint32        `yaml:"color"`
+	CandidatePath candidatePath `yaml:"candidatePath"`
 }
 
 type inputFormat struct {
@@ -102,16 +134,49 @@ type inputFormat struct {
 }
 
 const (
-	srPolicyTypeExplicit = "explicit"
-	srPolicyTypeDynamic  = "dynamic"
-)
-
-const (
 	metricTypeIGP      = "igp"
 	metricTypeDelay    = "delay"
 	metricTypeTE       = "te"
 	metricTypeHopcount = "hopcount"
 )
+
+const (
+	underlayFamilyIPv4 = "ipv4"
+	underlayFamilyIPv6 = "ipv6"
+)
+
+const (
+	dataPlaneSRMPLS = "sr-mpls"
+	dataPlaneSRv6   = "srv6"
+)
+
+// Empty input leaves the choice to the server's default.
+func parseAddressFamily(s string) (pb.AddressFamily, error) {
+	switch s {
+	case "":
+		return pb.AddressFamily_ADDRESS_FAMILY_UNSPECIFIED, nil
+	case underlayFamilyIPv4:
+		return pb.AddressFamily_ADDRESS_FAMILY_IPV4, nil
+	case underlayFamilyIPv6:
+		return pb.AddressFamily_ADDRESS_FAMILY_IPV6, nil
+	default:
+		return 0, fmt.Errorf("invalid address family %q", s)
+	}
+}
+
+// Empty input leaves the choice to the server's default.
+func parseDataPlane(s string) (pb.DataPlane, error) {
+	switch s {
+	case "":
+		return pb.DataPlane_DATA_PLANE_UNSPECIFIED, nil
+	case dataPlaneSRMPLS:
+		return pb.DataPlane_DATA_PLANE_SR_MPLS, nil
+	case dataPlaneSRv6:
+		return pb.DataPlane_DATA_PLANE_SRV6, nil
+	default:
+		return 0, fmt.Errorf("invalid input `dataPlane`: %q", s)
+	}
+}
 
 func addSRPolicy(out, errOut io.Writer, input inputFormat, jsonFlag, noSIDValidate bool, client pb.PCEServiceClient) error {
 	if noSIDValidate {
@@ -120,33 +185,24 @@ func addSRPolicy(out, errOut io.Writer, input inputFormat, jsonFlag, noSIDValida
 		}
 	}
 
-	usesRouterID := input.SRPolicy.SrcRouterID != "" || input.SRPolicy.DstRouterID != ""
-
-	usesEndpointAddr := input.SRPolicy.SrcAddr.IsValid() || input.SRPolicy.DstAddr.IsValid()
-	if usesRouterID && usesEndpointAddr {
-		return errors.New("srcRouterID / dstRouterID and srcAddr / dstAddr are mutually exclusive, use one form only")
+	req, err := buildCreateSRPolicyRequest(input, noSIDValidate)
+	if err != nil {
+		return err
 	}
 
-	if usesRouterID {
-		if err := addSRPolicyWithRouterID(input, noSIDValidate, client); err != nil {
-			return translateCreateSRPolicyError(err)
-		}
-	} else {
-		if err := addSRPolicyWithEndpointAddr(input, noSIDValidate, client); err != nil {
-			return translateCreateSRPolicyError(err)
-		}
+	if err := grpc.CreateSRPolicy(client, req); err != nil {
+		return translateCreateSRPolicyError(err)
 	}
 
 	if jsonFlag {
 		return writeJSON(out, statusResult{Status: statusSuccess})
 	}
 
-	_, err := fmt.Fprintln(out, "success!")
+	_, err = fmt.Fprintln(out, "success!")
 
 	return err
 }
 
-// translateCreateSRPolicyError converts gRPC errors into CLI-friendly messages.
 func translateCreateSRPolicyError(err error) error {
 	st, ok := status.FromError(err)
 	if !ok {
@@ -181,220 +237,172 @@ func translateCreateSRPolicyError(err error) error {
 	return errors.New(msg)
 }
 
-func addSRPolicyWithEndpointAddr(input inputFormat, noSIDValidate bool, client pb.PCEServiceClient) error {
-	if input.SRPolicy.Type != "" && input.SRPolicy.Type != srPolicyTypeExplicit {
-		return fmt.Errorf("the srcAddr / dstAddr form supports `type: explicit` only, got %q", input.SRPolicy.Type)
-	}
+const sampleInput = "asn: 65000\n" +
+	"srPolicy:\n" +
+	"  pcepSessionAddr: 192.0.2.1\n" +
+	"  headend: 192.0.2.1\n" +
+	"  endpoint: 192.0.2.2\n" +
+	"  name: name\n" +
+	"  color: 100\n" +
+	"  candidatePath:\n" +
+	"    explicit:\n" +
+	"      segmentList:\n" +
+	"        - sid: 16003\n" +
+	"        - sid: 16002\n\n" +
+	"or, to resolve endpoints from the TED by router ID and compute a dynamic path,\n" +
+	"use headendRouterID / endpointRouterID and candidatePath.dynamic:\n\n" +
+	"asn: 65000\n" +
+	"srPolicy:\n" +
+	"  pcepSessionAddr: 192.0.2.1\n" +
+	"  headendRouterID: 0000.0aff.0001\n" +
+	"  endpointRouterID: 0000.0aff.0004\n" +
+	"  name: name\n" +
+	"  color: 100\n" +
+	"  candidatePath:\n" +
+	"    dynamic:\n" +
+	"      metric: igp\n"
 
-	if input.SRPolicy.Metric != "" || len(input.SRPolicy.Waypoints) > 0 {
-		return errors.New("`metric` and `waypoints` require a dynamic path, which the srcAddr / dstAddr form does not support")
-	}
-
-	if !input.SRPolicy.PCEPSessionAddr.IsValid() || input.SRPolicy.Color == 0 || !input.SRPolicy.SrcAddr.IsValid() || !input.SRPolicy.DstAddr.IsValid() || len(input.SRPolicy.SegmentList) == 0 {
-		sampleInput := "srPolicy:\n" +
-			"  pcepSessionAddr: 192.0.2.1\n" +
-			"  srcAddr: 192.0.2.1\n" +
-			"  dstAddr: 192.0.2.2\n" +
-			"  name: name\n" +
-			"  color: 100\n" +
-			"  segmentList:\n" +
-			"    - sid: 16003\n" +
-			"    - sid: 16002\n\n"
-
-		errMsg := "invalid input\n" +
-			"input example is below\n\n" +
-			sampleInput +
-			"or, to resolve endpoints from the TED by router ID instead,\n" +
-			"use the srcRouterID / dstRouterID form\n"
-
-		return errors.New(errMsg)
-	}
-
-	segmentList := []*pb.Segment{}
-
-	for _, segment := range input.SRPolicy.SegmentList {
-		pbSeg := &pb.Segment{
-			Sid:          segment.SID,
-			LocalAddr:    segment.LocalAddr,
-			RemoteAddr:   segment.RemoteAddr,
-			SidStructure: segment.SIDStructure,
-		}
-		segmentList = append(segmentList, pbSeg)
-	}
-
-	srPolicy := &pb.SRPolicy{
-		PeerAddr:    input.SRPolicy.PCEPSessionAddr.AsSlice(),
-		SrcAddr:     input.SRPolicy.SrcAddr.AsSlice(),
-		DstAddr:     input.SRPolicy.DstAddr.AsSlice(),
-		SegmentList: segmentList,
-		Color:       input.SRPolicy.Color,
-		PolicyName:  input.SRPolicy.Name,
-		Type:        pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT,
-	}
-
-	request := &pb.CreateSRPolicyRequest{
-		SrPolicy:           srPolicy,
-		Asn:                input.ASN,
-		DisablePathCompute: true,
-		NoSidValidate:      noSIDValidate,
-	}
-
-	if err := grpc.CreateSRPolicy(client, request); err != nil {
-		return fmt.Errorf("failed to create SR policy: %w", err)
-	}
-
-	return nil
+func invalidInputError() error {
+	return fmt.Errorf("invalid input, example below:\n\n%s", sampleInput)
 }
 
-func addSRPolicyWithRouterID(input inputFormat, noSIDValidate bool, client pb.PCEServiceClient) error {
-	sampleInputDynamic, sampleInputExplicit := sampleInputs()
-
-	if err := validateCommonInput(input, sampleInputDynamic, sampleInputExplicit); err != nil {
-		return err
+func buildCreateSRPolicyRequest(input inputFormat, noSIDValidate bool) (*pb.CreateSRPolicyRequest, error) {
+	if !input.SRPolicy.PCEPSessionAddr.IsValid() || input.SRPolicy.Color == 0 {
+		return nil, invalidInputError()
 	}
 
-	spec, err := buildPolicyByType(input, sampleInputDynamic, sampleInputExplicit)
+	endpointFields, err := buildEndpointFields(input.SRPolicy)
 	if err != nil {
-		return err
+		return nil, err
+	}
+
+	candidatePath, err := buildPBCandidatePath(input.SRPolicy.CandidatePath)
+	if err != nil {
+		return nil, err
 	}
 
 	srPolicy := &pb.SRPolicy{
-		PeerAddr:    input.SRPolicy.PCEPSessionAddr.AsSlice(),
-		SrcRouterId: input.SRPolicy.SrcRouterID,
-		DstRouterId: input.SRPolicy.DstRouterID,
-		Color:       input.SRPolicy.Color,
-		PolicyName:  input.SRPolicy.Name,
-		Type:        spec.Type,
-		SegmentList: spec.Segments,
-		Metric:      spec.Metric,
-		Waypoints:   spec.Waypoints,
+		PeerAddr:      input.SRPolicy.PCEPSessionAddr.AsSlice(),
+		Color:         input.SRPolicy.Color,
+		PolicyName:    input.SRPolicy.Name,
+		CandidatePath: candidatePath,
 	}
+	endpointFields(srPolicy)
 
-	req := &pb.CreateSRPolicyRequest{
+	return &pb.CreateSRPolicyRequest{
 		SrPolicy:      srPolicy,
 		Asn:           input.ASN,
 		NoSidValidate: noSIDValidate,
-	}
-
-	if err := grpc.CreateSRPolicy(client, req); err != nil {
-		return fmt.Errorf("failed to create SR policy: %w", err)
-	}
-
-	return nil
+	}, nil
 }
 
-func sampleInputs() (dynamic, explicit string) {
-	dynamic = "#case: dynamic path\n" +
-		"asn: 65000\n" +
-		"srPolicy:\n" +
-		"  pcepSessionAddr: 192.0.2.1\n" +
-		"  srcRouterID: 0000.0aff.0001\n" +
-		"  dstRouterID: 0000.0aff.0004\n" +
-		"  name: name\n" +
-		"  color: 100\n" +
-		"  type: dynamic\n" +
-		"  metric: igp / te / delay\n"
+func buildEndpointFields(policy srPolicy) (func(*pb.SRPolicy), error) {
+	usesAddr := policy.Headend.IsValid() || policy.Endpoint.IsValid()
+	usesRouterID := policy.HeadendRouterID != "" || policy.EndpointRouterID != ""
 
-	explicit = "#case: explicit path\n" +
-		"asn: 65000\n" +
-		"srPolicy:\n" +
-		"  pcepSessionAddr: 192.0.2.1\n" +
-		"  srcRouterID: 0000.0aff.0001\n" +
-		"  dstRouterID: 0000.0aff.0002\n" +
-		"  name: name\n" +
-		"  color: 100\n" +
-		"  type: explicit\n" +
-		"  segmentList:\n" +
-		"    - sid: 16003\n" +
-		"    - sid: 16002\n"
+	switch {
+	case usesAddr && usesRouterID:
+		return nil, errors.New("headend/endpoint and headendRouterID/endpointRouterID are mutually exclusive, use one form only")
+	case usesAddr:
+		if policy.EndpointFamily != "" {
+			return nil, errors.New("endpointFamily is valid only with the headendRouterID/endpointRouterID form")
+		}
 
-	return dynamic, explicit
-}
+		if !policy.Headend.IsValid() || !policy.Endpoint.IsValid() {
+			return nil, invalidInputError()
+		}
 
-func validateCommonInput(input inputFormat, sampleDynamic, sampleExplicit string) error {
-	if input.ASN == 0 ||
-		!input.SRPolicy.PCEPSessionAddr.IsValid() ||
-		input.SRPolicy.Color == 0 ||
-		input.SRPolicy.SrcRouterID == "" ||
-		input.SRPolicy.DstRouterID == "" {
-		return errors.New(
-			"invalid input\n" +
-				"input example is below\n\n" +
-				sampleDynamic +
-				sampleExplicit +
-				"or, to specify endpoints directly instead of resolving router IDs from the TED,\n" +
-				"use the srcAddr / dstAddr form\n",
-		)
-	}
+		return func(p *pb.SRPolicy) {
+			p.Headend = policy.Headend.AsSlice()
+			p.Endpoint = policy.Endpoint.AsSlice()
+		}, nil
+	case usesRouterID:
+		if policy.HeadendRouterID == "" || policy.EndpointRouterID == "" {
+			return nil, invalidInputError()
+		}
 
-	return nil
-}
+		endpointFamily, err := parseAddressFamily(policy.EndpointFamily)
+		if err != nil {
+			return nil, err
+		}
 
-// policySpec is the outcome of translating YAML input into the fields of a
-// pb.SRPolicy that depend on the policy's type (explicit vs. dynamic).
-type policySpec struct {
-	Type      pb.SRPolicyType
-	Metric    pb.MetricType
-	Segments  []*pb.Segment
-	Waypoints []*pb.Waypoint
-}
-
-func buildPolicyByType(input inputFormat, sampleDynamic, sampleExplicit string) (policySpec, error) {
-	switch input.SRPolicy.Type {
-	case srPolicyTypeExplicit:
-		return buildExplicitPolicy(input, sampleExplicit)
-	case srPolicyTypeDynamic:
-		return buildDynamicPolicy(input, sampleDynamic)
+		return func(p *pb.SRPolicy) {
+			p.HeadendRouterId = policy.HeadendRouterID
+			p.EndpointRouterId = policy.EndpointRouterID
+			p.EndpointFamily = endpointFamily
+		}, nil
 	default:
-		return policySpec{}, errors.New("invalid input `type`")
+		return nil, invalidInputError()
 	}
 }
 
-func buildExplicitPolicy(input inputFormat, sampleExplicit string) (policySpec, error) {
-	if len(input.SRPolicy.SegmentList) == 0 {
-		return policySpec{}, errors.New(
-			"invalid input\n" +
-				"input example is below\n\n" +
-				sampleExplicit,
-		)
-	}
+func buildPBCandidatePath(cp candidatePath) (*pb.CandidatePath, error) {
+	switch {
+	case cp.Dynamic != nil && cp.Explicit != nil:
+		return nil, errors.New("candidatePath.dynamic and candidatePath.explicit are mutually exclusive")
+	case cp.Dynamic != nil:
+		dynamic, err := buildPBDynamicPath(*cp.Dynamic)
+		if err != nil {
+			return nil, err
+		}
 
-	var segments []*pb.Segment
-	for _, s := range input.SRPolicy.SegmentList {
-		segments = append(segments, &pb.Segment{
-			Sid:          s.SID,
-			LocalAddr:    s.LocalAddr,
-			RemoteAddr:   s.RemoteAddr,
-			SidStructure: s.SIDStructure,
-		})
-	}
+		return &pb.CandidatePath{
+			Preference: cp.Preference,
+			Path:       &pb.CandidatePath_Dynamic{Dynamic: dynamic},
+		}, nil
+	case cp.Explicit != nil:
+		if len(cp.Explicit.SegmentList) == 0 {
+			return nil, invalidInputError()
+		}
 
-	return policySpec{Type: pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT, Segments: segments}, nil
+		segmentList := make([]*pb.Segment, 0, len(cp.Explicit.SegmentList))
+		for _, s := range cp.Explicit.SegmentList {
+			segmentList = append(segmentList, toPBSegment(s))
+		}
+
+		return &pb.CandidatePath{
+			Preference: cp.Preference,
+			Path:       &pb.CandidatePath_Explicit{Explicit: &pb.ExplicitPath{SegmentList: segmentList}},
+		}, nil
+	default:
+		return nil, errors.New("candidatePath must specify either dynamic or explicit")
+	}
 }
 
-func buildDynamicPolicy(input inputFormat, sampleDynamic string) (policySpec, error) {
-	if input.SRPolicy.Metric == "" {
-		return policySpec{}, errors.New(
-			"invalid input\n" +
-				"input example is below\n\n" +
-				sampleDynamic,
-		)
+func buildPBDynamicPath(d dynamicPath) (*pb.DynamicPath, error) {
+	if d.Metric == "" {
+		return nil, invalidInputError()
 	}
 
-	metric, err := parseMetric(input.SRPolicy.Metric)
+	metric, err := parseMetric(d.Metric)
 	if err != nil {
-		return policySpec{}, err
+		return nil, err
+	}
+
+	dataPlane, err := parseDataPlane(d.DataPlane)
+	if err != nil {
+		return nil, err
+	}
+
+	underlayFamily, err := parseAddressFamily(d.UnderlayFamily)
+	if err != nil {
+		return nil, err
 	}
 
 	var waypoints []*pb.Waypoint
-	for _, wp := range input.SRPolicy.Waypoints {
+	for _, wp := range d.Waypoints {
 		waypoints = append(waypoints, &pb.Waypoint{
 			RouterId: wp.RouterID,
 			Sid:      wp.SID,
 		})
 	}
 
-	return policySpec{Type: pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC, Metric: metric, Waypoints: waypoints}, nil
+	return &pb.DynamicPath{
+		Metric:         metric,
+		DataPlane:      dataPlane,
+		UnderlayFamily: underlayFamily,
+		Waypoints:      waypoints,
+	}, nil
 }
 
 func parseMetric(metric string) (pb.MetricType, error) {

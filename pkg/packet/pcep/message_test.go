@@ -128,14 +128,15 @@ func TestNewPCInitiateMessage_OriginatorASNReachesWire(t *testing.T) {
 
 	srcAddr := netip.MustParseAddr("192.0.2.1")
 	dstAddr := netip.MustParseAddr("192.0.2.2")
+	pceAddr := netip.MustParseAddr("192.0.2.100")
 	segmentList := []table.Segment{table.NewSegmentSRMPLS(16001)}
 
 	cases := map[string]struct {
 		opts        []pcep.Opt
 		expectedASN uint32
 	}{
-		"OriginatorASNSet":     {opts: []pcep.Opt{pcep.VendorSpecific(pcep.RFCCompliant), pcep.OriginatorASN(65000)}, expectedASN: 65000},
-		"OriginatorASNOmitted": {opts: []pcep.Opt{pcep.VendorSpecific(pcep.RFCCompliant)}, expectedASN: 0},
+		"OriginatorASNSet":     {opts: []pcep.Opt{pcep.VendorSpecific(pcep.RFCCompliant), pcep.OriginatorASN(65000), pcep.OriginatorAddr(pceAddr)}, expectedASN: 65000},
+		"OriginatorASNOmitted": {opts: []pcep.Opt{pcep.VendorSpecific(pcep.RFCCompliant), pcep.OriginatorAddr(pceAddr)}, expectedASN: 0},
 	}
 
 	for name, tt := range cases {
@@ -143,7 +144,7 @@ func TestNewPCInitiateMessage_OriginatorASNReachesWire(t *testing.T) {
 			t.Parallel()
 
 			m, err := pcep.NewPCInitiateMessage(1, table.SRPolicy{
-				Name: testPolicyName, SegmentList: segmentList, Color: 100, Preference: 200, SrcAddr: srcAddr, DstAddr: dstAddr,
+				Name: testPolicyName, SegmentList: segmentList, Color: 100, CandidatePath: table.CandidatePath{Preference: 200}, Headend: srcAddr, Endpoint: dstAddr,
 			}, tt.opts...)
 			require.NoError(t, err, "NewPCInitiateMessage failed")
 			require.NotNil(t, m.AssociationObject, "RFC compliant PCInitiate must carry an ASSOCIATION object")
@@ -167,7 +168,7 @@ func TestNewPCInitiateMessage_OriginatorASNReachesWire(t *testing.T) {
 				[]uint8{0x00, 0x39, 0x00, 0x1c}, // SRPOLICY-CPATH-ID TLV: type=0x0039, len=28
 				[]uint8{0x0a, 0x00, 0x00, 0x00}, // protocol origin + mbz
 				pcep.Uint32ToByteSlice(tt.expectedASN),
-				make([]uint8, 12), dstAddr.AsSlice(), // originator address (IPv4 in the 16 byte field)
+				make([]uint8, 12), pceAddr.AsSlice(), // originator address is the PCE, not the headend
 				[]uint8{0x00, 0x00, 0x00, 0x01}, // discriminator
 			)
 			assert.True(t, bytes.Contains(raw, expectedTLV), "serialized message does not carry ASN %d in the SRPOLICY-CPATH-ID TLV", tt.expectedASN)
@@ -211,7 +212,7 @@ func TestNewPCInitiateMessage_VendorObjectSelection(t *testing.T) {
 			t.Parallel()
 
 			m, err := pcep.NewPCInitiateMessage(1, table.SRPolicy{
-				Name: testPolicyName, SegmentList: segmentList, Color: 100, Preference: 200, SrcAddr: srcAddr, DstAddr: dstAddr,
+				Name: testPolicyName, SegmentList: segmentList, Color: 100, CandidatePath: table.CandidatePath{Preference: 200}, Headend: srcAddr, Endpoint: dstAddr,
 			}, pcep.VendorSpecific(tt.pccType))
 			require.NoError(t, err, "NewPCInitiateMessage failed")
 
@@ -729,7 +730,7 @@ func TestNewPCInitiateDeleteMessage(t *testing.T) {
 
 	segmentList := []table.Segment{table.NewSegmentSRMPLS(16001)}
 	m, err := pcep.NewPCInitiateDeleteMessage(1, table.SRPolicy{
-		Name: testPolicyName, PlspID: 5, SegmentList: segmentList, Color: 100, Preference: 200,
+		Name: testPolicyName, PlspID: 5, SegmentList: segmentList, Color: 100, CandidatePath: table.CandidatePath{Preference: 200},
 	})
 	require.NoError(t, err)
 
@@ -754,7 +755,7 @@ func TestNewPCInitiateMessage_Errors(t *testing.T) {
 	t.Parallel()
 
 	v4a, v4b := netip.MustParseAddr("192.0.2.1"), netip.MustParseAddr("192.0.2.2")
-	v6a, v6b := netip.MustParseAddr("2001:db8::1"), netip.MustParseAddr("2001:db8::2")
+	v6b := netip.MustParseAddr("2001:db8::2")
 	validSeg := []table.Segment{table.NewSegmentSRMPLS(16001)}
 
 	cases := map[string]struct {
@@ -772,9 +773,6 @@ func TestNewPCInitiateMessage_Errors(t *testing.T) {
 		"InvalidSecondSegmentType": {
 			segmentList: []table.Segment{table.NewSegmentSRMPLS(16001), fakeSegment{}}, srcAddr: v4a, dstAddr: v4b,
 		},
-		"JuniperLegacyRejectsIPv6": {
-			segmentList: validSeg, srcAddr: v6a, dstAddr: v6b, opts: []pcep.Opt{pcep.VendorSpecific(pcep.JuniperLegacy)},
-		},
 		"UndefinedPccType": {
 			segmentList: validSeg, srcAddr: v4a, dstAddr: v4b, opts: []pcep.Opt{pcep.VendorSpecific(pcep.PccType(99))},
 		},
@@ -785,10 +783,25 @@ func TestNewPCInitiateMessage_Errors(t *testing.T) {
 			t.Parallel()
 
 			m, err := pcep.NewPCInitiateMessage(1, table.SRPolicy{
-				Name: testPolicyName, SegmentList: tt.segmentList, Color: 100, Preference: 200, SrcAddr: tt.srcAddr, DstAddr: tt.dstAddr,
+				Name: testPolicyName, SegmentList: tt.segmentList, Color: 100, CandidatePath: table.CandidatePath{Preference: 200}, Headend: tt.srcAddr, Endpoint: tt.dstAddr,
 			}, tt.opts...)
 			require.Error(t, err)
 			assert.Nil(t, m)
 		})
 	}
+}
+
+func TestNewPCInitiateMessage_JuniperLegacyRejectsIPv6Endpoint(t *testing.T) {
+	t.Parallel()
+
+	m, err := pcep.NewPCInitiateMessage(1, table.SRPolicy{
+		Name:          testPolicyName,
+		SegmentList:   []table.Segment{table.NewSegmentSRMPLS(16001)},
+		Color:         100,
+		CandidatePath: table.CandidatePath{Preference: 200},
+		Headend:       netip.MustParseAddr("2001:db8::1"),
+		Endpoint:      netip.MustParseAddr("2001:db8::2"),
+	}, pcep.VendorSpecific(pcep.JuniperLegacy))
+	require.ErrorContains(t, err, "JuniperLegacy encoding does not support IPv6 endpoints")
+	assert.Nil(t, m)
 }
