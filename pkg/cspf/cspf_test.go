@@ -423,14 +423,19 @@ func TestCSPF_PlaneScopingUnreachable(t *testing.T) {
 func TestCSPF_EndpointFamilyIndependentOfUnderlay(t *testing.T) {
 	t.Parallel()
 
-	a := dualStackNode("A", 0, 10, "2001:db8::a")
-	b := dualStackNode("B", 1, 11, "2001:db8::b")
-	connectV6(a, b, 1)
-	ted := buildTED(a, b)
+	dualStackLinked := func() (*table.LsNode, *table.LsTED) {
+		a := dualStackNode("A", 0, 10, "2001:db8::a")
+		b := dualStackNode("B", 1, 11, "2001:db8::b")
+		connectV4(a, b, 1)
+		connectV6(a, b, 1)
+
+		return b, buildTED(a, b)
+	}
 
 	t.Run("I8: IPv4 endpoint over an IPv6 SR-MPLS underlay", func(t *testing.T) {
 		t.Parallel()
 
+		b, ted := dualStackLinked()
 		segs, err := cspf.CSPF("A", "B", table.IGPMetric, scopeV6SRMPLS, ted)
 		require.NoError(t, err)
 		assert.Equal(t, []table.Segment{mplsSeg(11)}, segs)
@@ -443,8 +448,7 @@ func TestCSPF_EndpointFamilyIndependentOfUnderlay(t *testing.T) {
 	t.Run("I9: IPv6 endpoint over an IPv4 SR-MPLS underlay", func(t *testing.T) {
 		t.Parallel()
 
-		connectV4(a, b, 1)
-
+		b, ted := dualStackLinked()
 		segs, err := cspf.CSPF("A", "B", table.IGPMetric, scopeV4SRMPLS, ted)
 		require.NoError(t, err)
 		assert.Equal(t, []table.Segment{mplsSeg(1)}, segs)
