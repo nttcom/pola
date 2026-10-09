@@ -34,5 +34,5 @@ archives:
   - id: archive
     files:
       - LICENSE
-      - CREDITS
+      - licenses/THIRD_PARTY_LICENSES.md
       - README.md
