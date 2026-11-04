@@ -158,10 +158,10 @@ limitations under the License.
 
 ---
 
-## golang.org/x/net v0.60.0
+## golang.org/x/net v0.61.0
 
 - License: BSD-3-Clause
-- Source: <https://cs.opensource.google/go/x/net/+/v0.60.0:LICENSE>
+- Source: <https://cs.opensource.google/go/x/net/+/v0.61.0:LICENSE>
 
 ```text
 Copyright 2009 The Go Authors.
@@ -196,10 +196,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ---
 
-## golang.org/x/sys/unix v0.48.0
+## golang.org/x/sys/unix v0.49.0
 
 - License: BSD-3-Clause
-- Source: <https://cs.opensource.google/go/x/sys/+/v0.48.0:LICENSE>
+- Source: <https://cs.opensource.google/go/x/sys/+/v0.49.0:LICENSE>
 
 ```text
 Copyright 2009 The Go Authors.
@@ -234,10 +234,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ---
 
-## golang.org/x/text v0.42.0
+## golang.org/x/text v0.43.0
 
 - License: BSD-3-Clause
-- Source: <https://cs.opensource.google/go/x/text/+/v0.42.0:LICENSE>
+- Source: <https://cs.opensource.google/go/x/text/+/v0.43.0:LICENSE>
 
 ```text
 Copyright 2009 The Go Authors.
@@ -272,10 +272,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ---
 
-## google.golang.org/genproto/googleapis/rpc/status v0.0.0-20260825221802-da73d73af1c5
+## google.golang.org/genproto/googleapis/rpc/status v0.0.0-20261012220534-4341edf3f941
 
 - License: Apache-2.0
-- Source: <https://github.com/googleapis/go-genproto/blob/da73d73af1c5/googleapis/rpc/LICENSE>
+- Source: <https://github.com/googleapis/go-genproto/blob/4341edf3f941/googleapis/rpc/LICENSE>
 
 ```text
 
@@ -485,10 +485,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ---
 
-## google.golang.org/grpc v1.84.0
+## google.golang.org/grpc v1.85.0
 
 - License: Apache-2.0
-- Source: <https://github.com/grpc/grpc-go/blob/v1.84.0/LICENSE>
+- Source: <https://github.com/grpc/grpc-go/blob/v1.85.0/LICENSE>
 
 ```text
 
@@ -698,10 +698,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ---
 
-## google.golang.org/protobuf v1.36.12
+## google.golang.org/protobuf v1.36.13-0.20261016172727-e9ee2a76ab8e
 
 - License: BSD-3-Clause
-- Source: <https://github.com/protocolbuffers/protobuf-go/blob/v1.36.12/LICENSE>
+- Source: <https://github.com/protocolbuffers/protobuf-go/blob/e9ee2a76ab8e/LICENSE>
 
 ```text
 Copyright (c) 2018 The Go Authors. All rights reserved.

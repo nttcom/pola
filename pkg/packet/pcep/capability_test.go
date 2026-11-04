@@ -17,8 +17,8 @@ import (
 func findAssocTypeList(t *testing.T, caps []pcep.CapabilityInterface) *pcep.AssocTypeList {
 	t.Helper()
 
-	for _, cap := range caps {
-		if v, ok := cap.(*pcep.AssocTypeList); ok {
+	for _, capability := range caps {
+		if v, ok := capability.(*pcep.AssocTypeList); ok {
 			return v
 		}
 	}
@@ -125,13 +125,13 @@ func TestFlattenCapabilities(t *testing.T) {
 func TestDefaultCapabilities_WireRoundTrip(t *testing.T) {
 	t.Parallel()
 
-	for _, cap := range pcep.DefaultCapabilities() {
-		b, err := cap.Serialize()
-		require.NoError(t, err, "%T must serialize", cap)
+	for _, capability := range pcep.DefaultCapabilities() {
+		b, err := capability.Serialize()
+		require.NoError(t, err, "%T must serialize", capability)
 
 		decodedTLVs, err := pcep.DecodeTLVs(b)
-		require.NoError(t, err, "%T must decode its own serialized bytes", cap)
+		require.NoError(t, err, "%T must decode its own serialized bytes", capability)
 		require.Len(t, decodedTLVs, 1)
-		assert.Equal(t, cap, decodedTLVs[0], "%T round-trip mismatch", cap)
+		assert.Equal(t, capability, decodedTLVs[0], "%T round-trip mismatch", capability)
 	}
 }

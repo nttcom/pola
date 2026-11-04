@@ -3813,7 +3813,8 @@ func TestEstablished_DoesNotTimeOutAPccThatSendsNoKeepalives(t *testing.T) {
 	require.NoError(t, client.Close())
 
 	select {
-	case <-errCh:
+	case err := <-errCh:
+		t.Logf("Established returned: %v", err)
 	case <-time.After(2 * time.Second):
 		require.Fail(t, "Established did not return after the client disconnected")
 	}

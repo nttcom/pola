@@ -22,21 +22,21 @@ func dedupCapabilities(lg *logger.Logger, kind string, caps []pcep.CapabilityInt
 
 	seen := make(map[string]struct{})
 
-	for _, cap := range caps {
-		b, err := cap.Serialize()
+	for _, capability := range caps {
+		b, err := capability.Serialize()
 		if err != nil {
 			lg.Warn(fmt.Sprintf("failed to serialize %s capability", kind), logger.Error(err))
 			continue
 		}
 
-		key := fmt.Sprintf("%d:%s", cap.Type(), b)
+		key := fmt.Sprintf("%d:%s", capability.Type(), b)
 		if _, ok := seen[key]; ok {
 			continue
 		}
 
 		seen[key] = struct{}{}
 
-		pbCaps = append(pbCaps, buildCapability(cap))
+		pbCaps = append(pbCaps, buildCapability(capability))
 	}
 
 	return pbCaps
