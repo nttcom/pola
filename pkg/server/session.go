@@ -2191,8 +2191,8 @@ func (ss *Session) resolveColorPreference(sr *pcep.StateReport) (color, preferen
 		// Check if PCC supports color capability
 		hasColor := false
 
-		for _, cap := range ss.receivedPccCapabilities {
-			if c, ok := cap.(*pcep.StatefulPCECapability); ok && c.ColorCapability {
+		for _, capability := range ss.receivedPccCapabilities {
+			if c, ok := capability.(*pcep.StatefulPCECapability); ok && c.ColorCapability {
 				hasColor = true
 				break
 			}

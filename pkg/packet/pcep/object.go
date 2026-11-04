@@ -288,10 +288,10 @@ func (o *OpenObject) Serialize() ([]uint8, error) {
 
 	byteTLVs := []uint8{}
 
-	for _, cap := range o.Caps {
-		b, err := cap.Serialize()
+	for _, capability := range o.Caps {
+		b, err := capability.Serialize()
 		if err != nil {
-			return nil, fmt.Errorf("serialize capability %s: %w", cap.Type(), err)
+			return nil, fmt.Errorf("serialize capability %s: %w", capability.Type(), err)
 		}
 
 		byteTLVs = append(byteTLVs, b...)
@@ -310,8 +310,8 @@ func (o *OpenObject) Serialize() ([]uint8, error) {
 // Len returns the wire length of the OpenObject.
 func (o *OpenObject) Len() int {
 	tlvsByteLength := 0
-	for _, cap := range o.Caps {
-		tlvsByteLength += cap.Len()
+	for _, capability := range o.Caps {
+		tlvsByteLength += capability.Len()
 	}
 	// CommonObjectHeader(4byte) + openObject(4byte) + tlvslength(variable)
 	return int(commonObjectHeaderLength) + 4 + tlvsByteLength
@@ -2099,8 +2099,8 @@ const (
 func DeterminePccType(caps []CapabilityInterface) PccType {
 	pccType := RFCCompliant
 
-	for _, cap := range caps {
-		if t, ok := cap.(*AssocTypeList); ok {
+	for _, capability := range caps {
+		if t, ok := capability.(*AssocTypeList); ok {
 			for _, v := range t.AssocTypes {
 				if v == AssocTypeSRPolicyAssociationCisco {
 					pccType = CiscoLegacy
