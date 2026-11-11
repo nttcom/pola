@@ -698,10 +698,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ---
 
-## google.golang.org/protobuf v1.36.13-0.20261016172727-e9ee2a76ab8e
+## google.golang.org/protobuf v1.37.0-rc.1
 
 - License: BSD-3-Clause
-- Source: <https://github.com/protocolbuffers/protobuf-go/blob/e9ee2a76ab8e/LICENSE>
+- Source: <https://github.com/protocolbuffers/protobuf-go/blob/v1.37.0-rc.1/LICENSE>
 
 ```text
 Copyright (c) 2018 The Go Authors. All rights reserved.
