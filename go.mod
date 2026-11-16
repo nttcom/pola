@@ -1,6 +1,6 @@
 module github.com/nttcom/pola
 
-go 1.27.3
+go 1.27.4
 
 tool (
 	github.com/bufbuild/buf/cmd/buf
