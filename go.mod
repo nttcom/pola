@@ -11,6 +11,7 @@ tool (
 )
 
 require (
+	github.com/cloudflare/circl v1.6.5
 	github.com/osrg/gobgp/v4 v4.11.0
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.12.1
