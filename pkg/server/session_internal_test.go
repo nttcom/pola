@@ -1090,7 +1090,7 @@ func TestExtractSrcDstRouterIDs(t *testing.T) {
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), ted, 0)
 
 	sr := newTestStateReport(t, 1, 0)
-	srcRouterID, dstRouterID, err := ss.extractSrcDstRouterIDs(sr)
+	srcRouterID, dstRouterID, err := ss.extractSrcDstRouterIDs(sr, ss.ted)
 	require.NoError(t, err, "extractSrcDstRouterIDs failed")
 	assert.Equal(t, "src-router", srcRouterID)
 	assert.Equal(t, "dst-router", dstRouterID)
@@ -1103,7 +1103,7 @@ func TestExtractSrcDstRouterIDs_AddressNotFound(t *testing.T) {
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), ted, 0)
 
 	sr := newTestStateReport(t, 1, 0)
-	_, _, err := ss.extractSrcDstRouterIDs(sr)
+	_, _, err := ss.extractSrcDstRouterIDs(sr, ss.ted)
 	assert.Error(t, err, "expected an error when neither address is present in the TED")
 }
 
@@ -1117,7 +1117,7 @@ func TestExtractSrcDstRouterIDs_InvalidAddresses(t *testing.T) {
 	sr.LSPObject.SrcAddr = netip.Addr{}
 	sr.LSPObject.DstAddr = netip.Addr{}
 
-	_, _, err := ss.extractSrcDstRouterIDs(sr)
+	_, _, err := ss.extractSrcDstRouterIDs(sr, ss.ted)
 	assert.Error(t, err, "expected an error when neither address is valid")
 }
 
@@ -1131,7 +1131,7 @@ func TestExtractSrcDstRouterIDs_DestinationNotFound(t *testing.T) {
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), ted, 0)
 	sr := newTestStateReport(t, 1, 0)
 
-	_, _, err := ss.extractSrcDstRouterIDs(sr)
+	_, _, err := ss.extractSrcDstRouterIDs(sr, ss.ted)
 	assert.Error(t, err, "expected an error when the destination address is not present in the TED")
 }
 
@@ -4445,7 +4445,7 @@ func TestComputePathFromTED_NoTED(t *testing.T) {
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), nil, 0)
 	sr := newTestStateReport(t, 1, 0)
 
-	_, err := ss.computePathFromTED(sr)
+	_, err := ss.computePathFromTED(sr, ss.ted)
 	assert.Error(t, err)
 }
 
@@ -4475,7 +4475,7 @@ func TestComputePathFromTED_CSPFFailsWithoutNodeSID(t *testing.T) {
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), ted, 0)
 	sr := newTestStateReport(t, 1, 0)
 
-	_, err := ss.computePathFromTED(sr)
+	_, err := ss.computePathFromTED(sr, ss.ted)
 	assert.Error(t, err, "CSPF must fail when the headend advertises no Prefix-SID or SRv6 SID")
 }
 
@@ -4492,7 +4492,7 @@ func TestComputePathFromTED_SrcRouterIDNotInTED(t *testing.T) {
 	ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), nil, logger.NewNop(), ted, 0)
 	sr := newTestStateReport(t, 1, 0)
 
-	_, err := ss.computePathFromTED(sr)
+	_, err := ss.computePathFromTED(sr, ss.ted)
 	assert.Error(t, err, "must fail when the resolved router ID no longer keys a node in the TED")
 }
 
@@ -4686,7 +4686,7 @@ func TestComputePathFromTED_StoredWaypointsAreUsed(t *testing.T) {
 			Waypoints: []table.Waypoint{{RouterID: "PE2"}},
 		})
 
-		_, err := ss.computePathFromTED(sr)
+		_, err := ss.computePathFromTED(sr, ss.ted)
 		assert.NoError(t, err)
 	})
 
@@ -4698,7 +4698,7 @@ func TestComputePathFromTED_StoredWaypointsAreUsed(t *testing.T) {
 			Waypoints: []table.Waypoint{{RouterID: "no-such-router"}},
 		})
 
-		_, err := ss.computePathFromTED(sr)
+		_, err := ss.computePathFromTED(sr, ss.ted)
 		assert.Error(t, err)
 	})
 }
@@ -4709,11 +4709,11 @@ func TestComputePathFromTED_StoredMetricOverridesReport(t *testing.T) {
 	plane := table.Plane{Family: table.AFIPv4, DataPlane: table.DPSRMPLS}
 
 	ss, sr := newStoredDynamicSession(t, &table.DynamicPath{Plane: plane, Metric: table.IGPMetric})
-	_, err := ss.computePathFromTED(sr)
+	_, err := ss.computePathFromTED(sr, ss.ted)
 	require.Error(t, err)
 
 	ss, sr = newStoredDynamicSession(t, &table.DynamicPath{Plane: plane, Metric: table.UnspecifiedMetric})
-	_, err = ss.computePathFromTED(sr)
+	_, err = ss.computePathFromTED(sr, ss.ted)
 	require.NoError(t, err)
 }
 

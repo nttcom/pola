@@ -21,6 +21,10 @@ go install ./...
 
 ## Command Reference
 
+### pola --version
+
+Prints the version and exits. Release binaries report their release version; development builds report `dev`.
+
 ### pola session [peer-address] [detail] [-j]
 
 Displays PCEP sessions, sorted by peer address.

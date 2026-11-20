@@ -33,6 +33,7 @@ type Server struct {
 	sessionIDs               sessionIDAllocator
 	tedMu                    sync.RWMutex
 	ted                      *table.LsTED
+	tedReady                 bool // true once the first TED snapshot has been applied
 	logger                   *logger.Logger
 	asn                      uint32
 	localKeepalive           uint8
@@ -91,11 +92,40 @@ func (s *Server) TED() *table.LsTED {
 	return s.ted
 }
 
+func (s *Server) tedState() (ted *table.LsTED, ready bool) {
+	s.tedMu.RLock()
+	defer s.tedMu.RUnlock()
+
+	return s.ted, s.tedReady
+}
+
 func (s *Server) setTED(ted *table.LsTED) {
 	s.tedMu.Lock()
 	defer s.tedMu.Unlock()
 
 	s.ted = ted
+}
+
+func (s *Server) applyTEDSnapshot(ted *table.LsTED) (initial bool) {
+	s.tedMu.Lock()
+	defer s.tedMu.Unlock()
+
+	initial = !s.tedReady
+	s.ted = ted
+	s.tedReady = true
+
+	return initial
+}
+
+func (s *Server) recomputeSessions() {
+	s.sessionMu.RLock()
+	sessions := slices.Clone(s.sessionList)
+	s.sessionMu.RUnlock()
+
+	for _, ss := range sessions {
+		// Run per session so a slow peer cannot stall TED updates.
+		go ss.recomputePending()
+	}
 }
 
 // PCEOptions contains configuration options for the PCE server.
@@ -251,8 +281,14 @@ func (s *Server) syncTEDLoop(ctx context.Context, tedElemsChan <-chan []table.TE
 				Nodes: map[string]*table.LsNode{},
 			}
 			ted.Update(tedElems, asn)
-			s.setTED(ted)
+
+			initial := s.applyTEDSnapshot(ted)
+
 			s.logger.Debug("Update TED")
+
+			if initial {
+				s.recomputeSessions()
+			}
 		}
 	}
 }
@@ -399,6 +435,7 @@ func (s *Server) registerSession(conn net.Conn, peerAddr netip.Addr) *Session {
 	ss.minKeepalive = s.minKeepalive
 	ss.maxKeepalive = s.maxKeepalive
 	ss.allowNegotiation = s.allowNegotiation
+	ss.tedSource = s.tedState
 	ss.onEstablished = func() { s.recordSetupResult(peerAddr, true) }
 	s.sessionList = append(s.sessionList, ss)
 	s.sessionMu.Unlock()

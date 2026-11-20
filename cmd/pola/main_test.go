@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/nttcom/pola/internal/version"
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,6 +21,8 @@ func TestMainRun(t *testing.T) {
 
 		var out, errOut bytes.Buffer
 		require.Equal(t, 0, mainRun([]string{"--version"}, &out, &errOut))
+		require.Equal(t, "pola "+version.Version()+"\n", out.String())
+		require.Empty(t, errOut.String())
 	})
 
 	t.Run("unknown subcommand exits with failure", func(t *testing.T) {

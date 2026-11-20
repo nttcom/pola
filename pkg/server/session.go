@@ -6,6 +6,7 @@
 package server
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"io"
@@ -250,7 +251,18 @@ type Session struct {
 	ted                     *table.LsTED
 	asn                     uint32
 
-	// onEstablished is called when the session reaches the established state.
+	// tedSource provides the live TED and its synchronization status.
+	// It takes precedence over ted.
+	tedSource func() (ted *table.LsTED, ready bool)
+
+	// reportMu serializes report handling and recomputation.
+	reportMu sync.Mutex
+
+	// pendingMu guards pendingRecompute.
+	pendingMu        sync.Mutex
+	pendingRecompute map[uint32]*pcep.StateReport
+
+	// onEstablished is called when the session is established.
 	onEstablished func()
 }
 
@@ -1344,6 +1356,9 @@ func (ss *Session) handlePCRpt(length uint16, deadline time.Time) error {
 }
 
 func (ss *Session) handleStateReport(sr *pcep.StateReport, message *pcep.PCRptMessage) error {
+	ss.reportMu.Lock()
+	defer ss.reportMu.Unlock()
+
 	if err := ss.rejectUnsupportedAssocTypes(sr.AssociationObjects); err != nil {
 		return err
 	}
@@ -1627,19 +1642,118 @@ func (ss *Session) handleStatefulPCERequest(sr *pcep.StateReport) error {
 		return err
 	}
 
+	// The acknowledged attributes supersede any report queued for recomputation.
+	ss.dropPendingRecompute(sr)
+
 	return nil
 }
 
-// Receive SR Policy with PLSP-ID.
+func (ss *Session) currentTED() (ted *table.LsTED, ready bool) {
+	if ss.tedSource != nil {
+		return ss.tedSource()
+	}
+
+	return ss.ted, ss.ted != nil
+}
+
+func (ss *Session) deferRecompute(sr *pcep.StateReport) {
+	ss.pendingMu.Lock()
+	defer ss.pendingMu.Unlock()
+
+	if ss.pendingRecompute == nil {
+		ss.pendingRecompute = make(map[uint32]*pcep.StateReport)
+	}
+
+	plspID := sr.LSPObject.PlspID
+	if prev, ok := ss.pendingRecompute[plspID]; !ok || prev.LSPObject.LSPID <= sr.LSPObject.LSPID {
+		ss.pendingRecompute[plspID] = sr
+	}
+}
+
+// dropPendingRecompute preserves pending work when sr is older than the registered policy.
+func (ss *Session) dropPendingRecompute(sr *pcep.StateReport) {
+	ss.srPoliciesMu.RLock()
+	p, ok := ss.searchSRPolicyLocked(sr.LSPObject.PlspID)
+	stale := ok && p.LSPID > sr.LSPObject.LSPID
+
+	ss.srPoliciesMu.RUnlock()
+
+	if stale {
+		return
+	}
+
+	ss.pendingMu.Lock()
+	defer ss.pendingMu.Unlock()
+
+	delete(ss.pendingRecompute, sr.LSPObject.PlspID)
+}
+
+func (ss *Session) takePendingRecompute() []*pcep.StateReport {
+	ss.pendingMu.Lock()
+	defer ss.pendingMu.Unlock()
+
+	reports := make([]*pcep.StateReport, 0, len(ss.pendingRecompute))
+	for _, sr := range ss.pendingRecompute {
+		reports = append(reports, sr)
+	}
+
+	ss.pendingRecompute = nil
+
+	slices.SortFunc(reports, func(a, b *pcep.StateReport) int {
+		return cmp.Compare(a.LSPObject.PlspID, b.LSPObject.PlspID)
+	})
+
+	return reports
+}
+
+func (ss *Session) recomputePending() {
+	ss.reportMu.Lock()
+	defer ss.reportMu.Unlock()
+
+	if _, ready := ss.currentTED(); !ready {
+		return
+	}
+
+	for _, sr := range ss.takePendingRecompute() {
+		plspID := sr.LSPObject.PlspID
+
+		// Do not overwrite an explicit path acknowledged after the report was queued.
+		if ss.hasExplicitPath(plspID) {
+			continue
+		}
+
+		ss.logger.Debug("Recompute SR Policy after TED synchronization", logger.Uint32("plspID", plspID))
+
+		if err := ss.handleSRPolicyWithPLSPID(sr); err != nil {
+			ss.logger.Warn("Failed to recompute SR Policy after TED synchronization",
+				logger.Uint32("plspID", plspID), logger.Error(err))
+		}
+	}
+}
+
 func (ss *Session) handleSRPolicyWithPLSPID(sr *pcep.StateReport) error {
 	ss.logger.Debug("Received SR Policy", logger.Uint32("plspID", sr.LSPObject.PlspID))
 
-	// Skip path computation for removed SR Policies, unavailable TED, or explicit paths.
-	if sr.LSPObject.RFlag || ss.ted == nil || ss.hasExplicitPath(sr.LSPObject.PlspID) {
+	ted, ready := ss.currentTED()
+
+	// Skip path computation for removed SR Policies, disabled TED, or explicit paths.
+	if sr.LSPObject.RFlag || ted == nil || ss.hasExplicitPath(sr.LSPObject.PlspID) {
+		ss.dropPendingRecompute(sr)
 		return ss.handleReportedSRPolicy(sr)
 	}
 
-	computedSegmentList, err := ss.computePathFromTED(sr)
+	// Defer path computation until the TED is synchronized to avoid computing
+	// against an empty TED and losing the report.
+	if !ready {
+		ss.logger.Debug("TED not synchronized yet, deferring path computation", logger.Uint32("plspID", sr.LSPObject.PlspID))
+		ss.deferRecompute(sr)
+
+		return ss.handleReportedSRPolicy(sr)
+	}
+
+	ss.dropPendingRecompute(sr)
+
+	computedSegmentList, err := ss.computePathFromTED(sr, ted)
 	if err != nil {
 		ss.logger.Error("Failed to compute path from TED", logger.Error(err))
 		return err
@@ -1684,12 +1798,12 @@ func (ss *Session) handleReportedSRPolicy(sr *pcep.StateReport) error {
 	return nil
 }
 
-func (ss *Session) computePathFromTED(sr *pcep.StateReport) ([]table.Segment, error) {
-	if ss.ted == nil {
+func (ss *Session) computePathFromTED(sr *pcep.StateReport, ted *table.LsTED) ([]table.Segment, error) {
+	if ted == nil {
 		return nil, errors.New("TED not available")
 	}
 
-	srcRouterID, dstRouterID, err := ss.extractSrcDstRouterIDs(sr)
+	srcRouterID, dstRouterID, err := ss.extractSrcDstRouterIDs(sr, ted)
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract router IDs: %w", err)
 	}
@@ -1723,9 +1837,9 @@ func (ss *Session) computePathFromTED(sr *pcep.StateReport) ([]table.Segment, er
 	var segmentList []table.Segment
 
 	if len(waypoints) > 0 {
-		segmentList, err = cspf.WithLooseSourceRouting(srcRouterID, dstRouterID, waypoints, metricType, scope, ss.ted)
+		segmentList, err = cspf.WithLooseSourceRouting(srcRouterID, dstRouterID, waypoints, metricType, scope, ted)
 	} else {
-		segmentList, err = cspf.CSPF(srcRouterID, dstRouterID, metricType, scope, ss.ted)
+		segmentList, err = cspf.CSPF(srcRouterID, dstRouterID, metricType, scope, ted)
 	}
 
 	if err != nil {
@@ -1801,7 +1915,7 @@ func (ss *Session) dataPlaneFromPeerCapabilities(af table.AddressFamily) (table.
 	}
 }
 
-func (ss *Session) extractSrcDstRouterIDs(sr *pcep.StateReport) (srcRouterID, dstRouterID string, err error) {
+func (ss *Session) extractSrcDstRouterIDs(sr *pcep.StateReport, ted *table.LsTED) (srcRouterID, dstRouterID string, err error) {
 	var srcAddr, dstAddr netip.Addr
 
 	if sr.LSPObject.SrcAddr.IsValid() {
@@ -1816,8 +1930,8 @@ func (ss *Session) extractSrcDstRouterIDs(sr *pcep.StateReport) (srcRouterID, ds
 		return "", "", errors.New("could not extract valid source and destination addresses")
 	}
 
-	routerIDIndex := ss.ted.RouterIDIndex()
-	addrIndex := ss.ted.AddressRouterIDIndex()
+	routerIDIndex := ted.RouterIDIndex()
+	addrIndex := ted.AddressRouterIDIndex()
 
 	srcRouterID, err = ss.findRouterIDFromAddress(routerIDIndex, addrIndex, srcAddr)
 	if err != nil {
@@ -2304,6 +2418,8 @@ func (ss *Session) updateOrCreatePolicy(sr *pcep.StateReport, segmentList []tabl
 // DeleteSRPolicy deletes an SR Policy from the session.
 func (ss *Session) DeleteSRPolicy(sr *pcep.StateReport) {
 	lspID := sr.LSPObject.LSPID
+
+	ss.dropPendingRecompute(sr)
 
 	ss.srPoliciesMu.Lock()
 	defer ss.srPoliciesMu.Unlock()
