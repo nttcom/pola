@@ -437,7 +437,6 @@ func TestDelegatedSRPolicyWithEmptyEROAwaitsBothSynchronizations(t *testing.T) {
 			assert.Equal(t, 1, pendingCount(ss))
 
 			syncTED := func() {
-
 				ch <- newSyncTestElems()
 
 				require.Eventually(t, func() bool { _, ready := s.tedState(); return ready }, time.Second, time.Millisecond)
