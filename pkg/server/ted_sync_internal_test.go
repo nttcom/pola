@@ -410,3 +410,109 @@ func TestSession_StatefulAck_ClearsPendingRecompute(t *testing.T) {
 
 	assert.Zero(t, pendingCount(ss))
 }
+
+func TestDelegatedSRPolicyWithEmptyEROAwaitsBothSynchronizations(t *testing.T) {
+	t.Parallel()
+
+	for _, tedFirst := range []bool{true, false} {
+		name := "LSP database first"
+		if tedFirst {
+			name = "TED first"
+		}
+
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			s := newSyncTestServer()
+			ss, client := newSyncTestSession(t, s)
+			ch := startSyncLoop(t, s)
+			sr := newSyncTestReport(t, 1)
+			sr.LSPObject.DFlag = true
+			sr.LSPObject.SFlag = true
+			sr.LSPObject.OFlag = 0
+			sr.EroObject.EroSubobjects = nil
+
+			require.NoError(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
+			requireSegments(t, ss, 1, []table.Segment{})
+			assert.Equal(t, 1, pendingCount(ss))
+
+			syncTED := func() {
+				ch <- newSyncTestElems()
+
+				require.Eventually(t, func() bool { _, ready := s.tedState(); return ready }, time.Second, time.Millisecond)
+			}
+			finishReports := func() {
+				marker := pcep.NewStateReport()
+				require.NoError(t, ss.handleStateReport(marker, pcep.NewPCRptMessage()))
+			}
+
+			if tedFirst {
+				syncTED()
+				requireNoPCEPMessage(t, client)
+				finishReports()
+			} else {
+				finishReports()
+				requireNoPCEPMessage(t, client)
+				syncTED()
+			}
+
+			require.NoError(t, readPCEPWithTimeout(t, client))
+			assert.Equal(t, uint64(1), ss.Stats().UpdSent)
+			requireSegments(t, ss, 1, computedSegments)
+			assert.Zero(t, pendingCount(ss))
+		})
+	}
+}
+
+func TestSyncReportCanRevokePendingDelegation(t *testing.T) {
+	t.Parallel()
+
+	s := newSyncTestServer()
+	ss, client := newSyncTestSession(t, s)
+	ch := startSyncLoop(t, s)
+
+	ch <- newSyncTestElems()
+
+	require.Eventually(t, func() bool { _, ready := s.tedState(); return ready }, time.Second, time.Millisecond)
+
+	sr := newSyncTestReport(t, 1)
+	sr.LSPObject.DFlag = true
+	sr.LSPObject.SFlag = true
+	sr.LSPObject.OFlag = 0
+	sr.EroObject.EroSubobjects = nil
+	require.NoError(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
+	assert.Equal(t, 1, pendingCount(ss))
+
+	revocation := newSyncTestReport(t, 1)
+	revocation.LSPObject.SFlag = true
+	require.NoError(t, ss.handleStateReport(revocation, pcep.NewPCRptMessage()))
+	assert.Zero(t, pendingCount(ss))
+
+	require.NoError(t, ss.handleStateReport(pcep.NewStateReport(), pcep.NewPCRptMessage()))
+	requireNoPCEPMessage(t, client)
+}
+
+func TestDelegationRevokedAfterLSPSyncWhileTEDIsPending(t *testing.T) {
+	t.Parallel()
+
+	s := newSyncTestServer()
+	ss, client := newSyncTestSession(t, s)
+	ch := startSyncLoop(t, s)
+	sr := newSyncTestReport(t, 1)
+	sr.LSPObject.DFlag = true
+	sr.LSPObject.SFlag = true
+	sr.LSPObject.OFlag = 0
+	sr.EroObject.EroSubobjects = nil
+	require.NoError(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
+	require.NoError(t, ss.handleStateReport(pcep.NewStateReport(), pcep.NewPCRptMessage()))
+	assert.Equal(t, 1, pendingCount(ss))
+
+	revocation := newSyncTestReport(t, 1)
+	require.NoError(t, ss.handleStateReport(revocation, pcep.NewPCRptMessage()))
+	assert.Zero(t, pendingCount(ss))
+
+	ch <- newSyncTestElems()
+
+	require.Eventually(t, func() bool { _, ready := s.tedState(); return ready }, time.Second, time.Millisecond)
+	requireNoPCEPMessage(t, client)
+}
