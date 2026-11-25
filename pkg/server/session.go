@@ -1730,6 +1730,15 @@ func (ss *Session) dropPendingRecompute(sr *pcep.StateReport) {
 	delete(ss.pendingRecompute, sr.LSPObject.PlspID)
 }
 
+func (ss *Session) hasPendingSyncDelegation(plspID uint32) bool {
+	ss.pendingMu.Lock()
+	defer ss.pendingMu.Unlock()
+
+	sr := ss.pendingRecompute[plspID]
+
+	return sr != nil && sr.LSPObject.SFlag
+}
+
 func (ss *Session) takePendingRecompute() []*pcep.StateReport {
 	ss.pendingMu.Lock()
 	defer ss.pendingMu.Unlock()
@@ -1780,6 +1789,11 @@ func (ss *Session) recomputePendingLocked() {
 
 func (ss *Session) handleSRPolicyWithPLSPID(sr *pcep.StateReport) error {
 	ss.logger.Debug("Received SR Policy", logger.Uint32("plspID", sr.LSPObject.PlspID))
+
+	if !sr.LSPObject.DFlag && ss.hasPendingSyncDelegation(sr.LSPObject.PlspID) {
+		ss.dropPendingRecompute(sr)
+		return ss.handleReportedSRPolicy(sr)
+	}
 
 	ted, ready := ss.currentTED()
 

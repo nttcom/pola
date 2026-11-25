@@ -488,3 +488,27 @@ func TestSyncReportCanRevokePendingDelegation(t *testing.T) {
 	require.NoError(t, ss.handleStateReport(pcep.NewStateReport(), pcep.NewPCRptMessage()))
 	requireNoPCEPMessage(t, client)
 }
+
+func TestDelegationRevokedAfterLSPSyncWhileTEDIsPending(t *testing.T) {
+	t.Parallel()
+
+	s := newSyncTestServer()
+	ss, client := newSyncTestSession(t, s)
+	ch := startSyncLoop(t, s)
+	sr := newSyncTestReport(t, 1)
+	sr.LSPObject.DFlag = true
+	sr.LSPObject.SFlag = true
+	sr.LSPObject.OFlag = 0
+	sr.EroObject.EroSubobjects = nil
+	require.NoError(t, ss.handleStateReport(sr, pcep.NewPCRptMessage()))
+	require.NoError(t, ss.handleStateReport(pcep.NewStateReport(), pcep.NewPCRptMessage()))
+	assert.Equal(t, 1, pendingCount(ss))
+
+	revocation := newSyncTestReport(t, 1)
+	require.NoError(t, ss.handleStateReport(revocation, pcep.NewPCRptMessage()))
+	assert.Zero(t, pendingCount(ss))
+
+	ch <- newSyncTestElems()
+	require.Eventually(t, func() bool { _, ready := s.tedState(); return ready }, time.Second, time.Millisecond)
+	requireNoPCEPMessage(t, client)
+}
