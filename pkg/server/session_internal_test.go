@@ -6012,3 +6012,75 @@ func TestSessionLocalAddr(t *testing.T) {
 		})
 	}
 }
+
+func TestReceiveSRPolicyAssociationRequiresCapabilityExchange(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name        string
+		local, peer bool
+		assocType   pcep.AssocType
+		wantError   bool
+	}{
+		{name: "peer missing", local: true, assocType: pcep.AssocTypeSRPolicyAssociation, wantError: true},
+		{name: "local missing", peer: true, assocType: pcep.AssocTypeSRPolicyAssociation, wantError: true},
+		{name: "both advertised", local: true, peer: true, assocType: pcep.AssocTypeSRPolicyAssociation},
+		{name: "legacy association", local: true, assocType: pcep.AssocTypeSRPolicyAssociationJuniper},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			sr := newTestStateReport(t, 1, 0)
+			assoc, err := pcep.NewAssociationObject(sr.LSPObject.SrcAddr, sr.LSPObject.DstAddr, 103, 100)
+			require.NoError(t, err)
+
+			assoc.AssocType = tc.assocType
+			encodedAssoc, err := assoc.Serialize()
+			require.NoError(t, err)
+
+			var wire bytes.Buffer
+			writeStateReportMessage(t, &wire, sr)
+			msg := wire.Bytes()
+			writeRawPCEPMessage(t, &wire, pcep.MessageTypeReport,
+				slices.Concat(msg[pcep.CommonHeaderLength:], encodedAssoc))
+			wire.Next(len(msg))
+			writeMessage(t, &wire, pcep.NewCloseMessage(pcep.CloseReasonNoExplanationProvided))
+
+			conn := &fakeConn{r: &wire}
+
+			ss := NewSession(testLocalOpen(1), netip.MustParseAddr("10.0.255.1"), conn, logger.NewNop(), nil, 0)
+			if !tc.local {
+				ss.advertisedCapabilities = nil
+			}
+
+			if tc.peer {
+				ss.receivedPccCapabilities = []pcep.CapabilityInterface{&pcep.SRPolicyCapability{}}
+			}
+
+			err = ss.ReceivePCEPMessage()
+			if tc.wantError {
+				require.ErrorContains(t, err, "without exchanging SRPOLICY-CAPABILITY")
+
+				writes := conn.writes()
+				require.Len(t, writes, 1)
+
+				pcerr := &pcep.PCErrMessage{}
+				require.NoError(t, pcerr.DecodeFromBytes(writes[0][pcep.CommonHeaderLength:]))
+				require.Len(t, pcerr.Errors, 1)
+				assert.Equal(t, uint8(10), pcerr.Errors[0].ErrorType)
+				assert.Equal(t, uint8(44), pcerr.Errors[0].ErrorValue)
+
+				_, registered := ss.SearchSRPolicy(1)
+				assert.False(t, registered)
+
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Empty(t, conn.writes())
+
+			_, registered := ss.SearchSRPolicy(1)
+			assert.True(t, registered)
+		})
+	}
+}

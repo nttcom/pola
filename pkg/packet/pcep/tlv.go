@@ -273,6 +273,7 @@ var tlvMap = map[TLVType]func() TLVInterface{
 	TLVExtendedAssociationID:   func() TLVInterface { return &ExtendedAssociationID{} },
 	TLVPathSetupTypeCapability: func() TLVInterface { return &PathSetupTypeCapability{} },
 	TLVAssocTypeList:           func() TLVInterface { return &AssocTypeList{} },
+	TLVSRPolicyCapability:      func() TLVInterface { return &SRPolicyCapability{} },
 	TLVSRPolicyCPathID:         func() TLVInterface { return &SRPolicyCandidatePathIdentifier{} },
 	TLVSRPolicyCPathPreference: func() TLVInterface { return &SRPolicyCandidatePathPreference{} },
 	TLVColor:                   func() TLVInterface { return &Color{} },
@@ -1660,6 +1661,40 @@ func (tlv *AssocTypeList) Len() int {
 }
 
 func (tlv *AssocTypeList) isCapability() {}
+
+// SRPolicyCapability is the SRPOLICY-CAPABILITY OPEN TLV (RFC 9862 §5.1).
+type SRPolicyCapability struct {
+	Flags uint32
+}
+
+// DecodeFromBytes implements TLVInterface.
+func (tlv *SRPolicyCapability) DecodeFromBytes(data []byte) error {
+	valueLen, err := decodeTLVLength(data, true)
+	if err != nil {
+		return fmt.Errorf("SRPolicyCapability: %w", err)
+	}
+
+	if valueLen != 4 {
+		return fmt.Errorf("SRPolicyCapability: invalid value length %d", valueLen)
+	}
+
+	tlv.Flags = binary.BigEndian.Uint32(data[TLVValueOffset:])
+
+	return nil
+}
+
+// Serialize implements TLVInterface.
+func (tlv *SRPolicyCapability) Serialize() ([]byte, error) {
+	return AppendByteSlices(Uint16ToByteSlice(uint16(tlv.Type())), Uint16ToByteSlice(uint16(4)), Uint32ToByteSlice(tlv.Flags)), nil
+}
+
+// Type implements TLVInterface.
+func (tlv *SRPolicyCapability) Type() TLVType { return TLVSRPolicyCapability }
+
+// Len implements TLVInterface.
+func (tlv *SRPolicyCapability) Len() int { return TLVValueOffset + 4 }
+
+func (tlv *SRPolicyCapability) isCapability() {}
 
 // SRPolicyCandidatePathIdentifier represents the SRPOLICY-CPATH-ID TLV (draft-ietf-pce-segment-routing-policy-cp).
 type SRPolicyCandidatePathIdentifier struct {
