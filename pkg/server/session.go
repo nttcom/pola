@@ -63,8 +63,9 @@ const (
 	pcepErrorValueUnassigned                  uint8 = 0
 
 	// Reception of an invalid object (RFC 5440 §7.15).
-	pcepErrorTypeInvalidObject    uint8 = 10
-	pcepErrorValueMalformedObject uint8 = 11
+	pcepErrorTypeInvalidObject              uint8 = 10
+	pcepErrorValueMalformedObject           uint8 = 11
+	pcepErrorValueMissingSRPolicyCapability uint8 = 44
 
 	// Invalid traffic engineering path setup type (RFC 8408 §8.3).
 	pcepErrorTypeInvalidPathSetupType     uint8 = 21
@@ -1346,6 +1347,11 @@ func (ss *Session) handlePCRpt(length uint16, deadline time.Time) error {
 	}
 
 	for _, sr := range message.StateReports {
+		if hasSRPolicyAssociation(sr) && !ss.srPolicyCapabilityExchanged() {
+			ss.sendTypedPCErrBestEffort(pcepErrorTypeInvalidObject, pcepErrorValueMissingSRPolicyCapability)
+			return errors.New("received an SR Policy Association without exchanging SRPOLICY-CAPABILITY")
+		}
+
 		if err := ss.handleStateReport(sr, message); err != nil {
 			ss.logger.Warn("Failed to handle state report",
 				logger.Uint32("plspID", sr.LSPObject.PlspID), logger.Error(err))
@@ -1396,6 +1402,27 @@ func (ss *Session) rejectUnsupportedAssocTypes(assocs []*pcep.AssociationObject)
 	return nil
 }
 
+// hasSRPolicyAssociation matches the standard SRPA, which requires TLV 71.
+// The legacy vendor association types have their own capability rules.
+func hasSRPolicyAssociation(sr *pcep.StateReport) bool {
+	return slices.ContainsFunc(sr.AssociationObjects, func(assoc *pcep.AssociationObject) bool {
+		return assoc != nil && assoc.AssocType == pcep.AssocTypeSRPolicyAssociation
+	})
+}
+
+func (ss *Session) srPolicyCapabilityExchanged() bool {
+	hasCapability := func(capability pcep.CapabilityInterface) bool {
+		_, ok := capability.(*pcep.SRPolicyCapability)
+		return ok
+	}
+
+	ss.stateMu.RLock()
+	defer ss.stateMu.RUnlock()
+
+	return slices.ContainsFunc(ss.advertisedCapabilities, hasCapability) &&
+		slices.ContainsFunc(ss.receivedPccCapabilities, hasCapability)
+}
+
 // srPolicyAssociation returns the first accepted ASSOCIATION object.
 func srPolicyAssociation(sr *pcep.StateReport) *pcep.AssociationObject {
 	for _, assoc := range sr.AssociationObjects {
@@ -1411,10 +1438,17 @@ func (ss *Session) handleSynchronization(sr *pcep.StateReport, message *pcep.PCR
 	ss.setSyncState(SyncStateOngoing)
 	ss.logger.Debug("Synchronize SR Policy information", logger.Any("Message", message))
 
+	if !isDelegatedSRPolicyWithoutPath(sr) {
+		ss.dropPendingRecompute(sr)
+		return ss.handleReportedSRPolicy(sr)
+	}
+
 	if err := ss.RegisterSRPolicy(sr); err != nil {
-		ss.logger.Error("Failed to register SR Policy during synchronization", logger.Error(err), logger.Uint32("plspID", sr.LSPObject.PlspID))
 		return err
 	}
+
+	// RFC 8231 §5.6 delays PCUpd until synchronization is complete.
+	ss.deferRecompute(sr)
 
 	return nil
 }
@@ -1422,6 +1456,7 @@ func (ss *Session) handleSynchronization(sr *pcep.StateReport, message *pcep.PCR
 func (ss *Session) handleFinishSynchronization() {
 	ss.logger.Debug("Finish PCRpt state synchronization")
 	ss.setSynced()
+	ss.recomputePendingLocked()
 }
 
 // IsSynced reports whether the session has finished PCRpt state synchronization.
@@ -1657,6 +1692,10 @@ func (ss *Session) currentTED() (ted *table.LsTED, ready bool) {
 }
 
 func (ss *Session) deferRecompute(sr *pcep.StateReport) {
+	if ss.isStalePolicyReport(sr) {
+		return
+	}
+
 	ss.pendingMu.Lock()
 	defer ss.pendingMu.Unlock()
 
@@ -1670,15 +1709,18 @@ func (ss *Session) deferRecompute(sr *pcep.StateReport) {
 	}
 }
 
+func (ss *Session) isStalePolicyReport(sr *pcep.StateReport) bool {
+	ss.srPoliciesMu.RLock()
+	defer ss.srPoliciesMu.RUnlock()
+
+	p, ok := ss.searchSRPolicyLocked(sr.LSPObject.PlspID)
+
+	return ok && p.LSPID > sr.LSPObject.LSPID
+}
+
 // dropPendingRecompute preserves pending work when sr is older than the registered policy.
 func (ss *Session) dropPendingRecompute(sr *pcep.StateReport) {
-	ss.srPoliciesMu.RLock()
-	p, ok := ss.searchSRPolicyLocked(sr.LSPObject.PlspID)
-	stale := ok && p.LSPID > sr.LSPObject.LSPID
-
-	ss.srPoliciesMu.RUnlock()
-
-	if stale {
+	if ss.isStalePolicyReport(sr) {
 		return
 	}
 
@@ -1710,7 +1752,12 @@ func (ss *Session) recomputePending() {
 	ss.reportMu.Lock()
 	defer ss.reportMu.Unlock()
 
-	if _, ready := ss.currentTED(); !ready {
+	ss.recomputePendingLocked()
+}
+
+// recomputePendingLocked requires reportMu to be held.
+func (ss *Session) recomputePendingLocked() {
+	if _, ready := ss.currentTED(); !ready || ss.SyncState() == SyncStateOngoing {
 		return
 	}
 
@@ -1722,10 +1769,10 @@ func (ss *Session) recomputePending() {
 			continue
 		}
 
-		ss.logger.Debug("Recompute SR Policy after TED synchronization", logger.Uint32("plspID", plspID))
+		ss.logger.Debug("Recompute deferred SR Policy", logger.Uint32("plspID", plspID))
 
 		if err := ss.handleSRPolicyWithPLSPID(sr); err != nil {
-			ss.logger.Warn("Failed to recompute SR Policy after TED synchronization",
+			ss.logger.Warn("Failed to recompute deferred SR Policy",
 				logger.Uint32("plspID", plspID), logger.Error(err))
 		}
 	}
@@ -2344,14 +2391,21 @@ func resolvePolicyState(oflag uint8) table.PolicyState {
 	}
 }
 
-// validateSegmentList checks if the Segment List exists and is non-empty.
+// isDelegatedSRPolicyWithoutPath identifies the empty ERO allowed by
+// RFC 8231 §6.1 for a delegated SR Policy with no path.
+func isDelegatedSRPolicyWithoutPath(sr *pcep.StateReport) bool {
+	return sr.LSPObject.DFlag && !sr.LSPObject.RFlag && sr.LSPObject.OFlag == 0 &&
+		sr.EroObject != nil && len(sr.EroObject.EroSubobjects) == 0 && hasSRPolicyAssociation(sr)
+}
+
+// validateSegmentList accepts an empty ERO on a delegated SR Policy awaiting a path.
 func validateSegmentList(sr *pcep.StateReport) ([]table.Segment, error) {
 	if sr.EroObject == nil {
 		return nil, fmt.Errorf("EroObject is nil for PlspID %d", sr.LSPObject.PlspID)
 	}
 
 	list := sr.EroObject.ToSegmentList()
-	if len(list) == 0 {
+	if len(list) == 0 && !isDelegatedSRPolicyWithoutPath(sr) {
 		return nil, fmt.Errorf("SegmentList is empty for PlspID %d", sr.LSPObject.PlspID)
 	}
 

@@ -181,9 +181,9 @@ func buildCapability(capability pcep.CapabilityInterface) *pb.Capability {
 		c.Detail = &pb.Capability_VendorInformation{VendorInformation: &pb.VendorInformationCapability{
 			EnterpriseNumber: uint32(tlv.EnterpriseNumber),
 		}}
-	case *pcep.UnknownTLV:
+	case *pcep.UnknownTLV, *pcep.SRPolicyCapability:
 		c.Detail = &pb.Capability_Unknown{Unknown: &pb.UnknownCapability{
-			TlvType: uint32(tlv.Typ),
+			TlvType: uint32(capability.Type()),
 		}}
 	}
 

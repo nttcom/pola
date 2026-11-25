@@ -32,7 +32,7 @@ func TestDefaultCapabilities(t *testing.T) {
 	t.Parallel()
 
 	caps := pcep.DefaultCapabilities()
-	require.Len(t, caps, 4)
+	require.Len(t, caps, 5)
 
 	statefulCap, ok := caps[0].(*pcep.StatefulPCECapability)
 	require.True(t, ok, "expected DefaultCapabilities[0] to be a StatefulPCECapability")
@@ -64,8 +64,12 @@ func TestDefaultCapabilities(t *testing.T) {
 	assert.NotContains(t, assocCap.AssocTypes, pcep.AssocTypeSRPolicyAssociationCisco)
 	assert.NotContains(t, assocCap.AssocTypes, pcep.AssocTypeSRPolicyAssociationJuniper)
 
-	multipathCap, ok := caps[3].(*pcep.MultipathCapability)
-	require.True(t, ok, "expected DefaultCapabilities[3] to be a MultipathCapability")
+	srPolicyCap, ok := caps[3].(*pcep.SRPolicyCapability)
+	require.True(t, ok, "expected DefaultCapabilities[3] to be an SRPolicyCapability")
+	assert.Zero(t, srPolicyCap.Flags)
+
+	multipathCap, ok := caps[4].(*pcep.MultipathCapability)
+	require.True(t, ok, "expected DefaultCapabilities[4] to be a MultipathCapability")
 	assert.Equal(t, uint16(1), multipathCap.MaxMultipaths)
 	assert.False(t, multipathCap.IsWeightedSupported)
 	assert.False(t, multipathCap.IsOppositeDirSupported)
@@ -134,4 +138,24 @@ func TestDefaultCapabilities_WireRoundTrip(t *testing.T) {
 		require.Len(t, decodedTLVs, 1)
 		assert.Equal(t, capability, decodedTLVs[0], "%T round-trip mismatch", capability)
 	}
+}
+
+func TestSRPolicyCapabilityWireFormat(t *testing.T) {
+	t.Parallel()
+
+	capability := &pcep.SRPolicyCapability{Flags: 0x10}
+	raw, err := capability.Serialize()
+	require.NoError(t, err)
+	assert.Equal(t, []byte{0, 71, 0, 4, 0, 0, 0, 0x10}, raw)
+	assert.Len(t, raw, capability.Len())
+
+	decoded, err := pcep.DecodeTLV(raw)
+	require.NoError(t, err)
+	assert.Equal(t, capability, decoded)
+
+	_, err = pcep.DecodeTLV(raw[:7])
+	require.Error(t, err)
+
+	_, err = pcep.DecodeTLV([]byte{0, 71, 0, 0})
+	require.ErrorContains(t, err, "invalid value length")
 }

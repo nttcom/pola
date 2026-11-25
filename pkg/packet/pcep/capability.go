@@ -86,6 +86,7 @@ func DefaultCapabilities() []CapabilityInterface {
 		polaStatefulCapability(),
 		polaPathSetupTypeCapability(),
 		polaAssocTypeList(),
+		&SRPolicyCapability{},
 		polaMultipathCapability(),
 	}
 }
