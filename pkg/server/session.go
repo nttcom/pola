@@ -63,8 +63,9 @@ const (
 	pcepErrorValueUnassigned                  uint8 = 0
 
 	// Reception of an invalid object (RFC 5440 §7.15).
-	pcepErrorTypeInvalidObject    uint8 = 10
-	pcepErrorValueMalformedObject uint8 = 11
+	pcepErrorTypeInvalidObject              uint8 = 10
+	pcepErrorValueMalformedObject           uint8 = 11
+	pcepErrorValueMissingSRPolicyCapability uint8 = 44
 
 	// Invalid traffic engineering path setup type (RFC 8408 §8.3).
 	pcepErrorTypeInvalidPathSetupType     uint8 = 21
@@ -1346,6 +1347,11 @@ func (ss *Session) handlePCRpt(length uint16, deadline time.Time) error {
 	}
 
 	for _, sr := range message.StateReports {
+		if hasSRPolicyAssociation(sr) && !ss.srPolicyCapabilityExchanged() {
+			ss.sendTypedPCErrBestEffort(pcepErrorTypeInvalidObject, pcepErrorValueMissingSRPolicyCapability)
+			return errors.New("received an SR Policy Association without exchanging SRPOLICY-CAPABILITY")
+		}
+
 		if err := ss.handleStateReport(sr, message); err != nil {
 			ss.logger.Warn("Failed to handle state report",
 				logger.Uint32("plspID", sr.LSPObject.PlspID), logger.Error(err))
@@ -1394,6 +1400,27 @@ func (ss *Session) rejectUnsupportedAssocTypes(assocs []*pcep.AssociationObject)
 	}
 
 	return nil
+}
+
+// hasSRPolicyAssociation matches the standard SRPA, which requires TLV 71.
+// The legacy vendor association types have their own capability rules.
+func hasSRPolicyAssociation(sr *pcep.StateReport) bool {
+	return slices.ContainsFunc(sr.AssociationObjects, func(assoc *pcep.AssociationObject) bool {
+		return assoc != nil && assoc.AssocType == pcep.AssocTypeSRPolicyAssociation
+	})
+}
+
+func (ss *Session) srPolicyCapabilityExchanged() bool {
+	hasCapability := func(capability pcep.CapabilityInterface) bool {
+		_, ok := capability.(*pcep.SRPolicyCapability)
+		return ok
+	}
+
+	ss.stateMu.RLock()
+	defer ss.stateMu.RUnlock()
+
+	return slices.ContainsFunc(ss.advertisedCapabilities, hasCapability) &&
+		slices.ContainsFunc(ss.receivedPccCapabilities, hasCapability)
 }
 
 // srPolicyAssociation returns the first accepted ASSOCIATION object.
